@@ -1,0 +1,2314 @@
+{
+ "format": "jasperengine-sound-essentials",
+ "version": 2,
+ "licence": "CC0-1.0",
+ "generated_by": "tools/sound-library/build_essentials.py",
+ "packs": [
+  {
+   "id": "digital-audio",
+   "title": "Digital Audio",
+   "url": "https://kenney.nl/media/pages/assets/digital-audio/216eac4753-1677590265/kenney_digital-audio.zip",
+   "landing": "https://kenney.nl/assets/digital-audio",
+   "sha256": "24e6ce28b76a6d8c89cff4d331e0965ff5c3de8a73c612028e9d363cc64e4f06",
+   "bytes": 990367,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/digital-audio.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "impact-sounds",
+   "title": "Impact Sounds",
+   "url": "https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip",
+   "landing": "https://kenney.nl/assets/impact-sounds",
+   "sha256": "029d734af1582474edf3a694d1b0cebc97c1c152f2f39fa34d4c2bafc5de77f8",
+   "bytes": 800850,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/impact-sounds.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "interface-sounds",
+   "title": "Interface Sounds",
+   "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+   "landing": "https://kenney.nl/assets/interface-sounds",
+   "sha256": "f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232",
+   "bytes": 834536,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/interface-sounds.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "music-jingles",
+   "title": "Music Jingles",
+   "url": "https://kenney.nl/media/pages/assets/music-jingles/f37e530b9e-1677590399/kenney_music-jingles.zip",
+   "landing": "https://kenney.nl/assets/music-jingles",
+   "sha256": "b729ba57959bd58793d2c5cafa348aaf2655d354f3da35ec4729e03ec77197b8",
+   "bytes": 1239525,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/music-jingles.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "rpg-audio",
+   "title": "RPG Audio",
+   "url": "https://kenney.nl/media/pages/assets/rpg-audio/8e99002d76-1677590336/kenney_rpg-audio.zip",
+   "landing": "https://kenney.nl/assets/rpg-audio",
+   "sha256": "6dbeaf8544da958d8f2adcb4a4a4b76c1ade34a05f8ab9edccd327da7375f38b",
+   "bytes": 964837,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/rpg-audio.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "sci-fi-sounds",
+   "title": "Sci-Fi Sounds",
+   "url": "https://kenney.nl/media/pages/assets/sci-fi-sounds/6b296f9ecf-1677589334/kenney_sci-fi-sounds.zip",
+   "landing": "https://kenney.nl/assets/sci-fi-sounds",
+   "sha256": "119340f351a5098ad814f78719438c0da355a9ce8a4c8a3af6a8d48aa3d49e04",
+   "bytes": 5875104,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/sci-fi-sounds.txt",
+   "author": "Kenney (www.kenney.nl)"
+  },
+  {
+   "id": "ui-audio",
+   "title": "UI Audio",
+   "url": "https://kenney.nl/media/pages/assets/ui-audio/490d233f68-1677590494/kenney_ui-audio.zip",
+   "landing": "https://kenney.nl/assets/ui-audio",
+   "sha256": "946fc23a63d535d693eb31b2eabb80c8c28d6351e2186b344ceb71b2cb1d5eb6",
+   "bytes": 411949,
+   "licence": "CC0-1.0",
+   "licence_file": "licenses/ui-audio.txt",
+   "author": "Kenney (www.kenney.nl)"
+  }
+ ],
+ "clips": [
+  {
+   "id": "door/scifi_close",
+   "path": "door/scifi_close.ogg",
+   "sha256": "c9134651ebbd7c016f90393aee495ff8120bd343bb7569b689a7506987ebd6c2",
+   "bytes": 20369,
+   "type": "door",
+   "kind": "swell",
+   "tags": [
+    "door",
+    "close",
+    "scifi"
+   ],
+   "description": "Sci-fi door closing",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/doorClose_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 23444,
+    "duration_s": 0.532,
+    "sample_peak_dbfs": -0.86,
+    "momentary_max_lufs": -13.1,
+    "head_ms": 3.4,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "door"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "door/scifi_close",
+      "sha256": "c9134651ebbd7c016f90393aee495ff8120bd343bb7569b689a7506987ebd6c2"
+     }
+    },
+    "labels": [
+     "door",
+     "close",
+     "scifi"
+    ]
+   }
+  },
+  {
+   "id": "door/scifi_open",
+   "path": "door/scifi_open.ogg",
+   "sha256": "5b7e07eccd4413ad9ef3720c2d14f9cc699f4c50111e9b2f48bd60e6f1a164c3",
+   "bytes": 19616,
+   "type": "door",
+   "kind": "swell",
+   "tags": [
+    "door",
+    "open",
+    "scifi"
+   ],
+   "description": "Sci-fi door opening",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/doorOpen_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 23444,
+    "duration_s": 0.532,
+    "sample_peak_dbfs": -0.93,
+    "momentary_max_lufs": -13.1,
+    "head_ms": 0.0,
+    "tail_ms": 2.7
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "door"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "door/scifi_open",
+      "sha256": "5b7e07eccd4413ad9ef3720c2d14f9cc699f4c50111e9b2f48bd60e6f1a164c3"
+     }
+    },
+    "labels": [
+     "door",
+     "open",
+     "scifi"
+    ]
+   }
+  },
+  {
+   "id": "door/wood_close",
+   "path": "door/wood_close.ogg",
+   "sha256": "4aa4fe79836c53cd6d0cb0b22ddc33b9901429463ae1bb75131f072683f63f21",
+   "bytes": 17598,
+   "type": "door",
+   "kind": "transient",
+   "tags": [
+    "door",
+    "close",
+    "wood"
+   ],
+   "description": "Wooden door closing",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "rpg-audio",
+   "source_file": "Audio/doorClose_2.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/rpg-audio",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 48000,
+    "frames": 29399,
+    "duration_s": 0.612,
+    "sample_peak_dbfs": -2.41,
+    "momentary_max_lufs": -13.19,
+    "head_ms": 2.3,
+    "tail_ms": 0.6
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "door"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "builtin": {
+      "set": "essentials",
+      "id": "door/wood_close",
+      "sha256": "4aa4fe79836c53cd6d0cb0b22ddc33b9901429463ae1bb75131f072683f63f21"
+     }
+    },
+    "labels": [
+     "door",
+     "close",
+     "wood"
+    ]
+   }
+  },
+  {
+   "id": "explosion/crunch",
+   "path": "explosion/crunch.ogg",
+   "sha256": "4b597d658d0ae101f0a030fbeea5fc3a4292ab85f017470a8254a8e7959cbd69",
+   "bytes": 28274,
+   "type": "explosion",
+   "kind": "transient",
+   "tags": [
+    "explosion",
+    "scifi"
+   ],
+   "description": "Crunchy sci-fi explosion",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/explosionCrunch_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 34286,
+    "duration_s": 0.777,
+    "sample_peak_dbfs": -0.96,
+    "momentary_max_lufs": -14.93,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "explosion"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "explosion/crunch",
+      "sha256": "4b597d658d0ae101f0a030fbeea5fc3a4292ab85f017470a8254a8e7959cbd69"
+     }
+    },
+    "labels": [
+     "explosion",
+     "scifi"
+    ]
+   }
+  },
+  {
+   "id": "explosion/low",
+   "path": "explosion/low.ogg",
+   "sha256": "3cb48d86dab63140cfb9aaeea4d4a6846abaca5831d157d8adbec0490da26343",
+   "bytes": 14317,
+   "type": "boom",
+   "kind": "transient",
+   "tags": [
+    "explosion",
+    "low",
+    "sub"
+   ],
+   "description": "Low, deep explosion boom",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/lowFrequency_explosion_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 88202,
+    "duration_s": 2.0,
+    "sample_peak_dbfs": -0.9,
+    "momentary_max_lufs": -11.77,
+    "head_ms": 0.2,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "boom"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "explosion/low",
+      "sha256": "3cb48d86dab63140cfb9aaeea4d4a6846abaca5831d157d8adbec0490da26343"
+     }
+    },
+    "labels": [
+     "explosion",
+     "low",
+     "sub"
+    ]
+   }
+  },
+  {
+   "id": "footstep/concrete_1",
+   "path": "footstep/concrete_1.ogg",
+   "sha256": "d7267e183067757c92c169de2a379abea592cfca6b39bb2e8feea15221ad79fe",
+   "bytes": 5808,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "concrete",
+    "hard"
+   ],
+   "description": "Footstep on concrete",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_concrete_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 4671,
+    "duration_s": 0.106,
+    "sample_peak_dbfs": -0.93,
+    "momentary_max_lufs": -25.5,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep",
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/concrete_1",
+      "sha256": "d7267e183067757c92c169de2a379abea592cfca6b39bb2e8feea15221ad79fe"
+     }
+    },
+    "labels": [
+     "concrete",
+     "hard"
+    ]
+   }
+  },
+  {
+   "id": "footstep/concrete_2",
+   "path": "footstep/concrete_2.ogg",
+   "sha256": "507a75eb19b897087855a3be3cf11a12d7fa37d143ad535eeebe0b8031c7325d",
+   "bytes": 6308,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "concrete",
+    "hard"
+   ],
+   "description": "Footstep on concrete, second variation",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_concrete_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 4747,
+    "duration_s": 0.108,
+    "sample_peak_dbfs": -1.21,
+    "momentary_max_lufs": -27.07,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep",
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/concrete_2",
+      "sha256": "507a75eb19b897087855a3be3cf11a12d7fa37d143ad535eeebe0b8031c7325d"
+     }
+    },
+    "labels": [
+     "concrete",
+     "hard"
+    ]
+   }
+  },
+  {
+   "id": "footstep/grass_1",
+   "path": "footstep/grass_1.ogg",
+   "sha256": "9d49497777405d78d7cf7f2888e28277f3a23192300cfd1d79d54876b20f479f",
+   "bytes": 8290,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "grass",
+    "soft"
+   ],
+   "description": "Footstep on grass",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_grass_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 34291,
+    "duration_s": 0.778,
+    "sample_peak_dbfs": -1.06,
+    "momentary_max_lufs": -25.75,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/grass_1",
+      "sha256": "9d49497777405d78d7cf7f2888e28277f3a23192300cfd1d79d54876b20f479f"
+     }
+    },
+    "labels": [
+     "grass",
+     "soft"
+    ]
+   }
+  },
+  {
+   "id": "footstep/grass_2",
+   "path": "footstep/grass_2.ogg",
+   "sha256": "fb28781bd22b2eefdc14077f1adf5c94d7fe9c3a130194633b55f3e0d39d9f04",
+   "bytes": 8313,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "grass",
+    "soft"
+   ],
+   "description": "Footstep on grass, second variation",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_grass_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 29706,
+    "duration_s": 0.674,
+    "sample_peak_dbfs": -1.19,
+    "momentary_max_lufs": -24.93,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/grass_2",
+      "sha256": "fb28781bd22b2eefdc14077f1adf5c94d7fe9c3a130194633b55f3e0d39d9f04"
+     }
+    },
+    "labels": [
+     "grass",
+     "soft"
+    ]
+   }
+  },
+  {
+   "id": "footstep/wood_1",
+   "path": "footstep/wood_1.ogg",
+   "sha256": "5f1c252942a220d658121bd9417448cd19649ded9fff2ff15f6e50899373ce8e",
+   "bytes": 5949,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Footstep on wood",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_wood_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 11007,
+    "duration_s": 0.25,
+    "sample_peak_dbfs": -0.92,
+    "momentary_max_lufs": -22.32,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/wood_1",
+      "sha256": "5f1c252942a220d658121bd9417448cd19649ded9fff2ff15f6e50899373ce8e"
+     }
+    },
+    "labels": [
+     "wood"
+    ]
+   }
+  },
+  {
+   "id": "footstep/wood_2",
+   "path": "footstep/wood_2.ogg",
+   "sha256": "e4f68e1c9fd55b4dc8ca89ed2bbab6f200171bc54bdc18aa96b80d8e7336f462",
+   "bytes": 5929,
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Footstep on wood, second variation",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/footstep_wood_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 11094,
+    "duration_s": 0.252,
+    "sample_peak_dbfs": -1.0,
+    "momentary_max_lufs": -21.33,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "footstep"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "footstep/wood_2",
+      "sha256": "e4f68e1c9fd55b4dc8ca89ed2bbab6f200171bc54bdc18aa96b80d8e7336f462"
+     }
+    },
+    "labels": [
+     "wood"
+    ]
+   }
+  },
+  {
+   "id": "hurt/punch",
+   "path": "hurt/punch.ogg",
+   "sha256": "486988aa2d6440ffc4c62a0e8ccf3c23673ba84424bd4723378d451b7255eb5c",
+   "bytes": 8800,
+   "type": "hurt",
+   "kind": "transient",
+   "tags": [
+    "punch",
+    "body"
+   ],
+   "description": "Punch landing on a body",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactPunch_medium_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 18987,
+    "duration_s": 0.431,
+    "sample_peak_dbfs": -1.11,
+    "momentary_max_lufs": -16.67,
+    "head_ms": 0.0,
+    "tail_ms": 133.2
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "hurt"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "hurt/punch",
+      "sha256": "486988aa2d6440ffc4c62a0e8ccf3c23673ba84424bd4723378d451b7255eb5c"
+     }
+    },
+    "labels": [
+     "punch",
+     "body"
+    ]
+   }
+  },
+  {
+   "id": "impact/glass",
+   "path": "impact/glass.ogg",
+   "sha256": "9252d50bfb85edb17d6073c4a7806e10cdb9de56d3dbfc93a4b9727146d2df6d",
+   "bytes": 8400,
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "glass"
+   ],
+   "description": "Medium impact on glass",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactGlass_medium_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 23962,
+    "duration_s": 0.543,
+    "sample_peak_dbfs": -1.16,
+    "momentary_max_lufs": -22.71,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "impact"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "impact/glass",
+      "sha256": "9252d50bfb85edb17d6073c4a7806e10cdb9de56d3dbfc93a4b9727146d2df6d"
+     }
+    },
+    "labels": [
+     "glass"
+    ]
+   }
+  },
+  {
+   "id": "impact/light",
+   "path": "impact/light.ogg",
+   "sha256": "f0e982611e97512fee5f777986b67e8b435434b601f94992ec044f7e89fb5acb",
+   "bytes": 5827,
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "light",
+    "generic"
+   ],
+   "description": "Light generic impact",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactGeneric_light_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 6116,
+    "duration_s": 0.139,
+    "sample_peak_dbfs": -1.24,
+    "momentary_max_lufs": -23.01,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "impact",
+      "fade_in_ms": 0.5,
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "impact/light",
+      "sha256": "f0e982611e97512fee5f777986b67e8b435434b601f94992ec044f7e89fb5acb"
+     }
+    },
+    "labels": [
+     "light",
+     "generic"
+    ]
+   }
+  },
+  {
+   "id": "impact/metal",
+   "path": "impact/metal.ogg",
+   "sha256": "a96f879fec0864a8938e0c745b6996a6c5679c16a234ce31a01cc995e8401003",
+   "bytes": 7117,
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "metal"
+   ],
+   "description": "Medium impact on metal",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactMetal_medium_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 11985,
+    "duration_s": 0.272,
+    "sample_peak_dbfs": -1.16,
+    "momentary_max_lufs": -20.08,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "impact",
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "impact/metal",
+      "sha256": "a96f879fec0864a8938e0c745b6996a6c5679c16a234ce31a01cc995e8401003"
+     }
+    },
+    "labels": [
+     "metal"
+    ]
+   }
+  },
+  {
+   "id": "impact/thump",
+   "path": "impact/thump.ogg",
+   "sha256": "49e7ca88743fca974bb8676ea138b751cfd8f9033b5e7af8736c2a215d6edbc1",
+   "bytes": 6570,
+   "type": "thump",
+   "kind": "transient",
+   "tags": [
+    "soft",
+    "heavy",
+    "landing"
+   ],
+   "description": "Heavy soft thump, for a landing",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactSoft_heavy_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 22275,
+    "duration_s": 0.505,
+    "sample_peak_dbfs": -0.92,
+    "momentary_max_lufs": -15.81,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "thump"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "impact/thump",
+      "sha256": "49e7ca88743fca974bb8676ea138b751cfd8f9033b5e7af8736c2a215d6edbc1"
+     }
+    },
+    "labels": [
+     "soft",
+     "heavy",
+     "landing"
+    ]
+   }
+  },
+  {
+   "id": "impact/wood",
+   "path": "impact/wood.ogg",
+   "sha256": "1723a9fd25103ed41af06054814e84e65f4a772bac86ab2dc927da93d9592ff5",
+   "bytes": 6575,
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Medium impact on wood",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "impact-sounds",
+   "source_file": "Audio/impactWood_medium_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/impact-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 14671,
+    "duration_s": 0.333,
+    "sample_peak_dbfs": -1.03,
+    "momentary_max_lufs": -21.85,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "impact"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "impact/wood",
+      "sha256": "1723a9fd25103ed41af06054814e84e65f4a772bac86ab2dc927da93d9592ff5"
+     }
+    },
+    "labels": [
+     "wood"
+    ]
+   }
+  },
+  {
+   "id": "jump/phase",
+   "path": "jump/phase.ogg",
+   "sha256": "69e25a1b7b0781f57af84eb4424973ec406d34bc48eed8b6964787b2d74093a9",
+   "bytes": 6854,
+   "type": "jump",
+   "kind": "tonal",
+   "tags": [
+    "jump",
+    "retro"
+   ],
+   "description": "Retro jump",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "digital-audio",
+   "source_file": "Audio/phaseJump3.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/digital-audio",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 19584,
+    "duration_s": 0.444,
+    "sample_peak_dbfs": -0.49,
+    "momentary_max_lufs": -15.59,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "jump"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/digital-audio",
+     "builtin": {
+      "set": "essentials",
+      "id": "jump/phase",
+      "sha256": "69e25a1b7b0781f57af84eb4424973ec406d34bc48eed8b6964787b2d74093a9"
+     }
+    },
+    "labels": [
+     "jump",
+     "retro"
+    ]
+   }
+  },
+  {
+   "id": "pickup/chime",
+   "path": "pickup/chime.ogg",
+   "sha256": "33b17a9a9a2397c62b285c52c33a907fdffb476909c99e42dde603f6a7a8b12c",
+   "bytes": 14169,
+   "type": "pickup",
+   "kind": "tonal",
+   "tags": [
+    "chime",
+    "success"
+   ],
+   "description": "Pickup chime",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/confirmation_002.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 23770,
+    "duration_s": 0.539,
+    "sample_peak_dbfs": -0.96,
+    "momentary_max_lufs": -12.04,
+    "head_ms": 0.0,
+    "tail_ms": 4.4
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "pickup"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "pickup/chime",
+      "sha256": "33b17a9a9a2397c62b285c52c33a907fdffb476909c99e42dde603f6a7a8b12c"
+     }
+    },
+    "labels": [
+     "chime",
+     "success"
+    ]
+   }
+  },
+  {
+   "id": "pickup/coins",
+   "path": "pickup/coins.ogg",
+   "sha256": "4b857968d64f9ac9336a10ffac6694d7547e1f01566ad6857b30bc8db3ee6c32",
+   "bytes": 13094,
+   "type": "pickup",
+   "kind": "transient",
+   "tags": [
+    "coins",
+    "money"
+   ],
+   "description": "Handful of coins",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "rpg-audio",
+   "source_file": "Audio/handleCoins2.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/rpg-audio",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 48000,
+    "frames": 16234,
+    "duration_s": 0.338,
+    "sample_peak_dbfs": -10.7,
+    "momentary_max_lufs": -28.56,
+    "head_ms": 2.8,
+    "tail_ms": 17.4
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "pickup"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "builtin": {
+      "set": "essentials",
+      "id": "pickup/coins",
+      "sha256": "4b857968d64f9ac9336a10ffac6694d7547e1f01566ad6857b30bc8db3ee6c32"
+     }
+    },
+    "labels": [
+     "coins",
+     "money"
+    ]
+   }
+  },
+  {
+   "id": "pickup/powerup",
+   "path": "pickup/powerup.ogg",
+   "sha256": "8799eb726d784ae0aa1a9df80648a873ac60015bc00aea12c8e2dd1431a2bd7d",
+   "bytes": 15691,
+   "type": "pickup",
+   "kind": "tonal",
+   "tags": [
+    "powerup",
+    "steel_drum"
+   ],
+   "description": "Power-up jingle on steel drum",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "music-jingles",
+   "source_file": "Audio/Steel jingles/jingles_STEEL00.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/music-jingles",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 41137,
+    "duration_s": 0.933,
+    "sample_peak_dbfs": -2.62,
+    "momentary_max_lufs": -12.56,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "pickup"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/music-jingles",
+     "builtin": {
+      "set": "essentials",
+      "id": "pickup/powerup",
+      "sha256": "8799eb726d784ae0aa1a9df80648a873ac60015bc00aea12c8e2dd1431a2bd7d"
+     }
+    },
+    "labels": [
+     "powerup",
+     "steel_drum"
+    ]
+   }
+  },
+  {
+   "id": "shoot/laser_retro",
+   "path": "shoot/laser_retro.ogg",
+   "sha256": "2a203a007d24cc7e607eb8bec1d86bedba7f551911217ce2c4c1f31393aed32c",
+   "bytes": 12588,
+   "type": "shoot",
+   "kind": "transient",
+   "tags": [
+    "laser",
+    "retro"
+   ],
+   "description": "Retro laser shot",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/laserRetro_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 10382,
+    "duration_s": 0.235,
+    "sample_peak_dbfs": -0.87,
+    "momentary_max_lufs": -9.44,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "shoot"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "shoot/laser_retro",
+      "sha256": "2a203a007d24cc7e607eb8bec1d86bedba7f551911217ce2c4c1f31393aed32c"
+     }
+    },
+    "labels": [
+     "laser",
+     "retro"
+    ]
+   }
+  },
+  {
+   "id": "shoot/laser_small",
+   "path": "shoot/laser_small.ogg",
+   "sha256": "72b589eadd41781257ac859e4f4d030222e623390e4a1a83f6d05329a6e026f1",
+   "bytes": 7286,
+   "type": "shoot",
+   "kind": "transient",
+   "tags": [
+    "laser",
+    "scifi"
+   ],
+   "description": "Small laser shot",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "sci-fi-sounds",
+   "source_file": "Audio/laserSmall_000.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/sci-fi-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 10549,
+    "duration_s": 0.239,
+    "sample_peak_dbfs": -5.65,
+    "momentary_max_lufs": -21.33,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "shoot",
+      "fade_in_ms": 0.5,
+      "fade_out_ms": 5
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/sci-fi-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "shoot/laser_small",
+      "sha256": "72b589eadd41781257ac859e4f4d030222e623390e4a1a83f6d05329a6e026f1"
+     }
+    },
+    "labels": [
+     "laser",
+     "scifi"
+    ]
+   }
+  },
+  {
+   "id": "stinger/hit",
+   "path": "stinger/hit.ogg",
+   "sha256": "ddca9df332d7cdab525bbbe62ca26e9d61aa64bfa626d9516d5c53eb91c45322",
+   "bytes": 11681,
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "hit",
+    "jingle"
+   ],
+   "description": "Short hit jingle",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "music-jingles",
+   "source_file": "Audio/Hit jingles/jingles_HIT01.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/music-jingles",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 22317,
+    "duration_s": 0.506,
+    "sample_peak_dbfs": -4.2,
+    "momentary_max_lufs": -12.29,
+    "head_ms": 9.3,
+    "tail_ms": 30.9
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "stinger"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/music-jingles",
+     "builtin": {
+      "set": "essentials",
+      "id": "stinger/hit",
+      "sha256": "ddca9df332d7cdab525bbbe62ca26e9d61aa64bfa626d9516d5c53eb91c45322"
+     }
+    },
+    "labels": [
+     "hit",
+     "jingle"
+    ]
+   }
+  },
+  {
+   "id": "stinger/pizzicato",
+   "path": "stinger/pizzicato.ogg",
+   "sha256": "b442ade3308a2bbda4b8c572c86f9f1071c7bdbcfb1e6f915d35c605b61bd475",
+   "bytes": 10382,
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "pizzicato",
+    "jingle"
+   ],
+   "description": "Pizzicato strings jingle",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "music-jingles",
+   "source_file": "Audio/Pizzicato jingles/jingles_PIZZI00.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/music-jingles",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 21793,
+    "duration_s": 0.494,
+    "sample_peak_dbfs": -6.12,
+    "momentary_max_lufs": -14.19,
+    "head_ms": 3.8,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "stinger",
+      "fade_out_ms": 12
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/music-jingles",
+     "builtin": {
+      "set": "essentials",
+      "id": "stinger/pizzicato",
+      "sha256": "b442ade3308a2bbda4b8c572c86f9f1071c7bdbcfb1e6f915d35c605b61bd475"
+     }
+    },
+    "labels": [
+     "pizzicato",
+     "jingle"
+    ]
+   }
+  },
+  {
+   "id": "stinger/win_8bit",
+   "path": "stinger/win_8bit.ogg",
+   "sha256": "1010c9b566d6c090ff03a4aaaf7439e26eb4cc4f20373800d0b7e6a9057b795d",
+   "bytes": 39948,
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "win",
+    "8bit",
+    "jingle"
+   ],
+   "description": "8-bit win jingle",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "music-jingles",
+   "source_file": "Audio/8-Bit jingles/jingles_NES00.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/music-jingles",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 77521,
+    "duration_s": 1.758,
+    "sample_peak_dbfs": -4.91,
+    "momentary_max_lufs": -10.17,
+    "head_ms": 0.0,
+    "tail_ms": 32.7
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "stinger"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/music-jingles",
+     "builtin": {
+      "set": "essentials",
+      "id": "stinger/win_8bit",
+      "sha256": "1010c9b566d6c090ff03a4aaaf7439e26eb4cc4f20373800d0b7e6a9057b795d"
+     }
+    },
+    "labels": [
+     "win",
+     "8bit",
+     "jingle"
+    ]
+   }
+  },
+  {
+   "id": "swish/cloth",
+   "path": "swish/cloth.ogg",
+   "sha256": "ddb93a3671233f95da0e0b10367f082f7eb42fa6caaddcf776410aa8833c747d",
+   "bytes": 16508,
+   "type": "swish",
+   "kind": "swell",
+   "tags": [
+    "cloth",
+    "movement"
+   ],
+   "description": "Cloth movement swish",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "rpg-audio",
+   "source_file": "Audio/cloth1.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/rpg-audio",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 48000,
+    "frames": 31730,
+    "duration_s": 0.661,
+    "sample_peak_dbfs": -3.49,
+    "momentary_max_lufs": -22.05,
+    "head_ms": 4.3,
+    "tail_ms": 27.6
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "swish"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "builtin": {
+      "set": "essentials",
+      "id": "swish/cloth",
+      "sha256": "ddb93a3671233f95da0e0b10367f082f7eb42fa6caaddcf776410aa8833c747d"
+     }
+    },
+    "labels": [
+     "cloth",
+     "movement"
+    ]
+   }
+  },
+  {
+   "id": "ui/back",
+   "path": "ui/back.ogg",
+   "sha256": "07db973f79f6ae0f2edc34561e7592e24d0577455919fb602cb8ecc0da991dcf",
+   "bytes": 6997,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "back",
+    "cancel"
+   ],
+   "description": "Back or cancel, a short falling tone",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/back_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 2817,
+    "duration_s": 0.064,
+    "sample_peak_dbfs": -0.96,
+    "momentary_max_lufs": -28.36,
+    "head_ms": 0.0,
+    "tail_ms": 6.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/back",
+      "sha256": "07db973f79f6ae0f2edc34561e7592e24d0577455919fb602cb8ecc0da991dcf"
+     }
+    },
+    "labels": [
+     "ui",
+     "back",
+     "cancel"
+    ]
+   }
+  },
+  {
+   "id": "ui/chime",
+   "path": "ui/chime.ogg",
+   "sha256": "183eebee20eb0a532b0b85104d139cbf2673eb66d95c3cc733ac9ea98362e7e8",
+   "bytes": 6103,
+   "type": "chime",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "glass",
+    "ping"
+   ],
+   "description": "Glassy ping",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/glass_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 12279,
+    "duration_s": 0.278,
+    "sample_peak_dbfs": -1.03,
+    "momentary_max_lufs": -19.51,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "chime",
+      "fade_in_ms": 1
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/chime",
+      "sha256": "183eebee20eb0a532b0b85104d139cbf2673eb66d95c3cc733ac9ea98362e7e8"
+     }
+    },
+    "labels": [
+     "ui",
+     "glass",
+     "ping"
+    ]
+   }
+  },
+  {
+   "id": "ui/click",
+   "path": "ui/click.ogg",
+   "sha256": "ccfb7fa0cccdd9faec0eb16033c732b1e308d139d80f799161495d58f7adcdb9",
+   "bytes": 4876,
+   "type": "click",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "button"
+   ],
+   "description": "Short button click",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/click_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 4411,
+    "duration_s": 0.1,
+    "sample_peak_dbfs": -1.35,
+    "momentary_max_lufs": -31.95,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "click",
+      "fade_in_ms": 0.5,
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/click",
+      "sha256": "ccfb7fa0cccdd9faec0eb16033c732b1e308d139d80f799161495d58f7adcdb9"
+     }
+    },
+    "labels": [
+     "ui",
+     "button"
+    ]
+   }
+  },
+  {
+   "id": "ui/close",
+   "path": "ui/close.ogg",
+   "sha256": "8481912bc7fa5828924a00ef15b6cd613b994956e0817bd3122065c9b2896d2d",
+   "bytes": 11924,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "close"
+   ],
+   "description": "Panel or window closing",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/minimize_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 11395,
+    "duration_s": 0.258,
+    "sample_peak_dbfs": -0.93,
+    "momentary_max_lufs": -11.67,
+    "head_ms": 0.0,
+    "tail_ms": 2.1
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/close",
+      "sha256": "8481912bc7fa5828924a00ef15b6cd613b994956e0817bd3122065c9b2896d2d"
+     }
+    },
+    "labels": [
+     "ui",
+     "close"
+    ]
+   }
+  },
+  {
+   "id": "ui/confirm",
+   "path": "ui/confirm.ogg",
+   "sha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a",
+   "bytes": 8968,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "confirm",
+    "success"
+   ],
+   "description": "Confirmation, a short rising tone",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/confirmation_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 12782,
+    "duration_s": 0.29,
+    "sample_peak_dbfs": -0.93,
+    "momentary_max_lufs": -13.37,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/confirm",
+      "sha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a"
+     }
+    },
+    "labels": [
+     "ui",
+     "confirm",
+     "success"
+    ]
+   }
+  },
+  {
+   "id": "ui/error",
+   "path": "ui/error.ogg",
+   "sha256": "46e67425d16339772e8d328fb36a49426c9467418686e11beeb71ff84b0f6433",
+   "bytes": 7373,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "error",
+    "deny"
+   ],
+   "description": "Error or denied action",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/error_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 7257,
+    "duration_s": 0.165,
+    "sample_peak_dbfs": -0.8,
+    "momentary_max_lufs": -17.6,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui",
+      "fade_in_ms": 1
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/error",
+      "sha256": "46e67425d16339772e8d328fb36a49426c9467418686e11beeb71ff84b0f6433"
+     }
+    },
+    "labels": [
+     "ui",
+     "error",
+     "deny"
+    ]
+   }
+  },
+  {
+   "id": "ui/glitch",
+   "path": "ui/glitch.ogg",
+   "sha256": "da78c642bbd95da2c364ed0e991ebbfc5a4c0d281165d932b5819e0dd31a39d2",
+   "bytes": 5121,
+   "type": "glitch",
+   "kind": "glitch",
+   "tags": [
+    "ui",
+    "digital"
+   ],
+   "description": "Short digital glitch",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/glitch_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 883,
+    "duration_s": 0.02,
+    "sample_peak_dbfs": -0.99,
+    "momentary_max_lufs": -23.07,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "glitch"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/glitch",
+      "sha256": "da78c642bbd95da2c364ed0e991ebbfc5a4c0d281165d932b5819e0dd31a39d2"
+     }
+    },
+    "labels": [
+     "ui",
+     "digital"
+    ]
+   }
+  },
+  {
+   "id": "ui/hover",
+   "path": "ui/hover.ogg",
+   "sha256": "d0bc0fcba496d73df1da8c145e5330df75f87ab5a4f33a9b71461b006b5c338e",
+   "bytes": 4701,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "hover"
+   ],
+   "description": "Soft blip when the pointer moves over a control",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "ui-audio",
+   "source_file": "Audio/rollover2.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/ui-audio",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 2528,
+    "duration_s": 0.057,
+    "sample_peak_dbfs": -1.78,
+    "momentary_max_lufs": -28.55,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui",
+      "fade_out_ms": 12
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/ui-audio",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/hover",
+      "sha256": "d0bc0fcba496d73df1da8c145e5330df75f87ab5a4f33a9b71461b006b5c338e"
+     }
+    },
+    "labels": [
+     "ui",
+     "hover"
+    ]
+   }
+  },
+  {
+   "id": "ui/open",
+   "path": "ui/open.ogg",
+   "sha256": "fd3e75e1de2f2fda90aceeacaeb0427ac8bddd3b07a6ce2a8f9ba923df3771f9",
+   "bytes": 12111,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "open"
+   ],
+   "description": "Panel or window opening",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/maximize_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 11395,
+    "duration_s": 0.258,
+    "sample_peak_dbfs": -0.97,
+    "momentary_max_lufs": -11.67,
+    "head_ms": 2.3,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/open",
+      "sha256": "fd3e75e1de2f2fda90aceeacaeb0427ac8bddd3b07a6ce2a8f9ba923df3771f9"
+     }
+    },
+    "labels": [
+     "ui",
+     "open"
+    ]
+   }
+  },
+  {
+   "id": "ui/pop",
+   "path": "ui/pop.ogg",
+   "sha256": "692ee3a6f1821402ca649ff735bee9591dc4846c8098fc7d6a90fd15fa57c1af",
+   "bytes": 5859,
+   "type": "pop",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "drop"
+   ],
+   "description": "Pop when an item is dropped into place",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/drop_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 4843,
+    "duration_s": 0.11,
+    "sample_peak_dbfs": -0.89,
+    "momentary_max_lufs": -21.68,
+    "head_ms": 0.0,
+    "tail_ms": 0.0
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "pop",
+      "fade_in_ms": 0.5,
+      "fade_out_ms": 20
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/pop",
+      "sha256": "692ee3a6f1821402ca649ff735bee9591dc4846c8098fc7d6a90fd15fa57c1af"
+     }
+    },
+    "labels": [
+     "ui",
+     "drop"
+    ]
+   }
+  },
+  {
+   "id": "ui/select",
+   "path": "ui/select.ogg",
+   "sha256": "aec0c31ea934a35936ae0d2ab8fac8123c93aa5647f935853a58dbaf90278b7a",
+   "bytes": 5468,
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "select"
+   ],
+   "description": "Menu item selected",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/select_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 2,
+    "sample_rate": 44100,
+    "frames": 1909,
+    "duration_s": 0.043,
+    "sample_peak_dbfs": -1.13,
+    "momentary_max_lufs": -21.77,
+    "head_ms": 0.0,
+    "tail_ms": 0.1
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "ui",
+      "fade_in_ms": 1
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/select",
+      "sha256": "aec0c31ea934a35936ae0d2ab8fac8123c93aa5647f935853a58dbaf90278b7a"
+     }
+    },
+    "labels": [
+     "ui",
+     "select"
+    ]
+   }
+  },
+  {
+   "id": "ui/tick",
+   "path": "ui/tick.ogg",
+   "sha256": "9d057b918024c787bbe6c00beed13a7ef72a3fa0c259add3cef36582792f4230",
+   "bytes": 4497,
+   "type": "tick",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "scroll"
+   ],
+   "description": "Light tick, for scrolling or a slider step",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/tick_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 1024,
+    "duration_s": 0.023,
+    "sample_peak_dbfs": -0.8,
+    "momentary_max_lufs": -27.95,
+    "head_ms": 0.0,
+    "tail_ms": 9.5
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "tick",
+      "fade_in_ms": 0.1
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/tick",
+      "sha256": "9d057b918024c787bbe6c00beed13a7ef72a3fa0c259add3cef36582792f4230"
+     }
+    },
+    "labels": [
+     "ui",
+     "scroll"
+    ]
+   }
+  },
+  {
+   "id": "ui/toggle",
+   "path": "ui/toggle.ogg",
+   "sha256": "ca1d2dde5f0b286abac4f070e23edab8f30927c8a533665cdf2ac6492a415e49",
+   "bytes": 7369,
+   "type": "click",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "switch"
+   ],
+   "description": "Switch toggled on or off",
+   "licence": "CC0-1.0",
+   "source": "kenney",
+   "pack": "interface-sounds",
+   "source_file": "Audio/toggle_001.ogg",
+   "author": "Kenney (www.kenney.nl)",
+   "url": "https://kenney.nl/assets/interface-sounds",
+   "measured": {
+    "channels": 1,
+    "sample_rate": 44100,
+    "frames": 6144,
+    "duration_s": 0.139,
+    "sample_peak_dbfs": -0.91,
+    "momentary_max_lufs": -16.95,
+    "head_ms": 0.0,
+    "tail_ms": 36.8
+   },
+   "meta": {
+    "import": {
+     "audioImporter": {
+      "version": 1,
+      "type": "click"
+     }
+    },
+    "provenance": {
+     "version": 1,
+     "licence": "CC0-1.0",
+     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "author": "Kenney (www.kenney.nl)",
+     "attribution": "Kenney (www.kenney.nl)",
+     "source": "kenney",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "builtin": {
+      "set": "essentials",
+      "id": "ui/toggle",
+      "sha256": "ca1d2dde5f0b286abac4f070e23edab8f30927c8a533665cdf2ac6492a415e49"
+     }
+    },
+    "labels": [
+     "ui",
+     "switch"
+    ]
+   }
+  }
+ ]
+}

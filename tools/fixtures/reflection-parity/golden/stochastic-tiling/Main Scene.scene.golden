@@ -70,6 +70,30 @@ shaderKeys:
     properties: 8606712922
   - type: mesh
     properties: 8724283482
+  - type: mesh
+    properties: 68719477850
+  - type: mesh
+    properties: 68719477978
+  - type: mesh
+    properties: 68736255066
+  - type: mesh
+    properties: 77309412442
+  - type: mesh
+    properties: 77309412570
+  - type: mesh
+    properties: 77326189658
+  - type: mesh
+    properties: 2199023256579
+  - type: mesh
+    properties: 2199023256641
+  - type: mesh
+    properties: 2199023256666
+  - type: mesh
+    properties: 2207613191258
+  - type: mesh
+    properties: 2267742733402
+  - type: mesh
+    properties: 2276332667994
   - type: sky
   - type: depth
   - type: depth
@@ -78,7 +102,13 @@ shaderKeys:
     properties: 129
   - type: depth
     properties: 6144
+  - type: depth
+    properties: 262144
+  - type: depth
+    properties: 268288
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 1098
@@ -90,15 +120,42 @@ shaderKeys:
     properties: 8589935706
     customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
   - type: mesh
+    properties: 68719477850
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
+    properties: 77309412442
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
+    properties: 2199023256666
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
+    properties: 2207613191258
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
+    properties: 2267742733402
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
+    properties: 2276332667994
+    customShader: library:simple_lit#BLEND_NONE,NORMAL_MAP
+  - type: mesh
     properties: 1089
+    customShader: library:triplanar#BLEND_NONE,SPACE_WORLD
+  - type: mesh
+    properties: 2199023256641
     customShader: library:triplanar#BLEND_NONE,SPACE_WORLD
   - type: depth
     customShader: library:unlit
   - type: depth
     properties: 6144
     customShader: library:unlit
+  - type: depth
+    properties: 268288
+    customShader: library:unlit
   - type: mesh
     properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199023256579
     customShader: library:unlit#BLEND_NONE
 entities:
   - type: Entity

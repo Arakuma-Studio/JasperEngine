@@ -16,6 +16,7 @@ docs/testing.md "Compiled and prebuilt game builds").
 """
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -60,6 +61,28 @@ ACTION_NAMES_LINE = "input actions: Horizontal,Vertical,Fire1,Fire2,Fire3,Jump,M
 # the fixed component capacities exports passed before mesh-memory
 CAPACITY_MACROS = {"MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES",
                    "MAX_EXTERNAL_BUFFERS", "MAX_BONES"}
+
+# what a game's clip measures, read back from the player's log
+CLIP_LENGTH_LUA = """local clipLength = {}
+
+function clipLength:init()
+    RegisterEngineEvent(self, "onUpdate")
+    self.done = false
+end
+
+function clipLength:onUpdate()
+    if self.done then return end
+    local source = AudioSource(self.scene, self.entity)
+    local length = source:getLength()
+    if length > 0 then
+        print(string.format("CLIPLEN %.3f", length))
+        self.done = true
+    end
+end
+
+return clipLength
+"""
+
 
 async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -> dict:
     deadline = time.monotonic() + timeout
@@ -821,3 +844,52 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_eq(first.get("project_file"), "cpp/Broken.cpp")
     (ed.project / "cpp" / "Broken.cpp").unlink()
     await ed.call("set_project_settings", values={"scripting.script_dirs": []})
+
+
+async def test_audio_import_table():
+    """S36 AC5: a prebuilt player reads the clip's import settings as data. The export writes the table and lists
+    it in the content manifest, the player's clip has the trimmed length, and a project without settings has no
+    table."""
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
+        skip("set JASPER_SLOW_BUILD=1 to build a real prebuilt player")
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import audio_refs as ar
+    env = build_cache.player_env("glcore", "development")
+    async with Editor(create=True, name="Audio Table Test", env=env) as ed:
+        await build_cache.player_runtime(ed, "glcore", "development")
+        rel = "assets/sfx/tone.wav"
+        ar.write_wav(ed.project / rel, [ar.sine(1000.0, 1.0, 48000, -12.0)], 48000, ar.PCM16)
+        await ed.call("sync_files", paths=[rel])
+        await ed.call("write_file", path="scripts/clip_length.lua", content=CLIP_LENGTH_LUA)
+        await ed.call("create_entity", name="Clip", type="audio_source", values={"audiosource": {"filename": rel}})
+        await ed.call("attach_script", entity="Clip", path="scripts/clip_length.lua")
+        s = await ed.call("save_project", untitled_scene_dir="scenes")
+        await ed.call("edit_build_scenes", action="set_start", scene=s["scenes_in_build"][0]["id"])
+        await ed.call("set_project_settings", values={"graphics.runtime_shaders": False, "preferences.build_jobs": JOBS, "player.development_build": True})
+
+        async def build(name: str) -> tuple[Path, dict]:
+            out = ed.scratch.root / name
+            r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+            job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
+            ed.check_eq(job["status"], "succeeded", f"{job}")
+            return out, job
+
+        plain, _ = await build("audio-plain")
+        ed.check(not list(plain.rglob("je-audio-imports.json")), "no settings: no table")
+        raw = await ed.call_raw("run_build", {"seconds": 10, "screenshot": False})
+        ed.check("CLIPLEN 1.000" in "\n".join(raw.value["log"]), f"the whole clip: {raw.value['log'][-20:]}")
+
+        await ed.call("set_audio_import_settings", paths=[rel], settings={"trim_head_ms": 250, "gain_db": -6})
+        out, _ = await build("audio-table")
+        tables = list(out.rglob("je-audio-imports.json"))
+        ed.check_eq(len(tables), 1, "the table is in the build")
+        table = json.loads(tables[0].read_text())
+        ed.check_eq((table["format"], table["version"]), ("jasperengine.audio-imports", 1), "its format")
+        # relative to the assets folder, which a new project's root is
+        clip = table["clips"][rel]
+        ed.check_eq((clip["trim_head_frames"], clip["gain_db"]), (12000, -6), "resolved to frames at the file's rate")
+        manifest = json.loads(next(out.rglob("content-manifest.json")).read_text())
+        ed.check(any(name.endswith("je-audio-imports.json") for name in manifest["files"]), "listed in the content manifest")
+        raw = await ed.call_raw("run_build", {"seconds": 10, "screenshot": False})
+        ed.check("CLIPLEN 0.750" in "\n".join(raw.value["log"]), f"the trimmed clip, to the sample: {raw.value['log'][-20:]}")

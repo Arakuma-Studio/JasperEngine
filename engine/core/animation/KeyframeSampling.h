@@ -134,6 +134,10 @@ namespace jasperengine::anim{
     };
     JASPERENGINE_API void collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
                                                bool includeStart, std::vector<CrossedEvent>& out);
+    // The audio cues crossed, by the same rules (S40 R4): `index` is into clip.getAudioCues(). A clip
+    // without cues returns at once.
+    JASPERENGINE_API void collectCrossedCues(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
+                                             bool includeStart, std::vector<CrossedEvent>& out);
 
 }
 
