@@ -5,11 +5,19 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+
+#ifdef _WIN32
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#endif
 
 using namespace jasperengine;
 
-std::string StringUtils::toUTF8(wchar_t codepoint){
+std::string StringUtils::toUTF8(char32_t codepoint){
     uint32_t cp = static_cast<uint32_t>(codepoint);
 
     // Replace invalid Unicode scalar values.
@@ -118,7 +126,101 @@ void visitUtf8Codepoints(const std::string& text, bool& hadInvalid, Emit emit) {
     }
 }
 
+// The length of the valid UTF-8 sequence at text[i], 0 when it is not one (RFC 3629 table 3)
+size_t utf8SequenceLength(std::string_view text, size_t i) {
+    const auto byte = [&](size_t k) { return static_cast<unsigned char>(text[k]); };
+    const unsigned char c = byte(i);
+    if (c < 0x80) return 1;
+    size_t length = 0;
+    unsigned char low = 0x80, high = 0xBF;
+    if (c >= 0xC2 && c <= 0xDF) length = 2;
+    else if (c == 0xE0) { length = 3; low = 0xA0; }
+    else if (c >= 0xE1 && c <= 0xEC) length = 3;
+    else if (c == 0xED) { length = 3; high = 0x9F; }
+    else if (c >= 0xEE && c <= 0xEF) length = 3;
+    else if (c == 0xF0) { length = 4; low = 0x90; }
+    else if (c >= 0xF1 && c <= 0xF3) length = 4;
+    else if (c == 0xF4) { length = 4; high = 0x8F; }
+    else return 0;
+    if (i + length > text.size()) return 0;
+    if (byte(i + 1) < low || byte(i + 1) > high) return 0;
+    for (size_t k = 2; k < length; k++) {
+        if (byte(i + k) < 0x80 || byte(i + k) > 0xBF) return 0;
+    }
+    return length;
+}
+
+// The length of the ASCII run at the start of text, eight bytes at a time
+size_t asciiPrefix(std::string_view text) {
+    size_t i = 0;
+    while (i + 8 <= text.size()) {
+        uint64_t word;
+        std::memcpy(&word, text.data() + i, sizeof(word));
+        if (word & 0x8080808080808080ull) break;
+        i += 8;
+    }
+    while (i < text.size() && static_cast<unsigned char>(text[i]) < 0x80) i++;
+    return i;
+}
+
 } // namespace
+
+bool StringUtils::isValidUtf8(std::string_view text) {
+    size_t i = asciiPrefix(text);
+    while (i < text.size()) {
+        const size_t length = utf8SequenceLength(text, i);
+        if (length == 0) return false;
+        i += length;
+        if (length == 1) i += asciiPrefix(text.substr(i));
+    }
+    return true;
+}
+
+std::string StringUtils::repairUtf8(std::string_view text) {
+    std::string out;
+    out.reserve(text.size() + 8);
+    size_t i = 0;
+    while (i < text.size()) {
+        const size_t length = utf8SequenceLength(text, i);
+        if (length == 0) {
+            out += "\xEF\xBF\xBD";
+            i++;
+        } else {
+            out.append(text.data() + i, length);
+            i += length;
+        }
+    }
+    return out;
+}
+
+std::string StringUtils::legacyToUtf8(std::string_view text) {
+    if (isValidUtf8(text)) return std::string(text);
+#ifdef _WIN32
+    // a process in the UTF-8 code page writes no ANSI text: what is not UTF-8 is broken text
+    // (a cut string, a child's bytes), repaired below; read as ANSI it would become other letters
+    if (GetACP() == CP_UTF8) return repairUtf8(text);
+    // the system's ANSI code page (before Windows 10 1903 the process runs in it)
+    static const UINT codePage = []() {
+        DWORD value = 0;
+        const int got = GetLocaleInfoEx(LOCALE_NAME_SYSTEM_DEFAULT, LOCALE_IDEFAULTANSICODEPAGE | LOCALE_RETURN_NUMBER,
+                                        reinterpret_cast<LPWSTR>(&value), sizeof(value) / sizeof(WCHAR));
+        return got > 0 && value != 0 ? static_cast<UINT>(value) : 1252u;
+    }();
+    const int length = static_cast<int>(text.size());
+    const int wideSize = MultiByteToWideChar(codePage, MB_ERR_INVALID_CHARS, text.data(), length, nullptr, 0);
+    if (wideSize > 0) {
+        std::wstring wide(static_cast<size_t>(wideSize), L'\0');
+        MultiByteToWideChar(codePage, MB_ERR_INVALID_CHARS, text.data(), length, wide.data(), wideSize);
+        const int size = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideSize, nullptr, 0, nullptr, nullptr);
+        if (size > 0) {
+            std::string utf8(static_cast<size_t>(size), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideSize, utf8.data(), size, nullptr, nullptr);
+            return utf8;
+        }
+    }
+#endif
+    return repairUtf8(text);
+}
 
 std::vector<uint32_t> StringUtils::decodeUtf8ToCodepoints(const std::string& text, bool& hadInvalid) {
     hadInvalid = false;
@@ -206,7 +308,7 @@ void StringUtils::eraseCodepointsUtf8(std::string& text, size_t startIndex, size
 
     text.clear();
     for (uint32_t cp : codepoints) {
-        text += toUTF8(static_cast<wchar_t>(cp));
+        text += toUTF8(static_cast<char32_t>(cp));
     }
 }
 
@@ -221,7 +323,7 @@ void StringUtils::insertUtf8AtCodepoint(std::string& text, size_t cpIndex, const
 
     text.clear();
     for (uint32_t cp : codepoints) {
-        text += toUTF8(static_cast<wchar_t>(cp));
+        text += toUTF8(static_cast<char32_t>(cp));
     }
 }
 

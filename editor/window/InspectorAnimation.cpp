@@ -797,7 +797,7 @@ void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType,
     }
     float spriteAnimArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
     if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_animation_add", spriteAnimArrowWidth, canAddFrame,
-            "Sprite animation has reached the maximum number of frames")) {
+            "A Sprite Animation holds at most 65,536 frames")) {
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
         for (const Entity& selectedEntity : entities) {
             if (SpriteAnimationComponent* animComp = sceneProject->scene->findComponent<SpriteAnimationComponent>(selectedEntity)) {

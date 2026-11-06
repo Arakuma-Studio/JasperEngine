@@ -370,6 +370,10 @@ continue to fail on any native crash.
   JASPER_SLOW_TESTS=1`), plus the WERROR Linux
   build (with the engine sample project's LTO link) and every unit test. check-changed is a
   selection and says so in every summary.
+- **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
+  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
+  conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
+  `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`.
 
 ### `tools/check-changed`
 

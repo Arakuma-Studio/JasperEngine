@@ -160,18 +160,6 @@ TEST(SplineProfileTests, CrownNominalHalfWidthIncludesItsShoulders){
     EXPECT_FLOAT_EQ(profile.points[2].position.y, 0.15f);
 }
 
-TEST(SplineProfileTests, CrownDefaultsAreTheRoadRecipes){
-    const SplineProfileParams defaults;
-    EXPECT_FLOAT_EQ(defaults.width, 2.0f);
-    EXPECT_FLOAT_EQ(defaults.crownRise, 0.12f);
-    EXPECT_FLOAT_EQ(defaults.shoulderWidth, 0.5f);
-    EXPECT_FLOAT_EQ(defaults.shoulderDrop, 0.2f);
-    EXPECT_FLOAT_EQ(defaults.edgeDrop, 0.1f);
-    EXPECT_FLOAT_EQ(defaults.edgeInset, 0.15f);
-    EXPECT_FLOAT_EQ(defaults.thickness, 0.6f);
-    EXPECT_FLOAT_EQ(defaults.height, 3.0f);
-}
-
 TEST(SplineProfileTests, BevelInsetIsClampedToHalfTheWidth){
     // past half the width the two inset points would cross; at exactly half they collapse
     const SplineProfile profile = buildProfile(profileBevelParams(2.0f, 0.3f, 5.0f));

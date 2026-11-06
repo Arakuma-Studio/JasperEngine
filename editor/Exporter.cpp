@@ -1318,8 +1318,8 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
 fs::path editor::Exporter::getSharedBuildCacheDir() const {
     // What decides how the engine and the vendored libraries compile: the kit (configureBuild's,
     // without the tree's path) and the project settings that are definitions of the whole build
-    // (the C++ standard, the compiled-in features, the crash handler and the watchdog, the
-    // SceneMaxValues capacities). Everything else of a project (its title, window, logging,
+    // (the C++ standard, the compiled-in features, the crash handler and the watchdog).
+    // Everything else of a project (its title, window, logging,
     // scenes, scripts, shaders) only recompiles its own units in a tree it shares. Another
     // editor's engine sources are synced into the tree like an update's (copyEngine), and Ninja
     // recompiles what changed.
@@ -1334,9 +1334,6 @@ fs::path editor::Exporter::getSharedBuildCacheDir() const {
         + "\nruntime shaders " + (project->isRuntimeShadersEnabled() ? "1" : "0")
         + "\ncrash handler " + (project->getPlayerCrash().enabled ? "1" : "0")
         + "\nhang watchdog " + (project->getPlayerCrash().hangWatchdog ? "1" : "0");
-    for (const auto& [name, value] : getSceneMaxValues()) {
-        key += "\n" + name + " " + std::to_string(value);
-    }
     if (config.mode == ExportMode::Desktop) {
         const std::string platform = Generator::getGeneratorPlatform(config.cmakeGenerator);
         if (!platform.empty()) key += "\n" + platform;
@@ -2825,6 +2822,16 @@ bool editor::Exporter::writeAudioCredits() {
     return true;
 }
 
+bool editor::Exporter::checkFbxImportPathFree(const fs::path& relPath) {
+    fs::path importRelPath = relPath;
+    importRelPath += ".glb";
+    std::error_code ec;
+    if (!fs::exists(getAssetsSourceDir() / importRelPath, ec)) return true;
+    setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
+        relPath.generic_string() + ". Rename it.");
+    return false;
+}
+
 bool editor::Exporter::cookModels() {
     setProgress("Cooking models...", 0.34f);
     cookedModelSources.clear();
@@ -2848,6 +2855,11 @@ bool editor::Exporter::cookModels() {
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
+    }
+    // before the cook, which would read such an asset as a model and fail on it instead
+    for (const ModelBatchItem& item : inputs.items) {
+        const fs::path relPath = FileUtils::pathFromUtf8(item.assetPath);
+        if (FbxImporter::isFbxFile(relPath) && !checkFbxImportPathFree(relPath)) return false;
     }
     const fs::path assetsOut = getExportProjectRoot() / "assets";
     if (inputs.items.empty()) {
@@ -3083,11 +3095,7 @@ bool editor::Exporter::copyAssets() {
             fs::path importRelPath = relPath;
             importRelPath += ".glb";
             // The engine loads the import from that path, so no asset can have it
-            if (fs::exists(assetsSrc / importRelPath, ec)) {
-                setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
-                    relPath.generic_string() + ". Rename it.");
-                return stop();
-            }
+            if (!checkFbxImportPathFree(relPath)) return stop();
             const fs::path fbxPath = project->resolveAssetPath(relPath);
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
             // Scripts may load any of them, so none can be left out or outdated
@@ -3920,18 +3928,6 @@ bool editor::Exporter::copyEngine() {
         cmakeContent.replace(scriptDirsPos, scriptDirsMarker.size(), buildScriptDirIncludes());
     }
 
-    // Inject per-project HybridArray capacities so the exported build sizes its
-    // fixed-capacity arrays to the larger of what the project actually uses and the
-    // engine defaults in core/Engine.h (big models grow past the defaults). Missing
-    // marker is non-fatal: the build simply falls back to those defaults.
-    const std::string maxValuesMarker = "# @JASPERENGINE_SCENE_MAX_VALUES@";
-    const size_t maxValuesPos = cmakeContent.find(maxValuesMarker);
-    if (maxValuesPos != std::string::npos) {
-        cmakeContent.replace(maxValuesPos, maxValuesMarker.size(), buildSceneMaxValuesDefinitions());
-    } else {
-        Out::warning("Exported CMakeLists.txt is missing the SceneMaxValues marker; using engine default capacities");
-    }
-
     if (!writeExportSettingsScript(cmakeContent)) return false;
     FileUtils::writeIfChanged(cmakeDst, cmakeContent);
 
@@ -4260,53 +4256,6 @@ std::string editor::Exporter::videoUrlScene() const {
             return FileUtils::pathToUtf8(file.filename());
     }
     return "";
-}
-
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
-    return sceneMaxValuesOf(project);
-}
-
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValuesOf(const Project* project) {
-    // Aggregate the per-scene maxima into a single project-wide capacity for each
-    // HybridArray. SceneProject::maxValues is refreshed for every scene during
-    // loadAndSaveAllScenes(), which always runs before copyEngine().
-    SceneMaxValues agg;
-    for (const SceneProject& sceneProject : project->getScenes()) {
-        agg.maxSubmeshes        = std::max(agg.maxSubmeshes, sceneProject.maxValues.maxSubmeshes);
-        agg.maxTilemapTilesRect = std::max(agg.maxTilemapTilesRect, sceneProject.maxValues.maxTilemapTilesRect);
-        agg.maxTilemapTiles     = std::max(agg.maxTilemapTiles, sceneProject.maxValues.maxTilemapTiles);
-        agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
-        agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
-        agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-    }
-
-    // Floor each capacity at the engine default declared in core/Engine.h: growing past the
-    // default sizes big models correctly, while never shrinking below the known-safe baseline.
-    // This matters because the editor-time calc can undercount model-backed meshes (e.g.
-    // numExternalBuffers is regenerated at runtime, not serialized) and cannot see content
-    // created dynamically by scripts. Passing the macros themselves as the floor keeps these in
-    // lockstep with the engine defaults (string literals are not macro-expanded; the bare macro
-    // arguments are).
-    auto capacity = [](unsigned int value, unsigned int engineDefault) { return std::max(value, engineDefault); };
-    return {
-        {"MAX_SUBMESHES", capacity(agg.maxSubmeshes, MAX_SUBMESHES)},
-        {"MAX_TILEMAP_TILESRECT", capacity(agg.maxTilemapTilesRect, MAX_TILEMAP_TILESRECT)},
-        {"MAX_TILEMAP_TILES", capacity(agg.maxTilemapTiles, MAX_TILEMAP_TILES)},
-        {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
-        {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
-        {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-    };
-}
-
-std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
-    // First line reuses the marker's existing indentation; subsequent lines are
-    // indented to match the surrounding standalone setup block (4 spaces).
-    std::string out;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        if (!out.empty()) out += "\n    ";
-        out += "add_definitions(\"-D" + macro + "=" + std::to_string(value) + "\")";
-    }
-    return out;
 }
 
 bool editor::Exporter::writeAndroidProjectSettings() {
@@ -5853,25 +5802,6 @@ bool editor::Exporter::writeXcodeBuildSettings(std::string& xcodeProject) {
         std::vector<std::string> configurationIds;
         if (!findXcodeTarget(xcodeProject, name, sourcesPhaseId, configurationIds)) {
             setError("Apple export template has no \"" + name + "\" target");
-            return false;
-        }
-    }
-
-    // Like add_definitions() in CMake: the capacities size engine structs, so every target gets them
-    const PbxRange projectObject = findPbxObject(xcodeProject, pbxValueId(xcodeProject, {0, xcodeProject.size()}, "rootObject"));
-    const PbxRange configurationList = findPbxObject(xcodeProject, pbxValueId(xcodeProject, projectObject, "buildConfigurationList"));
-    const std::vector<std::string> configurationIds = pbxListIds(xcodeProject, configurationList, "buildConfigurations");
-    if (configurationIds.empty()) {
-        setError("Apple export template has no project build configurations");
-        return false;
-    }
-    std::vector<std::string> definitions;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        definitions.push_back(pbxString(macro + "=" + std::to_string(value)));
-    }
-    for (const std::string& configurationId : configurationIds) {
-        if (!addPbxListEntries(xcodeProject, findPbxBuildSettings(xcodeProject, configurationId), "GCC_PREPROCESSOR_DEFINITIONS", definitions)) {
-            setError("Apple export template has no project GCC_PREPROCESSOR_DEFINITIONS");
             return false;
         }
     }
