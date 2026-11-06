@@ -105,6 +105,11 @@ Work so that every minute of build time answers a question:
   whole round.
 - **Generated docs last:** `gen_tool_docs.py`, `tool_budget.py`, `docs/shaders/library.md` once, at the end.
 - **Never rerun green steps on unchanged code.** Use the box time to review your diff and write docs.
+- **Restored files must look new:** after a red control, restore the fixes with `git apply` (fresh timestamps), not
+  by copying backups with their old times; otherwise the box's incremental build keeps the red objects. When in
+  doubt, `touch` the restored files before the green build.
+- uv and MCP steps run on the boxes directly (`tools/build.sh mcp-tests`, `tools/build.sh exec linux ...`); no
+  `UV_CACHE_DIR` workaround is needed any more.
 
 ## Definition of done
 
