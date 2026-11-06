@@ -1842,7 +1842,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "On Windows get_build_info said the desktop toolchain was there while Play refused C++ scripts (it "
                          "checks for a compiler compatible with the editor); agents wrote C++ that never built.",
-        "text_at_issue": "get_build_info: 'cpp_scripts (can Play build C++ scripts here)'; cpp-scripting.md 'Choosing Lua or C++'",
+        "text_at_issue": "get_build_info's result: cpp_scripts {can_build, missing_tools} (Play's own check); cpp-scripting.md 'Choosing Lua or C++'",
         "source": "Doriax 3fc70298e (check_cpp_build_tools, language guidance); agent-authoring spec",
         "prompt": "Make the Crate spin around Y with a C++ script attached to it. Check first that C++ can build on this machine.",
         "mocks": [

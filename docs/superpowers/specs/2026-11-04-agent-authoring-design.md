@@ -778,3 +778,10 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    2026-11-06 merge `main`'s own text measures about 5,150 bytes (estimated from the literals; the first gate run
    measured 5,160 with one authoring paragraph). The guide, `jasper://docs/authoring` and the results' `next` hints
    carry the rules instead.
+7. **`get_build_info`'s description does not name `cpp_scripts`.** The core listing is capped at 99,000 characters
+   and measured 99,053 with it after the 2026-11-06 merge; the field is in every result (AGENTS.md "MCP text":
+   descriptions hold no result field lists), and `read_file`'s description names only `jasper://guide`.
+8. **The Terrain window's regression test drives the bug through MCP.** In a headless test editor the window opened
+   from Window > Terrain need not draw (a docked tab), so the red build passed that test. The test now makes a
+   `sculpt_terrain` stroke on a terrain with no height map before the window ever opens: the missing map is created
+   at the window's resolution, the saved 64 pixels, where the old code used the constructor's 512.

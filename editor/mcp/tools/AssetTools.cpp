@@ -3889,8 +3889,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "read_file";
         tool.title = "Read File";
         tool.description =
-            "Read a project text file (as on disk) or a jasper:// resource (jasper://guide, jasper://docs/<area>); "
-            "the text is the content.";
+            "Read a project text file (as on disk) or a jasper:// doc (jasper://guide); the text is the content.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
