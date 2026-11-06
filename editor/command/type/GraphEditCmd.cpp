@@ -5,7 +5,9 @@
 
 #include "Out.h"
 #include "io/AtomicFile.h"
+#include "util/SafeWrite.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -19,9 +21,16 @@ namespace {
     }
 
     void notifyGraphFileChanged(const std::filesystem::path& file) {
-        // a copy: a listener may remove itself
-        const auto listeners = graphChangeListeners();
-        for (const auto& [id, listener] : listeners) listener(file);
+        // by id: a listener may remove itself or another, and what that one captures may be gone
+        std::vector<uint64_t> ids;
+        for (const auto& item : graphChangeListeners()) ids.push_back(item.first);
+        for (const uint64_t id : ids) {
+            const auto& listeners = graphChangeListeners();
+            const auto it = std::find_if(listeners.begin(), listeners.end(), [id](const auto& item) { return item.first == id; });
+            if (it == listeners.end()) continue;
+            const editor::GraphEditCmd::ChangeListener listener = it->second;
+            listener(file);
+        }
     }
 
 }
@@ -46,6 +55,16 @@ editor::GraphEditCmd::GraphEditCmd(std::filesystem::path file, std::string befor
 }
 
 bool editor::GraphEditCmd::write(const std::string& text) const {
+    // beneath the write root, as WriteFilesCmd writes: a link planted at the file or a folder on
+    // its way does not lead the write out of the project
+    const std::filesystem::path root = rootFor(file);
+    std::string error;
+    if (!root.empty()) {
+        const std::string refused = safewrite::scopesRefusal(file);
+        if (refused.empty() && safewrite::writeFileResolvedBeneath(root, file, text, error)) return true;
+        Out::error("Could not write %s: %s", file.generic_string().c_str(), (refused.empty() ? error : refused).c_str());
+        return false;
+    }
     const io::WriteResult result = io::writeFileAtomic(file, text);
     if (!result.ok()) {
         Out::error("Could not write %s: %s", file.generic_string().c_str(), result.message.c_str());

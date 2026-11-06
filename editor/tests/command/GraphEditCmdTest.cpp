@@ -57,3 +57,17 @@ TEST(GraphEditCmd, AFailedWriteTellsNobody) {
     EXPECT_EQ(heard, 0);
     GraphEditCmd::removeChangeListener(listener);
 }
+
+TEST(GraphEditCmd, AListenerRemovedDuringANotificationIsNotCalled) {
+    jasperengine::test::TempDir dir;
+    const fs::path file = dir.write("a.testgraph", "before");
+    int secondCalls = 0;
+    uint64_t second = 0;
+    // whoever goes first may destroy what the next one captures
+    const uint64_t first = GraphEditCmd::addChangeListener([&](const fs::path&) { GraphEditCmd::removeChangeListener(second); });
+    second = GraphEditCmd::addChangeListener([&](const fs::path&) { secondCalls++; });
+    GraphEditCmd command(file, "before", "after", "Edit Graph");
+    ASSERT_TRUE(command.execute());
+    EXPECT_EQ(secondCalls, 0);
+    GraphEditCmd::removeChangeListener(first);
+}

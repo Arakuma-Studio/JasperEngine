@@ -8,7 +8,9 @@ and keys the model does not know survive an MCP edit.
 
 import asyncio
 import json
+import tempfile
 import time
+from pathlib import Path
 
 from harness import Editor
 
@@ -328,3 +330,20 @@ async def test_a_graph_file_is_of_its_kind():
             ed.check(refused.is_error, f"edit_graph on {content[:40]}: {refused.text[:300]}")
             ed.check_eq(target.read_text(), content, "nothing written")
 
+
+async def test_a_failed_write_is_not_a_success():
+    """Fix round 1 of BF23: a write refused (here a link out of the project) comes back as a failure, and
+    an edit that changes nothing still succeeds."""
+    async with Editor(create=True, name="Graph Write CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        await write_graph(ed)
+        same = await ed.call_raw("edit_graph", {"path": PATH, "ops": [{"op": "moveNodes", "ids": ["n1"], "delta": [0, 0]}]})
+        ed.check(not same.is_error, f"a no-op is not a failure: {same.text[:300]}")
+
+        outside = Path(tempfile.mkdtemp(prefix="jasper-graph-outside-")) / "Far.testgraph"
+        text = json.dumps(GRAPH, indent=2) + "\n"
+        outside.write_text(text)
+        (ed.project / "graphs" / "Link.testgraph").symlink_to(outside)
+        far = await ed.call_raw("edit_graph", {"path": "graphs/Link.testgraph", "ops": [{"op": "addNode", "node": {"type": "speed"}}]})
+        ed.check(far.is_error, f"the write did not happen: {far.text[:300]}")
+        ed.check("added" not in (far.structured or {}), f"no ids of nodes that do not exist: {far.structured}")
+        ed.check_eq(outside.read_text(), text, "the file outside is untouched")

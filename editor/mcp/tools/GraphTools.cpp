@@ -244,8 +244,14 @@ void editGraphTool(const CallPtr& call) {
     }
     const std::string after = graph::save(g);
     // one step of the project history (file edits are project-wide)
-    Project* project = call->ctx().project();
-    project->getProjectCommandHistory()->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName));
+    CommandHistory* history = call->ctx().project()->getProjectCommandHistory();
+    if (after != before && !history->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName))) {
+        const std::string busy = history->lastBusyRefusal();
+        data["applied"] = 0;
+        data.erase("added");
+        call->fail("Could not write " + args.value("path", std::string()) + " (" + (busy.empty() ? "see read_console" : busy) + "); nothing was changed.", data);
+        return;
+    }
     call->ok(undoName + ": " + std::to_string(names.size()) + " op(s), " + std::to_string(issues.size()) + " issue(s).", data);
 }
 
