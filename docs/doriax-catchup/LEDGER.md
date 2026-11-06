@@ -80,7 +80,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
-| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
+| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
@@ -90,7 +90,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
@@ -176,3 +176,13 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
   batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
   merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.
+- 2026-11-06 22:xx: **build-toolchain merged** after an independent review (editor C++ scripts get the physics
+  macros, CMAKE_GENERATOR respected, node lookup order, vswhere only when needed and UTF-8, /WHOLEARCHIVE only for
+  MSVC-style drivers). Round on box H with main merged: WERROR editor, unit 41/41, MCP 35 + 2, physics link check,
+  jasperengine.py 11/11, lints; red controls failed as they should. MSVC, MinGW, clang-cl and macOS paths by
+  reading only. rbox now has `auto` (any idle box); the brief says so.
+- 2026-11-06 23:xx: **ssr-probes merged** after an independent review (saturated pixels keep their colour, coverage
+  clipped to the near plane, two-probe test with authored gradients, stats cleared per frame, spec tolerances).
+  Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
+  controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
+  Shader cache v49 is now taken: later landings bump it.

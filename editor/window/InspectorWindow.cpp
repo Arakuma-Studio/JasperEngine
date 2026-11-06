@@ -13237,7 +13237,8 @@ void editor::InspectorWindow::show(){
 
                         // Debug View: visualize the SSR G-buffer channels (centralized in the composite)
                         {
-                            const char* ssrDebugNames[] = { "Off", "Reflection", "Normal", "Roughness", "Metallic", "Albedo", "IBL Specular" };
+                            const char* ssrDebugNames[] = { "Off", "Reflection", "Normal", "Roughness", "Metallic", "Albedo",
+                                                            "Environment Specular", "Reflection Source", "Occlusion" };
                             int debugMode = jasperengine::editor::Catalog::getSceneProperty<int>(sceneProject->scene, "ssr_debug_mode");
                             int debugModeDefault = jasperengine::editor::Catalog::getScenePropertyDefault<int>("ssr_debug_mode");
                             ImGui::TableNextRow();
@@ -13263,6 +13264,9 @@ void editor::InspectorWindow::show(){
                                 Command* cmd = new ScenePropertyCmd<int>(project, sceneProject->id, "ssr_debug_mode", debugMode);
                                 CommandHandle::get(sceneProject->id)->addCommand(cmd);
                             }
+                            ImGui::SetItemTooltip("Reflection Source colours what SSR swaps against: blue the sky, red/green/yellow/cyan "
+                                                  "a reflection probe's slot, orange a probe without a slot (no SSR), grey the ambient, "
+                                                  "magenta added only, black none. Occlusion shows what the swap is weighed by.");
                         }
                     }
 
