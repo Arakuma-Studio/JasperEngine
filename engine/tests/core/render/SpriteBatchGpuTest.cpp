@@ -445,7 +445,7 @@ TEST_F(SpriteBatchGpu, GeometryThatKeepsChangingGetsABufferOfItsOwn){
         growing.setSize(10 + (unsigned int)i, 10 + (unsigned int)i);
         GpuEnvironment::drawFrames(1);
     }
-    const MeshComponent& mesh = growing.getComponent<MeshComponent>();
+    MeshComponent& mesh = growing.getComponent<MeshComponent>();
     EXPECT_EQ(mesh.buffer.getUsage(), BufferUsage::DYNAMIC);
     EXPECT_FALSE(mesh.buffer.getRender()->isShared());
     const size_t shared = MeshBufferPool::getBufferCount();
