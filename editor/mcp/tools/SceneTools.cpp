@@ -836,7 +836,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"ssr_intensity", SettingKind::Float, "SSR intensity"},
         {"ssr_blur", SettingKind::Float, "SSR blur"},
         {"ssr_max_steps", SettingKind::Int, "SSR ray march steps"},
-        {"ssr_debug_mode", SettingKind::Int, "SSR debug view (0 off)"},
+        {"ssr_debug_mode", SettingKind::Int, "SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo, "
+         "6 environment specular, 7 reflection source, 8 occlusion"},
         {"canvas_scaler", SettingKind::CanvasScaler,
          "UI scale (Canvas Scaler) of the scene's UI and screen HTML documents: {use_project_default, mode: follow_game_canvas|"
          "constant_pixel_size|scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
@@ -1199,6 +1200,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "ssr_debug_mode" && (value.get<int>() < 0 || value.get<int>() > 8)) return expect("0 to 8");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");

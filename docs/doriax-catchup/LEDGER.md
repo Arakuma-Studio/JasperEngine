@@ -90,7 +90,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
@@ -181,3 +181,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   MSVC-style drivers). Round on box H with main merged: WERROR editor, unit 41/41, MCP 35 + 2, physics link check,
   jasperengine.py 11/11, lints; red controls failed as they should. MSVC, MinGW, clang-cl and macOS paths by
   reading only. rbox now has `auto` (any idle box); the brief says so.
+- 2026-11-06 23:xx: **ssr-probes merged** after an independent review (saturated pixels keep their colour, coverage
+  clipped to the near plane, two-probe test with authored gradients, stats cleared per frame, spec tolerances).
+  Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
+  controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
+  Shader cache v49 is now taken: later landings bump it.

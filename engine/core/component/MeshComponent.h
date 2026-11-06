@@ -351,6 +351,9 @@ namespace jasperengine{
         bool hasTexCoord2 = false;
         bool hasNormal = false;
         bool hasIBL = false;
+        // what its colour pass adds as environment specular (RenderSystem's SSR composite swaps
+        // it; render/SSRProbeSlots.h SSRSource)
+        uint8_t ssrSource = 0;
         bool hasNormalMap = false;
         bool hasTangent = false;
         bool hasVertexColor3 = false;

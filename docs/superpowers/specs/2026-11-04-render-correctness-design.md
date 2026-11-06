@@ -799,8 +799,8 @@ Recorded during implementation (branch `dc/render-correctness`).
     map's term with given derivatives), `lightShadowD` (times the light's occlusion under `LIGHT_OCCLUSION`) and
     `lightShadow` (derivatives taken, then `lightShadowD`), so the hoisted derivatives of `mesh.frag` keep the
     occlusion. S54/S55's instance matrices carry the LOD fade in the first column's w; the instance fade reads
-    only `i_matrix_col4`, so they compose. The shader cache is v49 (main reached v48). GBUFFER bits 16 and 17
-    are ssr-probes'; 'Ifd' is bit 18 (lead decision); the lead renumbers the shader cache at landing.
+    only `i_matrix_col4`, so they compose. The shader cache is v50 (ssr-probes, merged first, took v49 and
+    GBUFFER bits 16 'Occ' and 17 'Uv2'); 'Ifd' is GBUFFER bit 18 (lead decision).
 13. **Texture-edit swap (6.4, T9).** The swap reloads the mesh as every variant change does: the reload's
     load lands a frame or more later (its queued `changeLoaded`, its textures), so T9's "no frame without the
     mesh" is not asserted; the tests assert the settled variants. A terrain keeps main's checks (its base material's UV
