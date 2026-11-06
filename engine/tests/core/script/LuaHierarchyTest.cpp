@@ -107,9 +107,11 @@ TEST(LuaHierarchy, SetParentKeepsWorldOrLocal){
     luabridge::setGlobal(L, GameObject(&scene, holder), "holder");
     luabridge::setGlobal(L, GameObject(&scene, item), "item");
     EXPECT_EQ(runLua(L, R"(
+        -- moved this frame: the world matrix catches up only at the transform update
+        holder.position = Vector3(20, 0, 0)
         item:setParent(holder)
         assert(item.parent.entity == holder.entity, "reparented")
-        assert(item.position == Vector3(-9, 2, 3), "world kept: local " .. tostring(item.position))
+        assert(item.position == Vector3(-19, 2, 3), "world kept against where the holder is now: local " .. tostring(item.position))
         item.parent = nil
         assert(item.parent == nil, "back to the root")
         assert(item.position == Vector3(1, 2, 3), "world kept at the root: " .. tostring(item.position))

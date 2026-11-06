@@ -130,8 +130,17 @@ TEST(ModelParts, BoundsAndVertexCountMergeParts) {
 
 TEST(ModelParts, InstancingRefusedOnPartsModel) {
     PartsModel m;
-    m.model.createInstancedMesh();
+    // each refuses without throwing: they made the instanced mesh first, then read it
+    EXPECT_NO_THROW(m.model.createInstancedMesh());
+    EXPECT_NO_THROW(m.model.setInstancedBillboard(true));
+    EXPECT_NO_THROW(m.model.setInstancedBillboard(true, true));
+    EXPECT_NO_THROW(m.model.setInstancedCylindricalBillboard(true));
+    EXPECT_NO_THROW(m.model.addInstance(Vector3(1, 2, 3)));
+    EXPECT_NO_THROW(m.model.updateInstance(0, InstanceData()));
+    EXPECT_NO_THROW(m.model.setAsMirror());
     EXPECT_EQ(m.scene.findComponent<InstancedMeshComponent>(m.model.getEntity()), nullptr);
+    // logged once per model, not per call
+    EXPECT_TRUE(m.scene.getComponent<ModelComponent>(m.model.getEntity()).refusedPartsCallLogged);
 }
 
 TEST(ModelParts, SingleMeshModelUnchanged) {

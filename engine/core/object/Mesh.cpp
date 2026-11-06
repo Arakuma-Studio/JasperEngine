@@ -20,8 +20,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include <set>
-#include <utility>
 
 using namespace jasperengine;
 
@@ -130,8 +128,10 @@ Mesh::MeshTarget Mesh::findSubmesh(unsigned int& submesh, const char* what) cons
 bool Mesh::refuseOnParts(const char* what) const{
     if (getModelParts().empty())
         return false;
-    static std::set<std::pair<const Scene*, Entity>> logged;
-    if (logged.insert({scene, entity}).second){
+    // once per model: a script calling it every frame would flood the Console
+    ModelComponent& model = getComponent<ModelComponent>();
+    if (!model.refusedPartsCallLogged){
+        model.refusedPartsCallLogged = true;
         Log::error("%s: \"%s\" is a model made of parts (one per mesh node): call it on a part",
                    what, scene->getEntityName(entity).c_str());
     }
@@ -779,6 +779,8 @@ bool Mesh::hasInstancedMesh() const{
 }
 
 void Mesh::setInstancedBillboard(bool billboard, bool cylindrical){
+    if (refuseOnParts("setInstancedBillboard"))
+        return;
     createInstancedMesh();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
@@ -790,6 +792,8 @@ void Mesh::setInstancedBillboard(bool billboard, bool cylindrical){
 }
 
 void Mesh::setInstancedBillboard(bool billboard){
+    if (refuseOnParts("setInstancedBillboard"))
+        return;
     createInstancedMesh();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
@@ -812,6 +816,8 @@ bool Mesh::isInstancedBillboard() const{
 }
 
 void Mesh::setInstancedCylindricalBillboard(bool cylindricalBillboard){
+    if (refuseOnParts("setInstancedCylindricalBillboard"))
+        return;
     createInstancedMesh();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
@@ -962,6 +968,8 @@ bool Mesh::isCullInstances() const{
 }
 
 void Mesh::addInstance(InstanceData instance){
+    if (refuseOnParts("addInstance"))
+        return;
     createInstancedMesh();
 
     MeshComponent& mesh = getComponent<MeshComponent>();
@@ -1030,6 +1038,8 @@ InstanceData& Mesh::getInstance(size_t index){
 }
 
 void Mesh::updateInstance(size_t index, InstanceData instance){
+    if (refuseOnParts("updateInstance"))
+        return;
     createInstancedMesh();
 
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
