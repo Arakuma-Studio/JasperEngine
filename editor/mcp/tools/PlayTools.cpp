@@ -747,6 +747,9 @@ Json playStateJson(McpContext& ctx) {
     if (playId != NULL_PROJECT_SCENE) {
         if (SceneProject* sp = project->getScene(playId)) out["scene"] = McpRefs::sceneJson(project, *sp);
         out["running_scenes"] = runningScenesJson(project);
+        // what the Scene view draws as its scene: the played one, or the one a game load put in its place
+        SceneProject* replacing = project->getReplacingMainScene(playId);
+        out["scene_view_scene_id"] = replacing ? replacing->id : playId;
         if (s.current.active) out["session"] = sessionJson(s.current);
     } else if (SceneProject* sp = defaultPlayScene(project)) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
@@ -766,6 +769,11 @@ Json playStateJson(McpContext& ctx) {
     // what the game's input reads (the Input Manager's actions, touches, keys)
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
         out["input"] = playInputJson();
+        // a cursor the game holds, and whether the editor took it back (Escape, Release Game Cursor)
+        static const char* const mouseModes[] = {"normal", "hidden", "captured", "confined"};
+        const int mode = static_cast<int>(Engine::getMouseMode());
+        out["input"]["cursor"] = {{"mode", mode >= 0 && mode < 4 ? mouseModes[mode] : "normal"},
+                                  {"released_to_editor", ctx.playInput() && ctx.playInput()->isCursorReleased()}};
         // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
         static const char* const statsModes[] = {"off", "fps", "full"};
         const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());

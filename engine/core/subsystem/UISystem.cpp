@@ -1553,8 +1553,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
 bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout){
     if (polygon.needUpdatePolygon){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         createUIPolygon(polygon, ui, layout);
@@ -1568,8 +1572,12 @@ bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui,
 bool UISystem::createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (img.needUpdatePatches){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (createImagePatches(img, ui, layout)){
@@ -1625,8 +1633,12 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
 
     if (text.needUpdateText){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (!text.loaded){

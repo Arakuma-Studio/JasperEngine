@@ -8,6 +8,7 @@
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "window/PlayInput.h"
 #include "Platform.h"
 #include "util/FrameLimiter.h"
 #include "WindowMac.h"
@@ -1030,7 +1031,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                     ? pacing.swapInterval > 0
                     : AppSettings::getEditorVSyncEnabled());
                 setMouseControlSuspended(playSessionActive &&
-                    !activeProject->isMainScenePlaying());
+                    (!activeProject->isMainScenePlaying() || app.getPlayInput()->wantsEditorCursor()));
 
                 const bool desiredFrameSync = focused && frameSync;
                 if (desiredFrameSync != currentFrameSync) {

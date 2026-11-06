@@ -3093,9 +3093,10 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity dropped = entityPayload->entity;
 
+                const std::string otherScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id);
                 const char* invalidReason = nullptr;
-                if (entityPayload->entitySceneId != 0 && entityPayload->entitySceneId != sceneProject->id) {
-                    invalidReason = "GameObject belongs to another scene";
+                if (!otherScene.empty()) {
+                    invalidReason = otherScene.c_str();
                 } else if (dropped == NULL_ENTITY || !scene->isEntityCreated(dropped)) {
                     invalidReason = "Invalid GameObject";
                 } else if (!scene->findComponent<ActionComponent>(dropped)) {

@@ -83,6 +83,22 @@ terrain or a UI rect on a pickable layer; else the ground plane; else 10 units a
 on the surface. With Align to Surface (or Alt held) its up axis turns onto the surface normal. A
 drop onto a mesh still preparing its picking data is refused ("Preparing surface...").
 
+## While the game plays
+
+The Scene view keeps drawing from the editor camera, with its tools and picking, while the Game
+view shows the game.
+
+- When the game loads another scene (`SceneManager.loadScene`), the Scene view shows that scene
+  from the editor camera; clicks select its GameObjects. The played scene's Hierarchy row says
+  "Not running: the game loaded ...".
+- A game that captures the cursor (mouse-look) gives it back on **Escape** in the Game view, as in
+  Unity: the game still receives the Escape key, and the status bar says how to give the cursor
+  back (click the Game view). The cursor is also the editor's whenever the Game view does not have
+  the focus. **Release Game Cursor** (Search All, or a key you bind in Edit > Shortcuts...) does
+  the same as Escape.
+- A stopped scene shown beside the game can show its child scenes' contents (Hierarchy > Show
+  Contents) while the game runs.
+
 ## Where it is kept
 
 Everything above is yours: the project's `.jasperengine/user/workspace.yaml` per scene (camera

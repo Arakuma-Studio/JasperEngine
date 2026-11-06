@@ -464,7 +464,10 @@ namespace jasperengine::editor{
         // editor gizmos and overlays. For the running scene, after the game's frame,
         // layers are the game's layer scenes framed like the game frames its canvas;
         // for a stopped scene beside it, they are its inline child scenes.
-        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
+        // replacingBase: during Play, the scene a game load put in place of this one, drawn as the
+        // base through replacingCamera (the editor camera's mirror in it) instead of this scene
+        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+            Scene* replacingBase = nullptr, Entity replacingCamera = NULL_ENTITY);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
         float getOverlayScale() const { return overlayScale; }

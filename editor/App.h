@@ -131,7 +131,7 @@ namespace jasperengine::editor{
     struct SaveDialogQueueItem {
         SaveDialogType type;
         uint32_t sceneId;  // Only used for Scene dialogs
-        std::function<void()> callback = nullptr;
+        std::function<void(bool)> callback = nullptr;
     };
 
     class App : public EditorHost{
@@ -398,7 +398,8 @@ namespace jasperengine::editor{
         } lastFocusedWindow;
 
         void saveFunc();
-        void saveAllFunc(std::function<void(bool)> callback = nullptr);
+        // includeUntitled: File > Save All asks where to save the scenes never saved too
+        void saveAllFunc(std::function<void(bool)> callback = nullptr, bool includeUntitled = false);
         void saveAllAndProject(std::function<void()> onSuccess);
         void openProjectFunc();
         bool canEditSelection(bool duplicate);
@@ -612,11 +613,14 @@ namespace jasperengine::editor{
         void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
         void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
         void openInputActions(const std::filesystem::path& path) override;
-        void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
+        void registerSaveSceneDialog(uint32_t sceneId, std::function<void(bool)> callback = nullptr) override;
         DegradedSavePolicy confirmDegradedSave(const DegradedSaveRequest& request) override;
         RecoveryChoice resolveSceneRecovery(const SceneBackupInfo& backup) override;
         bool confirmOpenLockedProject(const ProjectLockInfo& info) override;
-        void registerProjectSaveDialog(std::function<void()> callback = nullptr) override;
+        void registerProjectSaveDialog(std::function<void(bool)> callback = nullptr) override;
+        // Closes the save dialogs and drops the queued ones, each waiting caller answered false
+        // (the project they save into is closing)
+        void cancelSaveDialogs();
 
         // Thread-safe: schedules a task to run on the main/GL thread during the next frame.
         void enqueueMainThreadTask(std::function<void()> task) override;

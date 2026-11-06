@@ -504,7 +504,8 @@ namespace jasperengine::editor {
         fs::path getCurrentPath() const { return currentPath; }
 
         const UiState& getUiState() const { return uiState; }
-        void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
+        // Prefabs of the GameObjects a Hierarchy drag of `sceneId` encoded (HierarchyWindow::encodeDraggedSelection)
+        void saveEntityFile(const fs::path& directory, uint32_t sceneId, const std::string& yamlString);
 
         void show();
         void setOpen(bool open);

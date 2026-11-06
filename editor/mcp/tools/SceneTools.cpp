@@ -4,6 +4,7 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "component/CameraComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
@@ -116,7 +117,9 @@ Json sceneInfo(Project* project, SceneProject& scene) {
     if (project->isPrefabStage(scene.id)) item["prefab_stage"] = true;
     if (scene.scene) {
         item["entity_count"] = scene.entities.size();
-        item["main_camera"] = McpValues::entityToJson(&scene, scene.mainCamera);
+        // a main camera whose Camera was removed is none (the game uses the default camera)
+        const bool hasCamera = scene.mainCamera != NULL_ENTITY && scene.scene->findComponent<CameraComponent>(scene.mainCamera);
+        item["main_camera"] = McpValues::entityToJson(&scene, hasCamera ? scene.mainCamera : NULL_ENTITY);
     }
     if (!scene.childScenes.empty()) item["child_scenes"] = childScenesJson(project, scene);
     // what its file's load could not read (docs/data-safety.md); a scene with dropped values
@@ -349,11 +352,13 @@ void saveSceneTool(const CallPtr& call) {
         Json failed = Json::array();
         Json refused = Json::array();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-            if (!scene->scene || !project->hasSceneUnsavedChanges(scene->id)) continue;
-            if (scene->filepath.empty() && !project->isPrefabStage(scene->id)) {
+            if (!scene->scene) continue;
+            // listed changed or not: an untitled scene is lost when the editor closes
+            if (scene->filepath.empty() && !project->isPrefabStage(scene->id) && !project->isPlayRuntimeScene(scene->id)) {
                 skipped.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"reason", "never saved: save_scene with a path"}});
                 continue;
             }
+            if (!project->hasSceneUnsavedChanges(scene->id)) continue;
             const uint32_t id = scene->id;
             const std::string name = scene->name;
             SaveResult result = SaveResult::Failed;
@@ -588,7 +593,7 @@ private:
     void restore() {
         if (scenePath.empty()) return;
         if (project->findSceneByPath(scenePath) == NULL_PROJECT_SCENE) {
-            project->loadScene(scenePath, wasOpened, true, wasOpened);
+            project->loadScene(scenePath, wasOpened, true, wasOpened, true);
         }
         const uint32_t restored = project->findSceneByPath(scenePath);
         if (previousSelected != NULL_PROJECT_SCENE && project->getScene(previousSelected)) {
@@ -689,6 +694,25 @@ void setChildSceneTool(const CallPtr& call) {
     }
     const bool attachedNow = project->hasChildScene(parentId, childId);
     const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    // a closed scene saves nothing and reads its child scenes from its file when it opens: an
+    // edit there would report success and be lost
+    if (!parent->scene) {
+        call->fail("Scene \"" + parent->name + "\" is not open: open_scene it first (child scenes are edited on an open scene).");
+        return;
+    }
+    // during Play only what the Hierarchy offers: showing a stopped scene's child inline
+    if (project->isPlaySessionActive()) {
+        const bool changes = attach != attachedNow ||
+            (attach && args.contains("start_active") && project->isChildSceneStartActive(parentId, childId) != args["start_active"].get<bool>());
+        if (changes) {
+            call->fail("Child scenes cannot change during Play: stop first (loaded_inline works on a scene that is not playing).");
+            return;
+        }
+        if (args.contains("loaded_inline") && (parent->playState != ScenePlayState::STOPPED || project->isPlayRuntimeScene(parentId))) {
+            call->fail("\"" + parent->name + "\" is playing: its child scenes run as the game loads them.");
+            return;
+        }
+    }
     if (attach && !attachedNow && project->wouldCreateChildSceneCycle(parentId, childId)) {
         call->fail("\"" + child->name + "\" already contains \"" + parent->name + "\" as a child scene (directly or "
                    "deeper), so adding it would make a cycle.");
@@ -1982,8 +2006,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_child_scene";
         tool.title = "Set Child Scene";
         tool.description =
-            "Attach (attached=false: detach) `child` as an additive child scene of `scene`. start_active: active "
-            "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
+            "Attach (attached=false: detach) `child` as an additive child scene of `scene` (open). start_active: active "
+            "when the parent starts; loaded_inline: shown inside the parent in the editor (also during Play). Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
             {"child", sceneRef()},
@@ -1991,7 +2015,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
         }, {"child"});
-        tool.allowedWhilePlaying = false;
+        tool.allowedWhilePlaying = true;  // loaded_inline only (the handler refuses edits)
         tool.annotations.idempotent = true;
         tool.handler = setChildSceneTool;
         registry.addTool(std::move(tool));

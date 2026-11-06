@@ -761,6 +761,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/SceneFileIdentity.cpp
     ${EDITOR_DIR}/project/ProjectShaderLists.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
@@ -912,6 +913,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
+    ${EDITOR_DIR}/util/EntityPayload.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/ExportFeatureScan.cpp
     ${EDITOR_DIR}/util/NativeExportAndroid.cpp
@@ -1268,6 +1270,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
     ${EDITOR_DIR}/render/SceneRender.cpp
+    ${EDITOR_DIR}/render/ViewCameraMirror.cpp
     ${EDITOR_DIR}/render/SceneRender2D.cpp
     ${EDITOR_DIR}/render/SceneRender3D.cpp
     ${EDITOR_DIR}/render/gizmo/TranslateGizmo.cpp

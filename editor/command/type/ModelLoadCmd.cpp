@@ -445,6 +445,9 @@ void editor::ModelLoadCmd::finalizeLoad(){
             sceneProject->entities.push_back(e);
         }
     }
+    // the nodes came in glTF index order, children before parents: the list (and so the
+    // generated scene code) creates parents first, as the Transform array has them
+    ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
 
     for (Entity reused : reusedEntities) {
         if (!isMappedMeshNode(newModel, reused)) {

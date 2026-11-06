@@ -727,7 +727,8 @@ void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layer
 void editor::SceneRender::drawOverlayTargets(){
 }
 
-void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers){
+void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+        Scene* replacingBase, Entity replacingCamera){
     if (width <= 0 || height <= 0){
         return;
     }
@@ -764,7 +765,10 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // the Scene view's own fog and face culling toggles hold while playing too, and in this
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
-    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
+    // after a game load replaced this scene, the level it runs now, through the editor camera
+    const bool replaced = replacingBase && replacingCamera != NULL_ENTITY;
+    layers.push_back({replaced ? replacingBase : scene, replaced ? replacingCamera : viewCamera, full, !previewing, false,
+                      displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
 
@@ -773,7 +777,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
         // canvas aspect as the editor frames a child scene over the scene
         const Rect gameRect = getGameLayerRect(width, height);
         for (Scene* gameLayer : layerScenes){
-            if (gameLayer && gameLayer != scene){
+            if (gameLayer && gameLayer != scene && gameLayer != replacingBase){
                 layers.push_back({gameLayer, gameLayer->getCamera(), gameRect, false, false});
             }
         }

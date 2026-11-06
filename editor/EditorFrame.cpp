@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "Backend.h"
 #include "Engine.h"
+#include "window/PlayInput.h"
 #include "Log.h"
 #include "Platform.h"
 
@@ -120,9 +121,10 @@ bool EditorFrame::run(EditorFrameState& state){
     const bool playSessionActive = project->isPlaySessionActive();
 
     // Hand the cursor back to the editor while a play session isn't actively
-    // running (paused or loading) so a game-held cursor lock can't trap the mouse.
+    // running (paused or loading), the Game view does not have the focus, or the user
+    // released it (Escape), so a game-held cursor lock can't trap the mouse.
     Backend::setMouseControlSuspended(
-        playSessionActive && !project->isMainScenePlaying());
+        playSessionActive && (!project->isMainScenePlaying() || app->getPlayInput()->wantsEditorCursor()));
 
     const double frameStart = frameMonotonicSeconds();
     const bool idleFrame = !state.forceRedraw && isIdle();
