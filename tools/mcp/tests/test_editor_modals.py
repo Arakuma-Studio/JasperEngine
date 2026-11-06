@@ -49,6 +49,7 @@ SITES = {
     ("window/AudioMixerWindow.cpp", "Expose Parameter##AudioMixer"): "not driven: opens from a parameter's context menu in the Mixer window; edit_audio_mixer exposes for agents",
     ("window/AudioMixerWindow.cpp", "Delete Group##AudioMixer"): "not driven: from a group's context menu in the Mixer window; edit_audio_mixer removes for agents",
     ("window/ProjectWindowSound.cpp", "Placeholder Sound"): "not driven: Assets > Create > Placeholder Sound... (S36) draws its own widgets; generate_sound makes the same clips for agents",
+    ("window/ImporterFields.cpp", "Unapplied Import Settings##importer_prompt"): "not driven: the Model Import inspector asks it on leaving unapplied settings; set_model_import_settings applies them for agents",
     ("window/ProjectWindow.cpp", "Delete Confirmation"): "test_em2_delete_confirmation_no, test_em3_delete_confirmation_yes",
     ("window/ProjectWindow.cpp", "Create New Directory"): "test_create_folder_prompt",
     ("window/ProjectWindow.cpp", "Directory Already Exists"): "test_create_folder_prompt",
@@ -165,7 +166,7 @@ async def test_sites_table_is_complete(ed: Editor):
         listed[rel] = listed.get(rel, 0) + 1
     listed["window/InspectorWindow.cpp"] = INSPECTOR_BOXES
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
-    ed.check_eq(sum(found.values()), 72, "the spec's 71 sites and S36's Placeholder Sound")
+    ed.check_eq(sum(found.values()), 73, "the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

@@ -596,7 +596,7 @@ bool AudioSystem::init(){
             static bool noAudioOutputLogged = false;
             if (!outputAvailable && !noAudioOutputLogged) {
                 noAudioOutputLogged = true;
-                Log::print("No audio output available (%s): mixing without output", soloud.getErrorString(result));
+                Log::print("No audio output available: mixing without output (SoLoud result %d)", (int)result);
             }
         }
         if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null && opened != AudioBackend::Deterministic) {
