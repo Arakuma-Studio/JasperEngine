@@ -1114,8 +1114,8 @@ std::string editor::Factory::formatBufferContents(const std::string& ind, const 
 }
 
 std::string editor::Factory::beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName) {
-    // HybridArray uses fixed-capacity inline storage in standalone exports, so
-    // large components must not become automatic variables in scene factories.
+    // A component holds render objects and materials (kilobytes for a mesh), and a scene
+    // factory makes many: they are built on the heap, not as automatic variables.
     const std::string storageName = varName + "Storage";
     code << ind << "auto " << storageName << " = std::make_unique<" << componentType << ">();\n";
     code << ind << componentType << "& " << varName << " = *" << storageName << ";\n";
@@ -1446,9 +1446,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     // component (Stream::encodeComponents); without a skeleton driving them they pose the mesh.
     if (!hasRuntimeGeometrySource){
         bool hasBones = false;
-        for (size_t b = 0; b < mesh.bonesMatrix.size(); b++){
+        for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++){
             const Matrix4& bone = mesh.bonesMatrix[b];
-            if (bone == Matrix4())
+            // (the last one always: the palette's length is its index plus one)
+            if (bone == Matrix4() && b + 1 < mesh.bonesMatrix.stored())
                 continue;
             code << ind << "mesh.bonesMatrix[" << b << "] = " << formatMatrix4(bone) << ";\n";
             hasBones = true;

@@ -326,8 +326,8 @@ bool picking::isPosed(const MeshComponent& mesh){
 
 uint64_t picking::poseHash(const MeshComponent& mesh){
     uint64_t h = hashBytes(mesh.morphWeights, sizeof(mesh.morphWeights), 0x5ca1ab1eull);
-    if (mesh.bonesMatrix.size() > 0){
-        h = hashBytes(mesh.bonesMatrix.data(), mesh.bonesMatrix.size() * sizeof(Matrix4), h);
+    if (mesh.bonesMatrix.stored() > 0){
+        h = hashBytes(mesh.bonesMatrix.data(), mesh.bonesMatrix.stored() * sizeof(Matrix4), h);
     }
     const float adjust[2] = {mesh.normAdjustJoint, mesh.normAdjustWeight};
     return hashBytes(adjust, sizeof(adjust), h);
@@ -335,7 +335,7 @@ uint64_t picking::poseHash(const MeshComponent& mesh){
 
 PoseParameters picking::poseParameters(const MeshComponent& mesh, uint32_t submesh){
     PoseParameters parameters;
-    parameters.bones = std::span<const Matrix4>(mesh.bonesMatrix.data(), mesh.bonesMatrix.size());
+    parameters.bones = std::span<const Matrix4>(mesh.bonesMatrix.data(), mesh.bonesMatrix.stored());
     parameters.morphWeights = mesh.morphWeights;
     const Submesh& s = mesh.submeshes[submesh];
     // applySkinningUniform (RenderSystem.cpp)
