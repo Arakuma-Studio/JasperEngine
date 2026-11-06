@@ -150,6 +150,30 @@
   },
   {
    "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
    "group": "Playback",
    "kind": "DoublePositive",
    "label": "Volume",
@@ -300,6 +324,30 @@
    "kind": "Enum",
    "label": "State",
    "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
    "read_only": false
   },
   {
@@ -494,6 +542,30 @@
    "kind": "Enum",
    "label": "State",
    "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
    "read_only": false
   },
   {

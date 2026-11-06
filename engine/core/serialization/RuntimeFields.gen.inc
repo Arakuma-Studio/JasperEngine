@@ -1136,6 +1136,12 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, priority, 0xd8e5ece2u, Int),
     JE_RF(AudioSourceComponent, maxVoices, 0x4ff0bbabu, Int),
     JE_RF(AudioSourceComponent, ignoreListenerPause, 0x6bb3160au, Bool),
+    JE_RF(AudioSourceComponent, event, 0xa0dbf9aau, AssetPath),
+    JE_RF(AudioSourceComponent, playOn, 0x917e5359u, UInt),
+    JE_RF(AudioSourceComponent, minImpactSpeed, 0x2b7c314bu, Float),
+    JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
+    JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
+    JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 

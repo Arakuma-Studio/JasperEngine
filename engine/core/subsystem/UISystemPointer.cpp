@@ -36,6 +36,10 @@
 #include <cmath>
 #include <functional>
 
+#if JASPERENGINE_AUDIO_CAPTURE
+#include "audio/AudioMarkers.h"
+#endif
+
 using namespace jasperengine;
 
 const PointerEventData* UISystem::currentLegacyEvent = nullptr;
@@ -338,6 +342,9 @@ void UISystem::setLegacyHover(UIPointerState& state, Entity entity){
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
                 applyButtonVisual(*button, *ui);
         }
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::ui(scene, "ui_hover", entity, snapshot.position.x, snapshot.position.y);
+#endif
         callLegacy(&UIComponent::onPointerEnter, entity, snapshot);
     }
 }
@@ -360,9 +367,18 @@ void UISystem::refreshButtonPressed(Entity entity){
         return;
     button->pressed = held;
     applyButtonVisual(*button, *ui);
-    if (held)
+    if (held){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()){
+            Vector2 at(0, 0);
+            for (const auto& pair : pointers){
+                if (pair.second.buttonPressed == entity) at = pair.second.position;
+            }
+            AudioMarkers::ui(scene, "ui_press", entity, at.x, at.y);
+        }
+#endif
         button->onPress.call();
-    else
+    }else
         button->onRelease.call();
 }
 
@@ -771,6 +787,9 @@ void UISystem::legacyPointerUp(UIPointerState& state, bool released, bool overWi
             canClick = isInteractable(entity);
 
         if (canClick){
+#if JASPERENGINE_AUDIO_CAPTURE
+            if (AudioMarkers::isEnabled()) AudioMarkers::ui(scene, "ui_click", entity, current->position.x, current->position.y);
+#endif
             callLegacy(&UIComponent::onClick, entity, *current);
             current = findPointer(pointerId);
             if (current && isLiveUIEntity(entity)){

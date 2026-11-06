@@ -2303,6 +2303,74 @@ std::vector<Setting> mcpSettingsTable() {
             };
         }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
+        audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
+        audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
+        for (const AudioQaField& field : audioQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const AudioQaSettings& qa = ctx.project()->getAudioSettings().qa;
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    if (field.real) settings.qa.*field.real = value.get<float>();
+                    else settings.qa.*field.whole = value.get<int>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "audio.qa.music_group";
+            s.type = "string";
+            s.description = "The mixer group of the game's music, for the silence check.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().qa.musicGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a group name";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.qa.musicGroup = value.get<std::string>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "audio.capture_stems";
+            s.type = "bool";
+            s.description = "A capture also writes each mixer group's audio to its own WAV file.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().captureStems); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.captureStems = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "audio.sample_rate";
@@ -2352,6 +2420,27 @@ std::vector<Setting> mcpSettingsTable() {
                 if (apply) {
                     AudioSettings settings = ctx.project()->getAudioSettings();
                     settings.defaultOutputGroup = text;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        {
+            Setting s;
+            s.key = "audio.credits_file";
+            s.type = "bool";
+            s.description = "Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().creditsFile); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.creditsFile = value.get<bool>();
                     ctx.project()->setAudioSettings(settings);
                 }
                 return true;
@@ -2896,6 +2985,28 @@ std::vector<Setting> mcpSettingsTable() {
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
                          [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
+        for (const auto& [key, description, getter, setter] : std::initializer_list<std::tuple<const char*, const char*, bool (*)(), void (*)(bool)>>{
+                 {"preferences.sound_browser_autoplay", "Sound Browser: selecting a sound plays it.", &AppSettings::getSoundBrowserAutoplay, &AppSettings::setSoundBrowserAutoplay},
+                 {"preferences.sound_browser_match_loudness", "Sound Browser: auditions play at -20 LUFS-M, so sounds compare by character.", &AppSettings::getSoundBrowserMatchLoudness, &AppSettings::setSoundBrowserMatchLoudness}}) {
+            Setting s;
+            s.key = key;
+            s.type = "bool";
+            s.preference = true;
+            s.description = description;
+            s.get = [getter = getter](SettingsContext&) { return Json(getter()); };
+            s.set = [setter = setter](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    setter(value.get<bool>());
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
         {
             Setting s;
             s.key = "preferences.project_hub_at_startup";
@@ -3154,6 +3265,25 @@ const Placement placements[] = {
     {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
+    {"audio.seed", "Audio", "", "Random Seed", "seed sound event random shuffle deterministic repeat"},
+    {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},
+    {"audio.capture_keep", "Audio", "Capture and QA", "Capture Keep", "capture sessions kept delete oldest"},
+    {"audio.capture_stems", "Audio", "Capture and QA", "Capture Stems", "capture stems groups wav"},
+    {"audio.qa.head_silence_max_ms", "Audio", "Capture and QA", "Head Silence Max (ms)", "check sync head silence"},
+    {"audio.qa.sync_tolerance_ms", "Audio", "Capture and QA", "Sync Tolerance (ms)", "check coverage sync"},
+    {"audio.qa.audibility_margin_db", "Audio", "Capture and QA", "Audibility Margin (dB)", "check masking"},
+    {"audio.qa.voice_budget_warn", "Audio", "Capture and QA", "Voice Budget Warning", "check voices"},
+    {"audio.qa.important_priority", "Audio", "Capture and QA", "Important Priority", "check voices stolen"},
+    {"audio.qa.voice_over_music_db", "Audio", "Capture and QA", "Voice Over Music (dB)", "check duck"},
+    {"audio.qa.max_silence_seconds", "Audio", "Capture and QA", "Max Silence (s)", "check gap music"},
+    {"audio.qa.music_group", "Audio", "Capture and QA", "Music Group", "check music silence"},
+    {"audio.qa.loudness_min_seconds", "Audio", "Capture and QA", "Loudness Min Seconds", "check lufs"},
+    {"audio.qa.limiter_warn_db", "Audio", "Capture and QA", "Limiter Warning (dB)", "check limiter hot"},
+    {"audio.qa.fix_rounds", "Audio", "Capture and QA", "Fix Rounds", "check agent stop report"},
+    {"audio.qa.repeat_min_plays", "Audio", "Capture and QA", "Repeat Min Plays", "check repetition"},
+    {"audio.qa.repeat_window_s", "Audio", "Capture and QA", "Repeat Window (s)", "check repetition"},
+    {"audio.qa.regression_timing_ms", "Audio", "Capture and QA", "Regression Timing (ms)", "check baseline"},
+    {"audio.qa.regression_band_db", "Audio", "Capture and QA", "Regression Band (dB)", "check baseline"},
     {"audio.loudness_target_lufs", "Audio", "Loudness and Output", "Loudness Target", "lufs loudness level r128 target"},
     {"audio.loudness_tolerance_lu", "Audio", "Loudness and Output", "Loudness Tolerance", "lu lufs loudness tolerance"},
     {"audio.true_peak_ceiling_dbtp", "Audio", "Loudness and Output", "True Peak Ceiling", "dbtp true peak ceiling limiter"},
@@ -3197,6 +3327,8 @@ const Placement placements[] = {
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
+    {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
+    {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
     {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},

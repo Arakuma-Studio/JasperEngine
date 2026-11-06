@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimatorSystem.h"
+#include "audio/AudioMarkers.h"
 #include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
@@ -608,6 +609,9 @@ void AnimatorSystem::finalize(Job& job, float dt){
         // the controller's events too (object/AnimationPlayer.h)
         const bool forwarded = player && !player->enabled && player->onEvent.hasSubscribers();
         const bool subscribed = component->onEvent.hasSubscribers() || forwarded;
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::animationEvent(scene, entity, event.functionName, event.state, event.time);
+#endif
         component->onEvent.call(event);
         if (forwarded){
             player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;

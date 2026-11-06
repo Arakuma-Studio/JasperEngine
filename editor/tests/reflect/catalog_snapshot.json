@@ -24473,7 +24473,9 @@
     "dopplerFactor",
     "enableClocked",
     "enabled",
+    "event",
     "filename",
+    "fullVolumeImpactSpeed",
     "ignoreListenerPause",
     "inaudibleBehaviorKill",
     "inaudibleBehaviorMustTick",
@@ -24483,14 +24485,18 @@
     "maxDistance",
     "maxVoices",
     "minDistance",
+    "minImpactSpeed",
     "outputGroup",
     "outputGroupName",
     "pan",
+    "pitchRandomSemitones",
+    "playOn",
     "priority",
     "protectVoice",
     "speed",
     "state",
-    "volume"
+    "volume",
+    "volumeRandomDb"
    ],
    "name": "AudioSourceComponent",
    "properties_of_default": {
@@ -24519,8 +24525,18 @@
      0,
      true
     ],
+    "event": [
+     18,
+     134217728,
+     true
+    ],
     "filename": [
      18,
+     134217728,
+     true
+    ],
+    "fullVolumeImpactSpeed": [
+     2,
      134217728,
      true
     ],
@@ -24574,6 +24590,11 @@
      134217728,
      true
     ],
+    "minImpactSpeed": [
+     2,
+     134217728,
+     true
+    ],
     "outputGroup": [
      1,
      134217728,
@@ -24581,6 +24602,16 @@
     ],
     "pan": [
      2,
+     134217728,
+     true
+    ],
+    "pitchRandomSemitones": [
+     2,
+     134217728,
+     true
+    ],
+    "playOn": [
+     9,
      134217728,
      true
     ],
@@ -24611,6 +24642,11 @@
     ],
     "volume": [
      3,
+     134217728,
+     true
+    ],
+    "volumeRandomDb": [
+     2,
      134217728,
      true
     ]
@@ -24641,8 +24677,18 @@
      0,
      true
     ],
+    "event": [
+     18,
+     134217728,
+     true
+    ],
     "filename": [
      18,
+     134217728,
+     true
+    ],
+    "fullVolumeImpactSpeed": [
+     2,
      134217728,
      true
     ],
@@ -24696,6 +24742,11 @@
      134217728,
      true
     ],
+    "minImpactSpeed": [
+     2,
+     134217728,
+     true
+    ],
     "outputGroup": [
      1,
      134217728,
@@ -24703,6 +24754,16 @@
     ],
     "pan": [
      2,
+     134217728,
+     true
+    ],
+    "pitchRandomSemitones": [
+     2,
+     134217728,
+     true
+    ],
+    "playOn": [
+     9,
      134217728,
      true
     ],
@@ -24733,6 +24794,11 @@
     ],
     "volume": [
      3,
+     134217728,
+     true
+    ],
+    "volumeRandomDb": [
+     2,
      134217728,
      true
     ]
@@ -41214,8 +41280,18 @@
     0,
     true
    ],
+   "event": [
+    18,
+    134217728,
+    true
+   ],
    "filename": [
     18,
+    134217728,
+    true
+   ],
+   "fullVolumeImpactSpeed": [
+    2,
     134217728,
     true
    ],
@@ -41269,6 +41345,11 @@
     134217728,
     true
    ],
+   "minImpactSpeed": [
+    2,
+    134217728,
+    true
+   ],
    "outputGroup": [
     1,
     134217728,
@@ -41276,6 +41357,16 @@
    ],
    "pan": [
     2,
+    134217728,
+    true
+   ],
+   "pitchRandomSemitones": [
+    2,
+    134217728,
+    true
+   ],
+   "playOn": [
+    9,
     134217728,
     true
    ],
@@ -41306,6 +41397,11 @@
    ],
    "volume": [
     3,
+    134217728,
+    true
+   ],
+   "volumeRandomDb": [
+    2,
     134217728,
     true
    ]
