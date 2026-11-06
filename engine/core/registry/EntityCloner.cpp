@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityCloner.h"
+#include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -13,6 +14,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/FogComponent.h"
 #include "component/ForceFieldComponent.h"
@@ -48,6 +50,7 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -222,6 +225,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
     const bool keepsModelData = ctx.modelMeshes.count(sourceEntity) != 0;
+    // (its bytes are copied below: a clone that shares the model takes the GPU buffers instead)
+    if (!keepsModelData)
+        ModelCpuData::ensure(mesh, "a clone without its model");
     for (unsigned int i = 0; i < mesh.numExternalBuffers && i < mesh.eBuffers.size(); i++) {
         resetBuffer(mesh.eBuffers[i]);
         // bytes in the file data of a model not copied along may go with the original
@@ -881,6 +887,13 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
+    // a copy has not started: it has nothing to revert
+    snapshot.previousSnapshot.clear();
+    snapshot.applied = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1188,6 +1201,7 @@ bool keepInMove(const T&, Entity, const CloneContext&) {
     return true;
 }
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
 // a joint to a body outside the moved GameObjects (the bodies are in different worlds then)
 bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceEntity, const CloneContext& ctx) {
     for (Entity body : bodies) {
@@ -1198,6 +1212,7 @@ bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceE
     }
     return true;
 }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 template<>
@@ -1248,12 +1263,14 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CapsuleShadowCasterComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ActionComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PositionTweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

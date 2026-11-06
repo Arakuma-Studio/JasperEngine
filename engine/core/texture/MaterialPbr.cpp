@@ -48,9 +48,17 @@ bool MaterialPbrExtensions::Hex::operator == (const Hex& o) const{
     return enabled == o.enabled && rotation == o.rotation && contrast == o.contrast;
 }
 
+bool MaterialPbrExtensions::Hair::operator == (const Hair& o) const{
+    return enabled == o.enabled && primaryColor == o.primaryColor && primaryShift == o.primaryShift &&
+           primaryWidth == o.primaryWidth && secondaryColor == o.secondaryColor && secondaryShift == o.secondaryShift &&
+           secondaryWidth == o.secondaryWidth && rotation == o.rotation && flowMap == o.flowMap &&
+           flowMapTexCoord == o.flowMapTexCoord;
+}
+
 bool MaterialPbrExtensions::operator == (const MaterialPbrExtensions& o) const{
     return clearcoat == o.clearcoat && sheen == o.sheen && anisotropy == o.anisotropy && iridescence == o.iridescence &&
-           transmission == o.transmission && volume == o.volume && specular == o.specular && hex == o.hex;
+           transmission == o.transmission && volume == o.volume && specular == o.specular && hex == o.hex &&
+           hair == o.hair;
 }
 
 namespace {
@@ -96,6 +104,7 @@ namespace {
         {"PBR_HEX_TILING", "Hx"}, {"TERRAIN_HEX_TILING", "Th"},
         {"USE_LIT_QUALITY", "Lq"},
         {"TERRAIN_HEX_STOCHASTIC", "Ts"},
+        {"PBR_HAIR", "Hr"}, {"PBR_HAIR_MAP", "Hf"},
     };
 
 }
@@ -115,6 +124,7 @@ const std::vector<PbrLobeInfo>& MaterialPbr::getLobes(){
         {PbrLobe::VOLUME, "volume", "Volume", "PBR_VOLUME"},
         {PbrLobe::SPECULAR, "specular", "Specular & IOR", "PBR_SPECULAR"},
         {PbrLobe::HEX, "hex", "Hex Tiling", "PBR_HEX_TILING"},
+        {PbrLobe::HAIR, "hair", "Hair", "PBR_HAIR"},
     };
     return lobes;
 }
@@ -140,6 +150,7 @@ bool& MaterialPbr::lobeEnabled(MaterialPbrExtensions& pbr, PbrLobe lobe){
         case PbrLobe::TRANSMISSION: return pbr.transmission.enabled;
         case PbrLobe::VOLUME:       return pbr.volume.enabled;
         case PbrLobe::SPECULAR:     return pbr.specular.enabled;
+        case PbrLobe::HAIR:         return pbr.hair.enabled;
         default:                    return pbr.hex.enabled;
     }
 }
@@ -200,6 +211,18 @@ const std::vector<PbrField>& MaterialPbr::getFields(){
         {PbrLobe::HEX, "enabled", PbrFieldType::Bool, PBR_REF(hex, Hex, enabled, bool), 0, 1, "Hex Tiling", "hexTilingEnabled", PbrMap::COUNT},
         {PbrLobe::HEX, "rotation", PbrFieldType::Float, PBR_REF(hex, Hex, rotation, float), 0, 1, "Rotation", "hexTilingRotation", PbrMap::COUNT},
         {PbrLobe::HEX, "contrast", PbrFieldType::Float, PBR_REF(hex, Hex, contrast, float), 0, 1, "Contrast", "hexTilingContrast", PbrMap::COUNT},
+
+        // the Hair shading model (Material::shadingModel in the editor, MCP and Lua: its enabled flag)
+        {PbrLobe::HAIR, "enabled", PbrFieldType::Bool, PBR_REF(hair, Hair, enabled, bool), 0, 1, "Hair", nullptr, PbrMap::COUNT},
+        {PbrLobe::HAIR, "primaryColor", PbrFieldType::Color, PBR_REF(hair, Hair, primaryColor, Vector3), 0, INF, "Primary Color", "hairPrimaryColor", PbrMap::COUNT},
+        {PbrLobe::HAIR, "primaryShift", PbrFieldType::Float, PBR_REF(hair, Hair, primaryShift, float), -1, 1, "Primary Shift", "hairPrimaryShift", PbrMap::COUNT},
+        {PbrLobe::HAIR, "primaryWidth", PbrFieldType::Float, PBR_REF(hair, Hair, primaryWidth, float), 0.01f, 1, "Primary Width", "hairPrimaryWidth", PbrMap::COUNT},
+        {PbrLobe::HAIR, "secondaryColor", PbrFieldType::Color, PBR_REF(hair, Hair, secondaryColor, Vector3), 0, INF, "Secondary Color", "hairSecondaryColor", PbrMap::COUNT},
+        {PbrLobe::HAIR, "secondaryShift", PbrFieldType::Float, PBR_REF(hair, Hair, secondaryShift, float), -1, 1, "Secondary Shift", "hairSecondaryShift", PbrMap::COUNT},
+        {PbrLobe::HAIR, "secondaryWidth", PbrFieldType::Float, PBR_REF(hair, Hair, secondaryWidth, float), 0.01f, 1, "Secondary Width", "hairSecondaryWidth", PbrMap::COUNT},
+        {PbrLobe::HAIR, "rotation", PbrFieldType::Float, PBR_REF(hair, Hair, rotation, float), -INF, INF, "Strand Rotation", "hairRotation", PbrMap::COUNT},
+        {PbrLobe::HAIR, "flowMap", PbrFieldType::Texture, PBR_REF(hair, Hair, flowMap, Texture), 0, 0, "Flow Map", nullptr, PbrMap::HAIR_FLOW},
+        {PbrLobe::HAIR, "flowMapTexCoord", PbrFieldType::TexCoord, PBR_REF(hair, Hair, flowMapTexCoord, int), 0, 1, "Flow Map UV Set", nullptr, PbrMap::HAIR_FLOW},
     };
     return fields;
 }
@@ -306,6 +329,7 @@ const char* MaterialPbr::getMapName(PbrMap map){
         case PbrMap::ANISOTROPY:       return "anisotropy";
         case PbrMap::IRIDESCENCE:      return "iridescence";
         case PbrMap::CLEARCOAT_NORMAL: return "clearcoatNormal";
+        case PbrMap::HAIR_FLOW:        return "hairFlow";
         default:                       return "";
     }
 }
@@ -319,6 +343,7 @@ const char* MaterialPbr::getMapDefine(PbrMap map){
         case PbrMap::ANISOTROPY:       return "PBR_ANISOTROPY_MAP";
         case PbrMap::IRIDESCENCE:      return "PBR_IRIDESCENCE_MAP";
         case PbrMap::CLEARCOAT_NORMAL: return "PBR_CLEARCOAT_NORMAL_MAP";
+        case PbrMap::HAIR_FLOW:        return "PBR_HAIR_MAP";
         default:                       return "";
     }
 }
@@ -330,6 +355,7 @@ PbrLobe MaterialPbr::getMapLobe(PbrMap map){
         case PbrMap::SHEEN:        return PbrLobe::SHEEN;
         case PbrMap::ANISOTROPY:   return PbrLobe::ANISOTROPY;
         case PbrMap::IRIDESCENCE:  return PbrLobe::IRIDESCENCE;
+        case PbrMap::HAIR_FLOW:    return PbrLobe::HAIR;
         default:                   return PbrLobe::CLEARCOAT;
     }
 }
@@ -342,6 +368,7 @@ Texture& MaterialPbr::getMap(MaterialPbrExtensions& pbr, PbrMap map){
         case PbrMap::ANISOTROPY:       return pbr.anisotropy.map;
         case PbrMap::IRIDESCENCE:      return pbr.iridescence.map;
         case PbrMap::CLEARCOAT_NORMAL: return pbr.clearcoat.normalMap;
+        case PbrMap::HAIR_FLOW:        return pbr.hair.flowMap;
         default:                       return pbr.clearcoat.map;
     }
 }
@@ -358,6 +385,7 @@ int MaterialPbr::getMapTexCoord(const MaterialPbrExtensions& pbr, PbrMap map){
         case PbrMap::ANISOTROPY:       return pbr.anisotropy.mapTexCoord;
         case PbrMap::IRIDESCENCE:      return pbr.iridescence.mapTexCoord;
         case PbrMap::CLEARCOAT_NORMAL: return pbr.clearcoat.normalTexCoord;
+        case PbrMap::HAIR_FLOW:        return pbr.hair.flowMapTexCoord;
         default:                       return pbr.clearcoat.mapTexCoord;
     }
 }
@@ -390,6 +418,7 @@ PbrVariant MaterialPbr::getPbrVariant(const Material& material, MaterialLighting
         lobes[(size_t)PbrLobe::TRANSMISSION] = pbr.transmission.enabled;
         lobes[(size_t)PbrLobe::VOLUME] = pbr.volume.enabled && pbr.transmission.enabled;
         lobes[(size_t)PbrLobe::SPECULAR] = pbr.specular.enabled;
+        lobes[(size_t)PbrLobe::HAIR] = pbr.hair.enabled;
     }
     lobes[(size_t)PbrLobe::HEX] = pbr.hex.enabled;
 
@@ -504,6 +533,35 @@ void MaterialPbr::getUniformBlock(const MaterialPbrExtensions& pbr, float out[UN
     const float a = mix(21.5473f, 25.3245f), b = mix(3.82987f, 3.32435f), c = mix(0.19823f, 0.16801f);
     const float d = mix(-1.97760f, -1.27393f), e = mix(-4.32054f, -4.85967f);
     out[UNIFORM_IOR_HEX + 3] = a / (1.0f + b * std::pow(0.5f, c)) + d * 0.5f + e;
+}
+
+ShadingModel MaterialPbr::getShadingModel(const MaterialPbrExtensions& pbr){
+    return pbr.hair.enabled ? ShadingModel::HAIR : ShadingModel::STANDARD;
+}
+
+void MaterialPbr::setShadingModel(MaterialPbrExtensions& pbr, ShadingModel model){
+    pbr.hair.enabled = model == ShadingModel::HAIR;
+}
+
+float MaterialPbr::hairExponent(float width){
+    const float w = std::clamp(width, 0.01f, 1.0f);
+    return std::max(2.0f / (w * w) - 2.0f, 1.0f);
+}
+
+void MaterialPbr::getHairUniformBlock(const MaterialPbrExtensions& pbr, float out[HAIR_UNIFORM_FLOATS]){
+    const MaterialPbrExtensions::Hair& hair = pbr.hair;
+    out[0] = hair.primaryColor.x;
+    out[1] = hair.primaryColor.y;
+    out[2] = hair.primaryColor.z;
+    out[3] = hair.primaryShift;
+    out[4] = hair.secondaryColor.x;
+    out[5] = hair.secondaryColor.y;
+    out[6] = hair.secondaryColor.z;
+    out[7] = hair.secondaryShift;
+    out[8] = hairExponent(hair.primaryWidth);
+    out[9] = hairExponent(hair.secondaryWidth);
+    out[10] = std::cos(hair.rotation);
+    out[11] = std::sin(hair.rotation);
 }
 
 std::string MaterialPbr::getVariantBasename(const std::vector<std::string>& defines){

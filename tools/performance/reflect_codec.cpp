@@ -5,15 +5,14 @@
 // R17, AC14): encode and decode of a synthetic scene (Transform + Sprite + Light + AudioSource +
 // Rigidbody2D on every GameObject), median of 5 runs each. Built into jasperengine-editor-tests
 // (editor/tests/EditorTests.cmake) as ReflectCodecBench.*: 1,000 GameObjects by default,
-// JASPER_BENCH_ENTITIES=10000 for the acceptance size; JASPER_TEST_PERF_SLACK (the benchmark
-// server, a release build) holds each to +5% of the legacy codec. Prints "[bench] reflect codec".
+// JASPER_BENCH_ENTITIES=10000 for the acceptance size; JASPER_TEST_PERF_SLACK holds each to +5% of
+// the hand-written codecs' frozen numbers. Prints "[bench] reflect codec".
 
 #include "support/EditorTestSupport.h"
 #include "Stream.h"
 #include "profiler/GpuMemory.h"
 
 #include "reflect/Reflect.h"
-#include "reflect/legacy/LegacyCodecs.h"
 
 #include "component/AudioSourceComponent.h"
 #include "component/LightComponent.h"
@@ -37,6 +36,12 @@ using namespace jasperengine::editor;
 
 // (a named namespace, tests included: a unity build merges the test sources)
 namespace reflect_codec_bench {
+
+    // The hand-written codecs' medians for this scene, ms per GameObject, measured last before they
+    // were deleted (docs/specs/S73-code-cleanups.md R2): 10,000 GameObjects on build server B
+    // (RelWithDebInfo). A machine that is not B gives JASPER_TEST_PERF_SLACK its ratio to it.
+    constexpr double kFrozenEncodeMs = 3557.07 / 10000.0;
+    constexpr double kFrozenDecodeMs = 801.96 / 10000.0;
 
     struct Entry {
         Transform transform;
@@ -80,7 +85,7 @@ namespace reflect_codec_bench {
         return value ? static_cast<size_t>(std::strtoul(value, nullptr, 10)) : 1000;
     }
 
-    TEST(ReflectCodecBench, EncodeAndDecodeAgainstLegacy) {
+    TEST(ReflectCodecBench, EncodeAndDecodeAgainstTheFrozenCodecs) {
         const std::vector<Entry> entries = scene(entityCount());
         const reflect::ComponentDesc& transform = *reflect::find(ComponentType::Transform);
         const reflect::ComponentDesc& sprite = *reflect::find(ComponentType::SpriteComponent);
@@ -100,24 +105,6 @@ namespace reflect_codec_bench {
                 encoded[i] = node;
             }
         });
-        const double legacyEncode = medianMs([&]() {
-            for (size_t i = 0; i < entries.size(); i++) {
-                YAML::Node node;
-                node["transform"] = LegacyCodecs::encodeTransform(entries[i].transform);
-                node["sprite"] = Stream::encodeSpriteComponent(entries[i].sprite);
-                node["light"] = LegacyCodecs::encodeLightComponent(entries[i].light);
-                node["audiosource"] = LegacyCodecs::encodeAudioSourceComponent(entries[i].audio);
-                node["rigidbody2d"] = Stream::encodeRigidbody2DComponent(entries[i].body);
-                encoded[i] = node;
-            }
-        });
-
-        // the same text both ways
-        for (size_t i = 0; i < entries.size(); i += 97) {
-            EXPECT_EQ(YAML::Dump(reflect::encode(light, &entries[i].light, reflect::EncodeContext{})),
-                      YAML::Dump(LegacyCodecs::encodeLightComponent(entries[i].light)));
-        }
-
         const double reflectDecode = medianMs([&]() {
             for (const YAML::Node& node : encoded) {
                 Entry entry;
@@ -129,23 +116,14 @@ namespace reflect_codec_bench {
                 reflect::decode(body, node["rigidbody2d"], &entry.body, reflect::DecodeContext{}, report);
             }
         });
-        const double legacyDecode = medianMs([&]() {
-            for (const YAML::Node& node : encoded) {
-                Entry entry;
-                entry.transform = LegacyCodecs::decodeTransform(node["transform"]);
-                entry.sprite = Stream::decodeSpriteComponent(node["sprite"]);
-                entry.light = LegacyCodecs::decodeLightComponent(node["light"]);
-                entry.audio = LegacyCodecs::decodeAudioSourceComponent(node["audiosource"]);
-                entry.body = Stream::decodeRigidbody2DComponent(node["rigidbody2d"]);
-            }
-        });
-
-        std::printf("[bench] reflect codec, %zu GameObjects: encode %.2f ms (legacy %.2f ms, %+.1f%%), decode %.2f ms (legacy %.2f ms, %+.1f%%)\n",
-                    entries.size(), reflectEncode, legacyEncode, 100.0 * (reflectEncode / legacyEncode - 1.0), reflectDecode, legacyDecode,
-                    100.0 * (reflectDecode / legacyDecode - 1.0));
+        const double frozenEncode = kFrozenEncodeMs * static_cast<double>(entries.size());
+        const double frozenDecode = kFrozenDecodeMs * static_cast<double>(entries.size());
+        std::printf("[bench] reflect codec, %zu GameObjects: encode %.2f ms (frozen %.2f ms, %+.1f%%), decode %.2f ms (frozen %.2f ms, %+.1f%%)\n",
+                    entries.size(), reflectEncode, frozenEncode, 100.0 * (reflectEncode / frozenEncode - 1.0), reflectDecode, frozenDecode,
+                    100.0 * (reflectDecode / frozenDecode - 1.0));
         if (const double slack = editor::test::perfSlack(); slack > 0.0) {
-            EXPECT_LE(reflectEncode, legacyEncode * 1.05 * slack);
-            EXPECT_LE(reflectDecode, legacyDecode * 1.05 * slack);
+            EXPECT_LE(reflectEncode, frozenEncode * 1.05 * slack);
+            EXPECT_LE(reflectDecode, frozenDecode * 1.05 * slack);
         }
     }
 

@@ -316,7 +316,7 @@ Out of scope:
 | AC7 | Lossy levels stay within their documented error (sampled deviation). Golden images at Medium. |
 | AC8 | Read/Write release test, plus the reader-keeps tests (R11). |
 | AC9 | Two listeners: a texture and a model Apply in one session both recook (`SetAssetMetaCmdTest`); red on `main`. |
-| AC10 | MCP: `test_meshes.py` covers each tool, dry run versus applied numbers, undo, the budget check failure exit code, and that the group is hidden until enabled. |
+| AC10 | MCP: `test_model_import.py` covers each tool, dry run versus applied numbers, undo, the budget check failure exit code, and that the group is hidden until enabled. |
 | AC11 | Export of a project with models writes `index.json` and cooked glbs, the player loads them (smoke test), and a cook error fails the export. |
 | AC12 | Editor screenshots of the inspector (single, multi), Audit window, Build Report and failure row, from an isolated editor. |
 | AC13 | The web build passes and the size gate shows the decoder within R28. |
@@ -343,3 +343,203 @@ Out of scope:
 - **Cook time on huge projects:** the queue is background, and export waits with progress.
 - **Lua scanning for Read/Write** may miss a dynamic call. Default: a project setting
   `mesh.keep_cpu_data_for_scripts`, on when any script uses the mesh-reading API.
+
+## 10. Decisions (s41-importer)
+
+- **Families:** models cook for desktop, mobile and web. Geometry has no per-GPU format, so the
+  textures' Android ETC2 split does not exist here (an `android_etc2` texture build takes mobile's
+  models).
+- **Sparse sections:** a model's `import.modelImporter` holds only what someone set; nothing is
+  written for a model nobody changed (no meta churn on open, unlike the texture importer's inferred
+  write). Project Settings > Mesh's per-platform defaults therefore apply to every model without a
+  value of its own, not only to new ones. An Apply that leaves nothing set removes the section.
+- **Generate LODs:** Automatic bakes the runtime's recipe (`MeshLodRecipe::runtime()`, LOD Count and
+  Reduction are disabled in the Inspector and left out of the cache key); On bakes LOD Count levels
+  of the Reduction (`MeshLodRecipe::forReduction`, S54 owns the numbers). Both bake only what
+  `MeshLodPool::buildLevels` produces from the cooked data, built the way
+  `RenderSystem::readLodSource` builds the runtime's (FLOAT positions, and the normal, first uv set
+  and bone weights decoded to floats).
+- **`JE_mesh_lods` (contract C1):** `levels` are listed finest first after LOD 0 (LOD 1, LOD 2,
+  LOD 3), each coarser than the one before; `recipe` is `kMeshLodRecipe` (1). The extension is in
+  `extensionsUsed`, never required.
+- **Layout:** one bufferView per vertex stream of a primitive group (best for the codec and its
+  filters), a group's LOD 0 index lists in one view, its levels in another (no target: not a draw
+  buffer). A mesh that would need more draw buffers than a prebuilt player holds (30) or than its
+  source had gets its unfiltered streams interleaved. Every accessor keeps its index.
+- **Lossy levels:** positions use the EXPONENTIAL filter (shared exponent per component) and decode
+  to floats; normals and tangents use OCTAHEDRAL into BYTE/SHORT normalized
+  (`KHR_mesh_quantization` required); texture coordinates in [0, 1] are 16-bit normalized integers
+  carrying N bits (core glTF, no texture transform), others EXPONENTIAL floats; colours 8-bit
+  normalized. Morph targets, joints and weights are only compressed losslessly. The documented
+  bounds are in `docs/meshes.md` and held by `ModelCook.LossyLevelsStayWithinTheirDocumentedError`.
+- **Optimize never worsens:** a primitive keeps its source triangle order when the optimized order's
+  ACMR (16-entry FIFO) is higher, so AC6's "ACMR <= source" holds for every input.
+- **Shared vertex data:** a primitive group whose vertex accessors are read by another primitive,
+  a skin, an animation, instancing or an unknown primitive extension keeps its vertex and triangle
+  order (compression and index format still apply), with a warning naming why.
+- **Files the cook cannot rewrite:** a file with an unknown extension that names a bufferView ships
+  as it is (pass-through, a warning in the record and the Audit), unless it also needs an
+  editor-only decode, which fails the cook naming both.
+- **The source as the loader reads it (R4-R6):** every cook also parses the source with tinygltf and
+  runs `GltfNormalize::normalize` (external images not read): its diagnostics go into the cook
+  record, its MSFT_lod chains drive the fold, and Draco streams are taken from the normalised model
+  into fresh views of the cook's own document (never its views or buffers). The cook's JSON-level
+  rewrite stays the writer, so unknown JSON keeps its place.
+- **Draco, WebP, Basis (R6):** Draco streams become plain accessors; every WebP image becomes an
+  embedded PNG (S14's texture cook reads no WebP, and embedded images are not texture-cooked, so the
+  hand-off is the PNG); a `KHR_texture_basisu` texture without a `source` gets a PNG `source` in the
+  desktop and mobile cooks (web keeps the KTX2 alone). The record's `transcoded` lists them.
+- **MSFT_lod (R4):** a lower level's primitive folds into the base primitive when its attributes are
+  the same semantics and formats and neither has morph targets: its vertices are appended to the
+  base's accessors and its triangles become a `JE_mesh_lods` level (through every Optimize pass with
+  LOD 0); `error` is the measured distance from LOD 0's surface, and the level carries `coverage`,
+  its `MSFT_screencoverage` (an optional key added to contract C1). The lower levels' own meshes
+  stay in the file (structure invariant; the loader takes them off the scene) and draw from the base
+  primitive's accessors and the level's, so nothing ships twice; their old accessors keep their
+  index without a bufferView. A level that does not match gives the generated levels their count and the coarsest
+  triangle count. Generate LODs Off folds nothing.
+- **Load findings (R5):** the Inspector rows, the Audit, the badge and `inspect_models`
+  (`load_diagnostics`, issue codes `gltf-required-extension`, `gltf-load-error`,
+  `gltf-load-warning`, `gltf-cook-transcodes`) show the cook record's findings and the model's
+  last load (`ModelLoadDiagnostics`), one row per finding whichever path its message names. An
+  Error the cook does not remove fails the cook (Status `failed`, no measured numbers), and so the
+  export, naming the file; the editor keeps loading the source. "Cook anyway" (R18) recooks a Draco or WebP model not cooked yet; an unread extension
+  offers Open Console and Show in Explorer.
+- **Read/Write release (R11):** `ModelCpuData` frees a pooled parse's file buffers once every mesh
+  showing them has uploaded and only the pool and the scenes' Models hold it; meshes keep their GPU
+  buffers (keyed by buffer and offset, so restored bytes find them) and draw, reload and clone from
+  those. Only mesh data: decoded images stay, as textures reload from them. Whoever reads a mesh's
+  bytes calls `ensure`, which reads the file again and keeps them: a parse is released at most once
+  and no buffer points at freed bytes, so a reader the analysis misses costs a re-read, never a
+  crash. A mesh never uploaded (disabled) holds its parse's bytes. Skinned models are always kept.
+  The guard is `System::isEditor`, besides the editor's provider answering keep.
+- **The index codec turns triangles:** `KHR_meshopt_compression`'s TRIANGLES mode may rotate a
+  triangle's corners (winding kept). LOD 0's lists take one codec round trip before the levels are
+  baked, so Automatic's levels are built from exactly what the runtime decodes.
+- **Export file names:** `je-cooked/models/<SHA-256 of the bytes>.glb`, so families whose cooks are
+  the same bytes ship one file (the cache key names the family, R12).
+- **Blended submeshes:** glTF BLEND materials and, from every scene and prefab file (and the open
+  scenes), submesh overrides of alpha or blend mode and meshes drawn transparent. A scene override
+  names a submesh index, so the cook keeps that index's triangle order in every mesh of the model
+  (conservative) and the set is part of the cache key.
+- **Edit mode uses the cook too:** the editor's provider answers in edit mode and Play alike (as
+  textures do), so the Scene view shows what ships; a landed cook reloads the models showing it,
+  and a cook whose source file changed since is never offered (size and mtime checked on lookup).
+- **Read/Write reasons:** a Mesh Collider or convex hull from the model's mesh, a navigation
+  surface without baked data, a particle system naming the file, a skinned model, runtime LOD
+  building (a scene with Mesh LOD on and no baked levels), and scripts calling `createMeshCollider`,
+  `createConvexHullCollider` or a navigation bake (`mesh.keep_cpu_data_for_scripts`: automatic,
+  keep, release).
+- **Render budgets:** stored in project.yaml's `mesh.renderBudgets`, edited as the flat keys
+  `quality.render_budgets.<platform>.<triangles|draw_calls|mesh_memory_mb|download_mb>` (0 = no
+  limit) in Project Settings > Quality and `set_project_settings`. `check_render_budgets` measures
+  the scene's geometry at LOD 0 with every object drawn (an upper bound of its main view, the same
+  on every machine and in a headless CI editor), and the cooked sizes of its models for the
+  platform.
+- **Status bar:** one counter for texture and model cooks ("Cooking textures 3/10 · models 1/2")
+  with one Cancel for both.
+- **External `.meta` changes** (a pull) reach both cook queues through the hot-reload funnel, which
+  also closes S14's gap.
+- **LOD bar colours:** S54's Draw Mode colours (`lodLevelColor`); the switch points are "about"
+  values for a 1080-pixel view at the default threshold.
+
+## 11. Deviations (s41-importer)
+
+- **R16 preview:** drawn on the CPU (flat shading, wireframe, orbit by drag, Source/Cooked, Force
+  LOD) instead of a GPU preview scene, so it works in a headless editor and costs nothing when the
+  importer is closed.
+- **R4's switch points:** contract C1 has no field for them, so authored levels carry an optional
+  `coverage` (their `MSFT_screencoverage`); a runtime that does not read it selects them by `error`
+  like generated levels. The loader's owner of `JE_mesh_lods` reading (s42-lod) decides whether to
+  use it.
+
+## Decisions (s41-loader: R1-R7, R15, R27, R28's decoder size)
+
+1. **One step, in place.** `GltfNormalize::run` (`engine/core/subsystem/GltfNormalize.h`) runs right
+   after every tinygltf parse: `MeshSystem::loadGLTFFile` (the synchronous load and
+   `parseGLTFFile`, so sub-clips too), the background parse (`loadModelFileOnWorker`), particle mesh
+   shapes and the Vertex Animation import. It changes the parsed model so the rest of the loader reads
+   core glTF: widened streams go into one appended buffer named `GltfNormalize`, widened accessors
+   keep their index (their `bufferView` and type change), baked UVs are new accessors. Node, mesh,
+   primitive, material and animation counts never change.
+2. **tinygltf patch** (marked "JasperEngine patch"): a buffer with `EXT_/KHR_meshopt_compression`
+   `"fallback": true` and no uri loads no data (in a .gltf too), and only buffer 0 can take a GLB's BIN
+   chunk; another uri-less buffer is a parse error naming it. Before, every uri-less buffer got a copy
+   of the BIN chunk's first bytes.
+3. **Validation before the decoder** (R2): the extension's rules (stride 4..256 and a multiple of 4
+   for attributes, 2 or 4 for indices, whole triangles, filter strides, `count * byteStride ==
+   bufferView.byteLength`), the compressed range inside its buffer, views into a placeholder must be
+   compressed, at most 512 MB decoded per model (`kMaxDecodedBytes`), and decoded indices below the
+   primitive's vertex count. Every refusal names the file and the bufferView (or primitive). An
+   authored fallback (gltfpack `-cf`) is used as it is, without decoding. The COLOR filter is accepted
+   on `KHR_meshopt_compression` only.
+4. **Quantized formats kept on the GPU:** normalized TANGENT and COLOR VEC4 (BYTE4N, UBYTE4N, SHORT4N,
+   USHORT4N), normalized TEXCOORD VEC2 of 16 bits (SHORT2N, USHORT2N), and normalized VEC3 BYTE/SHORT
+   normals whose stride has room for a fourth component (bound as BYTE4N/SHORT4N, the shaders read xyz).
+   Positions are always widened to floats (bounds, picking, physics and LODs read floats), as are
+   integer UVs, two-byte UVs, morph deltas, instance transforms and animation outputs. Node-transform
+   baking (previews, Merge Static Meshes) now also takes normalized normals and tangents.
+5. **KHR_texture_transform** is baked per UV set: one transform moves the set; a second on set 0 moves
+   to a new set 1 when no texture or primitive of the material uses set 1; anything more uses the
+   first texture's transform with a warning naming the material. The extension's `texCoord` override
+   becomes the texture's set.
+6. **KHR_texture_basisu:** the extension's image becomes the texture's source where the Basis
+   transcoder is built (editor, web players, tests). A native player keeps the fallback `source`, or
+   reports an error with `cookFixes` when there is none (the cook transcodes it).
+7. **EXT_mesh_gpu_instancing:** an instanced node always gets its own child entity (its node transform
+   on it, never baked into vertices) with an `InstancedMeshComponent` holding the instances
+   (`maxInstances` = their count). Merge Static Meshes refuses such a model with the reason; a
+   flattened preview draws the node once, as its first instance.
+8. **MSFT_lod:** the lower levels' nodes (and their subtrees) lose their mesh in the normalised model,
+   so only level 0 draws; `GltfNormalizeResult::lodChains` (and `GltfNormalize::readLodChains` on a
+   model before normalising) keep the chain with `MSFT_screencoverage` for the cook. `MSFT_lod` on a
+   material is ignored (level 0's material draws).
+9. **An unread required extension** is an Error diagnostic, and the model still loads as before (its
+   data is readable core glTF); data the loader cannot decode (corrupt meshopt, Draco in a game) fails
+   the load. The error that fails a load is logged once by the caller ("Can't load GLTF model ...");
+   every other finding once per model by `run`.
+10. **Draco and WebP** decoders register from the editor's objects at start-up
+    (`editor/util/GltfEditorDecoders.cpp`, a static registration), so every editor executable and the
+    editor tests have them and the engine library never links them. `GltfNormalizeResult::
+    needsEditorDecoders` and an Info diagnostic with `cookFixes` tell the cook to always cook such a file.
+11. **OBJ** (R7): binary-equal corners welded (`meshopt_generateVertexRemap` over the 48-byte
+    interleaved vertex, so colour too), then per submesh vertex cache and overdraw (1.05) order unless
+    the submesh blends, then first-use vertex order over all submeshes.
+12. **Particle mesh shapes** of a quantized mesh take the transform of the node that draws it (its
+    dequantization); other meshes keep their own space, as before.
+13. **The lattice bake** still refuses compressed files: it rewrites the source file.
+14. **meshoptimizer v1.3** is the tag's `src/` unchanged (`clusterizer.cpp`, `remesher.cpp` and the
+    header differ from the old snapshot; every file the engine calls is identical). On the web,
+    `vertexcodec.cpp` and `vertexfilter.cpp` build with `-msimd128` when `JASPERENGINE_WASM_SIMD` is on
+    (the default); the OFF build stays scalar.
+15. **The decoder's size (R28)**, measured as the release web player compiles it (em++ -O3, the
+    three decoder sources alone exporting the seven `meshopt_decode*` functions, the web image's
+    Emscripten): 16,014 bytes of wasm and 3,897 bytes gzip -9 with simd128, 8,330 and 3,316 scalar;
+    under the 8 KB gzipped budget. The normalise step's own code comes on top and is not part of it.
+
+### The loader's API for s41-importer
+
+- `GltfNormalize::normalize(model, filename, result)` after a tinygltf parse in the cook (no Console,
+  no registry); `run` is the same plus both. Read `result.ok`, `result.diagnostics`,
+  `result.lodChains` (R4), `result.handledExtensions` and `result.needsEditorDecoders` (R6: always
+  cook).
+- The normalised model still has the meshopt extension objects on its bufferViews and the decoded
+  data in the former placeholder buffers: write fresh buffers and views in a cooked glb, never the
+  parse's `extensions` of views and buffers.
+- `ModelLoadDiagnostics::get(path)` / `hasErrors(path)` / `models()` / `revision()`: each model's last
+  load (`GltfDiagnostic`: severity, extension, part, message, fix, cookFixes), keyed by
+  `MeshSystem::getModelFilenameKey`. Export fails on an Error (R5); the Inspector row, the badge and
+  `inspect_models` show `text()` or the fields.
+- `GltfNormalize::supportedExtensions()` / `isSupportedExtension(name)`: includes `JE_mesh_lods`
+  (contract C1), which the loader passes through untouched.
+
+## Deviations (s41-loader)
+
+1. **R1, "otherwise pass it to the material as an existing UV transform":** materials have no UV
+   transform, and adding one is a shader change on every backend for a case exporters rarely write.
+   The second transform of a UV set is baked into the free second UV set instead (Decision 5); only
+   beyond that is the first transform used, with a warning.
+2. **R5's Inspector, badge and `inspect_models` parts** are s41-importer's (R18, R22); this stream
+   provides and tests the API they read (`ModelLoadDiagnostics`) and the Console part.
+3. **AC11 (loading):** a cooked glb is a glb, so players load it through this same step; the export
+   and smoke-test parts are s41-importer's.

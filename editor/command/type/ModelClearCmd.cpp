@@ -59,6 +59,7 @@ namespace {
         empty.autoTransparency = mesh.autoTransparency;
         empty.lodEnabled = mesh.lodEnabled;
         empty.lodBias = mesh.lodBias;
+        empty.allowGpuInstancing = mesh.allowGpuInstancing;
         empty.cullingMode = mesh.cullingMode;
         empty.windingOrder = mesh.windingOrder;
         empty.mirroredWinding = mesh.mirroredWinding;

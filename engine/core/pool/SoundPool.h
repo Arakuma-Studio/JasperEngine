@@ -80,17 +80,21 @@ namespace jasperengine{
         static AudioLoadType resolveLoadType(const std::string& filename, AudioLoadType requested);
         // the size of a file on disk or in the pack (cached), 0 when it does not exist
         static uint64_t fileSize(const std::string& filename);
-        // "<file>#<type>" of a resolved type
+        // "<file>#<type>" of a resolved type, and "<file>#<type>#i<hash>" while the clip's import
+        // settings change its samples (AudioImportTable): those samples are a AudioClipSource
         static std::string key(const std::string& filename, AudioLoadType resolved);
         static const char* loadTypeName(AudioLoadType type);
         // "auto", "decompress_on_load", "compressed_in_memory", "streaming" (also the Unity names); false when unknown
         static bool loadTypeFromName(const std::string& name, AudioLoadType& type);
-        // a scene resource entry: "<file>" (Auto) or "<file>#<type>"
+        // a scene resource entry or a pool id: "<file>" (Auto), "<file>#<type>" or "<file>#<type>#i<hash>"
         static void parseClipRef(const std::string& ref, std::string& filename, AudioLoadType& type);
 
         // the sample of a file with a load type: Finished (data), Loading (async loading on),
         // Failed (not found, not audio). Synchronous unless Engine::isAsyncLoading.
         static SoundLoadResult loadClip(const std::string& filename, AudioLoadType requested = AudioLoadType::Auto);
+        // The clip now, on this thread, also while its asynchronous load is on its way (a Sound
+        // Event's pick has to start this frame): Finished or Failed, never Loading
+        static SoundLoadResult loadClipNow(const std::string& filename, AudioLoadType requested = AudioLoadType::Auto);
         // A failed file is not tried again until this or remove(); a file name retries every load type
         static void retry(const std::string& idOrFile);
 
@@ -111,14 +115,18 @@ namespace jasperengine{
         // Voices playing the old sample finish on it (their sources hold it); new plays take this
         // one (AudioSystem compares the generation). Main thread.
         static void replace(const std::string& id, std::shared_ptr<SoLoud::AudioSource> sound);
-        // a file's generation (every hot reload of it adds one)
+        // a file's generation (every hot reload of it adds one, and every change of its import settings)
         static uint32_t generation(const std::string& filename);
+        // the clip's next voice takes a new sample (its import settings changed); voices playing keep theirs
+        static void invalidate(const std::string& filename);
         // Makes the sample of `id` ("<file>#<type>", a bare file: Decompress On Load) from
         // `filename` as loadClip would; any thread. Throws with the reason.
         static std::shared_ptr<SoLoud::AudioSource> decode(const std::string& id, const std::string& filename);
 
-        // the clip's length in seconds (a Wav or a WavStream)
+        // the clip's length in seconds (a Wav, a WavStream or a AudioClipSource's region)
         static double getLength(SoLoud::AudioSource* sample);
+        // a voice's loop point in seconds: the component's, else a AudioClipSource's loop start
+        static double getLoopPoint(SoLoud::AudioSource* sample, double requested);
 
         static std::vector<SoundPoolEntry> getEntries();
         static size_t getMemoryBytes();

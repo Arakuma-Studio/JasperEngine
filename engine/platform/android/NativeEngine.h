@@ -87,6 +87,11 @@ struct JniData{
     // Screen.safeArea: where the game's view lies in the window and the cutout rectangles
     jfieldID platformSafeAreaRevision;
     jfieldID platformSafeAreaInfo;
+    // Device's thermal state and memory warnings (spec S56): the listener's state, the onTrimMemory
+    // count, and the 2 s poll of the status and the headroom forecast
+    jfieldID platformThermalState;
+    jfieldID platformTrimMemoryCount;
+    jmethodID platformGetThermalState;
 };
 
 class NativeEngine {
@@ -119,6 +124,10 @@ private:
     // Display.getRotation() in degrees as last read, and whether rotation 0 is portrait
     int mDisplayRotation;
     bool mNaturalPortrait;
+
+    // the last thermal poll (steady clock seconds) and onTrimMemory count the game thread saw
+    double mLastThermalPoll = -1.0e9;
+    int mTrimMemoryCount = 0;
 
     // Screen.safeArea (safe-area spec 6.5): MainActivity.isFullscreenGame() (read once; a
     // windowed game includes the system bars), and what the last push was computed from
@@ -171,6 +180,8 @@ private:
     void setupPlatformJNI(JNIEnv* env);
     // reads JasperPlatform.displayRotation; true when it changed since the last read
     bool refreshDisplayRotation();
+    // JasperPlatform's thermal state and onTrimMemory count to Device, once a frame
+    void updateDeviceSignals();
     // GameActivity's display cutout insets (and the system bars when windowed), relative to the
     // surface, to Screen when they changed: every frame after the rotation and size checks
     // (cheap; APP_CMD_WINDOW_INSETS_CHANGED, the surface size and JasperPlatform's layout info

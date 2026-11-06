@@ -25,6 +25,7 @@
 #include "stream/CurveCodec.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
+#include "mcp/McpValues.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "ShippingTypes.h"
@@ -52,6 +53,7 @@
 #include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
+#include "render/SceneDrawModes.h"
 #include "window/TerrainEditWindow.h"
 #include "physics/PlacementSettingsLimits.h"
 #include "spritenormals/SpriteNormalsRecipe.h"
@@ -915,22 +917,6 @@ CanvasGroupRenderMode editor::Stream::stringToCanvasGroupRenderMode(const std::s
     return upper == "FLATTEN" ? CanvasGroupRenderMode::FLATTEN : CanvasGroupRenderMode::PER_ELEMENT;
 }
 
-std::string editor::Stream::alphaTweenTargetToString(AlphaTweenTarget target) {
-    switch (target) {
-        case AlphaTweenTarget::COLOR: return "COLOR";
-        case AlphaTweenTarget::CANVAS_GROUP: return "CANVAS_GROUP";
-        default: return "AUTO";
-    }
-}
-
-AlphaTweenTarget editor::Stream::stringToAlphaTweenTarget(const std::string& str) {
-    std::string upper = str;
-    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
-    if (upper == "COLOR") return AlphaTweenTarget::COLOR;
-    if (upper == "CANVAS_GROUP") return AlphaTweenTarget::CANVAS_GROUP;
-    return AlphaTweenTarget::AUTO;
-}
-
 LayoutGroupType editor::Stream::stringToLayoutGroupType(const std::string& str) {
     return StreamSchema::layoutGroupType().fromString(str);
 }
@@ -1029,10 +1015,6 @@ std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mo
 
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
     return StreamSchema::uiDocumentRenderMode().fromString(str);
-}
-
-std::string editor::Stream::fluidOutputToString(FluidOutput output) {
-    return StreamSchema::fluidOutput().toString(output);
 }
 
 FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {
@@ -1717,13 +1699,15 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
-YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData) {
+YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, bool encodeVertexCount) {
     YAML::Node node;
 
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    if (encodeVertexCount) {
+        node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
 
@@ -2220,6 +2204,10 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.drawMode != ViewDrawMode::SHADED)
+        sceneNode["drawMode"] = drawModeKey(ds.drawMode);
+    if (ds.showStats)
+        sceneNode["showStats"] = ds.showStats;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2251,6 +2239,10 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.drawMode = ViewDrawMode::SHADED;
+    if (node["drawMode"] && node["drawMode"].IsScalar())
+        drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
+    ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
@@ -2539,25 +2531,37 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // device: what differs from the defaults of the Device Tier table and the rest (S56)
+    {
+        const nlohmann::json device = nlohmann::json::parse(project->getDeviceSettings().toJson());
+        if (!device.empty())
+            root["device"] = mcp::McpValues::jsonToYaml(device);
+    }
     {
         const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
-    // graphics.shadowTier.<platform>, only the platforms away from their default tier
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier,
+    // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off
     {
+        YAML::Node graphics;
         YAML::Node tiers;
         for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
             const ShadowTier tier = project->getShadowTier(platform);
             if (tier != ShadowTiers::defaultTier(platform))
                 tiers[Project::getShadowTierPlatformName(platform)] = StreamSchema::shadowTier().toString(tier);
         }
-        if (tiers.size() > 0){
-            YAML::Node graphics;
+        if (tiers.size() > 0)
             graphics["shadowTier"] = tiers;
+        const DrawSubmissionSettings& drawSubmission = project->getDrawSubmissionSettings();
+        if (drawSubmission.gpuInstancing != DrawSubmissionSettings().gpuInstancing)
+            graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
+        if (project->getLightMode() != Project::defaultLightMode)
+            graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
+        if (graphics.size() > 0)
             root["graphics"] = graphics;
-        }
     }
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
@@ -2942,6 +2946,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (textureNode.size() > 0) root["texture"] = textureNode;
     }
 
+    {
+        // Project Settings > Mesh and the render budgets (S53 R19, R25): only what differs
+        const YAML::Node meshNode = encodeModelProjectSettings(project->getModelSettings());
+        if (meshNode.size() > 0) root["mesh"] = meshNode;
+    }
+
     // Project Settings > Audio: only what differs from the defaults (old projects have no node)
     {
         const AudioSettings& audio = project->getAudioSettings();
@@ -2950,8 +2960,28 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.mixer != defaults.mixer) audioNode["mixer"] = audio.mixer;
         if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
+        if (audio.seed != defaults.seed) audioNode["seed"] = audio.seed;
+        if (audio.captureMaxSeconds != defaults.captureMaxSeconds) audioNode["captureMaxSeconds"] = audio.captureMaxSeconds;
+        if (audio.captureKeep != defaults.captureKeep) audioNode["captureKeep"] = audio.captureKeep;
+        if (audio.captureStems != defaults.captureStems) audioNode["captureStems"] = audio.captureStems;
+        if (audio.qa != defaults.qa) {
+            YAML::Node qaNode;
+            for (const AudioQaField& field : audioQaFields()) {
+                if (field.real && audio.qa.*field.real != defaults.qa.*field.real) qaNode[field.yaml] = audio.qa.*field.real;
+                if (field.whole && audio.qa.*field.whole != defaults.qa.*field.whole) qaNode[field.yaml] = audio.qa.*field.whole;
+            }
+            if (audio.qa.musicGroup != defaults.qa.musicGroup) qaNode["musicGroup"] = audio.qa.musicGroup;
+            audioNode["qa"] = qaNode;
+        }
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audio.musicGroup != defaults.musicGroup) audioNode["musicGroup"] = audio.musicGroup;
+        if (audio.creditsFile != defaults.creditsFile) audioNode["creditsFile"] = audio.creditsFile;
+        if (audio.loudnessTargetLufs != defaults.loudnessTargetLufs) audioNode["loudnessTargetLufs"] = audio.loudnessTargetLufs;
+        if (audio.loudnessToleranceLu != defaults.loudnessToleranceLu) audioNode["loudnessToleranceLu"] = audio.loudnessToleranceLu;
+        if (audio.truePeakCeilingDbtp != defaults.truePeakCeilingDbtp) audioNode["truePeakCeilingDbtp"] = audio.truePeakCeilingDbtp;
+        if (audio.outputStage != defaults.outputStage) audioNode["outputStage"] = audio.outputStage;
+        if (audio.iosSessionCategory != defaults.iosSessionCategory) audioNode["iosSessionCategory"] = audio.iosSessionCategory;
         if (audioNode.size()) root["audio"] = audioNode;
     }
 
@@ -3160,6 +3190,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
     }
 
+    // S56: a project saved before it has no device block, and gets the defaults
+    {
+        DeviceSettings device;
+        if (node["device"].IsDefined()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(mcp::McpValues::yamlToJson(node["device"]).dump(), device, deviceError)) {
+                Out::warning("project.yaml device: %s; the device settings take their defaults", deviceError.c_str());
+                device = DeviceSettings();
+            }
+        }
+        project->setDeviceSettings(device);
+    }
+
     // S16: projects saved before them take the defaults
     {
         HtmlUiRenderSettings htmlUiRender;
@@ -3172,6 +3215,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
+    // graphics.gpuInstancing (S55): projects saved before it take the default
+    {
+        DrawSubmissionSettings drawSubmission;
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap()){
+            if (graphics["gpuInstancing"].IsDefined())
+                drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
+        }
+        project->setDrawSubmissionSettings(drawSubmission);
+    }
+
     // graphics.shadowTier.<platform>: an absent platform takes its default tier
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         ShadowTier tier = ShadowTiers::defaultTier(platform);
@@ -3182,6 +3236,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 tier = StreamSchema::shadowTier().fromString(value.Scalar());
         }
         project->setShadowTier(platform, tier);
+    }
+    // graphics.lightMode: absent or unknown is Automatic
+    {
+        LightMode lightMode = Project::defaultLightMode;
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap() && graphics["lightMode"] && graphics["lightMode"].IsScalar()){
+            const std::string name = graphics["lightMode"].Scalar();
+            if (!LightingTiers::modeFromName(name.c_str(), lightMode)){
+                StreamLoad::unknownEnumValue(graphics["lightMode"], "LightMode", {"automatic", "per_object", "tiled"});
+                lightMode = Project::defaultLightMode;
+            }
+        }
+        project->setLightMode(lightMode);
     }
 
     if (node["windowMode"]) {
@@ -3670,14 +3737,37 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         TextureProjectSettings textureSettings;
         decodeTextureProjectSettings(node["texture"], textureSettings);
         project->setTextureSettings(textureSettings);
+        ModelProjectSettings modelSettings;
+        decodeModelProjectSettings(node["mesh"], modelSettings);
+        project->setModelSettings(modelSettings);
         AudioSettings audio;
         if (node["audio"] && node["audio"].IsMap()) {
             const YAML::Node audioNode = node["audio"];
             if (audioNode["mixer"]) audio.mixer = audioNode["mixer"].as<std::string>();
             if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
+            if (audioNode["seed"]) audio.seed = YamlNumbers::as<int>(audioNode["seed"]);
+            if (audioNode["captureMaxSeconds"]) audio.captureMaxSeconds = YamlNumbers::as<int>(audioNode["captureMaxSeconds"]);
+            if (audioNode["captureKeep"]) audio.captureKeep = YamlNumbers::as<int>(audioNode["captureKeep"]);
+            if (audioNode["captureStems"]) audio.captureStems = audioNode["captureStems"].as<bool>();
+            if (audioNode["qa"] && audioNode["qa"].IsMap()) {
+                const YAML::Node qaNode = audioNode["qa"];
+                for (const AudioQaField& field : audioQaFields()) {
+                    if (!qaNode[field.yaml]) continue;
+                    if (field.real) audio.qa.*field.real = YamlNumbers::as<float>(qaNode[field.yaml]);
+                    else audio.qa.*field.whole = YamlNumbers::as<int>(qaNode[field.yaml]);
+                }
+                if (qaNode["musicGroup"]) audio.qa.musicGroup = qaNode["musicGroup"].as<std::string>();
+            }
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+            if (audioNode["musicGroup"]) audio.musicGroup = audioNode["musicGroup"].as<std::string>();
+            if (audioNode["creditsFile"]) audio.creditsFile = audioNode["creditsFile"].as<bool>();
+            if (audioNode["loudnessTargetLufs"]) audio.loudnessTargetLufs = YamlNumbers::as<float>(audioNode["loudnessTargetLufs"]);
+            if (audioNode["loudnessToleranceLu"]) audio.loudnessToleranceLu = YamlNumbers::as<float>(audioNode["loudnessToleranceLu"]);
+            if (audioNode["truePeakCeilingDbtp"]) audio.truePeakCeilingDbtp = YamlNumbers::as<float>(audioNode["truePeakCeilingDbtp"]);
+            if (audioNode["outputStage"]) audio.outputStage = audioNode["outputStage"].as<std::string>();
+            if (audioNode["iosSessionCategory"]) audio.iosSessionCategory = audioNode["iosSessionCategory"].as<std::string>();
         }
         // also without a node: a project opened after another one does not keep its mixer
         project->setAudioSettings(audio);
@@ -3826,6 +3916,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setSelectedSceneId(savedSelection);
         }
     }
+}
+
+YAML::Node editor::Stream::encodePlaySnapshot(const Project* project, const SceneProject* sceneProject) {
+    reflect::PlaySnapshotEncodeScope snapshot;
+    return encodeSceneProject(project, sceneProject);
 }
 
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
@@ -4340,6 +4435,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["shadowCascadeBlend"] = scene->isShadowCascadeBlend();
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
+    // written only away from their defaults (scenes saved before them re-save unchanged)
+    if (scene->isMeshLodCrossFade() != SceneSettings().meshLodCrossFade)
+        sceneNode["meshLodCrossFade"] = scene->isMeshLodCrossFade();
+    if (scene->getMeshLodCrossFadeDuration() != SceneSettings().meshLodCrossFadeDuration)
+        sceneNode["meshLodCrossFadeDuration"] = scene->getMeshLodCrossFadeDuration();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
@@ -4355,6 +4455,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["litQuality"] = StreamSchema::litQuality().toString(scene->getLitQuality());
     if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
         sceneNode["physicalLightEV100"] = YamlNumbers::text(scene->getPhysicalLightEV100());
+    // capsule shadows (S57 R2): written only away from their defaults
+    if (scene->isCapsuleShadowsEnabled() != SceneSettings().capsuleShadowsEnabled)
+        sceneNode["capsuleShadowsEnabled"] = scene->isCapsuleShadowsEnabled();
+    if (scene->getCapsuleShadowIntensity() != SceneSettings().capsuleShadowIntensity)
+        sceneNode["capsuleShadowIntensity"] = YamlNumbers::text(scene->getCapsuleShadowIntensity());
+    if (scene->getCapsuleShadowSoftness() != SceneSettings().capsuleShadowSoftness)
+        sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
@@ -4457,12 +4564,14 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setShadowDistance(node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : SceneSettings().shadowDistance);
     scene->setShadowFadeFraction(node["shadowFadeFraction"] ? YamlNumbers::as<float>(node["shadowFadeFraction"]) : SceneSettings().shadowFadeFraction);
     scene->setShadowCascadeBlend(node["shadowCascadeBlend"] ? YamlNumbers::as<bool>(node["shadowCascadeBlend"]) : SceneSettings().shadowCascadeBlend);
-    if (node["meshLodEnabled"]) {
-        scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
-    }
+    // every scene saved since mesh LOD existed writes it; one saved before has LOD off, as it was
+    // then (the default is on since spec S54 R1, R19)
+    scene->setMeshLodEnabled(node["meshLodEnabled"] ? YamlNumbers::as<bool>(node["meshLodEnabled"]) : false);
     if (node["meshLodThreshold"]) {
         scene->setMeshLodThreshold(decodeFinite(node["meshLodThreshold"], scene->getMeshLodThreshold()));
     }
+    scene->setMeshLodCrossFade(node["meshLodCrossFade"] ? YamlNumbers::as<bool>(node["meshLodCrossFade"]) : SceneSettings().meshLodCrossFade);
+    scene->setMeshLodCrossFadeDuration(decodeFinite(node["meshLodCrossFadeDuration"], SceneSettings().meshLodCrossFadeDuration));
     if (node["depthPrepassEnabled"]) {
         scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }
@@ -4488,6 +4597,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
     scene->setLitQuality(node["litQuality"] ? decodeEnum(node, "litQuality", StreamSchema::litQuality()) : LitQuality::STANDARD);
     scene->setPhysicalLightEV100(decodeFinite(node["physicalLightEV100"], SceneSettings().physicalLightEV100));
+    scene->setCapsuleShadowsEnabled(node["capsuleShadowsEnabled"] ? YamlNumbers::as<bool>(node["capsuleShadowsEnabled"]) : SceneSettings().capsuleShadowsEnabled);
+    scene->setCapsuleShadowIntensity(decodeFinite(node["capsuleShadowIntensity"], SceneSettings().capsuleShadowIntensity));
+    scene->setCapsuleShadowSoftness(decodeFinite(node["capsuleShadowSoftness"], SceneSettings().capsuleShadowSoftness));
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(
@@ -5347,6 +5459,14 @@ bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature s
            signature.test(registry->getComponentId<TerrainComponent>()) ||
            // the Spline Extrude's Mesh is its chunks' template: material and flags, no geometry
            signature.test(registry->getComponentId<SplineExtrudeComponent>());
+}
+
+unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const EntityRegistry* registry, Signature signature) {
+    // a Terrain has its two (full and half resolution) only once it first ran (MeshSystem::createTerrain)
+    if (signature.test(registry->getComponentId<TerrainComponent>())) {
+        return std::max(mesh.numSubmeshes, 2u);
+    }
+    return mesh.numSubmeshes;
 }
 
 bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature signature) {

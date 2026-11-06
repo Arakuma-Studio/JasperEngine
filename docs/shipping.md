@@ -101,6 +101,15 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## The shaders a build ships
+
+Build Settings lists the shader variants a build compiles: what each scene needs, what every build
+ships, the warm-up list and your additions, without what you excluded. Closed scenes count: each is
+read from its file as it is now (no GPU work) and remembered by the file's hash, so an unchanged
+project reads none of them. The list shows "Reading N closed scene(s)..." while that takes a moment,
+and names a scene whose file cannot be read: the list then holds what it last knew of it. Play's
+startup and every export use the same list.
+
 ## Platforms
 
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the
@@ -172,6 +181,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | `--fail-on-error` | exit 3 when an error is logged |
 | `--ready-timeout S` | exit 6 when not ready after S seconds |
 | `--resolution WxH`, `--scene <name\|id>`, `--content <dir>`, `--verify-content`, `--silent-audio`, `--log-level` | |
+| `--audio-capture <dir>` | A desktop development player writes one audio capture session into `<dir>/<id>/`, on the deterministic driver; any other player exits 2. |
 | `-- <args>` | the game's own arguments (Lua `System.args`) |
 
 Exit codes: 0 done, 2 bad arguments, 3 an error was logged, 4 the screenshot failed, 5 the content

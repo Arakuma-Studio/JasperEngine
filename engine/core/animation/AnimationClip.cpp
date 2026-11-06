@@ -34,6 +34,9 @@ float ClipData::effectiveLength() const{
     for (const ClipEventData& event : events){
         last = std::max(last, event.time);
     }
+    for (const ClipAudioCue& cue : audio){
+        last = std::max(last, cue.time);
+    }
     return last;
 }
 
@@ -139,6 +142,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
     clip->unknownKeys = data.unknownKeys;
     clip->warnings = std::move(clipWarnings);
     clip->events = data.events;
+    clip->audio = data.audio;
 
     // sizes first: the Track pointers point into the storage, which must not move afterwards
     size_t times = 0, vectors = 0, rotations = 0, weights = 0, points = 0;
@@ -298,6 +302,7 @@ ClipData AnimationClip::toData() const{
     data.length = explicitLength ? length : -1.0f;
     data.additiveReference = additiveReference;
     data.events = events;
+    data.audio = audio;
     data.previewModel = previewModel;
     data.source = source;
     data.humanoid = humanoid;

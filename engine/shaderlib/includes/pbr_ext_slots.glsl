@@ -5,10 +5,11 @@
 //
 // The defines come from the material (MaterialPbr::getPbrVariant, the "builtin:lit#..."
 // reference): a lobe's (PBR_CLEARCOAT, PBR_SHEEN, PBR_ANISOTROPY, PBR_IRIDESCENCE,
-// PBR_TRANSMISSION, PBR_VOLUME, PBR_SPECULAR), hex tiling's (PBR_HEX_TILING) and one per map
-// the variant binds (PBR_<LOBE>_MAP, PBR_CLEARCOAT_NORMAL_MAP). A variant binds at most three
+// PBR_TRANSMISSION, PBR_VOLUME, PBR_SPECULAR, and the Hair shading model's PBR_HAIR), hex
+// tiling's (PBR_HEX_TILING) and one per map the variant binds (PBR_<LOBE>_MAP,
+// PBR_CLEARCOAT_NORMAL_MAP, PBR_HAIR_MAP: the hair's flow map). A variant binds at most three
 // maps, u_pbrExtTexture0..2, taken in the maps' priority order: clear coat, specular,
-// transmission, sheen, anisotropy, iridescence, clear coat normal. Each slot samples the UV
+// transmission, sheen, anisotropy, iridescence, clear coat normal, hair flow. Each slot samples the UV
 // set texCoordSets.set1.y, .z, .w names (with a second UV set).
 //
 // A fork of mesh.frag keeps the lobes by keeping these includes and hooks (docs/shaders).
@@ -17,7 +18,8 @@
 #define PBR_EXT_SLOTS_GLSL
 
 #if !defined(PBR_EXT) && (defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || \
-    defined(PBR_IRIDESCENCE) || defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING))
+    defined(PBR_IRIDESCENCE) || defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING) || \
+    defined(PBR_HAIR))
     #define PBR_EXT
 #endif
 
@@ -63,6 +65,11 @@
 #else
     #define PBR_N_CLEARCOAT_NORMAL 0
 #endif
+#ifdef PBR_HAIR_MAP
+    #define PBR_N_HAIR 1
+#else
+    #define PBR_N_HAIR 0
+#endif
 
 #define PBR_SLOT_CLEARCOAT 0
 #define PBR_SLOT_SPECULAR (PBR_N_CLEARCOAT)
@@ -71,7 +78,8 @@
 #define PBR_SLOT_ANISOTROPY (PBR_SLOT_SHEEN + PBR_N_SHEEN)
 #define PBR_SLOT_IRIDESCENCE (PBR_SLOT_ANISOTROPY + PBR_N_ANISOTROPY)
 #define PBR_SLOT_CLEARCOAT_NORMAL (PBR_SLOT_IRIDESCENCE + PBR_N_IRIDESCENCE)
-#define PBR_EXT_MAPS (PBR_SLOT_CLEARCOAT_NORMAL + PBR_N_CLEARCOAT_NORMAL)
+#define PBR_SLOT_HAIR (PBR_SLOT_CLEARCOAT_NORMAL + PBR_N_CLEARCOAT_NORMAL)
+#define PBR_EXT_MAPS (PBR_SLOT_HAIR + PBR_N_HAIR)
 
 #if PBR_EXT_MAPS > 3
     #error "a builtin:lit variant binds at most three extension maps"
