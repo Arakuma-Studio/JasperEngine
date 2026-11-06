@@ -163,3 +163,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
   (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
   (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
+- 2026-11-06 18:4x: owner: time efficiency is the priority. Six more Hetzner cpx51 boxes (eight in total, about
+  $3.55/h, 48 h limit), assigned per feature in [BOXES.md](BOXES.md), each with one shared ccache per box.
+  The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
+  controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
+  local slots only finish the jobs already running.
