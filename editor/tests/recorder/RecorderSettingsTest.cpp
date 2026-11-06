@@ -3,6 +3,7 @@
 
 // The Recorder's pure parts (docs/specs/S27-editor-tools.md R24-R30)
 
+#include "audio/AudioClock.h"
 #include "recorder/RecorderSettings.h"
 
 #include "support/TestTempDir.h"
@@ -133,6 +134,17 @@ TEST(RecorderSettings, FfmpegArguments) {
     EXPECT_TRUE(has(prores, "-f", "mov"));
     EXPECT_TRUE(has(mux, "-f", "mp4"));
     EXPECT_TRUE(has(muxArguments(Format::Mov, "v", "a", "o"), "-f", "mov"));
+}
+
+// what the deterministic driver's pump mixes in a game frame is what the Recorder writes for it
+TEST(RecorderSettings, FramesMatchAudioClock) {
+    for (int fps : {24, 30, 60, 144}) {
+        jasperengine::AudioClock clock;
+        clock.reset((unsigned int)kAudioRate);
+        for (int64_t k = 0; k < fps * 600; k++) {
+            ASSERT_EQ(clock.advance(1.0 / fps), audioFramesOf(k, fps)) << fps << " fps, frame " << k;
+        }
+    }
 }
 
 TEST(RecorderSettings, DecodeCheck) {

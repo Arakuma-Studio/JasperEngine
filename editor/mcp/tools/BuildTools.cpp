@@ -535,7 +535,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                 }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
     }
-    // every mode's warnings (W-..., next to the compiler's) and notes
+    // every mode's warnings (W-..., next to the compiler's: a source export ships the same clips and
+    // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {

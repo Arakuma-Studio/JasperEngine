@@ -31,7 +31,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
         {"gameplay", "Character controller, buoyancy and input action maps."},
         {"physics", "Ragdolls and physics materials."},
-        {"audio", "The Audio Mixer: groups, effects, exposed parameters and snapshots."},
+        {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},

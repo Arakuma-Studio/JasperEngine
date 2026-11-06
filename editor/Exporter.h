@@ -357,6 +357,8 @@ namespace jasperengine::editor {
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
+        // S37 R24: an event whose clip is missing is a build warning naming both
+        void checkSoundEventClips();
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
@@ -423,6 +425,10 @@ namespace jasperengine::editor {
         // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
+        // licenses/THIRD-PARTY-AUDIO.txt (with its build warnings) when a shipped clip has a provenance
+        bool writeAudioCredits();
+        // assets/je-audio-imports.json when any shipped clip has import settings
+        bool writeAudioImports();
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();
