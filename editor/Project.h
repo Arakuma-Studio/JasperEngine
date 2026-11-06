@@ -2010,6 +2010,22 @@ namespace jasperengine::editor{
         // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
         // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
         const AudioSettings& getAudioSettings() const;
+
+        // what the next Play does about its audio capture (audio_session arm); it is used once
+        struct AudioCaptureArm {
+            bool armed = false;
+            bool capture = true;
+            // 0: audio.capture_max_seconds
+            int maxSeconds = 0;
+            // -1: audio.capture_stems
+            int stems = -1;
+        };
+        void armAudioCapture(const AudioCaptureArm& arm);
+        const AudioCaptureArm& getAudioCaptureArm() const;
+        // why this Play is not captured though it should be; "" when it is or need not be
+        const std::string& getAudioCaptureError() const;
+        // the session of the Play that just stopped, once ("" when it did not capture)
+        std::string takeAudioCaptureSession();
         void setAudioSettings(const AudioSettings& settings);
         // the project mixer's file (absolute; empty when none is set)
         std::filesystem::path getAudioMixerFile() const;
@@ -2025,6 +2041,18 @@ namespace jasperengine::editor{
         // Play starts from the start snapshot and the remembered values; Play stops back to the
         // asset's values (no script overrides, the listener unpaused, the global volume at 1)
         void resetPlayAudio(bool starting) const;
+        // Play's audio capture (docs/specs/S35-agent-audio.md R4, R10): whether this Play captures and
+        // the driver it needs, before anything of it loads; the session, around its game frames
+        AudioCaptureArm audioCaptureArm;
+        AudioCaptureArm playAudioCapture;
+        bool playAudioCaptureWanted = false;
+        bool playHoldsAudioDriver = false;
+        std::string audioCaptureError;
+        std::string playAudioCaptureSession;
+        void preparePlayAudioCapture();
+        void beginPlayAudioCapture(const SceneProject* mainSceneProject);
+        void endPlayAudioCapture();
+        void releasePlayAudioDriver();
 
         // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
         // (undoable), read by Generator and Play start; a running Play takes a change at once

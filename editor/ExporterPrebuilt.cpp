@@ -471,12 +471,14 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
+    checkSoundEventClips();
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
     if (!cookModels()) return false;
     if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -646,6 +648,8 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMixer = audio.mixer;
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
+    game.audioSeed = audio.seed;
+    game.audioMusicGroup = audio.musicGroup;
     game.audioSampleRate = audio.sampleRate;
     game.audioOutputStage = audio.outputStage;
     game.audioIosSession = audio.iosSessionCategory;

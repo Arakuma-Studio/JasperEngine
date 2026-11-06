@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
+#include "util/UIProbe.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
 #include "Theme.h"
@@ -1274,6 +1276,16 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 170), 3.0f);
             drawList->AddCircleFilled(ImVec2(at.x + 5.0f, at.y + size.y * 0.5f), 4.0f, IM_COL32(230, 40, 40, 255));
             drawList->AddText(at, IM_COL32(255, 70, 70, 255), recording.c_str());
+        }
+
+        // a capture mutes the device: say why the game is silent (S35 R31)
+        if (AudioCapture::isActive()) {
+            static const char* const capturing = "Capturing audio: output muted";
+            const ImVec2 at(areaMin.x + Theme::dpi(8.0f), areaMin.y + areaSize.y - ImGui::GetTextLineHeight() - Theme::dpi(8.0f));
+            const ImVec2 size = ImGui::CalcTextSize(capturing);
+            drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 160), 3.0f);
+            drawList->AddText(at, IM_COL32(255, 255, 255, 255), capturing);
+            UIProbe::rect("game.capturingAudio", at.x, at.y, at.x + size.x, at.y + size.y);
         }
 
         // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes

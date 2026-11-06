@@ -25,6 +25,8 @@ namespace jasperengine::editor {
         AnimationMontage,
         PoseAnimation,
         AudioMixer,
+        SoundEvent,
+        PlaceholderSound,
         PhysicsMaterial,
         PhysicsMaterial2D,
         ShakePreset

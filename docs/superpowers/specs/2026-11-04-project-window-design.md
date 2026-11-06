@@ -821,5 +821,5 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
 12. **Modals (S69, landed after the spec)**: the Create name dialog, the delete refusal and Change Asset Directories go
     through `EditorModal`, so agents see and answer them (`respond_dialog`, field `name`). The folder prompt's three
     nested error boxes became the one name dialog with its error inline (`EditorModal::error`), so
-    `test_editor_modals.py` drives "New Folder" instead of "Create New Directory" and counts 68 modal sites instead of 71;
+    `test_editor_modals.py` drives "New Folder" instead of "Create New Directory" and counts three modal sites fewer (70 with the sound layer's and the importer's);
     its error-box test uses the rename prompt's Invalid Name box instead.

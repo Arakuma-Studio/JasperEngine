@@ -1100,6 +1100,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
+    snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", m_audioSettings.musicGroup.c_str());
     m_debugSettings = project->getDebugSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
@@ -2717,6 +2718,32 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 endSettingsRow("The mixer group new Audio Sources play through.");
             }
 
+            if (settingsui::beginRow("audio.music_group")) {
+                if (projectBeginSettingsRow("Music Group", m_audioMusicGroupBuffer[0] != '\0')) {
+                    m_audioMusicGroupBuffer[0] = '\0';
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::vector<std::string> groups = AudioMixer::getGroupNames();
+                if (ImGui::BeginCombo("##AudioMusicGroup", m_audioMusicGroupBuffer[0] ? m_audioMusicGroupBuffer : (groups.empty() ? "Master" : groups[0].c_str()))) {
+                    for (size_t i = 0; i < groups.size(); i++) {
+                        const char* value = i == 0 ? "" : groups[i].c_str();
+                        if (ImGui::Selectable(groups[i].c_str(), strcmp(value, m_audioMusicGroupBuffer) == 0)) {
+                            snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", value);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The mixer group music plays through when neither Audio.playMusic nor its Sound Event names one.");
+            }
+
+            if (settingsui::beginRow("audio.credits_file")) {
+                if (projectBeginSettingsRow("Audio Credits File", audio.creditsFile != defaults.creditsFile)) {
+                    audio.creditsFile = defaults.creditsFile;
+                }
+                ImGui::Checkbox("##AudioCreditsFile", &audio.creditsFile);
+                endSettingsRow("Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.");
+            }
+
             if (settingsui::beginRow("audio.max_real_voices")) {
                 if (projectBeginSettingsRow("Max Real Voices", audio.maxRealVoices != defaults.maxRealVoices)) {
                     audio.maxRealVoices = defaults.maxRealVoices;
@@ -2739,6 +2766,76 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 audio.maxVoices = std::clamp(audio.maxVoices, 1, 1000);
                 endSettingsRow("Voices playing at all. Past it the least important (the highest Audio Source Priority, the oldest first) "
                                "is stopped, or the new one does not start when it is the least important.");
+            }
+
+            if (settingsui::beginRow("audio.seed")) {
+                if (projectBeginSettingsRow("Random Seed", audio.seed != defaults.seed)) {
+                    audio.seed = defaults.seed;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioSeed", &audio.seed, 1.0f, 0, 2147483647);
+                audio.seed = std::max(audio.seed, 0);
+                endSettingsRow("The seed of Sound Event picks and clip variation in a run without a device, so it repeats. "
+                               "A run with a device draws its own at each start.");
+            }
+
+            for (const AudioQaField& field : audioQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? audio.qa.*field.real != defaults.qa.*field.real : audio.qa.*field.whole != defaults.qa.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) audio.qa.*field.real = defaults.qa.*field.real;
+                    else audio.qa.*field.whole = defaults.qa.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(audio.qa.*field.real), 0.1f, (float)field.minimum, (float)field.maximum);
+                    audio.qa.*field.real = std::clamp(audio.qa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(audio.qa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    audio.qa.*field.whole = std::clamp(audio.qa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix audio; checks report changed thresholds.").c_str());
+            }
+
+            if (settingsui::beginRow("audio.qa.music_group")) {
+                if (projectBeginSettingsRow("Music Group", audio.qa.musicGroup != defaults.qa.musicGroup)) {
+                    audio.qa.musicGroup = defaults.qa.musicGroup;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                char musicGroup[128];
+                std::snprintf(musicGroup, sizeof(musicGroup), "%s", audio.qa.musicGroup.c_str());
+                if (ImGui::InputText("##AudioMusicGroup", musicGroup, sizeof(musicGroup))) audio.qa.musicGroup = musicGroup;
+                endSettingsRow("The mixer group of the game's music, for the silence check. Changing these does not fix audio; checks report changed thresholds.");
+            }
+
+            if (settingsui::beginRow("audio.capture_max_seconds")) {
+                if (projectBeginSettingsRow("Capture Max Seconds", audio.captureMaxSeconds != defaults.captureMaxSeconds)) {
+                    audio.captureMaxSeconds = defaults.captureMaxSeconds;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureMax", &audio.captureMaxSeconds, 1.0f, 1, 3600);
+                audio.captureMaxSeconds = std::clamp(audio.captureMaxSeconds, 1, 3600);
+                endSettingsRow("Seconds of audio a Play's capture keeps; its events go on being logged after them.");
+            }
+
+            if (settingsui::beginRow("audio.capture_keep")) {
+                if (projectBeginSettingsRow("Capture Keep", audio.captureKeep != defaults.captureKeep)) {
+                    audio.captureKeep = defaults.captureKeep;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureKeep", &audio.captureKeep, 1.0f, 1, 20);
+                audio.captureKeep = std::clamp(audio.captureKeep, 1, 20);
+                endSettingsRow("Capture sessions kept in the project; the oldest goes first.");
+            }
+
+            if (settingsui::beginRow("audio.capture_stems")) {
+                if (projectBeginSettingsRow("Capture Stems", audio.captureStems != defaults.captureStems)) {
+                    audio.captureStems = defaults.captureStems;
+                }
+                ImGui::Checkbox("##AudioCaptureStems", &audio.captureStems);
+                endSettingsRow("A capture also writes each mixer group's audio to its own WAV file.");
             }
 
             if (settingsui::beginRow("audio.sample_rate")) {
@@ -5140,6 +5237,7 @@ bool ProjectSettingsWindow::applySettings() {
             audio.mixer = audio.mixer.substr(7);
         }
         audio.defaultOutputGroup = m_audioDefaultGroupBuffer;
+        audio.musicGroup = m_audioMusicGroupBuffer;
         if (audio != m_project->getAudioSettings()) {
             auto* command = new AudioSettingsCmd(m_project, m_project->getAudioSettings(), audio);
             command->setNoMerge();

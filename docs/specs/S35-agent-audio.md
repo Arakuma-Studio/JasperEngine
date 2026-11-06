@@ -610,4 +610,66 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **What a Recorder movie decodes to changes, on purpose, in its first 1,600 frames only.** S62 pinned `408859a6...`; the pin is now `821d2802...`.
+  The cause was not the voice but the Master bus: `playBus` set the bus's unity pan on a running voice, which ramped from the centre's 0.707
+  over the first mix call of the audio, so the output depended on that call's length (red: `DeterministicDriverTest.AStartDoesNotDependOnTheChunks`,
+  48 kHz and 44.1 kHz clips, frames 3 to 1,599 differ by up to 0.056; one call a frame on the driver reproduced S62's exact hash). The bus now starts
+  paused with its pan, so the first sample is at unity and one call and chunks of 512 are the same samples at both rates. A volume a game moves during
+  a Play (`setVolume`, a fader) still ramps over one mix call: making that chunk-independent means a per-voice fixed-length ramp in SoLoud's mix loop,
+  which is not simple and is left as is.
+- **A capture writes S38's `limiter` lines** with `levels.jsonl`'s 100 ms lines, only when a limiter takes something off; `latency_samples` adds the lookahead on the voice's way out (Master's in `session.json`).
+- **The `audio-qa` and `audio-markers` fixtures are not used:** each test makes its scenes over MCP, which keeps the seed next to its check.
+- **AC13 is a gtest (`AudioCaptureBenchTest`) with `perfSlack()`**, not `tools/perf/audio_capture_bench`: AGENTS.md's way of reporting wall-clock budgets. Server F no longer exists.
+- **AC5's unwritable root is a file where a folder goes**, not a read-only folder: the tests run as root in some images.
+- **`voice` is the capture's own serial, not SoLoud's handle:** handles count every play since the process began, so two
+  runs of one editor differed and R8's bytes could not hold. Found by `test_deterministic_twice`.
+- **`levels.jsonl`'s bands are a spectrum, not `AudioOctaveBank`:** the bank on five signals cost 6.7 ms a frame against R28's 0.4 ms
+  (`AudioCaptureBench`, the red run). Each 100 ms line takes a Hann FFT of its last 85 ms, summed over the bank's octave edges, so a click in
+  a line's first 15 ms can read low in the bands (not in `peak_db` or `rms_db`).
+- **R8's latency is not one constant:** measured (`DeterministicDriverTest.LatencyIsOneSampleForEachBusOnTheWay`), a voice
+  reaches the output 1 sample late, plus 1 for each bus on its way: 2 through Master, 3 through a group under it. Each
+  `voice_start` has its `latency_samples`; `session.json`'s is Master's. The checks subtract the voice's.
+- **S37 landed its observer first.** The capture is a client of `AudioSystem::setVoiceObserver`, whose `AudioVoiceLine`
+  gained `pause`/`resume` kinds and `pan`, `looping`, `spatial`, `position` and `loadDelay`. `isDeterministic()` stays
+  S37's "mixed on a null driver" (a seed is `audio.seed` on the Null fallback too); `getOutputMode()` tells the new driver
+  apart. S37's voice lines stay in release players, where R13 wanted nothing: they cost one bool per site, and
+  `JASPERENGINE_AUDIO_TRACE` is useful there.
+- **`play start` also says a Play is capturing** (`audio_capture`, and a text line). Found by the eval: agents played and read runtime state, and never reached
+  `audio_session` until the result told them. It replaces a line in the agent guide, which the eval showed nothing needs.
+- **`stopVoice` writes the stop line itself**, with the reason of a `StopReason` scope around the stop, so no stop has a
+  second path. `ended` is found after each mix, and is stamped at the end of the frame that ended it.
+- **An explicit `JASPERENGINE_AUDIO_BACKEND=null|nosound` does not capture by default** (R4 says "no device"): a test that
+  chose its backend keeps it; `arm` still captures.
+- **A failed write stops the capture**, keeping what was written: the error goes to the Console, `session.json` says
+  `state: "failed"` and `error`, the game goes on.
+- **A player's capture has no project settings:** `max_seconds` 3,600, `keep` 20; `--quit-after` ends it.
+- **R9's Recorder gets silence for a paused Play** (the pump mixes nothing, the frames go on), so sound and picture stay
+  in step; before, sounds paused with the scene while the offline mix went on, the same silence.
+- **The mixer's transitions hold while a Play on this driver is paused**, or how long a pause lasted would be in the mix.
+- **`ClockedVoicesStartAsFarApart...` plays at clock times itself:** with `mixOffline` gone no pump leaves a mix between two
+  frames. The device path's use of the mixer's clock is read, not tested.
+- **AC6 is `test_movie_audio_matches_capture` on MOV:** its audio is PCM; an MP4's AAC cannot equal anything sample for sample.
+- **`html_click` has no scene:** a context does not know its scene; `scene` is empty on these lines.
+- **`voice_start.position` and the group levels' fader** are the values as of the frame's start: a fader moving during a chunk
+  ramps in SoLoud but is one gain per chunk in the group's level and stem.
+- **AC14's "before" is S37's tip**, the branch this one builds on, not `main`: what S35 adds alone.
+
+## Measured (AC13, AC14)
+
+`AudioCaptureBench.PumpAndCaptureBudgets`, server B under load, 32 voices, 4 groups, a reverb, 60 fps, 48 kHz:
+
+| | ms a frame | budget |
+|---|---|---|
+| Null pump | 0.141 | |
+| deterministic pump | 0.135 (-4.0 %); other runs 0.131 (+6.0 %), 0.152 (+6.3 %): the same work, within this server's noise | 0.6, and at most 5 % above Null |
+| capture on top | 0.115 | 0.4 |
+
+Release player, before and after, `full` variant:
+
+| Player | Before | After | Growth | Section 6.6's estimate |
+|---|---|---|---|---|
+| Linux glcore, stripped | 41,213,008 | 41,217,104 | 4,096 bytes (one file page) | at most 3 KB |
+| Web single-thread wasm, gzip | 9,867,146 | 9,867,712 | 566 bytes (3,009 raw) | at most 2 KB |
+| Android arm64 library, stripped | 34,314,400 | 34,320,232 | 5,832 bytes | none stated |
+
+The Linux and Android figures pass the 3 KB estimate by what the linker's pages and the tap's `std::function` list take; nothing of the capture itself is in them.

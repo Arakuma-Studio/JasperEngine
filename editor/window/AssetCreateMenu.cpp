@@ -11,7 +11,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr std::array<AssetCreateItem, 15> ITEMS = {{
+    constexpr std::array<AssetCreateItem, 17> ITEMS = {{
         {AssetCreateKind::Folder, "Folder", ICON_FA_FOLDER_PLUS, "assets.createFolder", false, true},
         {AssetCreateKind::LuaScript, "Lua Script", ICON_FA_FILE_CODE, "assets.createLuaScript", true, true},
         {AssetCreateKind::CppScript, "C++ Script", ICON_FA_FILE_CODE, "assets.createCppScript", false, true},
@@ -24,6 +24,8 @@ namespace {
         {AssetCreateKind::AnimationMontage, "Animation Montage", ICON_FA_FILM, "assets.createAnimationMontage", false, false},
         {AssetCreateKind::PoseAnimation, "Pose Animation", ICON_FA_PERSON, "assets.createPoseAnimation", false, false},
         {AssetCreateKind::AudioMixer, "Audio Mixer", ICON_FA_SLIDERS, "assets.createAudioMixer", true, false},
+        {AssetCreateKind::SoundEvent, "Sound Event", ICON_FA_MUSIC, "assets.createSoundEvent", false, false},
+        {AssetCreateKind::PlaceholderSound, "Placeholder Sound...", ICON_FA_VOLUME_HIGH, "assets.createPlaceholderSound", false, false},
         {AssetCreateKind::PhysicsMaterial, "Physics Material", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial", true, false},
         {AssetCreateKind::PhysicsMaterial2D, "Physics Material 2D", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial2D", false, false},
         {AssetCreateKind::ShakePreset, "Shake Preset", ICON_FA_BURST, "assets.createShakePreset", true, false},

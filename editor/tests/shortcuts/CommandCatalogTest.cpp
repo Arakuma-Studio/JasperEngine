@@ -162,7 +162,7 @@ TEST(CommandCatalog, DynamicCommandsTakeTheirStoredOverride) {
     CommandDef script;
     script.id = "script.tools/align.lua";
     script.group = "Scripts";
-    script.name = "Align";
+    script.name = "Align Scripted Objects";
     script.dynamic = true;
     catalog.add(script);
     catalog.applyStoredOverride(script.id);
@@ -174,7 +174,7 @@ TEST(CommandCatalog, DynamicCommandsTakeTheirStoredOverride) {
     EXPECT_EQ(catalog.storedOverrides().count(script.id), 1u);
     // dynamic rows are not in the generated reference
     catalog.add(script);
-    EXPECT_EQ(catalog.markdownReference().find("Align"), std::string::npos);
+    EXPECT_EQ(catalog.markdownReference().find("Align Scripted Objects"), std::string::npos);
 }
 
 // Ctrl+D duplicates assets in the Project window (one copy per press) and F11 is Maximize On Play

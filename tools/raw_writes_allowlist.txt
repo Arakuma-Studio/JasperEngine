@@ -27,6 +27,11 @@ editor/cli/CommandLine.cpp :: std::ofstream file(options.docFile :: --doc output
 editor/Exporter.cpp :: std::ofstream out(tempPath, std::ios::binary); :: resource pack streamed to resources.pak.tmp, then io::publishFile
 engine/core/physics/ConvexDecomposition.cpp :: std::ofstream out(temporary, :: hull cache entry under the cache's own temporary name (its cross-process cleanup reads them), then io::publishFile
 
+engine/core/audio/AudioCapture.cpp :: std::ofstream file; :: a capture's WAV, streamed to its temporary sibling with its sizes patched every second, then io::publishFile
+engine/core/audio/AudioCapture.cpp :: std::ofstream events; :: a capture's append-only log inside its session: a crash loses at most the last frame's lines
+engine/core/audio/AudioCapture.cpp :: std::ofstream levels; :: a capture's append-only log inside its session: a crash loses at most the last frame's lines
+engine/core/audio/AudioCapture.cpp :: void flushText(std::ofstream& file, :: the two logs above
+
 # export staging copies (S30 owns export staging and its swap)
 editor/Exporter.cpp :: fs::copy_file(source, targetPath :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(exePath, producedPath :: export staging (S30)
