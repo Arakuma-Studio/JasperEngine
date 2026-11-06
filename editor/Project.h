@@ -2253,6 +2253,9 @@ namespace jasperengine::editor{
         // one project file share: project-relative, lexically normal, generic, lower case on a
         // case-insensitive project volume
         static std::string sceneFileKeyOf(const std::filesystem::path& relative, bool caseInsensitive);
+        // A scene whose file claims an id another (earlier) scene has gets a fresh one, written into
+        // its file at once (Unity regenerates a duplicate GUID the same way)
+        void giveSceneFileItsOwnId(SceneProject& sceneProject, const std::filesystem::path& fullPath);
         std::string sceneFileKey(const std::filesystem::path& path) const;
         // The scene (not `exceptSceneId`, not a Play copy) saved at `path`: by key, or the same file
         // through fs::equivalent when both exist. NULL_PROJECT_SCENE when none

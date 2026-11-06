@@ -1721,4 +1721,61 @@ CASES = [
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_copied_scene_ids",
+        "kind": "guard",
+        "what_happened": "A copied .scene used to keep its original's scene id; copies get their own now, and the result says "
+                         "which (copied_scenes): an agent wiring the copy as a child scene needs that id.",
+        "text_at_issue": "move_asset result: copied_scenes [{path, scene_id, name}]",
+        "source": "scene-integrity spec (Doriax e0a38fe33)",
+        "prompt": "Copy the folder levels to levels_v2 with the editor, then tell me the scene id and the scene name the copied "
+                  "Forest scene got.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"copy": True}, "result": ok(
+                "Copied levels to levels_v2 (new GUIDs).",
+                {"from": "levels", "to": "levels_v2", "copy": True, "files_written": ["levels_v2/Forest.scene"],
+                 "copied_scenes": [{"path": "levels_v2/Forest.scene", "scene_id": 2718281828, "name": "Forest 1"}]})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"copy": True}}], "reply_must": [r"2718281828", r"Forest 1"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_scene_view_after_load",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "After the game loads another scene, the Scene view draws that scene (from the editor camera); "
+                         "get_play_state says which scene it draws (scene_view_scene_id).",
+        "text_at_issue": "get_play_state result: scene_view_scene_id",
+        "source": "scene-integrity spec (Doriax 1e6ef8baa)",
+        "prompt": "The game is playing and just loaded another level. Which scene does the editor's Scene view show now? Answer "
+                  "with the scene's name.",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Menu\"). Session: 12 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Menu"},
+                 "running_scenes": [{"id": 3001, "name": "Menu", "main": False}, {"id": 3002, "name": "Arena", "main": True}],
+                 "scene_view_scene_id": 3002})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"Arena"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_game_cursor_released",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "A game that captures the cursor gives it back to the editor on Escape in the Game view; "
+                         "get_play_state says whether it did (input.cursor).",
+        "text_at_issue": "get_play_state result: input.cursor {mode, released_to_editor}",
+        "source": "scene-integrity spec (Doriax e5d7aad14)",
+        "prompt": "The game is playing. Does the game hold the mouse cursor right now, or has it been given back to the editor?",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Main\"). Session: 30 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Main"},
+                 "input": {"actions": {}, "touches": 0, "keys_held": [],
+                           "cursor": {"mode": "captured", "released_to_editor": True}}})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
+        "max_turns": 6,
+    },
 ]

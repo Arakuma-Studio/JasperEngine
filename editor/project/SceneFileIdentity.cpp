@@ -7,7 +7,6 @@
 
 #include "yaml-cpp/yaml.h"
 
-#include <limits>
 #include <vector>
 
 using namespace jasperengine;
@@ -49,21 +48,6 @@ namespace {
         return out.c_str();
     }
 
-}
-
-uint32_t editor::sceneid::replacementId(const std::filesystem::path& relative, const std::function<bool(uint32_t)>& taken) {
-    const std::string seed = relative.lexically_normal().generic_string();
-    // FNV-1a: stable across runs and platforms
-    uint32_t hash = 2166136261u;
-    for (unsigned char c : seed) {
-        hash ^= c;
-        hash *= 16777619u;
-    }
-    uint32_t id = hash == 0 ? 1u : hash;
-    for (uint64_t attempt = 0; attempt < std::numeric_limits<uint32_t>::max() && taken && taken(id); attempt++) {
-        id = id == std::numeric_limits<uint32_t>::max() ? 1u : id + 1u;
-    }
-    return id;
 }
 
 bool editor::sceneid::readSceneHeader(const std::string& text, uint32_t& id, std::string& name) {

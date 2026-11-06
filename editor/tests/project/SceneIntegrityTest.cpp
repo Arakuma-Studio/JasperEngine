@@ -15,6 +15,7 @@
 #include "Stream.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetOps.h"
+#include "command/type/CopyFileCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -32,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -88,16 +90,37 @@ namespace {
             project.reset();
         }
 
-        std::unique_ptr<Project> openProject() {
+        // loadClosed: every listed scene's data too, as the CLI's scene-dump loads them
+        std::unique_ptr<Project> openProject(bool loadClosed = true) {
             auto opened = std::make_unique<Project>();
             opened->setSkipProjectLock(true);
             if (!opened->loadProject(dir.path(), false)) return nullptr;
             for (SceneProject& candidate : opened->getScenes()) {
-                if (!candidate.filepath.empty() && !candidate.scene) {
+                if (loadClosed && !candidate.filepath.empty() && !candidate.scene) {
                     opened->loadScene(candidate.filepath, false, false, true);
                 }
             }
             return opened;
+        }
+
+        void reopen(bool loadClosed = true) {
+            closeProject(*project);
+            project = openProject(loadClosed);
+            ASSERT_TRUE(project);
+            scene = findScene("Main Scene");
+            ASSERT_NE(scene, nullptr);
+            sceneId = scene->id;
+        }
+
+        // project.yaml with one more scenes entry
+        void listScene(const std::string& filepath) {
+            const fs::path yaml = dir.path() / "project.yaml";
+            std::string text = fileText(yaml);
+            const size_t at = text.find("  - filepath: Main Scene.scene");
+            ASSERT_NE(at, std::string::npos) << text;
+            const size_t end = text.find('\n', at);
+            text.insert(end == std::string::npos ? text.size() : end + 1, "  - filepath: " + filepath + "\n");
+            std::ofstream(yaml, std::ios::binary) << text;
         }
 
         SceneProject* findScene(const std::string& name) {
@@ -114,17 +137,6 @@ namespace {
 }
 
 // ---- the identity a scene file carries -------------------------------------------------------
-
-TEST(SceneFileIdentity, ReplacementIdIsStableAndFree) {
-    const uint32_t first = sceneid::replacementId("Levels/A.scene", nullptr);
-    EXPECT_EQ(sceneid::replacementId("Levels/./A.scene", nullptr), first);
-    EXPECT_NE(first, 0u);
-    EXPECT_NE(sceneid::replacementId("Levels/B.scene", nullptr), first);
-    // probed past the ids in use
-    const uint32_t free = sceneid::replacementId("Levels/A.scene", [first](uint32_t id) { return id == first || id == first + 1; });
-    EXPECT_NE(free, first);
-    EXPECT_NE(free, first + 1);
-}
 
 TEST(SceneFileIdentity, RewriteTouchesOnlyTheRootIdAndName) {
     std::string text = "formatVersion: 5\r\nid: 7\r\nname: Level\r\nchildScenes:\r\n  - id: 7\r\n    startActive: true\r\n"
@@ -239,6 +251,13 @@ TEST_F(SceneIntegrityTest, SaveOverAnotherScenesFileIsRefused) {
     EXPECT_TRUE(project->saveSceneToPath(other, "Levels/Other.scene"));
     EXPECT_TRUE(project->saveSceneToPath(other, "Levels/Other.scene"));
     EXPECT_EQ(project->findSceneByPath("Levels/./Other.scene"), other);
+
+    // the extension in any case, as the asset database reads it
+    EXPECT_EQ(project->sceneSavePathProblem(other, "Levels/Other.Scene"), "");
+
+    // a listed scene that did not load (a merge conflict in its file) still owns its file
+    project->addUnresolvedScene(project->getScenes().size(), "Broken.scene");
+    EXPECT_NE(project->sceneSavePathProblem(other, "Broken.scene"), "");
 }
 
 TEST_F(SceneIntegrityTest, NewScenePathsStayInsideTheProject) {
@@ -296,21 +315,87 @@ TEST_F(SceneIntegrityTest, ACopiedSceneGetsItsOwnIdAndName) {
     EXPECT_EQ(project->findSceneByPath("Main Copy.scene"), copyId);
 }
 
-TEST_F(SceneIntegrityTest, AClashAtLoadGetsTheSameReplacementEveryTime) {
-    // a copy made outside the editor carries Main Scene's id
+// A file copied outside the editor (a merge) can claim the id of a scene listed before it. Unity
+// regenerates a duplicate GUID; here the later scene gets a fresh id, written into its file at once,
+// so a closed scene, a reload, a rename and an inline load all see the same id.
+TEST_F(SceneIntegrityTest, AClashWithAClosedSceneIsWrittenIntoItsFile) {
     fs::copy_file(mainFile(), dir.path() / "Twin.scene");
-    ASSERT_TRUE(project->loadScene(dir.path() / "Twin.scene", false, true, true));
+    listScene("Twin.scene");
+    reopen(false);
     const uint32_t twin = project->findSceneByPath("Twin.scene");
     ASSERT_NE(twin, NULL_PROJECT_SCENE);
+    EXPECT_EQ(project->getScene(twin)->scene, nullptr) << "closed: no data loaded";
     EXPECT_NE(twin, sceneId) << "the scene listed first keeps the id";
-    EXPECT_TRUE(project->getScene(twin)->isModified) << "its save writes the new id";
+    EXPECT_EQ(fileSceneId(dir.path() / "Twin.scene"), twin) << "the fresh id is in the file";
 
-    // the next load of the same files picks the same id (no save in between)
-    closeProject(*project);
-    project = openProject();
-    ASSERT_TRUE(project);
-    ASSERT_TRUE(project->loadScene(dir.path() / "Twin.scene", false, true, true));
+    // a reference to it, saved, survives the reload
+    ASSERT_TRUE(project->addChildScene(sceneId, twin));
+    ASSERT_TRUE(project->saveSceneToPath(sceneId, scene->filepath));
+    reopen(false);
+    EXPECT_EQ(project->findSceneByPath("Twin.scene"), twin) << "the same id at the next load";
+    EXPECT_TRUE(project->hasChildScene(sceneId, twin)) << "the child-scene reference holds";
+
+    // loaded inline, it keeps it
+    ASSERT_TRUE(project->loadChildSceneInline(twin));
     EXPECT_EQ(project->findSceneByPath("Twin.scene"), twin);
+    EXPECT_NE(project->getScene(twin)->scene, nullptr);
+}
+
+TEST_F(SceneIntegrityTest, AClashWithAnOpenedFileIsWrittenIntoItsFile) {
+    fs::copy_file(mainFile(), dir.path() / "Twin.scene");
+    ASSERT_TRUE(project->loadScene(dir.path() / "Twin.scene", true, true, true));
+    const uint32_t twin = project->findSceneByPath("Twin.scene");
+    ASSERT_NE(twin, NULL_PROJECT_SCENE);
+    EXPECT_NE(twin, sceneId);
+    EXPECT_EQ(fileSceneId(dir.path() / "Twin.scene"), twin);
+    EXPECT_EQ(project->getSelectedSceneId(), twin) << "selected under its new id";
+
+    // renamed after the fix, the file carries its id
+    const AssetOps::Result moved = AssetOps::move(*project, dir.path() / "Twin.scene", dir.path() / "Renamed.scene");
+    ASSERT_TRUE(moved.ok) << moved.error;
+    ASSERT_TRUE(project->saveProjectFile());
+    reopen();
+    EXPECT_EQ(project->findSceneByPath("Renamed.scene"), twin);
+}
+
+TEST_F(SceneIntegrityTest, ADuplicateProjectEntryLoadsOnce) {
+    listScene("Main Scene.scene");
+    reopen();
+    size_t listed = 0;
+    for (const SceneProject& candidate : project->getScenes()) {
+        if (candidate.filepath == "Main Scene.scene") listed++;
+    }
+    EXPECT_EQ(listed, 1u);
+}
+
+TEST_F(SceneIntegrityTest, AnOldProjectsOutsideSceneLoadsAndSavesInPlace) {
+    // a guard, not a red control: an older editor let a project list a scene outside its folder
+    const std::string outsideName = dir.path().filename().string() + "-shared.scene";
+    const fs::path outside = dir.path().parent_path() / outsideName;
+    fs::copy_file(mainFile(), outside, fs::copy_options::overwrite_existing);
+    sceneid::rewriteSceneHeader(outside, 777001u, std::string("Shared"), nullptr);
+    listScene("../" + outsideName);
+    reopen();
+    SceneProject* shared = findScene("Shared");
+    ASSERT_NE(shared, nullptr);
+    EXPECT_EQ(project->sceneSavePathProblem(shared->id, shared->filepath), "");
+    EXPECT_TRUE(project->saveSceneToPath(shared->id, shared->filepath));
+    fs::remove(outside);
+}
+
+TEST_F(SceneIntegrityTest, ACopyOverAnExistingSceneKeepsItsIdentity) {
+    const uint32_t other = project->createSceneNow("Other", SceneType::SCENE_3D);
+    ASSERT_TRUE(project->saveSceneToPath(other, "Other.scene"));
+    const fs::path outsideDir = dir.path().parent_path() / (dir.path().filename().string() + "-incoming");
+    fs::create_directories(outsideDir);
+    fs::copy_file(mainFile(), outsideDir / "Other.scene", fs::copy_options::overwrite_existing);
+
+    CopyFileCmd copy(project.get(), std::vector<std::string>{(outsideDir / "Other.scene").string()}, dir.path().string(), true);
+    copy.setOverwrite(true);
+    ASSERT_TRUE(copy.execute());
+    EXPECT_EQ(fileSceneId(dir.path() / "Other.scene"), other) << "replaced in place, it stays the scene it was";
+    EXPECT_EQ(fileSceneName(dir.path() / "Other.scene"), "Other");
+    fs::remove_all(outsideDir);
 }
 
 // ---- the tracked list and its commands -----------------------------------------------------------

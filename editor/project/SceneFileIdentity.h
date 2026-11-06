@@ -3,24 +3,17 @@
 
 // The identity a .scene file carries at its root: the scene id (child-scene references, the
 // build list and the generated code use it) and the scene name (unique in a project, it names
-// the generated code). A copied file gets its own; a clash found at load gets a replacement
-// that is the same at every load (docs/data-safety.md, "Scene files and identity").
+// the generated code). A copied file gets its own; so does a file whose id another scene already
+// has when it loads (docs/data-safety.md, "Scene files and identity").
 
 #pragma once
 
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <string>
 
 namespace jasperengine::editor::sceneid {
-
-    // A replacement id for the scene file at `relative` (project-relative): derived from the path,
-    // so every load picks the same one (the file's GUID is not settled yet for a copy made outside
-    // the editor: it carries its original's), and probed past the ids `taken` reports. Never 0
-    // (NULL_PROJECT_SCENE).
-    uint32_t replacementId(const std::filesystem::path& relative, const std::function<bool(uint32_t)>& taken);
 
     // The root `id` and `name` of a scene file's text; false when the text has no root id
     bool readSceneHeader(const std::string& text, uint32_t& id, std::string& name);

@@ -4302,8 +4302,15 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             }
         }
 
+        // a listed scene keeps the id the project knows it by, whatever its file says
+        const uint32_t knownId = isNewScene ? NULL_PROJECT_SCENE : targetScene->id;
         Stream::decodeSceneProject(targetScene, sceneNode, loadSceneData);
         targetScene->diskSha1 = diskSha1;
+        // before anything files the scene under its id (selection, dock, linked materials)
+        if (knownId != NULL_PROJECT_SCENE) {
+            targetScene->id = knownId;
+        }
+        giveSceneFileItsOwnId(*targetScene, fullPath);
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -4392,31 +4399,6 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
 
         if (opened) {
             addTab(TabType::SCENE, targetScene->filepath.string());
-        }
-
-        // A file copied outside the editor, a merge or an old project can bring two files claiming
-        // one id: the scene listed (or loaded) first keeps it, this one gets an id derived from its
-        // file, the same at every load, which its next save writes
-        SceneProject* existing = getScene(targetScene->id);
-        if (targetScene->id == NULL_PROJECT_SCENE || (existing && existing != targetScene)) {
-            const uint32_t oldId = targetScene->id;
-            const fs::path relative = normalizeToProjectRelative(targetScene->filepath);
-            targetScene->id = sceneid::replacementId(sceneFileKey(relative),
-                [this, targetScene](uint32_t id) {
-                    const SceneProject* holder = getScene(id);
-                    return holder && holder != targetScene;
-                });
-            if (loadSceneData) {
-                targetScene->isModified = true;
-            }
-            if (oldId != NULL_PROJECT_SCENE) {
-                Out::warning("Scene file \"%s\" carries id %u, which \"%s\" uses: it gets id %u (the same at every load; save it to "
-                             "keep it). References to %u still mean \"%s\".", relative.generic_string().c_str(), oldId,
-                             existing ? existing->filepath.generic_string().c_str() : "", targetScene->id, oldId,
-                             existing ? existing->name.c_str() : "");
-            } else {
-                Out::warning("Scene file \"%s\" has no id: it gets id %u (save it to keep it)", relative.generic_string().c_str(), targetScene->id);
-            }
         }
 
         for (LoadIssue& issue : targetScene->loadReport.issues) {
@@ -4820,6 +4802,38 @@ uint32_t editor::Project::findSceneByPath(const std::filesystem::path& filepath)
     return findOtherSceneUsingFile(filepath, NULL_PROJECT_SCENE);
 }
 
+void editor::Project::giveSceneFileItsOwnId(SceneProject& sceneProject, const fs::path& fullPath) {
+    const SceneProject* holder = getScene(sceneProject.id);
+    if (sceneProject.id != NULL_PROJECT_SCENE && (!holder || holder == &sceneProject)) {
+        return;
+    }
+    // A file copied outside the editor, a merge or an old project can bring two files claiming one
+    // id. As Unity regenerates a duplicate GUID, the scene listed first keeps it and this one gets a
+    // fresh id, written into its file now: a reference made to it from here on survives every load.
+    const uint32_t oldId = sceneProject.id;
+    sceneProject.id = allocateSceneId();
+    const std::string file = FileUtils::pathToGenericUtf8(normalizeToProjectRelative(fullPath));
+    std::string error;
+    if (sceneid::rewriteSceneHeader(fullPath, sceneProject.id, std::nullopt, &error)) {
+        FileUtils::reportWritten(fullPath);
+        std::string text;
+        if (assetio::readFile(fullPath, text)) {
+            sceneProject.diskSha1 = DocumentFiles::sha1(text);
+        }
+        if (oldId != NULL_PROJECT_SCENE) {
+            Out::warning("Scene file \"%s\" carried id %u, which \"%s\" uses: its id is now %u (written into the file)",
+                         file.c_str(), oldId, holder ? holder->filepath.generic_string().c_str() : "", sceneProject.id);
+        } else {
+            Out::warning("Scene file \"%s\" had no id: its id is now %u (written into the file)", file.c_str(), sceneProject.id);
+        }
+    } else {
+        // read only (a version control lock): the next save writes it
+        sceneProject.isModified = sceneProject.scene != nullptr;
+        Out::warning("Scene file \"%s\" carries id %u, which another scene uses: its id is now %u, not written (%s); save it to "
+                     "keep it", file.c_str(), oldId, sceneProject.id, error.c_str());
+    }
+}
+
 std::string editor::Project::sceneFileKeyOf(const fs::path& relative, bool caseInsensitive) {
     std::string key = relative.lexically_normal().generic_string();
     if (caseInsensitive) {
@@ -4877,7 +4891,7 @@ std::string editor::Project::sceneSavePathProblem(uint32_t sceneId, const fs::pa
     if (!ownFile && (relative.empty() || relative.is_absolute() || *relative.begin() == ".." || relative == ".")) {
         return "Scenes are saved inside the project folder: " + FileUtils::pathToGenericUtf8(full) + " is outside it";
     }
-    if (full.extension() != ".scene") {
+    if (!Util::isSceneFile(FileUtils::pathToUtf8(full))) {
         return FileUtils::pathToGenericUtf8(relative) + " is not a .scene file";
     }
     const uint32_t owner = findOtherSceneUsingFile(full, sceneId);
@@ -4885,6 +4899,14 @@ std::string editor::Project::sceneSavePathProblem(uint32_t sceneId, const fs::pa
         const SceneProject* other = getScene(owner);
         return FileUtils::pathToGenericUtf8(relative) + " is the file of scene \"" + (other ? other->name : std::to_string(owner)) +
                "\": choose another name";
+    }
+    // a scene project.yaml lists that did not load (a merge conflict in it) still owns its file
+    const std::string key = sceneFileKey(full);
+    for (const auto& [position, unresolved] : unresolvedScenes) {
+        if (sceneFileKey(unresolved) == key) {
+            return FileUtils::pathToGenericUtf8(relative) + " is the file of a scene of the project that did not load: choose "
+                   "another name";
+        }
     }
     std::error_code ec;
     if (fs::is_directory(full, ec)) {
@@ -5388,7 +5410,10 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
             DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Scene);
             YAML::Node sceneNode = document.root;
 
+            // the id the project knows it by, whatever its file says
+            const uint32_t knownId = childScene->id;
             Stream::decodeSceneProject(childScene, sceneNode, true);
+            childScene->id = knownId;
             loadSceneProjectData(childScene, sceneNode);
             childScene->diskSha1 = document.sha1;
         }

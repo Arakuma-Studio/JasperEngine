@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "util/UIProbe.h"
+#include "util/Util.h"
 #include "window/EditorModal.h"
 #include "util/FileUtils.h"
 #include <algorithm>
@@ -33,7 +34,7 @@ namespace {
 
 std::string SceneSaveDialog::withSceneExtension(const std::string& name) {
     if (name.empty()) return name;
-    return fs::path(name).extension() == ".scene" ? name : name + ".scene";
+    return Util::isSceneFile(name) ? name : name + ".scene";
 }
 
 std::string SceneSaveDialog::nameProblem(const fs::path& projectPath, const fs::path& folder, const std::string& name,

@@ -44,11 +44,8 @@ animates the user's moves):
 
 ## While the game plays
 
-The Scene view of the played scene draws from the editor camera. After a game load replaced the
-played scene, it draws the loaded scene instead: `get_play_state` reports it as
-`scene_view_scene_id`, and `pick_at` on the played scene returns the loaded scene's GameObjects
-(their `scene` is the loaded copy's id). `get_play_state` `input.cursor` gives the game's mouse
-mode and `released_to_editor` (Escape in the Game view, or `run_command playmode.releaseCursor`).
+After a game load replaced the played scene, the played scene's Scene view draws (and picks) the
+scene the game loaded, from the editor camera.
 
 ## Bookmarks, layouts, measures, filters
 

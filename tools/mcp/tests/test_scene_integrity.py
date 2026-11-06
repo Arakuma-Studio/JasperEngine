@@ -12,7 +12,7 @@ over another scene, scenes outside the project, project.yaml entries, id clashes
 import asyncio
 import re
 
-from harness import Editor
+from harness import REPO, Editor
 
 EDITOR = {"create": True}
 CI = True
@@ -235,3 +235,52 @@ async def test_save_all_asks_for_untitled_scenes(ed: Editor):
     if await wait_dialog(ed, "Save Project", seconds=10):
         await ed.call("respond_dialog", choice="cancel")
 
+
+
+# the "entity" payload's drop targets, each reviewed for the scene its GameObject id belongs to
+# (sameSceneDropProblem, referenceDropProblem, payloadSceneId): a new one joins this list
+ENTITY_DROP_TARGETS = {
+    "editor/window/AnimationWindow.cpp": 1,
+    "editor/window/BookmarksWindow.cpp": 1,
+    "editor/window/CodeEditor.cpp": 1,
+    "editor/window/HierarchyWindow.cpp": 2,
+    "editor/window/InspectorParticles.cpp": 1,
+    "editor/window/InspectorWindow.cpp": 3,
+    "editor/window/PoseAnimationWindow.cpp": 1,
+    "editor/window/ProjectWindow.cpp": 1,
+    "editor/window/SpriteNormalsWindow.cpp": 1,
+    "editor/window/VertexAnimationBakerWindow.cpp": 1,
+}
+
+
+async def test_entity_payload_targets_are_audited(ed: Editor):
+    found = {}
+    for path in sorted((REPO / "editor").rglob("*.cpp")):
+        count = path.read_text(errors="replace").count('AcceptDragDropPayload("entity"')
+        if count:
+            found[str(path.relative_to(REPO))] = count
+    expected = {k: v for k, v in ENTITY_DROP_TARGETS.items() if v}
+    ed.check_eq(found, expected, "every entity drop target is in the reviewed list (a new one: check its scene rule)")
+
+
+async def test_cameraless_3d_runtime_scene_warns_once(ed: Editor):
+    """A 3D scene with no camera running as a child scene: one warning, not "Invalid camera entity"."""
+    world = (await ed.call("create_scene", name="World", type="3D", path="scenes/World"))["scene"]["id"]
+    await ed.call("create_entity", scene=world, type="camera", name="Eye", position=[0, 1, 5])
+    await ed.call("set_main_camera", scene=world, entity="Eye")
+    props = (await ed.call("create_scene", name="Props", type="3D", path="scenes/Props"))["scene"]["id"]
+    await ed.call("create_entity", scene=props, type="cube", name="Crate")
+    await ed.call("save_scene", scene=props)
+    await ed.call("set_child_scene", scene=world, child=props, start_active=True)
+    await ed.call("save_scene", scene=world)
+    await ed.call("select_scene", scene=world)
+    await ed.console_since(None)
+    started = await ed.call("play", action="start", scene=world)
+    ed.check_eq(started["state"], "playing")
+    try:
+        await ed.call("wait", frames=5)
+        messages = [e["message"] for e in await ed.console_since()]
+        ed.check_eq(sum("has no camera" in m for m in messages), 1, f"one warning: {messages}")
+        ed.check(not any("Invalid camera entity" in m for m in messages), f"no camera error: {messages}")
+    finally:
+        await ed.call("play", action="stop")

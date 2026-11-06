@@ -1028,3 +1028,17 @@ Recorded during the implementation (branch `dc/scene-integrity`).
     planned was not needed; the test stays as a guard. The generator and cooker sort their copy whatever
     the list says (`GeneratedScenes.ParentsAreCreatedBeforeChildren`, red without it); the sorts after a
     model load and a duplicate are kept from reading the code, not from a failing test.
+14. **The clash rule changed again (review)**: no replacement id is derived (neither from the GUID nor the
+    path, deviation 12 is withdrawn). As Unity regenerates a duplicate GUID, the later scene in
+    `project.yaml` order gets a fresh id written into its file at once (`Project::giveSceneFileItsOwnId`,
+    a line edit through `assetio` with a read stamp), so a closed scene, a reload, a rename, an inline load
+    and a reference saved against it all agree. A listed scene keeps the id the project knows it by when
+    its data loads later (`loadScene`, `loadChildSceneInline`).
+15. **Case folding follows the project's volume, not each file's**: a linked folder on a case-sensitive
+    volume inside a project on a case-insensitive one can have two files whose names differ only in
+    case, and the second is refused as "another scene's file". The refusal is safe (nothing is
+    overwritten) and the layout rare; asking each folder's volume costs a probe per save.
+16. **Eval cases** for the new result fields: `guard_copied_scene_ids` (`copied_scenes`),
+    `guard_scene_view_after_load` (`scene_view_scene_id`), `guard_game_cursor_released` (`input.cursor`).
+    The area guides no longer list fields or the refusals the server enforces.
+

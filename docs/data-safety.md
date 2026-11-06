@@ -61,9 +61,10 @@ the generated code and `SceneManager.loadScene("Level1")`).
   in a copied folder keeps its original asset. Copying over an existing scene file keeps that
   file's id and name: it stays the scene it was.
 - **Two files claiming one id.** A copy made outside the editor, or a merge, can still bring two
-  files with one id. The scene listed first in `project.yaml` (or open first) keeps it; the other
-  gets an id made from its file's path, the same at every load, is marked modified and the
-  Console names both files. Save it to write the new id.
+  files with one id. As Unity regenerates a duplicate GUID, the scene listed first in
+  `project.yaml` (or open first) keeps it, and the other gets a fresh id written into its file at
+  once; the Console names the file and both ids. A read-only file (a version control lock) keeps
+  the fresh id in the editor until the next save writes it.
 - **Save All saves every scene.** File > Save All saves the scenes with changes, then asks where
   to save each scene that was never saved (Ctrl+S on an untitled scene asks too, changed or not).
   Cancel stops there. The save before quitting or switching projects leaves out an untitled scene
