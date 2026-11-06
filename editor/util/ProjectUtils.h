@@ -158,6 +158,7 @@ public:
         // Ok: the chunk returned a table, without a `properties` field (entry.properties cleared)
         bool returnedTable = false;
         bool noPropertiesField = false;
+        bool propertiesTable = false;   // `properties` is a table (another value declares nothing: kept)
     };
     // Reads a Lua script's properties as the editor does: runs its top level in L (this
     // executes the file) and reads the `properties` of the table it returns, all in protected

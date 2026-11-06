@@ -110,7 +110,8 @@ namespace jasperengine::editor{
         void restoreMorphWeights(Scene* scene, const ModelComponent& model);
 
         // The mesh-wide settings of the parts (shadows, lights, shaders...) the user set, carried by
-        // node to the parts a same-file rebuild makes, like the arrangement
+        // node to the parts a same-file rebuild makes, like the arrangement. Not the winding order:
+        // the loader derives it from the node's transform, which a re-export may mirror
         struct PartMeshSettings {
             NodeRef part;
             bool castShadows = true;
@@ -119,7 +120,6 @@ namespace jasperengine::editor{
             bool receiveLights = true;
             bool receiveIBL = true;
             CullingMode cullingMode = CullingMode::BACK;
-            WindingOrder windingOrder = WindingOrder::CCW;
             bool lodEnabled = false;
             float lodBias = 1.0f;
             bool transparent = false;

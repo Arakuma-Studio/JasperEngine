@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,8 +22,8 @@ namespace jasperengine::editor {
         // entry's properties as its saved Lua file declares them; entry keeps its own on a load
         // or run error (reported once per file)
         void loadLua(ScriptEntry& entry, const std::filesystem::path& luaFile);
-        // the DPROPERTY fields of a C++ script header
-        const std::vector<ScriptProperty>& cppProperties(const std::filesystem::path& header);
+        // the DPROPERTY fields of a C++ script header; none when it can't be read (missing)
+        std::optional<std::vector<ScriptProperty>> cppProperties(const std::filesystem::path& header);
 
         // how many Lua chunks the caches of the process have run (tests)
         static int runsForTest();
@@ -33,7 +34,7 @@ namespace jasperengine::editor {
             std::vector<ScriptProperty> properties;
         };
         std::map<std::filesystem::path, LuaFile> luaFiles;
-        std::map<std::filesystem::path, std::vector<ScriptProperty>> headers;
+        std::map<std::filesystem::path, std::optional<std::vector<ScriptProperty>>> headers;
     };
 
 }

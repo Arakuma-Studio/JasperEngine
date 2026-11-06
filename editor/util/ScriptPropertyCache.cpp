@@ -34,8 +34,9 @@ void ScriptPropertyCache::loadLua(ScriptEntry& entry, const std::filesystem::pat
             } else if (result.status == ProjectUtils::LuaPropertiesResult::PropertyError) {
                 Out::error("Failed to read the properties of Lua script \"%s\": %s", key.string().c_str(), result.message.c_str());
             } else {
-                // a module that returns no table runs as no script: its fields stay until it does
-                file.ok = result.returnedTable;
+                // a module that returns no table runs as no script, and a `properties` that is not a
+                // table declares nothing readable: the fields stay, as an uncached read keeps them
+                file.ok = result.returnedTable && (result.noPropertiesField || result.propertiesTable);
                 file.properties = probe.properties;
             }
         }
@@ -46,11 +47,16 @@ void ScriptPropertyCache::loadLua(ScriptEntry& entry, const std::filesystem::pat
     }
 }
 
-const std::vector<ScriptProperty>& ScriptPropertyCache::cppProperties(const std::filesystem::path& header) {
+std::optional<std::vector<ScriptProperty>> ScriptPropertyCache::cppProperties(const std::filesystem::path& header) {
     const std::filesystem::path key = header.lexically_normal();
     auto found = headers.find(key);
     if (found == headers.end()) {
-        found = headers.emplace(key, ScriptParser::parseScriptProperties(key)).first;
+        std::optional<std::vector<ScriptProperty>> parsed;
+        std::string code;
+        if (ProjectChecks::readFile(key, code)) {
+            parsed = ScriptParser::parseScriptPropertiesFromString(code, key.string());
+        }
+        found = headers.emplace(key, std::move(parsed)).first;
     }
     return found->second;
 }

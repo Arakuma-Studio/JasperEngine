@@ -281,7 +281,6 @@ namespace {
         to.receiveLights = from.receiveLights;
         to.receiveIBL = from.receiveIBL;
         to.cullingMode = from.cullingMode;
-        to.windingOrder = from.windingOrder;
         to.lodEnabled = from.lodEnabled;
         to.lodBias = from.lodBias;
         to.transparent = from.transparent;

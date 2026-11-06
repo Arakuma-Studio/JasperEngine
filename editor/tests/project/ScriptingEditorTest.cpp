@@ -159,6 +159,43 @@ TEST_F(ScriptingEditor, SavedFileWithoutTableClears) {
     EXPECT_TRUE(scripts[0].properties.empty());
 }
 
+TEST_F(ScriptingEditor, MissingCppHeaderKeepsFields) {
+    std::vector<Entity> entities;
+    SceneProject* scene = newScene("MissingHeader", entities, 1);
+    ScriptEntry entry;
+    entry.type = ScriptType::CPP;
+    entry.enabled = true;
+    entry.headerPath = "scripts/Gone.h";
+    entry.path = "scripts/Gone.cpp";
+    entry.className = "Gone";
+    ScriptProperty speed;
+    speed.name = "speed";
+    speed.type = ScriptPropertyType::Float;
+    entry.properties.push_back(speed);
+    std::vector<ScriptEntry> scripts = {entry};
+
+    // a header that is not there says nothing about the fields: a refresh keeps them, cached or not
+    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts));
+    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    ScriptPropertyCache cache;
+    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
+    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+}
+
+TEST_F(ScriptingEditor, NonTablePropertiesKeepFieldsCachedOrNot) {
+    writeFile(lua("odd.lua"), kSpeedScript);
+    std::vector<Entity> entities;
+    SceneProject* scene = newScene("Odd", entities, 1);
+    std::vector<ScriptEntry> scripts = {luaEntry("odd.lua")};
+    project()->updateScriptProperties(scene, entities[0], scripts);
+    writeFile(lua("odd.lua"), "return { properties = 5 }\n");
+    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts));
+    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    ScriptPropertyCache cache;
+    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
+    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+}
+
 TEST_F(ScriptingEditor, LiveBufferWithoutTableKeeps) {
     writeFile(lua("live.lua"), kSpeedScript);
     std::vector<Entity> entities;
@@ -356,6 +393,10 @@ TEST_F(ScriptingEditor, PartMeshSettingsSurviveRebuild) {
     ASSERT_NE(oldEyes, NULL_ENTITY);
     scene->getComponent<MeshComponent>(oldEyes).castShadows = false;
     scene->getComponent<MeshComponent>(oldEyes).receiveLights = false;
+    // the winding the loader gives a node follows its transform (a re-export may mirror it): not carried
+    const WindingOrder loaderWinding = scene->getComponent<MeshComponent>(oldEyes).windingOrder;
+    scene->getComponent<MeshComponent>(oldEyes).windingOrder =
+        loaderWinding == WindingOrder::CW ? WindingOrder::CCW : WindingOrder::CW;
 
     // the same file again: the parts are made anew
     ASSERT_TRUE(CommandHandle::get(id)->addCommand(new ModelLoadCmd(p, id, model, file)));
@@ -364,6 +405,7 @@ TEST_F(ScriptingEditor, PartMeshSettingsSurviveRebuild) {
     EXPECT_NE(newEyes, oldEyes) << "a rebuild";
     EXPECT_FALSE(scene->getComponent<MeshComponent>(newEyes).castShadows);
     EXPECT_FALSE(scene->getComponent<MeshComponent>(newEyes).receiveLights);
+    EXPECT_EQ(scene->getComponent<MeshComponent>(newEyes).windingOrder, loaderWinding);
     EXPECT_TRUE(scene->getComponent<MeshComponent>(scene->getComponent<ModelComponent>(model).meshNodesMapping.at(0)).castShadows);
 
     ASSERT_TRUE(CommandHandle::get(id)->undo());

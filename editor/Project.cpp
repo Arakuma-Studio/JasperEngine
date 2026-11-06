@@ -3,6 +3,7 @@
 
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
+#include "util/ProjectChecks.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
@@ -9080,9 +9081,14 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
             if (edited) {
                 parsedProperties = ScriptParser::parseScriptPropertiesFromString(inMemoryContent, fullPath.string());
             } else if (cache) {
-                parsedProperties = cache->cppProperties(fullPath);
+                const std::optional<std::vector<ScriptProperty>> cached = cache->cppProperties(fullPath);
+                // a header gone or unreadable says nothing about its fields: they stay
+                if (!cached) continue;
+                parsedProperties = *cached;
             } else {
-                parsedProperties = ScriptParser::parseScriptProperties(fullPath);
+                std::string code;
+                if (!ProjectChecks::readFile(fullPath, code)) continue;
+                parsedProperties = ScriptParser::parseScriptPropertiesFromString(code, fullPath.string());
             }
             hasChanges |= mergeScriptProperties(scriptEntry.properties, parsedProperties);
             continue;

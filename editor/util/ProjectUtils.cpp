@@ -1581,6 +1581,7 @@ editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::runLuaScriptProp
         result.returnedTable = true;
         lua_getfield(L, -1, "properties");
         result.noPropertiesField = lua_isnil(L, -1);
+        result.propertiesTable = lua_istable(L, -1);
         lua_pop(L, 1);
         if (result.noPropertiesField) {
             // the script declares no properties (any it had are gone)
