@@ -1384,7 +1384,8 @@ void editor::SceneRender3D::hideEntityGizmos(Entity entity){
         body->second.lines->setVisible(false);
     }
     for (auto* lines : {&jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines, &reflectionProbeLines,
-                        &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines}) {
+                        &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines,
+                        &capsuleShadowLines}) {
         hide(*lines);
     }
 }
