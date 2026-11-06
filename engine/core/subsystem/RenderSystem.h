@@ -623,8 +623,10 @@ namespace jasperengine{
 			LineRendererComponent* lines = nullptr;
 			TrailRendererComponent* trail = nullptr;
 			// its rank among the pass's waters (render/WaterLayering.h): what a water covers
-			// draws before it, what is in front of it after
+			// draws before it, what is in front of it after; and the distance it sorts at (its
+			// own, or its waters' group's: waterPlace)
 			int8_t waterRank = 0;
+			float waterSortDistance = 0.0f;
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -668,18 +670,19 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
-		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
-		// the submission order (a total order, so std::sort is deterministic)
+		// draw order of the transparent queue: the lowest sort priority, then around the waters
+		// (waterSortOrder: the farthest sort distance, the higher rank, the farthest), then the
+		// submission order (a total order, so std::sort is deterministic)
 		// (Sorting Layers and Order in Layer, pixel-art S52, go before sortPriority; the water
-		// rank stays right after it)
+		// order stays right after it)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
-				if (lhs.waterRank != rhs.waterRank)
-					return lhs.waterRank > rhs.waterRank;
-				if (lhs.distanceToCamera != rhs.distanceToCamera)
-					return lhs.distanceToCamera > rhs.distanceToCamera;
+				const int water = waterSortOrder(lhs.waterSortDistance, lhs.waterRank, lhs.distanceToCamera,
+				                                 rhs.waterSortDistance, rhs.waterRank, rhs.distanceToCamera);
+				if (water != 0)
+					return water < 0;
 				return lhs.order < rhs.order;
 			}
 		};
@@ -2629,6 +2632,9 @@ namespace jasperengine{
 		// scene's cap, each drawn mirrored about its plane before the camera's own pass;
 		// terrainView: the terrain cut the passes draw (the primary view's next free slot)
 		void renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView);
+		// whether the camera sees a mesh reading a planar reflection from above it, with the
+		// scene's resolution on (its water reflection passes draw this frame)
+		bool planarReflectionVisible(Entity cameraEntity);
 		// the view's reflection passes unused for a while freed (all of them: everything)
 		void releaseWaterReflections(RenderView& view, bool everything);
 		// what a reflection camera takes of the camera it mirrors (copied: making a camera entity
@@ -2659,9 +2665,6 @@ namespace jasperengine{
 		AABB transparentBounds(const TransparentRenderData& renderData) const;
 		// whether a draw of the transparent queue samples the scene colour (and is drawn)
 		bool readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView);
-		// whether the hierarchy loop of a camera pass draws the entity in place (a 3D pass draws
-		// meshes, blended points and particles from its transparent queue)
-		bool drawsInHierarchyLoop(Entity entity, Signature signature, const Transform& transform, bool distanceSort);
 		// the box's extent in normalized device coordinates (xmin, ymin, xmax, ymax): the whole
 		// screen when it is unknown or reaches behind the eye
 		static Vector4 screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection);

@@ -10795,28 +10795,11 @@ void RenderSystem::gatherPassWaters(const std::vector<TransparentRenderData>& qu
             if (Water::readWaves(mesh.submeshes[s].material, waves))
                 break;
         }
-        const AABB& bounds = mesh.worldAABB;
-        const float reach = waves.getHorizontalReach();
+        // (a sloped one, a river, is not layered by)
         WaterLayer water;
-        water.entity = renderData.entity;
-        water.level = bounds.getMaximum().y;
-        water.band = waves.getBand();
-        water.minXZ = Vector2(bounds.getMinimum().x - reach, bounds.getMinimum().z - reach);
-        water.maxXZ = Vector2(bounds.getMaximum().x + reach, bounds.getMaximum().z + reach);
-        waters.push_back(water);
+        if (makeWaterLayer(renderData.entity, mesh.worldAABB, waves, renderData.distanceToCamera, water))
+            waters.push_back(water);
     }
-}
-
-bool RenderSystem::drawsInHierarchyLoop(Entity entity, Signature signature, const Transform& transform, bool distanceSort){
-    if (!distanceSort)
-        return true;
-    if (signature.test(scene->getComponentId<MeshComponent>()))
-        return false;
-    if (signature.test(scene->getComponentId<PointsComponent>()))
-        return !scene->getComponent<PointsComponent>(entity).isTransparent();
-    if (signature.test(scene->getComponentId<ParticleSystemComponent>()))
-        return transform.parent != NULL_ENTITY && isUIParticle(entity);
-    return true;
 }
 
 bool RenderSystem::readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView){
@@ -14235,6 +14218,26 @@ void RenderSystem::releaseWaterReflections(RenderView& view, bool everything){
         view.waterReflectionOf.clear();
 }
 
+bool RenderSystem::planarReflectionVisible(Entity cameraEntity){
+    if (planarReflectionMeshes.empty() || scene->getPlanarReflectionResolution() == PlanarReflectionResolution::OFF)
+        return false;
+    CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    if (!camera)
+        return false;
+    const Vector3 eye = ReflectionViewer::of(*camera).eye;
+    for (Entity entity : planarReflectionMeshes){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->worldAABB.isNull() || !transform->visible)
+            continue;
+        if (!isRenderActive(entity) || !isLayerVisible(entity, camera->cullingMask) || !isInsideCamera(*camera, mesh->worldAABB))
+            continue;
+        if (eye.y > mesh->worldAABB.getMaximum().y + 1e-3f)
+            return true;
+    }
+    return false;
+}
+
 void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView){
     view.waterReflectionOf.clear();
     view.waterReflectionCamera = &viewer;
@@ -14310,6 +14313,16 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
             viewHeight = viewRect.getHeight();
         }
     }
+    // the size the viewer's pass draws at: the fixed resolution, or the render scale with the
+    // uber pass (dynamic resolution's in the frame's own view), as renderCameraPass sizes it
+    if (isFixedResolutionActive() && !viewer.renderToTexture){
+        viewWidth = (float)scene->getFixedResolutionWidth();
+        viewHeight = (float)scene->getFixedResolutionHeight();
+    }else if (postTiers.uber){
+        const float renderScale = (&view == &primaryView) ? getAppliedRenderScale() : postTiers.renderScale;
+        viewWidth *= renderScale;
+        viewHeight *= renderScale;
+    }
     const float scale = resolution == PlanarReflectionResolution::QUARTER ? 0.25f : (resolution == PlanarReflectionResolution::HALF ? 0.5f : 1.0f);
     const unsigned int width = (unsigned int)std::max(16.0f, std::floor(viewWidth * scale));
     const unsigned int height = (unsigned int)std::max(16.0f, std::floor(viewHeight * scale));
@@ -14355,7 +14368,9 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
         // the viewer's lighting and maps (shadows are world-space): none of its own to draw
         shareCameraShadows(pass.shadows, viewerShadows, pass.camera, reflectionShadows);
 
-        int passTerrainView = terrainView;
+        // each pass its own terrain cut (a cut's node buffer updates once a frame): the next free
+        // slots from terrainView, past MAX_TERRAIN_VIEWS the viewer's (view 0, not updated again)
+        int passTerrainView = (terrainView != 0 && terrainView + (int)p < MAX_TERRAIN_VIEWS) ? terrainView + (int)p : 0;
 #ifdef JASPERENGINE_EDITOR
         if (view.secondary){
             passObjects = &pass.objects;
@@ -14364,8 +14379,8 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
             passTerrainView = TERRAIN_PASS_VIEW;
         }else
 #endif
-        if (terrainView != 0){
-            selectCameraTerrain(pass.camera, pass.transform, terrainView);
+        if (passTerrainView != 0){
+            selectCameraTerrain(pass.camera, pass.transform, passTerrainView);
         }
 
         // (the cut mainTerrainView gives the pass's draws)
@@ -16122,7 +16137,8 @@ uint16_t RenderSystem::getScenePipelines() const{
             scene->getComponentArray<ReflectionProbeComponent>()->size() > 0){
         pipelines |= PIP_RTT_INVERT;
     }
-    if (!planarReflectionMeshes.empty() && scene->getPlanarReflectionResolution() != PlanarReflectionResolution::OFF){
+    // (whatever the resolution, so turning it Off and on again reloads nothing)
+    if (!planarReflectionMeshes.empty()){
         pipelines |= PIP_RTT | PIP_RTT_INVERT;
     }
 
@@ -16359,7 +16375,7 @@ void RenderSystem::update(double dt){
     }
 
     // the scene camera's water reflection passes rewrite the shared MVPs as other cameras do
-    if (!planarReflectionMeshes.empty() && scene->getPlanarReflectionResolution() != PlanarReflectionResolution::OFF){
+    if (planarReflectionVisible(mainCameraEntity)){
         hasMultipleCameras = true;
     }
 
@@ -17331,8 +17347,8 @@ void RenderSystem::drawCameras(bool includeMain){
             renderCameraShadows(*cameraLighting);
         }
 
-        // the scene camera's water reflections, before its own pass, with the next terrain cut
-        // the render-to-texture cameras left (else the scene camera's)
+        // the scene camera's water reflections, before its own pass, with the next terrain cuts
+        // the render-to-texture cameras left (one a pass; else the scene camera's)
         if (isMainCamera){
             const int reflectionTerrainView = (terrainViewCounter + 1 < MAX_TERRAIN_VIEWS) ? terrainViewCounter + 1 : 0;
             renderWaterReflections(primaryView, camera, *cameraTransformPtr, reflectionTerrainView);
@@ -17917,10 +17933,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
         fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, passFlipped, copyWidth, copyHeight);
     }
+    // the frame's draw calls when the copy was last taken
+    uint32_t drawsAtCopy = 0;
     auto takeSceneColor = [&](){
         sceneColorPending = false;
         camera.render.endRenderPass();
         passSceneColor = copySceneColor(&colorTarget->getColorTexture(), colorPassViewport, sceneInputTargetWidth, sceneInputTargetHeight);
+        drawsAtCopy = Engine::getFrameDrawCalls();
         camera.render.resumeRenderPass(colorTarget);
         if (colorPassViewportApplied){
             camera.render.applyViewport(colorPassViewport);
@@ -18115,9 +18134,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // drawn after (transparents) takes the analytic fog alone
         if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
-        // the scene colour is copied right before the first draw reading it (the transparent
-        // queue below, or one drawn in place in the hierarchy loop), so the transparent
-        // objects drawn before it (those under a water) are in it
+        // the opaque queue and the sky are drawn: the scene colour, before the hierarchy loop's
+        // UI and overlays (the transparent queue's readers may copy it again, below)
+        if (sceneColorPending){
+            takeSceneColor();
+        }
     }
 
     // SCREEN fluid simulations: a layer over the scene and under the UI, in the game's views
@@ -18207,11 +18228,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawScreenFluids();
         }
 
-        // what was drawn before the first draw requiring the scene colour (one this pass draws
-        // here: an object hidden, culled or out of view takes no copy; a 3D pass draws its
-        // meshes, blended points and particles from the transparent queue, which copies below)
-        if (sceneColorPending && drawsInHierarchyLoop(entity, signature, transform, distanceSort) &&
-                drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
+        // a 2D pass: what was drawn before the first draw requiring the scene colour (one this
+        // pass draws: an object hidden, culled or out of view takes no copy)
+        if (sceneColorPending && drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
             takeSceneColor();
         }
 
@@ -18362,8 +18381,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     std::vector<WaterLayer> passWaters;
     gatherPassWaters(transparentRenders, passWaters);
     if (!passWaters.empty()){
+        const std::vector<float> groupDistances = waterGroupDistances(passWaters);
+        for (TransparentRenderData& renderData : transparentRenders){
+            const WaterPlace place = waterPlace(transparentBounds(renderData), cameraTransform.worldPosition, passWaters, groupDistances,
+                                                renderData.entity, renderData.distanceToCamera);
+            renderData.waterRank = (int8_t)place.rank;
+            renderData.waterSortDistance = place.sortDistance;
+        }
+    }else{
         for (TransparentRenderData& renderData : transparentRenders)
-            renderData.waterRank = (int8_t)waterRank(transparentBounds(renderData), cameraTransform.worldPosition, passWaters, renderData.entity);
+            renderData.waterSortDistance = renderData.distanceToCamera;
     }
     std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
     // S57: an Order Independent camera's alpha-blended submeshes accumulate in a pass of their
@@ -18382,22 +18409,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
-    // the scene colour for the queue's readers: copied before the first one (with what the
-    // queue drew before it), and again before a reader over one of a higher rank drawn since the
-    // last copy (a refracting pool over a refracting lake sees the lake), at most
-    // MAX_SCENE_COLOR_COPIES a pass
+    // the scene colour for the queue's readers: copied again before the first one when the queue
+    // drew before it (what is under a water), and before a reader over one of a higher rank
+    // drawn since the last copy (a refracting pool over a refracting lake sees the lake), at most
+    // MAX_SCENE_COLOR_COPIES a pass; only while nothing but the queue drew since the copy (the
+    // hierarchy loop's UI, points, lines and screen fluids, an OIT resolve stay out of it)
     const Matrix4& readerViewProjection = camera.viewProjectionMatrix;
     struct DrawnReader{ Vector4 rect; int rank; };
     std::vector<DrawnReader> readersSinceCopy;
     unsigned int passColorCopies = passSceneColor ? 1u : 0u;
+    const bool recopies = !passSceneColor || Engine::getFrameDrawCalls() == drawsAtCopy;
     bool queueCopied = false;
-    // the accumulated transparent draws are in the scene colour only after a new copy
-    bool queueDrawnSinceCopy = passOit;
+    bool queueDrawnSinceCopy = false;
     for (const TransparentRenderData& renderData : transparentRenders){
         if (copySceneColorPending && colorTarget && readsSceneColor(renderData, camera, instanceView)){
             const Vector4 rect = screenBoundsOf(transparentBounds(renderData), readerViewProjection);
-            bool copy = sceneColorPending || (!queueCopied && queueDrawnSinceCopy);
-            if (!copy){
+            bool copy = sceneColorPending || (recopies && !queueCopied && queueDrawnSinceCopy);
+            if (!copy && recopies){
                 for (const DrawnReader& drawn : readersSinceCopy){
                     if (drawn.rank > renderData.waterRank && drawn.rect.x <= rect.z && rect.x <= drawn.rect.z &&
                             drawn.rect.y <= rect.w && rect.y <= drawn.rect.w){

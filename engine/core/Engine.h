@@ -639,6 +639,8 @@ namespace jasperengine {
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
+        // the draw calls of the frame being drawn, so far
+        static uint32_t getFrameDrawCalls();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
 

@@ -955,6 +955,10 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
+uint32_t Engine::getFrameDrawCalls(){
+    return currentFrameStats.drawCalls;
+}
+
 void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;

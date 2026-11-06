@@ -25,6 +25,7 @@
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "pool/ShaderPool.h"
+#include "render/WaterLayering.h"
 #include "script/LuaBinding.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -1989,10 +1990,9 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::waterFindings
             if (!transform || mesh->aabb.isNull()) continue;
             const AABB bounds = transform->modelMatrix * mesh->aabb;
             if (bounds.isNull() || !bounds.isFinite()) continue;
-            const Vector3 size = bounds.getSize();
-            if (size.y > 0.01f * std::max(size.x, size.z) + 0.05f) {
+            if (!isFlatWater(bounds)) {
                 char text[64];
-                std::snprintf(text, sizeof(text), "%.2f", size.y);
+                std::snprintf(text, sizeof(text), "%.2f", bounds.getSize().y);
                 warn(name + " reads a planar reflection but is " + text + " world units tall: the reflection mirrors it about one level "
                      "(the top of its bounds)", flatCode, "use REFLECTION without PLANAR_REFLECTION on sloped water (a river), or flatten the mesh");
             }

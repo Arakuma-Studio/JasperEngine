@@ -540,10 +540,11 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   (its `transparent` then decides the queue, whatever the blend), `transparent = true`; the
   inspector's error row has a button for the one that applies, `get_entity`'s `fix` is it.
   Points have no queue: they always draw after the copy.
-- **The copy holds what was drawn before the first reader.** Every camera pass copies right
-  before the first draw reading the colour: a 3D pass after its opaque queue, the sky and the
-  transparent draws the queue puts first (those a water's surface covers, see Water below), a 2D
-  pass (or `transparentSort` off) everything drawn before it in hierarchy order. Two glass panes
+- **The copy holds what was drawn before the first reader.** A 3D pass copies after its opaque
+  queue and the sky, and again before its first queued reader when the queue drew before it
+  (those a water's surface covers, see Water below) and nothing else drew since; a 2D pass (or
+  `transparentSort` off) copies right before the first reader, with everything drawn before it in
+  hierarchy order. Two glass panes
   at the same depth layer do not see each other (as Unity URP's opaque texture); a reader over
   one of a higher water rank (a refracting pool over a refracting lake) gets the copy again, at
   most four copies a pass (`get_render_stats` `scene_color_copies`). UI, lines and gizmos are
@@ -637,7 +638,9 @@ on a sloped mesh.
 **Layering.** In a 3D pass, transparent draws are ranked around the visible waters: under a
 surface the camera looks down through (or above one it looks up through) draws before the water,
 on the camera's side after it, whatever the distances of their transforms (a fish under a large
-lake no longer draws over it). The rank comes after `sortPriority`, which still wins.
+lake no longer draws over it). Draws over a water's area sort with that water, where it is; the
+rest by their own distance. Only flat waters layer (a sloped river sorts by distance). The rank
+comes after `sortPriority`, which still wins.
 
 **Seen from below.** `UNDERSIDE` draws the surface from under it; the water between the camera
 and everything it sees is the post-process pass `library:underwater` (each colour fading at
