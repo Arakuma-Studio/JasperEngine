@@ -53,8 +53,11 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
+| Mac checks | Clang WERROR build and unit tests of `main`, S73 goldens, iOS packaging with S38's limiter, S36 R31 timing | `fix/mac-main-1106` | M, H | In progress (2026-11-06) |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Main's MCP tests | 12-13 MCP tests fail on plain `main` since the Forge landing (FBX, exports, shader keys, saved-output determinism, scene order, sprite normals) | `fix/main-mcp-after-forge` | A, B | Done |
+| Main's editor tests | The editor unit binary segfaults on `main` after the Forge landing (in `LodFadeVariantKeys`), so 0 editor tests run; `PbrVariant.ALobesMapAsksForTheMeshsUVs` fails | `fix/main-editor-tests` | A, B | Done |
 | Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | Done |
 | Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
@@ -62,7 +65,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Done |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Done |
-| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
+| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H, B | In progress: `dc/mesh-memory` is on `main` (2026-11-06); merging it and re-gating |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Done |
@@ -79,11 +82,11 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | In the third full suite; R31 re-measured on H or the Mac |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22`; in the third full suite with S35 and S36 |
-| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Ready at `35c704a4c` with S37's AC8; in the third full suite |
-| S39 | Music | `feat/s39-music` | S35, S36, S37 | In progress, from the third suite's tree |
-| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | Done, except R31's re-measure on H or the Mac |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Done |
+| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Done |
+| S39 | Music | `feat/s39-music` | S35, S36, S37 | Done |
+| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37, S39 | Done |
 
 ## Decisions
 
@@ -115,6 +118,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - 2026-11-05: S36: R31 (3-minute OGG, 1.2 s) is judged on H or the Mac after S38 lands, not on A. The pinned-zip licence test cannot run, because kenney.nl no longer serves the zips; the licence files match byte for byte, accepted.
 
+- 2026-11-06: S39 R10 deviation accepted: a second switch before the first switch point drops the incoming track nobody heard yet, rather than queueing behind it.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
@@ -123,6 +128,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
 - S38 AC7: the iOS `ambient` session needs a check on a real device, by a person; `ios_packaging.sh` still has to run with the limiter when the Mac is back.
 - S36's line telling agents about `generate_sound` reaches only projects whose generated AGENTS.md was regenerated after it.
+- S39's music-voice mix-cost benchmark is opt-in and ran only on a loaded server, not in a Release build on a quiet one.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
@@ -130,6 +136,10 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Done
 
 - S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
+- `fix/main-mcp-after-forge`: `main`'s 13 MCP failures from the Forge landing fixed. Four were real bugs: saves depended on whether a model had loaded (external-buffer count), an export failed on a clashing file without naming it, a hot reload could put back the old FBX model, and the generated AGENTS.md was over its limit. Nine tests pinned behaviour S53-S56 changed on purpose. 63 passed whole; all unit tests 3116 core and 3168 editor, 0 failed. Open: a compiled export sizes `MAX_EXTERNAL_BUFFERS` from source files, which matters only past 30 buffers; saved `shaderKeys` only grow, so undo can still change a file (older than this work).
+- S39 and S40 (landed together): music (tracks and playlists, quantized crossfades with snapshots, stingers, bars and beats with callbacks, tempo detection, also in the `audio-analyze` CLI) and timeline audio (cues on clips for the Animation Player, the Animator and montages; audio and Mixer Snapshot actions on the legacy timeline). Fixed on the way: `CameraShakeEditor` left the game's events paused for every later suite; the Animation window's shortcut context was off in entity mode; a submenu lost its frame. Fourth full suite: 12 failures are `main`'s (from the Forge landing, being fixed); the 5 that were S39's and S40's are fixed. Open: S39's music-voice benchmark only ran on a loaded server.
+- `fix/main-editor-tests`: the editor unit tests run on `main` again. Cause: a `Project` never removed its shader-read callback, a use-after-free that crashed the test binary once the Forge landing added tests reading shaders after other suites' projects were gone. Stale tests and 78 reflection goldens from the Forge landing updated and checked. Open: with no model loaded, a save counts a model's external buffers from its source file, not its cook (2 against 5 in one fixture), which could under-size a compiled game's limit; `dc/mesh-memory` removes those limits.
+- S35, S36, S37 (landed together, `dcd819144`): agents can hear (deterministic driver, Play capture, `audio_session`, sound QA, Recorder on one tap); a sound library (analysis, generated placeholders, 40 essentials and 927 CC0 clips, import settings and provenance in `.meta`, export credits, `search_sounds`); Sound Events, triggers, the Lua `Audio` API, the Sound Browser. Third full suite on the trio: units 0 failed; MCP 1803 passed, its 5 trio failures fixed since. After merging the Forge program: named files 60/60; editor units 3133 passed, with 9 failures that `main` has on its own. Open: R31 (3-minute OGG analysis) to re-measure on H or the Mac; the pinned-zip licence tests skip because kenney.nl no longer serves the zips; module sizes measured on Linux only.
 - `fix/root-attack-meta`: nothing writes or ships through a root that no longer leads where it was pinned. Fixed three things: S68's scan wrote `.meta` files outside through a swapped root or a plain `lib` link; an export shipped files from a swapped root; saves re-pinned the roots, so a save could trust a swapped one. Red on the control editor; green: five MCP files 27 passed, `test_root_attacks` 16/16 at `-j 4`. Open: `AssetIdentityLinks` last ran before the final merge; the export check at the start of a Build window or CLI export is not tested; watcher and listings still follow a swapped root and write nothing.
 - Second full suite, on `88090c2da` (`main`, S38, S63, S64, S70): unit tests 2909 core and 2984 editor, 0 failed, 0 skipped. MCP 1578 passed, 9 failed, 0 skipped. Rerun whole on B: 48 passed, 6 failed. Of those, `test_render_perf` and `test_scene_view_ui` pass one at a time (13/13); `test_normal_recording` was the new-project limiter, and now pins a no-limiter project; three `test_root_attacks` failures are on `fix/root-attack-meta`. The landed tree differs from the tested one only by that test and this ledger.
 - S38: new projects get a true-peak limiter at -1 dBTP, a -18 LUFS target and a linear output stage; a project without them records `main`'s audio bit for bit, pinned by a test. Eval 2/2, 0/2 without its text. Open: iOS packaging with the limiter; the `ambient` session on a real device; the removal of 4 dead fields not yet confirmed on Clang.
@@ -188,3 +198,14 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: S37 ready; S38's meter change moved band values in 700 of 927 library items, so S36's analysis data was regenerated. S35 done except its merge; it fixed the Master bus pan ramp so chunked and single-call mixes match, and the recording pin moved to `821d2802…`.
 - 2026-11-05: Third full suite started on `fcd2613ad` (`main` and S35, which holds S36 and S37). S39 and S40 started from that tree.
 - 2026-11-05: Origin: the Forge/meshoptimizer program (S53-S57) landed, 141 commits, without its final full suite. `main` fast-forwarded. The third suite's tree (S35, S36, S37) predates it and conflicts with it in `TOOLS.md`, `Exporter.cpp`, `Generator.cpp`, `McpInstructions.cpp`, `GameWindow.cpp` and `cases.py`: the trio merges it after the suite, then a build and the affected tests.
+- 2026-11-06: Third full suite on `fcd2613ad` (`main`, S35, S36, S37): units 2942 core and 3079 editor, 0 failed. MCP 1803 passed, 11 failed, 7 skipped. Five failures are the trio's (missing codegen goldens for the new fixture, a new modal not in S69's table, a warning on every headless Play); S35 fixes them and merges the Forge program, then it lands. The core tool listing is at 98,900 of 99,000 bytes after S40's tools: whoever adds tool text next will need to cut some.
+- 2026-11-06: S39 ready. Its bisect found `CameraShakeEditor` leaving the game's events paused for every later suite; fixed.
+- 2026-11-06: Found by S35 checking `main` alone: since the Forge/meshoptimizer landing, the editor unit test binary segfaults in `LodFadeVariantKeys.OnlyMeshesThatCanFadeShipTheFadeVariant`, so no editor test runs on `main`; core fails `PbrVariant.ALobesMapAsksForTheMeshsUVs`. Fixing on `fix/main-editor-tests`. The other programs should know their gates on `main` are not running the editor tests.
+- 2026-11-06: The sound trio landed. Next: `fix/main-editor-tests`, then S39 and S40 merge `main` for a fourth full suite.
+- 2026-11-06: S40 ready. It found and fixed two bugs in existing code: the Animation window's shortcut context was off in entity mode, so none of its keys reached it; and the Sound submenu lost its frame by adding components while holding the `AnimationComponent` they move.
+- 2026-11-06: Fourth full suite started on `e5edd9218` (`main` and S40, which holds S39). The editor unit run will crash in Forge's `LodFadeVariantKeys` until `fix/main-editor-tests` lands.
+- 2026-11-06: `fix/main-editor-tests` landed. The fourth suite's unit run started before it, so the unit tests rerun on the suite's tree with this merged.
+- 2026-11-06: Fourth full suite on `e5edd9218` (`main`, S39, S40): MCP 1857 passed, 21 failed, 7 skipped. This is the first full MCP run on `main` since the Forge program landed without one, so many failures may be `main`'s (FBX, exports, shader keys, saved-output determinism, reflection). Triage running: the 15 failed files on the suite's tree with `main`'s test fix, and on plain `main`, side by side.
+- 2026-11-06: Fourth suite triage: 12 failures happen on plain `main` too (one more only there: `test_fbx_edit_reloads_the_model`); 5 only with S39 and S40 (S40 fixing). Among `main`'s: `Lobes.scene` saves differently drawn or not, the external-buffer count the last fix predicted. Main's failures are being fixed on `fix/main-mcp-after-forge`.
+- 2026-11-06: S39 and S40 landed: every spec of the sound layer is on `main`. Left on the list: S65 (waits for `dc/mesh-memory`), Mac and iOS runs when the Mac is back, and `main`'s MCP failures from the Forge landing.
+- 2026-11-06: `main`'s MCP failures from the Forge landing fixed and landed. Left: S65 (waits for `dc/mesh-memory`), and the Mac and iOS checks when the Mac is back.

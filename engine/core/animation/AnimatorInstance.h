@@ -206,9 +206,32 @@ namespace jasperengine::anim{
         double position = 0.0;              // where it was crossed (ordering within the layer)
     };
 
+    // An audio cue that a clip crossed (S40 R4), fired by AnimatorSystem on the main thread
+    struct JASPERENGINE_API AnimatorPendingCue{
+        int clip = -1;                      // clip slot (its clip's cue `index`)
+        int index = -1;
+        int state = -1;                     // the state that played it (-1: a montage)
+        int montage = -1;
+        int layer = 0;
+        double position = 0.0;              // where it was crossed on the clip's time line
+        float fraction = 0.0f;              // where in the update's step (0..1): the start's place in the frame
+        float speed = 1.0f;                 // the state's speed (or the montage's rate): follow_speed
+    };
+
+    // the voice of a state_exit cue (S40 R7): stopped when its state exits (or its montage ends)
+    struct JASPERENGINE_API AnimatorCueVoice{
+        int layer = 0;
+        int state = -1;
+        int montage = -1;
+        uint32_t id = 0;
+        uint32_t generation = 0;
+        Entity source = NULL_ENTITY;
+    };
+
     // What one update produced (read on the main thread after the wave)
     struct JASPERENGINE_API AnimatorOutput{
         std::vector<AnimatorPendingEvent> events;
+        std::vector<AnimatorPendingCue> cues;
         std::vector<AnimatorStateNote> states;
         std::vector<AnimatorMontageNote> montages;
         bool hasRootMotion = false;
@@ -265,6 +288,8 @@ namespace jasperengine::anim{
         std::vector<uint64_t> warnedKeys;   // warnOnce(key): the per-event warnings, no string built
 
         AnimatorOutput output;
+        // main thread (AnimatorSystem): the state_exit cues' voices
+        std::vector<AnimatorCueVoice> cueVoices;
         float clock = 0.0f;                 // seconds the Animator ran (retry throttles)
         uint64_t evaluations = 0;
 

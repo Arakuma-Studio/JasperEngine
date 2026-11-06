@@ -47,6 +47,8 @@ maxValues:
   maxColliderIndices3D: 0
 shaderKeys:
   - type: blit
+  - type: blit
+    properties: 4096
 cppScripts:
   - path: cpp/CppSpawner.cpp
     headerPath: cpp/CppSpawner.h

@@ -3,6 +3,7 @@
 
 #include "Backend.h"
 #include "Out.h"
+#include "audio/SoundLibraryCli.h"
 #include "cli/CallCommand.h"
 #include "cli/CommandLine.h"
 #include "cli/ShippingCommands.h"
@@ -11,6 +12,7 @@
 #include "reload/HotReloadService.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
+#include "util/TextEncoding.h"
 #include "vcs/scene/SceneCli.h"
 
 #include <cstdio>
@@ -66,6 +68,13 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "cook-textures") == 0) {
         return editor::CommandLine::runCookTexturesCommand(argc - 1, argv + 1, argv[0]);
+    }
+    // The sound tools (see editor/audio/SoundLibraryCli.h): windowless, no project
+    if (argc >= 2 && std::strcmp(argv[1], "audio-analyze") == 0) {
+        return editor::SoundLibraryCli::runAudioAnalyze(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "sound-library") == 0) {
+        return editor::SoundLibraryCli::runSoundLibrary(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
@@ -257,6 +266,13 @@ bool takeHubFlags(std::vector<char*>& args) {
 }
 
 int main(int argc, char* argv[]) {
+    // Windows before 10 1903 ignores the UTF-8 code page of the manifest: every narrow path would
+    // be in the ANSI code page there, so the editor does not start (games still run)
+    if (!editor::TextEncoding::checkWindowsCodePage()) {
+        return 1;
+    }
+    // what the editor prints is UTF-8: a console shows it so while the editor runs
+    editor::TextEncoding::useUtf8Console();
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
     std::vector<char*> args(argv, argv + argc);

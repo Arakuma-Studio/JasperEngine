@@ -42,4 +42,6 @@ maxValues:
   maxBones: 0
 shaderKeys:
   - type: blit
+  - type: blit
+    properties: 4096
 entities: ~

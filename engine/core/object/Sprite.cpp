@@ -191,7 +191,7 @@ void Sprite::addFrame(int id, const std::string& name, Rect rect){
             spritecomp.numFramesRect = id + 1;
         }
     }else{
-        Log::error("Cannot set frame id %s less than 0 or greater than %zu", name.c_str(), spritecomp.framesRect.size());
+        Log::error("Cannot set frame %s at id %i: ids go from 0 to %zu", name.c_str(), id, ARRAY_INDEX_LIMIT - 1);
     }
 }
 
@@ -203,7 +203,7 @@ void Sprite::addFrame(const std::string& name, float x, float y, float width, fl
     if (spritecomp.framesRect.validIndex(id)){
         addFrame(id, name, Rect(x, y, width, height));
     }else{
-        Log::error("Cannot set frame %s. Sprite frames reached limit of %zu", name.c_str(), spritecomp.framesRect.size());
+        Log::error("Cannot add frame %s: at most %zu frames", name.c_str(), ARRAY_INDEX_LIMIT);
     }
 }
 

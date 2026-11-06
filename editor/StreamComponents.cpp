@@ -87,16 +87,10 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     // Model-backed meshes regenerate these matrices from their skeleton on load.
     if (encodeBones) {
-        // Trailing identity matrices are what a decoded mesh starts with, so they are left
-        // out: every mesh made in the editor (a box, a sphere) holds MAX_BONES of them,
-        // ~8 KB of YAML each. An array grown past MAX_BONES keeps its size (export reads it).
-        size_t count = mesh.bonesMatrix.size();
-        if (count <= MAX_BONES) {
-            const Matrix4 identity;
-            while (count > 0 && mesh.bonesMatrix[count - 1] == identity) {
-                count--;
-            }
-        }
+        // the whole palette (a mesh without a skin has none): its length is how many joints the
+        // skinned vertices may name. Files of older editors list it without its trailing
+        // identities, as they all had 128 of them
+        const size_t count = mesh.bonesMatrix.stored();
         YAML::Node bonesNode(YAML::NodeType::Sequence);
         for (size_t i = 0; i < count; i++)
             bonesNode.push_back(encodeMatrix4(mesh.bonesMatrix[i]));
@@ -196,30 +190,46 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Decode external buffers
     if (node["eBuffers"]) {
         auto eBuffersNode = node["eBuffers"];
-        for (unsigned int i = 0; i < eBuffersNode.size() && i < mesh.eBuffers.size(); i++) {
+        mesh.numExternalBuffers = 0;
+        for (unsigned int i = 0; i < eBuffersNode.size(); i++) {
+            if (!mesh.eBuffers.validIndex(static_cast<int>(i))) {
+                Out::error("A mesh's buffers past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             decodeExternalBuffer(mesh.eBuffers[i], eBuffersNode[i]);
+            mesh.numExternalBuffers = i + 1;
         }
-        mesh.numExternalBuffers = eBuffersNode.size();
     }
 
     // Decode submeshes
     if (node["submeshes"]) {
         auto submeshesNode = node["submeshes"];
-        for(unsigned int i = 0; i < submeshesNode.size() && i < mesh.submeshes.size(); i++) {
-            mesh.submeshes[i] = decodeSubmesh(submeshesNode[i], &mesh.submeshes[i]);
+        mesh.numSubmeshes = 0;
+        for (unsigned int i = 0; i < submeshesNode.size(); i++) {
+            if (!mesh.submeshes.validIndex(static_cast<int>(i))) {
+                Out::error("A mesh's submeshes past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
+            Submesh& submesh = mesh.submeshes[i];
+            submesh = decodeSubmesh(submeshesNode[i], &submesh);
+            mesh.numSubmeshes = i + 1;
         }
-        mesh.numSubmeshes = submeshesNode.size();
     }
 
     // Decode bones matrix
     if (node["bonesMatrix"]) {
         auto bonesNode = node["bonesMatrix"];
-        mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+        mesh.bonesMatrix.clear();
         for (size_t i = 0; i < bonesNode.size() &&
                 mesh.bonesMatrix.validIndex(static_cast<int>(i)); i++)
             mesh.bonesMatrix[i] = decodeMatrix4(bonesNode[i]);
         // an empty list is a trimmed one (all identity), which still counts as written
         mesh.needUpdateBones = true;
+        // older editors left out the trailing identities of the 128 every mesh had (all of them
+        // for a bind pose): the palette reaches every joint the skinned vertices name
+        const size_t joints = std::min(MeshSystem::skinJointCount(mesh), ARRAY_INDEX_LIMIT);
+        if (mesh.bonesMatrix.stored() < joints)
+            mesh.bonesMatrix.resize(joints);
     }
 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
@@ -472,14 +482,18 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
 
         if (framesNode.IsSequence()) {
             sprite.numFramesRect = 0;
-            for (std::size_t i = 0; i < framesNode.size() && i < sprite.framesRect.size(); i++) {
+            for (std::size_t i = 0; i < framesNode.size(); i++) {
                 if (!framesNode[i] || framesNode[i].IsNull()) {
                     continue;
                 }
-
+                if (!sprite.framesRect.validIndex(static_cast<int>(sprite.numFramesRect))) {
+                    Out::error("A Sprite's frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
+                }
                 sprite.framesRect[sprite.numFramesRect] = decodeSpriteFrameData(framesNode[i]);
                 sprite.numFramesRect++;
             }
+            sprite.framesRect.resize(sprite.numFramesRect);
         }
     }
 
@@ -535,13 +549,18 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
         const YAML::Node& tilesRectNode = node["tilesRect"];
         if (tilesRectNode.IsSequence()) {
             tilemap.numTilesRect = 0;
-            for (std::size_t i = 0; i < tilesRectNode.size() && i < tilemap.tilesRect.size(); i++) {
+            for (std::size_t i = 0; i < tilesRectNode.size(); i++) {
                 if (!tilesRectNode[i] || tilesRectNode[i].IsNull()) {
                     continue;
+                }
+                if (!tilemap.tilesRect.validIndex(static_cast<int>(tilemap.numTilesRect))) {
+                    Out::error("A Tilemap's tile rects past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
                 }
                 tilemap.tilesRect[tilemap.numTilesRect] = decodeTileRectData(tilesRectNode[i]);
                 tilemap.numTilesRect++;
             }
+            tilemap.tilesRect.resize(tilemap.numTilesRect);
         }
     }
 
@@ -549,13 +568,18 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
         const YAML::Node& tilesNode = node["tiles"];
         if (tilesNode.IsSequence()) {
             tilemap.numTiles = 0;
-            for (std::size_t i = 0; i < tilesNode.size() && i < tilemap.tiles.size(); i++) {
+            for (std::size_t i = 0; i < tilesNode.size(); i++) {
                 if (!tilesNode[i] || tilesNode[i].IsNull()) {
                     continue;
+                }
+                if (!tilemap.tiles.validIndex(static_cast<int>(tilemap.numTiles))) {
+                    Out::error("A Tilemap's tiles past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
                 }
                 tilemap.tiles[tilemap.numTiles] = decodeTileData(tilesNode[i]);
                 tilemap.numTiles++;
             }
+            tilemap.tiles.resize(tilemap.numTiles);
         }
     }
 
@@ -1657,7 +1681,10 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     if (node["frames"]) {
         spriteanim.framesSize = 0;
         for (const YAML::Node& frameNode : node["frames"]) {
-            if (!spriteanim.frames.validIndex(spriteanim.framesSize)) break;
+            if (!spriteanim.frames.validIndex(spriteanim.framesSize)) {
+                Out::error("A Sprite Animation's frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             spriteanim.frames[spriteanim.framesSize] = YamlNumbers::as<int>(frameNode);
             spriteanim.framesSize++;
         }
@@ -1666,7 +1693,10 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     if (node["framesTime"]) {
         spriteanim.framesTimeSize = 0;
         for (const YAML::Node& timeNode : node["framesTime"]) {
-            if (!spriteanim.framesTime.validIndex(spriteanim.framesTimeSize)) break;
+            if (!spriteanim.framesTime.validIndex(spriteanim.framesTimeSize)) {
+                Out::error("A Sprite Animation's frame times past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             spriteanim.framesTime[spriteanim.framesTimeSize] = YamlNumbers::as<int>(timeNode);
             spriteanim.framesTimeSize++;
         }
@@ -2326,11 +2356,14 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     if (node["framesRect"]) {
         points.numFramesRect = 0;
         for (const YAML::Node& frameNode : node["framesRect"]) {
-            if (points.numFramesRect < (unsigned int)points.framesRect.size()) {
-                points.framesRect[points.numFramesRect] = decodeSpriteFrameData(frameNode);
-                points.numFramesRect++;
+            if (!points.framesRect.validIndex(static_cast<int>(points.numFramesRect))) {
+                Out::error("A Points' frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
             }
+            points.framesRect[points.numFramesRect] = decodeSpriteFrameData(frameNode);
+            points.numFramesRect++;
         }
+        points.framesRect.resize(points.numFramesRect);
     }
 
     if (node["points"]) {

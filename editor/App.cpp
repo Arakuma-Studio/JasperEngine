@@ -10,6 +10,8 @@
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
 #include "window/AudioMixerWindow.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -238,6 +240,8 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    soundBrowserWindow = new SoundBrowserWindow(&project);
+    audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -648,6 +652,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.createHtmlDocument", "HTML Document"),
         menuSeparator(),
         catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
         menuSeparator(),
         catalogItem("assets.createPoseAnimation", "Pose Animation"),
         menuSeparator(),
@@ -674,6 +679,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        catalogItem("assets.importSoundEssentials"),
         menuSubmenu("Version Control", {
             catalogItem("assets.vcs.commit"),
             catalogItem("assets.vcs.revert"),
@@ -736,7 +742,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Audio", {
-            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
+            catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -1029,6 +1037,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleSoundBrowser:
+            soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioCaptures:
+            audioCapturesWindow->open();
+            break;
         case AppMenuCommand::ResetLoudness:
             LoudnessMonitor::get().reset();
             break;
@@ -1193,8 +1207,23 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsImportSoundEssentials:
+            projectWindow->assetsImportSoundEssentials();
+            break;
+        case AppMenuCommand::AssetsCreatePlaceholderSound:
+            projectWindow->assetsCreatePlaceholderSound();
+            break;
+        case AppMenuCommand::AssetsReanalyzeAudio:
+            projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
+            break;
         case AppMenuCommand::AssetsCreateAudioMixer:
             projectWindow->assetsCreateAudioMixer();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEvent:
+            projectWindow->assetsCreateSoundEvent();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEventFromClips:
+            projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
@@ -2510,6 +2539,13 @@ void editor::App::setup() {
     configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
+    // the system's CJK and emoji fonts, merged into these when a background search (started
+    // with the job system, engineInit) has found them (applySystemFonts): CJK names and text
+    // show as glyphs, and the start is not slower
+    systemFontTargets = {{font1, uiFontSize, config1.RasterizerMultiply},
+                         {boldFont, uiFontSize, configBold.RasterizerMultiply},
+                         {codeFont, 16.0f, config3.RasterizerMultiply}};
+
     io.FontDefault = font1;
 
     io.ConfigDragClickToInputText = true;
@@ -2897,6 +2933,8 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    soundBrowserWindow->show();
+    audioCapturesWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     spritePreviewWindow->show();
@@ -3155,6 +3193,8 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
+    SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 
     Engine::pauseGameEvents(true);
 
@@ -3846,6 +3886,10 @@ bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
         return true;
     }
     return false;
+}
+
+void editor::App::applySystemFonts(){
+    SystemFonts::applyPending(systemFontTargets);
 }
 
 void editor::App::engineRender(){
@@ -5045,6 +5089,8 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    soundBrowserWindow->resetForProjectSwitch();
+    audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -6030,6 +6076,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -6050,6 +6097,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

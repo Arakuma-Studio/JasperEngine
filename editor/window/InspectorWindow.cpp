@@ -12,6 +12,9 @@
 #include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+
+#include "audio/SoundDrop.h"
+#include "window/SoundBrowserWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -93,6 +96,7 @@
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -120,6 +124,7 @@
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "audio/AudioCapture.h"
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
@@ -1161,7 +1166,7 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
             if (ec || relative.empty() || *relative.begin() == "..") {
                 ImGui::OpenPopup("File Import Error");
             }else{
-                setFontSlot(cpType, id, slot, relative.string(), sceneProject, entities, onValueChanged);
+                setFontSlot(cpType, id, slot, FileUtils::pathToGenericUtf8(relative), sceneProject, entities, onValueChanged);
             }
         }
     }
@@ -2362,12 +2367,12 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
                 entry.enabled = true;
 
                 if (type == ScriptType::CPP) {
-                    entry.headerPath = headerPath.string();
-                    entry.path = sourcePath.string();
+                    entry.headerPath = FileUtils::pathToGenericUtf8(headerPath);
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name;
                 } else if (type == ScriptType::LUA) {
                     entry.headerPath.clear();
-                    entry.path = sourcePath.string();
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name; // module (file base) name
                 }
 
@@ -4728,7 +4733,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("File Import Error");
                 }else{
-                    Texture texture(relative.string());
+                    Texture texture(FileUtils::pathToGenericUtf8(relative));
                     for (Entity& entity : entities){
                         cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                         submitRowCommand(sceneProject, cpType, id);
@@ -5009,7 +5014,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         ImGui::OpenPopup("File Import Error##cube");
                     }else{
                         Texture texture = newValue;
-                        texture.setCubeMap(relative.string());
+                        texture.setCubeMap(FileUtils::pathToGenericUtf8(relative));
                         for (Entity& entity : entities){
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                             submitRowCommand(sceneProject, cpType, id);
@@ -5125,7 +5130,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                             ImGui::OpenPopup("File Import Error##cube");
                         }else{
                             Texture texture = newValue;
-                            texture.setCubePath(faceIndex, relative.string());
+                            texture.setCubePath(faceIndex, FileUtils::pathToGenericUtf8(relative));
                             for (Entity& entity : entities){
                                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                                 submitRowCommand(sceneProject, cpType, id);
@@ -7840,7 +7845,7 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("Model Import Error");
                 }else{
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, relative.string()));
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, FileUtils::pathToGenericUtf8(relative)));
                 }
             }
         }
@@ -8774,9 +8779,10 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         propertyHeader("Frames", -1, false, false);
         ImGui::Text("%d", activeFrameCount);
         float spriteFramesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth,
+                sprite.framesRect.validIndex((int)sprite.numFramesRect), "A Sprite holds at most 65,536 frames")) {
             int freeSlot = (int)sprite.numFramesRect;
-            if (freeSlot < (int)sprite.framesRect.size()) {
+            if (sprite.framesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "framesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9110,7 +9116,66 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     }
 }
 
+void editor::InspectorWindow::drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // a Mixer Snapshot action of an Animation (S40 R18, R22): the snapshot picked from the mixer
+    Scene* scene = sceneProject->scene;
+    beginTable(cpType, getLabelSize("Revert Transition"));
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Snapshot");
+    ImGui::SetItemTooltip("The mixer's snapshot the action moves to when it starts");
+    ImGui::TableSetColumnIndex(1);
+    std::string current;
+    bool mixed = false;
+    for (size_t i = 0; i < entities.size(); i++){
+        const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entities[i]);
+        const std::string name = snapshot ? snapshot->snapshot : std::string();
+        if (i == 0) current = name;
+        else if (name != current) mixed = true;
+    }
+    const std::vector<std::string> snapshots = AudioMixer::getSnapshotNames();
+    const bool known = current.empty() || std::find(snapshots.begin(), snapshots.end(), current) != snapshots.end();
+    const std::string preview = mixed ? std::string("-") : current.empty() ? std::string("(none)") : known ? current : current + " (missing)";
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##audiosnapshot_snapshot", preview.c_str())){
+        std::vector<std::string> choices = snapshots;
+        choices.insert(choices.begin(), std::string());
+        for (const std::string& name : choices){
+            if (ImGui::Selectable(name.empty() ? "(none)" : name.c_str(), !mixed && name == current)){
+                for (const Entity& entity : entities){
+                    cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "snapshot", name);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                if (cmd) cmd->setNoMerge();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    RowSettings seconds;
+    seconds.help = "The transition time, in seconds";
+    propertyRow(RowPropertyType::FloatPositive, cpType, "seconds", "Transition", sceneProject, entities, seconds);
+    propertyRow(RowPropertyType::Bool, cpType, "unscaled", "Unscaled Time", sceneProject, entities);
+    RowSettings revert;
+    revert.help = "On stop, back to the snapshot shown before it started, if the mixer still shows this one";
+    propertyRow(RowPropertyType::Bool, cpType, "revert", "Revert On Stop", sceneProject, entities, revert);
+    RowSettings revertSeconds;
+    revertSeconds.help = "-1: the same as Transition";
+    propertyRow(RowPropertyType::Float, cpType, "revertSeconds", "Revert Transition", sceneProject, entities, revertSeconds);
+    endTable();
+    if (!known && !mixed){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " The mixer has no snapshot '%s'", current.c_str());
+    }
+    if (!scene->findComponent<ActionComponent>(entities.front())){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Plays as an Action: add an Action and put it on an Animation's track");
+    }
+}
+
 void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // an Animation's audio action (S40 R22)
+    if (sceneProject->scene->findComponent<ActionComponent>(entities.front())){
+        ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_FILM " Timeline audio: plays when its action starts");
+    }
     RowSettings compactSettings;
     compactSettings.secondColSize = 7 * ImGui::GetFontSize();
 
@@ -9122,7 +9187,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, getLabelSize("Audio Clip"));
 
-    if (entities.size() == 1) {
+    if (!sceneProject->scene->getComponent<AudioSourceComponent>(entities.front()).event.empty()) {
+        // the event plays: its clip is ignored (S37 R9)
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Audio Clip");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("(played by the event)");
+    } else if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
@@ -9210,6 +9282,13 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                         }
                     }
                 }
+                // a built-in clip from the Sound Browser: imported first
+                if (const ImGuiPayload* builtin = ImGui::AcceptDragDropPayload(SoundBrowserWindow::BUILTIN_PAYLOAD)) {
+                    std::vector<std::string> sounds;
+                    std::string dropError;
+                    if (SoundDrop::resolve(project, builtin, sounds, dropError) && !sounds.empty()) setAudioFilename(sounds.front());
+                    if (!dropError.empty()) Out::warning("Sound drop: %s", dropError.c_str());
+                }
                 ImGui::EndDragDropTarget();
             }
         }
@@ -9236,14 +9315,18 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     endTable();
 
+    drawAudioEventRows(cpType, sceneProject, entities);
+
     if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
         SoundPreviewRuntime& ap = soundPreviewRuntime;
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
+        // a capture's mix is the Play's alone
+        const bool capturing = AudioCapture::isActive();
 
-        if (ap.active && (!isThisPreview || !sceneIsStopped || ap.filename != audio.filename)) {
+        if (ap.active && (!isThisPreview || !sceneIsStopped || capturing || ap.filename != audio.filename)) {
             stopSoundPreview(!isThisPreview || ap.filename != audio.filename);
             isThisPreview = false;
         }
@@ -9254,7 +9337,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty());
+        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty() || capturing);
 
         if (isThisPreview && ap.playing) {
             if (ImGui::Button(ICON_FA_PAUSE "##audio_pause")) {
@@ -9267,6 +9350,9 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                 } else {
                     isThisPreview = true;
                 }
+            }
+            if (capturing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Audio preview is off while Play captures audio");
             }
         }
         ImGui::SameLine();
@@ -9600,9 +9686,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tile Rects", -1, false, false);
         ImGui::Text("%d", activeTileRectCount);
         float tileRectsArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth,
+                tilemap.tilesRect.validIndex((int)tilemap.numTilesRect), "A Tilemap holds at most 65,536 tile rects")) {
             int freeSlot = (int)tilemap.numTilesRect;
-            if (freeSlot < (int)tilemap.tilesRect.size()) {
+            if (tilemap.tilesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "tilesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9700,9 +9787,15 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
                     ImVec2 centerPad((arrowButtonSize.x - iconSize.x) * 0.5f, (arrowButtonSize.y - iconSize.y) * 0.5f);
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, centerPad);
                     }
-                    if (ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect")) {
+                    ImGui::BeginDisabled(tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES);
+                    const bool addTile = ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect");
+                    ImGui::EndDisabled();
+                    if (tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("A Tilemap draws at most %d tiles", MAX_TILEMAP_RENDERED_TILES);
+                    }
+                    if (addTile) {
                         int freeSlot = (int)tilemap.numTiles;
-                        if (freeSlot < (int)tilemap.tiles.size()) {
+                        if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                             editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                             std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                             multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9828,9 +9921,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tiles", -1, false, false);
         ImGui::Text("%d", activeTileCount);
         float tilesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth,
+                tilemap.numTiles < MAX_TILEMAP_RENDERED_TILES, "A Tilemap draws at most 16,383 tiles")) {
             int freeSlot = (int)tilemap.numTiles;
-            if (freeSlot < (int)tilemap.tiles.size()) {
+            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                 float defaultWidth = 100.0f;
                 float defaultHeight = 100.0f;
                 if (tilemap.numTilesRect > 0 && tilemap.tilesRect[0].rect.getWidth() > 0.0f && tilemap.tilesRect[0].rect.getHeight() > 0.0f) {
@@ -12109,8 +12203,8 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
                 if (changed) {
                     std::string newName = nameBuffer;
-                    std::string newSource = srcPath.string();
-                    std::string newHeader = hdrPath.string();
+                    std::string newSource = FileUtils::pathToGenericUtf8(srcPath);
+                    std::string newHeader = FileUtils::pathToGenericUtf8(hdrPath);
 
                     // Empty class name falls back to header (or source) filename stem
                     if (newName.empty()) {

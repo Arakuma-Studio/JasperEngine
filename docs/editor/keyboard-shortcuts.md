@@ -183,6 +183,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Frame Selected Keys | F | Animation |
 | Frame All Keys | A | Animation |
 | Record | R | Animation |
+| Align Peak to Playhead | Shift+A | Animation |
 
 ## Pose Animation
 
@@ -231,6 +232,23 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Delete Assets | Delete / Backspace | Project |
 | Rename Asset | F2 | Project |
 | Resize Items | Ctrl+Mouse Wheel | Project |
+
+## Sound Browser
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play Moment | Enter | Audio Captures |
+| Stop | Escape | Audio Captures |
+| Next Moment | Down | Audio Captures |
+| Previous Moment | Up | Audio Captures |
+| Search Sounds | Ctrl+F | Sound Browser |
+| Next Sound | Down / Right | Sound Browser |
+| Previous Sound | Up / Left | Sound Browser |
+| Play or Stop Sound | Space | Sound Browser |
+| Play Sound Loudness-Matched | Shift+Space | Sound Browser |
+| Use Sound | Enter | Sound Browser |
+| Select All Sounds | Ctrl+A | Sound Browser |
+| Stop Sound or Clear Search | Escape | Sound Browser |
 
 ## Console
 

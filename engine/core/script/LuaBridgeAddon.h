@@ -38,6 +38,7 @@
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
+#include "util/StringUtils.h"
 #include "component/LineRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "camera/CameraType.h"
@@ -116,6 +117,36 @@ namespace luabridge
 
     template<> struct Stack<AssetRef> : AssetPathStack<AssetRef>{};
     template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
+
+    // A character (Engine.onCharInput, UISystem:eventOnCharInput): a one-character UTF-8 string
+    // in Lua, as the event handlers get it; a code point number is taken too
+    template<> struct Stack<char32_t>
+    {
+        [[nodiscard]] static Result push(lua_State* L, char32_t value)
+        {
+            return Stack<std::string>::push(L, StringUtils::toUTF8(value));
+        }
+
+        [[nodiscard]] static TypeResult<char32_t> get(lua_State* L, int index)
+        {
+            if (lua_type(L, index) == LUA_TNUMBER)
+                return static_cast<char32_t>(lua_tointeger(L, index));
+            if (lua_type(L, index) != LUA_TSTRING)
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            size_t length = 0;
+            const char* text = lua_tolstring(L, index, &length);
+            bool invalid = false;
+            const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(std::string(text, length), invalid);
+            if (codepoints.size() != 1)
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            return static_cast<char32_t>(codepoints[0]);
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return lua_type(L, index) == LUA_TNUMBER || lua_type(L, index) == LUA_TSTRING;
+        }
+    };
 
     template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
     template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};  // qualified: the editor has a Platform class too
@@ -214,6 +245,7 @@ namespace luabridge
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
     template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
+    template<> struct Stack<AudioPlayOn> : EnumWrapper<AudioPlayOn>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};

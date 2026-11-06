@@ -177,23 +177,6 @@ namespace jasperengine::editor{
         bool reused = false;                // an earlier load wrote it already (kept as it is now)
     };
 
-    struct SceneMaxValues {
-        unsigned int maxSubmeshes = 0;
-        unsigned int maxTilemapTilesRect = 0;
-        unsigned int maxTilemapTiles = 0;
-        unsigned int maxExternalBuffers = 0;
-        unsigned int maxSpriteFrames = 0;
-        unsigned int maxBones = 0;
-        // the collider caps of scenes saved before colliders had none (maxColliders2D,
-        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
-        // nothing reads them, kept as they were so re-saving an old scene changes no line
-        std::optional<unsigned int> legacyMaxColliders2D;
-        std::optional<unsigned int> legacyMaxColliderPoints2D;
-        std::optional<unsigned int> legacyMaxColliders3D;
-        std::optional<unsigned int> legacyMaxColliderVertices3D;
-        std::optional<unsigned int> legacyMaxColliderIndices3D;
-    };
-
     struct ChildSceneRef {
         uint32_t id = NULL_PROJECT_SCENE;
         bool startActive = true;
@@ -261,7 +244,10 @@ namespace jasperengine::editor{
         bool playStateModified = false;
         // The prefab instances' bookkeeping when the snapshot was taken (capturePlayPrefabState)
         PlayPrefabState playPrefabState;
-        SceneMaxValues maxValues;
+        // the maxValues block of a scene saved by an editor that sized fixed arrays (capacities) and
+        // collider caps: nothing reads it, written back as it was so re-saving changes no line; a
+        // scene saved since has none (null)
+        YAML::Node legacyMaxValues;
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
@@ -1312,7 +1298,6 @@ namespace jasperengine::editor{
         template<typename T>
         T* findScene(uint32_t sceneId) const;
 
-        void calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const;
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
 
@@ -1517,11 +1502,6 @@ namespace jasperengine::editor{
         // of the loaded scenes are collected again first. Returns the scripts the build compiles.
         // Main thread, not while playing (MCP compile_scripts).
         std::vector<SceneScriptSource> prepareScriptBuild();
-
-        // The external buffers MeshSystem::loadGLTF gives the model in a .gltf/.glb (merged: with
-        // mergeStaticMeshes), read from the file: a command line export loads no model, so the
-        // meshes' numExternalBuffers alone would undersize MAX_EXTERNAL_BUFFERS. 0 when unreadable.
-        static unsigned int countGltfExternalBuffers(const std::filesystem::path& path, bool merged);
 
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
@@ -1961,6 +1941,22 @@ namespace jasperengine::editor{
         // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
         // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
         const AudioSettings& getAudioSettings() const;
+
+        // what the next Play does about its audio capture (audio_session arm); it is used once
+        struct AudioCaptureArm {
+            bool armed = false;
+            bool capture = true;
+            // 0: audio.capture_max_seconds
+            int maxSeconds = 0;
+            // -1: audio.capture_stems
+            int stems = -1;
+        };
+        void armAudioCapture(const AudioCaptureArm& arm);
+        const AudioCaptureArm& getAudioCaptureArm() const;
+        // why this Play is not captured though it should be; "" when it is or need not be
+        const std::string& getAudioCaptureError() const;
+        // the session of the Play that just stopped, once ("" when it did not capture)
+        std::string takeAudioCaptureSession();
         void setAudioSettings(const AudioSettings& settings);
         // the project mixer's file (absolute; empty when none is set)
         std::filesystem::path getAudioMixerFile() const;
@@ -1976,6 +1972,18 @@ namespace jasperengine::editor{
         // Play starts from the start snapshot and the remembered values; Play stops back to the
         // asset's values (no script overrides, the listener unpaused, the global volume at 1)
         void resetPlayAudio(bool starting) const;
+        // Play's audio capture (docs/specs/S35-agent-audio.md R4, R10): whether this Play captures and
+        // the driver it needs, before anything of it loads; the session, around its game frames
+        AudioCaptureArm audioCaptureArm;
+        AudioCaptureArm playAudioCapture;
+        bool playAudioCaptureWanted = false;
+        bool playHoldsAudioDriver = false;
+        std::string audioCaptureError;
+        std::string playAudioCaptureSession;
+        void preparePlayAudioCapture();
+        void beginPlayAudioCapture(const SceneProject* mainSceneProject);
+        void endPlayAudioCapture();
+        void releasePlayAudioDriver();
 
         // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
         // (undoable), read by Generator and Play start; a running Play takes a change at once

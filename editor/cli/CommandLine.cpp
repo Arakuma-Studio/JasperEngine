@@ -40,6 +40,7 @@
 #include "command/type/PropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
+#include "util/TextEncoding.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
@@ -298,6 +299,10 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
+        << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
+        << "                                                     Measure audio files (the analyze_audio numbers; exit 0/2).\n"
+        << "  " << commandName << " sound-library verify|list [options]\n"
+        << "                                                     Check or list the starter library (exit 0/1/2).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
         << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
@@ -622,6 +627,8 @@ static void attachHostConsoleIfNeeded() {
         (void)freopen_s(&stdoutFile, "CONOUT$", "w", stdout);
         (void)freopen_s(&stderrFile, "CONOUT$", "w", stderr);
         (void)freopen_s(&stdinFile,  "CONIN$",  "r", stdin);
+        // the console exists only now: it shows the UTF-8 output too
+        TextEncoding::useUtf8Console();
     }
 #endif
 }

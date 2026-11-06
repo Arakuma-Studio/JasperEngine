@@ -64,7 +64,10 @@ namespace reflect_resolve_bench_test {
         std::printf("[bench] resolve light.shadowNormalBias: %.1f ns median\n", flat);
         EXPECT_EQ(allocations, 0u);
 
+        // (a mesh of four submeshes: the arrays hold what a mesh has)
         MeshComponent mesh;
+        mesh.numSubmeshes = 4;
+        mesh.submeshes.resize(4);
         const double indexed = medianNanoseconds(*reflect::find(ComponentType::MeshComponent), &mesh, "submeshes[3].material.baseColorFactor",
                                                  allocations);
         std::printf("[bench] resolve mesh.submeshes[3].material.baseColorFactor: %.1f ns median\n", indexed);

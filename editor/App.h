@@ -14,6 +14,7 @@
 #include "layout/LayoutManager.h"
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/ShortcutDispatcher.h"
+#include "util/SystemFonts.h"
 
 
 #include "window/EditorModal.h"
@@ -74,6 +75,8 @@ namespace jasperengine::editor{
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
+    class SoundBrowserWindow;
+    class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -232,6 +235,8 @@ namespace jasperengine::editor{
 
         static ImFont* codeFont;
         static ImFont* boldFont;
+        // the fonts the system's CJK and emoji fonts fall back from (SystemFonts)
+        std::vector<SystemFonts::Target> systemFontTargets;
 
         HierarchyWindow* hierarchyWindow;
         InspectorWindow* inspectorWindow;
@@ -247,6 +252,8 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        SoundBrowserWindow* soundBrowserWindow;
+        AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
@@ -524,6 +531,8 @@ namespace jasperengine::editor{
         void loadStartupProject();
         void processProjectChange();
         void engineRender();
+        // Before ImGui::NewFrame: merges the system's CJK and emoji fonts once they are found
+        void applySystemFonts();
         void engineViewDestroyed();
         void engineShutdown();
 

@@ -27,8 +27,13 @@
 #include "manager/SceneManager.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioCapture.h"
+#include "audio/AudioMarkers.h"
 #include "subsystem/CameraControlSystem.h"
 #include "audio/AudioMixer.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "audio/MusicPlayer.h"
+#endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -98,6 +103,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <functional>
 #include <optional>
@@ -238,7 +244,7 @@ FunctionSubscribe<void()> Engine::onMouseEnter;
 FunctionSubscribe<void()> Engine::onMouseLeave;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyDown;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyUp;
-FunctionSubscribe<void(wchar_t)> Engine::onCharInput;
+FunctionSubscribe<void(char32_t)> Engine::onCharInput;
 FunctionSubscribe<void(int)> Engine::onGamepadConnect;
 FunctionSubscribe<void(int)> Engine::onGamepadDisconnect;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonDown;
@@ -1807,7 +1813,9 @@ namespace {
         // build's macro, both through the platform configuration)
         // (the configuration lives for the whole run, so its text does)
         config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
-        config.root = system->getCrashReportPath();
+        // the platform's path is UTF-8 (a narrow fs::path would read it in the ANSI code page)
+        const std::string crashReportPath = system->getCrashReportPath();
+        config.root = std::filesystem::path(std::u8string(crashReportPath.begin(), crashReportPath.end()));
         config.includeLogTail = setting(platform.crashLogTail, platform.builtCrashLogTail);
         config.dumpKind = setting(platform.crashDumpWithHeap, platform.builtCrashDumpWithHeap) ? diag::crash::DumpKind::WithHeap
                                                                                                   : diag::crash::DumpKind::Small;
@@ -2234,8 +2242,10 @@ void Engine::runFrame(bool draw){
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
     // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
-    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
-    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held, and on
+    // the deterministic driver while its pump holds: what a Play's pause lasted is not in the mix)
+    const bool audioHeld = paused || simulationHeld || (!onUpdate.isEnabled() && AudioSystem::getOutputMode() == AudioOutputMode::Deterministic);
+    AudioMixer::update(audioHeld ? 0.0 : deltatime, audioHeld ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
     Scheduler& scheduler = Scheduler::game();
@@ -2301,6 +2311,11 @@ void Engine::runFrame(bool draw){
     // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
     // callbacks, the editor's tools), at this frame's first safe point
     SceneManager::flushPersistentMoves();
+
+#if JASPERENGINE_AUDIO_CAPTURE && !defined(JASPERENGINE_EDITOR)
+    // --audio-capture: from the first frame of the start scene, before its update
+    player::RunControl::beginAudioCapture();
+#endif
 
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
@@ -2427,6 +2442,13 @@ void Engine::runFrame(bool draw){
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
     }
+
+#if JASPERENGINE_SOUND_LAYER
+    // the music's callbacks and segments for what this frame mixes (docs/specs/S39-music.md)
+    MusicPlayer::update(unscaledDeltatime);
+#endif
+    // after the scenes, so a voice, what started it and the frame's mix are on the same sample
+    AudioSystem::pumpDeterministic(unscaledDeltatime);
 
     // the debug overlay updates on its own clock: also while the time scale is 0 or the
     // editor holds the game, so it stays usable on a frozen game
@@ -2623,6 +2645,11 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    // a player's capture ends with the run; its voices are still in their scenes
+    AudioCapture::end();
+#endif
 
     // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
@@ -3015,26 +3042,14 @@ namespace {
         return consumed;
     }
 
-    // the game's and the component UI's character input: one wchar_t unit per call, as before
-    // documents existed (two surrogates where wchar_t is 16 bits)
+    // the game's and the component UI's character input: one whole code point per call
     void sendCharacterToGame(uint32_t codepoint, bool toComponentUI, bool toGame, const std::vector<Scene*>& scenes){
-        std::vector<wchar_t> units;
-        if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
-            const uint32_t value = codepoint - 0x10000u;
-            units.push_back((wchar_t)(0xD800u + (value >> 10)));
-            units.push_back((wchar_t)(0xDC00u + (value & 0x3FFu)));
-        }else{
-            units.push_back((wchar_t)codepoint);
-        }
-
-        for (wchar_t unit : units){
-            if (toGame)
-                Engine::onCharInput.call(unit);
-            if (toComponentUI){
-                for (Scene* scene : scenes){
-                    if (canSendUIEvents(scene))
-                        scene->getSystem<UISystem>()->eventOnCharInput(unit);
-                }
+        if (toGame)
+            Engine::onCharInput.call(static_cast<char32_t>(codepoint));
+        if (toComponentUI){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    scene->getSystem<UISystem>()->eventOnCharInput(static_cast<char32_t>(codepoint));
             }
         }
     }
@@ -3196,6 +3211,9 @@ void Engine::systemTouchStart(int pointer, float x, float y){
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "down", pointer, x, y);
+#endif
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
@@ -3244,7 +3262,11 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
     DebugOverlay::handleTouch(pointer, x, y, 2);
     // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
     const bool visible = Input::isTouchVisible(pointer);
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
+#endif
+    if (!onCanvas){
         // lifted outside the canvas: no event, but the finger is not down any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::removeTouch(pointer);
@@ -3384,6 +3406,9 @@ void Engine::systemTouchCancel(int pointer){
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "down", button, x, y);
+#endif
         Input::addMousePressed(button, mods);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -3428,7 +3453,11 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
+#endif
+    if (!onCanvas){
         // released outside the canvas: no event, but the button is not held any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::releaseMousePressed(button);
@@ -3580,6 +3609,9 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (!repeat && AudioMarkers::isEnabled()) AudioMarkers::input("key", "down", key, 0.0f, 0.0f);
+#endif
     Input::addKeyPressed(key, repeat, mods);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -3608,6 +3640,9 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("key", "up", key, 0.0f, 0.0f);
+#endif
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
 
@@ -3622,48 +3657,36 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
         Engine::onKeyUp.call(key, repeat, mods);
 }
 
-void Engine::systemCharInput(wchar_t codepoint){
-    const std::vector<Scene*> scenes = getInputScenes(true);
-
+void Engine::systemCharInput(char32_t unit){
     std::vector<uint32_t> codepoints;
-    charInputCombiner.push((uint32_t)codepoint, codepoints);
-    // Input.inputString (Unity's: the text typed this frame)
-    for (uint32_t typed : codepoints)
-        Input::addInputCharacter(typed);
-
-    bool consumed;
-    if (!codepoints.empty()){
-        const std::string utf8 = toUtf8(codepoints);
-        consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-            return documents->eventOnTextInput(utf8);
-        }) != nullptr;
-    }else{
-        // half of a pair: it goes where its other half will
-        consumed = wantsTextComposition();
-    }
-
-    if (!ignoreEventsHandledByUI || !consumed)
-        onCharInput.call(codepoint);
-
-    if (!consumed){
-        for (Scene* scene : scenes){
-            if (canSendUIEvents(scene))
-                scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
-        }
-    }
+    charInputCombiner.push(static_cast<uint32_t>(unit), codepoints);
+    // half of a pair: nothing until its other half
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
 }
 
 void Engine::flushCharInput(){
     std::vector<uint32_t> codepoints;
     charInputCombiner.flush(codepoints);
-    if (codepoints.empty())
-        return;
+    // a high surrogate whose low one never came: U+FFFD, everywhere a character goes
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
+}
 
-    // a high surrogate whose low one never came
+void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
+    const std::vector<Scene*> scenes = getInputScenes(true);
+
+    // Input.inputString (Unity's: the text typed this frame)
+    for (uint32_t typed : codepoints)
+        Input::addInputCharacter(typed);
+
     const std::string utf8 = toUtf8(codepoints);
-    dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
+    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
-    });
+    }) != nullptr;
+
+    for (uint32_t codepoint : codepoints)
+        sendCharacterToGame(codepoint, !consumed, !ignoreEventsHandledByUI || !consumed, scenes);
 }
 
 void Engine::systemTextInput(const std::string& utf8){
@@ -3748,6 +3771,9 @@ void Engine::systemGamepadDisconnect(int gamepad){
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "down", button, 0.0f, 0.0f);
+#endif
     Input::addGamepadButtonPressed(gamepad, button);
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -3759,6 +3785,9 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "up", button, 0.0f, 0.0f);
+#endif
     Input::releaseGamepadButtonPressed(gamepad, button);
 
     // consumed iff its down was, so the game never gets an up without a down

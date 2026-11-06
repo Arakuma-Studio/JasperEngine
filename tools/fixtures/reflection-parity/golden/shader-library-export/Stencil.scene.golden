@@ -60,9 +60,19 @@ shaderKeys:
     properties: 33554435
   - type: mesh
     properties: 33555459
+  - type: mesh
+    properties: 2199023255553
+  - type: mesh
+    properties: 2199023255555
+  - type: mesh
+    properties: 2199023256579
+  - type: mesh
+    properties: 2199056811011
   - type: sky
   - type: depth
   - type: blit
+  - type: blit
+    properties: 4096
   - type: mesh
     properties: 33554433
     customShader: library:outline#BLEND_NONE,DISTANCE_SCALE,WIDTH_MODE_WORLD
@@ -97,7 +107,13 @@ shaderKeys:
     properties: 3
     customShader: library:stencil_mask#ALPHA_CLIP,BLEND_NONE
   - type: mesh
+    properties: 2199023255555
+    customShader: library:stencil_mask#ALPHA_CLIP,BLEND_NONE
+  - type: mesh
     properties: 1
+    customShader: library:stencil_mask#BLEND_NONE
+  - type: mesh
+    properties: 2199023255553
     customShader: library:stencil_mask#BLEND_NONE
   - type: depth
     customShader: library:unlit
@@ -112,6 +128,12 @@ shaderKeys:
     customShader: library:unlit#BLEND_NONE
   - type: mesh
     properties: 33555459
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199023256579
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199056811011
     customShader: library:unlit#BLEND_NONE
 entities:
   - type: Entity

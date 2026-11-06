@@ -44,6 +44,8 @@ shaderKeys:
   - type: mesh
     properties: 3073
   - type: blit
+  - type: blit
+    properties: 4096
 prefabs:
   - path: prefabs/Castle.prefab
     guid: b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2

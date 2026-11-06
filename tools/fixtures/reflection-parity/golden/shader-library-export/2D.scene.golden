@@ -59,6 +59,8 @@ shaderKeys:
   - type: depth
     properties: 129
   - type: blit
+  - type: blit
+    properties: 4096
   - type: sky
     customShader: library:gradient_sky#BLEND_ALPHA
   - type: points

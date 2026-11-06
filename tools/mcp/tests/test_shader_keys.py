@@ -17,6 +17,10 @@ CI = True
 TIMEOUT = 900
 
 MESH, SKYBOX, DEPTH = 2, 3, 4   # ShaderType
+# the MESH properties past the 32 of older keys (ShaderPool::getShaderPropertyName, bits 32-41): a
+# key with one is wide
+WIDE_MESH = {"Ltc", "Shq", "Vat", "Vab", "Til", "Cap", "Cts", "Oit", "Lfd", "Aui"}
+UNNAMED_BIT = 63
 
 
 def packed(shader_type: int, properties: int, custom_id: int = 0) -> int:
@@ -33,8 +37,10 @@ async def test_build_info_keys_keep_their_text(ed: Editor):
     info = await ed.call("get_build_info", include_shaders=True)
     ed.check(info["shaders"], "the scene's shaders are listed")
     for shader in info["shaders"]:
-        # S10's Shadows HQ is MESH bit 33: a key with it is wide (type, then the 64 property bits)
-        wide = "Shq" in shader["name"]
+        # S10's Shadows HQ is MESH bit 33, S54's Lod Fade bit 40: a key with one is wide (type, then
+        # the 64 property bits)
+        names = shader["shader"].rsplit("_", 1)[-1]
+        wide = shader["shader"].startswith("mesh_") and not WIDE_MESH.isdisjoint(names[i:i + 3] for i in range(0, len(names), 3))
         ed.check(re.fullmatch(r"0x[0-9a-f]{24}" if wide else r"0x[0-9a-f]{1,16}", shader["key"]),
                  f"a 32-bit key is the packed hex, a wide one type + properties: {shader}")
 
@@ -47,7 +53,7 @@ def read_sdat_key(data: bytes) -> tuple:
 
 async def test_generate_shaders_takes_old_and_wide_keys(ed: Editor):
     out = ed.scratch.root / "shaders-keys"
-    wide = "0x" + f"{0:04x}{MESH:04x}{(1 << 40) | 0x41:016x}"   # bit 40 names nothing yet: normalized away
+    wide = "0x" + f"{0:04x}{MESH:04x}{(1 << UNNAMED_BIT) | 0x41:016x}"   # a bit that names nothing: normalized away
     r = await ed.call("generate_shaders", output_dir=str(out), backends=["opengl"], format="binary",
                       shaders=[hex(packed(MESH, 0x41)), wide, "sky:Pcl", str(packed(DEPTH, 0x3))], timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
@@ -91,8 +92,12 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "pool/SoundPool.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/MusicPlayer.h"
+#include "audio/SoundEventLibrary.h"
+#include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
@@ -311,6 +316,17 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+// The project ShaderManifests reads fork files through: its reader captures it, so the project
+// takes the reader back when it goes (a later read would call into a freed Project)
+static const editor::Project* shaderForkReaderProject = nullptr;
+
+static void installShaderForkReader(const editor::Project* project){
+    shaderForkReaderProject = project;
+    ShaderManifests::setForkReader([project](const std::string& relativePath, std::string& content) {
+        return project->readShaderFile(relativePath, content);
+    });
+}
+
 bool editor::Project::recordSelectionInUndo = true;
 
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
@@ -329,6 +345,10 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    if (shaderForkReaderProject == this){
+        shaderForkReaderProject = nullptr;
+        ShaderManifests::setForkReader(nullptr);
+    }
     // the hooks point here: an editor or tool with a later Project installs its own
     if (UndoTimeline::getProjectHistory() == &projectHistory){
         UndoTimeline::setProjectHistory(nullptr);
@@ -3065,9 +3085,11 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
+    audioSettings.seed = std::max(audioSettings.seed, 0);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
-                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory)});
+                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
+                            audioSettings.musicGroup});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -3119,6 +3141,13 @@ bool editor::Project::applyAudioMixer(std::string* error){
 }
 
 void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>& changed){
+    // the next play of a changed Sound Event uses its file; voices that play keep playing
+    for (const fs::path& path : changed) {
+        if (Util::isSoundEventFile(path.string())) {
+            SoundEventLibrary::reload(normalizeToAssetsRelative(path).generic_string());
+        }
+    }
+    if (isAnyScenePlaying()) AudioImportRegistry::filesChanged(*this, changed);
     const fs::path mixer = getAudioMixerFile();
     if (mixer.empty()) return;
     for (const fs::path& path : changed) {
@@ -3130,6 +3159,81 @@ void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>
     }
 }
 
+void editor::Project::armAudioCapture(const AudioCaptureArm& arm){
+    audioCaptureArm = arm;
+    audioCaptureArm.armed = true;
+}
+
+const editor::Project::AudioCaptureArm& editor::Project::getAudioCaptureArm() const{
+    return audioCaptureArm;
+}
+
+const std::string& editor::Project::getAudioCaptureError() const{
+    return audioCaptureError;
+}
+
+std::string editor::Project::takeAudioCaptureSession(){
+    std::string session;
+    session.swap(playAudioCaptureSession);
+    return session;
+}
+
+void editor::Project::preparePlayAudioCapture(){
+    playAudioCaptureSession.clear();
+    playAudioCapture = audioCaptureArm;
+    audioCaptureArm = AudioCaptureArm();
+    audioCaptureError.clear();
+    playAudioCaptureWanted = false;
+    bool capture = playAudioCapture.capture;
+    if (!playAudioCapture.armed) {
+        // a device hears the game; a chosen NoSound or Null is a test's, left as it is
+        const AudioBackend backend = AudioSystem::getSelectedBackend();
+        capture = backend == AudioBackend::Deterministic || (backend == AudioBackend::Auto && !AudioSystem::hasDevice());
+    }
+    if (!capture) return;
+    playHoldsAudioDriver = true;
+    if (!AudioSystem::beginDeterministic()) {
+        audioCaptureError = "the deterministic audio driver did not open";
+        Out::error("Audio capture: %s", audioCaptureError.c_str());
+        return;
+    }
+    playAudioCaptureWanted = true;
+}
+
+void editor::Project::beginPlayAudioCapture(const SceneProject* mainSceneProject){
+    if (!playAudioCaptureWanted) return;
+    AudioCaptureOptions options;
+    options.root = getProjectInternalPath() / "audio" / "captures";
+    options.project = getName();
+    options.scene = mainSceneProject ? mainSceneProject->name : std::string();
+    options.sceneName = [this](const Scene* scene) {
+        const SceneProject* owner = findSceneProjectByScene(const_cast<Scene*>(scene));
+        return owner ? owner->name : std::string();
+    };
+    options.maxSeconds = playAudioCapture.maxSeconds > 0 ? playAudioCapture.maxSeconds : audioSettings.captureMaxSeconds;
+    options.keep = audioSettings.captureKeep;
+    options.stems = playAudioCapture.stems >= 0 ? playAudioCapture.stems != 0 : audioSettings.captureStems;
+    options.seed = (uint32_t)audioSettings.seed;
+    std::string error;
+    if (!AudioCapture::begin(options, &error)) {
+        audioCaptureError = "this Play is not captured: " + error;
+        Out::error("Audio capture: %s", audioCaptureError.c_str());
+        return;
+    }
+    playAudioCaptureSession = AudioCapture::sessionId();
+}
+
+void editor::Project::endPlayAudioCapture(){
+    AudioCapture::end();
+    playAudioCaptureWanted = false;
+}
+
+void editor::Project::releasePlayAudioDriver(){
+    if (!playHoldsAudioDriver) return;
+    playHoldsAudioDriver = false;
+    AudioSystem::endDeterministic();
+}
+
 void editor::Project::resetPlayAudio(bool starting) const{
     AudioSystem::setListenerPaused(false);
     // AudioListener.volume / AudioSystem.globalVolume: SoLoud's global volume, which the editor's
@@ -3138,6 +3242,10 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::setMasterPaused(false);
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
+    AudioSystem::resetSoundEventRuntime();
+    MusicPlayer::reset();
+    if (starting) AudioImportRegistry::registerProject(*this);
+    else AudioImportTable::clear();
 }
 
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
@@ -3526,267 +3634,6 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
             sceneProject->cppScripts.push_back(std::move(sceneScript));
         }
     }
-}
-
-// The JSON of a .gltf, or the JSON chunk of a .glb
-static nlohmann::json readGltfJson(const fs::path& path, uintmax_t size) {
-    std::ifstream file(path, std::ios::binary);
-    // magic, version, length, then the first chunk's length and type
-    uint32_t header[5];
-    if (!file.read(reinterpret_cast<char*>(header), sizeof(header)) || header[0] != 0x46546C67u) {
-        file.clear();
-        file.seekg(0);
-        return nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
-    }
-    if (header[4] != 0x4E4F534Au || sizeof(header) + header[3] > size) {
-        return {};
-    }
-    std::string text(header[3], '\0');
-    file.read(text.data(), static_cast<std::streamsize>(text.size()));
-    return nlohmann::json::parse(text, nullptr, false);
-}
-
-// Each distinct buffer view a mesh component reads, plus a synthetic view per primitive for byte
-// indices, integer VEC3 colors, sparse morphs and baked transforms
-unsigned int editor::Project::countGltfExternalBuffers(const fs::path& path, bool merged) {
-    // glTF componentType values
-    constexpr int UNSIGNED_BYTE = 5121;
-    constexpr int UNSIGNED_SHORT = 5123;
-    constexpr int FLOAT = 5126;
-
-    struct Count {
-        uintmax_t size = 0;
-        fs::file_time_type time;
-        unsigned int separate = 0;
-        unsigned int merged = 0;
-    };
-    static std::mutex mutex;
-    static std::unordered_map<std::string, Count> cache;
-
-    std::error_code ec;
-    const uintmax_t size = fs::file_size(path, ec);
-    if (ec) {
-        return 0;
-    }
-    const fs::file_time_type time = fs::last_write_time(path, ec);
-    if (ec) {
-        return 0;
-    }
-
-    std::lock_guard<std::mutex> lock(mutex);
-    Count& count = cache[editor::FileUtils::pathToUtf8(path.lexically_normal())];
-    if (count.size == size && count.time == time) {
-        return merged ? count.merged : count.separate;
-    }
-    count = {size, time};
-
-    const nlohmann::json gltf = readGltfJson(path, size);
-    try {
-        const nlohmann::json& nodes = gltf.at("nodes");
-        const nlohmann::json& meshes = gltf.at("meshes");
-        const nlohmann::json& accessors = gltf.at("accessors");
-
-        // buffers of the given mesh nodes put on one MeshComponent
-        auto countBuffers = [&](const std::vector<size_t>& meshNodes, bool baked) {
-            std::set<size_t> views;
-            unsigned int generated = 0;
-            auto add = [&](const nlohmann::json& accessor, bool copied) {
-                if (copied) {
-                    generated++;
-                } else if (accessor.contains("bufferView")) {
-                    views.insert(accessor["bufferView"].get<size_t>());
-                }
-            };
-            for (size_t node : meshNodes) {
-                for (const nlohmann::json& primitive : meshes.at(nodes.at(node).at("mesh").get<size_t>()).at("primitives")) {
-                    // skipped by the loader
-                    if (!primitive.contains("indices")) {
-                        continue;
-                    }
-                    const nlohmann::json& indices = accessors.at(primitive["indices"].get<size_t>());
-                    add(indices, indices.value("componentType", 0) == UNSIGNED_BYTE);
-
-                    for (const auto& attribute : primitive.at("attributes").items()) {
-                        const nlohmann::json& accessor = accessors.at(attribute.value().get<size_t>());
-                        const std::string& name = attribute.key();
-                        const int component = accessor.value("componentType", 0);
-                        const std::string type = accessor.value("type", "");
-                        const bool color = name == "COLOR_0" && type == "VEC3" &&
-                            (component == UNSIGNED_BYTE || component == UNSIGNED_SHORT);
-                        const bool bake = baked && component == FLOAT &&
-                            (((name == "POSITION" || name == "NORMAL") && type == "VEC3") || (name == "TANGENT" && type == "VEC4"));
-                        add(accessor, color || bake);
-                    }
-
-                    for (const nlohmann::json& target : primitive.value("targets", nlohmann::json::array())) {
-                        for (const nlohmann::json& index : target) {
-                            const nlohmann::json& accessor = accessors.at(index.get<size_t>());
-                            add(accessor, accessor.contains("sparse"));
-                        }
-                    }
-                }
-            }
-            return static_cast<unsigned int>(views.size()) + generated;
-        };
-
-        std::vector<size_t> meshNodes;
-        for (size_t i = 0; i < nodes.size(); i++) {
-            if (nodes[i].contains("mesh") && nodes[i]["mesh"].get<size_t>() < meshes.size()) {
-                meshNodes.push_back(i);
-            }
-        }
-
-        if (meshNodes.size() == 1) {
-            // the transform from the scene root down to a lone mesh node is baked
-            size_t root = meshNodes[0];
-            const size_t scene = gltf.value("scene", size_t(0));
-            if (gltf.contains("scenes") && scene < gltf["scenes"].size()) {
-                const nlohmann::json roots = gltf["scenes"][scene].value("nodes", nlohmann::json::array());
-                if (!roots.empty()) {
-                    root = roots[0].get<size_t>();
-                }
-            }
-            count.separate = countBuffers(meshNodes, meshNodes[0] != root);
-            // a foliage layer (counted as merged) bakes the node's whole global transform
-            count.merged = countBuffers(meshNodes, true);
-        } else {
-            // a child mesh per node, or all of them baked onto the root when merged
-            for (size_t node : meshNodes) {
-                count.separate = std::max(count.separate, countBuffers({node}, false));
-            }
-            count.merged = countBuffers(meshNodes, true);
-        }
-    } catch (const nlohmann::json::exception&) {
-        count.separate = 0;
-        count.merged = 0;
-    }
-    return merged ? count.merged : count.separate;
-}
-
-void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const {
-    if (!sceneProject || !sceneProject->scene) {
-        return;
-    }
-
-    // what the splines build is counted as built: a scene saved right after it loaded (before a
-    // frame ran SplineSystem) gets the same values as after
-    if (std::shared_ptr<SplineSystem> splines = sceneProject->scene->findSystem<SplineSystem>()) {
-        auto splineArray = sceneProject->scene->getComponentArray<SplineComponent>();
-        std::vector<Entity> owners;
-        for (size_t i = 0; i < splineArray->size(); ++i) {
-            const Entity owner = splineArray->getEntity(i);
-            if ((sceneProject->scene->findComponent<SplineExtrudeComponent>(owner) ||
-                 sceneProject->scene->findComponent<SplineInstantiateComponent>(owner)) &&
-                (splines->isRebuildPending(owner) || splines->getGeneratedEntities(owner).empty())) {
-                owners.push_back(owner);
-            }
-        }
-        for (Entity owner : owners) {
-            splines->rebuildNow(owner);
-        }
-    }
-
-    // The scene's own GameObjects only (user ids, and a GameObject an old file gave a system id):
-    // the Scene view makes its icons (Sprites of one submesh), grid and gizmos in the scene's
-    // registry as system entities when it draws, so a save would otherwise depend on whether the
-    // scene was drawn
-    const std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());
-    auto own = [&tracked](auto& array, size_t i) {
-        const Entity entity = array->getEntity(i);
-        return entity > EntityManager::lastSystemEntity() || tracked.count(entity) > 0;
-    };
-
-    auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
-    for (size_t i = 0; i < meshes->size(); ++i) {
-        if (!own(meshes, i)) continue;
-        const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        const Signature signature = sceneProject->scene->getSignature(meshes->getEntity(i));
-        maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, Stream::savedSubmeshCount(mesh, sceneProject->scene, signature));
-        maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
-        maxValues.maxBones = std::max(maxValues.maxBones,
-            static_cast<unsigned int>(mesh.bonesMatrix.size()));
-    }
-
-    // numExternalBuffers is filled by a load, and a command line export loads no model
-    auto addModelFile = [&](const std::string& filename, bool merged) {
-        if (filename.empty()) {
-            return;
-        }
-        const fs::path path = resolveAssetPath(FileUtils::pathFromUtf8(filename));
-        std::string extension = path.extension().string();
-        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (extension == ".glb" || extension == ".gltf") {
-            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(path, merged));
-        } else if (FbxImporter::isFbxFile(path)) {
-            // an FBX loads from its imported .glb
-            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(getImportedModelPath(path), merged));
-        }
-    };
-
-    auto models = sceneProject->scene->getComponentArray<ModelComponent>();
-    for (size_t i = 0; i < models->size(); ++i) {
-        if (!own(models, i)) continue;
-        const ModelComponent& model = models->getComponentFromIndex(i);
-        addModelFile(model.filename, model.mergeStaticMeshes);
-    }
-
-    // Spline Instantiate model pools (their pieces are merged models), also where none loaded
-    auto instantiates = sceneProject->scene->getComponentArray<SplineInstantiateComponent>();
-    for (size_t i = 0; i < instantiates->size(); ++i) {
-        if (!own(instantiates, i)) continue;
-        const SplineInstantiateComponent& instantiate = instantiates->getComponentFromIndex(i);
-        for (const std::vector<SplinePoolEntry>* pool : {&instantiate.items, &instantiate.posts, &instantiate.spans,
-                                                         &instantiate.gates, &instantiate.crests, &instantiate.caps}) {
-            for (const SplinePoolEntry& entry : *pool) {
-                addModelFile(entry.asset.path, true);
-            }
-        }
-    }
-
-    // foliage chunks are merged models
-    auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
-    for (size_t i = 0; i < terrains->size(); ++i) {
-        if (!own(terrains, i)) continue;
-        for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
-            addModelFile(layer.meshPath, true);
-        }
-    }
-
-    auto sprites = sceneProject->scene->getComponentArray<SpriteComponent>();
-    for (size_t i = 0; i < sprites->size(); ++i) {
-        if (!own(sprites, i)) continue;
-        const SpriteComponent& sprite = sprites->getComponentFromIndex(i);
-        maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, sprite.numFramesRect);
-    }
-
-    auto points = sceneProject->scene->getComponentArray<PointsComponent>();
-    for (size_t i = 0; i < points->size(); ++i) {
-        if (!own(points, i)) continue;
-        const PointsComponent& pointsComponent = points->getComponentFromIndex(i);
-        maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, pointsComponent.numFramesRect);
-    }
-
-    // SpriteAnimationComponent.frames / framesTime are also HybridArray<int, MAX_SPRITE_FRAMES>.
-    // Their counts are independent of (and can exceed) a sprite's numFramesRect (e.g. a ping-pong
-    // sequence reuses frame indices), and the generated component code writes them with unchecked
-    // operator[], so they must factor into MAX_SPRITE_FRAMES too.
-    auto spriteAnims = sceneProject->scene->getComponentArray<SpriteAnimationComponent>();
-    for (size_t i = 0; i < spriteAnims->size(); ++i) {
-        if (!own(spriteAnims, i)) continue;
-        const SpriteAnimationComponent& spriteAnim = spriteAnims->getComponentFromIndex(i);
-        maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, spriteAnim.framesSize);
-        maxValues.maxSpriteFrames = std::max(maxValues.maxSpriteFrames, spriteAnim.framesTimeSize);
-    }
-
-    auto tilemaps = sceneProject->scene->getComponentArray<TilemapComponent>();
-    for (size_t i = 0; i < tilemaps->size(); ++i) {
-        if (!own(tilemaps, i)) continue;
-        const TilemapComponent& tilemap = tilemaps->getComponentFromIndex(i);
-        maxValues.maxTilemapTilesRect = std::max(maxValues.maxTilemapTilesRect, tilemap.numTilesRect);
-        maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
-    }
-
-    // colliders have no caps (any size, in the editor and on device alike)
 }
 
 void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
@@ -4873,6 +4720,8 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
             saveWorkspaceFile();
         }
     }
+    // the closed scene's memory goes back to the system
+    memory::requestHeapTrim();
 }
 
 void editor::Project::removeScene(uint32_t sceneId) {
@@ -5832,6 +5681,7 @@ void editor::Project::resetConfigs() {
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();
+    SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
@@ -6389,12 +6239,18 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
+    // every played scene's sounds and the music stopped, so their voice_stop lines are written
+    MusicPlayer::reset();
+    endPlayAudioCapture();
+
     editor::getEditorHost().enqueueMainThreadTask([this]() {
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
         editor::getEditorHost().resetLastActivatedScene();
+        // after the tasks above that delete the runtime scenes: what Play used goes back to the system
+        memory::requestHeapTrim();
     });
 
     resetEngineConfigs(true);
@@ -6490,9 +6346,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             // Fresh projects resolve fork manifests through the same project-relative
             // reader as opened projects, including after the assets directory changes.
-            ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-                return readShaderFile(relativePath, content);
-            });
+            installShaderForkReader(this);
 
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
@@ -6942,9 +6796,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
         // the assets directory loaded with the project and any later change apply)
-        ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-            return readShaderFile(relativePath, content);
-        });
+        installShaderForkReader(this);
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it
@@ -7091,16 +6943,18 @@ bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
         if (!shaderKeysNode.size()) {
             root.remove("shaderKeys");
             content = YAML::Dump(root);
-        } else if (onDisk["shaderKeys"] || !onDisk["maxValues"]) {
+        } else if (onDisk["shaderKeys"] || (!onDisk["maxValues"] && !onDisk["mainCamera"])) {
             root["shaderKeys"] = shaderKeysNode;
             content = YAML::Dump(root);
         } else {
-            // After maxValues, where encodeSceneProject() puts them, so the next full save moves nothing
+            // After maxValues (a scene saved by an older editor keeps it) or else mainCamera, where
+            // encodeSceneProject() puts them, so the next full save moves nothing
+            const std::string after = onDisk["maxValues"] ? "maxValues" : "mainCamera";
             YAML::Node ordered(YAML::NodeType::Map);
             for (const auto& item : onDisk) {
                 const std::string key = item.first.as<std::string>();
                 ordered[key] = item.second;
-                if (key == "maxValues") {
+                if (key == after) {
                     ordered["shaderKeys"] = shaderKeysNode;
                 }
             }
@@ -7307,16 +7161,6 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     }
 
     applyFirstDrawSettings(sceneProject);
-
-    SceneMaxValues maxValues;
-    maxValues.maxBones = sceneProject->maxValues.maxBones;
-    maxValues.legacyMaxColliders2D = sceneProject->maxValues.legacyMaxColliders2D;
-    maxValues.legacyMaxColliderPoints2D = sceneProject->maxValues.legacyMaxColliderPoints2D;
-    maxValues.legacyMaxColliders3D = sceneProject->maxValues.legacyMaxColliders3D;
-    maxValues.legacyMaxColliderVertices3D = sceneProject->maxValues.legacyMaxColliderVertices3D;
-    maxValues.legacyMaxColliderIndices3D = sceneProject->maxValues.legacyMaxColliderIndices3D;
-    calculateSceneMaxValues(sceneProject, maxValues);
-    sceneProject->maxValues = maxValues;
 
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
@@ -9904,6 +9748,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // By index, and guarded: a script here can call addChildScene(), which
                 // initializes another entry and appends to runtimeScenes. Initializing from
                 // the snapshot above would then run a scene's scripts a second time.
+                // sample 0: no game frame has run, and what the scripts' init starts is in the capture
+                beginPlayAudioCapture(sceneProject);
+
                 // Each scene's start ends at a safe point for DontDestroyOnLoad (before its
                 // documents start), as in the exported game's first load.
                 SceneManager::beginStartingScenes();
@@ -10351,7 +10198,10 @@ void editor::Project::start(uint32_t sceneId) {
     PlayChangeReview::get().discard(sceneId);
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
-    // and audio: the mixer's start snapshot and remembered values, the listener unpaused
+    // and audio: no music of edit mode (eval_lua) in it, the driver this Play mixes on, the mixer's
+    // start snapshot and remembered values, the listener unpaused
+    MusicPlayer::reset();
+    preparePlayAudioCapture();
     resetPlayAudio(true);
     // and from the declared global shader values (Project Settings > Graphics > Shader Globals)
     resetPlayShaderGlobals();
@@ -10622,7 +10472,9 @@ void editor::Project::stop(uint32_t sceneId) {
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources
             resetPlayInput();
-            // and the mixer values scripts set (the remembered ones stay in UserSettings)
+            // and the driver of its capture, and the mixer values scripts set (the remembered ones
+            // stay in UserSettings)
+            releasePlayAudioDriver();
             resetPlayAudio(false);
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();

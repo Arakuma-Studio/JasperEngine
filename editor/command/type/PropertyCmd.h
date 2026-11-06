@@ -217,7 +217,8 @@ namespace jasperengine::editor{
             // first: the command records and edits the rest (animation clips 9.R5/R6)
             for (const auto& entry : values) ClipRecordHooks::beforeComponentWrite(sceneId, entry.first, type, propertyName);
             for (auto& [entity, value] : values){
-                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
+                // (a write: "tiles[N]" one past the last tile appends it)
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName, true);
                 // script properties are per entity, a selection may not share all of them
                 if (!prop.ref){
                     value.applied = false;

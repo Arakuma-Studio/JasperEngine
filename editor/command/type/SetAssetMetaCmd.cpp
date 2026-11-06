@@ -149,6 +149,10 @@ bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEm
             if (listener) listener(project, asset, key);
         }
     }
+    // a clip's import settings: the voices of a running Play take them from their next start
+    if (written && key == "import.audioImporter"){
+        project->audioFilesChanged({metaPath()});
+    }
     return written;
 }
 
@@ -216,6 +220,7 @@ void editor::SetAssetMetaCmd::undo(){
 }
 
 std::string editor::SetAssetMetaCmd::describe() const{
+    if (!action.empty()) return action + " (" + CommandNames::file(asset) + ")";
     std::string label;
     for (const std::string& part : splitKey(key)){
         if (!label.empty()) label += " ";
@@ -229,5 +234,5 @@ bool editor::SetAssetMetaCmd::isNoOp() const{
 }
 
 size_t editor::SetAssetMetaCmd::memoryBytes() const{
-    return sizeof(*this) + key.size() + asset.native().size() + yamlFootprint(newValue) + yamlFootprint(oldValue);
+    return sizeof(*this) + key.size() + action.size() + asset.native().size() + yamlFootprint(newValue) + yamlFootprint(oldValue);
 }

@@ -60,21 +60,35 @@ shaderKeys:
     properties: 1027
   - type: mesh
     properties: 2051
+  - type: mesh
+    properties: 2199023256579
   - type: sky
   - type: depth
   - type: depth
     properties: 129
   - type: depth
     properties: 6144
+  - type: depth
+    properties: 262144
+  - type: depth
+    properties: 268288
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: depth
     customShader: library:unlit
   - type: depth
     properties: 6144
     customShader: library:unlit
+  - type: depth
+    properties: 268288
+    customShader: library:unlit
   - type: mesh
     properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199023256579
     customShader: library:unlit#BLEND_NONE
   - type: mesh
     properties: 1

@@ -22,7 +22,13 @@ void DebuggerSink::write(const LogRecord& record) {
     }
     scratch.append(record.text.data(), record.text.size());
     scratch += '\n';
-    OutputDebugStringA(scratch.c_str());
+    // the record is UTF-8: the debugger gets UTF-16, whatever the process's code page
+    const int length = MultiByteToWideChar(CP_UTF8, 0, scratch.data(), static_cast<int>(scratch.size()), nullptr, 0);
+    if (length <= 0) return;
+    wideScratch.resize(static_cast<size_t>(length));
+    MultiByteToWideChar(CP_UTF8, 0, scratch.data(), static_cast<int>(scratch.size()), wideScratch.data(), length);
+    wideScratch.push_back(L'\0');
+    OutputDebugStringW(wideScratch.c_str());
 }
 
 #endif

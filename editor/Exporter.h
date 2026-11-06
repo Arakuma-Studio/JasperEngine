@@ -333,6 +333,8 @@ namespace jasperengine::editor {
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
+        // S37 R24: an event whose clip is missing is a build warning naming both
+        void checkSoundEventClips();
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
@@ -340,6 +342,9 @@ namespace jasperengine::editor {
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
         bool cookModels();
+        // False, with the error set, when an asset sits where the engine loads an FBX's import
+        // from (<relPath>.glb, relative to the assets)
+        bool checkFbxImportPathFree(const fs::path& relPath);
         // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);
@@ -404,6 +409,10 @@ namespace jasperengine::editor {
         // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
+        // licenses/THIRD-PARTY-AUDIO.txt (with its build warnings) when a shipped clip has a provenance
+        bool writeAudioCredits();
+        // assets/je-audio-imports.json when any shipped clip has import settings
+        bool writeAudioImports();
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();
@@ -419,12 +428,6 @@ namespace jasperengine::editor {
         // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
         // Android exports then need no INTERNET for videos)
         std::string videoUrlScene() const;
-        // Aggregates SceneMaxValues across all project scenes into the capacities that
-        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
-        std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
-        static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
-        // add_definitions() block applying them to the export.
-        std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
         fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
         // Script roots inside the exported project, as copyCppScripts() lays them out.

@@ -22,6 +22,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/ClipAudio.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipPropertyNames.h"
@@ -37,6 +38,10 @@
 #include "animation/PropertyBindings.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
+#include "audio/AudioMixer.h"
+#include "audio/TimelineAudio.h"
+#include "component/AudioSourceComponent.h"
+#include "util/AssetDatabase.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -321,6 +326,235 @@ Json eventsJson(const std::vector<ClipEventData>& events) {
     return out;
 }
 
+// ------------------------------------------------------------------ audio cues (S40 R12)
+
+std::string projectPathOf(Project* project, const std::string& assetRelative);
+
+namespace {
+
+bool isAudioClipExtension(const std::string& extension) {
+    return extension == ".wav" || extension == ".ogg" || extension == ".mp3" || extension == ".flac";
+}
+
+// a sound's played length at speed 1 (seconds), 0 when it does not resolve
+double soundSeconds(const AssetRef& sound) {
+#if JASPERENGINE_SOUND_LAYER
+    return sound.path.empty() ? 0.0 : TimelineAudio::soundLength(sound.path);
+#else
+    (void)sound;
+    return 0.0;
+#endif
+}
+
+} // namespace
+
+bool resolveSoundRef(Project* project, const Json& value, const std::string& where, AssetRef& out, std::string& error) {
+    std::string given;
+    std::string guid;
+    if (value.is_string()) {
+        given = value.get<std::string>();
+        if (AssetDatabase::isGuid(given)) std::swap(given, guid);
+    } else if (value.is_object()) {
+        if (value.contains("guid") && value["guid"].is_string()) guid = value["guid"].get<std::string>();
+        if (value.contains("path") && value["path"].is_string()) given = value["path"].get<std::string>();
+    }
+    if (given.empty() && guid.empty()) {
+        error = where + " must be the project path of an audio clip or .soundevent (e.g. \"assets/sounds/step.soundevent\"), or its GUID.";
+        return false;
+    }
+    if (!guid.empty()) {
+        const fs::path known = project->getAssetDatabase().getPath(guid);
+        if (known.empty() && given.empty()) {
+            error = where + ": GUID " + guid + " is no asset of this project: pass the sound's project path (e.g. \"assets/sounds/step.wav\").";
+            return false;
+        }
+        if (!known.empty()) given = FileUtils::pathToGenericUtf8(known);
+    }
+    fs::path absolute;
+    if (!McpRefs::resolveProjectPath(project, given, absolute, error, true)) {
+        error = where + ": " + error;
+        return false;
+    }
+    const std::string relative = projectRel(project, absolute.lexically_normal());
+    const std::string extension = lower(FileUtils::pathFromUtf8(relative).extension().string());
+    if (extension != ".soundevent" && !isAudioClipExtension(extension)) {
+        error = where + ": \"" + relative + "\" is not a sound: give an audio clip (.wav, .ogg, .mp3, .flac) or a .soundevent.";
+        return false;
+    }
+    out.path = assetForm(project, relative);
+    out.guid = project->getAssetDatabase().getAssetGuid(FileUtils::pathFromUtf8(relative));
+    return true;
+}
+
+bool parseAudioCue(Project* project, const Json& item, const std::string& where, bool entityMode, ClipAudioCue& cue, std::string& error) {
+    if (!item.is_object()) {
+        error = where + " must be {time, and one of sound, source, snapshot}.";
+        return false;
+    }
+    static const char* const clipKeys[] = {"time", "sound", "source", "snapshot", "path", "spatial", "volume_db", "pitch_semitones",
+                                           "group", "stop", "follow_speed", "name", "seconds", "unscaled"};
+    for (auto it = item.begin(); it != item.end(); ++it) {
+        const std::string& key = it.key();
+        bool known = entityMode && (key == "duration" || key == "lane");
+        for (const char* k : clipKeys) known = known || key == k;
+        if (!known) {
+            error = where + ": unknown key \"" + key + "\" (a cue is {time, sound | source | snapshot, path, spatial, volume_db, "
+                    "pitch_semitones, group, stop, follow_speed, name, seconds, unscaled}" + std::string(entityMode ? ", plus duration and lane" : "") + ").";
+            return false;
+        }
+    }
+    const int kinds = (int)item.contains("sound") + (int)item.contains("source") + (int)item.contains("snapshot");
+    if (kinds != 1) {
+        error = where + (kinds == 0 ? ": a cue needs what it plays" : ": a cue plays one thing") +
+                ": give exactly one of sound (a clip or .soundevent), source (the path of a GameObject with an AudioSource) or "
+                "snapshot (a mixer snapshot name)" + std::string(kinds > 1 ? "; split them into cues at the same time." : ".");
+        return false;
+    }
+    if (!item.contains("time") || !item["time"].is_number() || !std::isfinite(item["time"].get<double>()) || item["time"].get<double>() < 0.0) {
+        error = where + ".time must be a number of seconds >= 0" + std::string(entityMode ? " (the frame's start)." : ".");
+        return false;
+    }
+    cue.time = item["time"].get<float>();
+    auto text = [&](const char* key, std::string& out) {
+        if (!item.contains(key)) return true;
+        if (!item[key].is_string()) {
+            error = where + "." + key + " must be a string.";
+            return false;
+        }
+        out = item[key].get<std::string>();
+        return true;
+    };
+    auto flag = [&](const char* key, bool& out) {
+        if (!item.contains(key)) return true;
+        if (!item[key].is_boolean()) {
+            error = where + "." + key + " must be true or false.";
+            return false;
+        }
+        out = item[key].get<bool>();
+        return true;
+    };
+    auto ranged = [&](const char* key, float low, float high, float& out) {
+        if (!item.contains(key)) return true;
+        if (!item[key].is_number() || item[key].get<double>() < low || item[key].get<double>() > high) {
+            error = where + "." + key + " must be a number from " + fmt(low) + " to " + fmt(high) + ".";
+            return false;
+        }
+        out = item[key].get<float>();
+        return true;
+    };
+    if (item.contains("source") && entityMode) {
+        error = where + ".source: an entity Animation plays sounds as audio actions: give sound (a clip or .soundevent) and path (its target).";
+        return false;
+    }
+    if (entityMode && (item.contains("stop") || item.contains("follow_speed"))) {
+        error = where + ": an audio action lives in its frame (stop and follow_speed are clip cue keys): set duration to cut it.";
+        return false;
+    }
+    if (item.contains("sound")) {
+        cue.kind = ClipCueKind::Sound;
+        if (!resolveSoundRef(project, item["sound"], where + ".sound", cue.sound, error)) return false;
+    } else if (item.contains("source")) {
+        cue.kind = ClipCueKind::Source;
+        if (!text("source", cue.path)) return false;
+    } else {
+        cue.kind = ClipCueKind::Snapshot;
+        if (!text("snapshot", cue.snapshot)) return false;
+        const std::vector<std::string> names = AudioMixer::getSnapshotNames();
+        if (std::find(names.begin(), names.end(), cue.snapshot) == names.end()) {
+            std::string list;
+            for (const std::string& name : names) list += (list.empty() ? "" : ", ") + name;
+            error = where + ".snapshot \"" + cue.snapshot + "\" is not in the project's mixer (snapshots: " + (list.empty() ? "none" : list) +
+                    "): use one of them or add it to the mixer.";
+            return false;
+        }
+    }
+    if (cue.kind != ClipCueKind::Source && !text("path", cue.path)) return false;
+    if (!text("group", cue.group) || !text("name", cue.name) || !flag("spatial", cue.spatial) || !flag("follow_speed", cue.followSpeed)) return false;
+    if (!ranged("volume_db", anim::CUE_MIN_VOLUME_DB, anim::CUE_MAX_VOLUME_DB, cue.volumeDb) ||
+        !ranged("pitch_semitones", -anim::CUE_MAX_PITCH_SEMITONES, anim::CUE_MAX_PITCH_SEMITONES, cue.pitchSemitones) ||
+        !ranged("seconds", 0.0f, 600.0f, cue.seconds)) return false;
+    if (item.contains("unscaled")) {
+        bool unscaled = false;
+        if (!flag("unscaled", unscaled)) return false;
+        cue.unscaled = unscaled;
+    }
+    std::string stop;
+    if (!text("stop", stop)) return false;
+    if (!stop.empty() && !anim::cueStopFromName(stop, cue.stop)) {
+        error = where + ".stop must be none (plays to its end) or state_exit (stops when its state ends).";
+        return false;
+    }
+    if (cue.kind == ClipCueKind::Sound && (item.contains("seconds") || item.contains("unscaled"))) {
+        error = where + ": seconds and unscaled belong to snapshot cues.";
+        return false;
+    }
+    if (cue.kind != ClipCueKind::Sound && (item.contains("volume_db") || item.contains("pitch_semitones") || item.contains("group") ||
+                                           item.contains("spatial"))) {
+        error = where + ": volume_db, pitch_semitones, group and spatial belong to sound cues" +
+                std::string(cue.kind == ClipCueKind::Source ? " (a source cue plays with its AudioSource's own settings)." : ".");
+        return false;
+    }
+    if (!entityMode) {
+        if (cue.kind == ClipCueKind::Sound && !cue.spatial && item.contains("path")) {
+            error = where + ".path: a 2D sound cue follows nothing: add spatial: true to play it at that GameObject.";
+            return false;
+        }
+        const std::string problem = anim::validateCue(cue);
+        if (!problem.empty()) {
+            error = where + ": " + problem + " (paths are relative to the root, e.g. \"Body/LeftFoot\"; \"\" is the root).";
+            return false;
+        }
+    }
+    return true;
+}
+
+Json cueJson(Project* project, const ClipAudioCue& cue, size_t index) {
+    Json item = {{"index", index}, {"time", r6(cue.time)}, {"kind", anim::cueKindName(cue.kind)}};
+    switch (cue.kind) {
+        case ClipCueKind::Sound: {
+            // resolved: by its GUID where the project knows it (a moved sound), else its path hint (S40 R3, R12)
+            std::string resolved = projectPathOf(project, cue.sound.path);
+            if (!cue.sound.guid.isNull()) {
+                const fs::path known = project->getAssetDatabase().getPath(cue.sound.guid.str());
+                if (!known.empty()) resolved = projectRel(project, known.lexically_normal());
+            }
+            Json sound = {{"path", resolved}};
+            if (!cue.sound.guid.isNull()) sound["guid"] = cue.sound.guid.str();
+            item["sound"] = sound;
+            item["spatial"] = cue.spatial;
+            if (cue.spatial) item["path"] = cue.path;
+            item["volume_db"] = r6(cue.volumeDb);
+            item["pitch_semitones"] = r6(cue.pitchSemitones);
+            if (!cue.group.empty()) item["group"] = cue.group;
+            const double length = soundSeconds(cue.sound);
+            item["length"] = length > 0.0 ? Json(r6(length)) : Json(nullptr);
+            break;
+        }
+        case ClipCueKind::Source:
+            item["source"] = cue.path;
+            item["length"] = nullptr;
+            break;
+        case ClipCueKind::Snapshot:
+            item["snapshot"] = cue.snapshot;
+            item["seconds"] = r6(cue.seconds);
+            if (cue.unscaled) item["unscaled"] = *cue.unscaled;
+            item["length"] = r6(cue.seconds);
+            break;
+    }
+    if (cue.kind != ClipCueKind::Snapshot) {
+        item["stop"] = anim::cueStopName(cue.stop);
+        if (cue.followSpeed) item["follow_speed"] = true;
+    }
+    if (!cue.name.empty()) item["name"] = cue.name;
+    return item;
+}
+
+Json cuesJson(Project* project, const std::vector<ClipAudioCue>& cues) {
+    Json out = Json::array();
+    for (size_t i = 0; i < cues.size(); i++) out.push_back(cueJson(project, cues[i], i));
+    return out;
+}
+
 Json warningsJson(const std::vector<ClipWarning>& warnings) {
     Json out = Json::array();
     for (const ClipWarning& warning : warnings) out.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
@@ -338,6 +572,7 @@ Json clipJson(Project* project, const std::string& clip, const ClipData& data, b
     Json out = {{"clip", clip}, {"read_only", readOnly}, {"length", r6(data.effectiveLength())},
                 {"explicit_length", data.hasExplicitLength()}, {"wrap", anim::wrapName(data.wrap)},
                 {"frame_rate", r6(data.frameRate)}, {"tracks", tracks}, {"events", eventsJson(data.events)}};
+    if (!data.audio.empty()) out["audio"] = cuesJson(project, data.audio);
     if (!data.previewModel.empty()) out["preview_model"] = projectPathOf(project, data.previewModel);
     if (!data.source.empty()) out["source"] = {{"kind", data.source.kind}, {"path", data.source.path}, {"name", data.source.name}};
     return out;
@@ -1450,8 +1685,8 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
 
 bool applyEvents(EditContext& ctx, const Json& args, ClipData& data, std::string& error) {
     if (!has(args, "events")) {
-        if (has(args, "events_mode")) {
-            error = "events_mode needs events: [{time, function, args}].";
+        if (has(args, "events_mode") && !has(args, "audio")) {
+            error = "events_mode needs events: [{time, function, args}] or audio: [{time, sound | source | snapshot}].";
             return false;
         }
         return true;
@@ -1534,6 +1769,47 @@ bool applyEvents(EditContext& ctx, const Json& args, ClipData& data, std::string
     return true;
 }
 
+// audio cues (S40 R12): events_mode's replace (the whole list) or merge (same time and kind replaces)
+bool applyAudio(EditContext& ctx, const Json& args, ClipData& data, std::string& error) {
+    if (!has(args, "audio")) return true;
+    const std::string mode = has(args, "events_mode") && args["events_mode"].is_string() ? lower(args["events_mode"].get<std::string>()) : "replace";
+    if (mode != "replace" && mode != "merge") {
+        error = "events_mode must be replace (the whole list) or merge (a cue at the same time and of the same kind replaces, others are added).";
+        return false;
+    }
+    const Json& list = args["audio"];
+    if (!list.is_array()) {
+        error = "audio must be an array of cues {time, sound | source | snapshot, ...} ([] clears them with events_mode replace).";
+        return false;
+    }
+    std::vector<ClipAudioCue> parsed;
+    for (size_t i = 0; i < list.size(); i++) {
+        ClipAudioCue cue;
+        if (!parseAudioCue(ctx.project, list[i], "audio[" + std::to_string(i) + "]", false, cue, error)) return false;
+        parsed.push_back(cue);
+    }
+    if (mode == "replace") {
+        ctx.changes.push_back("audio: " + std::to_string(parsed.size()) + " cue(s) (replaced " + std::to_string(data.audio.size()) + ")");
+        data.audio = parsed;
+    } else {
+        size_t added = 0, replaced = 0;
+        for (const ClipAudioCue& cue : parsed) {
+            auto same = std::find_if(data.audio.begin(), data.audio.end(), [&](const ClipAudioCue& c) {
+                return c.kind == cue.kind && std::abs(c.time - cue.time) < MERGE_TIME;
+            });
+            if (same != data.audio.end()) {
+                *same = cue;
+                replaced++;
+            } else {
+                data.audio.push_back(cue);
+                added++;
+            }
+        }
+        ctx.changes.push_back("audio: " + std::to_string(added) + " cue(s) added, " + std::to_string(replaced) + " replaced");
+    }
+    return true;
+}
+
 bool applyEdits(EditContext& ctx, const Json& args, ClipData& data, std::string& error) {
     const float lengthBefore = data.effectiveLength();
     if (!applySettings(ctx, args, data, error)) return false;
@@ -1547,6 +1823,7 @@ bool applyEdits(EditContext& ctx, const Json& args, ClipData& data, std::string&
         }
     }
     if (!applyEvents(ctx, args, data, error)) return false;
+    if (!applyAudio(ctx, args, data, error)) return false;
     if (!data.hasExplicitLength() && data.effectiveLength() != lengthBefore && !data.events.empty() &&
         data.events.back().time >= data.effectiveLength() - anim::ANIM_TIME_EPSILON) {
         ctx.changes.push_back("length now " + fmt(data.effectiveLength()) + " s (the event at " + fmt(data.events.back().time) +
@@ -1707,6 +1984,14 @@ bool createFromEntity(const CallPtr& call, EditContext& ctx, const Json& from, c
 }
 
 } // namespace
+
+bool readAudioCue(Project* project, const Json& item, const std::string& where, bool entityMode, ClipAudioCue& cue, std::string& error) {
+    return parseAudioCue(project, item, where, entityMode, cue, error);
+}
+
+std::string toolPath(Project* project, const std::string& assetRelative) {
+    return projectPathOf(project, assetRelative);
+}
 
 // ================================================================== public
 
@@ -2581,6 +2866,8 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         Json data = {{"animation", sp ? McpRefs::entityJson(sp, root) : Json(nullptr)}, {"action", action}, {"state", c.getStateName()},
                      {"clip", c.getClipPath()}, {"previewing", c.isPreviewing()}, {"playing", c.isPlaying()},
                      {"time", r6(c.getTime())}, {"length", r6(c.getLength())}};
+        // the clip's audio cues heard in the preview (S40 R11): preview voices, outside the mixer
+        if (c.previewAudioStarts() > 0) data["audio_preview"] = {{"voices", c.previewAudioVoices()}, {"started", c.previewAudioStarts()}};
         if (c.getStateLayer() > 0) {
             data["layer"] = c.getLayerName(c.getStateLayer());
             data["over"] = c.getPreviewOver();
@@ -2683,9 +2970,9 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
         tracks.push_back({{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"key_count", track.keys.size()}});
     }
     const std::vector<ClipUser> users = findClipUsers(project, rel);
-    data["clip"] = {{"version", clip.isHumanoid() ? anim::ANIM_VERSION : 1}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
+    data["clip"] = {{"version", !clip.audio.empty() ? 3 : clip.isHumanoid() ? 2 : 1}, {"guid", clip.guid}, {"length", r6(clip.effectiveLength())},
                     {"wrap", anim::wrapName(clip.wrap)}, {"frame_rate", r6(clip.frameRate)}, {"tracks", tracks},
-                    {"events", eventsJson(clip.events)}, {"warnings", warningsJson(document->loadWarnings())},
+                    {"events", eventsJson(clip.events)}, {"audio", cuesJson(project, clip.audio)}, {"warnings", warningsJson(document->loadWarnings())},
                     {"users", usersJson(project, users)}};
     if (users.size() > 50) data["clip"]["users_total"] = users.size();
     if (!clip.previewModel.empty()) data["clip"]["preview_model"] = projectPathOf(project, clip.previewModel);

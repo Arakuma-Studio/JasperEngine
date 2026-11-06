@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -534,6 +535,23 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
 
     if (ImGui::BeginDragDropTarget()) {
         const ImGuiPayload* peekPayload = ImGui::GetDragDropPayload();
+        // a sound: a new GameObject with an AudioSource, where it lands in a 3D scene
+        if (SoundDrop::accepts(peekPayload)) {
+            if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(peekPayload->DataType)) {
+                std::vector<std::string> sounds;
+                std::string error;
+                if (SoundDrop::resolve(project, dropped, sounds, error)) {
+                    const bool is3D = sceneProject->sceneType == SceneType::SCENE_3D;
+                    float x = ImGui::GetIO().MousePos.x - ImGui::GetWindowPos().x;
+                    float y = ImGui::GetIO().MousePos.y - ImGui::GetWindowPos().y;
+                    toEngineCanvas(sceneProject->id, x, y);
+                    const Vector3 place = is3D ? getDropSurface(sceneProject, x, y, {}).point : Vector3(0, 0, 0);
+                    for (const std::string& sound : sounds) SoundDrop::createSource(project, sceneProject->id, sound, is3D, place, error);
+                    focusSceneWindow(*sceneProject);
+                }
+                if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
+            }
+        }
         if (peekPayload && peekPayload->IsDataType("resource_files")) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(peekPayload);
             if (receivedStrings.size() > 0) {
@@ -1144,7 +1162,8 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
                             }
 
                             int freeSlot = (int)tilemap->numTiles;
-                            if (freeSlot < (int)tilemap->tiles.size()) {
+                            // (a Tilemap draws at most MAX_TILEMAP_RENDERED_TILES)
+                            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                                 std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, ComponentType::TilemapComponent,

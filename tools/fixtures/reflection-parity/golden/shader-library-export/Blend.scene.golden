@@ -64,9 +64,29 @@ shaderKeys:
     properties: 33555530
   - type: mesh
     properties: 301990978
+  - type: mesh
+    properties: 2199023255617
+  - type: mesh
+    properties: 2199023256579
+  - type: mesh
+    properties: 2199056810049
+  - type: mesh
+    properties: 2199056810051
+  - type: mesh
+    properties: 2199056811011
+  - type: mesh
+    properties: 2199056811073
+  - type: mesh
+    properties: 2199056811075
+  - type: mesh
+    properties: 2199056811082
+  - type: mesh
+    properties: 2199325246530
   - type: sky
   - type: depth
   - type: blit
+  - type: blit
+    properties: 4096
   - type: mesh
     properties: 1027
     customShader: library:decal#BLEND_ADDITIVE,DECAL_BLEND_ALPHA,VERTEX_COLOR
@@ -81,6 +101,9 @@ shaderKeys:
     customShader: library:decal#BLEND_MULTIPLY,DECAL_BLEND_MULTIPLY
   - type: mesh
     properties: 1027
+    customShader: library:decal#BLEND_NONE,DECAL_BLEND_ALPHA,VERTEX_COLOR
+  - type: mesh
+    properties: 2199023256579
     customShader: library:decal#BLEND_NONE,DECAL_BLEND_ALPHA,VERTEX_COLOR
   - type: mesh
     properties: 1027
@@ -98,6 +121,9 @@ shaderKeys:
     properties: 33554499
     customShader: library:directional_tint#BLEND_NONE
   - type: mesh
+    properties: 2199056810051
+    customShader: library:directional_tint#BLEND_NONE
+  - type: mesh
     properties: 33554499
     customShader: library:directional_tint#BLEND_PREMULTIPLIED
   - type: mesh
@@ -111,6 +137,9 @@ shaderKeys:
     customShader: library:dissolve#BLEND_MULTIPLY,VERTEX_COLOR
   - type: mesh
     properties: 33555459
+    customShader: library:dissolve#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056811011
     customShader: library:dissolve#BLEND_NONE,VERTEX_COLOR
   - type: mesh
     properties: 33555459
@@ -128,6 +157,9 @@ shaderKeys:
     customShader: library:fake_lit#AXIS_FOG,BLEND_MULTIPLY,MATCAP
   - type: mesh
     properties: 33555523
+    customShader: library:fake_lit#AXIS_FOG,BLEND_NONE,MATCAP
+  - type: mesh
+    properties: 2199056811075
     customShader: library:fake_lit#AXIS_FOG,BLEND_NONE,MATCAP
   - type: mesh
     properties: 33555523
@@ -153,6 +185,9 @@ shaderKeys:
     properties: 33555459
     customShader: library:flipbook#BLEND_NONE,VERTEX_COLOR
   - type: mesh
+    properties: 2199056811011
+    customShader: library:flipbook#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
     properties: 33555459
     customShader: library:flipbook#BLEND_PREMULTIPLIED,VERTEX_COLOR
   - type: depth
@@ -170,6 +205,9 @@ shaderKeys:
     customShader: library:foliage#ALPHA_CLIP,BLEND_MULTIPLY,WIND_MASK_VERTEX_COLOR
   - type: mesh
     properties: 33555530
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2199056811082
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
   - type: mesh
     properties: 33555530
@@ -192,6 +230,9 @@ shaderKeys:
     properties: 33554497
     customShader: library:hologram#BLEND_MODE_ADDITIVE,BLEND_NONE,SCANLINE_TEXTURE
   - type: mesh
+    properties: 2199056810049
+    customShader: library:hologram#BLEND_MODE_ADDITIVE,BLEND_NONE,SCANLINE_TEXTURE
+  - type: mesh
     properties: 33554497
     customShader: library:hologram#BLEND_MODE_ADDITIVE,BLEND_PREMULTIPLIED,SCANLINE_TEXTURE
   - type: mesh
@@ -207,10 +248,19 @@ shaderKeys:
     properties: 33555523
     customShader: library:matcap#BLEND_NONE,MATCAP_MODE_ADD
   - type: mesh
+    properties: 2199056811075
+    customShader: library:matcap#BLEND_NONE,MATCAP_MODE_ADD
+  - type: mesh
     properties: 33555523
     customShader: library:matcap#BLEND_NONE,MATCAP_MODE_MULTIPLY,RIM
   - type: mesh
+    properties: 2199056811075
+    customShader: library:matcap#BLEND_NONE,MATCAP_MODE_MULTIPLY,RIM
+  - type: mesh
     properties: 33555521
+    customShader: library:matcap#BLEND_NONE,MATCAP_MODE_REPLACE
+  - type: mesh
+    properties: 2199056811073
     customShader: library:matcap#BLEND_NONE,MATCAP_MODE_REPLACE
   - type: mesh
     properties: 33555523
@@ -228,7 +278,13 @@ shaderKeys:
     properties: 33555459
     customShader: library:panner#BLEND_NONE,COMBINE_ADD,DISTORTION,SECOND_LAYER
   - type: mesh
+    properties: 2199056811011
+    customShader: library:panner#BLEND_NONE,COMBINE_ADD,DISTORTION,SECOND_LAYER
+  - type: mesh
     properties: 33555459
+    customShader: library:panner#BLEND_NONE,COMBINE_MULTIPLY,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056811011
     customShader: library:panner#BLEND_NONE,COMBINE_MULTIPLY,VERTEX_COLOR
   - type: mesh
     properties: 33555459
@@ -248,6 +304,9 @@ shaderKeys:
     properties: 33554499
     customShader: library:rim#BLEND_NONE,TEXTURE
   - type: mesh
+    properties: 2199056810051
+    customShader: library:rim#BLEND_NONE,TEXTURE
+  - type: mesh
     properties: 33554499
     customShader: library:rim#BLEND_PREMULTIPLIED,TEXTURE
   - type: mesh
@@ -261,6 +320,9 @@ shaderKeys:
     customShader: library:simple_lit#BLEND_MULTIPLY,EMISSION,NORMAL_MAP
   - type: mesh
     properties: 33555530
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2199056811082
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
     properties: 33555530
@@ -278,6 +340,9 @@ shaderKeys:
     properties: 33555459
     customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
   - type: mesh
+    properties: 2199056811011
+    customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
     properties: 33555459
     customShader: library:spin_bob#BLEND_PREMULTIPLIED,VERTEX_COLOR
   - type: depth
@@ -293,6 +358,9 @@ shaderKeys:
     customShader: library:sprite#BLEND_MULTIPLY,FLASH,OUTLINE
   - type: mesh
     properties: 33555459
+    customShader: library:sprite#BLEND_NONE,FLASH,OUTLINE
+  - type: mesh
+    properties: 2199056811011
     customShader: library:sprite#BLEND_NONE,FLASH,OUTLINE
   - type: mesh
     properties: 33555459
@@ -313,6 +381,9 @@ shaderKeys:
     properties: 33555530
     customShader: library:toon#BLEND_NONE,RIM,SPECULAR
   - type: mesh
+    properties: 2199056811082
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
     properties: 33555530
     customShader: library:toon#BLEND_PREMULTIPLIED,RIM,SPECULAR
   - type: mesh
@@ -326,6 +397,9 @@ shaderKeys:
     customShader: library:triplanar#BLEND_MULTIPLY,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
   - type: mesh
     properties: 33555521
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
+  - type: mesh
+    properties: 2199056811073
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
   - type: mesh
     properties: 33555521
@@ -347,7 +421,13 @@ shaderKeys:
     properties: 33555459
     customShader: library:unlit#ALPHA_CLIP,BLEND_NONE
   - type: mesh
+    properties: 2199056811011
+    customShader: library:unlit#ALPHA_CLIP,BLEND_NONE
+  - type: mesh
     properties: 33555459
+    customShader: library:unlit#ALPHA_CLIP,BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056811011
     customShader: library:unlit#ALPHA_CLIP,BLEND_NONE,VERTEX_COLOR
   - type: mesh
     properties: 33555459
@@ -356,6 +436,9 @@ shaderKeys:
     customShader: library:unlit#ALPHA_CLIP,VERTEX_COLOR
   - type: mesh
     properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199023256579
     customShader: library:unlit#BLEND_NONE
   - type: mesh
     properties: 33555459
@@ -368,6 +451,9 @@ shaderKeys:
     customShader: library:vertex_color#BLEND_MULTIPLY,TEXTURE
   - type: mesh
     properties: 33555459
+    customShader: library:vertex_color#BLEND_NONE,TEXTURE
+  - type: mesh
+    properties: 2199056811011
     customShader: library:vertex_color#BLEND_NONE,TEXTURE
   - type: mesh
     properties: 33555459
@@ -385,6 +471,9 @@ shaderKeys:
     properties: 301990978
     customShader: library:vertex_lit#BLEND_NONE,EMISSION,VERTEX_COLOR
   - type: mesh
+    properties: 2199325246530
+    customShader: library:vertex_lit#BLEND_NONE,EMISSION,VERTEX_COLOR
+  - type: mesh
     properties: 301990978
     customShader: library:vertex_lit#BLEND_PREMULTIPLIED,EMISSION,VERTEX_COLOR
   - type: mesh
@@ -398,6 +487,9 @@ shaderKeys:
     customShader: library:water#BLEND_MULTIPLY,WAVES
   - type: mesh
     properties: 65
+    customShader: library:water#BLEND_NONE,WAVES
+  - type: mesh
+    properties: 2199023255617
     customShader: library:water#BLEND_NONE,WAVES
   - type: mesh
     properties: 65

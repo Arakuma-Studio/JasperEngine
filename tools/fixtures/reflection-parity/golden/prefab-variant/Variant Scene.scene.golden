@@ -44,6 +44,8 @@ shaderKeys:
   - type: mesh
     properties: 3073
   - type: blit
+  - type: blit
+    properties: 4096
 entities:
   - type: Entity
     entity: 1001

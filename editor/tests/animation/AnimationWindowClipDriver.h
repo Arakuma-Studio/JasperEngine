@@ -41,11 +41,14 @@
 #include "command/CommandHandle.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/CreateEntityCmd.h"
 #include "lattice/LatticeEditorOps.h"
 #include "render/SceneRender.h"
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 #include "window/InspectorWindow.h"
+#include "audio/TimelineAudioPreview.h"
+#include "animation/ClipAudio.h"
 
 #include "json.hpp"
 
@@ -74,7 +77,8 @@ namespace animwindowdriver {
         "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event", "event",
         "drag_event", "delete_event", "create_clip", "extract", "list_paths", "entity_mode_entries", "entity_move_frame",
         "brief", "view", "curve_visible", "frame_curves", "curve_drag", "record", "gizmo", "inspector", "morph",
-        "lattice_drag", "curve_select", "drop"};
+        "lattice_drag", "curve_select", "drop", "add_cue", "select_cue", "cue", "drag_cue", "delete_cue", "align_cue", "drop_sounds",
+        "command", "entity_audio_action", "entity_select_frame", "entity_command", "entity_time", "entity_play"};
 
     inline Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -112,7 +116,9 @@ namespace animwindowdriver {
             }
             const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root" ||
                                    it.key() == "entity_mode_entries" ||
-                                   it.key() == "entity_move_frame" || it.key() == "brief" || it.key() == "drop";
+                                   it.key() == "entity_move_frame" || it.key() == "brief" || it.key() == "drop" ||
+                                   it.key() == "entity_audio_action" || it.key() == "entity_select_frame" || it.key() == "entity_command" ||
+                                   it.key() == "entity_time" || it.key() == "entity_play";
             if (!clipActions && !windowKey){
                 error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
                 return false;
@@ -140,6 +146,8 @@ namespace jasperengine::editor {
     // move), then the clip mode's
     struct AnimationWindowTestAccess {
         static bool drive(AnimationWindow& self, const Json& actions, Json& out, std::string& error);
+        // why the selected audio block can't be aligned now ("" when it can; S40)
+        static std::string alignProblem(AnimationWindow& self, int align, float* time){ return self.alignActionProblem(align, time); }
         // the explicit lane move (a frame drag released on `lane`)
         static bool moveFrameToLane(AnimationWindow& self, SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error);
     };
@@ -257,6 +265,27 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
         out["events"] = events;
         self.resolveSelectedEvent();
         out["selected_event"] = self.selectedEvent;
+        // the Audio lane (S40): its cues, the selected one, the rows it shows
+        Json audio = Json::array();
+        for (const ClipAudioCue& cue : data.audio){
+            Json entry = {{"time", cue.time}, {"kind", anim::cueKindName(cue.kind)}, {"stop", anim::cueStopName(cue.stop)}, {"name", cue.name}};
+            if (cue.kind == ClipCueKind::Sound){
+                entry["sound"] = cue.sound.path;
+                entry["guid"] = cue.sound.guid.isNull() ? std::string() : cue.sound.guid.str();
+            }
+            if (cue.kind != ClipCueKind::Snapshot) entry["path"] = cue.path;
+            if (cue.kind == ClipCueKind::Snapshot) entry["snapshot"] = cue.snapshot;
+            entry["length"] = self.cueLength(cue);
+            audio.push_back(entry);
+        }
+        out["audio"] = audio;
+        self.resolveSelectedCue();
+        out["selected_cue"] = self.selectedCue;
+        Json kinds = Json::array();
+        for (ClipCueKind kind : self.audioLaneKinds(data)) kinds.push_back(anim::cueKindName(kind));
+        out["audio_rows"] = kinds;
+        out["preview_audio_voices"] = c.previewAudioVoices();
+        out["preview_audio_starts"] = c.previewAudioStarts();
         out["script_functions"] = self.scriptFunctions();
         out["bindings"] = {{"resolved", self.report.resolved}, {"total", self.report.total}, {"legacy_model_layout", self.report.legacyModelLayout}};
     }
@@ -524,6 +553,86 @@ inline bool AnimationWindowClipTestAccess::drive(AnimationWindowClip& self, Scen
         self.resolveSelectedEvent();
         if (self.selectedEvent < 0) return fail("delete_event", "no event selected");
         if (!self.deleteEvent(self.selectedEvent, &failure)) return fail("delete_event", failure);
+    }
+    // ---- the Audio lane (S40 R9-R11) ----
+    if (hook.contains("add_cue")){
+        // Add Property's Audio / Source / Snapshot Cue: {kind, sound | source | snapshot, time?}
+        const Json& add = hook["add_cue"];
+        if (!add.is_object()) return fail("add_cue", "{kind, sound | source | snapshot, time?}");
+        ClipAudioCue cue;
+        if (!anim::cueKindFromName(add.value("kind", std::string("sound")), cue.kind)) return fail("add_cue", "kind: sound, source or snapshot");
+        cue.time = add.contains("time") && add["time"].is_number() ? add["time"].get<float>() : self.snapToFrame(c.getTime());
+        if (cue.kind == ClipCueKind::Sound) cue.sound = TimelineSounds::reference(self.project, add.value("sound", std::string()));
+        if (cue.kind == ClipCueKind::Source) cue.path = add.value("source", std::string());
+        if (cue.kind == ClipCueKind::Snapshot) cue.snapshot = add.value("snapshot", std::string());
+        if (add.contains("stop")) anim::cueStopFromName(add["stop"].get<std::string>(), cue.stop);
+        const char* name = cue.kind == ClipCueKind::Sound ? "Add Audio Cue" : cue.kind == ClipCueKind::Source ? "Add Source Cue" : "Add Snapshot Cue";
+        if (!self.addCue(cue, name, &failure)) return fail("add_cue", failure);
+    }
+    if (hook.contains("select_cue")){
+        std::shared_ptr<AnimationClipDocument> doc = self.document();
+        if (!hook["select_cue"].is_number_integer() || !doc || hook["select_cue"].get<int>() < -1 ||
+            hook["select_cue"].get<int>() >= (int)doc->data().audio.size()){
+            return fail("select_cue", "a cue index (-1: none)");
+        }
+        self.selectCue(hook["select_cue"].get<int>());
+    }
+    if (hook.contains("cue")){
+        // the cue's popover: {name?, stop?, volume_db?, pitch_semitones?, spatial?, path?, snapshot?, seconds?}
+        std::shared_ptr<AnimationClipDocument> doc = self.document();
+        const Json& edit = hook["cue"];
+        self.resolveSelectedCue();
+        if (!doc || self.selectedCue < 0 || !edit.is_object()) return fail("cue", "no cue selected");
+        ClipAudioCue cue = doc->data().audio[(size_t)self.selectedCue];
+        if (edit.contains("name")) cue.name = edit["name"].get<std::string>();
+        if (edit.contains("stop")) anim::cueStopFromName(edit["stop"].get<std::string>(), cue.stop);
+        if (edit.contains("volume_db")) cue.volumeDb = edit["volume_db"].get<float>();
+        if (edit.contains("pitch_semitones")) cue.pitchSemitones = edit["pitch_semitones"].get<float>();
+        if (edit.contains("spatial")) cue.spatial = edit["spatial"].get<bool>();
+        if (edit.contains("path")) cue.path = edit["path"].get<std::string>();
+        if (edit.contains("snapshot")) cue.snapshot = edit["snapshot"].get<std::string>();
+        if (edit.contains("seconds")) cue.seconds = edit["seconds"].get<float>();
+        if (!self.editCue(self.selectedCue, cue, "Edit Audio Cue", "", &failure)) return fail("cue", failure);
+    }
+    if (hook.contains("drag_cue")){
+        // a drag of the selected cue by seconds (frame snapped, one merged step)
+        std::shared_ptr<AnimationClipDocument> doc = self.document();
+        if (!hook["drag_cue"].is_number()) return fail("drag_cue", "seconds (number)");
+        self.resolveSelectedCue();
+        if (!doc || self.selectedCue < 0) return fail("drag_cue", "no cue selected");
+        const float base = doc->data().audio[(size_t)self.selectedCue].time;
+        self.cueMergeKey = "clipcue#" + std::to_string(++self.cueDragSerial);
+        const float total = hook["drag_cue"].get<float>();
+        for (int step = 1; step <= 4; step++){
+            const float at = self.snapToFrame(std::max(0.0f, base + total * (float)step / 4.0f));
+            if (!self.moveCue(self.selectedCue, at, self.cueMergeKey, &failure)) return fail("drag_cue", failure);
+        }
+    }
+    if (hook.value("delete_cue", false)){
+        self.resolveSelectedCue();
+        if (self.selectedCue < 0) return fail("delete_cue", "no cue selected");
+        if (!self.deleteCue(self.selectedCue, &failure)) return fail("delete_cue", failure);
+    }
+    if (hook.contains("align_cue")){
+        // the context menu's Align Start / Peak / End to Playhead on the selected cue
+        const std::string which = hook["align_cue"].is_string() ? hook["align_cue"].get<std::string>() : std::string();
+        if (which != "start" && which != "peak" && which != "end") return fail("align_cue", "start, peak or end");
+        self.resolveSelectedCue();
+        const AnimationWindowClip::CueAlign align = which == "start" ? AnimationWindowClip::CueAlign::Start
+                                                  : which == "peak" ? AnimationWindowClip::CueAlign::Peak : AnimationWindowClip::CueAlign::End;
+        if (!self.alignCue(self.selectedCue, align, &failure)) return fail("align_cue", failure);
+    }
+    if (hook.contains("drop_sounds")){
+        // sounds dropped on the lane: {paths, time}
+        const Json& drop = hook["drop_sounds"];
+        if (!drop.is_object() || !drop.contains("paths")) return fail("drop_sounds", "{paths, time}");
+        std::vector<std::string> paths = drop["paths"].get<std::vector<std::string>>();
+        if (!self.dropSounds(paths, drop.value("time", 0.0f), &failure)) return fail("drop_sounds", failure);
+    }
+    if (hook.contains("command")){
+        // a catalog command as its shortcut runs it on the window
+        if (!hook["command"].is_string()) return fail("command", "a command id");
+        self.runKeyCommand(hook["command"].get<std::string>());
     }
     if (hook.contains("create_clip")){
         // the empty state's Create... / the dropdown's Create New Clip... without the save dialog
@@ -878,6 +987,37 @@ inline bool AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohma
             return false;
         }
     }
+    // the entity mode's timeline audio (S40 R22, R23)
+    if (hook.contains("entity_time")){
+        self.currentTime = hook["entity_time"].get<float>();
+    }
+    if (hook.contains("entity_audio_action")){
+        // Add Property > Sound / a drop on the tracks: {type: audio | event | snapshot, content, time, track?}
+        const nlohmann::json& add = hook["entity_audio_action"];
+        const std::string type = add.value("type", std::string("audio"));
+        const EntityCreationType creation = type == "event" ? EntityCreationType::SOUND_EVENT_ACTION
+                                          : type == "snapshot" ? EntityCreationType::MIXER_SNAPSHOT_ACTION : EntityCreationType::AUDIO_ACTION;
+        if (self.clipModeActive || !self.addAudioAction(self.project->getScene(self.selectedSceneId), self.selectedEntity, creation,
+                                                        add.value("content", std::string()), add.value("time", 0.0f), add.value("track", 0u), &error)){
+            error = "entity_audio_action: " + error;
+            return false;
+        }
+    }
+    if (hook.contains("entity_select_frame")){
+        self.selectedFrameIndex = hook["entity_select_frame"].get<int>();
+    }
+    if (hook.contains("entity_command")){
+        const std::string id = hook["entity_command"].get<std::string>();
+        if (!self.runAudioActionCommand(id, true)){
+            error = "entity_command: " + (self.keyNotice.empty() ? std::string("refused") : self.keyNotice);
+            return false;
+        }
+    }
+    if (hook.contains("entity_play")){
+        SceneProject* shownProject = self.project->getScene(self.selectedSceneId);
+        if (hook["entity_play"].get<bool>()) self.externalPlay(self.selectedEntity, self.selectedSceneId);
+        else if (shownProject) self.externalStop();
+    }
     if (self.clipModeActive){
         try{
             if (!AnimationWindowClipTestAccess::drive(*self.clipMode, sceneProject, hook, out, error)) return false;
@@ -910,6 +1050,18 @@ inline bool AnimationWindowTestAccess::drive(AnimationWindow& self, const nlohma
         // the lanes shown (view only) and the stored ActionFrame::track values
         out["entity_lanes"] = lanes;
         out["entity_tracks"] = tracks;
+        // the frames as the blocks show them (S40: audio actions' labels and starts)
+        nlohmann::json frames = nlohmann::json::array();
+        if (shown && self.selectedEntity != NULL_ENTITY && shown->isEntityCreated(self.selectedEntity)){
+            if (AnimationComponent* anim = shown->findComponent<AnimationComponent>(self.selectedEntity)){
+                for (const ActionFrame& frame : anim->actions){
+                    frames.push_back({{"start", frame.startTime}, {"duration", frame.duration}, {"label", self.getActionLabel(frame.action, shown)}});
+                }
+            }
+        }
+        out["entity_frames"] = frames;
+        out["entity_selected_frame"] = self.selectedFrameIndex;
+        out["entity_audio_starts"] = self.previewAudioStarts();
     }
     if (hook.value("entity_mode_entries", false)){
         // the entity mode dropdown's clip entries for the scene selection (R31)

@@ -223,12 +223,14 @@ namespace jasperengine::editor{
         // drives a RectTransform to Screen.safeArea
         SafeAreaComponent,
         // soft capsule shadows of a character from its bones (S57 R2)
-        CapsuleShadowCasterComponent
+        CapsuleShadowCasterComponent,
+        // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+        AudioSnapshotComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::CapsuleShadowCasterComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -327,8 +329,10 @@ namespace jasperengine::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
-        // The same lookup without the not-found log, for callers a miss is expected on
-        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
+        // The same lookup without the not-found log, for callers a miss is expected on. `append`:
+        // the caller writes the value, so one past the last element of a component array that
+        // grows by index ("tiles[N]") appends one (reflect::resolve); a read never grows it
+        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append = false);
 
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after

@@ -8,6 +8,13 @@
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "io/watch/LinkedFolders.h"
+
+#include "audio/SoundEventDocument.h"
+#include "util/ProjectChecks.h"
+
+#include "audio/AudioCredits.h"
+#include "audio/AudioImport.h"
+#include "audio/AudioImportRegistry.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
@@ -1122,12 +1129,14 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!checkHtmlUIReferences()) return;
+    checkSoundEventClips();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookModels()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeAudioImports()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
     if (!writeAssetMap()) return;
@@ -1293,8 +1302,8 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 }
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
-    // what Project Settings allow (the HTML UI and its video have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video"};
+    // what Project Settings allow (the HTML UI, its video and the sound layer have no switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -1311,8 +1320,8 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
 fs::path editor::Exporter::getSharedBuildCacheDir() const {
     // What decides how the engine and the vendored libraries compile: the kit (configureBuild's,
     // without the tree's path) and the project settings that are definitions of the whole build
-    // (the C++ standard, the compiled-in features, the crash handler and the watchdog, the
-    // SceneMaxValues capacities). Everything else of a project (its title, window, logging,
+    // (the C++ standard, the compiled-in features, the crash handler and the watchdog).
+    // Everything else of a project (its title, window, logging,
     // scenes, scripts, shaders) only recompiles its own units in a tree it shares. Another
     // editor's engine sources are synced into the tree like an update's (copyEngine), and Ninja
     // recompiles what changed.
@@ -1327,9 +1336,6 @@ fs::path editor::Exporter::getSharedBuildCacheDir() const {
         + "\nruntime shaders " + (project->isRuntimeShadersEnabled() ? "1" : "0")
         + "\ncrash handler " + (project->getPlayerCrash().enabled ? "1" : "0")
         + "\nhang watchdog " + (project->getPlayerCrash().hangWatchdog ? "1" : "0");
-    for (const auto& [name, value] : getSceneMaxValues()) {
-        key += "\n" + name + " " + std::to_string(value);
-    }
     if (config.mode == ExportMode::Desktop) {
         const std::string platform = Generator::getGeneratorPlatform(config.cmakeGenerator);
         if (!platform.empty()) key += "\n" + platform;
@@ -2505,6 +2511,22 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
     return errors.empty();
 }
 
+void editor::Exporter::checkSoundEventClips() {
+    // a missing clip is a warning: the game plays the event's other clips
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".soundevent"})) {
+        SoundEventDef def;
+        std::string error;
+        const std::string name = project->normalizeToAssetsRelative(file).generic_string();
+        if (!SoundEventDocument::read(file, def, &error)) {
+            Out::warning("Sound Event %s does not read, so it will not play: %s", name.c_str(), error.c_str());
+            continue;
+        }
+        for (const std::string& problem : SoundEventDocument::problems(project, def)) {
+            if (problem.find("missing clip") != std::string::npos) Out::warning("Sound Event %s: %s", name.c_str(), problem.c_str());
+        }
+    }
+}
+
 bool editor::Exporter::checkHtmlUIReferences() {
     if (htmlUIDocuments.empty()) {
         return true;
@@ -2871,6 +2893,56 @@ bool editor::Exporter::cookTextures() {
     return true;
 }
 
+bool editor::Exporter::writeAudioImports() {
+    std::vector<std::string> problems;
+    const std::string text = AudioImportRegistry::exportText(AudioImportRegistry::collect(*project, problems));
+    for (const std::string& problem : problems) warn("W-AUDIO-IMPORT", "import settings not exported: " + problem);
+    // a project without settings writes no file: its build is byte-identical to one without this
+    if (text.empty()) return true;
+    const fs::path target = getExportProjectRoot() / "assets" / AudioImportTable::FILE_NAME;
+    const io::WriteResult written = io::writeFileAtomic(target, text);
+    if (!written.ok()) {
+        setError("Can't write " + target.string() + ": " + written.message);
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeAudioCredits() {
+    const fs::path file = config.targetDir / "licenses" / AudioCredits::FILE_NAME;
+    std::error_code removed;
+    fs::remove(file, removed);
+    std::vector<fs::path> shipped;
+    const fs::path assets = project->getAssetsPath();
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(getExportProjectRoot() / "assets", fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (it->is_regular_file(ec)) shipped.push_back(fs::relative(it->path(), getExportProjectRoot() / "assets", ec));
+    }
+    const AudioCredits::Report report = AudioCredits::collect(assets, shipped);
+    const std::string licence = AudioCredits::licenceWarning(report);
+    if (!licence.empty()) warn("W-AUDIO-LICENCE", licence);
+    const std::string placeholder = AudioCredits::placeholderWarning(report);
+    if (!placeholder.empty()) warn("W-AUDIO-PLACEHOLDER", placeholder);
+    if (report.empty() || !project->getAudioSettings().creditsFile) return true;
+    const io::WriteResult written = io::writeFileAtomic(file, AudioCredits::render(report, project->getName()));
+    if (!written.ok()) {
+        setError("The audio credits: " + written.message);
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::checkFbxImportPathFree(const fs::path& relPath) {
+    fs::path importRelPath = relPath;
+    importRelPath += ".glb";
+    std::error_code ec;
+    if (!fs::exists(getAssetsSourceDir() / importRelPath, ec)) return true;
+    setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
+        relPath.generic_string() + ". Rename it.");
+    return false;
+}
+
 bool editor::Exporter::cookModels() {
     setProgress("Cooking models...", 0.34f);
     cookedModelSources.clear();
@@ -2894,6 +2966,11 @@ bool editor::Exporter::cookModels() {
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
+    }
+    // before the cook, which would read such an asset as a model and fail on it instead
+    for (const ModelBatchItem& item : inputs.items) {
+        const fs::path relPath = FileUtils::pathFromUtf8(item.assetPath);
+        if (FbxImporter::isFbxFile(relPath) && !checkFbxImportPathFree(relPath)) return false;
     }
     const fs::path assetsOut = getExportProjectRoot() / "assets";
     if (inputs.items.empty()) {
@@ -3090,6 +3167,12 @@ bool editor::Exporter::copyAssets() {
         // An .aseprite file ships as its import (copyImportedAssets), never itself
         if (SpriteSheetPool::isAsepritePath(relPath.generic_string())) return TreeStep::Skip;
 
+        // The exporter writes the clips' import settings there (S36)
+        if (relPath == AudioImportTable::FILE_NAME) {
+            setError("\"" + std::string(AudioImportTable::FILE_NAME) + "\" is reserved for the audio import settings. Rename " + entry.path().string());
+            return stop();
+        }
+
         // The exporter writes the asset map there (S04)
         if (relPath == AssetMap::fileName) {
             setError("\"" + std::string(AssetMap::fileName) + "\" is reserved for the asset map. Rename " + entry.path().string());
@@ -3132,11 +3215,7 @@ bool editor::Exporter::copyAssets() {
             fs::path importRelPath = relPath;
             importRelPath += ".glb";
             // The engine loads the import from that path, so no asset can have it
-            if (fs::exists(assetsSrc / importRelPath, ec)) {
-                setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
-                    relPath.generic_string() + ". Rename it.");
-                return stop();
-            }
+            if (!checkFbxImportPathFree(relPath)) return stop();
             const fs::path fbxPath = project->resolveAssetPath(relPath);
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
             // Scripts may load any of them, so none can be left out or outdated
@@ -3910,6 +3989,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
+        moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -3945,18 +4025,6 @@ bool editor::Exporter::copyEngine() {
     const size_t scriptDirsPos = cmakeContent.find(scriptDirsMarker);
     if (scriptDirsPos != std::string::npos) {
         cmakeContent.replace(scriptDirsPos, scriptDirsMarker.size(), buildScriptDirIncludes());
-    }
-
-    // Inject per-project HybridArray capacities so the exported build sizes its
-    // fixed-capacity arrays to the larger of what the project actually uses and the
-    // engine defaults in core/Engine.h (big models grow past the defaults). Missing
-    // marker is non-fatal: the build simply falls back to those defaults.
-    const std::string maxValuesMarker = "# @JASPERENGINE_SCENE_MAX_VALUES@";
-    const size_t maxValuesPos = cmakeContent.find(maxValuesMarker);
-    if (maxValuesPos != std::string::npos) {
-        cmakeContent.replace(maxValuesPos, maxValuesMarker.size(), buildSceneMaxValuesDefinitions());
-    } else {
-        Out::warning("Exported CMakeLists.txt is missing the SceneMaxValues marker; using engine default capacities");
     }
 
     if (!writeExportSettingsScript(cmakeContent)) return false;
@@ -4287,53 +4355,6 @@ std::string editor::Exporter::videoUrlScene() const {
             return FileUtils::pathToUtf8(file.filename());
     }
     return "";
-}
-
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
-    return sceneMaxValuesOf(project);
-}
-
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValuesOf(const Project* project) {
-    // Aggregate the per-scene maxima into a single project-wide capacity for each
-    // HybridArray. SceneProject::maxValues is refreshed for every scene during
-    // loadAndSaveAllScenes(), which always runs before copyEngine().
-    SceneMaxValues agg;
-    for (const SceneProject& sceneProject : project->getScenes()) {
-        agg.maxSubmeshes        = std::max(agg.maxSubmeshes, sceneProject.maxValues.maxSubmeshes);
-        agg.maxTilemapTilesRect = std::max(agg.maxTilemapTilesRect, sceneProject.maxValues.maxTilemapTilesRect);
-        agg.maxTilemapTiles     = std::max(agg.maxTilemapTiles, sceneProject.maxValues.maxTilemapTiles);
-        agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
-        agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
-        agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-    }
-
-    // Floor each capacity at the engine default declared in core/Engine.h: growing past the
-    // default sizes big models correctly, while never shrinking below the known-safe baseline.
-    // This matters because the editor-time calc can undercount model-backed meshes (e.g.
-    // numExternalBuffers is regenerated at runtime, not serialized) and cannot see content
-    // created dynamically by scripts. Passing the macros themselves as the floor keeps these in
-    // lockstep with the engine defaults (string literals are not macro-expanded; the bare macro
-    // arguments are).
-    auto capacity = [](unsigned int value, unsigned int engineDefault) { return std::max(value, engineDefault); };
-    return {
-        {"MAX_SUBMESHES", capacity(agg.maxSubmeshes, MAX_SUBMESHES)},
-        {"MAX_TILEMAP_TILESRECT", capacity(agg.maxTilemapTilesRect, MAX_TILEMAP_TILESRECT)},
-        {"MAX_TILEMAP_TILES", capacity(agg.maxTilemapTiles, MAX_TILEMAP_TILES)},
-        {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
-        {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
-        {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-    };
-}
-
-std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
-    // First line reuses the marker's existing indentation; subsequent lines are
-    // indented to match the surrounding standalone setup block (4 spaces).
-    std::string out;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        if (!out.empty()) out += "\n    ";
-        out += "add_definitions(\"-D" + macro + "=" + std::to_string(value) + "\")";
-    }
-    return out;
 }
 
 bool editor::Exporter::writeAndroidProjectSettings() {
@@ -5891,25 +5912,6 @@ bool editor::Exporter::writeXcodeBuildSettings(std::string& xcodeProject) {
         }
     }
 
-    // Like add_definitions() in CMake: the capacities size engine structs, so every target gets them
-    const PbxRange projectObject = findPbxObject(xcodeProject, pbxValueId(xcodeProject, {0, xcodeProject.size()}, "rootObject"));
-    const PbxRange configurationList = findPbxObject(xcodeProject, pbxValueId(xcodeProject, projectObject, "buildConfigurationList"));
-    const std::vector<std::string> configurationIds = pbxListIds(xcodeProject, configurationList, "buildConfigurations");
-    if (configurationIds.empty()) {
-        setError("Apple export template has no project build configurations");
-        return false;
-    }
-    std::vector<std::string> definitions;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        definitions.push_back(pbxString(macro + "=" + std::to_string(value)));
-    }
-    for (const std::string& configurationId : configurationIds) {
-        if (!addPbxListEntries(xcodeProject, findPbxBuildSettings(xcodeProject, configurationId), "GCC_PREPROCESSOR_DEFINITIONS", definitions)) {
-            setError("Apple export template has no project GCC_PREPROCESSOR_DEFINITIONS");
-            return false;
-        }
-    }
-
     std::error_code ec;
     if (fs::exists(getExportProjectRoot() / "ProjectBuild.cmake", ec)) {
         Out::warning("ProjectBuild.cmake applies to CMake builds only; the Xcode workspace ignores it");
@@ -6374,11 +6376,11 @@ bool editor::Exporter::writeEffectLicense() {
         setError("The OpenEngine notice: " + error);
         return false;
     }
-    return true;
+    return writeAudioCredits();
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath()}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt"}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

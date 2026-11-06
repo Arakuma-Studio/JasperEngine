@@ -84,13 +84,85 @@ shaderKeys:
     properties: 8623494234
   - type: mesh
     properties: 8891929690
+  - type: mesh
+    properties: 68719480920
+  - type: mesh
+    properties: 68719481946
+  - type: mesh
+    properties: 68753036376
+  - type: mesh
+    properties: 68753036378
+  - type: mesh
+    properties: 69021471834
+  - type: mesh
+    properties: 77309415512
+  - type: mesh
+    properties: 77309416538
+  - type: mesh
+    properties: 77342970968
+  - type: mesh
+    properties: 77342970970
+  - type: mesh
+    properties: 77611406426
+  - type: mesh
+    properties: 2199023260762
+  - type: mesh
+    properties: 2199056814147
+  - type: mesh
+    properties: 2199056815107
+  - type: mesh
+    properties: 2199056815169
+  - type: mesh
+    properties: 2199056815171
+  - type: mesh
+    properties: 2199056815192
+  - type: mesh
+    properties: 2199056815194
+  - type: mesh
+    properties: 2199325250624
+  - type: mesh
+    properties: 2199325250626
+  - type: mesh
+    properties: 2199325250650
+  - type: mesh
+    properties: 2207613195354
+  - type: mesh
+    properties: 2207646749784
+  - type: mesh
+    properties: 2207646749786
+  - type: mesh
+    properties: 2207915185242
+  - type: mesh
+    properties: 2267742737498
+  - type: mesh
+    properties: 2267776291928
+  - type: mesh
+    properties: 2267776291930
+  - type: mesh
+    properties: 2268044727386
+  - type: mesh
+    properties: 2276332672090
+  - type: mesh
+    properties: 2276366226520
+  - type: mesh
+    properties: 2276366226522
+  - type: mesh
+    properties: 2276634661978
   - type: sky
   - type: depth
   - type: depth
     properties: 6144
   - type: depth
     properties: 6656
+  - type: depth
+    properties: 262144
+  - type: depth
+    properties: 268288
+  - type: depth
+    properties: 268800
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 5123
@@ -99,7 +171,13 @@ shaderKeys:
     properties: 33558595
     customShader: library:directional_tint#BLEND_NONE
   - type: mesh
+    properties: 2199056814147
+    customShader: library:directional_tint#BLEND_NONE
+  - type: mesh
     properties: 33559555
+    customShader: library:dissolve#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056815107
     customShader: library:dissolve#BLEND_NONE,VERTEX_COLOR
   - type: mesh
     properties: 33559642
@@ -107,21 +185,51 @@ shaderKeys:
   - type: mesh
     properties: 8623494234
     customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 68753036378
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 77342970970
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 2199056815194
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 2207646749786
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 2267776291930
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
+  - type: mesh
+    properties: 2276366226522
+    customShader: library:dissolve#BLEND_NONE,WORLD_NOISE
   - type: depth
     customShader: library:dissolve#VERTEX_COLOR
   - type: depth
     properties: 6144
     customShader: library:dissolve#VERTEX_COLOR
   - type: depth
+    properties: 268288
+    customShader: library:dissolve#VERTEX_COLOR
+  - type: depth
     customShader: library:dissolve#WORLD_NOISE
   - type: depth
     properties: 6656
+    customShader: library:dissolve#WORLD_NOISE
+  - type: depth
+    properties: 268800
     customShader: library:dissolve#WORLD_NOISE
   - type: mesh
     properties: 33559619
     customShader: library:fake_lit#AXIS_FOG,BLEND_NONE,MATCAP
   - type: mesh
+    properties: 2199056815171
+    customShader: library:fake_lit#AXIS_FOG,BLEND_NONE,MATCAP
+  - type: mesh
     properties: 301995074
+    customShader: library:fake_lit#BLEND_NONE,EMISSION,SHADOW_TEXTURE,VERTEX_AO
+  - type: mesh
+    properties: 2199325250626
     customShader: library:fake_lit#BLEND_NONE,EMISSION,SHADOW_TEXTURE,VERTEX_AO
   - type: mesh
     properties: 33559555
@@ -132,6 +240,9 @@ shaderKeys:
     properties: 301995074
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_HEIGHT
   - type: mesh
+    properties: 2199325250626
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_HEIGHT
+  - type: mesh
     properties: 33559555
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
   - type: mesh
@@ -140,15 +251,42 @@ shaderKeys:
   - type: mesh
     properties: 8623494234
     customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 68753036378
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 77342970970
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2199056815107
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2199056815194
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2207646749786
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2267776291930
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
+  - type: mesh
+    properties: 2276366226522
+    customShader: library:foliage#ALPHA_CLIP,BLEND_NONE,WIND_MASK_VERTEX_COLOR
   - type: depth
     customShader: library:foliage#ALPHA_CLIP,WIND_MASK_HEIGHT
   - type: depth
     properties: 6144
+    customShader: library:foliage#ALPHA_CLIP,WIND_MASK_HEIGHT
+  - type: depth
+    properties: 268288
     customShader: library:foliage#ALPHA_CLIP,WIND_MASK_HEIGHT
   - type: depth
     customShader: library:foliage#ALPHA_CLIP,WIND_MASK_VERTEX_COLOR
   - type: depth
     properties: 6144
+    customShader: library:foliage#ALPHA_CLIP,WIND_MASK_VERTEX_COLOR
+  - type: depth
+    properties: 268288
     customShader: library:foliage#ALPHA_CLIP,WIND_MASK_VERTEX_COLOR
   - type: mesh
     properties: 33558593
@@ -157,7 +295,13 @@ shaderKeys:
     properties: 33559619
     customShader: library:matcap#BLEND_NONE,MATCAP_MODE_MULTIPLY,RIM
   - type: mesh
+    properties: 2199056815171
+    customShader: library:matcap#BLEND_NONE,MATCAP_MODE_MULTIPLY,RIM
+  - type: mesh
     properties: 33559555
+    customShader: library:panner#BLEND_NONE,COMBINE_ADD,DISTORTION,SECOND_LAYER
+  - type: mesh
+    properties: 2199056815107
     customShader: library:panner#BLEND_NONE,COMBINE_ADD,DISTORTION,SECOND_LAYER
   - type: sky
     customShader: library:procedural_sky#BLEND_ALPHA,CLOUDS
@@ -171,6 +315,24 @@ shaderKeys:
     properties: 8589939802
     customShader: library:simple_lit#BLEND_NONE
   - type: mesh
+    properties: 68719481946
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
+    properties: 77309416538
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
+    properties: 2199023260762
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
+    properties: 2207613195354
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
+    properties: 2267742737498
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
+    properties: 2276332672090
+    customShader: library:simple_lit#BLEND_NONE
+  - type: mesh
     properties: 33559642
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
@@ -183,12 +345,54 @@ shaderKeys:
     properties: 8891929690
     customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
   - type: mesh
+    properties: 68753036378
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 69021471834
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 77342970970
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 77611406426
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2199056815194
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2199325250650
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2207646749786
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2207915185242
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2267776291930
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2268044727386
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2276366226522
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
+    properties: 2276634661978
+    customShader: library:simple_lit#BLEND_NONE,EMISSION,NORMAL_MAP
+  - type: mesh
     properties: 301995074
+    customShader: library:simple_lit#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199325250626
     customShader: library:simple_lit#BLEND_NONE,VERTEX_COLOR
   - type: depth
     customShader: library:spin_bob
   - type: depth
     properties: 6144
+    customShader: library:spin_bob
+  - type: depth
+    properties: 268288
     customShader: library:spin_bob
   - type: mesh
     properties: 33559642
@@ -197,15 +401,42 @@ shaderKeys:
     properties: 8623494234
     customShader: library:spin_bob#BLEND_NONE
   - type: mesh
+    properties: 68753036378
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
+    properties: 77342970970
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
+    properties: 2199056815194
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
+    properties: 2207646749786
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
+    properties: 2267776291930
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
+    properties: 2276366226522
+    customShader: library:spin_bob#BLEND_NONE
+  - type: mesh
     properties: 33559555
     customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
   - type: mesh
     properties: 301995074
     customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056815107
+    customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199325250626
+    customShader: library:spin_bob#BLEND_NONE,VERTEX_COLOR
   - type: depth
     customShader: library:spin_bob#VERTEX_COLOR
   - type: depth
     properties: 6144
+    customShader: library:spin_bob#VERTEX_COLOR
+  - type: depth
+    properties: 268288
     customShader: library:spin_bob#VERTEX_COLOR
   - type: mesh
     properties: 33559555
@@ -214,10 +445,31 @@ shaderKeys:
     properties: 301995074
     customShader: library:toon#BLEND_NONE,RAMP
   - type: mesh
+    properties: 2199325250626
+    customShader: library:toon#BLEND_NONE,RAMP
+  - type: mesh
     properties: 301995098
     customShader: library:toon#BLEND_NONE,RAMP,RIM
   - type: mesh
     properties: 8891929690
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 69021471834
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 77611406426
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 2199325250650
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 2207915185242
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 2268044727386
+    customShader: library:toon#BLEND_NONE,RAMP,RIM
+  - type: mesh
+    properties: 2276634661978
     customShader: library:toon#BLEND_NONE,RAMP,RIM
   - type: mesh
     properties: 33559642
@@ -226,10 +478,46 @@ shaderKeys:
     properties: 8623494234
     customShader: library:toon#BLEND_NONE,RIM,SPECULAR
   - type: mesh
+    properties: 68753036378
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
+    properties: 77342970970
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
+    properties: 2199056815194
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
+    properties: 2207646749786
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
+    properties: 2267776291930
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
+    properties: 2276366226522
+    customShader: library:toon#BLEND_NONE,RIM,SPECULAR
+  - type: mesh
     properties: 33559640
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
   - type: mesh
     properties: 8623494232
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 68753036376
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 77342970968
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 2199056815192
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 2207646749784
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 2267776291928
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
+  - type: mesh
+    properties: 2276366226520
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_OBJECT
   - type: mesh
     properties: 33559617
@@ -238,12 +526,24 @@ shaderKeys:
     properties: 301995072
     customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
   - type: mesh
+    properties: 2199056815169
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
+  - type: mesh
+    properties: 2199325250624
+    customShader: library:triplanar#BLEND_NONE,NOISE_MASK,SPACE_WORLD,TOP_BOTTOM
+  - type: mesh
     properties: 33559555
+    customShader: library:unlit#ALPHA_CLIP,BLEND_NONE,VERTEX_COLOR
+  - type: mesh
+    properties: 2199056815107
     customShader: library:unlit#ALPHA_CLIP,BLEND_NONE,VERTEX_COLOR
   - type: depth
     customShader: library:unlit#ALPHA_CLIP,VERTEX_COLOR
   - type: depth
     properties: 6144
+    customShader: library:unlit#ALPHA_CLIP,VERTEX_COLOR
+  - type: depth
+    properties: 268288
     customShader: library:unlit#ALPHA_CLIP,VERTEX_COLOR
   - type: mesh
     properties: 33559640
@@ -252,13 +552,40 @@ shaderKeys:
     properties: 8623494232
     customShader: library:vertex_color#BLEND_NONE
   - type: mesh
+    properties: 68753036376
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
+    properties: 77342970968
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
+    properties: 2199056815192
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
+    properties: 2207646749784
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
+    properties: 2267776291928
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
+    properties: 2276366226520
+    customShader: library:vertex_color#BLEND_NONE
+  - type: mesh
     properties: 33559555
     customShader: library:vertex_color#BLEND_NONE,TEXTURE
   - type: mesh
     properties: 301995074
     customShader: library:vertex_color#BLEND_NONE,TEXTURE
   - type: mesh
+    properties: 2199056815107
+    customShader: library:vertex_color#BLEND_NONE,TEXTURE
+  - type: mesh
+    properties: 2199325250626
+    customShader: library:vertex_color#BLEND_NONE,TEXTURE
+  - type: mesh
     properties: 301995074
+    customShader: library:vertex_lit#BLEND_NONE,EMISSION,VERTEX_COLOR
+  - type: mesh
+    properties: 2199325250626
     customShader: library:vertex_lit#BLEND_NONE,EMISSION,VERTEX_COLOR
   - type: mesh
     properties: 4161
@@ -268,6 +595,12 @@ shaderKeys:
     customShader: library:water#BLEND_ALPHA,WAVES
   - type: mesh
     properties: 8589938776
+    customShader: library:water#BLEND_ALPHA,WAVES
+  - type: mesh
+    properties: 68719480920
+    customShader: library:water#BLEND_ALPHA,WAVES
+  - type: mesh
+    properties: 77309415512
     customShader: library:water#BLEND_ALPHA,WAVES
   - type: depth
     customShader: library:water#WAVES
