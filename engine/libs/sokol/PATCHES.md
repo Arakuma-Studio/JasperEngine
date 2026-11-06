@@ -86,3 +86,18 @@ safe. Every changed line in `sokol_gfx.h` carries `JasperEngine: pool lock`
 A draw takes no lock: a resource's lookup reads only the slot of a handle the caller owns.
 
 Status: local. Upstream's single-thread contract is intended; nothing to offer.
+
+## Invariant positions on Metal
+
+The engine's vertex shaders declare `invariant gl_Position` so a depth pre-pass, the shadow passes
+and the colour pass put a vertex at the same depth, and SPIRV-Cross writes it as
+`[[position, invariant]]`. Metal honours that only in a library compiled with
+`MTLCompileOptions.preserveInvariance`; with `options:nil` an instanced batch (its matrices read from
+a vertex buffer) and the same draw alone (from a uniform block) reached different depths in 11,436
+pixels of `InstancingGoldenGpu.ShadowAndDepthPassesBatch`, none with it.
+
+- `_sg_mtl_compile_options()` (once, never released) sets `preserveInvariance`; `_sg_mtl_compile_library`
+  and sokol_async's `newLibraryWithSource:options:completionHandler:` pass it instead of `nil`. Fast math
+  stays on. Marked `JasperEngine: invariant position`.
+
+Status: to be offered upstream (any sokol user with `invariant` positions has the same problem).
