@@ -260,6 +260,27 @@ async def test_edit_mode_animate_water(ed: Editor):
         await ed.call("set_scene_camera", display={"animate_water": True})
 
 
+async def test_play_restarts_scene_clock(ed: Editor):
+    """Play starts the scene clock at 0, as an exported game does, whatever the edit-mode clock
+    ran to (spec 7)."""
+    point = {"points": [[1.5, 0, 2.5]]}
+    edit = (await ed.call("sample_water", **point))["water_time"]
+    for _ in range(30):
+        if edit > 3.0:
+            break
+        await ed.call_raw("screenshot", {"view": "scene"})
+        await asyncio.sleep(0.3)
+        edit = (await ed.call("sample_water", **point))["water_time"]
+    ed.check(edit > 3.0, f"the edit-mode clock ran: {edit}")
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", frames=2)
+        played = (await ed.call("sample_water", **point))["water_time"]
+        ed.check(played < 2.0, f"Play restarts the scene clock: {played} after an edit-mode {edit}")
+    finally:
+        await ed.call("play", action="stop")
+
+
 def with_role(source: str, shader_line: str, role: str) -> str:
     """A library entry file as a hand-made fork has it, with the @role line (already there in this
     engine's library)."""
@@ -386,6 +407,26 @@ def roughness(png: bytes) -> int:
         for x in range(w // 4, 3 * w // 4):
             steps += abs(row[x * channels + 1] - row[(x + 1) * channels + 1]) > 4
     return steps
+
+
+async def test_planar_reflection_not_flat_check(ed: Editor):
+    """check_shader warns about a planar reflection on sloped water (it mirrors about the top of
+    its bounds), not on the flat one."""
+    await ed.call("set_properties", entity="Water", values={"mesh": {
+        M + "shaderFeatures": ["BUILTIN_TEXTURES", "WAVES", "REFLECTION", "PLANAR_REFLECTION"]}})
+
+    async def not_flat():
+        found = await ed.call("check_shader", timeout=300)
+        return [f for f in found.get("findings", []) if f.get("code") == "planar-reflection-not-flat"]
+
+    ed.check(not await not_flat(), "flat water: no warning")
+    await ed.call("set_transform", entity="Water", rotation={"euler": [20, 0, 0]})
+    try:
+        sloped = await not_flat()
+        ed.check(len(sloped) == 1 and "Water" in sloped[0].get("message", ""), f"sloped water: one warning: {sloped!r}")
+    finally:
+        await ed.call("set_transform", entity="Water", rotation={"euler": [0, 0, 0]})
+    ed.check(not await not_flat(), "flat again: no warning")
 
 
 async def test_old_materials_keep_flat_defaults(ed: Editor):

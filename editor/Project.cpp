@@ -4162,6 +4162,10 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     restartFluids(runtime->scene);
 
+    // the scene clock (the water's waves) starts at 0, as in an exported game: the edit-mode
+    // clock ran on while the scene was stopped
+    runtime->scene->setSceneTime(0.0);
+
     runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
     // no animator reset here: the scripts' init already ran (onFinish, play, setAnimation...);
     // Stop resets them (finalizeStop), so play starts from their beginning
