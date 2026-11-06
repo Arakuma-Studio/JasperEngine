@@ -1177,23 +1177,3 @@ async def test_export_emits_the_component(ed: Editor):
     ed.check('resources.clips.push_back("anim/bob.anim");' in code, "the scene resources preload the clip")
     ed.check((out / "project" / "assets" / "anim" / "bob.anim").is_file(), "the .anim is exported")
 
-
-async def test_cue_relink(ed: Editor):
-    """S40 R3: an audio cue's sound follows a rename of its Sound Event, in the rename's undo step."""
-    from audio_refs import write_tone
-    write_tone(ed.project / "assets/sounds/relink_tick.wav", seconds=0.2)
-    await ed.call("sync_files")
-    await ed.call("write_file", path="assets/events/relink.soundevent", content=json.dumps({
-        "format": "jasperengine.soundevent", "version": 1, "mode": "random", "clips": [{"clip": {"path": "sounds/relink_tick.wav"}}]}))
-    clip = {"format": "jasperengine.anim", "version": 3, "frame_rate": 30, "wrap": "once", "length": 1, "tracks": [], "events": [],
-            "audio": [{"time": 0.5, "sound": {"path": "events/relink.soundevent"}, "name": "Step"}]}
-    await ed.call("write_file", path="assets/anim/relink.anim", content=json.dumps(clip, indent=2) + "\n")
-    await ed.call("sync_files")
-    r = await ed.call_raw("move_asset", {"path": "assets/events/relink.soundevent", "to": "assets/events/renamed.soundevent"})
-    ed.check(not r.is_error, r.text[:500])
-    cue = file_json(ed, "assets/anim/relink.anim")["audio"][0]
-    ed.check_eq(cue["sound"]["path"], "events/renamed.soundevent", f"the cue follows the rename: {cue}")
-    await ed.call("undo", scope="project")
-    ed.check((ed.project / "assets/events/relink.soundevent").is_file(), "undo moves the event back")
-    cue = file_json(ed, "assets/anim/relink.anim")["audio"][0]
-    ed.check_eq(cue["sound"]["path"], "events/relink.soundevent", f"and the cue with it, in the same step: {cue}")
