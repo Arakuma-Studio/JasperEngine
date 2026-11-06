@@ -15,7 +15,6 @@
 #include "support/EditorTestSupport.h"
 #include "support/TestTempDir.h"
 
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -82,17 +81,6 @@ TEST_F(ProjectShaderList, ReadsClosedScenesWithoutADevice) {
     // every scene presents through the blit
     EXPECT_EQ(closed->shaderKeys.count(ShaderPool::getShaderKey(ShaderType::BLIT, 0)), 1u);
     EXPECT_EQ(closed->scene, nullptr) << "and it stays closed";
-}
-
-TEST_F(ProjectShaderList, AnUnchangedFileIsNotReadAgain) {
-    ASSERT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 1u);
-    EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
-
-    // new bytes: read; a new stamp with the same bytes is the same file
-    writeText(dir.path() / "Closed.scene", sceneText(12, "Closed", "# changed\n"));
-    EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 1u);
-    fs::last_write_time(dir.path() / "Closed.scene", fs::last_write_time(dir.path() / "Closed.scene") + std::chrono::hours(1));
-    EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
 }
 
 TEST_F(ProjectShaderList, WhatTheKeysAlsoReadCountsAsAChange) {

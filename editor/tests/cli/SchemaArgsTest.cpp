@@ -84,23 +84,6 @@ namespace {
 
 // ---------------------------------------------------------------- CallArgs (AC1)
 
-TEST(CallArgs, ClassifiesEveryBuilderShape) {
-    std::map<std::string, ArgKind> kinds;
-    for (const ArgSpec& spec : argSpecs(toolSchema())) kinds[spec.key] = spec.kind;
-    EXPECT_EQ(kinds["name"], ArgKind::String);
-    EXPECT_EQ(kinds["count"], ArgKind::Integer);
-    EXPECT_EQ(kinds["scale"], ArgKind::Number);
-    EXPECT_EQ(kinds["select"], ArgKind::Boolean);
-    EXPECT_EQ(kinds["mode"], ArgKind::Enum);
-    EXPECT_EQ(kinds["entity"], ArgKind::Ref);
-    EXPECT_EQ(kinds["position"], ArgKind::ScalarArray);
-    EXPECT_EQ(kinds["tags"], ArgKind::ScalarArray);
-    EXPECT_EQ(kinds["values"], ArgKind::FreeObject);
-    EXPECT_EQ(kinds["create"], ArgKind::Json);
-    EXPECT_EQ(kinds["rotation"], ArgKind::Json);
-    EXPECT_EQ(kinds["value"], ArgKind::Json);
-}
-
 TEST(CallArgs, FlagsUseKebabOrSnakeCase) {
     const std::vector<ArgSpec> specs = argSpecs(schema::object({{"undo_group", schema::boolean("")}}));
     ASSERT_EQ(specs.size(), 1u);

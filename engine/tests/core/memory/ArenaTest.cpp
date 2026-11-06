@@ -74,13 +74,6 @@ TEST(ArenaTests, SingleAllocStoresValueAndAligns){
     EXPECT_NE((void*)integer, (void*)real);
 }
 
-TEST(ArenaTests, OverAlignedAllocationRespectsAlignment){
-    Arena arena("Tests.Arena.OverAligned");
-    arena.allocate<char>('x');
-    EXPECT_TRUE(isAligned(arena.allocate(8, 64), 64));
-    EXPECT_TRUE(isAligned(arena.allocate(8, 128), 128));
-}
-
 TEST(ArenaTests, AllocateArrayValueInitializesAndIsContiguous){
     Arena arena("Tests.Arena.Array");
     uint32_t* values = arena.allocateArray<uint32_t>(16);

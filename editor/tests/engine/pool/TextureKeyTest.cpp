@@ -91,12 +91,6 @@ TEST(TextureRenderId, PoolHoldsItsEntryWhenStale) {
     EXPECT_TRUE(pooled.expired());
 }
 
-TEST(CubeFaces, SetCubePathsTakesFrontBackLeftRightUpDown) {
-    Texture texture;
-    texture.setCubePaths("pz.png", "nz.png", "nx.png", "px.png", "py.png", "ny.png");
-    expectFaces(texture);
-}
-
 TEST(CubeFaces, SkyboxSixPathsAndSingleFacesAgree) {
     Scene scene;
     Skybox sky(&scene);

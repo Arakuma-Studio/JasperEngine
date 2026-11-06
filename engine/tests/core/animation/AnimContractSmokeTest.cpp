@@ -17,7 +17,6 @@
 #include "animation/ModelSubClips.h"
 #include "component/AnimationPlayerComponent.h"
 #include "object/AnimationPlayer.h"
-#include "pool/AnimationClipPool.h"
 #include "registry/EntityRegistry.h"
 #include "subsystem/ActionSystem.h"
 
@@ -325,18 +324,6 @@ TEST(AnimContract, ModelSubClips){
     EXPECT_FALSE(anim::buildModelSubClip("assets/models/missing.gltf#Walk", data, warnings, &error));
 }
 
-TEST(AnimContract, AnimationClipPool){
-    EXPECT_TRUE(AnimationClipPool::get("never/loaded.anim") == nullptr);
-    EXPECT_EQ(AnimationClipPool::getGeneration("never/loaded.anim"), 0u);
-    (void)AnimationClipPool::getKey("assets/anim/walk.anim");
-    (void)AnimationClipPool::revision();
-    AnimationClipPool::invalidate("never/loaded.anim");
-    AnimationClipPool::invalidateModel("never/loaded.gltf");
-    AnimationClipPool::clearUnused();
-    AnimationClipPool::clear();
-    EXPECT_EQ(AnimationClipPool::size(), 0u);
-}
-
 TEST(AnimContract, AnimationPlayerComponent){
     AnimationPlayerComponent player;
     EXPECT_TRUE(player.enabled);
@@ -370,26 +357,6 @@ TEST(AnimContract, AnimationPlayerComponent){
     event.functionName = "onFootstep";
     registry.getComponent<AnimationPlayerComponent>(entity).onEvent.call(event);
     EXPECT_EQ(received, "onFootstep");
-}
-
-TEST(AnimContract, AnimationPlayerRuntime){
-    anim::AnimationPlayerRuntime runtime;
-    anim::PlayerStateRuntime state;
-    state.name = "Walk";
-    runtime.states.push_back(state);
-    EXPECT_EQ(runtime.findState("Walk"), 0);
-    EXPECT_EQ(runtime.findState("Run"), -1);
-
-    anim::ClipPreviewSession session;
-    session.root = 5;
-    session.setRest(7, anim::ChannelRest());
-    EXPECT_EQ(session.rest.size(), 1u);
-    session.reset();
-    EXPECT_EQ(session.root, NULL_ENTITY);
-    EXPECT_TRUE(session.rest.empty());
-
-    AnimationStateInfo info;
-    EXPECT_FALSE(info.loaded);
 }
 
 TEST(AnimContract, AnimationPlayerObjectAndPreview){

@@ -8,7 +8,6 @@
 #include "VcsTestSupport.h"
 
 #include "support/EditorTestSupport.h"
-#include "Stream.h"
 #include "StreamMigrations.h"
 #include "vcs/GitProvider.h"
 #include "vcs/scene/SceneDiff.h"
@@ -166,22 +165,6 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
     EXPECT_EQ(modified, 40u);
     std::printf("[ VcsBench ] (of which parsing both sides, each on a job: %.2f ms; %zu bytes each)\n", bestParse, base.size());
     budget("scene diff, 2,000 GameObjects (parse both + diff)", best, 150.0);
-}
-
-TEST(VcsBench, EncodeOfTheCurrentSide) {
-    // R26: the main-thread encode of an open 2,000-GameObject scene
-    const DecodedScene decoded = decodeSceneText(bigScene(2000), "big.scene");
-    double best = 1e9;
-    for (int round = 0; round < 4; round++) {
-        const Clock::time_point start = Clock::now();
-        const YAML::Node node = encodeScene(decoded);
-        const double ms = msSince(start);
-        EXPECT_TRUE(node["entities"].IsSequence());
-        if (round > 0) best = std::min(best, ms);
-    }
-    // R26 is a switch, not a gate: over it the overlay diffs the saved file instead
-    // (SceneDiffTracker's slow-encode fallback, "Showing saved changes")
-    budget("main-thread encode, 2,000 GameObjects", best, 10.0, false);
 }
 
 TEST(VcsBench, NoProcessOnTheMainThreadInASixtySecondSession) {

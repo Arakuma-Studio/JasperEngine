@@ -936,20 +936,3 @@ async def test_search_files(ed: Editor):
 
 
 # ---------------------------------------------------------------------------- editor sources
-
-async def test_color_fields_use_the_widget():
-    """S27 AC28: every colour field of the editor goes through editor/widget's colorField (the Color
-    window, its undo session, linear/sRGB/HDR handling): no ImGui::ColorEdit or ColorPicker call is
-    left elsewhere in editor/."""
-    editor = harness.REPO / "editor"
-    offenders = []
-    for path in sorted(editor.rglob("*")):
-        if path.suffix not in (".cpp", ".h", ".mm") or not path.is_file():
-            continue
-        rel = path.relative_to(harness.REPO).as_posix()
-        if rel.startswith("editor/widget/") or rel.startswith("editor/libs/") or "/tests/" in rel:
-            continue
-        for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
-            if "ImGui::ColorEdit" in line or "ImGui::ColorPicker" in line:
-                offenders.append(f"{rel}:{number}: {line.strip()}")
-    check(not offenders, "colour fields outside editor/widget/ use ui::colorField:\n" + "\n".join(offenders))

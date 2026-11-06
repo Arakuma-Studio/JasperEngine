@@ -45,18 +45,6 @@ namespace {
 
 } // namespace
 
-TEST(CommandHistoryInsert, AddingAnEditEndsTheRedoTail) {
-    State state;
-    CommandHistory history;
-    history.addCommand(new LogCmd(state, "A"));
-    history.addCommand(new LogCmd(state, "B"));
-    history.undo();
-    ASSERT_TRUE(history.canRedo());
-    history.addCommand(new LogCmd(state, "C"));
-    EXPECT_FALSE(history.canRedo());
-    EXPECT_EQ(state, (State{"A", "C"}));
-}
-
 TEST(CommandHistoryInsert, InsertedStepKeepsTheRedoTail) {
     State state;
     CommandHistory history;

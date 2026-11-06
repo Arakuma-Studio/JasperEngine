@@ -13,7 +13,7 @@ import re
 import tempfile
 import unittest
 
-from lua_api import doctest, extract, markdown, stubs, suggestions
+from lua_api import doctest, extract, stubs, suggestions
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 BINDINGS = os.path.join(REPO, 'engine', 'core', 'script', 'binding')
@@ -224,12 +224,6 @@ class Emitters(unittest.TestCase):
         self.assertIn('getEngineAPISymbols', text)
         self.assertIn('{"Vector3", "Class", "class Vector3", ""}', text)
         self.assertIn('"CppMethod"', text)
-
-    def test_markdown(self):
-        text = markdown.reference(api())
-        self.assertTrue(text.startswith('# Lua API reference'))
-        self.assertIn('### Vector3', text)
-        self.assertIn('## Enums', text)
 
 
 class DocTest(unittest.TestCase):

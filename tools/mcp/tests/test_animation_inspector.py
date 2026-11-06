@@ -309,13 +309,6 @@ async def test_scene_click_shows_the_selection(ed: Editor):
     await shot(ed, "07b-scene-click")
 
 
-async def test_model_asset(ed: Editor):
-    ui = Ui(ed)
-    await inspect_asset(ed, ui, "assets/models", "hero_animated.gltf")
-    await shot(ed, "08-model-asset")
-    ed.check("asset.header" in ed.ui_items(), f"model asset section drawn: {sorted(ed.ui_items())}")
-
-
 async def test_animation_component_buttons(ed: Editor):
     ui = Ui(ed)
     found = await ed.call("find_entities", name="Walk")

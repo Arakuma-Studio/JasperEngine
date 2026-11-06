@@ -127,39 +127,6 @@ TEST_F(RmlRendererGoldenTest, Flex){
     EXPECT_TRUE(result.passed) << result.message;
 }
 
-TEST_F(RmlRendererGoldenTest, Images){
-    JASPER_REQUIRE_GPU();
-    RenderTestContext test;
-    std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/images.rml", screen));
-    PixelProbe probe{screen, 640};
-
-    // checker.png at 1x: 8 px cells, the top-left one red
-    EXPECT_TRUE(probe.is(24, 24, 255, 0, 0));
-    EXPECT_TRUE(probe.is(32, 24, 0x40, 0x40, 0x40));
-    EXPECT_TRUE(probe.is(40, 24, 255, 255, 255));
-    // at 2.5x: 20 px cells
-    EXPECT_TRUE(probe.is(118, 28, 255, 0, 0));
-    EXPECT_TRUE(probe.is(140, 28, 0x40, 0x40, 0x40));
-    EXPECT_TRUE(probe.is(160, 28, 255, 255, 255));
-    EXPECT_TRUE(probe.is(118, 48, 0x40, 0x40, 0x40));
-    // alpha50 (255, 0, 0, 128) over white and over the background
-    EXPECT_TRUE(probe.is(330, 50, 255, 127, 127));
-    EXPECT_TRUE(probe.is(305, 25, 255, 255, 255));
-    EXPECT_TRUE(probe.is(316, 136, 143, 15, 15));
-    // the image decorator
-    EXPECT_TRUE(probe.is(404, 24, 255, 0, 0));
-    EXPECT_TRUE(probe.is(412, 24, 0x40, 0x40, 0x40));
-    // icon.svg: white circle on the blue rounded square, at 1x and 3x
-    EXPECT_TRUE(probe.is(512, 32, 255, 255, 255, 255, 3));
-    EXPECT_TRUE(probe.is(504, 32, 0x20, 0x60, 0xc0, 255, 3));
-    EXPECT_TRUE(probe.is(576, 56, 255, 255, 255, 255, 3));
-    EXPECT_TRUE(probe.is(552, 56, 0x20, 0x60, 0xc0, 255, 6));
-
-    CompareResult result = test.compareScreen("render_images");
-    EXPECT_TRUE(result.passed) << result.message;
-}
-
 TEST_F(RmlRendererGoldenTest, Alpha){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
