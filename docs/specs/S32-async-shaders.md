@@ -98,7 +98,7 @@ Out of scope:
   Particle renders call `endLoad` per system and stream (`RenderSystemParticles.cpp:432,484,531`).
 - **Sokol patches in tree** (`engine/libs/sokol/PATCHES.md`, `// JasperEngine:` markers): the
   ASTC block sizes, RGB565/RGBA4 (S14), the four GPU-timer hooks (S15,
-  `SokolPatchMarkers.FourGpuTimerHooks`), the Vulkan descriptor size for lavapipe, the GL
+  `GpuTimerGpu.EveryPassIsTimed`), the Vulkan descriptor size for lavapipe, the GL
   texture max level, and the GL depth-stencil invalidate fix. Engine-side backend code that needs
   sokol's internals lives in headers included by `engine/libs/sokol/sokol.cpp`
   (`sokol_gpu_timer_impl.h`, `jasperengine_sg_max_msaa_samples`).
@@ -246,7 +246,7 @@ shader cache.
   (the extension enabled through `emscripten_webgl_enable_extension`) or `deferred`, in the
   single- and multi-threaded web builds alike.
 - **R19. Sokol patches** are few and marked `// JasperEngine: async creation`. They are
-  documented in `PATCHES.md` and counted by `SokolPatchMarkers.AsyncCreationHooks`.
+  documented in `PATCHES.md` and exercised by the `AsyncCreateGpu` creation and lifetime tests.
   Everything else lives in `engine/libs/sokol/sokol_async.h` / `sokol_async_impl.h` (§6.1).
 - **R20. Async off** (`asyncCreation = false`) gives today's synchronous behaviour exactly,
   pipeline interning included.
@@ -577,7 +577,7 @@ public:
 | AC9 (R10, R11) | `ShaderWarmup.RoundTrip` (save/load equal, unknown version ignored, malformed entry skipped and counted); MCP `test_async_shaders.py::test_record_and_export`: Record During Play on, play the Variants scene 400 frames, stop → the list has the toggled variants and their pipelines; export (source, linux) writes `shaders/warmup.json` with those keys and the `.sdat`s; with Include in Builds off the file is absent. |
 | AC10 (R12) | `ShaderWarmup.ReplayHoldsPipelines` (GPU test): replay a list → the pipelines exist in the intern table; an object created after with that state is ready at its first `endLoad`. Smoke variant `SMOKE_GAME_RUNS=warmup` on the exported Warmup scene: the game log has `[gpu] warm-up done N/N`, and the first frame after READY has no pending creation. |
 | AC11 (R13) | `VkPipelineCache.SaveLoadValidates` (Vulkan GPU test): a saved cache reloads; a header with another UUID, a truncated file and a bad checksum are each ignored and replaced; the save is atomic (S03 `AtomicFile`). |
-| AC12 (R19) | `SokolPatchMarkers.AsyncCreationHooks`: exactly the documented number of `JasperEngine: async creation` markers; `PATCHES.md` lists each. The Metal and D3D11 paths compile in `tools/build.sh` cross targets where present and in the Xcode project check (`xcode_sync_*.py --check`); **Metal and D3D11 are runtime-unverified** until the GPU campaign. |
+| AC12 (R19) | `AsyncCreateGpu.AShaderIsPendingUntilItsCreationIsPublished` and `APipelineWaitsForItsShaderAndIsShared` exercise patched creation; `PATCHES.md` lists the patches. The Metal and D3D11 paths compile in `tools/build.sh` cross targets where present and in the Xcode project check (`xcode_sync_*.py --check`); **Metal and D3D11 are runtime-unverified** until the GPU campaign. |
 | AC13 (R21, R22) | E bench `tools/perf/async_shaders_bench.py` (fixture Variants scene, editor headless with MCP, 5 runs, GL worker and Vulkan): per frame the sum of the R31 main-thread scopes from `capture_profile` + `get_cpu_profile` over 600 frames (10 toggles); the median-of-runs of the per-run max ≤ 4 ms; worst frame ≤ max(2× idle median, idle median + 4 ms) with the driver cache warm (R22). The same script with `--sync` records the pre-S32 numbers (red control). Thresholds in `tools/perf/bench-thresholds.json`. **R22's method (perf2):** the captures record windows with gaps, so the worst frame is taken over every frame from the first toggle to the last (`get_frame_times` read every 0.25 s, its 600-frame ring), leaving out the frames flagged `tool` (`FrameTimes::FLAG_HOST_WORK`: an MCP tool ran in them, the edit or the bench's own calls); `r22_worst_frame_ratio` is that over the idle median, `edit_worst_frame_ms` / `tool_worst_frame_ms` the edit's frames apart, `worker_worst_frame_ms` the frames the worker created in. Controls: `--control` (the same edits between variants built before), `--idle` (the same recording with no edit: the editor's own noise, R22's floor), `--driver-cache <dir>` (the drivers' disk caches on, runs after the first warm). |
 | AC14 (R23) | `AsyncCreateBench.IdleUpdate` ≤ 2 µs, `AsyncCreateBench.InternLookup` ≤ 1 µs (E, median of 5). |
 | AC15 (R24) | The bench's `--warmup` run: replaying the Warmup list holds no frame above the R22 bound and ends within 1.5× the synchronous creation time of the same list. |

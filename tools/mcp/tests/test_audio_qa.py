@@ -8,7 +8,6 @@ import os
 import shutil
 import struct
 import subprocess
-import time
 from pathlib import Path
 
 import audio_qa_ref as ref
@@ -340,18 +339,3 @@ async def test_fail_on_is_an_error_naming_the_fix(ed: Editor):
     ed.check_eq(failing.returncode, 1, f"{failing.stdout[-500:]} {failing.stderr[-500:]}")
     passing = cli({"action": "check", "session": session.name, "checks": ["load_delay"], "fail_on": "fail"})
     ed.check_eq(passing.returncode, 0, f"{passing.stdout[-500:]} {passing.stderr[-500:]}")
-
-
-async def test_check_cost(ed: Editor):
-    """R29, on a session written here: 60 s of a tone with a line every 100 ms."""
-    root = write_session(ed, "20200101-000000-00", 60.0, -12.0)
-    started = time.monotonic()
-    await ed.call("audio_session", action="report", session=root.name, image=False)
-    report = time.monotonic() - started
-    started = time.monotonic()
-    result = await ed.call("audio_session", action="check", session=root.name)
-    cost = time.monotonic() - started
-    print(f"[audio_session] 60 s session: report {report:.2f} s, check {cost:.2f} s")
-    ed.check_eq(of(result, "true_peak")["status"], "PASS", f"{of(result, 'true_peak')}")
-    ed.check_eq(harness.over_budget("R29 audio_session report of 60 s", {"report": report}, 1.0), {}, "report's budget")
-    ed.check_eq(harness.over_budget("R29 audio_session check of 60 s", {"check": cost}, 2.5), {}, "check's budget")

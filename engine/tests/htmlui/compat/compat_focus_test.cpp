@@ -72,6 +72,7 @@ namespace {
 
 TEST_F(CompatFocusTest, NothingFocusedAfterLoad){
     ASSERT_NE(load(), nullptr);
+    frame();   // the native fork skips emulation in updateRuntime
     // the document has RmlUi's :focus after Show(); it never gets :html-focus
     EXPECT_TRUE(document->IsPseudoClassSet("focus"));
     EXPECT_FALSE(document->IsPseudoClassSet(FocusTracker::kFocus));

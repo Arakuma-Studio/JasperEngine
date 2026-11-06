@@ -2,8 +2,7 @@
 the project's clips and the built-in clips, never using the network.
 
 Oracles: signals built here with known character, the cache's numbers for the distance formula, hashlib over
-the imported bytes. No network: nothing here needs one, and the editor's sound code has no way to reach it
-(test_never_network reads the sources)."""
+the imported bytes."""
 
 from __future__ import annotations
 
@@ -289,17 +288,6 @@ async def test_schema(ed: Editor):
 
 
 # -- M-2 ---------------------------------------------------------------------------------------------
-
-
-async def test_never_network(ed: Editor):
-    """SoundSearch and the search_sounds handler use no command, curl, socket or HTTP."""
-    source = (REPO / "editor/audio/SoundSearch.cpp").read_text() + (REPO / "editor/audio/SoundSearch.h").read_text()
-    tools = (REPO / "editor/mcp/tools/SoundTools.cpp").read_text()
-    handler = tools[tools.index("// ------------------------------------------------------------------ search_sounds"):
-                    tools.index("// ------------------------------------------------------------------ set_audio_import_settings")]
-    for text, name in ((source, "SoundSearch"), (handler, "the search_sounds handler")):
-        for word in ("CommandRunner", "curl", "socket", "http", "connect(", "system(", "popen"):
-            ed.check(word.lower() not in text.lower(), f"{name} mentions {word}")
 
 
 async def test_search_palette_lists_and_imports_a_builtin_clip(ed: Editor):

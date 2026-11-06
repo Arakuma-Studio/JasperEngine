@@ -35,10 +35,6 @@ namespace jasperengine {
     struct Material;
 }
 
-namespace jasperengine::editor::reflect {
-    struct ComponentDesc;
-}
-
 namespace jasperengine::editor {
 
     // How a field holds its reference
@@ -111,8 +107,6 @@ namespace jasperengine::editor {
     class AssetRefSchema {
     public:
         static const std::vector<AssetRefField>& fields();
-        // The rows generated for one component table
-        static std::vector<AssetRefField> fieldsOf(const reflect::ComponentDesc& desc);
         // The rows of a material, relative to the material node (submesh materials and .material files)
         static const std::vector<AssetRefField>& materialFields();
         // Scene settings, scene file lists and project.yaml rows
