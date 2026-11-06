@@ -24,8 +24,9 @@ namespace {
         return mask;
     }
 
-    // MESH: Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
-    const uint64_t meshDroppable = bits({21, 12, 23, 4, 20, 19, 7, 8, 2, 1});
+    // MESH: Dlo (draw-perf: the general Lit draws a directional-only scene the same) Sao Fog S2d
+    // Shw Mir Ibl Nmp Tan Uv2 Uv1
+    const uint64_t meshDroppable = bits({42, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1});
     // DEPTH: Ams Tex; GBUFFER: Mrt Bct
     const uint64_t depthDroppable = bits({7, 0});
     const uint64_t gbufferDroppable = bits({8, 0});

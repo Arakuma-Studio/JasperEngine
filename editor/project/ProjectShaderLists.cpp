@@ -462,6 +462,8 @@ std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<Shader
             }
         }
     }
+    // (a scene saved while its lights were all directional holds the 'Dlo' variants alone)
+    ShaderVariantCollector::addDirectionalOnlyTwins(keys);
     for (ShaderKey key : exclusions) {
         keys.erase(ShaderPool::normalizeKey(key));
     }

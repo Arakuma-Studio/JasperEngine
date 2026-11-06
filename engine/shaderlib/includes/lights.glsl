@@ -109,14 +109,18 @@ uniform u_fs_objectLights {
 #if (defined(LIGHTS_VS_DECLARED) || defined(LIGHTS_FS_DECLARED)) && !defined(LIGHTS_DECLARED)
 #define LIGHTS_DECLARED
 
-#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL)
+// (a directional-only variant, DIRECTIONAL_LIGHTS_ONLY ('Dlo'), has no spot light to mask nor point
+// light to shadow: neither the mask atlas nor the point shadow block and atlas are declared)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && !defined(DIRECTIONAL_LIGHTS_ONLY)
     #define LIGHTS_SPOT_MASKS
     uniform texture2D u_spotMaskAtlas;
     uniform sampler u_spotMaskAtlas_smp;
 #endif
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-    #define SHADOW_DATA_POINT
+    #ifndef DIRECTIONAL_LIGHTS_ONLY
+        #define SHADOW_DATA_POINT
+    #endif
     // the High and Ultra filters (the Vogel disk, PCSS) only in the 'Shq' variants
     // (USE_SHADOWS_HQ: the tier is High or above); the others filter with the Medium grid
     #ifdef USE_SHADOWS_HQ
@@ -189,7 +193,12 @@ Light getLightData(int index){
     vec4 directionInner = objectLights.direction_inner[index];
     vec4 colorOuter = objectLights.color_outer[index];
 #endif
+#ifdef DIRECTIONAL_LIGHTS_ONLY
+    // every light of the scene is directional: a constant, so the point and spot paths fold away
+    int type = LightType_Directional;
+#else
     int type = (positionType.w < 0.5) ? LightType_Directional : ((colorOuter.w < -1.5) ? LightType_Point : LightType_Spot);
+#endif
     vec3 spotUp = vec3(0.0, 1.0, 0.0);
     float maskAspect = 0.0;
     int shadowMapIndex = -1;
@@ -334,12 +343,16 @@ float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
     }
 
     vec3 towardsLight = normalize(getLightVector(light, worldPosition));
+#ifdef DIRECTIONAL_LIGHTS_ONLY
+    return shadowDirectional(light.shadowMapIndex, light.numShadowCascades, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+#else
     if (light.type == LightType_Directional){
         return shadowDirectional(light.shadowMapIndex, light.numShadowCascades, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }else if (light.type == LightType_Spot){
         return shadowSpot(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }
     return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+#endif
 }
 
 #ifdef LIGHT_OCCLUSION

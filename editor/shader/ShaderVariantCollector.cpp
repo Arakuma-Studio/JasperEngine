@@ -237,6 +237,9 @@ namespace {
                                      (facts & FACT_CAPSULE_CASTERS);
         environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
         environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+        // RenderSystem::checkLightsAndShadow: no point or spot Light (a prefab that brings one
+        // reaches the other setup)
+        environment.directionalLightsOnly = environment.lights && !(facts & FACT_LOCAL_LIGHTS);
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         return environment;
     }
@@ -248,7 +251,7 @@ namespace {
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
-            (e.oit ? (1u << 29) : 0u);
+            (e.oit ? (1u << 29) : 0u) | (e.directionalLightsOnly ? (1u << 30) : 0u);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -1221,6 +1224,19 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addDirectionalOnlyTwins(std::set<ShaderKey>& keys){
+    const uint64_t bit = ShaderPool::getDirectionalOnlyProperty();
+    std::vector<ShaderKey> twins;
+    for (const ShaderKey& key : keys){
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & bit)){
+            ShaderKey twin = key;
+            twin.properties &= ~bit;
+            twins.push_back(twin);
+        }
+    }
+    keys.insert(twins.begin(), twins.end());
+}
+
 void editor::ShaderVariantCollector::addBuildRequiredKeys(std::set<ShaderKey>& keys){
     keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
 }
@@ -1280,6 +1296,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
     QualityResolver::popState();
+    addDirectionalOnlyTwins(keys);
 }
 
 void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,

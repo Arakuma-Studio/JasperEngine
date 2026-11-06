@@ -5562,7 +5562,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
+    // v49: draw-perf's directional-only Lit: MESH 'Dlo' (DIRECTIONAL_LIGHTS_ONLY in includes/lights.glsl)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
 }
 
 void editor::App::pushTabNotificationStyle(){
