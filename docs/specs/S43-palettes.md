@@ -1176,6 +1176,14 @@ Recorded while implementing (`feature/s43-palettes`).
   Quantize's table and Apply Palette's Bayer dithers. `PaletteQuantizeGpu.GradientAtFixedResolution`
   checks the four dithers draw four different images.
 
+- **Dither mixing (R20).** A mix `(A, B, r)` is what the eye averages: `(1 − r)·A + r·B` in linear
+  light, measured against the colour in the chosen metric, with Yliluoma's penalty at 0.01 instead
+  of 0.1 (0.1 outweighs a near-white grey's whole OKLab error, so it was never dithered). Each ordered
+  pair of the 8 nearest takes its best r in linear RGB; the 3 pairs closest there are measured at the
+  steps around it. The mix's OKLab uses a float cube root of four Newton steps (basic IEEE
+  operations, deterministic like the rest); the 32³ bake stays within R30 (11.4 ms on the job system
+  here). `PaletteMatcher.DitherMixesInLinearLight` was red before the change (sRGB 128 got 9 or 10
+  white cells of 16; linear light gives 3 or 4).
 - **AC14** is met for the CPU side only: `PaletteSwapCache.BuildTime` and `PaletteQuantize.BakeTimes` print the
   swap-texture build and the quantize bake (one thread and the job system). This host has no GPU (Mesa
   llvmpipe/lavapipe), so the GPU budgets (swap ≤ 1.25×, quantize ≤ 0.15 ms) and the headless-Chrome bake time
