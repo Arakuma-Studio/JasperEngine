@@ -204,6 +204,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".vat";
         }
 
+        // a Procedural Material's node graph (S90): editor-only, its bakes are what ships
+        inline static bool isProceduralMaterialFile(const std::string& path) {
+            return fileExtension(path) == ".procmat";
+        }
+
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
         // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
         inline static bool isGuidJsonAssetFile(const std::string& path) {

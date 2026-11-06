@@ -51,6 +51,8 @@ namespace {
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
+            // a Procedural Material's node graph (S90): the GUID in its JSON, baked in the editor, never shipped
+            {{AssetType::ProceduralMaterial, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".procmat"}},
         };
         return table;
     }
