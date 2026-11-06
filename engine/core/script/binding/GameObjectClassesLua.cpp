@@ -1923,6 +1923,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFadeRange", &Mesh::setFadeRange)
         .addProperty("fadeStart", &Mesh::getFadeStart, &Mesh::setFadeStart)
         .addProperty("fadeEnd", &Mesh::getFadeEnd, &Mesh::setFadeEnd)
+        .addFunction("setNearFadeRange", &Mesh::setNearFadeRange)
+        .addProperty("nearFadeStart", &Mesh::getNearFadeStart, &Mesh::setNearFadeStart)
+        .addProperty("nearFadeEnd", &Mesh::getNearFadeEnd, &Mesh::setNearFadeEnd)
         .addProperty("cullDistance", &Mesh::getCullDistance, &Mesh::setCullDistance)
         .addProperty("cullInstances", &Mesh::isCullInstances, &Mesh::setCullInstances)
         .addFunction("addInstance",
