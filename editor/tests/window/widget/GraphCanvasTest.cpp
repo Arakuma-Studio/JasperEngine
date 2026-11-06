@@ -116,6 +116,7 @@ TEST(GraphCanvas, EscCancelsANodeDrag) {
 
 TEST(GraphCanvas, EscEndsABoxSelect) {
     Rig rig;
+    rig.nodes[2].selected = true;   // the press on the background clears it: Esc gives it back
     const ImVec2 empty = rig.canvas.toScreen(ImVec2(60, 60));
     rig.moveTo(empty);
     rig.frame();
@@ -128,6 +129,7 @@ TEST(GraphCanvas, EscEndsABoxSelect) {
     EXPECT_FALSE(released.selectionChanged) << "the box ended at Esc: its release selects nothing";
     EXPECT_FALSE(rig.nodes[0].selected);
     EXPECT_FALSE(rig.nodes[1].selected);
+    EXPECT_TRUE(rig.nodes[2].selected) << "the selection as it was before the press";
 }
 
 // BF23 F18: a plain click on a member of a multi-selection leaves that one; its drag moves them all
@@ -143,6 +145,26 @@ TEST(GraphCanvas, APlainClickOnASelectedNodeCollapsesTheSelection) {
     const GraphCanvas::Result released = rig.release();
     EXPECT_TRUE(released.selectionChanged);
     EXPECT_FALSE(rig.nodes[0].selected);
+    EXPECT_TRUE(rig.nodes[1].selected);
+}
+
+// a press that does not move is a click: an off-grid node keeps its place and reports no move
+TEST(GraphCanvas, AClickOnAnOffGridNodeDoesNotMoveIt) {
+    Rig rig;
+    rig.nodes[0].position = ImVec2(107, 93);
+    rig.nodes[1].position = ImVec2(413, 93);
+    rig.nodes[0].selected = true;
+    rig.nodes[1].selected = true;
+    const ImVec2 at = rig.centre(1);
+    rig.moveTo(at);
+    rig.frame();
+    rig.press();
+    rig.frame();
+    const GraphCanvas::Result released = rig.release();
+    EXPECT_TRUE(released.moved.empty()) << "no move, no undo step";
+    EXPECT_EQ(rig.nodes[0].position.x, 107.0f);
+    EXPECT_EQ(rig.nodes[1].position.y, 93.0f);
+    EXPECT_FALSE(rig.nodes[0].selected) << "the click narrows the selection to the node clicked";
     EXPECT_TRUE(rig.nodes[1].selected);
 }
 

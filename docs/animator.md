@@ -50,7 +50,8 @@ a controller, load the same way (the player's controller moved to an Animator).
   follow), default values; in Play and Preview the live values (triggers as buttons).
 - **Graph**: pan with the middle mouse (or Alt + drag), zoom with the wheel, box select or Shift /
   Ctrl click to select several, drag to move (grid snap; several move and Delete removes them as
-  one undo step; the Inspector shows the one clicked last; Esc while dragging puts them back). Entry is green, Any State cyan, Exit red, the default state orange,
+  one undo step; the Inspector shows the one clicked last, or after a box select the first state;
+  Esc while dragging puts them back). Entry is green, Any State cyan, Exit red, the default state orange,
   sub-state machines blue (double-click to enter, the breadcrumb or (Up) to go back).
   Right-click: Create State (Empty, From Clip, From New Blend Tree), Create Sub-State Machine,
   Make Transition, Make Transition from Any State, Set as Layer Default State, Delete (Del).

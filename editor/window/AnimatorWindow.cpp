@@ -557,23 +557,24 @@ bool AnimatorWindow::removeSelection(){
     // the nodes going: the Inspector's and the rest of a multi-selection, in one step
     std::vector<std::string> gone;
     if (selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine){
-        gone.push_back(selection.name);
-        gone.insert(gone.end(), selection.others.begin(), selection.others.end());
-        int count = 0;
-        for (const std::string& name : gone){
+        std::vector<std::string> selected = {selection.name};
+        selected.insert(selected.end(), selection.others.begin(), selection.others.end());
+        // (only what is erased: a selected Exit stays, and with it the transitions to it)
+        for (const std::string& name : selected){
             for (size_t i = 0; i < machine->states.size(); i++){
                 if (machine->states[i].name != name) continue;
                 machine->states.erase(machine->states.begin() + (long)i);
-                count++;
+                gone.push_back(name);
                 break;
             }
             for (size_t i = 0; i < machine->subMachines.size(); i++){
                 if (machine->subMachines[i].name != name) continue;
                 machine->subMachines.erase(machine->subMachines.begin() + (long)i);
-                count++;
+                gone.push_back(name);
                 break;
             }
         }
+        const size_t count = gone.size();
         removed = count > 0;
         if (std::find(gone.begin(), gone.end(), machine->defaultState) != gone.end()){
             machine->defaultState = machine->states.empty() ? std::string() : machine->states.front().name;
@@ -1175,7 +1176,8 @@ void AnimatorWindow::show(){
         AnimatorWindow* window;
         Selection before;
         ~ClaimOnChange(){
-            if (window->selection.kind == SelectionKind::None) window->inspectorClaim = false;
+            if (window->restoredByEsc) window->restoredByEsc = false;
+            else if (window->selection.kind == SelectionKind::None) window->inspectorClaim = false;
             else if (!(window->selection == before)) window->claimInspector();
         }
     } claimOnChange{this, before};
@@ -1565,9 +1567,14 @@ void AnimatorWindow::drawGraph(){
         return nameOf(id);
     };
     auto isItem = [](uint64_t id){ return id >= kStateBase; };
-    if (result.clickedNode || result.clickedBackground) selectionAtPress = selection;
+    if (result.clickedNode || result.clickedBackground){
+        selectionAtPress = selection;
+        claimAtPress = inspectorClaim;
+    }
     if (result.cancelled){
         selection = selectionAtPress;
+        inspectorClaim = claimAtPress;
+        restoredByEsc = true;
     }else if (result.selectionChanged && !result.clickedLink){
         // the canvas' nodes as the window's selection. The Inspector's node: the one clicked, else
         // the one it was while it stays selected, else the first state or sub-machine

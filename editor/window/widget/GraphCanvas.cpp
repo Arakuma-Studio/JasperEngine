@@ -198,6 +198,7 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
             }
             result.selectionChanged = true;
             draggingNodes = true;
+            dragMoved = false;
             dragStartMouse = mouse;
             dragStart.clear();
             for (const Node& n : nodes) if (n.selected) dragStart.push_back({n.id, n.position});
@@ -237,8 +238,10 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
     }
 
     if (draggingNodes){
+        dragMoved = dragMoved || length(sub(mouse, dragStartMouse)) >= io.MouseDragThreshold;
         const ImVec2 delta = mul(sub(mouse, dragStartMouse), 1.0f / zoom);
-        for (const auto& start : dragStart){
+        // (a snap would move an off-grid node on the press itself)
+        if (dragMoved) for (const auto& start : dragStart){
             for (Node& n : nodes){
                 if (n.id != start.first) continue;
                 ImVec2 p = add(start.second, delta);

@@ -770,6 +770,77 @@ TEST(AnimatorWindow, MultiSelectionFollowsTheDocument) {
     EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"Beta"}));
 }
 
+// the special nodes can be in a selection, but Delete has nothing of theirs to remove: a
+// transition to Exit is not a transition into a deleted node
+TEST(AnimatorWindow, DeletingASelectionWithExitKeepsTransitionsToExit) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "deleteexit");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(600, 120), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(300, 400), anim::MotionDef()));
+    ASSERT_TRUE(window.addTransition("B", "Exit", false, false));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    mouse.drag(canvas.toScreen(ImVec2(940, 100)), canvas.toScreen(ImVec2(590, 176)));
+    frames.frame(window);
+    ASSERT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "Exit"}));
+
+    ASSERT_TRUE(window.removeSelection());
+    ASSERT_EQ(machine(doc).states.size(), 1u);
+    EXPECT_EQ(machine(doc).states[0].name, "B");
+    ASSERT_EQ(machine(doc).states[0].transitions.size(), 1u) << "B's transition to Exit stays";
+    EXPECT_EQ(machine(doc).states[0].transitions[0].to, "Exit");
+}
+
+// Esc gives everything back: several moved nodes, the selection, and the Inspector, which a press
+// on a state took
+TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "escmulti");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    // (drawn inside a frame, as the Inspector draws it)
+    auto inspectorShowsIt = [&](){
+        bool shown = false;
+        frames.frame(window, [&](){
+            ImGui::Begin("Inspector");
+            shown = window.drawSelectionInspector();
+            ImGui::End();
+        });
+        return shown;
+    };
+    // nothing claimed the Inspector: the states were made by calls, not by clicks in the window
+    ASSERT_FALSE(inspectorShowsIt());
+    const size_t before = history()->position();
+    const ImVec2 onA = canvas.toScreen(ImVec2(390, 323));
+    mouse.moveTo(onA);
+    mouse.button(true);
+    mouse.moveTo(canvas.toScreen(ImVec2(450, 400)));
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+    frames.frame(window);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+    frames.frame(window);
+    mouse.button(false);
+    frames.frame(window);
+    EXPECT_EQ(history()->position(), before);
+    EXPECT_EQ(statePosition(doc, "A").x, 300.0f);
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"B"}));
+    EXPECT_FALSE(inspectorShowsIt()) << "the press took the Inspector; Esc gives it back";
+}
+
 // BF23 F19: Esc during a state's drag puts it back and adds no undo step
 TEST(AnimatorWindow, EscCancelsAStateDrag) {
     ASSERT_TRUE(headless().ready);

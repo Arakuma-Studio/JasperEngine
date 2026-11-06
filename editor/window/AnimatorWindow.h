@@ -11,7 +11,8 @@
 //   states. The selection (state, transition, layer) shows in the Inspector
 //   (animatorEditorHooks().drawSelection), with the blend tree editor for a tree state. A box or
 //   Shift / Ctrl click selects several nodes: they drag and delete as one undo step, and the
-//   Inspector and the node menu act on the one clicked last.
+//   Inspector and the node menu act on one of them: the one clicked last, after a box the one
+//   that was shown if it is still selected, else the first state.
 // - It follows the selected GameObject's Animator (or a pinned one, or a controller opened from
 //   the Project window). In play mode it shows the live state (the active state's progress, the
 //   transition's on its arrow, parameter values editable, triggers as buttons, layer weights and
@@ -177,6 +178,8 @@ namespace jasperengine::editor{
         std::vector<std::string> machinePath;
         Selection selection;
         Selection selectionAtPress;     // what Esc during a canvas gesture gives back
+        bool claimAtPress = false;      // and whether the Inspector was the window's
+        bool restoredByEsc = false;     // this frame: the selection's change claims nothing
         // the Inspector shows the selection from a click in the window until the scene selection
         // or the inspected asset changes (the last selection wins, as in Unity)
         bool inspectorClaim = false;

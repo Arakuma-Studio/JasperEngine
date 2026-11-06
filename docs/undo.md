@@ -26,9 +26,10 @@ text field you are typing in and the Code editor keep their own undo.
 
 A drag is one step: the move, rotate and scale gizmos and every other Scene view handle, an
 Inspector slider, field drag or colour picker, a terrain stroke, a key or block drag in the
-Animation window, a node drag in the Animator. **Esc** (or Ctrl+Z) while the mouse is still down puts everything back as it
+Animation window. **Esc** (or Ctrl+Z) while the mouse is still down puts everything back as it
 was, the selection and the unsaved mark included, and adds no step. Opening a menu or a popup,
-or switching to another application, ends the drag as it is. An edit that changes nothing (a
+or switching to another application, ends the drag as it is. A node drag in the Animator is one
+step too, and Esc puts it back; Ctrl+Z during it undoes the step before it. An edit that changes nothing (a
 click on a field, a drag back to where it started) is no step either.
 
 ## Selection
