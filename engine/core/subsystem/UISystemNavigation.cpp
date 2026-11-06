@@ -9,7 +9,6 @@
 
 #include "UISystem.h"
 #include "component/ButtonComponent.h"
-#include "component/CameraComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -123,19 +122,13 @@ std::vector<Entity> UISystem::navigationCandidates() const{
 // with the best dot / squared distance; Wrap Around: the farthest the other way, in the same row
 // or column first
 Entity UISystem::findAutomatic(Entity from, MoveDirection dir, bool wrap) const{
-    // the UI is y down under a UI camera, y up under a 2D camera
-    bool yDown = true;
-    const Entity cameraEntity = scene->getCamera();
-    if (cameraEntity != NULL_ENTITY){
-        if (const CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity))
-            yDown = camera->type == CameraType::CAMERA_UI;
-    }
+    // the space of the hit test (canvas units, y down), as the pointer sees it in a UI scene
     Vector2 axis(0, 0);
     switch (dir){
         case MoveDirection::LEFT: axis = Vector2(-1, 0); break;
         case MoveDirection::RIGHT: axis = Vector2(1, 0); break;
-        case MoveDirection::UP: axis = Vector2(0, yDown ? -1.0f : 1.0f); break;
-        case MoveDirection::DOWN: axis = Vector2(0, yDown ? 1.0f : -1.0f); break;
+        case MoveDirection::UP: axis = Vector2(0, -1); break;
+        case MoveDirection::DOWN: axis = Vector2(0, 1); break;
         default: return NULL_ENTITY;
     }
 

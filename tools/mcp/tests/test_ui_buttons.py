@@ -75,6 +75,7 @@ async def test_button_field_edit_refreshes_and_ui_color_refused(ed: Editor):
     got = await ed.call("get_entity", scene=sid, entity="Edit", components=["ui"])
     color = component_values(got, "ui")["color"]
     ed.check([round(c, 3) for c in color] == [0, 1, 0, 1], f"with sprite_swap ui.color is kept: {color!r}")
+    await ed.call("delete_entities", scene=sid, entity="Edit")
     await ed.call("save_scene", scene=sid, path="scenes/Buttons")
 
 

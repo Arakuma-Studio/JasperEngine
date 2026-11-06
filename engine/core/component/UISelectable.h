@@ -4,14 +4,14 @@
 #ifndef UI_SELECTABLE_H
 #define UI_SELECTABLE_H
 
-#include <cstdint>
-
 namespace jasperengine{
+
+    // (int-sized enums: the reflection and the cooked format read an enum field as an int)
 
     // Unity's Selectable.Transition, plus Jasper's combined mode (the default: what a Button did
     // before transitions existed). The mode decides what the Button writes: NONE nothing,
     // COLOR_TINT the UI colour, SPRITE_SWAP the UI texture, both for the combined one
-    enum class ButtonTransition : uint8_t{
+    enum class ButtonTransition{
         NONE,
         COLOR_TINT,
         SPRITE_SWAP,
@@ -19,7 +19,7 @@ namespace jasperengine{
     };
 
     // Unity's Navigation.Mode
-    enum class NavigationMode : uint8_t{
+    enum class NavigationMode{
         NONE,
         HORIZONTAL,
         VERTICAL,
@@ -28,7 +28,7 @@ namespace jasperengine{
     };
 
     // Unity's Selectable.SelectionState
-    enum class SelectionState : uint8_t{
+    enum class SelectionState{
         NORMAL,
         HIGHLIGHTED,
         PRESSED,
@@ -37,7 +37,7 @@ namespace jasperengine{
     };
 
     // Unity's MoveDirection (its order)
-    enum class MoveDirection : uint8_t{
+    enum class MoveDirection{
         LEFT,
         UP,
         RIGHT,

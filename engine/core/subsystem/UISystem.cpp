@@ -870,13 +870,18 @@ void UISystem::applyButtonVisual(Entity entity, ButtonComponent& button, UICompo
     const SelectionState state = buttonState(button, ui);
     button.state = state;
 
-    // a transition that stopped writing a property gives it back at its Normal value, once
+    // a transition that stopped writing a property gives it back at its Normal value, once, when
+    // it still shows a state's (a value set since, an MCP or Inspector edit, stays)
     if (button.appliedTransition != button.transition){
         const ButtonTransition old = button.appliedTransition;
         button.appliedTransition = button.transition;
-        if (transitionWritesColor(old) && !buttonOwnsUIColor(button))
+        if (transitionWritesColor(old) && !buttonOwnsUIColor(button) &&
+            (ui.color == button.colorHovered || ui.color == button.colorPressed || ui.color == button.colorSelected ||
+             ui.color == button.colorDisabled))
             ui.color = button.colorNormal;
-        if (transitionWritesTexture(old) && !buttonOwnsUITexture(button) && ui.texture != button.textureNormal){
+        if (transitionWritesTexture(old) && !buttonOwnsUITexture(button) && ui.texture != button.textureNormal &&
+            (ui.texture == button.textureHovered || ui.texture == button.texturePressed || ui.texture == button.textureSelected ||
+             ui.texture == button.textureDisabled)){
             ui.texture = button.textureNormal;
             ui.needUpdateTexture = true;
         }
