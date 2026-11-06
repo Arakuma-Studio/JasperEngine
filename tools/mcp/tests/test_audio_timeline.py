@@ -152,9 +152,11 @@ async def test_a_loop_fires_its_cue_once_a_pass(ed: Editor):
 
 
 async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
-    await ed.call("write_file", path="anim/a.anim", content=anim(steps([0.2], name="A"), wrap="loop", length=1.0, events=[]))
-    await ed.call("write_file", path="anim/b.anim", content=anim(steps([0.3], name="B"), wrap="loop", length=1.0, events=[]))
-    await ed.call("write_file", path="anim/wave.anim", content=anim(steps([0.05], name="W"), length=0.5, events=[]))
+    # a track on the root: the Animator's rig has a bone to bind
+    bob = [{"path": "", "channel": "position", "keys": [[0, [0, 0, 0]], [1, [0, 1, 0]]]}]
+    await ed.call("write_file", path="anim/a.anim", content=anim(steps([0.2], name="A"), wrap="loop", length=1.0, events=[], tracks=bob))
+    await ed.call("write_file", path="anim/b.anim", content=anim(steps([0.3], name="B"), wrap="loop", length=1.0, events=[], tracks=bob))
+    await ed.call("write_file", path="anim/wave.anim", content=anim(steps([0.05], name="W"), length=0.5, events=[], tracks=bob))
     await ed.call("sync_files")
     await ed.call("edit_animator_controller", path="anim/walker.controller", create=True, ops=[
         {"op": "add_parameter", "name": "Speed", "type": "float", "default": 0.2},
@@ -261,6 +263,7 @@ async def test_cue_follows_a_moved_sound(ed: Editor):
                   events=[{"time": 0, "function": "onStart"}], audio=[{"time": 0.1, "sound": "sounds/door.wav", "name": "door"}])
     body = json.loads((ed.project / "anim/door.anim").read_text())
     ed.check(body["audio"][0]["sound"].get("guid"), f"the GUID is stored: {body['audio']}")
+    await ed.call("create_folder", path="sounds/moved")
     await ed.call("move_asset", path="sounds/door.wav", to="sounds/moved/door.wav")
     got = await ed.call("get_animation", clip="anim/door.anim")
     ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/moved/door.wav", f"resolved by its GUID: {got['audio']}")

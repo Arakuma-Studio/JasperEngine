@@ -296,7 +296,9 @@ void ActionSystem::startTimelineAudio(Entity entity, ActionComponent& action, Ac
 void ActionSystem::stopTimelineAudio(Entity entity){
 #if JASPERENGINE_SOUND_LAYER
     if (timelinePreview) return;
-    if (scene->findComponent<AudioSourceComponent>(entity)) TimelineAudio::stopSource(scene, entity);
+    // the frames an explicit duration cuts stopped at their end already: what still plays when the
+    // Animation ends by itself is an auto-length frame's sound, which ends by itself too
+    if (scene->findComponent<AudioSourceComponent>(entity) && !animationEndingNaturally) TimelineAudio::stopSource(scene, entity);
     AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entity);
     if (!snapshot || !snapshot->applied) return;
     snapshot->applied = false;
@@ -471,7 +473,9 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
     if (actionsPassed || durationPassed) {
         if (!anim->loop) {
             animationApplyEnd(*parent, *anim, durationPassed);
+            animationEndingNaturally = true;
             actionStop(entity);
+            animationEndingNaturally = false;
         }else{
             float loopDuration = durationPassed ? anim->duration : actionsEnd;
 

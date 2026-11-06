@@ -208,6 +208,8 @@ namespace jasperengine{
 		// inside the editor's animation and action previews: no game sound (the editor previews
 		// timeline audio with its own voices, S40 R23)
 		bool timelinePreview = false;
+		// an Animation ending by itself (not a stop()): its audio actions' sounds play out (S40 D6)
+		bool animationEndingNaturally = false;
 		void startTimelineAudio(Entity entity, ActionComponent& action, ActionState before);
 		void stopTimelineAudio(Entity entity);
 		// the audio and snapshot frames of a running Animation (R20): each starts once per pass,
