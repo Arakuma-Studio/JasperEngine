@@ -60,6 +60,8 @@ shaderKeys:
   - type: depth
     properties: 32
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 3162
