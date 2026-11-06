@@ -80,12 +80,19 @@ async def test_escape_releases_a_captured_cursor(ed: Editor):
         game = (await ed.call("focus_window", window="game")).get("rect") or {}
         if not game:
             raise TestFailure("no Game view rect")
-        await ui.click(ui.centre(game))
-        await ui.frames(4)
+        # focus_window's focus lands on a later frame: the click on the game image comes after it,
+        # and gives the image (not only its window) the focus
+        await ui.frames(6)
+        lock = ""
+        for _ in range(3):
+            await ui.click(ui.centre(game))
+            await ui.frames(4)
+            lock = (await ed.call("get_input_state", fields=["raw"]))["raw"]["pointer_lock"]
+            if lock == "locked":
+                break
+        ed.check_eq(lock, "locked", "the game image has the focus: the game's pointer is locked")
         cursor = (await ed.call("get_play_state"))["input"]["cursor"]
         ed.check_eq(cursor, {"mode": "captured", "released_to_editor": False}, "the game holds the cursor")
-        lock = (await ed.call("get_input_state", fields=["raw"]))["raw"]["pointer_lock"]
-        ed.check(lock in ("locked", "pending"), f"the Game view has the focus, the pointer is locked: {lock}")
 
         await ui.key("Escape")
         await ui.frames(4)
