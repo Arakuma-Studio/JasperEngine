@@ -64,7 +64,9 @@ namespace jasperengine::editor::test {
 
         double number64() {
             if (!finite && chance(10)) return std::numeric_limits<double>::quiet_NaN();
-            return static_cast<double>(number()) + (chance(50) ? 1.0 / 3.0 : 0.0);
+            const double value = static_cast<double>(number());
+            const bool addThird = chance(50);
+            return value + (addThird ? 1.0 / 3.0 : 0.0);
         }
 
         std::string text() {
@@ -128,11 +130,43 @@ namespace jasperengine::editor::test {
                 return;
             case Kind::Float: *static_cast<float*>(value) = number(); return;
             case Kind::Double: *static_cast<double*>(value) = number64(); return;
-            case Kind::Vector2: *static_cast<Vector2*>(value) = Vector2(number(), number()); return;
-            case Kind::Vector3: *static_cast<Vector3*>(value) = Vector3(number(), number(), number()); return;
-            case Kind::Vector4: *static_cast<Vector4*>(value) = Vector4(number(), number(), number(), number()); return;
-            case Kind::Quat: *static_cast<Quaternion*>(value) = Quaternion(number(), number(), number(), number()); return;
-            case Kind::Rect: *static_cast<Rect*>(value) = Rect(number(), number(), number(), number()); return;
+            case Kind::Vector2: {
+                const float y = number();
+                const float x = number();
+                *static_cast<Vector2*>(value) = Vector2(x, y);
+                return;
+            }
+            case Kind::Vector3: {
+                const float z = number();
+                const float y = number();
+                const float x = number();
+                *static_cast<Vector3*>(value) = Vector3(x, y, z);
+                return;
+            }
+            case Kind::Vector4: {
+                const float w = number();
+                const float z = number();
+                const float y = number();
+                const float x = number();
+                *static_cast<Vector4*>(value) = Vector4(x, y, z, w);
+                return;
+            }
+            case Kind::Quat: {
+                const float z = number();
+                const float y = number();
+                const float x = number();
+                const float w = number();
+                *static_cast<Quaternion*>(value) = Quaternion(w, x, y, z);
+                return;
+            }
+            case Kind::Rect: {
+                const float height = number();
+                const float width = number();
+                const float y = number();
+                const float x = number();
+                *static_cast<Rect*>(value) = Rect(x, y, width, height);
+                return;
+            }
             case Kind::Matrix4: {
                 Matrix4& matrix = *static_cast<Matrix4*>(value);
                 for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) matrix[i][j] = number();
@@ -170,17 +204,26 @@ namespace jasperengine::editor::test {
             case Kind::AssetPath:
                 if (ops->propertyType == PropertyType::Shader) {
                     ShaderRef& ref = *static_cast<ShaderRef*>(value);
-                    ref = ShaderRef(path(), guid(), guid());
+                    const Guid fragmentGuid = guid();
+                    const Guid vertexGuid = guid();
+                    const std::string file = path();
+                    ref = ShaderRef(file, vertexGuid, fragmentGuid);
                 } else {
                     AssetRef& ref = *static_cast<AssetRef*>(value);
-                    ref.set(path(), guid());
+                    const Guid id = guid();
+                    const std::string file = path();
+                    ref.set(file, id);
                 }
                 return;
             case Kind::Font: {
                 FontArray& fonts = *static_cast<FontArray*>(value);
                 fonts = FontArray();
                 const int count = integer(0, static_cast<int>(fonts.size()));
-                for (int i = 0; i < count; i++) fonts[static_cast<size_t>(i)].set(chance(80) ? "fonts/F" + std::to_string(i) + ".ttf" : std::string(), guid());
+                for (int i = 0; i < count; i++) {
+                    const Guid id = guid();
+                    const std::string file = chance(80) ? "fonts/F" + std::to_string(i) + ".ttf" : std::string();
+                    fonts[static_cast<size_t>(i)].set(file, id);
+                }
                 return;
             }
             case Kind::Struct:

@@ -21,7 +21,7 @@ sys.path.insert(0, str(HERE))
 import grade  # noqa: E402
 import sim_hook  # noqa: E402
 import stub_server  # noqa: E402
-from cases import CASES, KINDS  # noqa: E402
+from cases import CASES  # noqa: E402
 
 
 def stream(*blocks, result="done", subtype="success"):
@@ -216,7 +216,7 @@ class CasesTest(unittest.TestCase):
         ids = [c["id"] for c in CASES]
         self.assertEqual(len(ids), len(set(ids)))
         for c in CASES:
-            self.assertIn(c["kind"], KINDS, c["id"])
+            self.assertIn(c["kind"], {"bad", "guard", "control"}, c["id"])
             for key in ("prompt", "what_happened", "text_at_issue", "source", "checks"):
                 self.assertIn(key, c, f"{c['id']} lacks {key}")
             known = {"calls", "must_not_call", "order", "max_calls", "last_call", "shell_must", "shell_must_not",

@@ -302,7 +302,7 @@ TEST_F(EffectFluid, DrawsTheStartBurstAndEvolves){
     ASSERT_TRUE(load());
     const TestImage early = at(0.1);
     const TestImage later = at(0.5);
-    const auto a = brightness(early), b = brightness(later);
+    const auto a = brightness(early);
     EXPECT_GT(a.first, 20.0) << "the start burst is not drawn";
     EXPECT_GT(a.second, 200) << "no bright dye (the burst is x10 of a pointer colour)";
     EXPECT_GT(maxDifference(early, later), 40) << "the fluid did not move";

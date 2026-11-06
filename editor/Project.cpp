@@ -3819,7 +3819,10 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
         const Signature signature = sceneProject->scene->getSignature(meshes->getEntity(i));
         maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, Stream::savedSubmeshCount(mesh, sceneProject->scene, signature));
-        maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
+        // a model's meshes are counted from its file below: their load may not have run, and
+        // reads the model's cook once there is one (S53), which lays out its buffers otherwise
+        if (!Stream::isModelBackedMesh(meshes->getEntity(i), sceneProject->scene, signature))
+            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
         maxValues.maxBones = std::max(maxValues.maxBones,
             static_cast<unsigned int>(mesh.bonesMatrix.size()));
     }

@@ -281,7 +281,9 @@ TEST(MarkdownHtml, Perf20KB){
     EXPECT_EQ(checkWellFormed(result.rml), "");
     std::printf("[perf] Markdown to RML: %zu bytes in, %zu bytes out, %.3f ms (target 2 ms%s)\n", markdown.size(), result.rml.size(), ms,
                 slack > 0.0 ? "" : ", not enforced: JASPER_HTMLUI_PERF_SLACK unset");
-    if (slack > 0.0) EXPECT_LE(ms, target);
+    if (slack > 0.0){
+        EXPECT_LE(ms, target);
+    }
 }
 
 #endif

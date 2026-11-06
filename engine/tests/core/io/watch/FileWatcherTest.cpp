@@ -8,8 +8,10 @@
 #include "ProjectFileIndex.h"
 #include "WatchTestSupport.h"
 #include "backends/Backends.h"
+#include "jobs/detail/TimedWait.h"
 
 #include <algorithm>
+#include <condition_variable>
 #include <mutex>
 
 using namespace jasperengine;
@@ -27,10 +29,11 @@ namespace {
     class FileWatcherTests : public ::testing::TestWithParam<WatchBackendKind> {
     protected:
         WatchTempDir dir;
+        std::mutex mutex;
+        std::condition_variable changesReady;
+        std::vector<FileChange> changes;
         FileWatchService service;
         FileWatchSubscription subscription;
-        std::mutex mutex;
-        std::vector<FileChange> changes;
 
         void SetUp() override {
             // no System in this binary: the warnings are the test's
@@ -45,6 +48,7 @@ namespace {
             subscription = service.subscribe(filter, [this](std::span<const FileChange> batch) {
                 std::lock_guard<std::mutex> lock(mutex);
                 changes.insert(changes.end(), batch.begin(), batch.end());
+                changesReady.notify_all();
             }, DeliverOn::Worker);
             // the index is built and the backend armed before the first edit
             ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(ms(5000))));
@@ -54,20 +58,18 @@ namespace {
         // within 1 s (native) or interval + 1 s (polling) (AC1)
         ms limit() const { return timeLimit(GetParam() == WatchBackendKind::Native ? ms(1000) : POLL_INTERVAL + ms(1000)); }
 
-        size_t count() {
-            std::lock_guard<std::mutex> lock(mutex);
-            return changes.size();
-        }
         std::vector<FileChange> take() {
             std::lock_guard<std::mutex> lock(mutex);
             std::vector<FileChange> out;
             out.swap(changes);
             return out;
         }
-        // what arrives within the limit, plus a quiet half second to prove nothing more does
+        // Wait for the backend's own notification, then drain its receipt to include duplicates.
         std::vector<FileChange> collect(size_t expected) {
-            waitFor([&]() { return count() >= expected; }, limit());
-            std::this_thread::sleep_for(ms(500));
+            std::unique_lock<std::mutex> lock(mutex);
+            EXPECT_TRUE(jobs::detail::timedWait(changesReady, lock, limit(), [&]() { return changes.size() >= expected; }));
+            lock.unlock();
+            EXPECT_TRUE(service.flush(limit()));
             return take();
         }
         static size_t countKind(const std::vector<FileChange>& list, FileChangeKind kind, bool directory) {
@@ -101,7 +103,7 @@ TEST_P(FileWatcherTests, CreateModifyDeleteRename) {
     startWatching();
     const fs::path file = dir.path / "assets" / "a.png";
     fs::create_directories(file.parent_path());
-    std::this_thread::sleep_for(ms(400));
+    ASSERT_TRUE(service.flush(timeLimit(ms(5000))));
     take();
 
     writeText(file, "one");
@@ -241,7 +243,7 @@ TEST_P(FileWatcherTests, OverflowEmitsRescan) {
     EXPECT_GE(service.stats().overflows, 1u);
     // the rescan turned the lost writes into ordinary changes, and the index is the disk
     EXPECT_TRUE(service.indexMatchesDiskForTesting());
-    std::this_thread::sleep_for(ms(300));
+    ASSERT_TRUE(service.flush(timeLimit(ms(5000))));
     const std::vector<FileChange> got = take();
     EXPECT_EQ(countKind(got, FileChangeKind::Added, false), 5000u);
 }
@@ -252,7 +254,7 @@ TEST_P(FileWatcherTests, ExcludedFoldersCostNothing) {
     for (const char* name : {".git", "build", "node_modules", "Trash", ".jasperengine"}) {
         writeText(dir.path / name / "deep" / "x.png", "ignored");
     }
-    std::this_thread::sleep_for(limit());
+    ASSERT_TRUE(service.flush(timeLimit(ms(5000))));
     const std::vector<FileChange> got = take();
     EXPECT_TRUE(got.empty()) << describe(got);
     // no watch was added under them (inotify: one per folder)
