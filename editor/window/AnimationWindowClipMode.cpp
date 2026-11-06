@@ -14,6 +14,7 @@
 // Entity mode keeps its own "first Animation of the scene" fallback; clip mode never uses it.
 
 #include "AnimationWindow.h"
+#include "audio/TimelineAudioPreview.h"
 #include "AnimationWindowClip.h"
 
 #include "Out.h"

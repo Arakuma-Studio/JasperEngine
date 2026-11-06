@@ -136,6 +136,7 @@ std::string assetType(const fs::path& path) {
     if (Util::isVertexAnimationFile(p)) return "vertex_animation";
     // Shake Presets (.shake, camera shake spec 6)
     if (Util::isShakePresetFile(p)) return "shake";
+    if (Util::isSoundEventFile(p)) return "sound_event";
     return "other";
 }
 
@@ -144,7 +145,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".soundevent"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -170,7 +171,7 @@ bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& 
 }
 
 bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
-                        std::vector<fs::path> alsoSync) {
+                        std::vector<fs::path> alsoSync, const std::string& stepName) {
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
@@ -185,6 +186,7 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         syncFiles(*context, files, false);
     });
     cmd->setNoMerge();
+    if (!stepName.empty()) cmd->setName(stepName);
     auto failure = std::make_shared<std::string>();
     cmd->reportFailureTo(failure);
     // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)

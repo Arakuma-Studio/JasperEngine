@@ -122,11 +122,13 @@ TEST(ClipIO, RootFormatAndVersionAreRequired){
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\"}").ok());
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 0}").ok());
     EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1.5}").ok());
-    // version 2 is the humanoid clip format (anim-retarget); 3 is newer than this engine
+    // version 2 is the humanoid clip format (anim-retarget), 3 the clip with audio cues (S40); 4 is
+    // newer than this engine
     EXPECT_TRUE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 2}").ok());
-    anim::ClipParseResult newer = anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 3}");
+    EXPECT_TRUE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 3}").ok());
+    anim::ClipParseResult newer = anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 4}");
     ASSERT_FALSE(newer.ok());
-    EXPECT_NE(newer.error.message.find("version 3"), std::string::npos) << newer.error.message;
+    EXPECT_NE(newer.error.message.find("version 4"), std::string::npos) << newer.error.message;
 
     anim::ClipParseResult minimal = anim::parseClip(wrapClip(""));
     ASSERT_TRUE(minimal.ok());
