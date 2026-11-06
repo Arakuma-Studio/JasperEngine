@@ -96,6 +96,18 @@ async def test_list_title_library(ed: Editor):
     ed.check_in("S84", later["note"], "names the spec that brings them")
     msg = await ed.check_error("list_title_library", kind="effects", id="outer_glwo")
     ed.check_in("outer_glwo", msg, "the unknown id is named")
+    # rows and details are the registry's own (titleEffectRow / titleEffectDetail, AC25)
+    effects = await ed.call("list_title_library", kind="effects", limit=50)
+    glow = next(r for r in effects["rows"] if r["id"] == "outer_glow")
+    for key in ("name", "category", "cost", "adds_light", "on_parts", "outline", "fallback", "glyph_safety", "live", "aliases"):
+        ed.check_in(key, glow, f"an effect row carries {key}: {glow}")
+    detail = await ed.call("list_title_library", kind="effects", id="outer_glow")
+    ed.check_eq(detail.get("add"), {"op": "add_effect", "layer": "<layer>", "type": "outer_glow"}, f"the op that adds it: {detail}")
+    ed.check_in("size", detail.get("schema", {}).get("properties", {}), "the params' schema")
+    ed.check(any(line.startswith("size ") for line in detail.get("params", [])), f"one line per param: {detail.get('params')}")
+    generators = await ed.call("list_title_library", kind="generators")
+    fill = next(r for r in generators["rows"] if r["id"] == "fill")
+    ed.check_eq(fill.get("fills_canvas"), True, f"a generator row: {fill}")
 
 
 # ---------------------------------------------------------------------------------------- edit

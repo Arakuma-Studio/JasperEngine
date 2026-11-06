@@ -25,6 +25,7 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitleArtSchema.h"
+#include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
@@ -136,47 +137,6 @@ Json fontRow(const titleart::ResolvedTitleAsset& asset, const std::shared_ptr<Fo
     return row;
 }
 
-std::string paramLine(const titleart::ParamDef& p) {
-    std::string line = std::string(p.key) + " " + titleart::paramKindName(p.kind);
-    const char* unit = titleart::paramUnitName(p.unit);
-    if (unit && *unit) line += " " + std::string(unit);
-    if (p.max > p.min) {
-        auto num = [](double v) {
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "%g", v);
-            return std::string(buf);
-        };
-        line += " [" + num(p.min) + ".." + num(p.max) + "]";
-    }
-    if (!p.options.empty()) {
-        std::string opts;
-        for (const titleart::EnumOption& o : p.options) opts += (opts.empty() ? "" : "|") + std::string(o.value);
-        line += " (" + opts + ")";
-    }
-    line += " = " + p.defaultValue.dump();
-    if (p.description && *p.description) line += ": " + std::string(p.description);
-    return line;
-}
-
-template<class Def>
-Json definitionDetail(const Def& def, bool effect) {
-    Json detail = Json::object();
-    detail["id"] = def.type;
-    detail["name"] = def.label;
-    detail["category"] = def.category;
-    detail["description"] = def.description;
-    Json params = Json::array();
-    for (const titleart::ParamDef& p : def.params) params.push_back(paramLine(p));
-    detail["params"] = params;
-    detail["cost"] = titleart::costClassName(def.costClass);
-    if (effect) {
-        detail["op"] = Json{{"op", "add_effect"}, {"layer", "<layer>"}, {"type", def.type}};
-    } else {
-        detail["op"] = Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", def.type}};
-    }
-    return detail;
-}
-
 bool matches(const std::string& query, const std::vector<std::string>& fields) {
     if (query.empty()) return true;
     const std::string q = lower(query);
@@ -237,12 +197,12 @@ void listTitleLibraryTool(const CallPtr& call) {
     if (!id.empty()) {
         if (kind == "effects") {
             if (const titleart::EffectDef* def = registry.effect(id)) {
-                call->ok(std::string(def->label) + " (" + def->type + ")", definitionDetail(*def, true));
+                call->ok(std::string(def->label) + " (" + def->type + ")", fromOrdered(titleart::titleEffectDetail(*def)));
                 return;
             }
         } else if (kind == "generators") {
             if (const titleart::GeneratorDef* def = registry.generator(id)) {
-                call->ok(std::string(def->label) + " (" + def->type + ")", definitionDetail(*def, false));
+                call->ok(std::string(def->label) + " (" + def->type + ")", fromOrdered(titleart::titleGeneratorDetail(*def)));
                 return;
             }
         }
@@ -262,18 +222,14 @@ void listTitleLibraryTool(const CallPtr& call) {
             std::vector<std::string> fields = {d->type, d->label, d->category};
             for (const char* a : d->aliases) fields.push_back(a);
             if (!matches(query, fields)) continue;
-            const titleart::Json defaults = titleart::defaultParams(d->params);
-            const titleart::ParamValues values(defaults, &d->globalLight);
-            rows.push_back(Json{{"id", d->type}, {"name", d->label}, {"category", d->category}, {"cost", titleart::costClassName(d->costClass)},
-                                {"adds_light", d->addsLight ? d->addsLight(values) : false}, {"on_parts", d->onParts}});
+            rows.push_back(fromOrdered(titleart::titleEffectRow(*d)));
         }
     } else if (kind == "generators") {
         for (const titleart::GeneratorDef* d : registry.generators()) {
             std::vector<std::string> fields = {d->type, d->label, d->category};
             for (const char* a : d->aliases) fields.push_back(a);
             if (!matches(query, fields)) continue;
-            rows.push_back(Json{{"id", d->type}, {"name", d->label}, {"category", d->category}, {"cost", titleart::costClassName(d->costClass)},
-                                {"follow", titleart::followModeName(d->follow)}});
+            rows.push_back(fromOrdered(titleart::titleGeneratorRow(*d)));
         }
     } else if (kind == "blend_modes") {
         for (int i = 0; i < titleart::TITLE_BLEND_COUNT; i++) {
