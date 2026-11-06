@@ -4,10 +4,13 @@
 // Editor scripts found by reading the files (S23 R18, R20, D6): Lua annotations under Editor/
 // folders, C++ JE_MENU_ITEMs, the Unity path targets, and what stays a runtime script.
 
+#include "Project.h"
+#include "command/CommandHandle.h"
 #include "util/EditorScripts.h"
 #include "util/ExternalCodeEditor.h"
 
 #include "TempDir.h"
+#include "support/TestTempDir.h"
 
 #include <gtest/gtest.h>
 
@@ -153,4 +156,32 @@ TEST(EditorScripts, BracketedOptions) {
     EXPECT_EQ(items[0].shortcut, "Ctrl+Shift+K");
     EXPECT_EQ(items[1].icon, "magnet");
     EXPECT_EQ(items[1].tooltip, "Snap it");
+}
+
+// The C++ editor scripts link the editor's engine library as the project's scripts do: with its
+// Jolt and Box2D macros (MSVC links Jolt's data, such as JPH::Allocate, only through dllimport)
+TEST(EditorScripts, CppProjectCompilesWithTheEngineLibrarysMacros) {
+    jasperengine::test::TestTempDir dir("editor-scripts-cmake");
+    const std::filesystem::path root = dir / "project";
+    std::filesystem::copy(std::filesystem::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", root,
+                          std::filesystem::copy_options::recursive);
+    jasperengine::test::TestTempDir::write(root / "Editor" / "Bake.cpp",
+        "JE_MENU_ITEM(\"Tools/Bake\")\nstatic void bake(const jasperengine::EditorMenuContext&) {}\n");
+    std::string cmake;
+    {
+        Project project;
+        project.setSkipProjectLock(true);
+        ASSERT_TRUE(project.loadProject(root, false));
+        std::string libName;
+        ASSERT_TRUE(EditorScripts::writeCppProject(&project, {root / "Editor" / "Bake.cpp"}, dir / "editor-scripts", libName));
+        cmake = jasperengine::test::TestTempDir::read(dir / "editor-scripts" / "CMakeLists.txt");
+        for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
+        project.releaseScenes();
+    }
+    const size_t at = cmake.find("add_compile_definitions(");
+    ASSERT_NE(at, std::string::npos) << cmake;
+    const std::string line = cmake.substr(at, cmake.find('\n', at) - at);
+    EXPECT_NE(line.find("JASPERENGINE_SHARED"), std::string::npos) << line;
+    EXPECT_NE(line.find("JPH_SHARED_LIBRARY"), std::string::npos) << line;
+    EXPECT_NE(line.find("JPH_OBJECT_LAYER_BITS="), std::string::npos) << line;
 }

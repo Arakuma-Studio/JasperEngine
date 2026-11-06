@@ -3316,7 +3316,8 @@ void ProjectSettingsWindow::drawEditorSettings() {
             ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
             endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
                 "working directory, this machine's build settings and each developer's own layout stay out "
-                "of the repository. A file the editor did not generate is never replaced.");
+                "of the repository. A file the editor did not generate is never replaced, and the lines you "
+                "add below the editor's block are kept.");
         }
         // S29: the project's version control (project.yaml versionControl)
         const VcsProjectSettings vcsDefaults;
