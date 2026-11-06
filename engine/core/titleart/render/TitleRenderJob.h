@@ -51,11 +51,16 @@ namespace jasperengine::titleart {
         bool splittable = false;        // writes only its scissor from inputs it does not write
         ShaderKey shader;               // the program variant it binds
         bool countsAsPass = true;       // a GPU draw pass (passesDone / passesTotal)
+        uint32_t passes = 1;            // the draw passes it runs (an effect's kernel may run several)
         // CPU: its estimate
         uint32_t cpuUs = 0;
         // runs the step (a GPU pass inside `scissor`, which a split narrows to its tile); false
         // with `error` fails the job
         std::function<bool(const TitleRectI& scissor, std::string& error)> run;
+        // null, or false while the step cannot run yet (its program still compiles): step()
+        // then returns without running it and the job waits. False right after the step ran
+        // (an effect's pass met a program not built yet) runs the step again once it is true
+        std::function<bool()> ready;
     };
 
     // the renderer's list under construction (S86's 3D leaf appends its mesh units and passes)
@@ -117,11 +122,14 @@ namespace jasperengine::titleart {
         TitleRenderJob(const TitleRenderJob&) = delete;
         TitleRenderJob& operator=(const TitleRenderJob&) = delete;
 
-        // Runs whole steps while their estimates fit the budget (always at least one); true when
-        // the job is complete, false while steps remain or after a failure (error() says which)
+        // Runs whole steps while their estimates fit the budget (always at least one that is
+        // ready); true when the job is complete, false while steps remain (waiting() when the
+        // next one is not ready) or after a failure (error() says which)
         bool step(const StepBudget& budget, StepReport* report = nullptr);
         bool done() const;
         bool failed() const { return !failure.empty(); }
+        // the next step is not ready (TitleRenderStep::ready): step() ran nothing for it
+        bool waiting() const { return blocked; }
         // estimated cost done / total, 0..1 (rises monotonically to 1)
         float progress() const;
         uint32_t passesDone() const { return passesRun; }
@@ -162,6 +170,7 @@ namespace jasperengine::titleart {
         TitleSplits kept;
         std::vector<TitleProblem> found;
         std::vector<std::shared_ptr<void>> held;
+        bool blocked = false;
 
         NodeCost& costOf(const std::string& layerId);
     };

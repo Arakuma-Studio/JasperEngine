@@ -14,10 +14,10 @@ TitleRenderJob::TitleRenderJob(TitleStepList list) : steps(std::move(list.list))
     for (const TitleRenderStep& s : steps) {
         const uint32_t estimate = estimateUs(s);
         totalUs += estimate;
-        if (s.kind == StepKind::Gpu && s.countsAsPass) passCount++;
+        if (s.kind == StepKind::Gpu && s.countsAsPass) passCount += s.passes;
         NodeCost& cost = costOf(s.layerId);
         cost.estimatedUs += estimate;
-        if (s.kind == StepKind::Gpu && s.countsAsPass) cost.passes++;
+        if (s.kind == StepKind::Gpu && s.countsAsPass) cost.passes += s.passes;
     }
 }
 
@@ -54,6 +54,7 @@ uint32_t TitleRenderJob::nextStepCostUs() const {
 
 bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
     StepReport local;
+    blocked = false;
     while (failure.empty() && next < steps.size()) {
         TitleRenderStep& s = steps[next];
         const uint32_t estimate = estimateUs(s);
@@ -61,6 +62,10 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
         if (local.steps > 0) {
             if (budget.budgetUs > 0 && local.estimatedUs + estimate > budget.budgetUs) break;
             if (budget.maxPasses > 0 && isPass && local.passes >= budget.maxPasses) break;
+        }
+        if (s.ready && !s.ready()) {
+            blocked = true;
+            break;
         }
         const auto start = std::chrono::steady_clock::now();
         std::string error;
@@ -76,9 +81,14 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
             failure = error.empty() ? std::string("render step '") + s.label + "' failed" : error;
             break;
         }
+        // a step that met a program still being compiled runs again once it is built
+        if (s.ready && !s.ready()) {
+            blocked = true;
+            break;
+        }
         if (isPass) {
-            local.passes++;
-            passesRun++;
+            local.passes += s.passes;
+            passesRun += s.passes;
         }
         doneUs += estimate;
         next++;
@@ -122,8 +132,8 @@ void TitleRenderJob::splitOversizedSteps(uint32_t maxUs) {
             }
         }
         if (pass) {
-            passCount += (uint32_t)(nx * ny - 1);
-            costOf(s.layerId).passes += (uint32_t)(nx * ny - 1);
+            passCount += (uint32_t)(nx * ny - 1) * s.passes;
+            costOf(s.layerId).passes += (uint32_t)(nx * ny - 1) * s.passes;
         }
     }
     steps = std::move(out);

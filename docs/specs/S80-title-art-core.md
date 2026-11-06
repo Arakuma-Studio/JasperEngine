@@ -2012,3 +2012,83 @@ rest of S82 lands in 6B.
 19. **Implementation: fallback tolerance per class.** The RGBA8 path is held to the class each
     definition declares: F0 to §6.3's tolerance, F1 (the blurs, glows, shadows and outline) to S83
     §6.5's F1 (mean ≤ 1.5/255, max ≤ 64/255, ≤ 2 % of pixels over 8/255).
+13. **Implementation (renderer): the 2D title's element frames are y-up.** Their textures keep
+    layer-space rows bottom first (row 0 the frame's lowest row), so Pachislop's element passes
+    (seeds' Sobel normal, bevel normals, reflection, satin and pattern directions) run with their
+    own y-up formulas instead of having y negated in `fields.glsl` and `element.glsl`; the mask and
+    picture uploads reverse the provider's rows and the place pass maps the frame into the node
+    target's rows (§6.3's memory rows hold for every target; node targets stay rows-down).
+    `TitleArtScenesGpu.OriginAsymmetric` checks the result on both paths.
+14. **Implementation: regions of interest align to the node's anchor.** A 2D layer's ROI aligns
+    to 64 px from its position's whole output pixel, not from the canvas origin, and its cached
+    pixels are keyed by its content hash (`LayerHashes::content`, added: node minus its own
+    placement) and the position's fraction of a pixel: a whole-pixel move re-places the cached
+    node byte for byte (R42's two passes). A node clipped by the region, with a clip group,
+    canvas-space masks or an effect that reads canvas positions (`TitlePassContext::
+    usesCanvasPosition`) is keyed by its position instead.
+15. **Implementation: title frames snap to a 64 mask-px grid** from the layer origin (§6.7's frame
+    plus pad rounded outward), so a small rim or bevel change keeps the frame and every other
+    element's cached masks and fields.
+16. **Implementation: the flood's first step is 2^(k-1), k = ceil(log2(R + 2)).** Steps 2^(k-1),
+    ..., 1 reach 2^k - 1 >= R + 1 px; with the extra step-1 pass that is k + 1 passes, R43's
+    count (R27's "first step 2^ceil(log2(R + 2))" would take one more pass than R43 allows).
+17. **Implementation: Add composes with `LIGHT_PREMULTIPLIED`** (colour added, coverage unioned),
+    blend.glsl's add, so the fixed-function and shader paths of Add agree; `ADDITIVE_PREMULTIPLIED`
+    adds alpha. `BlendMode::ERASE_PREMULTIPLIED` (ZERO, ONE_MINUS_SRC_ALPHA) is added for the
+    knockout; blend.glsl has internal `erase` (19) and `subtract` (20) for the 2D stack and the
+    glow split on devices that render RGBA16F without blending it.
+18. **Implementation: scalar field blurs stay direct.** The height's soften and the Fit cover blurs
+    are separable texelFetch loops sized by the radius (at most 97 taps at sigma 32): a pyramid
+    would resample the RGBA8 fallback's 16-bit fixed point byte by byte. Satin, mask feathers and
+    the effects' blur use the pyramid above sigma 6.
+19. **Implementation: the text and geometry seam is `TitleContentProvider`** (`render/TitleContent.h`):
+    elements (with a glyph-cell cluster filter), coverage at a frame, a layer's own pixels (image
+    layers, `artwork` vectors), the glyph boxes of spans and shape-mask outlines. The renderer starts
+    with the process default (`setDefaultTitleContentProvider`), which the module's adapter over
+    `geometry::TitleGeometry` and `TitleTextLayout` registers; without one, text, shape, vector and
+    image layers report `geometry_unavailable` and draw nothing. The renderer tests use an analytic
+    provider.
+20. **Implementation: interface additions.** `TitleRenderStep::ready` (a step waits while its
+    program compiles; `TitleRenderJob::waiting()`) and `passes` (an effect's kernel step runs
+    several); `RenderRequest::output` (`TitleOutputFormat`: 8-bit dithered sRGB, 16-bit sRGB,
+    premultiplied sRGB for displays, or the linear accumulator for S81's live compose);
+    `RendererStats::floodPasses` / `floodPassesUnbounded`; `TitleArtRenderer::setContentProvider`,
+    `cacheEntries`, `poolStats`, `simulateDeviceLossForTesting`; `TITLE_ART_TEST_UNBOUNDED_FIELDS`.
+21. **Implementation: device loss fails the job in flight** with `device_lost` (its targets are
+    gone); the renderer drops pool, caches and programs at once and the owner (the preview queue,
+    the bake) begins again. A job does not restart itself: its step list was planned against caches
+    that no longer exist.
+22. **Implementation: `TitleImage::alphaBounds` is the drawn region** (the image's rect). Exact alpha
+    bounds come from the readback the bake and the checks make; a preview never syncs the GPU.
+23. **Implementation: the glow output** is the full composite minus the ink composite, colour only,
+    written as light (alpha = the largest channel, straight colour) so the PNG drawn additively over
+    the ink output gives the light back.
+24. **Implementation: Fit cover seeds hold centres only**; a circle's radius is read back from the
+    distance field at its centre (the RGBA8 fallback's seeds have no room for a radius).
+25. **Implementation: glyph cells.** The back part is the cell's rims with the layer's effects and
+    masks, the front part its face alone; the cell's image is front over back.
+26. **Implementation: element seeds add the document's as seed + (document seed - 1)**, so the
+    default document seed 1 renders Pachislop's patterns, textures and dry brush.
+27. **Measured: R42's colour budget holds for the title, not its layer effects.** On the
+    classic-style fixture of `TitleArtRendererGpu.CacheCascade` (four rims, a gold face, a glow
+    and a drop shadow standing in for Outer Glow and Drop Shadow) a full render is 57 passes, a
+    face colour change 23, a whole-pixel move 2 and an outer rim width change 20 (35 %). The title
+    itself re-runs only its stack, placement, compose and output (8 passes); the two layer effects
+    re-run because an effect's output is a function of its input pixels and a definition cannot
+    say it reads only their alpha. A later `FxInputs` member (alpha only) would let the runner key
+    such effects by the field hash and hold the colour change at 8.
+28. **Implementation: one shader type, two fragment files.** The renderer's programs are
+    `ShaderType::TITLE_ART` numbers 18-42 (`render/TitlePrograms.h`, `titleart/render/programs.glsl`)
+    after the effects' 1-17 (`render/TitlePasses.h`); the variant compiler sends 18 and up to
+    `titleart_render.frag` (includes in `engine/shaderlib/titleart/render/`) and the rest to
+    `titleart.frag`, so the two program sets keep separate parameter blocks (48 vec4s and 16) and
+    neither file includes the other's helpers. Both share `titleart.vert` and `titleart/patterns.glsl`.
+29. **Implementation: effects and generators run through `TitleJobRunner`**, the renderer's
+    `TitlePassRunner` (`render/TitleJobRunner.h`): one per kernel step, lending pool targets,
+    caching lookups by content and drawing through `TitleGpu`. A pass whose program is still being
+    compiled draws nothing; the step then waits for it and runs the definition again (a definition
+    writes all of its output from its inputs), so a step never leaves half an effect.
+30. **Implementation: what may move a cached node.** The effect context does not say whether a
+    definition reads canvas positions, so a node is bound to its position when the layer is a
+    generator or one of its effects has a param set to `canvas` (Pattern Overlay's `align`). A
+    generator's `follow` layer is not given to the generator (the context has no member for it).

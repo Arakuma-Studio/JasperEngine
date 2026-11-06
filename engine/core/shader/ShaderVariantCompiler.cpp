@@ -757,6 +757,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     if (shaderType == ShaderType::SSR_BLUR){
         args.defines.push_back({"SSR_BLUR_TAPS", "6"});
     }
+    if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
+        // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
+        args.frag_file = "titleart_render.frag";
+    }
 
     return true;
 }

@@ -368,6 +368,27 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
             target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
             return;
+        // Title Art's light blends (Render.h): their own alpha, offscreen or not
+        case BlendMode::LIGHT_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            return;
+        case BlendMode::MAX_PREMULTIPLIED:
+            target.blend.op_rgb = SG_BLENDOP_MAX;
+            target.blend.op_alpha = SG_BLENDOP_MAX;
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            return;
+        case BlendMode::ERASE_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            return;
         default:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -631,6 +652,7 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     case BlendOperation::ADD: return SG_BLENDOP_ADD;
     case BlendOperation::SUBTRACT: return SG_BLENDOP_SUBTRACT;
     case BlendOperation::REVERSE_SUBTRACT: return SG_BLENDOP_REVERSE_SUBTRACT;
+    case BlendOperation::MAX: return SG_BLENDOP_MAX;
     }
     return _SG_BLENDOP_DEFAULT;
 }

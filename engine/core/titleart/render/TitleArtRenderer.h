@@ -40,6 +40,7 @@
 namespace jasperengine::titleart {
 
     class AssetResolver;
+    class TitleContentProvider;
 
     // one glyph of a text layer rendered alone in a cell padded by the style's reach (S81's
     // Glyph Atlas, S85's cells): its back part (rims, glows) or front part (the face)
@@ -48,6 +49,14 @@ namespace jasperengine::titleart {
         std::string layerId;
         uint32_t cluster = 0;       // the grapheme cluster index of LaidOutText
         Part part = Back;
+    };
+
+    // the pixels of a job's image (TitleImage)
+    enum class TitleOutputFormat : uint8_t {
+        Srgb8,              // RGBA8 straight-alpha sRGB, dithered under one code (8-bit bakes, previews)
+        Srgb16,             // RGBA16F straight-alpha sRGB, undithered (16-bit bakes; RGBA8 where floats do not render)
+        PremultipliedSrgb8, // RGBA8 premultiplied sRGB (displays that blend ONE, ONE_MINUS_SRC_ALPHA)
+        Linear              // the accumulator itself: linear premultiplied (S81's live compose)
     };
 
     struct RenderRequest {
@@ -67,6 +76,8 @@ namespace jasperengine::titleart {
         // per pixel)
         int outputBitDepth = 8;
         uint32_t testFlags = 0;                     // TITLE_ART_TEST_* (TitleArtCaps.h): per request
+        // the image's pixels; Srgb8 with outputBitDepth 16 writes Srgb16
+        TitleOutputFormat output = TitleOutputFormat::Srgb8;
         const AssetResolver* assets = nullptr;      // fonts, images, SVGs (editor or player resolver)
     };
 
@@ -83,6 +94,8 @@ namespace jasperengine::titleart {
         size_t peakBytes = 0;
         uint64_t cacheHits = 0, cacheMisses = 0;
         const char* path = "";              // "rgba16f" or "rgba8" of the last job
+        // jump-flood passes the jobs recorded, and what unbounded fields would have taken (R43)
+        uint64_t floodPasses = 0, floodPassesUnbounded = 0;
     };
 
     class JASPERENGINE_API TitleArtRenderer {
@@ -98,6 +111,15 @@ namespace jasperengine::titleart {
         const RendererStats& stats() const;
         // frees idle targets and the node cache
         void trim();
+
+        // the text and geometry the 2D title passes draw from (TitleContent.h); a renderer starts
+        // with the process default
+        void setContentProvider(std::shared_ptr<TitleContentProvider> provider);
+        // tests: the next job sees a lost device (R19)
+        void simulateDeviceLossForTesting();
+        // the cache's entries and bytes, the pool's targets (tests, the editor's stats)
+        size_t cacheEntries() const;
+        const TitleTargetPoolStats& poolStats() const;
 
     private:
         struct Impl;

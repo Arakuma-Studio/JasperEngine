@@ -10,7 +10,7 @@
 //   region.x and y_px = (H/2 - y) * s - region.y, where W x H is the canvas, s the px_scale and
 //   region the output-pixel rectangle the target covers. No pass ever flips; only the editor's
 //   display of a target does. Pachislop formulas that use a direction convert through
-//   ta_dir() in titleart/common.glsl, never by flipping a target.
+//   ta_dir() in titleart/render/common.glsl, never by flipping a target.
 // - Thread-safety: values.
 
 #pragma once

@@ -171,6 +171,7 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
         h.placement = hashText(t.at(HashScope::Placement));
         h.node = hashCombine(hashCombine(hashCombine(h.stack, h.effects), hashCombine(h.masks, h.placement)),
                              hashText("canvas=" + canvas + ";" + t.at(HashScope::Node)));
+        h.content = hashCombine(hashCombine(h.stack, h.effects), hashCombine(h.masks, hashText("canvas=" + canvas)));
         p.refs = std::move(t.refs);
         for (const Json& child : layerChildren(layer)) p.children.push_back(child.value("id", std::string()));
         pending.push_back(std::move(p));
@@ -180,18 +181,23 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
     std::map<std::string, uint64_t> nodes;
     for (auto it = pending.rbegin(); it != pending.rend(); ++it) {
         uint64_t node = it->hashes.node;
+        uint64_t content = it->hashes.content;
         for (const std::string& child : it->children) {
             auto found = nodes.find(child);
             node = hashCombine(node, found != nodes.end() ? found->second : 0);
+            content = hashCombine(content, found != nodes.end() ? found->second : 0);
         }
         nodes[it->id] = node;
         it->hashes.node = node;
+        it->hashes.content = content;
     }
     // the layers a node reads (one level: a source's own references are in its node hash already)
     for (Pending& p : pending) {
         for (const std::string& ref : p.refs) {
             auto found = nodes.find(ref);
-            p.hashes.node = hashCombine(p.hashes.node, found != nodes.end() && ref != p.id ? found->second : 0);
+            const uint64_t source = found != nodes.end() && ref != p.id ? found->second : 0;
+            p.hashes.node = hashCombine(p.hashes.node, source);
+            p.hashes.content = hashCombine(p.hashes.content, source);
         }
         out.layers[p.id] = p.hashes;
     }

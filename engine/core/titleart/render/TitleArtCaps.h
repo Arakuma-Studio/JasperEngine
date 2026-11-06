@@ -25,7 +25,8 @@ namespace jasperengine::titleart {
     constexpr uint32_t TITLE_ART_TEST_NO_R16F = 1u << 2;
     constexpr uint32_t TITLE_ART_TEST_NO_RGBA32F = 1u << 3;
     constexpr uint32_t TITLE_ART_TEST_NO_FLOAT_BLEND = 1u << 4;    // fixed-function blending of RGBA16F off
-    constexpr uint32_t TITLE_ART_TEST_S80_LAST_BIT = 4;
+    constexpr uint32_t TITLE_ART_TEST_UNBOUNDED_FIELDS = 1u << 5;  // every distance field floods the whole frame (R27's comparison)
+    constexpr uint32_t TITLE_ART_TEST_S80_LAST_BIT = 5;
 
     // the buffer kinds of §6.3's format table
     enum class TitleBuffer : uint8_t {
