@@ -179,7 +179,8 @@ async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
         live["state"] = (await ed.call("get_animator", entity="Walker")).get("live")
         await ed.call("control_animator", entity="Walker", montage={"path": "anim/wave.montage"})
 
-    _, lines = await capture(ed, scene, 30, during=montage)
+    # (the controller's state can start before the capture's first frame: long enough for a second pass)
+    _, lines = await capture(ed, scene, 80, during=montage)
     names = [l["name"] for l in lines if l["kind"] == "cue"]
     if "A" not in names:
         events = [l.get("function") for l in lines if l["kind"] == "animation_event"]

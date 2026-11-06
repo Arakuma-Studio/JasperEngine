@@ -216,16 +216,17 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     ed.check_eq(len(after), len(before) + 1, f"the drop added an audio action: {after}")
     ed.check(after[-1]["start_time"] > 0.0, f"at the drop time: {after[-1]}")
     await keep_shot(ed, "entity-audio-dropped")
-    # the first audio block, the playhead at 1.0 s, Shift+A
-    await ed.call("preview_animation", scene=STATE["scene"], animation="Sequencer", action="seek", time=1.0)
-    await ed.call("preview_animation", scene=STATE["scene"], animation="Sequencer", action="stop")
-    await ed.call("focus_window", window="animation")
-    ui.focus()
+    # the playhead at 1.0 s by a click on the ruler (the drop gave the track area's seconds per pixel),
+    # then the first audio block and Shift+A
+    pixels_per_second = (target[0] - tracks[0]) / after[-1]["start_time"]
+    await ui.click((int(tracks[0] + pixels_per_second * 1.0), int(tracks[1] - 8)))
+    await ui.frames(4)
     index = len(before) - 1 if before else 0
     await ui.click(middle(ui, await rect_of(ed, f"entity.frame.{index}")))
     await ui.frames(4)
     await ui.key("shift+a")
     await ui.frames(10)
     aligned = await frames_of(ed, "Sequencer")
-    ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.003, f"the tick's peak on 1.0 s: {aligned[index]}")
+    # (the ruler click snaps to the frame grid: within a frame of 1.0 s)
+    ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.035, f"the tick's peak on the playhead at 1.0 s: {aligned[index]}")
     await keep_shot(ed, "entity-audio-aligned")
