@@ -85,16 +85,18 @@ def saved_keys(path: Path) -> list[dict]:
 
 async def test_prepare(ed: Editor):
     await ed.call("create_entity", name="Box", type="cube")
+    # named before its first save, so its file is scenes/Main.scene
+    await ed.call("rename_scene", name="Main")
     s = await ed.call("save_project", untitled_scene_dir="scenes")
     scene = s["scenes_in_build"][0]
-    await ed.call("rename_scene", scene=scene["id"], name="Main")
-    await ed.call("save_project")
     await ed.call("edit_build_scenes", action="set_start", scene=scene["id"])
     await ed.call("set_project_settings", values={"graphics.runtime_shaders": False})
-    # an asset, a Lua file and a header for the copy steps
-    await ed.call("write_file", path="ui/logo.png", content="not really a png")
+    # an asset (binary: written on disk, as a user adds one), a Lua file and a header for the copy steps
+    (ed.project / "ui").mkdir(parents=True, exist_ok=True)
+    (ed.project / "ui" / "logo.png").write_bytes(b"not really a png")
     await ed.call("write_file", path="Game.lua", content="return {}\n")
     await ed.call("write_file", path="inc/Util.h", content="#pragma once\n")
+    ed.check((ed.project / "scenes" / "Main.scene").is_file(), f"the scene file: {sorted(p.name for p in ed.project.rglob('*.scene'))}")
 
 
 async def test_failed_copy_fails_the_export(ed: Editor):
@@ -134,7 +136,7 @@ async def test_output_inside_project_refused(ed: Editor):
     ed.check_in("inside the project", msg)
     # the command line refuses it too (before: it exported into the project)
     proc = subprocess.run(harness.editor_command() + ["export", "--project", str(ed.project), "--out", str(ed.project / "Builds"),
-                                                      "--backend", "glsl410"],
+                                                      "--backend", "opengl"],
                           capture_output=True, text=True, timeout=900, env={**os.environ, "HOME": str(ed.scratch.home)})
     ed.check(proc.returncode != 0, f"the CLI refused: {proc.returncode}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     ed.check_in("inside the project", proc.stderr)
@@ -212,7 +214,7 @@ async def test_never_saved_scene_ships(ed: Editor):
     ed.check_in("W-SCENE-NOT-SAVED", warning_codes(job))
     sources = [p.name for p in (out / "project").glob(f"scene_*_{draft_id}.cpp")]
     ed.check_eq(len(sources), 1, f"the never-saved scene's source: {sorted(p.name for p in (out / 'project').glob('scene_*.cpp'))}")
-    await ed.call("delete_scene", scene=draft_id)
+    await ed.call("close_scene", scene=draft_id, unsaved="discard")
 
 
 def logo_bytes() -> bytes:
@@ -248,7 +250,8 @@ async def test_web_page_and_favicon(ed: Editor):
             ed.check_eq((build / "index.html").read_text(), exported, "index.html is the page")
 
     # Web > Favicon wins
-    await ed.call("write_file", path="web/icon.png", content="icon bytes")
+    (ed.project / "web").mkdir(parents=True, exist_ok=True)
+    (ed.project / "web" / "icon.png").write_bytes(b"icon bytes")
     await ed.call("set_project_settings", values={"web.favicon": "web/icon.png"})
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")

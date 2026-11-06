@@ -51,7 +51,8 @@ TEST(ExportFiles, WalkVisitsFilesSkipsFoldersAndStops) {
             return true;
         });
     ASSERT_TRUE(walked.ok) << walked.error;
-    EXPECT_EQ(seen, (std::vector<std::string>{"a/b/two.txt", "a/one.txt"}));
+    // a folder's files, then its folders, each in name order
+    EXPECT_EQ(seen, (std::vector<std::string>{"a/one.txt", "a/b/two.txt"}));
 
     // a visitor that fails stops the walk
     size_t visits = 0;
@@ -95,6 +96,7 @@ TEST(ExportFiles, MirrorNeverCopiesIdeOutput) {
 TEST(ExportFiles, MirrorKeepsIdeOutputInTheDestination) {
     TestTempDir dir("export-mirror");
     TestTempDir::write(dir / "sdk/android/build.gradle", "gradle");
+    TestTempDir::write(dir / "sdk/android/app/build.gradle", "app");
     TestTempDir::write(dir / "sdk/android/gone.txt", "old");
     std::string error;
     ASSERT_TRUE(exportfiles::mirrorTree(dir / "sdk", dir / "out", true, error)) << error;

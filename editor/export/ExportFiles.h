@@ -34,7 +34,7 @@ namespace jasperengine::editor::exportfiles {
     bool isSkippableOpenError(const std::error_code& ec);
 
     // Every regular file below `root` (and every directory, which `filter` decides on before it is
-    // entered), depth first. A link to a file is visited as that file; a link to a folder is not
+    // entered), depth first: a folder's files, then its folders, each in name order. A link to a file is visited as that file; a link to a folder is not
     // entered (the project's linked folders are walked by Exporter::walkTree, S68). `rel` is
     // relative to root; an entry with an empty relative path is skipped. A root that is not a
     // directory fails.
