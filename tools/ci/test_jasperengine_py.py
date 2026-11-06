@@ -69,11 +69,12 @@ class WebBuildTest(unittest.TestCase):
         self.envs.append(kwargs.get("env") or {})
         return subprocess.CompletedProcess(command, 0)
 
-    def configure(self, programs_on_path=("cmake",), extra_args=(), windows=True):
+    def configure(self, programs_on_path=("cmake",), extra_args=(), windows=True, extra_env=None):
         """Runs the script's build() as `--platform web --no-build`; returns (exit code, stdout+stderr)."""
         argv = ["jasperengine.py", "--platform", "web", "--project", str(self.project), "--output", str(self.build),
                 "--no-build", *extra_args]
         env = {"EMSDK": str(self.emsdk), "ProgramFiles(x86)": str(self.program_files), "PATH": ""}
+        env.update(extra_env or {})
 
         def which(name):
             return "/usr/bin/" + name if name in programs_on_path else None
@@ -157,6 +158,29 @@ class WebBuildTest(unittest.TestCase):
         self.assertEqual(cmake[0], "cmake")
         self.assertTrue(any(arg.startswith("-DCMAKE_TOOLCHAIN_FILE=") for arg in cmake), cmake)
         self.assertEqual(cmake[cmake.index("-G") + 1], "Ninja")
+
+    def test_cmake_generator_from_the_environment(self):
+        touch(self.vs_ninja)
+        code, out = self.configure(extra_env={"CMAKE_GENERATOR": "Ninja Multi-Config"})
+        self.assertEqual(code, 0, out)
+        cmake = self.commands[0]
+        self.assertNotIn("-G", cmake, "CMake reads CMAKE_GENERATOR itself")
+        self.assertFalse(any(arg.startswith("-DCMAKE_MAKE_PROGRAM=") for arg in cmake), cmake)
+
+    def test_node_emsdk_env_first(self):
+        chosen = touch(self.root / "chosen" / "node.exe")
+        touch(self.vs_ninja)
+        code, out = self.configure(extra_env={"EMSDK_NODE": str(chosen)})
+        self.assertEqual(code, 0, out)
+        self.assertIn("-DCMAKE_CROSSCOMPILING_EMULATOR=" + str(chosen).replace("\\", "/"), self.commands[0])
+
+    def test_node_from_the_config_before_the_emsdk_newest(self):
+        configured = touch(self.root / "configured" / "node.exe")
+        touch(self.emsdk / ".emscripten", "NODE_JS = '%s'\n" % configured)
+        touch(self.vs_ninja)
+        code, out = self.configure()
+        self.assertEqual(code, 0, out)
+        self.assertIn("-DCMAKE_CROSSCOMPILING_EMULATOR=" + str(configured).replace("\\", "/"), self.commands[0])
 
     def test_no_emscripten(self):
         for name in ("emcc.exe",):

@@ -721,3 +721,14 @@ engine/CMakeLists.txt, editor/window/dialog/ExportWindow.cpp, build.gradle, edit
    new API (`CMakeText`, `VersionControlFiles`, `ExportCopy`, `PlatformBackends`, the Visual Studio Ninja case)
    were left out of it (they do not compile there), and `RecentProjectsTest` without its two lines that name
    `recordsRecentProjects()`.
+9. **`/MP` and MSBuild's project parallelism.** Under a Visual Studio generator `cmake --build --parallel N` is
+   MSBuild's `/m:N`, and each project's `cl` takes `/MP<N>`: up to N x N compilers at once while several projects
+   build. Capping that needs MSBuild's MultiToolTask scheduler (`UseMultiToolTask`, `EnforceProcessCountAcrossBuilds`),
+   which section 2 left out and which cannot be checked here (no Windows); `/MP` stays at the job count.
+10. **Review fixes.** The editor's C++ editor scripts (`EditorScripts::writeCppProject`, now a public static so a test
+    reads its CMake) and the clangd flags compile with `Generator::physicsCompileDefinitions()` too (they lacked the
+    Jolt layout macros as well); `jasperengine.py` leaves the generator to `CMAKE_GENERATOR` when it is set and
+    takes node from `EMSDK_NODE`, then the config's `NODE_JS`, then the emsdk's newest, then `PATH`; the editor runs
+    vswhere for Visual Studio's Ninja only when PATH has no generator, and reads its output as UTF-8;
+    `/WHOLEARCHIVE` is passed as is to MSVC-style drivers and through `LINKER:` for a GNU-style clang++ targeting
+    MSVC.

@@ -99,13 +99,17 @@ class Emscripten:
                 break
         windows = host_platform() == "windows"
         node_rel = os.path.join("bin", "node.exe" if windows else "node")
-        node = config_node(self.config) if self.config else None
+        # node: what emsdk_env chose (EMSDK_NODE), else the config's NODE_JS, else the emsdk's newest,
+        # else node on PATH
+        node = os.environ.get("EMSDK_NODE")
+        if not (node and os.path.isfile(node)):
+            node = config_node(self.config) if self.config else None
         if node and not os.path.isfile(node):
             node = None
         if not node and emsdk:
             node = newest_tool(os.path.join(emsdk, "node"), node_rel)
-        if not node and os.environ.get("EMSDK_NODE") and os.path.isfile(os.environ["EMSDK_NODE"]):
-            node = os.environ["EMSDK_NODE"]
+        if not node:
+            node = shutil.which("node")
         self.node = node
         self.python = newest_tool(os.path.join(emsdk, "python"), "python.exe" if windows else os.path.join("bin", "python3")) if emsdk else None
 
@@ -179,6 +183,9 @@ def choose_generator(platform, build_dir, given):
         return "Xcode", []
     if given:
         return given, []
+    # CMake reads CMAKE_GENERATOR itself (emcmake.py and the editor leave it to CMake too)
+    if os.environ.get("CMAKE_GENERATOR"):
+        return None, []
     # A configured build directory can't change generator: CMake keeps its own
     if os.path.isfile(os.path.join(build_dir, "CMakeCache.txt")):
         return None, []

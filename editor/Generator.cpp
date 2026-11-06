@@ -40,6 +40,7 @@
 #include <cstring>
 #include <cerrno>
 #include <map>
+#include <sstream>
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
@@ -466,7 +467,7 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
 // way: the object layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own
 // NDEBUG. JPH_SHARED_LIBRARY and BOX2D_DLL import both libraries from the engine library, which
 // carries all of them (engine/CMakeLists.txt; MSVC links Jolt's data only through dllimport).
-static std::string physicsCompileDefinitions() {
+std::string editor::Generator::physicsCompileDefinitions() {
     std::string definitions = "JPH_OBJECT_LAYER_BITS=" + std::to_string(JPH_OBJECT_LAYER_BITS);
 #ifdef JPH_DEBUG
     // empty, as Jolt defines it, so its own definition is no redefinition
@@ -2042,6 +2043,9 @@ void writeCompileDatabase(const fs::path& projectPath, const fs::path& projectIn
         "-DJASPERENGINE_EDITOR_PLUGIN", "-DJASPERENGINE_SHARED", "-DJASPERENGINE_EDITOR",
         "-I" + project.generic_string(),
     };
+    // the macros the scripts compile with: Jolt's class layouts follow them
+    std::istringstream physics(editor::Generator::physicsCompileDefinitions());
+    for (std::string definition; physics >> definition;) flags.push_back("-D" + definition);
     std::vector<fs::path> roots = {project};
     for (const fs::path& dir : scriptDirs) {
         const fs::path absolute = (dir.is_absolute() ? dir : project / dir).lexically_normal();

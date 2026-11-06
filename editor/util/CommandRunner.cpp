@@ -3,6 +3,7 @@
 
 // CommandRunner.cpp
 #include "CommandRunner.h"
+#include "FileUtils.h"
 #include "TextEncoding.h"
 #include "editor/Out.h"
 
@@ -158,19 +159,17 @@ std::string editor::CommandRunner::findVcvarsall() {
     return "";
 }
 
-std::string editor::CommandRunner::findVisualStudioNinja() {
-    const std::string vswhere = findVswherePath();
-    if (vswhere.empty()) return "";
-    // every install (Build Tools included), newest first
-    std::istringstream installs(capture({vswhere, "-products", "*", "-sort", "-property", "installationPath"}));
+fs::path editor::CommandRunner::findVisualStudioNinja() {
+    // every install (Build Tools included), newest first; vswhere writes UTF-8 (-utf8)
+    std::istringstream installs(vswhere({"-products", "*", "-sort", "-property", "installationPath"}));
     for (std::string install; std::getline(installs, install);) {
         while (!install.empty() && (install.back() == '\r' || install.back() == ' ')) install.pop_back();
         if (install.empty()) continue;
-        const fs::path ninja = fs::path(install) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja" / "ninja.exe";
+        const fs::path ninja = FileUtils::pathFromUtf8(install) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja" / "ninja.exe";
         std::error_code ec;
-        if (fs::is_regular_file(ninja, ec)) return ninja.string();
+        if (fs::is_regular_file(ninja, ec)) return ninja;
     }
-    return "";
+    return fs::path();
 }
 #endif
 

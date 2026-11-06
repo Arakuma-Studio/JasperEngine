@@ -6540,9 +6540,11 @@ std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& 
     args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
     if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
 #ifdef _WIN32
-    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
-    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error, CommandRunner::findVisualStudioNinja()))
-        args.push_back(arg);
+    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH);
+    // Visual Studio's own Ninja (a vswhere run) only when that finds no generator
+    std::vector<std::string> generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error);
+    if (!error.empty()) generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error, CommandRunner::findVisualStudioNinja());
+    for (const std::string& arg : generatorArgs) args.push_back(arg);
 #else
     (void)generatorGiven;
     (void)env;

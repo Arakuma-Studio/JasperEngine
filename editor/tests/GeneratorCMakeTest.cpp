@@ -101,3 +101,15 @@ TEST(GeneratorCMake, PhysicsLibrariesImportedFromTheEngineLibrary) {
     EXPECT_NE(line.find("BOX2D_DLL"), std::string::npos) << line;
 #endif
 }
+
+// clangd reads the scripts with the macros they build with: Jolt's layouts and linkage follow them
+TEST(GeneratorCMake, ClangdFlagsCarryThePhysicsMacros) {
+    TestTempDir dir("generator-clangd");
+    const fs::path project = dir.path();
+    TestTempDir::write(project / "scripts" / "Mover.cpp", "int mover() { return 0; }\n");
+    Generator::writeEditorTooling(project, project / ".jasperengine", 20, {});
+    const std::string database = generatorCMakeRead(project / ".jasperengine" / "clangd" / "compile_commands.json");
+    ASSERT_NE(database.find("Mover.cpp"), std::string::npos) << database;
+    EXPECT_NE(database.find("-DJPH_SHARED_LIBRARY"), std::string::npos) << database;
+    EXPECT_NE(database.find("-DJPH_OBJECT_LAYER_BITS="), std::string::npos) << database;
+}
