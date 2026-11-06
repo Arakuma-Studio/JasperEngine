@@ -11,6 +11,8 @@
 #include "window/AssetPanels.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/AudioMixerWindow.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -238,6 +240,8 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    soundBrowserWindow = new SoundBrowserWindow(&project);
+    audioCapturesWindow = new AudioCapturesWindow(&project);
     applyPaletteDialog = new ApplyPaletteDialog(&project);
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
@@ -648,6 +652,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.createHtmlDocument", "HTML Document"),
         menuSeparator(),
         catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
         menuSeparator(),
         catalogItem("assets.createPoseAnimation", "Pose Animation"),
         menuSeparator(),
@@ -674,6 +679,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        catalogItem("assets.importSoundEssentials"),
         menuSubmenu("Version Control", {
             catalogItem("assets.vcs.commit"),
             catalogItem("assets.vcs.revert"),
@@ -736,7 +742,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Audio", {
-            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
+            catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         menuSubmenu("2D", {
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME))
@@ -1029,6 +1037,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleSoundBrowser:
+            soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioCaptures:
+            audioCapturesWindow->open();
+            break;
         case AppMenuCommand::ResetLoudness:
             LoudnessMonitor::get().reset();
             break;
@@ -1193,8 +1207,23 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsImportSoundEssentials:
+            projectWindow->assetsImportSoundEssentials();
+            break;
+        case AppMenuCommand::AssetsCreatePlaceholderSound:
+            projectWindow->assetsCreatePlaceholderSound();
+            break;
+        case AppMenuCommand::AssetsReanalyzeAudio:
+            projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
+            break;
         case AppMenuCommand::AssetsCreateAudioMixer:
             projectWindow->assetsCreateAudioMixer();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEvent:
+            projectWindow->assetsCreateSoundEvent();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEventFromClips:
+            projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
@@ -2896,6 +2925,8 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    soundBrowserWindow->show();
+    audioCapturesWindow->show();
     // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
     paletteWindow->show();
     applyPaletteDialog->show();
@@ -5043,6 +5074,8 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    soundBrowserWindow->resetForProjectSwitch();
+    audioCapturesWindow->resetForProjectSwitch();
     // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
     paletteWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
@@ -6038,6 +6071,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -6058,6 +6092,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

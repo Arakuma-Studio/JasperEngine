@@ -74,6 +74,8 @@ namespace jasperengine::editor{
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
+    class SoundBrowserWindow;
+    class AudioCapturesWindow;
     class ApplyPaletteDialog;
     class PaletteWindow;
     class VertexAnimationBakerWindow;
@@ -248,6 +250,8 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        SoundBrowserWindow* soundBrowserWindow;
+        AudioCapturesWindow* audioCapturesWindow;
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;

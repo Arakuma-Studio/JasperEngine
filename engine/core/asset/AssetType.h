@@ -37,13 +37,14 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // The pixel-art family's reserved values (PIXEL-ART-LEDGER.md): each keeps its number
-        // whatever order the specs land in, so a value between two may still be unused
-        Palette = 24                // a .palette palette (S43)
+        // The pixel-art family's reserved values 24 to 27 (PIXEL-ART-LEDGER.md, docs/specs/S41-S52):
+        // each keeps its number whatever order the specs land in, so a value between two may still be unused
+        Palette = 24,               // a .palette palette (S43)
+        SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
     };
 
     // the highest value in use
-    constexpr uint8_t kLastAssetTypeValue = static_cast<uint8_t>(AssetType::Palette);
+    constexpr uint8_t kLastAssetTypeValue = static_cast<uint8_t>(AssetType::SoundEvent);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -72,6 +73,7 @@ namespace jasperengine {
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::Palette: return "palette";
+            case AssetType::SoundEvent: return "sound_event";
             case AssetType::Unknown: break;
         }
         return "unknown";

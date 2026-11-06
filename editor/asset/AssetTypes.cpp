@@ -54,6 +54,8 @@ namespace {
             // the pixel-art family's assets (PIXEL-ART-LEDGER.md)
             // its ramps are sub-assets ("<file>.palette#ramp:<name>", a texture strip)
             {{AssetType::Palette, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".palette"}},
+            // Sound Events (S37): the file holds no GUID, its .meta does
+            {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
         };
         return table;
     }

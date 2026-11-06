@@ -113,6 +113,7 @@ namespace {
             case K::AnimatorController: return AssetType::AnimatorController;
             case K::VertexAnimation: return AssetType::VertexAnimation;
             case K::AvatarMask: return AssetType::AvatarMask;
+            case K::SoundEvent: return AssetType::SoundEvent;
             case K::NavMesh: return AssetType::NavMesh;
             case K::NavGrid: return AssetType::NavGrid;
             case K::ParticleEffect: return AssetType::ParticleEffect;

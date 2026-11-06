@@ -59,6 +59,8 @@ shaderKeys:
   - type: depth
     properties: 2
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
 entities:
   - type: Entity
