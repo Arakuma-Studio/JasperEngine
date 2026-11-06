@@ -1019,4 +1019,7 @@ Recorded during the implementation (branch `dc/scene-integrity`).
     dialogs' `abandon()` and close-as-Cancel, are unit-tested.
 11. **The Save dialog tests use `respond_dialog`** (S69's EditorModal fields `name` and `folder`)
     instead of real input: the refusal reaches agents as `EditorModal::error`, so it is the same check.
-
+12. **The replacement id of a clash is made from the file's project path, not its GUID**: a scene file
+    copied outside the editor carries its original's in-file GUID until the asset database settles it,
+    so the GUID was not the same at every load (`SceneIntegrityTest.AClashAtLoadGetsTheSameReplacementEveryTime`
+    found it). The path is stable until the file moves, and the first save writes the id anyway.

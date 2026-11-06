@@ -16,11 +16,11 @@
 
 namespace jasperengine::editor::sceneid {
 
-    // A replacement id for the file whose asset GUID is `guidText` (its project-relative path when
-    // the GUID is empty): derived from it, so every load picks the same one, and probed past the
-    // ids `taken` reports. Never 0 (NULL_PROJECT_SCENE).
-    uint32_t replacementId(const std::string& guidText, const std::filesystem::path& relative,
-                           const std::function<bool(uint32_t)>& taken);
+    // A replacement id for the scene file at `relative` (project-relative): derived from the path,
+    // so every load picks the same one (the file's GUID is not settled yet for a copy made outside
+    // the editor: it carries its original's), and probed past the ids `taken` reports. Never 0
+    // (NULL_PROJECT_SCENE).
+    uint32_t replacementId(const std::filesystem::path& relative, const std::function<bool(uint32_t)>& taken);
 
     // The root `id` and `name` of a scene file's text; false when the text has no root id
     bool readSceneHeader(const std::string& text, uint32_t& id, std::string& name);

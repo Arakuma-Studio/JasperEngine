@@ -4661,8 +4661,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         if (targetScene->id == NULL_PROJECT_SCENE || (existing && existing != targetScene)) {
             const uint32_t oldId = targetScene->id;
             const fs::path relative = normalizeToProjectRelative(targetScene->filepath);
-            const Guid fileGuid = assetDatabase.getAssetGuid(relative);
-            targetScene->id = sceneid::replacementId(fileGuid.isNull() ? std::string() : fileGuid.str(), relative,
+            targetScene->id = sceneid::replacementId(sceneFileKey(relative),
                 [this, targetScene](uint32_t id) {
                     const SceneProject* holder = getScene(id);
                     return holder && holder != targetScene;

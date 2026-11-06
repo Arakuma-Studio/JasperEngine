@@ -51,9 +51,8 @@ namespace {
 
 }
 
-uint32_t editor::sceneid::replacementId(const std::string& guidText, const std::filesystem::path& relative,
-                                        const std::function<bool(uint32_t)>& taken) {
-    const std::string seed = guidText.empty() ? relative.lexically_normal().generic_string() : guidText;
+uint32_t editor::sceneid::replacementId(const std::filesystem::path& relative, const std::function<bool(uint32_t)>& taken) {
+    const std::string seed = relative.lexically_normal().generic_string();
     // FNV-1a: stable across runs and platforms
     uint32_t hash = 2166136261u;
     for (unsigned char c : seed) {

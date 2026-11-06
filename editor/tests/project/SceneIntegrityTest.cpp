@@ -116,17 +116,14 @@ namespace {
 // ---- the identity a scene file carries -------------------------------------------------------
 
 TEST(SceneFileIdentity, ReplacementIdIsStableAndFree) {
-    const uint32_t first = sceneid::replacementId("82542eaa9438c61a4644909803eb59fb", "Levels/A.scene", nullptr);
-    EXPECT_EQ(sceneid::replacementId("82542eaa9438c61a4644909803eb59fb", "Levels/A.scene", nullptr), first);
+    const uint32_t first = sceneid::replacementId("Levels/A.scene", nullptr);
+    EXPECT_EQ(sceneid::replacementId("Levels/./A.scene", nullptr), first);
     EXPECT_NE(first, 0u);
-    EXPECT_NE(sceneid::replacementId("82542eaa9438c61a4644909803eb59fc", "Levels/A.scene", nullptr), first);
+    EXPECT_NE(sceneid::replacementId("Levels/B.scene", nullptr), first);
     // probed past the ids in use
-    const uint32_t free = sceneid::replacementId("82542eaa9438c61a4644909803eb59fb", "Levels/A.scene",
-                                                 [first](uint32_t id) { return id == first || id == first + 1; });
+    const uint32_t free = sceneid::replacementId("Levels/A.scene", [first](uint32_t id) { return id == first || id == first + 1; });
     EXPECT_NE(free, first);
     EXPECT_NE(free, first + 1);
-    // without a GUID the path decides
-    EXPECT_EQ(sceneid::replacementId("", "a.scene", nullptr), sceneid::replacementId("", "a.scene", nullptr));
 }
 
 TEST(SceneFileIdentity, RewriteTouchesOnlyTheRootIdAndName) {
