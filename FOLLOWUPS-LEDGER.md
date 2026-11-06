@@ -55,6 +55,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Main's MCP tests | 12-13 MCP tests fail on plain `main` since the Forge landing (FBX, exports, shader keys, saved-output determinism, scene order, sprite normals) | `fix/main-mcp-after-forge` | A, B | In progress |
 | Main's editor tests | The editor unit binary segfaults on `main` after the Forge landing (in `LodFadeVariantKeys`), so 0 editor tests run; `PbrVariant.ALobesMapAsksForTheMeshsUVs` fails | `fix/main-editor-tests` | A, B | Done |
 | Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | Done |
 | Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
@@ -202,3 +203,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-06: Fourth full suite started on `e5edd9218` (`main` and S40, which holds S39). The editor unit run will crash in Forge's `LodFadeVariantKeys` until `fix/main-editor-tests` lands.
 - 2026-11-06: `fix/main-editor-tests` landed. The fourth suite's unit run started before it, so the unit tests rerun on the suite's tree with this merged.
 - 2026-11-06: Fourth full suite on `e5edd9218` (`main`, S39, S40): MCP 1857 passed, 21 failed, 7 skipped. This is the first full MCP run on `main` since the Forge program landed without one, so many failures may be `main`'s (FBX, exports, shader keys, saved-output determinism, reflection). Triage running: the 15 failed files on the suite's tree with `main`'s test fix, and on plain `main`, side by side.
+- 2026-11-06: Fourth suite triage: 12 failures happen on plain `main` too (one more only there: `test_fbx_edit_reloads_the_model`); 5 only with S39 and S40 (S40 fixing). Among `main`'s: `Lobes.scene` saves differently drawn or not, the external-buffer count the last fix predicted. Main's failures are being fixed on `fix/main-mcp-after-forge`.
