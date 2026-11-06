@@ -3145,6 +3145,12 @@ namespace {
     // ---- the component UI's selection (ui-components spec 6.5): keys and the gamepad reach it only
     // while a Button is selected, so a visible HUD button never takes them
 
+    // the keys whose press the selection took: their release is the UI's too (whatever the press
+    // did: a hold, e:use(), a scene its onClick removed)
+    std::set<int> navigationKeysDown;
+    // the character a Submit key's press types next (Space, Enter's return): not the game's
+    uint32_t navigationSwallowedChar = 0;
+
     // the top scene (layer order) whose component UI holds a live selection; null: none
     Scene* selectionScene(const std::vector<Scene*>& scenes){
         for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
@@ -3803,8 +3809,15 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     }
 
     // then the component UI's selection (a keyboard menu), never while something is typed in
-    if (!consumed && !typing && !docTyping)
-        consumed = keyToNavigation(scenes, key, repeat, mods);
+    navigationSwallowedChar = 0;
+    if (!consumed && !typing && !docTyping && keyToNavigation(scenes, key, repeat, mods)){
+        consumed = true;
+        navigationKeysDown.insert(key);
+        if (key == D_KEY_SPACE)
+            navigationSwallowedChar = ' ';
+        else if (key == D_KEY_ENTER || key == D_KEY_KP_ENTER)
+            navigationSwallowedChar = '\r';
+    }
 
     if (consumed && !repeat)
         Input::setPressConsumedByUI(Input::keyControl(key));
@@ -3838,6 +3851,9 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
             consumed = true;
     }
 
+    if (navigationKeysDown.erase(key))
+        consumed = true;
+
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onKeyUp.call(key, repeat, mods);
 }
@@ -3858,8 +3874,18 @@ void Engine::flushCharInput(){
         deliverCodepoints(codepoints);
 }
 
-void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
+void Engine::deliverCodepoints(const std::vector<uint32_t>& input){
     const std::vector<Scene*> scenes = getInputScenes(true);
+
+    // the character of a key the selection submitted with is not typed anywhere
+    std::vector<uint32_t> codepoints = input;
+    if (navigationSwallowedChar != 0 && !codepoints.empty() &&
+        (codepoints.front() == navigationSwallowedChar || (navigationSwallowedChar == '\r' && codepoints.front() == '\n'))){
+        codepoints.erase(codepoints.begin());
+        navigationSwallowedChar = 0;
+        if (codepoints.empty())
+            return;
+    }
 
     // Input.inputString (Unity's: the text typed this frame)
     for (uint32_t typed : codepoints)
@@ -3884,7 +3910,13 @@ void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
         sendCharacterToGame(codepoint, !consumed, !ignoreEventsHandledByUI || !consumed, scenes);
 }
 
-void Engine::systemTextInput(const std::string& utf8){
+void Engine::systemTextInput(const std::string& typed){
+    // the character of a key the selection submitted with is not typed anywhere
+    std::string utf8 = typed;
+    if (navigationSwallowedChar != 0 && !utf8.empty() && (unsigned char)utf8[0] == navigationSwallowedChar){
+        utf8.erase(0, 1);
+        navigationSwallowedChar = 0;
+    }
     if (utf8.empty())
         return;
 
@@ -4033,24 +4065,29 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
 }
 
-bool Engine::wantsGamepadNavigation(){
+void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
     const std::vector<Scene*> scenes = getScenesSnapshot();
-    if (documentsHaveGamepadFocus(scenes))
-        return true;
-    // a selected Button (the component UI's menu); no history is asked here (no callbacks)
+    // a selected Button (the component UI's menu, or one its history gives back); no callbacks here
+    keyboard = false;
     for (Scene* scene : scenes){
-        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->hasSelection())
-            return true;
+        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->hasSelection()){
+            keyboard = true;
+            break;
+        }
     }
-    return false;
+    gamepad = keyboard || documentsHaveGamepadFocus(scenes);
+}
+
+bool Engine::wantsGamepadNavigation(){
+    bool gamepad = false, keyboard = false;
+    getUINavigationWants(gamepad, keyboard);
+    return gamepad;
 }
 
 bool Engine::wantsKeyboardNavigation(){
-    for (Scene* scene : getScenesSnapshot()){
-        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->hasSelection())
-            return true;
-    }
-    return false;
+    bool gamepad = false, keyboard = false;
+    getUINavigationWants(gamepad, keyboard);
+    return keyboard;
 }
 
 bool Engine::isTextInputFocused(){

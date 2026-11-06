@@ -10390,6 +10390,12 @@ void editor::Project::stop(uint32_t sceneId) {
                 }
             }
 
+            // the played scene's Buttons are the edited ones again: no selection or hold, no state
+            // scale, the authored look (their runtime fields survive the snapshot's restore)
+            if (mainSceneProject && mainSceneProject->scene) {
+                mainSceneProject->scene->getSystem<UISystem>()->resetSelection();
+            }
+
             // matrix changes made by scripts last only for the Play, never reaching project.yaml
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources

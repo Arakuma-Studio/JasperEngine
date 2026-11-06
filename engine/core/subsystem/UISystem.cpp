@@ -1004,6 +1004,8 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
         button.texturePressed.setAlphaBorderAuto(true);
         button.textureDisabled.setAlphaBorderAuto(true);
         button.textureSelected.setAlphaBorderAuto(true);
+        // what was loaded writes as its transition says: no give-back of a value it never wrote
+        button.appliedTransition = button.transition;
 
         // the image's texture seeds Normal when none is set or it cannot load; one still loading
         // (Async Loading) keeps its path
@@ -2627,6 +2629,7 @@ void UISystem::destroyButton(ButtonComponent& button){
     button.textureHovered.destroy();
     button.texturePressed.destroy();
     button.textureDisabled.destroy();
+    button.textureSelected.destroy();
 
     button.needUpdateButton = true;
 }
@@ -2872,6 +2875,9 @@ void UISystem::update(double dt){
     // need to be ordered by Transform
     auto layouts = scene->getComponentArray<RectTransformComponent>();
 
+    // a Select On Enable Button that came on this update (the first in Hierarchy order)
+    Entity pickedOnEnable = NULL_ENTITY;
+
     for (int i = 0; i < layouts->size(); i++){
         RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
@@ -2880,6 +2886,20 @@ void UISystem::update(double dt){
         // a child that gets no box this update (hidden, inactive) must not keep an index from an
         // earlier one: that box may be a sibling's now
         layout.containerBoxIndex = -1;
+
+        // a Button that comes on: its look of now (it may have gone off selected or scaled), and
+        // Select On Enable; no callback here, the selection changes after the loop
+        if (signature.test(buttonId) && !editMode){
+            ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
+            const bool live = isSelectable(entity);
+            if (live && !button.wasLive){
+                if (signature.test(uiId))
+                    applyButtonVisual(entity, button, scene->getComponent<UIComponent>(entity), false);
+                if (button.selectOnEnable && pickedOnEnable == NULL_ENTITY)
+                    pickedOnEnable = entity;
+            }
+            button.wasLive = live;
+        }
 
         // a deactivated or disabled element cannot keep the keyboard focus
         if (signature.test(scene->getComponentId<UIComponent>())){
@@ -3463,7 +3483,7 @@ void UISystem::update(double dt){
     // after the layout: the glyphs of this frame are built
     updateTextEffects(dt);
     // Select On Enable and a lost selection, then the state fades (UI clock)
-    updateSelection();
+    updateSelection(pickedOnEnable);
     updateButtonTransitions();
 }
 

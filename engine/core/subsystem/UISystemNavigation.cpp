@@ -360,8 +360,12 @@ bool UISystem::setSelected(Entity entity){
 void UISystem::loseSelection(){
     const Entity lost = selected;
     if (lost != NULL_ENTITY && scene->isEntityCreated(lost)){
-        if (ButtonComponent* button = scene->findComponent<ButtonComponent>(lost))
+        if (ButtonComponent* button = scene->findComponent<ButtonComponent>(lost)){
             button->selected = false;
+            // its look without the selection (shown again if it comes back)
+            if (UIComponent* ui = scene->findComponent<UIComponent>(lost))
+                applyButtonVisual(lost, *button, *ui, false);
+        }
     }
     selected = NULL_ENTITY;
     if (submitButton == lost)
@@ -391,7 +395,16 @@ bool UISystem::hasLiveSelection(){
 }
 
 bool UISystem::hasSelection() const{
-    return selected != NULL_ENTITY && !selectionDestroyed && isSelectable(selected);
+    if (selected != NULL_ENTITY && !selectionDestroyed && isSelectable(selected))
+        return true;
+    // a lost selection the next use gives back from the history (a script closed a submenu)
+    if (selected != NULL_ENTITY || selectionDestroyed){
+        for (Entity entry : selectionHistory){
+            if (isNavigable(entry))
+                return true;
+        }
+    }
+    return false;
 }
 
 bool UISystem::isInputFieldTyping() const{
@@ -407,29 +420,38 @@ bool UISystem::isInputFieldTyping() const{
     return false;
 }
 
-void UISystem::updateSelection(){
+void UISystem::updateSelection(Entity pickedOnEnable){
     if (editMode)
         return;
-
-    // Select On Enable: a Button that came on this update takes the selection, the first in
-    // Hierarchy order when several do (HTML autofocus)
-    Entity picked = NULL_ENTITY;
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-    for (int i = 0; i < layouts->size(); i++){
-        const Entity entity = layouts->getEntity(i);
-        const Signature signature = scene->getSignature(entity);
-        if (!signature.test(scene->getComponentId<ButtonComponent>()))
-            continue;
-        ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
-        const bool live = isSelectable(entity);
-        if (live && !button.wasLive && button.selectOnEnable && picked == NULL_ENTITY)
-            picked = entity;
-        button.wasLive = live;
-    }
-    if (picked != NULL_ENTITY && picked != selected)
-        changeSelection(picked, false);
-
+    if (pickedOnEnable != NULL_ENTITY && pickedOnEnable != selected && isSelectable(pickedOnEnable))
+        changeSelection(pickedOnEnable, false);
     hasLiveSelection();
+}
+
+void UISystem::resetSelection(){
+    selected = NULL_ENTITY;
+    selectionHistory.clear();
+    submitButton = NULL_ENTITY;
+    submitSource = 0;
+    selectionDestroyed = false;
+    ++selectionRequest;
+    transitioningButtons.clear();
+    auto buttons = scene->getComponentArray<ButtonComponent>();
+    for (int i = 0; i < buttons->size(); i++){
+        ButtonComponent& button = buttons->getComponentFromIndex(i);
+        const Entity entity = buttons->getEntity(i);
+        // the Transform holds the authored scale again (the play snapshot is restored): the
+        // factor goes without dividing it
+        button.appliedScale = 1.0f;
+        button.selected = false;
+        button.submitPressed = false;
+        button.pressed = false;
+        button.hovered = false;
+        button.wasLive = false;
+        button.fading = false;
+        if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
+            applyButtonVisual(entity, button, *ui, false);
+    }
 }
 
 bool UISystem::eventOnMove(MoveDirection dir){

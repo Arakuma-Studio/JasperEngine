@@ -23,6 +23,7 @@
 #include "Screen.h"
 #include "Input.h"
 #include "Catalog.h"
+#include "registry/EntityCloner.h"
 
 #include <cmath>
 #include <cstdio>
@@ -280,13 +281,14 @@ TEST_F(UIComponentsTest, RuntimeCanvasSizeUpdatesCameras) {
     int changed = 0;
     Engine::onViewChanged.add("uicomponents", std::function<void()>([&]() {
         changed++;
-        Engine::setCanvasSize(800, 600);   // a handler that sets it again does not recurse
+        // a handler that changes it again: refreshed, without a second event (no recursion)
+        if (Engine::getCanvasWidth() == 800) Engine::setCanvasSize(900, 700);
     }));
     Engine::setCanvasSize(800, 600);
     Engine::onViewChanged.remove("uicomponents");
-    EXPECT_EQ(Engine::getCanvasWidth(), 800);
-    EXPECT_FLOAT_EQ(camera.rightClip, 800.0f) << "the scene camera follows the runtime canvas at once";
-    EXPECT_FLOAT_EQ(camera.topClip, 600.0f);
+    EXPECT_EQ(Engine::getCanvasWidth(), 900);
+    EXPECT_FLOAT_EQ(camera.rightClip, 900.0f) << "the scene camera follows the runtime canvas at once";
+    EXPECT_FLOAT_EQ(camera.topClip, 700.0f);
     EXPECT_EQ(changed, 1);
 
     EngineTestAccess::setViewLoaded(false);
@@ -708,4 +710,117 @@ TEST_F(UIComponentsTest, ScriptMessagesFromLua) {
     EXPECT_EQ(lua("return UI.getSelected(scn).name"), "A");
     EXPECT_EQ(lua("return tostring(UI.setSelected(scn, nil))"), "true");
     EXPECT_EQ(ui().getSelected(), NULL_ENTITY);
+}
+
+// ---- review fixes
+
+// the editor's Play stop: the played scene's Buttons are edited again, no selection or state left
+// (the snapshot's restore keeps their runtime fields), Select On Enable fires on the next Play,
+// and the authored scale is never divided by a state's factor
+TEST_F(UIComponentsTest, PlayStopResetsTheSelection) {
+    const Entity e = button("B", 0, 0);
+    btn(e).selectOnEnable = true;
+    btn(e).scaleSelected = 1.5f;
+    start();
+    ASSERT_EQ(ui().getSelected(), e);
+    frame();
+    Transform& transform = scene->getComponent<Transform>(e);
+    ASSERT_FLOAT_EQ(transform.scale.x, 1.5f);
+
+    // Stop: the snapshot restores the authored Transform, then the reset
+    transform.scale = Vector3(1, 1, 1);
+    transform.needUpdate = true;
+    ui().resetSelection();
+    EXPECT_EQ(ui().getSelected(), NULL_ENTITY);
+    EXPECT_FALSE(btn(e).selected);
+    ui().setEditMode(true);
+    frame();
+    EXPECT_FLOAT_EQ(transform.scale.x, 1.0f) << "the authored scale stays";
+
+    // the next Play
+    ui().setEditMode(false);
+    frame();
+    EXPECT_EQ(ui().getSelected(), e) << "Select On Enable fires again";
+}
+
+// a copied menu keeps its Explicit navigation among the copies; the copy starts unselected
+TEST_F(UIComponentsTest, CloneAndMoveRemapExplicitNavigation) {
+    const Entity root = element("Menu", 0, 0, 400, 400);
+    const Entity first = button("First", 0, 0);
+    const Entity second = button("Second", 0, 100);
+    scene->addEntityChild(root, first, false);
+    scene->addEntityChild(root, second, false);
+    btn(first).navigationMode = NavigationMode::EXPLICIT;
+    btn(first).selectOnDown = second;
+    int clicks = 0;
+    btn(first).onClick.add("t", std::function<void()>([&]() { clicks++; }));
+    start();
+    ui().setSelected(first);
+
+    std::unordered_map<Entity, Entity> map;
+    EntityCloner::clone(scene, EntityCloner::collectHierarchy(scene, root), scene, NULL_ENTITY, &map);
+    const Entity firstCopy = map.at(first);
+    EXPECT_EQ(btn(firstCopy).selectOnDown, map.at(second)) << "the copy's target is the copied Second";
+    EXPECT_FALSE(btn(firstCopy).selected);
+    btn(firstCopy).onClick.call();
+    EXPECT_EQ(clicks, 0) << "a copy has no onClick subscribers";
+
+    Scene* other = uiScene();
+    std::unordered_map<Entity, Entity> moved;
+    EntityCloner::move(scene, EntityCloner::collectHierarchy(scene, root), other, moved);
+    EXPECT_EQ(other->getComponent<ButtonComponent>(moved.at(first)).selectOnDown, moved.at(second));
+}
+
+// a submenu closed and opened again shows one selected Button: the one that lost the selection
+// shows its look without it
+TEST_F(UIComponentsTest, LostSelectionShowsItsUnselectedLook) {
+    grid();
+    for (Entity e : {a, b}) btn(e).colorSelected = Vector4(1, 1, 0, 1);
+    const Entity panel = element("Submenu", 600, 600, 200, 200);
+    const Entity inner = button("Inner", 0, 0);
+    scene->addEntityChild(panel, inner, false);
+    btn(inner).colorSelected = Vector4(1, 1, 0, 1);
+    start();
+    ui().setSelected(a);
+    ui().setSelected(inner);
+    ASSERT_EQ(uic(inner).color, Vector4(1, 1, 0, 1));
+    scene->setEntityActive(panel, false);
+    frame();
+    EXPECT_EQ(ui().getSelected(), a) << "back to the opener";
+    EXPECT_EQ(uic(inner).color, Vector4(1, 1, 1, 1)) << "the inner one went unselected";
+    scene->setEntityActive(panel, true);
+    frame();
+    int selectedLooks = 0;
+    for (Entity e : {a, b, c, d, inner}) selectedLooks += uic(e).color == Vector4(1, 1, 0, 1) ? 1 : 0;
+    EXPECT_EQ(selectedLooks, 1) << "one selected Button shows";
+}
+
+// the release of a key whose press the selection took is not the game's, also when the press
+// held nothing; nor is the Space it types
+TEST_F(UIComponentsTest, SubmitKeyReleaseAndCharacterStayWithTheUI) {
+    grid();
+    btn(a).disabled = true;
+    int ups = 0;
+    Engine::onKeyUp.add("uicomponents", std::function<void(int, bool, int)>([&](int, bool, int) { ups++; }));
+    start();
+    ui().setSelected(a);
+    Engine::systemKeyDown(D_KEY_SPACE, false, 0);
+    Engine::systemCharInput(U' ');
+    Engine::systemKeyUp(D_KEY_SPACE, false, 0);
+    Engine::onKeyUp.remove("uicomponents");
+    EXPECT_EQ(ups, 0) << "a non-interactable Button's Submit: the release is the UI's too";
+    EXPECT_EQ(counts["char"], 0) << "the Space typed with it is not the game's";
+}
+
+// the stick does not leak for a frame after a script closed a submenu (the history gives back)
+TEST_F(UIComponentsTest, GamepadStaysWithTheMenuWhileTheHistoryGivesBack) {
+    grid();
+    const Entity panel = element("Submenu", 600, 600, 200, 200);
+    const Entity inner = button("Inner", 0, 0);
+    scene->addEntityChild(panel, inner, false);
+    start();
+    ui().setSelected(a);
+    ui().setSelected(inner);
+    scene->setEntityActive(panel, false);   // no update yet
+    EXPECT_TRUE(Engine::wantsGamepadNavigation());
 }

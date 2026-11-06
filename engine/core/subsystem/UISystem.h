@@ -232,8 +232,8 @@ namespace jasperengine{
         // the selection messages; hierarchy: up the parents until one handles it. Returns whether
         // a script handled it; used: whether one called use()
         bool sendSelectionMessage(Entity target, ScriptMessage m, MoveDirection dir, bool hierarchy, bool* used);
-        // Select On Enable and the selection's loss, once per update
-        void updateSelection();
+        // Select On Enable (the Button the update's loop picked) and the selection's loss, once per update
+        void updateSelection(Entity pickedOnEnable);
 
         //Panel
         void updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
@@ -421,6 +421,9 @@ namespace jasperengine{
         bool eventOnCancel();
         // a Submit's hold ends without a click (onRelease)
         void cancelSubmit();
+        // the editor's Play stop (the played scene's snapshot was restored over these Buttons): no
+        // selection, no history, every Button's runtime state reset and its authored look applied
+        void resetSelection();
         // a primary pointer press (eventOnPointerDown): with a selection, a Button (or its label)
         // is selected, an InputField keeps it, anything else deselects
         void pointerSelects(Entity hit);

@@ -944,6 +944,8 @@ namespace jasperengine {
         static bool wantsGamepadNavigation();
         // a component UI Button is selected: the arrows, Tab, Enter, keypad Enter and Space are the UI's
         static bool wantsKeyboardNavigation();
+        // both at once, from one look at the scenes (Input::beginFrame)
+        static void getUINavigationWants(bool& gamepad, bool& keyboard);
         // a text field has keyboard focus (a native InputField or a document text control): the
         // keyboard does not drive input actions then (Input::beginFrame)
         static bool isTextInputFocused();

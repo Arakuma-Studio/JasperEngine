@@ -5,6 +5,9 @@ Selectable keys; the Canvas Renderer rows a transition owns are read-only in the
 navigation; and a keyboard and gamepad menu in Play (selection, Submit, the stick back to the
 game) read back with get_play_state, get_runtime_entity and eval_lua.
 
+Also: Play, Stop and Play again leave no selection or state scale behind; an ancestor still clips
+a Button's label; the Selected tint in Game view pixels; the runtime state while held and disabled.
+
 A UI scene over black (canvas 1280 x 720) on an owned empty project.
 """
 
@@ -12,6 +15,7 @@ import struct
 import zlib
 
 from harness import Editor
+from htmlui_pixels import Shot
 
 EDITOR = {"create": True, "name": "UI Buttons"}
 CI = True
@@ -64,6 +68,12 @@ async def test_button_field_edit_refreshes_and_ui_color_refused(ed: Editor):
     got = await ed.call("get_entity", scene=sid, entity="Edit", components=["ui"])
     color = component_values(got, "ui")["color"]
     ed.check([round(c, 3) for c in color] == [1, 0, 0, 1], f"an MCP edit of button.colorNormal redraws the button: ui.color {color!r}")
+    await ed.call("undo")
+    await frame(ed)
+    got = await ed.call("get_entity", scene=sid, entity="Edit", components=["ui"])
+    color = component_values(got, "ui")["color"]
+    ed.check([round(c, 3) for c in color] == [1, 1, 1, 1], f"its undo redraws it too: ui.color {color!r}")
+    await ed.call("set_properties", scene=sid, entity="Edit", values={"button": {"colorNormal": [1, 0, 0, 1]}})
 
     refused = await ed.call_raw("set_properties", {"scene": sid, "entity": "Edit", "values": {"ui": {"color": [0, 1, 0, 1]}}})
     ed.check(refused.is_error and "button.colorNormal" in refused.text, f"ui.color on a Button is refused: {refused.text[:300]}")
@@ -132,7 +142,6 @@ async def test_nine_patch_label_not_clipped(ed: Editor):
         await ed.call("set_properties", scene=sid, entity=name, values={"image": {
             "patchMarginTop": margins, "patchMarginBottom": margins, "patchMarginLeft": margins, "patchMarginRight": margins}})
     await frame(ed)
-    from htmlui_pixels import Shot
     shot_raw = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
     ed.check(not shot_raw.is_error and shot_raw.images, f"screenshot: {shot_raw.text[:200]}")
     png_bytes = shot_raw.images[0][0]
@@ -145,6 +154,19 @@ async def test_nine_patch_label_not_clipped(ed: Editor):
     plain, patched = dark(700), dark(950)
     ed.check(plain > 20, f"the plain button's label draws ({plain} dark samples)")
     ed.check(patched >= plain * 0.8, f"the 9-patch button's label is whole: {patched} dark samples vs {plain}")
+
+    # an ancestor still clips the label: a long label in a button inside a narrow image
+    await ed.call("create_ui", scene=sid, root={
+        "type": "image", "name": "Clip", "color": [0.2, 0.2, 0.2, 1],
+        "layout": {"anchor": "top_left", "position": [700, 300], "size": [100, 40]},
+        "children": [{"type": "button", "name": "Wide", "text": "PLAYPLAYPLAYPLAY", "font_size": 24,
+                      "layout": {"anchor": "top_left", "position": [0, 0], "size": [400, 40]}}]})
+    await frame(ed)
+    shot_raw = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
+    shot = Shot(shot_raw.images[0][0], shot_raw.value)
+    outside = sum(1 for x in range(810, 1100, 2) for y in range(300, 340) if sum(shot.px(x, y)) < 240)
+    ed.check(outside == 0, f"the label is clipped at the image's edge: {outside} dark samples beyond it")
+    await ed.call("delete_entities", scene=sid, entity="Clip")
     for name in ("Plain", "Patched"):
         await ed.call("delete_entities", scene=sid, entity=name)
     await ed.call("save_scene", scene=sid, path="scenes/Buttons")
@@ -157,7 +179,7 @@ async def menu(ed: Editor, sid: int):
         "children": [
             {"type": "button", "name": "Resume", "text": "Resume", "select_on_enable": True,
              "navigation": {"mode": "vertical", "wrap_around": True},
-             "colors": {"selected": [1, 1, 0, 1]},
+             "colors": {"selected": [1, 1, 0, 1]}, "scale": {"selected": 1.25},
              "layout": {"anchor": "top_left", "position": [0, 0], "size": [300, 60]}},
             {"type": "button", "name": "Options", "text": "Options", "navigation": "vertical",
              "layout": {"anchor": "top_left", "position": [0, 100], "size": [300, 60]}},
@@ -208,6 +230,24 @@ async def test_keyboard_and_gamepad_menu_in_play(ed: Editor):
         ed.check(selected and selected[0]["entity"]["path"].endswith("Resume"), f"Select On Enable: {selected!r}")
         runtime = await ed.call("get_runtime_entity", entity="Menu/Resume")
         ed.check((runtime.get("selectable") or {}).get("state") == "selected", f"Resume shows Selected: {runtime.get('selectable')!r}")
+        await ed.call("wait", frames=2)
+        shot_raw = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
+        (ed.scratch.root / "selected-tint.png").write_bytes(shot_raw.images[0][0])
+        r, g, b = Shot(shot_raw.images[0][0], shot_raw.value).px(110, 106)
+        ed.check(r > 200 and g > 200 and b < 80, f"Resume shows the Selected tint (yellow): {(r, g, b)}")
+
+        # the runtime state: pressed while Enter is held, disabled after a write
+        await ed.call("send_input", events=[{"type": "key", "key": "enter", "action": "down"}], frames_after=1)
+        runtime = await ed.call("get_runtime_entity", entity="Menu/Resume")
+        ed.check((runtime.get("selectable") or {}).get("state") == "pressed", f"pressed while held: {runtime.get('selectable')!r}")
+        await ed.call("send_input", events=[{"type": "key", "key": "enter", "action": "up"}], frames_after=1)
+        await ed.call("set_runtime_property", entity="Menu/Resume", component="button", property="disabled", value=True)
+        await ed.call("wait", frames=1)
+        runtime = await ed.call("get_runtime_entity", entity="Menu/Resume")
+        ed.check((runtime.get("selectable") or {}).get("state") == "disabled", f"disabled after the write: {runtime.get('selectable')!r}")
+        await ed.call("set_runtime_property", entity="Menu/Resume", component="button", property="disabled", value=False)
+        await ed.call("wait", frames=1)
+        await lua(ed, "clicks.resume = 0; return true")
 
         await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "down"},
                                             {"type": "key", "key": "enter"}], frames_after=2)
@@ -235,3 +275,29 @@ async def test_keyboard_and_gamepad_menu_in_play(ed: Editor):
         ed.check(state["input"]["ui_selected"] == [], f"no selection: {state['input']['ui_selected']!r}")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_play_stop_play_resets_the_selection(ed: Editor):
+    sid = await scene(ed)
+    got = await ed.call("find_entities", scene=sid, name="Menu")
+    if not got.get("entities"):
+        await menu(ed, sid)
+        await ed.call("save_scene", scene=sid, path="scenes/Buttons")
+    before = await ed.call("get_entity", scene=sid, entity="Menu/Resume", components=["transform"])
+    scale = component_values(before, "transform")["scale"]
+    for round_ in (1, 2):
+        await ed.call("play", action="start", scene=sid)
+        try:
+            await ed.call("wait", frames=3)
+            state = await ed.call("get_play_state")
+            selected = state["input"]["ui_selected"]
+            ed.check(selected and selected[0]["entity"]["path"].endswith("Resume"),
+                     f"Play {round_}: Select On Enable selects Resume: {selected!r}")
+        finally:
+            await ed.call("play", action="stop")
+        await frame(ed)
+        after = await ed.call("get_entity", scene=sid, entity="Menu/Resume", components=["transform", "ui"])
+        ed.check(component_values(after, "transform")["scale"] == scale,
+                 f"after Stop {round_} the authored scale is kept: {component_values(after, 'transform')['scale']!r} vs {scale!r}")
+        color = component_values(after, "ui")["color"]
+        ed.check([round(c, 3) for c in color] == [1, 1, 1, 1], f"after Stop {round_} no Selected tint in edit mode: {color!r}")
