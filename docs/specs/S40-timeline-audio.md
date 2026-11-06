@@ -457,8 +457,8 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
   `AudioSourceComponent` that the source's next start or stop reads. Clip cues (`fireCue`) and the
   legacy timeline's actions (`startSource`, `transition`, `logStart`) go through it; one placement rule
   (`delayFrames`), one gain composition, the same capture lines.
-- **Capture lines:** a clip's `cue` line has `kind` `sound`, `source` or `snapshot`; an audio action's
-  has `kind` `source` (it starts its AudioSource), a Mixer Snapshot action's `snapshot`, with
+- **Capture lines:** the `cue` line's cue kind is the field `cue_kind` (every line's `kind` is its line
+  type, here `cue`): `sound`, `source` or `snapshot` for a clip's cue; an audio action's has `source` (it starts its AudioSource), a Mixer Snapshot action's `snapshot`, with
   `timeline: "actions"`, `clip` the Animation's GameObject name and `cue` the frame index. A `cue_exit`
   stop line is written when the 10 ms fade starts. An unknown snapshot of a snapshot cue warns once per
   Play like the other unresolved cues.

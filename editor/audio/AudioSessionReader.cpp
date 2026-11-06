@@ -76,7 +76,7 @@ bool AudioSessionReader::isVoiceKind(const std::string& kind) {
 
 bool AudioSessionReader::isMarkerKind(const std::string& kind) {
     static const std::set<std::string> kinds = {"marker", "input", "collision_2d", "collision_3d", "sensor_2d", "sensor_3d", "ui_press", "ui_click",
-                                                "ui_hover", "html_click", "animation_event", "spawn", "destroy", "scene_load"};
+                                                "ui_hover", "html_click", "animation_event", "cue", "spawn", "destroy", "scene_load"};
     return kinds.count(kind) > 0;
 }
 

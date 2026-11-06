@@ -57,7 +57,7 @@ namespace {
 #if JASPERENGINE_AUDIO_CAPTURE
     void cueLineActive(const TimelineCueInfo& info, const char* kind, const std::string& name, uint32_t delay) {
         AudioCapture::Line line("cue");
-        line.text("timeline", info.timeline).text("clip", info.clip).integer("cue", info.cue).text("name", name).text("kind", kind);
+        line.text("label", "cue " + name).text("timeline", info.timeline).text("clip", info.clip).integer("cue", info.cue).text("name", name).text("cue_kind", kind);
         line.scene(info.scene).entity(info.scene, (uint32_t)info.player, "player", "player_id");
         line.text("state", info.state).integer("layer", info.layer).number("position", info.position, 6);
         line.integer("delay_samples", delay);

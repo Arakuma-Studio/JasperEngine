@@ -78,7 +78,7 @@ async def walker_scene(ed: Editor, name: str, clip: str, player: dict, script: s
     await ed.call("create_entity", scene=scene, type="empty", name="Walker")
     await ed.call("add_component", scene=scene, entity="Walker", component="animationplayer",
                   values={"animationplayer": {"clips": [{"clip": clip, "name": "Walk"}], "playAutomatically": True, **player}})
-    await ed.call("create_script", kind="lua", name=script_name, content=script, entity="Walker", scene=scene)
+    await ed.call("create_script", kind="lua", name=f"{script_name}{name}", content=script, entity="Walker", scene=scene)
     await ed.call("save_scene", scene=scene)
     return scene
 
@@ -104,14 +104,16 @@ async def test_footsteps_land_on_their_samples(ed: Editor):
     await ed.call("write_file", path="anim/footsteps.anim", content=anim(steps(STEPS)))
     await ed.call("sync_files")
     scene = await walker_scene(ed, "Footsteps", "anim/footsteps.anim", {})
+    await ed.console_since(limit=500)
     session, lines = await capture(ed, scene, 70)
+    console = [e.get("message", "")[:300] for e in await ed.console_since(limit=200) if e.get("type") != "log"]
     s0 = start_sample(ed, lines)
     cues = [l for l in lines if l["kind"] == "cue"]
     voices = [l for l in lines if l["kind"] == "voice_start"]
-    ed.check_eq(len(cues), 4, f"one cue line a step: {cues}")
+    ed.check_eq(len(cues), 4, f"one cue line a step: {cues} {console} {[l['kind'] for l in lines]}")
     ed.check_eq(len(voices), 4, f"one voice a step: {voices}")
     for i, (cue, voice) in enumerate(zip(cues, voices)):
-        ed.check_eq((cue["timeline"], cue["clip"], cue["cue"], cue["name"], cue["kind"], cue["player"], cue["state"]),
+        ed.check_eq((cue["timeline"], cue["clip"], cue["cue"], cue["name"], cue["cue_kind"], cue["player"], cue["state"]),
                     ("clip", "anim/footsteps.anim", i, f"step {i}", "sound", "Walker", "Walk"), f"{cue}")
         ed.check(lines.index(cue) < lines.index(voice), "the cue line comes before its voice")
         ed.check_eq((voice["owner"], voice["cause"], voice["clip"]), ("cue", "animation", "sounds/step.wav"), f"{voice}")
@@ -181,10 +183,15 @@ async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
 
 async def test_source_cue_track_shaped_and_stopped_on_exit(ed: Editor):
     # the Engine child's AudioSource starts at 0 and its volume track fades it 1 -> 0.25 over the second
-    volume = {"path": "Engine", "component": "audiosource", "property": "volume",
-              "keys": [{"time": 0, "value": 1.0}, {"time": 1.0, "value": 0.25}]}
-    await ed.call("write_file", path="anim/engine.anim",
-                  content=anim([{"time": 0, "source": "Engine", "stop": "state_exit"}], wrap="loop", length=1.0, tracks=[volume]))
+    # the track authored by edit_animation, the cue added to the file it wrote
+    await ed.call("edit_animation", clip="anim/engine.anim", create={}, wrap="loop", frame_rate=60, length=1.0,
+                  tracks=[{"path": "Engine", "channel": "property", "component": "audiosource", "property": "volume",
+                           "keys": [{"time": 0, "value": 1.0}, {"time": 1.0, "value": 0.25}]}],
+                  events=[{"time": 0, "function": "onStart"}])
+    data = json.loads((ed.project / "anim/engine.anim").read_text())
+    data["version"] = 3
+    data["audio"] = [{"time": 0, "source": "Engine", "stop": "state_exit"}]
+    await ed.call("write_file", path="anim/engine.anim", content=json.dumps(data, indent=2))
     await ed.call("write_file", path="anim/idle.anim", content=anim([], wrap="loop", length=1.0, events=[]))
     await ed.call("sync_files")
     scene = (await ed.call("create_scene", name="Engine", type="2D", path="scenes/Engine.scene"))["scene"]["id"]

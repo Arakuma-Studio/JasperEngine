@@ -102,7 +102,7 @@ async def test_both_timelines_give_the_same_samples(ed: Editor):
         await ed.call("remove_component", scene=actions, entity=f"Step{i}", component="animation")
         await ed.call("add_component", scene=actions, entity=f"Step{i}", component="audiosource", values={"audiosource": {"event": EVENT}})
         frames.append({"action": f"Step{i}", "start_time": t})
-    await ed.call("edit_animation", scene=actions, entity="Footsteps", add_actions=frames)
+    await ed.call("edit_animation", scene=actions, animation="Footsteps", add_actions=frames)
     await ed.call("create_script", kind="lua", name="ActionDriver", content=ACTION_DRIVER, entity="Footsteps", scene=actions)
     await ed.call("save_scene", scene=actions)
 

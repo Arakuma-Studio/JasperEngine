@@ -98,7 +98,7 @@ async def animation_scene(ed: Editor, name: str, frames: list, then: str = "", l
         if duration:
             item["duration"] = duration
         actions.append(item)
-    await ed.call("edit_animation", scene=scene, entity="Footsteps", add_actions=actions)
+    await ed.call("edit_animation", scene=scene, animation="Footsteps", add_actions=actions)
     await ed.call("create_script", kind="lua", name=f"Driver{name}", content=DRIVER % then, entity="Footsteps", scene=scene)
     await ed.call("save_scene", scene=scene)
     return scene
@@ -130,7 +130,7 @@ async def test_footsteps_land_on_their_samples(ed: Editor):
     ed.check_eq(len(voices), 4, f"{voices}")
     ed.check_eq(len(cues), 4, f"{cues}")
     for i, (cue, voice) in enumerate(zip(cues, voices)):
-        ed.check_eq((cue["timeline"], cue["cue"], cue["kind"], cue["player"]), ("actions", i, "source", "Footsteps"), f"{cue}")
+        ed.check_eq((cue["timeline"], cue["cue"], cue["cue_kind"], cue["player"]), ("actions", i, "source", "Footsteps"), f"{cue}")
         ed.check_eq((voice["owner"], voice["cause"], voice["entity"]), ("main", "animation", f"Step{i}"), f"{voice}")
         ed.check_eq(voice["sample"], cue["sample"], f"on the sample of its cue line: {cue} {voice}")
         ed.check_eq(placed(voice) - s0, round(STEPS[i] * RATE), f"step {i} on its sample (± 0): {voice}")
@@ -151,7 +151,7 @@ async def test_an_auto_length_frame_lasts_its_sound(ed: Editor):
     s0 = mark(ed, lines, "start")["sample"]
     voices = [l for l in lines if l["kind"] == "voice_start"]
     ed.check_eq([placed(v) - s0 for v in voices][:3], [0, RATE // 4, RATE // 2], "the loop is the sound's 0.25 s")
-    got = await ed.call("get_animation", scene=scene, entity="Footsteps")
+    got = await ed.call("get_animation", scene=scene, animation="Footsteps")
     ed.check("0.25" in json.dumps(got), f"get_animation reports the frame's length: {json.dumps(got)[:800]}")
 
 
@@ -196,7 +196,7 @@ async def test_snapshot_action(ed: Editor):
     await ed.call("create_entity", scene=scene, type="animation", name="Footsteps")
     await bare_action(ed, scene, "Duck", "audiosnapshot", {"snapshot": "Duck"})
     await bare_action(ed, scene, "Duck2", "audiosnapshot", {"snapshot": "Duck"})
-    await ed.call("edit_animation", scene=scene, entity="Footsteps", add_actions=[{"action": "Duck", "start_time": 0.1, "duration": 0.2},
+    await ed.call("edit_animation", scene=scene, animation="Footsteps", add_actions=[{"action": "Duck", "start_time": 0.1, "duration": 0.2},
                                                                                 {"action": "Duck2", "start_time": 0.5, "duration": 0.1}])
     # Boss takes over during the second one: its stop leaves the mixer on Boss
     then = 'if self.frame == 35 then AudioMixer.transitionTo("Boss", 0) end'
