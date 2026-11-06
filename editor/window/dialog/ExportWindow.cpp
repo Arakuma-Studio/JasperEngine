@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "cook/BuildReport.h"
 #include "window/EditorModal.h"
 #include "player/PlayerModules.h"
 #include "texture/TextureCookReport.h"
@@ -1665,6 +1666,23 @@ void ExportWindow::drawProgress() {
         }
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
+        // S53 R21: what ships, by category, with the full report a click away
+        {
+            const ExportResult built = m_exporter.getResult();
+            if (!built.buildReport.empty()) {
+                BuildReport report;
+                std::string reportError;
+                if (BuildReport::load(built.buildReport, report, reportError)) {
+                    ImGui::TextUnformatted(("Build Report: " + BuildReport::formatBytes(report.totalBytes)).c_str());
+                    for (const std::string& category : BuildReport::categoryNames()) {
+                        const auto it = report.categories.find(category);
+                        if (it == report.categories.end() || it->second == 0) continue;
+                        ImGui::TextDisabled("  %-9s %s", category.c_str(), BuildReport::formatBytes(it->second).c_str());
+                    }
+                    if (ImGui::SmallButton(ICON_FA_CHART_BAR " Open Build Report")) editor::getEditorHost().openBuildReport(built.buildReport);
+                }
+            }
+        }
         if (m_mode == ExportMode::Player) {
             const ExportResult result = m_exporter.getResult();
             ImGui::PushTextWrapPos(0.0f);

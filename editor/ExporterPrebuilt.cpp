@@ -326,6 +326,8 @@ void editor::Exporter::runPlayerBuild() {
         discardStaging();
         return;
     }
+    measureBuildEngine(config.destinationDir);
+    if (!writeBuildReport(config.destinationDir, "prebuilt")) return;
     setProgressRaw("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
@@ -473,6 +475,8 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
+    if (!cookModels()) return false;
+    if (cancelled()) return false;
     if (!copyAssets()) return false;
     if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
@@ -489,6 +493,9 @@ bool editor::Exporter::runPrebuilt() {
     if (!stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
+    // what ships, measured before the pack hides it (S53 R21)
+    buildReport = BuildReport();
+    measureBuildContent(contentDir);
     if (!packContent()) return false;
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;
@@ -615,7 +622,9 @@ bool editor::Exporter::writeGameConfig() {
     game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
+    game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
+    game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {

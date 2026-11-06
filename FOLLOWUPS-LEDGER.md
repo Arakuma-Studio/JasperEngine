@@ -79,11 +79,11 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22` except AC8, which S35 adds; lands with S35 and S36 after the third full suite |
-| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | M0-M7 done at `7074116bf`; merging S37 and `main`, adding S37's AC8; then the third full suite |
-| S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
-| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | Waiting |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | In the third full suite; R31 re-measured on H or the Mac |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22`; in the third full suite with S35 and S36 |
+| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Ready at `35c704a4c` with S37's AC8; in the third full suite |
+| S39 | Music | `feat/s39-music` | S35, S36, S37 | In progress, from the third suite's tree |
+| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
 
 ## Decisions
 
@@ -186,3 +186,6 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: S38, S63, S64 and S70 landed. Next: `fix/root-attack-meta`, then S37 and S36 merge `main`, then a third full suite.
 - 2026-11-05: Root attack fix landed. The save re-pin dates from `6092353d1` (2026-10-28), before this program.
 - 2026-11-05: S37 ready; S38's meter change moved band values in 700 of 927 library items, so S36's analysis data was regenerated. S35 done except its merge; it fixed the Master bus pan ramp so chunked and single-call mixes match, and the recording pin moved to `821d2802…`.
+- 2026-11-05: Third full suite started on `fcd2613ad` (`main` and S35, which holds S36 and S37). S39 and S40 started from that tree.
+- 2026-11-05: Origin: the Forge/meshoptimizer program (S53-S57) landed, 141 commits, without its final full suite. `main` fast-forwarded. The third suite's tree (S35, S36, S37) predates it and conflicts with it in `TOOLS.md`, `Exporter.cpp`, `Generator.cpp`, `McpInstructions.cpp`, `GameWindow.cpp` and `cases.py`: the trio merges it after the suite, then a build and the affected tests.
+- 2026-11-06: Third full suite on `fcd2613ad` (`main`, S35, S36, S37): units 2942 core and 3079 editor, 0 failed. MCP 1803 passed, 11 failed, 7 skipped. Five failures are the trio's (missing codegen goldens for the new fixture, a new modal not in S69's table, a warning on every headless Play); S35 fixes them and merges the Forge program, then it lands. The core tool listing is at 98,900 of 99,000 bytes after S40's tools: whoever adds tool text next will need to cut some.

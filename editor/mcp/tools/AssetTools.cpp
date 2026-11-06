@@ -65,6 +65,7 @@
 #include "util/Base64.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
+#include "model/ModelAudit.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
@@ -920,6 +921,9 @@ void getAssetInfoTool(const CallPtr& call) {
         } else {
             info = modelInfo(file, error);
         }
+        // the model cook (S53 R23): required extensions, cooked sizes and status per platform
+        if (project->isInsideAssetsPath(file) && isModelSource(project->normalizeToAssetsRelative(file).generic_string()))
+            data["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(file).generic_string());
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;

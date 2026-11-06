@@ -352,6 +352,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --gpu-instancing <on|off> Override the project's GPU Instancing for the run.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
@@ -2570,7 +2571,7 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     if (extension == ".fbx") {
-        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        // MeshSystem::getFbxImportPath: the project's import folder mirrors the assets folder
         file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
         extension = ".glb";
     }

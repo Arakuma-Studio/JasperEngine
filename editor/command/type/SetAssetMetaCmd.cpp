@@ -12,8 +12,10 @@
 #include "io/watch/FileWatchService.h"
 #include "util/YamlFootprint.h"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -111,20 +113,38 @@ YAML::Node editor::SetAssetMetaCmd::read(const std::filesystem::path& absoluteAs
 }
 
 namespace {
-    editor::SetAssetMetaCmd::WriteListener& metaWriteListener(){
-        static editor::SetAssetMetaCmd::WriteListener listener;
-        return listener;
+    // in the order they were added, so the queues hear a write in a fixed order
+    std::vector<std::pair<const void*, editor::SetAssetMetaCmd::WriteListener>>& metaWriteListeners(){
+        static std::vector<std::pair<const void*, editor::SetAssetMetaCmd::WriteListener>> listeners;
+        return listeners;
     }
 }
 
-void editor::SetAssetMetaCmd::setWriteListener(WriteListener listener){
-    metaWriteListener() = std::move(listener);
+void editor::SetAssetMetaCmd::addWriteListener(const void* owner, WriteListener listener){
+    auto& listeners = metaWriteListeners();
+    for (auto& entry : listeners){
+        if (entry.first == owner){
+            entry.second = std::move(listener);
+            return;
+        }
+    }
+    listeners.emplace_back(owner, std::move(listener));
+}
+
+void editor::SetAssetMetaCmd::removeWriteListener(const void* owner){
+    auto& listeners = metaWriteListeners();
+    listeners.erase(std::remove_if(listeners.begin(), listeners.end(), [owner](const auto& entry){ return entry.first == owner; }),
+                    listeners.end());
 }
 
 bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEmpty){
     const bool written = writeFile(value, removeFileIfEmpty);
-    if (written && metaWriteListener()){
-        metaWriteListener()(project, asset, key);
+    if (written){
+        // a copy: a listener may add or remove listeners (a queue attaching to a project)
+        const auto listeners = metaWriteListeners();
+        for (const auto& [owner, listener] : listeners){
+            if (listener) listener(project, asset, key);
+        }
     }
     // a clip's import settings: the voices of a running Play take them from their next start
     if (written && key == "import.audioImporter"){
