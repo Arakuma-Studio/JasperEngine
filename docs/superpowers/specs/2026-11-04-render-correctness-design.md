@@ -802,9 +802,13 @@ Recorded during implementation (branch `dc/render-correctness`).
     is also claimed by ssr-probes: whoever lands second renumbers it.
 13. **Texture-edit swap (6.4, T9).** The swap reloads the mesh as every variant change does: the reload's
     load lands a frame or more later (its queued `changeLoaded`, its textures), so T9's "no frame without the
-    mesh" is not asserted; the tests assert the settled variants. A terrain keeps its own checks (its layers'
-    surface and hex tiling above, and its base material's normal map): its layer images reached the re-resolve,
-    whose reload bound the pool's old pixels (`TextureRebindGpu.ATerrainsLayerImageBindsANewImage`).
+    mesh" is not asserted; the tests assert the settled variants. A terrain keeps main's checks (its base material's UV
+    sets and normal map, beside its layers' surface and hex tiling): their reload is what builds its layer image
+    array again after `invalidateTerrainDetailArray` (`TextureRebindGpu.ATerrainsLayerImageBindsANewImage` failed
+    without it, and passes on main).
 14. **Zero-cost list.** `zero_cost_mesh_variants.txt` is rewritten: the normal-less setup's variants lose
     'Nor' (6.2), the 'Ifd' vertex stages include the near fade, the 'Shw' fragment stages take the shadow
     derivatives before the light loop; no other variant's preprocessed source changed.
+15. **Points tests (T6, T7).** The tests turn transparency on with the Transparent flag. Auto Transparency did
+    not find the alpha of the tests' 4x4 PNG images (`isTransparent()` stayed false with or without the fix,
+    after the image loaded); the derivation in `drawPoints` is kept, but no test covers a texture swap.
