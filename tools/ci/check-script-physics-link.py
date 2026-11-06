@@ -5,6 +5,10 @@ tools/mcp/tests/test_cpp_physics_libs.py also runs the script).
 
     python tools/ci/check-script-physics-link.py <editor command, e.g. instdir/bin/jasperengine-editor-cmd>
 
+On Linux run it in a D-Bus session, as the MCP tests run (the editor's file dialogs need one):
+tools/build.sh exec linux dbus-run-session -- python3 tools/ci/check-script-physics-link.py \
+build/linux/editor-install/bin/jasperengine-editor
+
 Copies tools/fixtures/prefab-runtime (it has attached C++ scripts), adds to one of them a
 function calling Box2D and Jolt (Jolt's allocator is data MSVC links only through dllimport),
 and runs compile_scripts in a one-shot editor (`call --project`, which also gives the project its
