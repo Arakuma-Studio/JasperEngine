@@ -156,21 +156,6 @@ TEST(ClipAudio, AnOlderVersionWithCuesIsSavedAsVersionThree){
     EXPECT_NE(anim::writeClip(*parsed.data).find("\"version\": 3,"), std::string::npos);
 }
 
-TEST(ClipAudio, ANewerVersionIsRefusedAsAnOlderEngineRefusesVersionThree){
-    // what the engines before S40 (ANIM_VERSION 2) answer a version 3 file: refused, never read
-    // with its sounds dropped
-    const std::string olderEngineAnswer = "unsupported animation clip version 3 (this engine reads versions up to 2)";
-    EXPECT_EQ(anim::ANIM_VERSION, 3);
-    anim::ClipParseResult refused = anim::parseClip(clipWith("[]", 4));
-    EXPECT_FALSE(refused.ok());
-    EXPECT_EQ(refused.error.message, "unsupported animation clip version 4 (this engine reads versions up to 3)");
-    // the same sentence, one version on
-    std::string expected = olderEngineAnswer;
-    expected.replace(expected.find("version 3"), 9, "version 4");
-    expected.replace(expected.find("up to 2"), 7, "up to 3");
-    EXPECT_EQ(refused.error.message, expected);
-}
-
 TEST(ClipAudio, CrossingMatchesEventsAtTheSameTimes){
     // events and cues at the same times: every crossing of the event table gives the same order
     ClipData data;

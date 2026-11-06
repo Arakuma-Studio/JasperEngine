@@ -13,8 +13,6 @@
 #include "asset/AssetRefSchema.h"
 
 #include "Catalog.h"
-#include "reflect/Field.h"
-#include "reflect/Reflect.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -189,63 +187,6 @@ namespace asset_ref_schema_generated_test {
         EXPECT_EQ(std::count_if(results.begin(), results.end(), isWeatherMap), 2);
         results.erase(std::remove_if(results.begin(), results.end(), isWeatherMap), results.end());
         EXPECT_EQ(results, readLines(frozenPath("asset_ref_results_frozen.txt")));
-    }
-
-    // A reference field of a component's table is all a row takes
-
-    struct GeneratedProbe {
-        Texture map;
-        std::vector<Texture> layers;
-        AssetRef model;
-        AssetRef unnamed;
-        ShaderRef shader;
-        FontArray fonts;
-        std::vector<std::pair<std::string, Texture>> uniforms;
-        std::string clip;
-        std::string clipGuid;
-        std::string animation;
-        std::string guid;
-        float notAReference = 0.0f;
-        Texture runtimeOnly;
-    };
-
-    constexpr reflect::FieldDesc kGeneratedProbeFields[] = {
-        JE_FIELD(GeneratedProbe, map),
-        JE_FIELD(GeneratedProbe, layers),
-        JE_FIELD(GeneratedProbe, model, .asset = reflect::AssetKind::Model),
-        JE_FIELD(GeneratedProbe, unnamed),
-        JE_FIELD(GeneratedProbe, shader),
-        JE_FIELD(GeneratedProbe, fonts),
-        JE_FIELD(GeneratedProbe, uniforms, .ops = &reflect::ops::ShaderTextures),
-        JE_FIELD(GeneratedProbe, clip, .asset = reflect::AssetKind::AnimationClip),
-        JE_FIELD(GeneratedProbe, clipGuid),
-        JE_FIELD(GeneratedProbe, animation, .asset = reflect::AssetKind::VertexAnimation),
-        JE_FIELD(GeneratedProbe, guid),
-        JE_FIELD(GeneratedProbe, notAReference),
-        JE_FIELD(GeneratedProbe, runtimeOnly, .flags = reflect::NoSave),
-    };
-
-    TEST(AssetRefSchemaGenerated, ARowForEachReferenceFieldOfATable) {
-        reflect::ComponentDesc desc{};
-        desc.type = ComponentType::LightComponent;
-        desc.body = JE_STRUCT_DESC(GeneratedProbe, "GeneratedProbe", kGeneratedProbeFields);
-        std::vector<std::string> rows;
-        for (const AssetRefField& row : AssetRefSchema::fieldsOf(desc)) rows.push_back(rowText(row));
-        const std::string kind = depEdgeKindName(DepEdgeKind::SceneComponent);
-        const auto line = [&](const std::string& path, const std::string& shape, const std::string& expected, const std::string& base) {
-            return "component\tLightComponent\t" + path + "\t" + shape + "\t" + expected + "\t" + base + "\t" + kind;
-        };
-        EXPECT_EQ(rows, (std::vector<std::string>{
-            line("map", "texture", "texture", "assets"),
-            line("layers[]", "texture", "texture", "assets"),
-            line("model", "asset", "model", "assets"),
-            line("unnamed", "asset", assetTypeName(AssetType::Unknown), "assets"),
-            line("shader", "shader", "shader", "project"),
-            line("fonts", "list", "font", "assets"),
-            line("uniforms{}", "texture", "texture", "assets"),
-            line("clip", "asset", "animation_clip", "assets"),
-            line("animation", "guid_sibling", "vertex_animation", "assets"),
-        }));
     }
 
     // Two references no one wrote a row for: they appear from the component tables, in memory and

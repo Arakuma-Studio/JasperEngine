@@ -730,8 +730,9 @@ TEST(EffectPerfTest, CostTable){
             row["state_bytes"] = stateBytes;
         }
         effects.push_back(row);
-        if (bound > 0.0)
+        if (bound > 0.0){
             EXPECT_LE(ratio, bound) << m->name << " (" << effectCostName(m->cost) << ") costs " << ratio << " x the fill";
+        }
     }
     std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured; the highest low x%.2f, medium x%.2f\n", measured.size(),
                 catalogue.size(), highestLow, highestMedium);

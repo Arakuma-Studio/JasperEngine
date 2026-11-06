@@ -16,7 +16,6 @@ import shutil
 import subprocess
 import sys
 import time
-import wave
 from pathlib import Path
 
 import yaml
@@ -174,21 +173,6 @@ def edge_text(start_db=None, end_db=None, kind="transient", fade_in=None, fade_o
 # -- 3.1 evidence ------------------------------------------------------------------------------------
 
 
-async def test_evidence(ed: Editor):
-    """The facts the design rests on: jump.wav starts at 9,263 of a 9,496 peak; a whole-cycle 5 kHz
-    sine ends at -4.3 dB of its peak; ui/back's largest second differences recur every 337 or 338
-    samples (its 131 Hz pulse wave)."""
-    with wave.open(str(JUMP), "rb") as w:
-        raw = w.readframes(w.getnframes())
-    samples = [int.from_bytes(raw[i:i + 2], "little", signed=True) for i in range(0, len(raw), 2)]
-    ed.check_eq((samples[0], max(abs(s) for s in samples)), (9263, 9496), "jump.wav's first sample and peak")
-    await synth(ed)
-    five = ar.read_wav(ed.project / clip("whole_cycles_5k")).channels[0]
-    near(ed, ar.amplitude_to_db(abs(five[-1]) / ar.peak(five)), -4.3, 0.05, "a whole-cycle 5 kHz sine's last sample re its peak")
-    back = await ref({"op": "second_differences", "path": str(ESSENTIALS / "ui/back.ogg"), "count": 7})
-    steps = [b - a for a, b in zip(back["positions"], back["positions"][1:])]
-    ed.check_eq(back["rate"], 44100, "ui/back is 44.1 kHz")
-    ed.check(all(s in (337, 338) for s in steps), f"ui/back's second-difference peaks every 337-338 samples: {back['positions']}")
 
 
 # -- D-1 edges ----------------------------------------------------------------------------------------

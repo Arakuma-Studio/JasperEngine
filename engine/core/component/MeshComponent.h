@@ -5,7 +5,8 @@
 #define MESH_COMPONENT_H
 
 #include "Engine.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
+#include "util/StableArray.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/AABB.h"
@@ -468,12 +469,15 @@ namespace jasperengine{
 
         InterleavedBuffer buffer;
         IndexBuffer indices;
-        HybridArray<ExternalBuffer, MAX_EXTERNAL_BUFFERS> eBuffers;
+        // a model's vertex buffers (numExternalBuffers of them in use)
+        StableArray<ExternalBuffer> eBuffers;
         unsigned int numExternalBuffers = 0;
 
         unsigned int vertexCount = 0;
 
-        HybridArray<Submesh, MAX_SUBMESHES> submeshes;
+        // numSubmeshes of them in use; growing the array never moves one (the render code keeps
+        // pointers into them for a frame)
+        StableArray<Submesh> submeshes;
         unsigned int numSubmeshes = 0;
 
         // Optional user-forked shader. Project-relative base path (no extension),
@@ -492,9 +496,13 @@ namespace jasperengine{
         // bind globals (Material::shaderGlobalBindings) were last written
         uint64_t globalsVersionSeen = 0;
 
-        HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+        // the skin's palette, one matrix per joint (MeshSystem sizes it at the model load); empty on a
+        // mesh without a skin, which then has no palette resource either
+        GrowArray<Matrix4> bonesMatrix;
         BufferRender bonesBuffer;
         TextureRender bonesTexture;
+        // runtime: rows of the palette resource as it was made (RenderSystem), 0 = none
+        uint32_t bonesUploadRows = 0;
         bool needUpdateBones = false;
         float normAdjustJoint = 1;
         float normAdjustWeight = 1;
@@ -573,6 +581,8 @@ namespace jasperengine{
         // drawn in the transparent queue (the derived value with autoTransparency, else the
         // authored one)
         bool isTransparent() const { return autoTransparency ? derivedTransparent : transparent; }
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return submeshes.storageBytes() + eBuffers.storageBytes() + bonesMatrix.storageBytes(); }
         // set at load: transparent-queue order (the lowest sortPriority of its blended
         // submeshes), opaque-queue order (the lowest of the others; before the distance)
         // and whether the camera depth pre-pass leaves it out (a forked color shader without

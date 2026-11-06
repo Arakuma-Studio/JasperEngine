@@ -126,7 +126,10 @@ async def test_instantiate_keeps_the_scene_order():
         order = await Order.make(ed, "Order Import")
         prefab = await two_level_prefab(order, "Pa", "cube", "sphere")
         await order.entity("cube", "Parent")
-        await order.entity("cube", "Tail")
+        # a sphere, as the prefab has: its instance then brings no shader variant the scene lacks (a
+        # scene's shaderKeys keep what any save had, Project::collectSavedShaderKeys, so an undo
+        # cannot take one back; a sphere is GPU instanced, a cube dynamically batched, S55)
+        await order.entity("sphere", "Tail")
         await order.entity("fog", "Fog")
         await ed.call("move_entity", scene=order.sid, entity="Skybox", after="Parent")
 

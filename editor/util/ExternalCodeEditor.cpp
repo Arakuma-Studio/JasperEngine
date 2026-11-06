@@ -38,11 +38,8 @@ namespace {
 
 #if defined(_WIN32)
     std::string findDevenv(){
-        const std::string vswhere = CommandRunner::findVswherePath();
-        if (vswhere.empty()) return {};
-        // no shell: vswhere and its arguments as they are (CommandRunner::capture)
-        std::string path = CommandRunner::capture({vswhere, "-latest", "-property", "productPath"});
-        while (!path.empty() && std::isspace(static_cast<unsigned char>(path.back()))) path.pop_back();
+        // no shell: vswhere and its arguments as they are, with -utf8 (CommandRunner::vswhere)
+        const std::string path = CommandRunner::vswhere({"-latest", "-property", "productPath"});
         std::error_code ec;
         return !path.empty() && fs::is_regular_file(FileUtils::pathFromUtf8(path), ec) ? path : std::string();
     }

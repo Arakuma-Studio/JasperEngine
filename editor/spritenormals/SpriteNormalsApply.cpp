@@ -159,9 +159,9 @@ namespace jasperengine::editor::spritenormals {
                     return fail("not_a_sprite", "\"" + name + "\" is not a Sprite; an animation needs a Sprite GameObject.", "Pick a Sprite GameObject.");
                 }
                 const std::vector<Cell>& frames = request.frames;
-                if (frames.size() > MAX_SPRITE_FRAMES) {
+                if (frames.size() > ARRAY_INDEX_LIMIT) {
                     return fail("too_many_frames",
-                                "The animation has " + std::to_string(frames.size()) + " frames; a Sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + ".",
+                                "The animation has " + std::to_string(frames.size()) + " frames; a Sprite holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + ".",
                                 "Trim the animation, or use the atlas with your own frames.");
                 }
                 if (frames.empty()) return fail("frames_mismatch", "The animation has no frames.", "Generate from the GIF or APNG again.");
@@ -252,7 +252,7 @@ namespace jasperengine::editor::spritenormals {
             auto* props = new MultiPropertyCmd();
             const size_t n = request.frames.size();
             const size_t old = std::max<size_t>(anim.framesSize, anim.framesTimeSize);
-            for (size_t i = 0; i < std::max(n, old) && i < MAX_SPRITE_FRAMES; i++) {
+            for (size_t i = 0; i < std::max(n, old); i++) {
                 const int ms = i < request.frameMs.size() ? std::max(1, request.frameMs[i]) : 100;
                 props->addPropertyCmd<int>(project, sceneId, animation, animType, "frames[" + std::to_string(i) + "]", i < n ? static_cast<int>(i) : 0);
                 props->addPropertyCmd<int>(project, sceneId, animation, animType, "framesTime[" + std::to_string(i) + "]", i < n ? ms : 0);

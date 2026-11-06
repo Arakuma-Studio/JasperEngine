@@ -207,7 +207,7 @@ namespace jasperengine{
         //InputField
         void updateInputField(Entity entity, InputFieldComponent& inputfield, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
         void blinkCursorInputField(double dt, InputFieldComponent& inputfield, UIComponent& ui);
-        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint);
+        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint);
         bool handleInputFieldKeyDown(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods);
         void setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, TextComponent& text, ImageComponent& img, float localX, bool extendSelection);
         bool inputFieldHasSelection(const InputFieldComponent& inputfield) const;
@@ -347,7 +347,8 @@ namespace jasperengine{
         // unpress, the on-screen controls release and clear their input sources
         void resetButtonStates();
 
-        bool eventOnCharInput(wchar_t codepoint);
+        // one whole character (Engine::systemCharInput combines UTF-16 pairs)
+        bool eventOnCharInput(char32_t codepoint);
         bool eventOnKeyDown(int key, bool repeat, int mods);
 
         // ---- pointers (ui-multitouch spec 7.1). pointerId: the mouse -1 / -2 / -3 (its left,
