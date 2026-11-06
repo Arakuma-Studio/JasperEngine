@@ -684,8 +684,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // ShaderPool::getParticlesProperties
         case ShaderType::PARTICLES: return 11;
         case ShaderType::HTMLUI_PRIM: return 0;
-        // the program number (titleart/programs.glsl, render/TitlePrograms.h), 8 bits
-        case ShaderType::TITLE_ART: return 8;
+        // the program number (bits 0-6) and the RGBA8 encodings Sfx, Dfx (titleart/render/TitlePasses.h)
+        case ShaderType::TITLE_ART: return 9;
         default:                 return 0;
     }
 }
@@ -905,11 +905,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     } else if (shaderType == ShaderType::TITLE_ART) {
-        // the bits of the program number (titleart.frag's TA_PROGRAM)
-        static const char* const shortNames[] = {"Pg0", "Pg1", "Pg2", "Pg3", "Pg4", "Pg5", "Pg6", "Pg7"};
-        static const char* const longNames[] = {"Program 1", "Program 2", "Program 4", "Program 8", "Program 16",
-                                                "Program 32", "Program 64", "Program 128"};
-        if (bit >= 0 && bit < 8) return shortName ? shortNames[bit] : longNames[bit];
+        // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings
+        if (bit < 7) return (shortName ? "Pb" : "Program Bit ") + std::to_string(bit);
+        switch (bit) {
+            case 7: return shortName ? "Sfx" : "Seeds Fixed";
+            case 8: return shortName ? "Dfx" : "Distance Fixed";
+        }
     }
     return shortName ? "?" : "Unknown";
 }

@@ -117,6 +117,34 @@ namespace {
         return it != pe->end() && it->is_array() ? *it : emptyArray();
     }
 
+    bool anchoredToCanvas(const Json& effects) {
+        for (const Json& e : effects) {
+            if (!e.value("enabled", true)) continue;
+            auto params = e.find("params");
+            if (params == e.end() || !params->is_object()) continue;
+            for (const auto& item : params->items()) {
+                if (item.value().is_string() && item.value().get<std::string>() == "canvas") return true;
+            }
+        }
+        return false;
+    }
+
+    // pixels that depend on where the layer lies on the canvas, not only on its own shape: a
+    // generator (canvas-wide fills) and effects anchored to the canvas (`align: canvas`). The
+    // effect context has no flag for it (TitleEffectContext.h), so this reads the params
+    bool readsCanvasPosition(const Json& layer) {
+        auto gen = layer.find("generator");
+        if (gen != layer.end() && gen->is_object()) return true;
+        if (anchoredToCanvas(effectsOf(layer))) return true;
+        auto pe = layer.find("part_effects");
+        if (pe != layer.end() && pe->is_object()) {
+            for (const auto& item : pe->items()) {
+                if (item.value().is_array() && anchoredToCanvas(item.value())) return true;
+            }
+        }
+        return false;
+    }
+
     bool anyEnabled(const Json& effects) {
         for (const Json& e : effects) {
             if (e.value("enabled", true)) return true;
@@ -257,7 +285,7 @@ void TitlePlanner::cpu(const std::string& label, const std::string& layerId, uin
 }
 
 void TitlePlanner::kernel(const std::string& label, const std::string& layerId, const TitleRectI& rect, uint32_t passes, float costWeight,
-                          std::vector<ShaderKey> shaders, std::function<bool(TitleJobState&, std::string&)> run) {
+                          std::function<bool(TitleJobState&, TitleJobRunner&, std::string&)> run) {
     TitleRenderStep step;
     step.kind = StepKind::Gpu;
     step.label = label;
@@ -266,22 +294,26 @@ void TitlePlanner::kernel(const std::string& label, const std::string& layerId, 
     step.costWeight = costWeight * (float)std::max<uint32_t>(1, passes);
     step.passes = std::max<uint32_t>(1, passes);
     step.splittable = false;
-    if (!shaders.empty()) step.shader = shaders.front();
-    // the effect context's helpers draw with these: the kernel waits until they are built
+    // the programs a run met while they were being compiled: the step waits for them and runs
+    // again (TitleJobRunner.h)
+    auto compiling = std::make_shared<std::vector<uint32_t>>();
     TitleRenderServices* services = &svc;
-    step.ready = [services]() {
+    step.ready = [services, compiling]() {
         bool ready = true;
-        for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::Blur, TitleRenderProgram::Adjust, TitleRenderProgram::SeedAlpha,
-                                     TitleRenderProgram::Flood, TitleRenderProgram::ResolveAlpha}) {
+        for (uint32_t program : *compiling) {
             std::string error;
-            ready = (services->gpu.ensureProgram(p, &error) || !error.empty()) && ready;
+            ready = (services->gpu.ensureProgram(program, &error) || !error.empty()) && ready;
         }
+        if (ready) compiling->clear();
         return ready;
     };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, run](const TitleRectI&, std::string& error) {
+    step.run = [state, run, compiling](const TitleRectI&, std::string& error) {
         if (!state->alive(error)) return false;
-        return run(*state, error);
+        TitleJobRunner runner(state->services);
+        if (!run(*state, runner, error)) return false;
+        *compiling = runner.compiling();
+        return true;
     };
     steps.add(std::move(step));
 }
@@ -299,16 +331,15 @@ void TitlePlanner::release(int slot) {
     steps.add(std::move(step));
 }
 
-void TitlePlanner::store(const std::shared_ptr<TitleCacheEntry>& entry, int slot, const std::string& layerId) {
+void TitlePlanner::store(const std::shared_ptr<TitleCacheEntry>& entry, int slot) {
     std::shared_ptr<TitleJobState> state = st;
     TitleRenderStep step;
     step.kind = StepKind::Cpu;
     step.label = "cache";
-    step.run = [state, entry, slot, layerId](const TitleRectI&, std::string& error) {
+    step.run = [state, entry, slot](const TitleRectI&, std::string& error) {
         if (!state->alive(error)) return false;
         TitleJobState::Slot& s = state->slots[(size_t)slot];
         if (s.entry) return true;
-        if (!layerId.empty() && state->positioned.count(layerId)) entry->positionFree = false;
         entry->target = std::move(s.ref);
         s.entry = entry;
         state->services.cache.insert(entry);
@@ -326,6 +357,58 @@ TitleFrame TitlePlanner::frameOf(const TitleRectI& rect) const {
     TitleFrame frame = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
     frame.region = rect;
     return frame;
+}
+
+TitlePlanner::PassPlace TitlePlanner::passPlace(const TitleRectI& rect, const Json* layer) const {
+    PassPlace out;
+    const int canvasW = document->canvasWidth(), canvasH = document->canvasHeight();
+    out.frame = {-rect.x, -rect.y, (int)std::ceil(canvasW * scale), (int)std::ceil(canvasH * scale)};
+    // TitleFrame::toFrame as an affine map: document (+y up, origin at the centre) -> rows down
+    out.documentToTarget.a = scale;
+    out.documentToTarget.d = -scale;
+    out.documentToTarget.tx = canvasW * 0.5 * scale - rect.x;
+    out.documentToTarget.ty = canvasH * 0.5 * scale - rect.y;
+    out.layerToTarget = out.documentToTarget;
+    if (layer) {
+        const geometry::Affine m = placementOf(*layer).toDocument;
+        TitleAffine toDocument;
+        toDocument.a = m.a;
+        toDocument.b = m.c;
+        toDocument.c = m.b;
+        toDocument.d = m.d;
+        toDocument.tx = m.e;
+        toDocument.ty = m.f;
+        out.layerToTarget = out.documentToTarget.after(toDocument);
+    }
+    out.layerOrigin = out.layerToTarget.apply(TitleVec2{0.0, 0.0});
+    return out;
+}
+
+TitlePlanner::PassImages TitlePlanner::passImages(const std::vector<ParamDef>& params, const Json& values, const std::string& layerId) {
+    PassImages out;
+    for (const ParamDef& def : params) {
+        if (def.kind != ParamKind::Asset) continue;
+        auto it = values.find(def.key);
+        if (it == values.end() || it->is_null()) continue;
+        const TitleAssetRef ref = decodeAssetRef(*it);
+        if (ref.empty()) continue;
+        out.emplace_back(ref, assetTexture(*it, TitleAssetKind::Image, TextureWrap::REPEAT, 0, layerId, def.key));
+    }
+    return out;
+}
+
+std::function<const TextureRender*(const TitleAssetRef&, int&, int&)> TitlePlanner::imageLookup(PassImages images) {
+    if (images.empty()) return {};
+    return [images = std::move(images)](const TitleAssetRef& ref, int& width, int& height) -> const TextureRender* {
+        for (const auto& image : images) {
+            if (image.first.path != ref.path || image.first.guid != ref.guid || !image.second || !image.second->upload) continue;
+            width = image.second->upload->width();
+            height = image.second->upload->height();
+            return image.second->texture();
+        }
+        width = height = 0;
+        return nullptr;
+    };
 }
 
 TitlePlacement TitlePlanner::placementOf(const Json& layer) const {
@@ -683,7 +766,7 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     const bool maskIsPx = content.mask.slot == content.px.slot;
     Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer);
     Unit out;
-    bool positionFree = leaf2D && !clip;
+    bool positionFree = leaf2D && !clip && !readsCanvasPosition(layer);
     if (!clip) {
         out.px = applyMasks(node, post.px);
         if (post.ink.valid()) out.ink = applyMasks(node, post.ink);
@@ -710,8 +793,7 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         // a node the region's edge cut is not whole at another offset
         entry->positionFree = positionFree && rect.x > outRegion.x && rect.y > outRegion.y &&
                               rect.x + rect.width < outRegion.x + outRegion.width && rect.y + rect.height < outRegion.y + outRegion.height;
-        // effects that read canvas positions mark their layer when they run (TitlePassContext)
-        store(entry, out.px.slot, node.layerId);
+        store(entry, out.px.slot);
     }
     if (keepSplit && out.px.valid()) sources["split:" + node.layerId] = copyOf(out.px, node.layerId);
     return out;
@@ -897,44 +979,57 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
         drop(prev);
     };
     const std::shared_ptr<const TitleArtDoc> doc = document;
-    const TitleArtDoc* docPtr = document.get();
-    TitleRenderServices* services = &svc;
     const double s = scale;
+    const Json& light = document->root.value("global_light", Json::object());
+    const double lightAngle = light.value("angle", 120.0), lightAltitude = light.value("altitude", 30.0);
+    const uint32_t seed = (uint32_t)document->root.value("seed", (int64_t)1);
+    const std::string layerId = layer ? layer->value("id", std::string()) : std::string();
     // run one definition on `src` into a new target, with the context's content and ink
     auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id) {
         TitlePx out{newSlot(TitleBuffer::Accumulator, src.rect.width, src.rect.height), src.rect};
         uint32_t passes = 1;
         if (r.def->estimate) {
-            const FxCost cost = r.def->estimate(paramsOf(*r.def, r.effect, *docPtr), FxSize{src.rect.width, src.rect.height, (float)s}, FxTier::Desktop);
+            const FxCost cost = r.def->estimate(paramsOf(*r.def, r.effect, *doc), FxSize{src.rect.width, src.rect.height, (float)s}, FxTier::Desktop);
             passes = (uint32_t)std::max(1, cost.passes);
         }
         const EffectDef* def = r.def;
         const Json effect = r.effect;
         const int srcSlot = src.slot, outSlot = out.slot, contentSlot = contentPx.slot, inkSlot = inkPx.slot, inputInkSlot = inputInkPx.slot;
         const TitleRectI rect = src.rect;
-        const Json* layerObject = layer;
-        kernel(std::string(def->type), stackId, rect, passes, 1.0f, {}, [=](TitleJobState& state, std::string& error) {
+        const PassPlace place = passPlace(rect, layer);
+        auto image = imageLookup(passImages(def->params, r.params, layerId.empty() ? id : layerId));
+        kernel(std::string(def->type), stackId, rect, passes, 1.0f, [=](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
             std::string why;
             if (!state.target(outSlot, why) || !state.target(srcSlot, why)) {
                 error = why;
                 return false;
             }
-            EffectContext ctx(*services, *docPtr, layerObject, id, rect, s);
             auto refOf = [&state](int slot) -> const TargetRef* {
                 if (slot < 0) return nullptr;
                 TitleJobState::Slot& sl = state.slots[(size_t)slot];
                 return sl.entry ? &sl.entry->target : &sl.ref;
             };
+            EffectContext ctx(runner);
+            ctx.width = rect.width;
+            ctx.height = rect.height;
+            ctx.pxScale = (float)s;
+            ctx.frame = place.frame;
+            ctx.documentToTarget = place.documentToTarget;
+            ctx.layerOrigin = place.layerOrigin;
+            ctx.seed = seed;
+            ctx.lightAngle = lightAngle;
+            ctx.lightAltitude = lightAltitude;
             ctx.content = refOf(contentSlot);
             ctx.ink = refOf(inkSlot >= 0 ? inkSlot : contentSlot);
             ctx.inputInk = refOf(inputInkSlot >= 0 ? inputInkSlot : srcSlot);
+            ctx.layerId = id;
+            ctx.image = image;
             TitleJobState::Slot& outRef = state.slots[(size_t)outSlot];
             def->apply(ctx, *refOf(srcSlot), outRef.ref, paramsOf(*def, effect, *doc));
-            if (!ctx.error().empty()) {
-                error = std::string(def->type) + ": " + ctx.error();
+            if (!runner.error().empty()) {
+                error = std::string(def->type) + ": " + runner.error();
                 return false;
             }
-            if (ctx.usesCanvasPosition && layerObject) state.positioned.insert(layerObject->value("id", std::string()));
             return true;
         });
         return out;

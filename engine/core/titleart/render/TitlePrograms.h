@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Contract (docs/specs/S80-title-art-core.md §6.3 "Layout", R37)
-// - Purpose: the numbers of Title Art's GPU programs, member for member
-//   engine/shaderlib/titleart/programs.glsl (ShaderType::TITLE_ART's property bits are the
-//   number; titleart.frag compiles the one TA_PROGRAM names), and the parameter block every
-//   program reads (u_fs_titleart: TITLE_PARAMS vec4s).
-// - 1..TITLE_RENDER_PROGRAM_LAST are the renderer's; the numbers above are the registry's
-//   effect and generator programs (S80's core effects, S83's catalogue), which their definitions
-//   declare beside their pass code.
+// - Purpose: the numbers of the Title Art renderer's GPU programs, member for member
+//   engine/shaderlib/titleart/render/programs.glsl (ShaderType::TITLE_ART's property bits 0-6 are
+//   the number; titleart_render.frag compiles the one TA_PROGRAM names), and the parameter block
+//   those programs read (u_fs_titleart: TITLE_PARAMS vec4s).
+// - 1..17 are the effect and generator programs of titleart.frag (TitlePasses.h's TitleProgram,
+//   16 vec4s); the renderer's run from TITLE_RENDER_PROGRAM_FIRST (18) to
+//   TITLE_RENDER_PROGRAM_LAST. TitleGpu runs both kinds.
 // - Thread-safety: constants.
 
 #pragma once
@@ -20,39 +20,38 @@
 namespace jasperengine::titleart {
 
     enum class TitleRenderProgram : uint32_t {
-        Copy = 1,
-        Blend = 2,
-        Adjust = 3,
-        AdjustMix = 4,
-        MaskValue = 5,
-        MaskGradient = 6,
-        Blur = 7,
-        BlurRaw = 8,
-        Output = 9,
-        Seed = 10,
-        Flood = 11,
-        Resolve = 12,
-        Height = 13,
-        CoverInit = 14,
-        CoverFlood = 15,
-        CoverRadius = 16,
-        ReduceMax = 17,
-        Span = 18,
-        Element = 19,
-        Place = 20,
-        Erode = 21,
-        MaskKeep = 22,
-        Grow = 23,
-        SeedAlpha = 24,
-        ResolveAlpha = 25
+        Copy = 18,
+        Blend = 19,
+        Adjust = 20,
+        AdjustMix = 21,
+        MaskValue = 22,
+        MaskGradient = 23,
+        Blur = 24,
+        BlurRaw = 25,
+        Output = 26,
+        Seed = 27,
+        Flood = 28,
+        Resolve = 29,
+        Height = 30,
+        CoverInit = 31,
+        CoverFlood = 32,
+        CoverRadius = 33,
+        ReduceMax = 34,
+        Span = 35,
+        Element = 36,
+        Place = 37,
+        Erode = 38,
+        MaskKeep = 39,
+        Grow = 40,
+        SeedAlpha = 41,
+        ResolveAlpha = 42
     };
 
-    constexpr uint32_t TITLE_RENDER_PROGRAM_FIRST = 1;
+    constexpr uint32_t TITLE_RENDER_PROGRAM_FIRST = 18;
     constexpr uint32_t TITLE_RENDER_PROGRAM_COUNT = 25;
     constexpr uint32_t TITLE_RENDER_PROGRAM_LAST = 63;
-    constexpr uint32_t TITLE_RENDER_PROGRAM_MAX = 255;
 
-    // the program's name in titleart/programs.glsl without its TA_PROGRAM_ prefix ("COPY")
+    // the program's name in titleart/render/programs.glsl without its TA_PROGRAM_ prefix ("COPY")
     JASPERENGINE_API const char* titleRenderProgramName(uint32_t program);
 
     // u_fs_titleart: p[0] the target size and its inverse (the GPU layer writes it), p[1] the

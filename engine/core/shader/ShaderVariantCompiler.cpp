@@ -534,6 +534,13 @@ void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(1))  defs.push_back({"FLUID_MANUAL_FILTERING", "1"});   // 'Mfl'
 }
 
+// titleart.frag: the program number in bits 0-6, the RGBA8 encodings after it
+void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    defs.push_back({"TA_PROGRAM", std::to_string(prop & 0x7Fu)});
+    if (prop & shaderPropertyBit(7))  defs.push_back({"TA_SEEDS_FIXED", "1"});           // 'Sfx'
+    if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -653,10 +660,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.frag_file = "fluid.frag";
         addFluidPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::TITLE_ART){
-        // one program of Title Art's passes: the property bits are its number (TA_PROGRAM)
         args.vert_file = "titleart.vert";
-        args.frag_file = "titleart.frag";
-        args.defines.push_back({"TA_PROGRAM", std::to_string(properties & 0xFFu)});
+        // the renderer's programs (18 on) are titleart_render.frag's, the effects' titleart.frag's
+        args.frag_file = (properties & 0x7Fu) >= 18 ? "titleart_render.frag" : "titleart.frag";
+        addTitleArtPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_depth.frag";

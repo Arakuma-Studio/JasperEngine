@@ -58,7 +58,8 @@ namespace jasperengine::titleart {
         // with `error` fails the job
         std::function<bool(const TitleRectI& scissor, std::string& error)> run;
         // null, or false while the step cannot run yet (its program still compiles): step()
-        // then returns without running it and the job waits
+        // then returns without running it and the job waits. False right after the step ran
+        // (an effect's pass met a program not built yet) runs the step again once it is true
         std::function<bool()> ready;
     };
 

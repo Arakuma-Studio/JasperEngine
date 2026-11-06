@@ -5,7 +5,7 @@
 // - Purpose: the fourteen adjustment operations, one implementation for adjustment layers and
 //   the `adjust` effect: whether an adjustment is identity (nothing runs), the CPU tone LUT of
 //   curves, levels and brightness/contrast (Photoshop's 8-bit transfer tables, baked once per
-//   adjustment), and the ADJUST pass of the others' closed forms (titleart/adjust.glsl).
+//   adjustment), and the ADJUST pass of the others' closed forms (titleart/render/adjust.glsl).
 // - Adjustments run on unpremultiplied colour clamped to 0..1 and sRGB-encoded (Photoshop
 //   parity: an adjustment layer clips light above 1); the contrast pivot is fixed at 50 % so a
 //   result never depends on content outside the layer.

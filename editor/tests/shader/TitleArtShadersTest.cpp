@@ -74,7 +74,7 @@ TEST(TitleArtShadersTest, CompileAllTargets) {
 
 TEST(TitleArtShadersTest, UnknownProgramFails) {
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
-    // 0 and the effects' range without their definitions: titleart.frag says #error
+    // no program 0, and none past the renderer's last (titleart_render.frag says #error)
     for (uint32_t program : {0u, TITLE_RENDER_PROGRAM_LAST + 1}) {
         ShaderData data;
         std::string error;

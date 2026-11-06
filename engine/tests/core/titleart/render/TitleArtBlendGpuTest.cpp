@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Blending (docs/specs/S80-title-art-core.md R15, §6.4; AC16, AC44): each of the 18 modes on a
-// fixed pair of layers against a CPU reference of titleart/blend.glsl's maths within 2/255;
+// fixed pair of layers against a CPU reference of titleart/render/blend.glsl's maths within 2/255;
 // Normal and Add drawn by fixed-function blending (no backdrop copy); and the light and max
 // blend modes the renderer added to the render layer, on RGBA8 and RGBA16F targets.
 

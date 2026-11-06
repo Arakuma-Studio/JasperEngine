@@ -1998,3 +1998,18 @@ rest of S82 lands in 6B.
     re-run because an effect's output is a function of its input pixels and a definition cannot
     say it reads only their alpha. A later `FxInputs` member (alpha only) would let the runner key
     such effects by the field hash and hold the colour change at 8.
+28. **Implementation: one shader type, two fragment files.** The renderer's programs are
+    `ShaderType::TITLE_ART` numbers 18-42 (`render/TitlePrograms.h`, `titleart/render/programs.glsl`)
+    after the effects' 1-17 (`render/TitlePasses.h`); the variant compiler sends 18 and up to
+    `titleart_render.frag` (includes in `engine/shaderlib/titleart/render/`) and the rest to
+    `titleart.frag`, so the two program sets keep separate parameter blocks (48 vec4s and 16) and
+    neither file includes the other's helpers. Both share `titleart.vert` and `titleart/patterns.glsl`.
+29. **Implementation: effects and generators run through `TitleJobRunner`**, the renderer's
+    `TitlePassRunner` (`render/TitleJobRunner.h`): one per kernel step, lending pool targets,
+    caching lookups by content and drawing through `TitleGpu`. A pass whose program is still being
+    compiled draws nothing; the step then waits for it and runs the definition again (a definition
+    writes all of its output from its inputs), so a step never leaves half an effect.
+30. **Implementation: what may move a cached node.** The effect context does not say whether a
+    definition reads canvas positions, so a node is bound to its position when the layer is a
+    generator or one of its effects has a param set to `canvas` (Pattern Overlay's `align`). A
+    generator's `follow` layer is not given to the generator (the context has no member for it).

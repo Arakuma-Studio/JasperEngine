@@ -1,10 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// What every Title Art program shares (titleart.frag includes it first): the one uniform block,
-// the texture slots a program asks for with TA_USE_TEXn / TA_USE_RAWn, the colour transfer
-// functions, the fallback encodings of the scalar and seed buffers (render/TitleArtCaps.h), and
-// ta_dir().
+// What every program of the renderer shares (titleart_render.frag includes it first): the one
+// uniform block, the texture slots a program asks for with TA_USE_TEXn / TA_USE_RAWn, the colour
+// transfer functions, the fallback encodings of the scalar and seed buffers
+// (render/TitleArtCaps.h), and ta_dir().
 //
 // Addressing: every target is addressed in memory rows (gl_FragCoord.xy is (column, row), row 0
 // the first memory row, on every backend). Node targets keep the canvas's image rows (row 0 at

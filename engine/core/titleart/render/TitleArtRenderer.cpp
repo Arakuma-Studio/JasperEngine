@@ -267,39 +267,42 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         return clearedLike(rect, node.layerId);
     }
     TitlePx out = clearedLike(rect, node.layerId);
-    TitlePx follow;
-    const std::string followId = layer.value("follow", std::string());
-    if (!followId.empty()) follow = layerSource(followId, "follow_cycle", node.layerId);
     uint32_t passes = 1;
     static const Json empty = Json::object();
     auto paramsIt = gen.find("params");
     const Json params = paramsIt != gen.end() && paramsIt->is_object() ? *paramsIt : empty;
     if (def->estimate) passes = (uint32_t)std::max(1, def->estimate(ParamValues(params), FxSize{rect.width, rect.height, (float)scale}, FxTier::Desktop).passes);
-    TitleRenderServices* services = &svc;
-    const TitleArtDoc* doc = document.get();
-    const Json* layerObject = node.layer;
+    const std::shared_ptr<const TitleArtDoc> doc = document;
     const std::string id = node.layerId;
-    const int outSlot = out.slot, followSlot = follow.slot;
+    const int outSlot = out.slot;
     const double s = scale;
-    kernel(type, id, rect, passes, 1.0f, {}, [=](TitleJobState& state, std::string& error) {
+    const PassPlace place = passPlace(rect, node.layer);
+    kernel(type, id, rect, passes, 1.0f, [=](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
         std::string why;
         if (!state.target(outSlot, why)) {
             error = why;
             return false;
         }
-        GeneratorContext ctx(*services, *doc, layerObject, id, rect, s);
-        if (followSlot >= 0) {
-            TitleJobState::Slot& f = state.slots[(size_t)followSlot];
-            ctx.follow = f.entry ? &f.entry->target : &f.ref;
-        }
         const Json& light = doc->root.value("global_light", Json::object());
+        GeneratorContext ctx(runner);
+        ctx.width = rect.width;
+        ctx.height = rect.height;
+        ctx.pxScale = (float)s;
+        ctx.frame = place.frame;
+        ctx.canvasWidth = doc->canvasWidth();
+        ctx.canvasHeight = doc->canvasHeight();
+        ctx.documentToTarget = place.documentToTarget;
+        ctx.layerToTarget = place.layerToTarget;
+        ctx.seed = (uint32_t)doc->root.value("seed", (int64_t)1);
+        ctx.lightAngle = light.value("angle", 120.0);
+        ctx.lightAltitude = light.value("altitude", 30.0);
+        ctx.layerId = id;
         def->render(ctx, state.slots[(size_t)outSlot].ref,
-                    ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, light.value("angle", 120.0), light.value("altitude", 30.0)));
-        if (!ctx.error().empty()) {
-            error = std::string(def->type) + ": " + ctx.error();
+                    ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, ctx.lightAngle, ctx.lightAltitude));
+        if (!runner.error().empty()) {
+            error = std::string(def->type) + ": " + runner.error();
             return false;
         }
-        if (ctx.usesCanvasPosition) state.positioned.insert(id);
         return true;
     });
     return out;

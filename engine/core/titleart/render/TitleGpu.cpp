@@ -145,6 +145,7 @@ struct TitleGpu::Program {
     bool failed = false;
     ObjectRender object;
     int block = -1;
+    unsigned int blockBytes = 0;
     std::pair<int, int> tex[TITLE_TEXTURE_SLOTS];
     std::pair<int, int> raw[TITLE_RAW_SLOTS];
 
@@ -154,9 +155,7 @@ struct TitleGpu::Program {
     }
 };
 
-TitleGpu::TitleGpu() {
-    programs.resize(TITLE_RENDER_PROGRAM_MAX + 1);
-}
+TitleGpu::TitleGpu() = default;
 
 TitleGpu::~TitleGpu() {
     release();
@@ -174,22 +173,21 @@ bool TitleGpu::ensurePlaceholder() {
 }
 
 void TitleGpu::release() {
-    for (size_t i = 0; i < programs.size(); i++) {
-        std::unique_ptr<Program>& p = programs[i];
+    for (auto& [properties, p] : programs) {
         if (!p) continue;
         if (p->loaded) p->object.destroy();
         if (p->requested) {
             p->shader.reset();
-            ShaderPool::remove(ShaderType::TITLE_ART, i);
+            ShaderPool::remove(ShaderType::TITLE_ART, properties);
         }
-        p.reset();
     }
+    programs.clear();
     if (placeholderMade) placeholder.destroyTexture();
     placeholderMade = false;
 }
 
 bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
-    if (number == 0 || number > TITLE_RENDER_PROGRAM_MAX) {
+    if ((number & 0x7Fu) == 0 || number > 0x1FFu) {
         if (error) *error = "title art program " + std::to_string(number) + " does not exist";
         return false;
     }
@@ -212,6 +210,9 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
     }
     ShaderData& data = p.shader->shaderData;
     p.block = data.getUniformBlockIndexByName("u_fs_titleart");
+    // the renderer's programs read TITLE_PARAMS vec4s, the effects' fewer
+    if (data.getUniformBlockMembers("u_fs_titleart", p.blockBytes) == nullptr) p.blockBytes = 0;
+    p.blockBytes = std::min<unsigned int>(p.blockBytes, sizeof(TitleParams::v));
     for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) p.tex[i] = data.getTextureIndexByName("u_taTex" + std::to_string(i));
     for (int i = 0; i < TITLE_RAW_SLOTS; i++) p.raw[i] = data.getTextureIndexByName("u_taRaw" + std::to_string(i));
     p.object.beginLoad(PrimitiveType::TRIANGLES);
@@ -255,7 +256,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
         error = "device_lost: a title art target is gone";
         return false;
     }
-    const uint32_t number = (uint32_t)desc.program;
+    const uint32_t number = (uint32_t)desc.program | desc.variant;
     if (!ensureProgram(number, &error)) {
         if (error.empty()) error = std::string("the title art program ") + titleRenderProgramName(number) + " is not ready";
         return false;
@@ -271,7 +272,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     const bool full = scissor == whole;
 
     TitleParams params = desc.params;
-    params.set(0, (float)key.width, (float)key.height, 1.0f / (float)key.width, 1.0f / (float)key.height);
+    if (!desc.keepParam0) params.set(0, (float)key.width, (float)key.height, 1.0f / (float)key.width, 1.0f / (float)key.height);
 
     if (desc.clear) {
         pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE,
@@ -301,7 +302,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
         for (int i = 0; i < TITLE_RAW_SLOTS; i++) {
             if (p.raw[i].first >= 0) p.object.addTexture(p.raw[i], ShaderStageType::FRAGMENT, desc.raw[i] ? desc.raw[i] : &placeholder);
         }
-        p.object.applyUniformBlock(p.block, sizeof(params.v), params.v);
+        p.object.applyUniformBlock(p.block, p.blockBytes, params.v);
         p.object.draw(0, 3, 1);
         drawn = true;
     }

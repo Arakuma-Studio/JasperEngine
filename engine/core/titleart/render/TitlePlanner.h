@@ -26,6 +26,7 @@
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleEffectContext.h"
 #include "titleart/render/TitleFrame.h"
+#include "titleart/render/TitleJobRunner.h"
 #include "titleart/render/TitleRenderJob.h"
 #include "titleart/render/TitleRenderServices.h"
 
@@ -58,7 +59,6 @@ namespace jasperengine::titleart {
         std::vector<Slot> slots;
         std::vector<std::shared_ptr<TitleCacheEntry>> held;     // what the job keeps alive
         std::vector<std::shared_ptr<void>> data;                 // CPU stage outputs
-        std::set<std::string> positioned;                       // layers whose effects read canvas positions
 
         // the target of a slot (acquired by its first use); null with `error`
         TitleTarget* target(int slot, std::string& error);
@@ -109,12 +109,12 @@ namespace jasperengine::titleart {
         void clearSlot(const std::string& label, const std::string& layerId, int slot, const float color[4]);
         void cpu(const std::string& label, const std::string& layerId, uint32_t us, std::function<bool(TitleJobState&, std::string&)> run);
         // an effect's or generator's `apply` / `render` as one step of `passes` estimated passes
+        // (its passes draw through the step's TitleJobRunner)
         void kernel(const std::string& label, const std::string& layerId, const TitleRectI& rect, uint32_t passes, float costWeight,
-                    std::vector<ShaderKey> shaders, std::function<bool(TitleJobState&, std::string&)> run);
+                    std::function<bool(TitleJobState&, TitleJobRunner&, std::string&)> run);
         void release(int slot);
         // inserts a finished result into the cache when the step it follows ran
-        // (a node of `layerId` whose effects read canvas positions is stored as position-bound)
-        void store(const std::shared_ptr<TitleCacheEntry>& entry, int slot, const std::string& layerId = std::string());
+        void store(const std::shared_ptr<TitleCacheEntry>& entry, int slot);
         void hold(const std::shared_ptr<TitleCacheEntry>& entry);
         void problem(TitleProblem problem);
         TitleRenderServices& services() { return svc; }
@@ -230,6 +230,20 @@ namespace jasperengine::titleart {
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;
         std::vector<std::unique_ptr<std::vector<DrawNode>>> trees;
+
+        // where an effect's or generator's target lies (the fields of TitleEffectContext.h's contexts)
+        struct PassPlace {
+            TitleRectI frame;
+            TitleAffine documentToTarget;
+            TitleAffine layerToTarget;
+            TitleVec2 layerOrigin;
+        };
+        PassPlace passPlace(const TitleRectI& rect, const Json* layer) const;
+        // the images the asset params of a definition name, uploaded at plan time (a missing one
+        // is a problem, and the definition draws without it)
+        using PassImages = std::vector<std::pair<TitleAssetRef, std::shared_ptr<TitleCacheEntry>>>;
+        PassImages passImages(const std::vector<ParamDef>& params, const Json& values, const std::string& layerId);
+        static std::function<const TextureRender*(const TitleAssetRef&, int&, int&)> imageLookup(PassImages images);
 
         void finishOutput(TitlePx acc);
         TitlePx planGlyphCell();

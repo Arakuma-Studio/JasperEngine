@@ -190,7 +190,7 @@ namespace jasperengine{
         PASS_PREVIEW,         // the Frame Debugger's pass output preview (S15, SokolPassPreview; editor only)
         PARTICLES,            // particle systems (docs/specs/S20-particles.md): instanced quads, meshes and trails
         HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
-        TITLE_ART             // Title Art's passes (S80, titleart.frag): the program number in the property bits
+        TITLE_ART             // Title Art's passes (S80): the program is the low property bits (titleart/render/TitlePasses.h)
     };
 
     enum class AttributeType{

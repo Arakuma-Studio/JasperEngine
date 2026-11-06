@@ -20,7 +20,7 @@ using namespace jasperengine::titleart;
 
 namespace {
 
-    // titleart/adjust.glsl's operations
+    // titleart/render/adjust.glsl's operations
     enum AdjustOp : int {
         OP_LUT = 0,
         OP_EXPOSURE = 3,

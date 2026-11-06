@@ -32,6 +32,7 @@
 #include "titleart/TitleArtTypes.h"
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -88,7 +89,7 @@ namespace jasperengine::titleart {
         bool made = false;
     };
 
-    // What a scalar buffer holds, for its encoding descriptor (titleart/common.glsl)
+    // What a scalar buffer holds, for its encoding descriptor (titleart/render/common.glsl)
     enum class TitleValueKind : uint8_t {
         Distance,       // signed distance in px (Fixed16: 1/64 px, +-512 px)
         Unit,           // 0..1 (height; Fixed16: 1/65535)
@@ -105,6 +106,10 @@ namespace jasperengine::titleart {
         TitleTarget* target = nullptr;
         TitleRectI scissor;                 // memory rows of the target; empty = all of it
         BlendMode blend = BlendMode::NONE;
+        uint32_t variant = 0;               // property bits above the program number (TitlePasses.h's encodings)
+        // p[0] as given (the effect programs' (size, px_scale) of TitlePassRunner) rather than
+        // the renderer's (size, 1 / size)
+        bool keepParam0 = false;
         bool clear = false;                 // clear the target to clearColor first (whole target)
         float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         TitleParams params;
@@ -124,9 +129,10 @@ namespace jasperengine::titleart {
         TitleGpu(const TitleGpu&) = delete;
         TitleGpu& operator=(const TitleGpu&) = delete;
 
-        // true when the program can draw; false while it compiles (error untouched) or when it
-        // cannot be built (error set)
-        bool ensureProgram(uint32_t program, std::string* error = nullptr);
+        // true when the program (its number and variant bits: ShaderType::TITLE_ART's
+        // properties) can draw; false while it compiles (error untouched) or when it cannot be
+        // built (error set). The renderer's programs and the effects' (TitlePasses.h) alike.
+        bool ensureProgram(uint32_t properties, std::string* error = nullptr);
         bool ensureProgram(TitleRenderProgram program, std::string* error = nullptr) { return ensureProgram((uint32_t)program, error); }
         // one pass; false with `error` when it could not draw
         bool run(const TitleGpuPass& pass, std::string& error);
@@ -139,7 +145,7 @@ namespace jasperengine::titleart {
 
     private:
         struct Program;
-        std::vector<std::unique_ptr<Program>> programs;
+        std::map<uint32_t, std::unique_ptr<Program>> programs;     // by properties
         TextureRender placeholder;
         bool placeholderMade = false;
         CameraRender pass;

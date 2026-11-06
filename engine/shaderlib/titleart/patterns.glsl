@@ -1,21 +1,20 @@
-// (c) Eduardo Doria and contributors
-// SPDX-License-Identifier: MIT
+// Title Art's procedural 柄 patterns (docs/specs/S80-title-art-core.md §6.7: the Material
+// pattern kinds, the Pattern Overlay effect and the Pattern Fill generator), ported from
+// Pachislop src/engine/patterns.ts (PATTERN_GLSL) by SafEight, used with the author's permission.
 //
-// Ported from Pachislop src/engine/patterns.ts by SafEight, used with the author's permission.
+// patternSampleD(p, dpdx, dpdy, kind, seed): p in MOTIF units (one unit is the nominal feature
+// size), dpdx / dpdy its per-pixel steps (callers pass analytic values: no derivative functions
+// run here, so it is safe in branches). Returns x = mark coverage 0..1 (analytic anti-aliasing
+// over the pixel footprint), y = secondary-colour (color2) coverage composited over the marks,
+// z = mark height 0..1 for relief, w = 0. Kind ids are TitlePatternKind's (TitleFx.h): 0 none,
+// 1 zebra, 2 tiger, 3 giraffe, 4 leopard, 5 checker, 6 hazard, 7 stripes, 8 dots, 9 sakura,
+// 10 seigaiha, 11 asanoha, 12 shippo, 13 kikko, 14 uroko, 15 custom (an image tile per motif
+// unit, its luminance x alpha the marks: the includer defines TA_PATTERN_IMAGE as its sampler).
+// The pattern space is y-up (Pachislop's layer space), so the C++ side maps frame pixels (y down)
+// into it (TitleFx: patternTransform).
 
-// The 15 procedural patterns (Material `pattern.kind`, Pattern Overlay, Pattern Fill) and the
-// custom image tile, shared by the element shading and the pattern effect and generator, with
-// their analytic anti-aliasing. patternSampleD(p, dpdx, dpdy, kind, seed): p in motif units
-// (one unit = the nominal feature size, already rotated), dpdx / dpdy its steps per output pixel
-// (callers pass analytic values; no derivative functions are used, so it is safe in any control
-// flow). Returns x = mark coverage, y = colour 2 coverage (over the marks), z = mark height for
-// relief, w = 0. Kind 15 tiles the image a program binds as TA_PATTERN_IMAGE (one tile per motif
-// unit, its luminance x alpha the coverage). Kinds: 1 zebra, 2 tiger, 3 giraffe, 4 leopard,
-// 5 checker, 6 hazard, 7 stripes, 8 dots, 9 sakura, 10 seigaiha, 11 asanoha, 12 shippo, 13 kikko,
-// 14 uroko, 15 custom (render/TitleMaterial.cpp's patternKindId).
-
-#ifndef TA_PATTERNS_GLSL
-#define TA_PATTERNS_GLSL
+#ifndef TITLEART_PATTERNS_GLSL
+#define TITLEART_PATTERNS_GLSL
 float pat_h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 pat_h22(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
 // Gradient noise, roughly -1..1.
@@ -278,11 +277,15 @@ vec3 pat_uroko(vec2 q) {
 vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   if (kind <= 0) return vec4(0.0);
   if (kind == 15) {
+#ifdef TA_PATTERN_IMAGE
     // One image tile per motif unit; v flipped because the texture's first row is the top.
     vec2 t = fract(p);
     vec4 c = textureGrad(TA_PATTERN_IMAGE, vec2(t.x, 1.0 - t.y), dpdx * vec2(1.0, -1.0), dpdy * vec2(1.0, -1.0));
     float m = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722)) * c.a;
     return vec4(m, 0.0, m, 0.0);
+#else
+    return vec4(0.0);
+#endif
   }
   // Integer offsets keep lattices anchored to the layer origin while reshuffling cells.
   vec2 so = floor(vec2(pat_h21(vec2(seed, 1.37)), pat_h21(vec2(seed + 3.1, 7.91))) * 512.0);
@@ -314,4 +317,4 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   return vec4(x, y, t * t * (3.0 - 2.0 * t), 0.0);
 }
 
-#endif // TA_PATTERNS_GLSL
+#endif // TITLEART_PATTERNS_GLSL

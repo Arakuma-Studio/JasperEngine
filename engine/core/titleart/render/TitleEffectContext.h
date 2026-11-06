@@ -1,126 +1,108 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (docs/specs/S80-title-art-core.md §6.4 "Ink vs light", §6.5, R30; Pachislop's
-// EffectContext and the helpers of src/effects/lib.ts)
-// - Purpose: what an effect definition's `apply` and a generator definition's `render`
-//   (TitleEffectRegistry.h) run with inside a render job: the node's target geometry (its
-//   region of interest in output pixels, px_scale, the canvas), the layer's content and ink
-//   (Pachislop's content, ink and inputInk), the document and the layer, and the GPU helpers
-//   every kernel shares: targets from the pool, passes of any TitleRenderProgram (the definitions'
-//   own programs above TITLE_RENDER_PROGRAM_LAST), copies, the pyramid Gaussian blur, the
-//   alpha distance field bounded by the reach its consumer needs, gradient LUTs and the
-//   fourteen adjustment operations (one implementation for the `adjust` effect and adjustment
-//   layers, R30).
-// - Pixel contract: every target is linear premultiplied colour of the accumulator format
-//   (TitleArtCaps: RGBA16F, or SRGB8A8 on the fallback), rows down from the node's top-left; the
-//   output target is lent sized like the input and must be written whole. Effect px params are
-//   canvas px: multiply by pxScale (decision 5).
-// - Position: a node whose pixels do not depend on where it sits is re-placed from the cache
-//   when it moves by whole output pixels (R42); a kernel that reads canvas positions (an
-//   `align: canvas` pattern) sets usesCanvasPosition, and the node is then re-rendered on moves.
-// - Failure: a helper returns false with error() set; `apply` returning leaves the output as it
-//   drew it, and a set error fails the job.
-// - Thread-safety: main thread, during one step of a job.
+// Contract (docs/specs/S80-title-art-core.md §6.3, §6.4, §6.5)
+// - Purpose: what an effect's `apply` and a generator's `render` (TitleEffectRegistry.h) get
+//   besides their targets: the runner of their passes, the target's place in the whole render,
+//   px_scale, the document values they read, and for effects the layer's pixels before its
+//   effects and its ink (§6.4 "Ink vs light"). The renderer fills one per effect of a stack and
+//   per generator layer; tests and tools construct one around a TitlePassKit.
+// - Targets: `input` and `output` of an effect have the same key (the node's region of
+//   interest in output pixels, the accumulator format); `content`, `ink` and `inputInk` too.
+//   An effect writes all of `output` and never reads it; scratch targets come from
+//   runner.acquire() and go back with release().
+// - Frame space: target pixels, memory rows (y down, TitleFrame.h); `frame` is where the whole
+//   render (the canvas at px_scale) lies in it, so an effect can cut light at the canvas edge
+//   and Repeat Edge Pixels clamps there.
+// - Determinism: everything an effect draws is a function of its input, its params and these
+//   values (`seed` is the document's: element seeds add to it, R17).
+// - Thread-safety: main thread, for the duration of one apply or render call.
 
 #pragma once
 
-#include "Export.h"
 #include "titleart/TitleArtDoc.h"
-#include "titleart/TitleEffectRegistry.h"
-#include "titleart/render/TitleArtCaps.h"
-#include "titleart/render/TitleFrame.h"
-#include "titleart/render/TitleGpu.h"
-#include "titleart/render/TitleTargetPool.h"
+#include "titleart/TitleArtTypes.h"
+#include "titleart/render/TitlePasses.h"
 
-#include <memory>
+#include <functional>
 #include <string>
-#include <vector>
 
 namespace jasperengine::titleart {
 
-    class TitleRenderServices;
-    struct TitleCacheEntry;
+    // a 2D affine map of points: (x', y') = (a x + b y + tx, c x + d y + ty)
+    struct TitleAffine {
+        double a = 1.0, b = 0.0, c = 0.0, d = 1.0, tx = 0.0, ty = 0.0;
 
-    class JASPERENGINE_API TitlePassContext {
-    public:
-        TitlePassContext(TitleRenderServices& services, const TitleArtDoc& doc, const Json* layer, std::string layerId,
-                         const TitleRectI& rect, double pxScale);
-        virtual ~TitlePassContext() = default;
-
-        // ---- where the pass draws ----
-        const TitleArtDoc& doc() const { return document; }
-        const Json* layer() const { return layerObject; }     // null for document-level passes
-        const std::string& layerId() const { return id; }     // "<id>#<part>" for a part's stack
-        // the target's rectangle in output pixels of the scaled canvas (image space)
-        const TitleRectI& rect() const { return area; }
-        int width() const { return area.width; }
-        int height() const { return area.height; }
-        double pxScale() const { return scale; }
-        // the document <-> output-pixel map (TitleFrame), with this target's rect as its region
-        TitleFrame frame() const;
-        // the document's `seed` (decision 8: add a definition's own `seed` param to it)
-        int64_t seed() const;
-        const TitleArtCaps& caps() const;
-
-        // ---- GPU helpers ----
-        TitleGpu& gpu();
-        // a target of this pass's size (or the given one) for a buffer kind; empty with error() set
-        TargetRef acquire(TitleBuffer buffer = TitleBuffer::Accumulator, int width = 0, int height = 0);
-        static TextureRender* texture(const TargetRef& target);
-        // one pass of `pass.program` (TitleGpu::run), counted as a pass of the job
-        bool run(const TitleGpuPass& pass);
-        bool clear(TargetRef& target);
-        // src copied into dst (both this pass's size, or resampled when they differ)
-        bool copy(const TargetRef& src, TargetRef& dst, float opacity = 1.0f);
-        // Gaussian of radius ~ 3 sigma = radiusPx output px: a separable pass of at most 24 taps a
-        // side on the pyramid level where sigma / 2^level <= 6 (Pachislop's lib.ts blur)
-        bool blur(const TargetRef& src, float radiusPx, TargetRef& out);
-        // signed distance (px, + outside) to src's alpha edge at `threshold`, jump-flooded only as
-        // far as reachPx (R27: steps from 2^ceil(log2(reach + 2)) / 2 down to 1, plus one); beyond
-        // it the field reads reachPx. `out` takes the Distance buffer (texelFetch, TitleBuffer::Distance)
-        bool distanceField(const TargetRef& src, float threshold, float reachPx, TargetRef& out);
-        // the encoding descriptor of a Distance target this context made (titleart/common.glsl)
-        std::array<float, 4> distanceEncoding() const;
-        // a 256 x 1 RGBA8 LUT of a gradient (sRGB stops, straight alpha; cached for the render)
-        TextureRender* gradientLut(const TitleGradient& gradient);
-        // one of the fourteen adjustment operations of an adjustment object (render/Adjustments.h)
-        bool adjust(const TargetRef& src, const Json& adjustment, TargetRef& out);
-
-        // ---- position, failure ----
-        bool usesCanvasPosition = false;
-        bool fail(const std::string& message);
-        const std::string& error() const { return failure; }
-
-    protected:
-        TitleRenderServices& services;
-        const TitleArtDoc& document;
-        const Json* layerObject;
-        std::string id;
-        TitleRectI area;
-        double scale;
-        std::string failure;
-        std::vector<std::shared_ptr<TitleCacheEntry>> keep;     // LUTs the pass's draws read
+        TitleVec2 apply(const TitleVec2& p) const { return {a * p.x + b * p.y + tx, c * p.x + d * p.y + ty}; }
+        TitleAffine inverse() const {
+            const double det = a * d - b * c;
+            const double k = det != 0.0 ? 1.0 / det : 0.0;
+            TitleAffine r;
+            r.a = d * k;
+            r.b = -b * k;
+            r.c = -c * k;
+            r.d = a * k;
+            r.tx = -(r.a * tx + r.b * ty);
+            r.ty = -(r.c * tx + r.d * ty);
+            return r;
+        }
+        // this after `first`
+        TitleAffine after(const TitleAffine& first) const {
+            TitleAffine r;
+            r.a = a * first.a + b * first.c;
+            r.b = a * first.b + b * first.d;
+            r.c = c * first.a + d * first.c;
+            r.d = c * first.b + d * first.d;
+            r.tx = a * first.tx + b * first.ty + tx;
+            r.ty = c * first.tx + d * first.ty + ty;
+            return r;
+        }
     };
 
-    // apply(EffectContext&, input, output, params)
-    struct JASPERENGINE_API EffectContext : public TitlePassContext {
-        using TitlePassContext::TitlePassContext;
-        // the layer's (group's, part's) pixels before any of its effects: shapes an effect traces
-        // from the silhouette come from here, so an earlier glow does not move them
+    struct EffectContext {
+        TitlePassRunner& runner;
+        int width = 0, height = 0;          // the targets' size, output px
+        float pxScale = 1.0f;               // output px per canvas px: every Px param is multiplied by it
+        // the whole render in target px (x, y of its top-left relative to the target, its size)
+        TitleRectI frame;
+        // document space (canvas px, origin at the centre, +y up) -> target px: what canvas-
+        // anchored patterns and the global light's screen directions map through
+        TitleAffine documentToTarget;
+        // the layer's own origin (its transform's position) in target px: layer-anchored patterns
+        TitleVec2 layerOrigin;
+        uint32_t seed = 1;                  // the document's seed (an element's seed adds to it)
+        double lightAngle = 120.0, lightAltitude = 30.0;    // global_light (ParamValues applies it)
+        // the layer's (or group's, or part's) pixels before any of its effects; null = input.
+        // Effects that take a shape from the silhouette read it, so an earlier glow does not move it
         const TargetRef* content = nullptr;
-        // `content` without the light its renderer added (the same target when it has none)
+        // content without light of its own; null = content
         const TargetRef* ink = nullptr;
-        // the input without the light of earlier light effects: outline effects read it (§6.4)
+        // the input without the light earlier effects added (only for `outline` definitions after
+        // an `adds_light` one, §6.4); null = input
         const TargetRef* inputInk = nullptr;
+        std::string layerId;                // for pass labels and problems
+        // an image asset's texture and size (a custom pattern); null (or no resolver) when it is
+        // missing: the effect draws without it
+        std::function<const TextureRender*(const TitleAssetRef& ref, int& width, int& height)> image;
+
+        EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };
 
-    // render(GeneratorContext&, target, params): the target is this context's rect (the canvas
-    // region for fills, the followed layer's region otherwise)
-    struct JASPERENGINE_API GeneratorContext : public TitlePassContext {
-        using TitlePassContext::TitlePassContext;
-        // the followed layer drawn alone (Generator `follow`), null when none or a cycle
-        const TargetRef* follow = nullptr;
+    struct GeneratorContext {
+        TitlePassRunner& runner;
+        int width = 0, height = 0;
+        float pxScale = 1.0f;
+        TitleRectI frame;
+        int canvasWidth = 0, canvasHeight = 0;
+        TitleAffine documentToTarget;
+        // the generator layer's space (canvas px from its position, +y up, turned and scaled by
+        // its transform) -> target px
+        TitleAffine layerToTarget;
+        uint32_t seed = 1;
+        double lightAngle = 120.0, lightAltitude = 30.0;
+        std::string layerId;
+
+        GeneratorContext(TitlePassRunner& passes) : runner(passes) {}
     };
 
 }

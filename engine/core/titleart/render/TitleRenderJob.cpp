@@ -81,6 +81,11 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
             failure = error.empty() ? std::string("render step '") + s.label + "' failed" : error;
             break;
         }
+        // a step that met a program still being compiled runs again once it is built
+        if (s.ready && !s.ready()) {
+            blocked = true;
+            break;
+        }
         if (isPass) {
             local.passes += s.passes;
             passesRun += s.passes;
