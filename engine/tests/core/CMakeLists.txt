@@ -36,6 +36,9 @@ target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Thre
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)
 set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests" ENABLE_EXPORTS ON)
+if(WIN32)
+    jasperengine_add_windows_manifest(jasperengine-crash-test)
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(JASPER_CRASH_TEST_FLAGS "")
 if(JASPERENGINE_SANITIZE_ADDRESS)
@@ -99,7 +102,9 @@ jasperengine_add_test_target(jasperengine-core-tests
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
+    # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."

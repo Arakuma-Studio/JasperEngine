@@ -85,35 +85,14 @@
 #define MAX_POINT_SHADOW_LIGHTS (MAX_POINT_SHADOW_ATLAS_SLOTS / SHADOW_CUBE_FACES)
 #endif
 
-#ifndef MAX_SUBMESHES
-#define MAX_SUBMESHES 16
-#endif
-
 // detail levels per submesh, level 0 being the source geometry
 #ifndef MAX_MESH_LODS
 #define MAX_MESH_LODS 4
 #endif
 
-
-#ifndef MAX_TILEMAP_TILESRECT
-#define MAX_TILEMAP_TILESRECT 200
-#endif
-
-#ifndef MAX_TILEMAP_TILES
-#define MAX_TILEMAP_TILES 2048
-#endif
-
-#ifndef MAX_SPRITE_FRAMES
-#define MAX_SPRITE_FRAMES 128
-#endif
-
 // main font of a text plus its fallbacks
 #ifndef MAX_TEXT_FONTS
 #define MAX_TEXT_FONTS 4
-#endif
-
-#ifndef MAX_BONES
-#define MAX_BONES 128
 #endif
 
 #ifndef MAX_MORPHTARGETS
@@ -124,10 +103,6 @@
 // SSAO_KERNEL_SIZE define injected for the ssao.frag shader (ShaderBuilder)
 #ifndef SSAO_KERNEL_SIZE
 #define SSAO_KERNEL_SIZE 32
-#endif
-
-#ifndef MAX_EXTERNAL_BUFFERS
-#define MAX_EXTERNAL_BUFFERS 30
 #endif
 
 #ifndef MAX_BROADPHASELAYER_3D
@@ -458,8 +433,11 @@ namespace jasperengine {
         // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
         static void cancelUIPointer(int pointerOrButton, bool touch);
         static void cancelAllUIPointers();
-        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
         static void flushCharInput();
+        // whole typed code points to Input.inputString, the documents, onCharInput and the
+        // component UI (systemCharInput, flushCharInput)
+        static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
         static void calculateCanvas();
@@ -925,9 +903,10 @@ namespace jasperengine {
         static void systemKeyDown(int key, bool repeat, int mods);
         static void systemKeyUp(int key, bool repeat, int mods);
 
-        // One UTF-16 unit where wchar_t is 16 bits (Windows): surrogate pairs are combined
-        // before HTML UI documents see them, the game and component UI get each unit
-        static void systemCharInput(wchar_t codepoint);
+        // One UTF-16 unit (Windows WM_CHAR, Android's keyboard) or one whole code point:
+        // surrogate pairs are combined here, so documents, Input.inputString, onCharInput and the
+        // component UI all get whole code points (a lone surrogate is U+FFFD)
+        static void systemCharInput(char32_t unit);
         // Committed text: an IME commit, a paste, a platform string. Documents get the whole
         // string; unless a document consumed it, each code point then goes to onCharInput and
         // the component UI.
@@ -1000,7 +979,9 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onMouseLeave;
         static FunctionSubscribe<void(int,bool,int)> onKeyDown;
         static FunctionSubscribe<void(int,bool,int)> onKeyUp;
-        static FunctionSubscribe<void(wchar_t)> onCharInput;
+        // one whole character per call, on every platform (a one-character string in Lua). A C++
+        // handler declared with wchar_t still compiles but is deprecated: 16 bits on Windows.
+        static FunctionSubscribe<void(char32_t)> onCharInput;
         static FunctionSubscribe<void(int)> onGamepadConnect;
         static FunctionSubscribe<void(int)> onGamepadDisconnect;
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;

@@ -97,6 +97,31 @@ std::vector<std::string> editor::platformBackends(BuildPlatform platform) {
     return {"glcore"};
 }
 
+std::set<ShaderBackend> editor::sourceExportBackends(BuildPlatform platform) {
+    switch (platform) {
+        case BuildPlatform::Windows: return {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
+        case BuildPlatform::Linux: return {ShaderBackend::GLCore, ShaderBackend::Vulkan};
+        case BuildPlatform::MacOS: return {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
+        case BuildPlatform::Android: return {ShaderBackend::GLES3};
+        case BuildPlatform::IOS: return {ShaderBackend::MetalIOS};
+        case BuildPlatform::Web: return {ShaderBackend::GLES3};
+    }
+    return {};
+}
+
+const std::vector<ShaderBackend>& editor::hostDesktopBackends() {
+#if defined(_WIN32)
+    static const std::vector<ShaderBackend> backends = {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
+#elif defined(__APPLE__)
+    // Vulkan is left out: MoltenVK has no VK_EXT_descriptor_buffer, which the renderer binds
+    // through, so an export would build and then fail at startup
+    static const std::vector<ShaderBackend> backends = {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
+#else
+    static const std::vector<ShaderBackend> backends = {ShaderBackend::GLCore, ShaderBackend::Vulkan};
+#endif
+    return backends;
+}
+
 std::string editor::normalizeBackend(const std::string& name) {
     if (name == "opengl" || name == "glcore" || name == "gl") return "glcore";
     if (name == "opengles" || name == "gles3" || name == "gles" || name == "webgl2") return "gles3";

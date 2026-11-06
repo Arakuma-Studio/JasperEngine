@@ -1425,6 +1425,58 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_ssr_reflection_source",
+        "kind": "guard",
+        "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
+                         "Reflection Source (ssr_debug_mode 7), which the guide's Other areas and the setting's help name.",
+        "text_at_issue": "Guide 'Other areas': 'reflections (SSR replaces probe reflections; check with ssr_debug_mode 7)'; "
+                         "set_scene_settings ssr_debug_mode help '... 7 reflection source, 8 occlusion'",
+        "source": "doriax catch-up ssr-probes (spec 2026-11-04); no failure on record",
+        "prompt": "SSR is on in the current scene and the marble floor inside the Reflection Probe looks too shiny. Show me in "
+                  "the Game view what reflection SSR swaps on that floor.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nssr_enabled = true\nssr_intensity = 1.0\nssr_debug_mode = 0",
+                {"scene_id": 1, "settings": {"ssr_enabled": True, "ssr_intensity": 1.0, "ssr_debug_mode": 0},
+                 "schema": {"ssr_debug_mode": {"type": "int", "default": 0, "help":
+                     "SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo, 6 environment "
+                     "specular, 7 reflection source, 8 occlusion"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ssr_debug_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (Game view): 41 draws, 9 passes, CPU 1.20 ms, SSR: 1/1 probes with slots",
+                {"ssr": {"probe_slots": 4, "probes_in_view": 1, "probes_without_slot": 0, "meshes_drawn": 6,
+                         "probes": [{"entity": 22, "name": "Reflection Probe", "slot": 0, "coverage": 0.41}]}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ssr_debug_mode": 7}}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_typing_utf16_units",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "A character beyond U+FFFF typed on Windows or Android reaches the game as two UTF-16 halves; "
+                         "reproducing a typing bug from there on another platform takes send_input's per_unit, which the "
+                         "plain text event (a paste) never exercises.",
+        "text_at_issue": "send_input description: 'text: text, per_unit (one event per UTF-16 unit, as Windows/Android type)'",
+        "source": "unicode-text spec (docs/superpowers/specs/2026-11-04-unicode-text-design.md, M1)",
+        "prompt": "Players on Windows say an emoji typed into the name field of the game turns into two boxes. The game is "
+                  "playing and the name field already has focus. Type \U0001F600 into it the way Windows delivers typed "
+                  "characters, then tell me what the field's text is now.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}, "result": ok(
+                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged. "
+                                                   "Script coroutines: 0, timers: 0.", {"state": "playing"})},
+            {"tool": "eval_lua", "result": ok("\"\U0001F600\"", {"result": "\U0001F600"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "

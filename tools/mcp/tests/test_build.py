@@ -58,6 +58,10 @@ MIXER_LINE = "mixer groups: Master,Music exposed MusicVolume"
 ACTION_NAMES_LINE = "input actions: Horizontal,Vertical,Fire1,Fire2,Fire3,Jump,Mouse X,Mouse Y,Mouse ScrollWheel,Submit,Cancel,Dash"
 
 
+# the fixed component capacities exports passed before mesh-memory
+CAPACITY_MACROS = {"MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES",
+                   "MAX_EXTERNAL_BUFFERS", "MAX_BONES"}
+
 # what a game's clip measures, read back from the player's log
 CLIP_LENGTH_LUA = """local clipLength = {}
 
@@ -135,8 +139,9 @@ async def check_xcode_workspace(ed: Editor, out: Path) -> None:
             ed.check(re.fullmatch(r'"?gnu\+\+\d+"?', settings["CLANG_CXX_LANGUAGE_STANDARD"]) is not None,
                      f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
     for settings in pbxproj.project_settings(root):
-        definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
-        ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
+        definitions = settings.get("GCC_PREPROCESSOR_DEFINITIONS", [])
+        # components grow their arrays: no capacity definitions (mesh-memory)
+        ed.check(not any(d.split("=")[0].strip('"') in CAPACITY_MACROS for d in definitions), f"no capacities: {definitions}")
         ed.check_eq(len(definitions), len(set(definitions)), f"no definition twice: {definitions}")
 
 
@@ -213,8 +218,10 @@ async def test_source_export(ed: Editor):
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
     await check_xcode_workspace(ed, out)
-    # S67: the Android project builds from a shell: the installed editor's copy has no exec bit to pass on
-    ed.check(os.access(out / "workspaces" / "androidstudio" / "gradlew", os.X_OK), "gradlew is executable")
+    # built from a terminal as the docs say (./jasperengine.py, ./gradlew): the installed editor's
+    # engine copy and the export keep them executable
+    for script in ("jasperengine.py", "workspaces/androidstudio/gradlew"):
+        ed.check(os.access(out / script, os.X_OK), f"{script} is executable: {oct((out / script).stat().st_mode)}")
     # web saves are prefixed per game: the default identifier is shared, so the project name
     # (bytes other than letters, digits, . and - escaped for the define)
     ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
@@ -247,6 +254,16 @@ async def test_source_export(ed: Editor):
     ed.check(Path(info["source"]["output_dir"]).resolve() != out.resolve(), f"not remembered: {info['source']['output_dir']}")
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
+
+    # Android builds have OpenGL ES 3 only: its preset compiles no Vulkan shaders (the SPIR-V
+    # header stays the SDK's empty stub)
+    android = ed.scratch.root / "export-android"
+    r = await ed.call("build_project", mode="source", output_dir=str(android), platform="android", timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    shaders = android / "shaders"
+    ed.check((shaders / "glsl300es.h").stat().st_size > 4096, "the GLES3 shaders are compiled")
+    ed.check(not (shaders / "spirv10.h").exists() or (shaders / "spirv10.h").stat().st_size < 1024,
+             f"no Vulkan shaders for Android: spirv10.h has {(shaders / 'spirv10.h').stat().st_size} bytes")
 
 
 async def test_admob_export(ed: Editor):
