@@ -1134,7 +1134,7 @@ CASES = [
                 "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
                 "with scope project).",
                 {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
-                 "undo": [{"scope": "project", "name": "Write File hero.png"}]})},
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
             {"tool": "apply_palette", "result": ok(
                 "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
                 "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Preview only, nothing written: call again with the same "
@@ -1162,7 +1162,7 @@ CASES = [
                 "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Wrote "
                 "assets/Palettes/endesga-32.palette as one undo step (undo with scope project).",
                 {"path": "assets/Palettes/endesga-32.palette", "asset_path": "Palettes/endesga-32.palette",
-                 "written": ["assets/Palettes/endesga-32.palette"], "undo": [{"scope": "project", "name": "Create File endesga-32.palette"}],
+                 "written": ["assets/Palettes/endesga-32.palette"], "undo": {"id": 4, "name": "Create File endesga-32.palette"},
                  "job_id": "job-3", "status": "succeeded"})},
             {"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}}, "result": ok(
                 "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Preview only, "

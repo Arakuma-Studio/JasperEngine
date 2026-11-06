@@ -38,7 +38,6 @@
 #include "util/Util.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -678,23 +677,18 @@ struct LospecState {
     std::string slug;
     std::string target;
     std::unique_ptr<ehtml::HttpClient> client = std::make_unique<ehtml::HttpClient>();
-    std::atomic<bool> done{false};
     std::optional<px::Palette> palette;
     Problem error;
     std::vector<ToolImage> images;
     std::string text;
 };
 
-// Runs `then` on the main thread once `done` is set (polled once an editor frame). Its writes are
-// the call's undo steps, the agent's when the call is (as the server's own continuations are)
-void whenDone(McpContext* ctx, const std::shared_ptr<std::atomic<bool>>& done, std::optional<UndoOrigin> origin, std::function<void()> then) {
-    ctx->app().requestRedraw();
-    getEditorHost().enqueueMainThreadTask([ctx, done, origin, then]() {
+// Runs `then` on the main thread, posted by the worker as it finishes (it wakes the editor once;
+// nothing polls meanwhile). Its writes are the call's undo steps, the agent's when the call is (as
+// the server's own continuations are)
+void finishOnMainThread(std::optional<UndoOrigin> origin, std::function<void()> then) {
+    getEditorHost().enqueueMainThreadTask([origin, then = std::move(then)]() {
         McpWriteScope writeScope;
-        if (!done->load()) {
-            whenDone(ctx, done, origin, then);
-            return;
-        }
         std::optional<UndoOriginScope> attribution;
         if (origin) attribution.emplace(*origin);
         then();
@@ -761,8 +755,8 @@ void startLospec(const CallPtr& call, EditArgs args, const std::string& slug, co
         if (auto s = weak.lock()) s->client->cancel();
     });
     state->job->setProgress(-1.0, "fetching " + epx::lospecJsonUrl(slug));
-    auto done = std::shared_ptr<std::atomic<bool>>(state, &state->done);
-    std::thread([state]() {
+    const std::optional<UndoOrigin> origin = originOf(call);
+    std::thread([state, origin]() {
         try {
             auto fetched = epx::fetchLospec(state->slug, *state->client, epx::todayIsoDate());
             if (std::holds_alternative<px::Palette>(fetched)) state->palette = std::get<px::Palette>(fetched);
@@ -772,15 +766,14 @@ void startLospec(const CallPtr& call, EditArgs args, const std::string& slug, co
                                    "Download the palette's .hex from its Lospec page, then edit_palette {from: {file: <its path>}}");
         }
         if (state->error.field.empty()) state->error.field = "from.lospec";
-        state->done = true;
+        finishOnMainThread(origin, [state]() {
+            try {
+                finishLospec(state);
+            } catch (const std::exception& e) {
+                state->job->fail(std::string("The palette was fetched but could not be handled: ") + e.what());
+            }
+        });
     }).detach();
-    whenDone(&ctx, done, originOf(call), [state]() {
-        try {
-            finishLospec(state);
-        } catch (const std::exception& e) {
-            state->job->fail(std::string("The palette was fetched but could not be handled: ") + e.what());
-        }
-    });
 
     call->detach();
     replyWhenJobDone(call, state->job, true, kJobWaitSeconds, [state](const McpJob& finished) {
@@ -1042,7 +1035,6 @@ struct ApplyState {
     ApplyArgs args;
     epx::RgbaImage source;
     epx::ApplyResult result;
-    std::atomic<bool> done{false};
     std::string failure;
     std::vector<ToolImage> images;
     std::string text;
@@ -1327,37 +1319,36 @@ void applyPaletteTool(const CallPtr& call) {
     state->source = std::move(*image);
     state->job = ctx.jobs().create("apply_palette", "Apply Palette " + args.texture + (args.write ? "" : " (preview)"));
     state->job->setProgress(-1.0, "mapping " + std::to_string(state->source.width) + "x" + std::to_string(state->source.height) + " pixels");
-    auto done = std::shared_ptr<std::atomic<bool>>(state, &state->done);
-    std::thread([state]() {
+    const std::optional<UndoOrigin> origin = originOf(call);
+    std::thread([state, origin]() {
         try {
             state->result = epx::applyPalette(state->source, state->args.request);
         } catch (const std::exception& e) {
             state->failure = e.what();
         }
-        state->done = true;
-    }).detach();
-    whenDone(&ctx, done, originOf(call), [state]() {
-        const JobPtr& job = state->job;
-        Project* current = state->ctx->project();
-        std::vector<Problem> problems;
-        if (!state->failure.empty()) {
-            problems.push_back(problem("failed", "", "the mapping failed: " + state->failure, "call again; report it if it persists"));
-        } else if (!current || current->getProjectPath() != state->root) {
-            problems.push_back(problem("project_changed", "", "another project was opened while the texture was mapped", "call apply_palette again in the open project"));
-        }
-        Json data;
-        if (problems.empty()) {
-            try {
-                if (finishApply(*state->ctx, state->args, state->source, state->result, data, state->text, state->images, problems)) {
-                    job->succeed(state->text, data);
-                    return;
-                }
-            } catch (const std::exception& e) {
-                problems.push_back(problem("failed", "", e.what(), "call again"));
+        finishOnMainThread(origin, [state]() {
+            const JobPtr& job = state->job;
+            Project* current = state->ctx->project();
+            std::vector<Problem> problems;
+            if (!state->failure.empty()) {
+                problems.push_back(problem("failed", "", "the mapping failed: " + state->failure, "call again; report it if it persists"));
+            } else if (!current || current->getProjectPath() != state->root) {
+                problems.push_back(problem("project_changed", "", "another project was opened while the texture was mapped", "call apply_palette again in the open project"));
             }
-        }
-        job->fail(problemsText("Nothing was written:", problems), Json{{"errors", problemsJson(problems)}});
-    });
+            Json data;
+            if (problems.empty()) {
+                try {
+                    if (finishApply(*state->ctx, state->args, state->source, state->result, data, state->text, state->images, problems)) {
+                        job->succeed(state->text, data);
+                        return;
+                    }
+                } catch (const std::exception& e) {
+                    problems.push_back(problem("failed", "", e.what(), "call again"));
+                }
+            }
+            job->fail(problemsText("Nothing was written:", problems), Json{{"errors", problemsJson(problems)}});
+        });
+    }).detach();
 
     call->detach();
     replyWhenJobDone(call, state->job, true, kJobWaitSeconds * 4.0, [state](const McpJob& finished) {
@@ -1404,7 +1395,8 @@ void registerPaletteTools(McpRegistry& registry) {
             {"output", boolean("")},
             {"overwrite", boolean("")}
         });
-        tool.annotations.idempotent = true;
+        // not idempotent: ops such as add_variant or add_color add again on a second call
+        tool.annotations.idempotent = false;
         tool.annotations.openWorld = true;   // a Lospec fetch
         tool.writesFiles = [](const Json& args) { return palettetools::truthy(args, "output") || args.contains("export"); };
         // previews work while playing; the handler refuses writes then (play_mode)

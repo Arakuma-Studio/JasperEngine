@@ -1088,9 +1088,13 @@ Recorded while implementing (`feature/s43-palettes`).
   convention of every `int` property: a GL upload of mixed int and float members is wrong).
   `instance=fx.x` (S52 R22/R23) is not written: the directive is S52's, and S52 adds it to this
   line when it lands.
-- **Palette Cycling's clock** is `customParams.time`, the frame's shader clock (as HUE_SHIFT's): it
-  is the wall clock, pinned or fixed-step for captures, and does not stop at a time scale of 0.
-  Freezing is `paletteCycleSpeed = 0`. AC10's "pause holds" is checked as "a held clock holds".
+- **Palette Cycling's clock** is a new engine-written member of a custom block, `gameTime`
+  (`Engine::getShaderGameTime`, written beside `time` and `resolution`): scaled game seconds that
+  advance only while the game's events run, so cycling holds at time scale 0, while the editor's Play
+  is paused and in edit mode; a fixed frame delta makes it reproducible, and `setPinnedShaderTime`
+  pins it with the shader clock. `customParams.time` (the wall clock) did not stop.
+  `PaletteSwapGpu.CyclingFollowsGameTime` checks the pause (red before the change: the cycle moved
+  with the shader clock at time scale 0).
 - **Palette Quantize** draws nothing different until its first table is baked (`uber.palette.w`
   0: the pass leaves the colour as it is); later changes keep the previous table until the new one
   is done. Two palette colours in one cell of the grid keep only the first one's identity, with the

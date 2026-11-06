@@ -385,7 +385,22 @@ namespace paletteformats_test {
         for (int i = 0; i < 300; i++) many.push_back(px::Rgba8{(uint8_t)(i & 255), (uint8_t)(i >> 8), 50, 255});
         const ImportResult tooMany = importPalette("many.png", encodeTestPng(20, 15, many));
         EXPECT_EQ(tooMany.error.kind, "too_many_colors");
-        EXPECT_NE(tooMany.error.message.find("300"), std::string::npos) << tooMany.error.message;
+        // the count stops one past what a palette holds (a photo's millions are never all kept)
+        EXPECT_NE(tooMany.error.message.find("more than 256"), std::string::npos) << tooMany.error.message;
+        const ImportResult first = importPalette("many.png", encodeTestPng(20, 15, many), true);
+        ASSERT_TRUE(first.ok()) << first.error.message;
+        ASSERT_EQ(first.palette->count(), 256);
+        EXPECT_EQ(first.palette->colors[255], many[255]);
+        ASSERT_EQ(first.warnings.size(), 1u);
+        EXPECT_EQ(first.warnings[0].kind, "truncated");
+
+        // a 1024 x 1024 image of 1M colours: the import stops counting at 257
+        std::vector<px::Rgba8> photo;
+        photo.reserve(1024 * 1024);
+        for (int i = 0; i < 1024 * 1024; i++) photo.push_back(px::Rgba8{(uint8_t)(i & 255), (uint8_t)((i >> 8) & 255), (uint8_t)(i >> 16), 255});
+        const ImportResult big = importPalette("photo.png", encodeTestPng(1024, 1024, photo));
+        EXPECT_EQ(big.error.kind, "too_many_colors");
+        EXPECT_NE(big.error.message.find("more than 256"), std::string::npos) << big.error.message;
     }
 
     TEST(PaletteFormats, ExportLimits) {

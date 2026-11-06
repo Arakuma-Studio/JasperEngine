@@ -117,6 +117,7 @@ namespace {
             case K::NavMesh: return AssetType::NavMesh;
             case K::NavGrid: return AssetType::NavGrid;
             case K::ParticleEffect: return AssetType::ParticleEffect;
+            case K::Palette: return AssetType::Palette;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
         }
         return AssetType::Unknown;

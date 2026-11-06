@@ -10,6 +10,8 @@
 4. Usage, pinned to a texture: each swatch's label carries its pixel count (the badges).
 5. The Color window's Snap to Palette moves a typed colour (Tab out of Hexadecimal) to the nearest
    palette colour.
+6. The material inspector: Detect sets the Source Palette; the lossy-texture warning's Fix makes the
+   texture lossless and Nearest in one project undo step.
 
 The swatch buttons' labels are "color <rrggbb>[ count <n>]###palette_swatch_<i>": the id after
 ### stays put while the text says what the swatch shows. find_ui_item reports a label as drawn, its
@@ -213,3 +215,79 @@ async def test_color_picker_snaps_to_the_palette(ed: Editor):
     await label_until(ui, "###snap_result", lambda t: t.startswith(expected), "the typed colour snaps to the nearest palette colour", "Color")
     await shot(ed, "7-snap")
     await ui.key("Escape")
+
+
+async def test_material_inspector_detect_and_fix(ed: Editor):
+    """6. The material inspector's Palette Swap rows: Detect sets the Source Palette to the project
+    palette holding every colour of the sprite's texture; the lossy-texture warning's Fix makes the
+    texture lossless (no compression, no mipmaps) and Nearest, as one project undo step."""
+    ui = ui_of(ed)
+    detect_png = "assets/textures/detect.png"
+    other = "assets/palettes/other.palette"
+    (ed.project / other).write_text(json.dumps({"format": "jasperengine.palette", "version": 1, "name": "Other", "columns": 8,
+                                                "colors": ["#123456", "#654321"]}, indent=2))
+    pixels = [tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) + (255,) for c in COLORS[:4]] * 4
+    (ed.project / detect_png).write_bytes(png(4, 4, pixels))
+    await ed.call("sync_files", paths=[other, detect_png], full=False)
+
+    scene = (await ed.call("create_scene", name="Inspector Rows", type="2D"))["scene"]["id"]
+    m = "submeshes[0].material."
+    entity = (await ed.call("create_entity", scene=scene, type="sprite", name="Hero",
+                            values={"mesh": {m + "baseColorTexture": {"path": detect_png, "min_filter": "linear", "mag_filter": "linear"}},
+                                    "sprite": {"width": 64, "height": 64}}))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {m + "shader": "library:sprite"}})
+    await ed.call("set_properties", scene=scene, entity=entity, values={"mesh": {
+        m + "shaderFeatures": ["PALETTE_SWAP"], m + "shaderPalettes": {"u_palette": {"source": other}}}})
+
+    def source_of(got: dict) -> str:
+        text = json.dumps(got)
+        return "test.palette" if "test.palette" in text else ("other.palette" if "other.palette" in text else "")
+
+    await ed.call("select_entities", scene=scene, entities=[entity])
+    await ed.call("focus_window", window="inspector")
+    await ui_input.frames(ed, 10)
+    if not (await ed.call("find_ui_item", label="Detect##palette_detect_u_palette", window="Inspector"))["items"]:
+        await ui.click_revealed("##toggle_mesh", "Inspector")
+    ed.check_eq(source_of(await ed.call("get_entity", scene=scene, entity=entity, components=["mesh"])), "other.palette")
+    await ui.click_revealed("Detect##palette_detect_u_palette", "Inspector")
+
+    async def detected():
+        got = await ed.call("get_entity", scene=scene, entity=entity, components=["mesh"])
+        return source_of(got) == "test.palette"
+
+    for _ in range(300):
+        if await detected():
+            break
+        await ui_input.frames(ed, 4)
+    else:
+        ed.fail("Detect sets the Source Palette to the palette holding the texture's colours")
+    await shot(ed, "8-detect")
+
+    # Fix: the texture is compressed and filtered by default; one click makes it lossless and Nearest
+    before = await ed.call("get_texture_import_settings", path=detect_png)
+    history = len(json.dumps(await ed.call("get_undo_history", scope="project")))
+    fix = await ui.reveal("Fix##palette_lossless_fix_u_palette", "Inspector", frames=600)
+    await ui.click(ui.centre(fix["rect"]))
+
+    async def fixed():
+        settings = await ed.call("get_texture_import_settings", path=detect_png)
+        stored = settings.get("stored") or {}
+        return stored.get("quality") == "none" and stored.get("mipmaps") is False
+
+    for _ in range(300):
+        if await fixed():
+            break
+        await ui_input.frames(ed, 4)
+    else:
+        ed.fail(f"Fix makes the texture lossless (before: {before})")
+    got = json.dumps(await ed.call("get_entity", scene=scene, entity=entity, components=["mesh"]))
+    ed.check('"nearest"' in got, "Fix sets the sprite's filter to Nearest")
+    ed.check(len(json.dumps(await ed.call("get_undo_history", scope="project"))) > history, "Fix is a project undo step")
+    await shot(ed, "9-fixed")
+    await ed.call("undo", scope="project")
+    for _ in range(300):
+        if not await fixed():
+            break
+        await ui_input.frames(ed, 4)
+    else:
+        ed.fail("one project undo puts the texture's settings back")

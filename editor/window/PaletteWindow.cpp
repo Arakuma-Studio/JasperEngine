@@ -57,8 +57,8 @@ namespace pxc = jasperengine::pixelart;
 
 namespace jasperengine::editor {
 
-    // Lospec's offline answer before any request (R8). The editor setting network.offline is
-    // not in AppSettings yet: until it is, no curl (and no recorded mirror) is what counts.
+    // Lospec's offline answer before any request (R8): the Offline preference
+    // (preferences.network.offline), or no curl and no recorded mirror
     bool paletteNetworkOffline();
 
 }

@@ -258,6 +258,8 @@ namespace {
         std::vector<PixelProblem> warnings;
         PixelProblem error;
         std::string fileName;
+        // an image with more colours than a palette holds: the count stopped at kMaxColors + 1
+        bool countStopped = false;
 
         bool parseError(const std::string& where, const std::string& message) {
             error = makeProblem("parse_error", fileName + ": " + where + ": " + message,
@@ -638,14 +640,21 @@ namespace {
         if (strip) {
             for (int cell = 0; cell < width / height; cell++) r.palette.colors.push_back(at(cell * height, 0));
         } else {
-            // the unique visible colours in scan order
+            // the unique visible colours in scan order, up to one more than a palette holds (a
+            // photo has millions: counting them all would take a set of that size)
             std::unordered_set<uint32_t> seen;
-            for (int y = 0; y < height; y++) {
+            for (int y = 0; y < height && !r.countStopped; y++) {
                 for (int x = 0; x < width; x++) {
                     const px::Rgba8 color = at(x, y);
                     if (color.a == 0) continue;
                     const uint32_t key = px::packRgb(color) | ((uint32_t)color.a << 24);
-                    if (seen.insert(key).second) r.palette.colors.push_back(color);
+                    if (seen.insert(key).second) {
+                        r.palette.colors.push_back(color);
+                        if (r.palette.count() > px::Palette::kMaxColors) {
+                            r.countStopped = true;
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -1070,8 +1079,9 @@ namespace {
         }
         if (palette.count() > px::Palette::kMaxColors) {
             const int count = palette.count();
+            const std::string counted = r.countStopped ? "more than 256" : std::to_string(count);
             if (!firstColorsOnly) {
-                result.error = makeProblem("too_many_colors", "'" + r.fileName + "' has " + std::to_string(count) + " colours; a palette holds at most 256",
+                result.error = makeProblem("too_many_colors", "'" + r.fileName + "' has " + counted + " colours; a palette holds at most 256",
                                            "Reduce Colours… or Import the first 256", "colors");
                 return result;
             }
@@ -1083,7 +1093,7 @@ namespace {
             }
             palette.ramps.erase(std::remove_if(palette.ramps.begin(), palette.ramps.end(), [](const px::PaletteRamp& ramp) { return ramp.colors.empty(); }),
                                 palette.ramps.end());
-            result.warnings.push_back(makeProblem("truncated", "'" + r.fileName + "' has " + std::to_string(count) + " colours; the first 256 are imported",
+            result.warnings.push_back(makeProblem("truncated", "'" + r.fileName + "' has " + counted + " colours; the first 256 are imported",
                                                   "", "colors"));
         }
         if (palette.name.empty()) palette.name = utf8(path.stem());

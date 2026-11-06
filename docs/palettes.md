@@ -65,7 +65,7 @@ Apply Palette, the colour picker's Snap to Palette and the pixel-art tools that 
   | JASC `.pal`, Microsoft RIFF `.pal` | |
   | Paint.NET `.txt` | alpha kept |
   | Adobe `.ase` | RGB, grey, CMYK (converted naively, with a warning) and Lab colours; groups become ramps |
-  | images (`.png`, `.gif`, ...) | the unique colours in reading order, or one per cell of a swatch strip |
+  | images (`.png`, `.gif`, ...) | the unique colours in reading order, or one per cell of a swatch strip; past 256 colours (a photo) the count stops: Reduce Colours, or import the first 256 |
   | `.colors` swatch libraries | HDR swatches clamped, with a warning |
 
   Aseprite palettes (`.ase`/`.aseprite`) are not read yet: export the palette from Aseprite as `.gpl` or `.hex`.
@@ -166,6 +166,8 @@ Sprites sharing a material share its row; each Sprite's own material has its own
 Tick **Palette Cycling** to rotate every ramp of the source that has a cycle speed (DPaint-style water, fire and
 glows): an index at position p of a ramp of length L shows the ramp's colour `(p + floor(time x cycle x speed)) mod
 L`. **Cycling Speed** scales all of them: negative reverses, 0 freezes. Cycling works together with the active row.
+The time is game time: the colours hold while the game is paused (time scale 0, the editor's Pause) and in edit mode,
+and a fixed frame delta makes them reproducible.
 
 ## Palette Quantize
 
@@ -185,9 +187,10 @@ drawn after the main camera is not quantized.
 | Precision | Normal | Normal (32 cells per channel) or High (64, slower to bake, for palettes with many close shades) |
 
 The dither pattern belongs to art pixels (the source texel, or the Pixelate block), so it never shimmers when an
-integer-scaled camera moves. An image already made of palette colours passes through unchanged with any dither. The
-table bakes in the background: until it is ready the previous look stays. Presets: **handheld_4** (Game Boy, Bayer
-4x4) and **pico_8** (PICO-8, no dither).
+integer-scaled camera moves. Its mixes are measured as the eye averages them, in linear light: a mid grey (sRGB
+128) between black and white gets about a fifth white cells, not half. An image already made of palette colours
+passes through unchanged with any dither. The table bakes in the background: until it is ready the previous look
+stays. Presets: **handheld_4** (Game Boy, Bayer 4x4) and **pico_8** (PICO-8, no dither).
 
 ## Apply Palette and Reduce Colours
 
