@@ -479,6 +479,7 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderTextures, 0x234b0c73u, Custom),
     JE_RF(Material, shaderFeatures, 0xa354685cu, Custom),
     JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
+    JE_RF(Material, shaderPalettes, 0xbf00e75bu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
