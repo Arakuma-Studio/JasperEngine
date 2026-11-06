@@ -93,6 +93,11 @@ and runs the command there with `JOBS=14`; `rbox <box> --fetch <path> <local>` c
 features share some boxes: one job runs at a time per box, so keep each job short and complete. Local `slot` is the
 fallback only. `tools/check-changed` does not work on a box (no history there): use the targeted gate.
 
+**Use `rbox auto '<round script>'`** for every self-contained round (build and tests in one command): it runs on your
+box if free, else on an idle box (the first round on a new box rebuilds incrementally from that box's warm ccache).
+`rbox auto --fetch` reads from the box that ran your last job. Name a box only for a step that needs the previous
+step's build tree on the same box.
+
 Work so that every minute of build time answers a question:
 - **One build shows every error:** `KEEP_GOING=1` on builds; fix everything it reports before building again.
 - **Build only what you need:** `SKIP_ENGINE=1` for the editor; `UNIT_SUITE=core|editor` so one test binary
