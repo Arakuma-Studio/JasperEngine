@@ -68,6 +68,15 @@ namespace jasperengine{
         FULL
     };
 
+    // The side of the scene's wake map (Water Wakes, WaterInteractionSystem): AUTO is MEDIUM on
+    // desktop and LOW on Android, iOS and the web. Stored as ints: append only.
+    enum class WaterWakeResolution {
+        AUTO,
+        LOW,        // 128 texels
+        MEDIUM,     // 256
+        HIGH        // 512
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -386,6 +395,12 @@ namespace jasperengine{
         float planarReflectionFarClip = 0.0f;
         float planarReflectionClipOffset = 0.05f;
         int maxPlanarReflections = 2;
+
+        // the wake map of Water Wakes (one per scene, around the main camera): its resolution, the
+        // metres it spans and the seconds a wake takes to fade (an eighth of its foam left)
+        WaterWakeResolution waterWakeResolution = WaterWakeResolution::AUTO;
+        float waterWakeArea = 64.0f;
+        float waterWakeFade = 8.0f;
 
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear

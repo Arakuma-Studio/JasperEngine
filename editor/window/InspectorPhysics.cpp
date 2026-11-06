@@ -5,6 +5,7 @@
 // draw them: per-collider-type rows, shape previews, body-picking rows).
 
 #include "InspectorWindow.h"
+#include "Engine.h"
 #include "object/physics/Joint3D.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
@@ -87,6 +88,10 @@
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "subsystem/WaterInteractionSystem.h"
+#include "util/WaterExclusion.h"
 #include "subsystem/AudioSystem.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
@@ -1443,6 +1448,140 @@ void editor::InspectorWindow::drawWaterVolumeComponent(ComponentType cpType, Sce
                                "departs from the one things float on by more than about 8%% of the wave height. Subdivide the mesh.",
                                spacing, waveLength * 0.6f / 8.0f);
         }
+    }
+}
+
+void editor::InspectorWindow::drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const WaterExcluderComponent& excluder = scene->getComponent<WaterExcluderComponent>(entities[0]);
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsShape;
+    settingsShape.enumEntries = enumEntries(reflect::enums::kWaterExcluderShape);
+    settingsShape.help = "Convex Hull: the hull of this GameObject's mesh (or its model's meshes); Box and Sphere: Center and Size";
+    RowSettings settingsCenter = settings;
+    settingsCenter.help = "Local centre of the Box or Sphere";
+    RowSettings settingsSize = settings;
+    settingsSize.help = "Local size of the Box (a Sphere fills it)";
+
+    beginTable(cpType, getLabelSize("Shape"));
+    propertyRow(RowPropertyType::Enum, cpType, "shape", "Shape", sceneProject, entities, settingsShape);
+    if (excluder.shape != WaterExcluderShape::CONVEX_HULL){
+        propertyRow(RowPropertyType::Vector3, cpType, "center", "Center", sceneProject, entities, settingsCenter);
+        propertyRow(RowPropertyType::Vector3, cpType, "size", "Size", sceneProject, entities, settingsSize);
+    }
+    endTable();
+
+    auto warning = [](const char* text){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextWrapped("%s", text);
+    };
+
+    if (excluder.shape != WaterExcluderShape::CONVEX_HULL){
+        // Fit to Mesh: the box over the GameObject's mesh (or its model's meshes)
+        const AABB bounds = entities.size() == 1 ? WaterEditorUtils::meshSourceLocalBounds(scene, entities[0]) : AABB();
+        ImGui::BeginDisabled(bounds.isNull());
+        if (ImGui::Button(ICON_FA_EXPAND " Fit to Mesh")){
+            auto multiCmd = new MultiPropertyCmd();
+            multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entities[0], cpType, "center", bounds.getCenter());
+            multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entities[0], cpType, "size", bounds.getSize());
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+            multiCmd->setNoMerge();
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip(bounds.isNull() ? "Needs a mesh on this GameObject" : "Center and Size from this GameObject's mesh bounds");
+    }else if (entities.size() == 1){
+        std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+        const WaterInteractionSystem::HullInfo hull = system ? system->getHullInfo(entities[0]) : WaterInteractionSystem::HullInfo();
+        switch (hull.status){
+            case WaterHullStatus::READY:
+                ImGui::TextDisabled("Convex hull: %zu faces from %zu vertices", hull.faces, hull.sourceVertices);
+                break;
+            case WaterHullStatus::PENDING:
+                ImGui::TextDisabled("Waiting for the model to load");
+                break;
+            case WaterHullStatus::NO_MESH:
+                warning("No mesh on this GameObject: it keeps nothing out. Choose Box or Sphere, or add a mesh.");
+                break;
+            case WaterHullStatus::FLAT:
+                warning("The mesh is flat: it has no hull. Choose Box.");
+                break;
+            case WaterHullStatus::NO_PHYSICS:
+                warning("This build has no 3D physics: the hull is the mesh's bounds box.");
+                break;
+            case WaterHullStatus::NONE:
+                break;
+        }
+    }
+
+    if (!WaterEditorUtils::sceneDrawsWaterInteraction(scene, false))
+        warning("No water in this scene is cut by Water Excluders: use library:water (or a shader that requires waterexclusion).");
+    for (Entity entity : entities){
+        if (WaterEditorUtils::excluderDriesItsOwnBodies(scene, entity)){
+            warning("A floating Rigidbody is under this Water Excluder, which belongs to no Rigidbody: it is kept dry and will not float. "
+                    "Put the Water Excluder on the Rigidbody's GameObject or under it.");
+            break;
+        }
+    }
+}
+
+void editor::InspectorWindow::drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const WaterWakeComponent& wake = scene->getComponent<WaterWakeComponent>(entities[0]);
+
+    RowSettings settingsFoam;
+    settingsFoam.secondColSize = 6 * ImGui::GetFontSize();
+    settingsFoam.floatMin = 0.0f;
+    settingsFoam.floatMax = 2.0f;
+    RowSettings settingsWaves = settingsFoam;
+    settingsFoam.help = "Churn behind the stern, spray along the hull and breaking bow waves";
+    settingsWaves.help = "The diverging and transverse waves of the wake";
+    RowSettings settingsSize;
+    settingsSize.secondColSize = 6 * ImGui::GetFontSize();
+    settingsSize.help = "Waterline extent along local X (Width) and Z (Length), metres; 0: Auto, from the Water Excluder or the mesh";
+
+    beginTable(cpType, getLabelSize("Length"));
+    propertyRow(RowPropertyType::FloatPositive, cpType, "foam", "Foam", sceneProject, entities, settingsFoam);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "waves", "Waves", sceneProject, entities, settingsWaves);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "width", "Width", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "length", "Length", sceneProject, entities, settingsSize);
+    endTable();
+
+    if (entities.size() == 1 && (wake.width <= 0.0f || wake.length <= 0.0f)){
+        // what Auto resolves to: the excluder's box or the mesh's, as WaterInteractionSystem reads them
+        AABB bounds;
+        if (const WaterExcluderComponent* excluder = scene->findComponent<WaterExcluderComponent>(entities[0])){
+            std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+            bounds = getWaterExcluderLocalBox(excluder->shape, excluder->center, excluder->size,
+                                              system ? system->getHull(entities[0]) : nullptr);
+        }
+        if (bounds.isNull())
+            bounds = WaterEditorUtils::meshSourceLocalBounds(scene, entities[0]);
+        if (const Transform* transform = scene->findComponent<Transform>(entities[0]); transform && !bounds.isNull()){
+            const Vector3 size = bounds.getSize();
+            ImGui::TextDisabled("Auto: %.2f m wide, %.2f m long", size.x * std::fabs(transform->worldScale.x),
+                                size.z * std::fabs(transform->worldScale.z));
+        }else if (bounds.isNull()){
+            ImGui::TextDisabled("Auto: 1 m wide, 1 m long (no Water Excluder or mesh)");
+        }
+    }
+
+    if (entities.size() == 1 && Engine::isSceneRunning(scene)){
+        std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+        const WaterInteractionSystem::EmitterInfo info = system ? system->getEmitterInfo(entities[0]) : WaterInteractionSystem::EmitterInfo();
+        if (info.emitting)
+            ImGui::TextDisabled("Emitting at %.1f m/s on %s", info.speed, scene->getEntityName(info.water).c_str());
+        else
+            ImGui::TextDisabled("Not on water");
+    }
+
+    if (!WaterEditorUtils::sceneDrawsWaterInteraction(scene, true)){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextWrapped("No water in this scene shows Water Wakes: use library:water (or a shader that requires waterwake).");
     }
 }
 

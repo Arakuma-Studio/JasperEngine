@@ -410,6 +410,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
     if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
+    if (prop & ShaderPool::getWaterExclusionProperty()) defs.push_back({"USE_WATER_EXCLUSION", "1"}); // 'Wex'
+    if (prop & ShaderPool::getWaterWakeProperty()) defs.push_back({"USE_WATER_WAKE", "1"});           // 'Wwk'
     // S57's lighting: the screen-tile lights of a pixel-lit variant, the capsule and contact
     // shadows of a shadowed one, and the OIT accumulation (its main is wrapped, prepareVariantArgs)
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)) defs.push_back({"USE_TILED_LIGHTS", "1"});       // 'Til'

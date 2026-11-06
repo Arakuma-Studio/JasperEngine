@@ -268,6 +268,16 @@ namespace jasperengine{
         void setMaxPlanarReflections(int count);
         int getMaxPlanarReflections() const;
 
+        // The wake map of Water Wakes (SceneSettings): read each step by WaterInteractionSystem
+        void setWaterWakeResolution(WaterWakeResolution resolution);
+        WaterWakeResolution getWaterWakeResolution() const;
+        // metres across, 8..1024 (clamped)
+        void setWaterWakeArea(float area);
+        float getWaterWakeArea() const;
+        // seconds, 0.1..120 (clamped)
+        void setWaterWakeFade(float fade);
+        float getWaterWakeFade() const;
+
         // The clock of this scene's game-time animation (library:water's waves, ripples and
         // caustics, any shader declaring a sceneTime member, Water.getTime): the seconds the scene
         // has run, scaled by Time.timeScale. Engine::runFrame advances it with the game's frame

@@ -291,6 +291,15 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                     }else{
                         addMesh(label, referenceOf({}), inputs, lightingEnvironment);
                         addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
+                        // the Water Excluders and Wakes over the most a lit water binds (its textures' budget)
+                        if (manifest.getPossibleRequire() & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)){
+                            MeshShaderEnvironment waterEnvironment = lightingEnvironment;
+                            waterEnvironment.fog = true;
+                            waterEnvironment.postColor = true;
+                            waterEnvironment.waterExclusion = true;
+                            waterEnvironment.waterWake = true;
+                            addMesh(label + ", fog, post colour, water excluders and wakes, all features", referenceOf(allOn), inputs, waterEnvironment);
+                        }
                         if (capacity == 8){
                             // the other keyword values in this mode, with every feature on
                             for (const ShaderManifestKeywords& group : manifest.keywords){

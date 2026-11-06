@@ -55,6 +55,8 @@ namespace {
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.mirror = true; i.baseColorTexture = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.ssao = true; }},
+            // a scene with Water Excluders and Wakes: only shaders requiring them change (the water's)
+            {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.waterExclusion = true; e.waterWake = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ e.postColor = true; e.fog = true; i.baseColorTexture = true; i.normalTexture = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; i.baseColorTexture = true; e.lights2D = true; e.shadows2D = true; }},

@@ -417,7 +417,10 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "environment") rule.require |= ShaderRequire_Environment;
                 else if (input == "normalmap") rule.require |= ShaderRequire_NormalMap;
                 else if (input == "planarreflection") rule.require |= ShaderRequire_PlanarReflection;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection)");
+                // the world position the volumes and the map are tested at comes with them
+                else if (input == "waterexclusion") rule.require |= ShaderRequire_WaterExclusion | ShaderRequire_Position;
+                else if (input == "waterwake") rule.require |= ShaderRequire_WaterWake | ShaderRequire_Position;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection, waterexclusion, waterwake)");
             }
             if (!valid)
                 continue;
@@ -892,6 +895,17 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
         }
         report(line, "@require planarreflection needs @shader mesh");
     }
+    // the excluders and the wake map are bound to mesh draws (RenderSystem::applyWaterInteraction)
+    if ((possibleRequire & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)) && hasType && type != ShaderType::MESH){
+        int line = 1;
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (rule.require & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)){
+                line = rule.line;
+                break;
+            }
+        }
+        report(line, "@require waterexclusion / waterwake needs @shader mesh");
+    }
     if (role != ShaderRole::NONE && hasType && type != (role == ShaderRole::WATER ? ShaderType::MESH : ShaderType::POSTPROCESS))
         report(1, role == ShaderRole::WATER ? "@role water needs @shader mesh" : "@role underwater needs @shader postprocess");
     // the material's normal map is bound to mesh draws, by the name the 2D light path reads
@@ -1205,7 +1219,8 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
         {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
         {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"},
-        {ShaderRequire_PlanarReflection, "planarreflection"}};
+        {ShaderRequire_PlanarReflection, "planarreflection"}, {ShaderRequire_WaterExclusion, "waterexclusion"},
+        {ShaderRequire_WaterWake, "waterwake"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)

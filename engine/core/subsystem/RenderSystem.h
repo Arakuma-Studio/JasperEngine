@@ -172,6 +172,18 @@ namespace jasperengine{
 		Vector4 params;         // x the plane's height, y 1 with a reflection
 	} fs_planar_reflection_t;
 
+	// u_fs_waterInteraction (includes/water_interaction.glsl): the Water Excluders over a water
+	// draw and the scene's wake map
+	constexpr int WATER_EXCLUDERS_PER_DRAW = 8;
+	typedef struct fs_water_interaction_t {
+		Vector4 exclusion;                                      // x the excluders in the arrays
+		Vector4 exclusionRows[WATER_EXCLUDERS_PER_DRAW * 3];    // world to 0..1 across each volume
+		Vector4 exclusionShapes[WATER_EXCLUDERS_PER_DRAW];      // x 0 box, 1 sphere, 2 hull; y its layer
+		Vector4 wakeArea;       // xy the map's world corner, z 1 / its world size, w 1 while it holds a wake
+		Vector4 wakeParams;     // x slope per unit of crest over a texel, y 1 / texels, z the body tag / 255
+	} fs_water_interaction_t;
+	static_assert(sizeof(fs_water_interaction_t) == 35 * 16, "u_fs_waterInteraction is 35 vec4");
+
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
@@ -421,6 +433,10 @@ namespace jasperengine{
 		bool capsuleShadows = false;
 		bool contactShadows = false;
 		bool oit = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
+		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
+		bool waterExclusion = false;
+		bool waterWake = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -817,6 +833,16 @@ namespace jasperengine{
 		bool hasFog = false;
 		bool hasIBL = false;
 		bool hasReflectionProbes = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): the water variants'
+		// 'Wex' / 'Wwk' (MeshShaderEnvironment), and the GPU side of WaterInteractionSystem
+		bool hasWaterExcluders = false;
+		bool hasWaterWakes = false;
+		TextureRender waterExclusionMaps;
+		int waterExclusionMapLayers = 0;
+		uint64_t waterExclusionMapsVersion = 0;
+		TextureRender waterWakeTexture;
+		uint64_t waterWakeUploadFrame = UINT64_MAX;
+		bool waterExcluderCapWarned = false;
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
@@ -2655,6 +2681,12 @@ namespace jasperengine{
 		const CameraComponent* passCamera = nullptr;
 		// u_fs_planarReflection and its texture for a draw of a mesh reading one
 		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the eye of the camera pass being drawn (its camera's Transform)
+		Vector3 passEye;
+		// u_fs_waterInteraction and its textures for a draw of a mesh reading them: the excluders over
+		// the mesh in the pass camera's view, nearest first, and the wake map with the mesh's body tag
+		void applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
+		                           const Material& material);
 		// the world box a transparent draw covers (null when it has none to tell)
 		AABB transparentBounds(const TransparentRenderData& renderData) const;
 		// whether a draw of the transparent queue samples the scene colour (and is drawn)
@@ -3114,6 +3146,11 @@ namespace jasperengine{
 		// as needReloadMeshes does. Once they are built, the loaded objects make their pipelines
 		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
+		// the meshes with a submesh whose shader can ask for the Water Excluders or Wakes
+		void needReloadWaterVariants();
+		// the hull map array and the wake map (once a frame, before the passes draw)
+		void syncWaterInteraction();
+		void destroyWaterInteraction();
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();

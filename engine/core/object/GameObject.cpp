@@ -3,6 +3,8 @@
 
 #include "GameObject.h"
 #include "object/environment/WaterVolume.h"
+#include "object/environment/WaterExcluder.h"
+#include "object/environment/WaterWake.h"
 #include "object/physics/Buoyancy.h"
 #include "object/physics/CharacterController.h"
 #include "object/physics/CharacterController2D.h"
@@ -385,6 +387,18 @@ WaterVolume GameObject::getWaterVolume(){
     if (!scene->findComponent<WaterVolumeComponent>(entity))
         scene->addComponent<WaterVolumeComponent>(entity, {});
     return WaterVolume(scene, entity);
+}
+
+WaterExcluder GameObject::getWaterExcluder(){
+    if (!scene->findComponent<WaterExcluderComponent>(entity))
+        scene->addComponent<WaterExcluderComponent>(entity, {});
+    return WaterExcluder(scene, entity);
+}
+
+WaterWake GameObject::getWaterWake(){
+    if (!scene->findComponent<WaterWakeComponent>(entity))
+        scene->addComponent<WaterWakeComponent>(entity, {});
+    return WaterWake(scene, entity);
 }
 
 Spline GameObject::getSpline(){

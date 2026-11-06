@@ -620,6 +620,16 @@ const EnumOptions& planarReflectionResolutionOptions() {
     return options;
 }
 
+const EnumOptions& waterWakeResolutionOptions() {
+    static const EnumOptions options = {
+        {(int)WaterWakeResolution::AUTO, "auto", "Auto"},
+        {(int)WaterWakeResolution::LOW, "low", "Low (128)"},
+        {(int)WaterWakeResolution::MEDIUM, "medium", "Medium (256)"},
+        {(int)WaterWakeResolution::HIGH, "high", "High (512)"}
+    };
+    return options;
+}
+
 const EnumOptions& sceneColorScaleOptions() {
     static const EnumOptions options = {
         {(int)SceneColorScale::FULL, "full", "Full"},
@@ -813,6 +823,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
+        {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},

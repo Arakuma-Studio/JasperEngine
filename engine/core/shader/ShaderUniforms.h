@@ -117,6 +117,11 @@ namespace jasperengine{
         // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
         int slotFSPlanarReflection = -1;
         std::pair<int, int> slotPlanarReflection = {-1, -1};
+        // the Water Excluders and the wake map (includes/water_interaction.glsl, @require
+        // waterexclusion / waterwake)
+        int slotFSWaterInteraction = -1;
+        std::pair<int, int> slotWaterExclusionMaps = {-1, -1};
+        std::pair<int, int> slotWaterWake = {-1, -1};
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
@@ -147,6 +152,9 @@ namespace jasperengine{
             slotEnvironment = {-1, -1};
             slotFSPlanarReflection = -1;
             slotPlanarReflection = {-1, -1};
+            slotFSWaterInteraction = -1;
+            slotWaterExclusionMaps = {-1, -1};
+            slotWaterWake = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
             slotFSHeightFog = -1;

@@ -838,4 +838,25 @@ Changed (hot files marked *):
 
 ## 14. Deviations
 
-None yet. The implementer records any here.
+Recorded during implementation (branch `dc/water-boats`, built on `dc/water-reflections`):
+
+1. **Bit and flag numbers.** `main` had taken MESH bits 36-41 (S57's lighting, LOD fade, auto
+   instancing) and water-reflections `ShaderRequire_PlanarReflection = 1 << 12` by the time this
+   was built: 'Wex' and 'Wwk' are MESH bits 42 and 43, `ShaderRequire_WaterExclusion` /
+   `ShaderRequire_WaterWake` are `1 << 13` / `1 << 14`. A branch merging MESH bits before this one
+   takes the next free ones (the short names are the identity).
+2. **Lua names.** Bound getters are properties (`.claude/rules/scripting.md`): `WaterSample.excluded`
+   (not `isExcluded()`), `WaterWake.emitting` / `speed`, `WaterExcluder.hullStatus` / `hullFaces`.
+3. **The wake's automatic footprint and Fit to Mesh** use the meshes a hull is built from (the
+   GameObject's mesh, or its model's mesh nodes: `WaterInteractionSystem::getMeshSourceLocalBounds`),
+   so the Inspector's "Auto" line, Fit to Mesh and the wake agree.
+4. **Opaque water is never automatically instanced** while its shader can read the excluders or
+   the wake map (`getSubmeshBatchVariant`): both are chosen per mesh. Transparent water was never
+   batched.
+5. **Prebuilt players.** A Convex Hull excluder makes the scene need the `physics3d` module
+   (`editor/players/ModuleUsage.cpp`): the hull is built by Jolt.
+6. **Tests renamed and regrouped.** `WaterInteractionTest.*` (scene-level: excluders, owner rule,
+   wakes, pause and stop) replaces the spec's `WaterExcluder.*` / `WaterWake.*` scene suites;
+   `WaterBoatsGpu.WakeUploadsOncePerFrame` replaces `WaterWake.OneUploadPerFrame` (the upload is a
+   RenderSystem draw); the variant tests are editor tests (`WaterInteractionVariants.*`, they need
+   the library manifests and the collector).

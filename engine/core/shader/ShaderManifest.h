@@ -97,7 +97,14 @@ namespace jasperengine{
         // a reflection pass of the camera per plane height (scene setting Planar Reflections),
         // bound per draw; without one this frame the shader is told so and falls back. Mesh
         // shaders only, fragment stage
-        ShaderRequire_PlanarReflection = 1 << 12
+        ShaderRequire_PlanarReflection = 1 << 12,
+        // what keeps water out and what moving hulls leave on it (includes/water_interaction.glsl,
+        // u_fs_waterInteraction): the Water Excluders over the draw's mesh and the scene's Water
+        // Wake map. Not SURFACE_* defines: the variant takes 'Wex' (USE_WATER_EXCLUSION) / 'Wwk'
+        // (USE_WATER_WAKE) only while its scene has such components, so without them the shader
+        // compiles as if it did not ask. They imply position. Mesh shaders only, fragment stage
+        ShaderRequire_WaterExclusion = 1 << 13,
+        ShaderRequire_WaterWake = 1 << 14
     };
 
     // What the engine treats a shader as (manifest @role), whatever its name: forks of
@@ -304,7 +311,8 @@ namespace jasperengine{
         static std::vector<std::string> getRequireDefines(uint32_t require);
 
         // the @require input names of a mask: position, normals, tangents, uv1, uv2, color,
-        // rawcolor, smoothnormals, scenedepth, scenecolor, environment, normalmap (in that order)
+        // rawcolor, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection,
+        // waterexclusion, waterwake (in that order)
         static std::vector<std::string> getRequireNames(uint32_t require);
 
         // the source declares manifest lines (a fork the runtime needs the file of)
