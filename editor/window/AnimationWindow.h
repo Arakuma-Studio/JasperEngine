@@ -237,7 +237,7 @@ namespace jasperengine::editor{
         // the AnimationComponent the popup's caller holds (as Add Property's other actions do)
         struct PendingSoundAction {
             bool active = false;
-            EntityCreationType type = EntityCreationType::AUDIO_ACTION;
+            EntityCreationType type{};
             std::string content;
             float time = 0.0f;
             uint32_t track = 0;
