@@ -4676,7 +4676,7 @@ void editor::ProjectWindow::assetsCreateTitleArt() {
         return;
     }
     // it bakes at once, so a texture exists to place (R7)
-    if (TitleArtRenderHost::available()) TitleArtAutoBake::get().requestBake(project, created->absolutePath(), {}, false);
+    TitleArtAutoBake::get().requestBake(project, created->absolutePath(), {}, false);
     scanDirectory(currentPath);
     const std::string fileName = relative.filename().string();
     selectedFiles.clear();

@@ -91,10 +91,6 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
 
 uint64_t editor::requestTitleArtPreview(Project* project, const fs::path& document, int side, TitlePreviewPriority priority,
                                         TitlePreviewOwner owner, bool visible, std::string& error) {
-    if (!TitleArtRenderHost::available()) {
-        error = TitleArtRenderHost::unavailableMessage();
-        return 0;
-    }
     titleart::TitleArtDoc doc;
     std::string code;
     if (!loadTitleArtForBake(project, document, doc, code, error)) return 0;

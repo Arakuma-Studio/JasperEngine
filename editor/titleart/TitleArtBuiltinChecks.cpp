@@ -219,11 +219,9 @@ namespace {
         return *renders;
     }
 
-    // a pixel check that cannot render: SKIP (no renderer in this build), else FAIL
+    // a pixel check whose render failed (a run without a GPU never gets here: TitleArtChecks skips it)
     void renderFailed(Out& out, const std::string& error) {
-        const bool unavailable = error.rfind("renderer_unavailable", 0) == 0;
-        out.push_back(result(unavailable ? TitleCheckStatus::Skip : TitleCheckStatus::Fail,
-                             unavailable ? "not measured: " + error : "the render failed: " + error, "render"));
+        out.push_back(result(TitleCheckStatus::Fail, "the render failed: " + error, "render"));
     }
 
     std::vector<std::string> visibleTopLayers(const titleart::TitleArtDoc& doc, size_t cap) {

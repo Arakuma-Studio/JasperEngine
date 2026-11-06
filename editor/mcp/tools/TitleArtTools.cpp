@@ -639,13 +639,9 @@ void editTitleTool(const CallPtr& call) {
         bakeJson["status"] = baked.ok ? "baked" : "failed";
     } else if (!dryRun && (bake == "auto" && args.contains("create"))) {
         // a new document bakes at once, so a texture exists to place (R7)
-        if (TitleArtRenderHost::available()) {
-            const TitleBakeResult baked = bakeTitleArt(project, file, document->doc(), {});
-            bakeJson = fromOrdered(baked.toJson());
-            bakeJson["status"] = baked.ok ? "baked" : "failed";
-        } else {
-            bakeJson = Json{{"status", "not_baked"}, {"reason", TitleArtRenderHost::unavailableMessage()}};
-        }
+        const TitleBakeResult baked = bakeTitleArt(project, file, document->doc(), {});
+        bakeJson = fromOrdered(baked.toJson());
+        bakeJson["status"] = baked.ok ? "baked" : "failed";
     }
     structured["bake"] = bakeJson;
     if (text.empty()) text = "Nothing changed in " + relative;
@@ -717,10 +713,6 @@ void exportTitleTool(const CallPtr& call) {
     std::string code;
     if (!loadTitleArtForBake(project, file, doc, code, error)) {
         call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
-        return;
-    }
-    if (!TitleArtRenderHost::available()) {
-        call->fail(TitleArtRenderHost::unavailableMessage(), Json{{"code", "renderer_unavailable"}});
         return;
     }
     auto job = std::make_shared<TitleArtBakeJob>(project, file, std::move(doc), options);

@@ -3,9 +3,6 @@ AC34-AC37, AC48; jasper://docs/title-art): list_title_library, get_title, edit_t
 render_title, check_title, export_title, the .titleart parts of get_asset_info and view_asset,
 Missing Assets, rename and move of a document with its derived PNGs, hot reload, Project Settings >
 Title Art, the export's handling of documents and stale bakes, and `check --titles`.
-
-The tests that need pixels (render, pixel checks, bakes) ask the editor first: an editor built
-without the Title Art renderer answers `renderer_unavailable`, and only then do they skip.
 """
 
 import asyncio
@@ -48,10 +45,8 @@ async def create(ed: Editor, path: str, text: str = "Title", **create_args) -> d
 
 
 async def need_renderer(ed: Editor, path: str) -> None:
-    """Skips the test when this editor was built without the Title Art renderer."""
+    """The document renders (every editor has the Title Art renderer): a failure here is the test's."""
     r = await ed.call_raw("render_title", {"path": path, "image": "none"})
-    if r.is_error and "renderer_unavailable" in r.text:
-        harness.skip("this editor has no Title Art renderer (renderer_unavailable); the test runs once it is merged")
     ed.check(not r.is_error, f"render_title: {r.text[:400]}")
 
 
@@ -279,10 +274,8 @@ async def test_asset_info_and_view(ed: Editor):
     ed.check(any(f["font"] == "(built-in)" for f in title.get("fonts", [])), "the built-in font")
     ed.check_eq(title["outputs"][0]["status"], "missing", "the output is not baked")
     view = await ed.call_raw("view_asset", {"path": path})
-    if view.is_error:
-        ed.check_in("renderer_unavailable", view.text, f"view_asset fails only without a renderer: {view.text[:300]}")
-    else:
-        ed.check(view.images, "view_asset returns an image")
+    ed.check(not view.is_error, f"view_asset: {view.text[:300]}")
+    ed.check(view.images, "view_asset returns an image")
 
 
 async def test_move_document(ed: Editor):

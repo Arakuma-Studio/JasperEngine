@@ -25,11 +25,3 @@ if(JASPERENGINE_EDITOR_TITLE_ART_SOURCES)
         REASON "the Title Art editor sources: per-file helper sets with the same names"
         SOURCES ${JASPERENGINE_EDITOR_TITLE_ART_SOURCES})
 endif()
-
-# The renderer's implementation lands with its own stream (engine/core/titleart/render/
-# TitleArtRenderer.cpp); until it is in the tree the editor's render host answers renders with
-# renderer_unavailable and links no renderer symbol (TitleArtRenderHost.cpp)
-if(EXISTS ${jasperengineTitleArtEditorDir}/../engine/core/titleart/render/TitleArtRenderer.cpp)
-    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/TitleArtRenderHost.cpp
-        PROPERTIES COMPILE_DEFINITIONS JASPERENGINE_TITLE_ART_RENDERER=1)
-endif()

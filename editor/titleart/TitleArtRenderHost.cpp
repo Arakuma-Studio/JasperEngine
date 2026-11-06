@@ -97,7 +97,8 @@ std::shared_ptr<FontFace> EditorTitleAssetResolver::loadFont(const titleart::Res
     const auto key = std::make_pair(asset.path + "@" + std::to_string(asset.revision), faceIndex);
     auto it = fonts.find(key);
     if (it != fonts.end()) return it->second;
-    std::shared_ptr<FontFace> face = FontFace::loadFile(asset.path, faceIndex, error);
+    // Title Art draws outlines through HarfBuzz, so a face stb_truetype cannot rasterize (CFF2) opens
+    std::shared_ptr<FontFace> face = FontFace::loadFile(asset.path, faceIndex, error, FontFaceRasterizer::Optional);
     if (face) fonts[key] = face;
     return face;
 }
@@ -169,12 +170,8 @@ std::vector<titleart::ResolvedTitleAsset> EditorTitleAssetResolver::projectAsset
 
 // ==================================================================== host
 
-// The renderer's implementation is its stream's (wave 1, stream B): CMake defines
-// JASPERENGINE_TITLE_ART_RENDERER for this file once it is in the tree (TitleArtEditorSources.cmake)
 struct TitleArtRenderHost::Backend {
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
     titleart::TitleArtRenderer renderer;
-#endif
 };
 
 TitleArtRenderHost::TitleArtRenderHost() = default;
@@ -185,26 +182,9 @@ TitleArtRenderHost& TitleArtRenderHost::editor() {
     return host;
 }
 
-bool TitleArtRenderHost::available() {
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
-    return true;
-#else
-    return false;
-#endif
-}
-
-std::string TitleArtRenderHost::unavailableMessage() {
-    return "renderer_unavailable: this editor was built without the Title Art renderer, so nothing can be rendered, "
-           "checked by pixels or baked (document checks, get_title and edit_title work)";
-}
-
-titleart::TitleArtRenderer* TitleArtRenderHost::rendererInstance() {
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
+titleart::TitleArtRenderer& TitleArtRenderHost::rendererInstance() {
     if (!backend) backend = std::make_unique<Backend>();
-    return &backend->renderer;
-#else
-    return nullptr;
-#endif
+    return backend->renderer;
 }
 
 const EditorTitleAssetResolver* TitleArtRenderHost::resolver(Project* project) {
@@ -223,19 +203,10 @@ std::unique_ptr<titleart::TitleRenderJob> TitleArtRenderHost::begin(Project* pro
         error = "the request has no document";
         return nullptr;
     }
-    titleart::TitleArtRenderer* instance = rendererInstance();
-    if (!instance) {
-        error = unavailableMessage();
-        return nullptr;
-    }
     if (!request.assets) request.assets = resolver(project);
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
-    std::unique_ptr<titleart::TitleRenderJob> job = instance->begin(request);
+    std::unique_ptr<titleart::TitleRenderJob> job = rendererInstance().begin(request);
     if (!job) error = "the renderer refused the request";
     return job;
-#else
-    return nullptr;
-#endif
 }
 
 bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error) {
@@ -344,17 +315,11 @@ bool TitleArtRenderHost::readBack(const titleart::TitleRenderJob& job, int bitDe
 }
 
 const titleart::RendererStats* TitleArtRenderHost::stats() const {
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
     return backend ? &backend->renderer.stats() : nullptr;
-#else
-    return nullptr;
-#endif
 }
 
 void TitleArtRenderHost::trim() {
-#if defined(JASPERENGINE_TITLE_ART_RENDERER)
     if (backend) backend->renderer.trim();
-#endif
 }
 
 void TitleArtRenderHost::reset() {

@@ -11,9 +11,6 @@
 //   RGBA16F, with FrameReadback's 8-byte float path and kept 16-bit; a premultiplied linear
 //   image (an intermediate the renderer handed back) is unpremultiplied and sRGB-encoded first.
 //   Rows top first, the frame space of the renderer (memory rows on every backend).
-// - Availability: the renderer's implementation is its own stream's (wave 1, stream B). An editor
-//   built without it answers every render with `renderer_unavailable` (available() false), so
-//   the document parts of the tools and checks still work.
 // - Thread-safety: main thread. The resolver is safe from job threads (a mutex).
 
 #pragma once
@@ -82,15 +79,10 @@ namespace jasperengine::editor {
         // the editor's host (main thread)
         static TitleArtRenderHost& editor();
 
-        // the renderer is built into this editor
-        static bool available();
-        // "renderer_unavailable: ..." when it is not
-        static std::string unavailableMessage();
-
         // the resolver of `project` (made again when the project or its paths change)
         const EditorTitleAssetResolver* resolver(Project* project);
         // a job for `request` (its `assets` filled with the project's resolver when null); null
-        // with `error` when the renderer is unavailable or the request has no document
+        // with `error` when the request has no document or the renderer refuses it
         std::unique_ptr<titleart::TitleRenderJob> begin(Project* project, titleart::RenderRequest request, std::string& error);
         // runs `request` to the end and reads it back (`request.outputBitDepth` chooses 8 or 16 bits)
         bool render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error);
@@ -101,7 +93,7 @@ namespace jasperengine::editor {
         // the alpha bounds of an RGBA image (alpha >= 1/255), empty when it has none
         static titleart::TitleRectI alphaBoundsOf(const texsynth::Image& image);
 
-        // the renderer's counters (null when unavailable)
+        // the renderer's counters (null before the first render)
         const titleart::RendererStats* stats() const;
         void trim();
         // the project closed: drop the resolver and the renderer's caches
@@ -117,7 +109,7 @@ namespace jasperengine::editor {
         Project* resolverProject = nullptr;
         std::filesystem::path resolverPath;
 
-        titleart::TitleArtRenderer* rendererInstance();
+        titleart::TitleArtRenderer& rendererInstance();
     };
 
 }

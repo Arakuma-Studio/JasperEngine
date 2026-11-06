@@ -292,10 +292,6 @@ bool TitleArtBakeJob::setUp() {
         finished = true;
         return false;
     }
-    if (!TitleArtRenderHost::available()) {
-        fail("renderer_unavailable", TitleArtRenderHost::unavailableMessage());
-        return false;
-    }
     phase = 1;
     current = 0;
     return true;
@@ -319,7 +315,7 @@ bool TitleArtBakeJob::startRender(OutputWork& output, bool framePhase) {
     std::string error;
     rendering = TitleArtRenderHost::editor().begin(project, std::move(request), error);
     if (!rendering) {
-        fail(error.rfind("renderer_unavailable", 0) == 0 ? "renderer_unavailable" : "render_failed", error);
+        fail("render_failed", error);
         return false;
     }
     return true;
@@ -699,7 +695,6 @@ void TitleArtAutoBake::tick(Project* project) {
         const TitleBakeStatus status = titleArtStatusOf(project, document, doc);
         // only documents that were baked before; a newer version never reaches here
         if (!status.anyBaked() || status.allFresh()) return;
-        if (!TitleArtRenderHost::available()) return;
         TitleBakeOptions options;
         options.outputs = status.notFresh();
         running = std::make_unique<TitleArtBakeJob>(project, document, std::move(doc), options);

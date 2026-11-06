@@ -59,7 +59,7 @@ namespace jasperengine::editor {
     struct TitleBakeResult {
         bool ok = false;
         std::string error;
-        std::string code;                   // renderer_unavailable, bit_depth_unsupported, version_newer, write_failed...
+        std::string code;                   // render_failed, bit_depth_unsupported, version_newer, write_failed...
         std::vector<TitleBakeFile> files;
         std::vector<std::string> warnings;
         titleart::TitleRectI frame;

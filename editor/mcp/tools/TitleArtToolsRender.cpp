@@ -636,12 +636,6 @@ bool checkRenderOptions(const Json& options, std::string& error) {
 
 void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::string& textPrefix) {
     Project* project = call->ctx().project();
-    if (!TitleArtRenderHost::available()) {
-        Json result = extra.is_object() ? extra : Json::object();
-        result["code"] = "renderer_unavailable";
-        call->fail(TitleArtRenderHost::unavailableMessage(), result);
-        return;
-    }
     auto s = std::make_shared<RenderState>();
     s->project = project;
     s->extra = std::move(extra);
@@ -872,7 +866,7 @@ void checkTitleTool(const CallPtr& call) {
             context.options.baseline = baselineFile.string();
         }
         texsynth::Image lastRender;
-        if (TitleArtRenderHost::available() && doc->editable()) {
+        if (doc->editable()) {
             context.render = [project, &lastRender](const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error) {
                 TitleRenderedImage image;
                 if (!TitleArtRenderHost::editor().render(project, request, image, error)) return false;
@@ -889,7 +883,6 @@ void checkTitleTool(const CallPtr& call) {
         result["path"] = rel;
         result["rev"] = doc->revision();
         result["guidance"] = TitleArtChecks::guidance();
-        if (!TitleArtRenderHost::available()) result["pixels"] = TitleArtRenderHost::unavailableMessage();
         const std::string saveBaseline = a.value("save_baseline", std::string());
         if (!saveBaseline.empty()) {
             fs::path out;

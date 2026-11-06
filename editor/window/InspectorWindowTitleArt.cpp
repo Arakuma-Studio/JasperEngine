@@ -169,7 +169,7 @@ void editor::InspectorWindow::drawTitleArtAsset(const fs::path& asset) {
 
     // the preview: requested for this rev, kept on screen until the next one is done
     const std::string revKey = std::to_string(document.revision());
-    if (state.previewKey.rfind(revKey + ":", 0) != 0 && state.previewId == 0 && TitleArtRenderHost::available()) {
+    if (state.previewKey.rfind(revKey + ":", 0) != 0 && state.previewId == 0) {
         std::string error;
         state.previewId = requestTitleArtPreview(project, asset, 256, TitlePreviewPriority::Layers, INSPECTOR_OWNER, true, error);
     }
@@ -195,7 +195,7 @@ void editor::InspectorWindow::drawTitleArtAsset(const fs::path& asset) {
     } else {
         ImGui::Dummy(ImVec2(side, side * 0.3f));
         ImGui::SameLine(0.0f, 0.0f);
-        ImGui::TextDisabled("%s", TitleArtRenderHost::available() ? "Rendering the preview..." : "No preview: this editor has no Title Art renderer");
+        ImGui::TextDisabled("%s", state.previewKey == revKey + ":failed" ? "The preview could not be rendered" : "Rendering the preview...");
     }
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
     if (ImGui::Combo("Backdrop", &state.backdrop, BACKDROPS, 3) && !state.lastImage.empty()) upload(state, state.lastImage);
@@ -285,7 +285,7 @@ void editor::InspectorWindow::drawTitleArtAsset(const fs::path& asset) {
             ImGui::TextColored(color, "%s", titleOutputStatusLabel(o.status));
             if (!o.reason.empty()) ImGui::SetItemTooltip("%s", o.reason.c_str());
             ImGui::TableNextColumn();
-            ImGui::BeginDisabled(baking || !TitleArtRenderHost::available());
+            ImGui::BeginDisabled(baking);
             if (ImGui::SmallButton("Bake")) TitleArtAutoBake::get().requestBake(project, asset, {o.id}, true);
             ImGui::EndDisabled();
             ImGui::SameLine();
@@ -302,10 +302,9 @@ void editor::InspectorWindow::drawTitleArtAsset(const fs::path& asset) {
         }
         ImGui::EndTable();
     }
-    ImGui::BeginDisabled(baking || !TitleArtRenderHost::available());
+    ImGui::BeginDisabled(baking);
     if (ImGui::Button(baking ? "Baking..." : ICON_FA_FIRE " Bake All")) TitleArtAutoBake::get().requestBake(project, asset, {}, true);
     ImGui::EndDisabled();
-    if (!TitleArtRenderHost::available()) ImGui::SetItemTooltip("This editor was built without the Title Art renderer");
     ImGui::SameLine();
     ImGui::BeginDisabled(state.status.outputs.size() >= titleart::TITLE_MAX_OUTPUTS);
     if (ImGui::Button(ICON_FA_PLUS " Add Output")) {
