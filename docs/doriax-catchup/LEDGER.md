@@ -158,3 +158,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 - 2026-11-06: a second stop (the session account's login was revoked, about 17 hours lost). The slot queue kept
   running the agents' detached jobs meanwhile. Merged 187 more upstream commits (the sound layer S35-S40) into
   `main` and pushed; all 16 agents revived to read their job results, merge `main` once more, finish and report.
+- 2026-11-06 18:3x: owner's top priority: mesh-memory, sprite-batching, unicode-text, platform-lifecycle (in that
+  order), and permission to rent Hetzner VMs. `slot` now runs only priority order while a priority-1 job waits.
+  Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
+  (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
+  (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
