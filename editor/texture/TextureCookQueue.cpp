@@ -91,6 +91,10 @@ std::vector<std::string> editor::projectTextureSources(const Project& project, b
     project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info){
         if (info.type != AssetType::Texture)
             return;
+        // an .exr has an identity, but no export ever cooked one, and a file nothing loads must
+        // not start costing an old project cook time, or stop its export when it cannot be read
+        if (cookLowerExtension(info.path) == ".exr")
+            return;
         const std::string relative = (project.getProjectPath() / info.path).lexically_normal().lexically_relative(assets).generic_string();
         if (relative.empty() || relative == "." || relative.rfind("..", 0) == 0)
             return;

@@ -293,16 +293,26 @@ TEST(AssetTypes, ExrIsATexture) {
 
 // ==================================================================== AssetDatabase
 
-// BF23 F24: an .exr of an existing project gains its sidecar on the next scan, at the same path
+// BF23 F24: an .exr of an existing project, one its database did not track, gains its sidecar on
+// the next scan and answers to the path old references hold
 TEST(AssetDatabase, ExistingExrGainsASidecar) {
     AssetTestDir dir;
+    write(dir.path / "assets/a.png", "png content");
+    {
+        AssetDatabase database;
+        database.open(dir.path, "assets");
+        database.waitForBackgroundWork();
+    }
     write(dir.path / "assets/env.exr", "exr content");
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
-    EXPECT_FALSE(database.getAssetGuid("assets/env.exr").isNull());
+    const Guid guid = database.getAssetGuid("assets/env.exr");
+    EXPECT_FALSE(guid.isNull());
     EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr.meta"));
-    EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr")) << "the source stays where old references point";
+    const AssetDatabase::Resolution reference = database.lookupPath("assets/env.exr");
+    EXPECT_TRUE(reference.found()) << "a reference by path resolves";
+    EXPECT_EQ(reference.guid, guid);
 }
 
 // AC1: two machines upgrading the same commit write the same identities
