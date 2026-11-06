@@ -83,7 +83,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | Done, except R31's re-measure on H or the Mac |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Done |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Done |
-| S39 | Music | `feat/s39-music` | S35, S36, S37 | Ready at `f650e3e1f`; merges `main` after the trio lands, then the fourth full suite with S40 |
+| S39 | Music | `feat/s39-music` | S35, S36, S37 | Ready at `df5260cc7`, with `main` merged; fourth full suite with S40 |
 | S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
 
 ## Decisions
