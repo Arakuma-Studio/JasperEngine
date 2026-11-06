@@ -16331,8 +16331,13 @@ void RenderSystem::update(double dt){
                             }
                         }
                     }else if (terrain){
-                        // a terrain's variant follows its layers (the checks above); of its base
-                        // material only the normal map picks one
+                        // a terrain keeps its own checks (its layers' above): a reload, which also
+                        // builds its layer image array again (invalidateTerrainDetailArray)
+                        const bool shaderUVs = (mesh.submeshes[s].shaderProperties & ((1 << 1) | (1 << 2))) != 0; // 'Uv1', 'Uv2'
+                        if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL) ? !shaderUVs :
+                                (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT && shaderUVs)){
+                            mesh.needReload = true;
+                        }
                         const bool shaderNormalMap = (mesh.submeshes[s].shaderProperties & (1 << 7)) != 0; // 'Nmp'
                         if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                             mesh.needReload = true;
