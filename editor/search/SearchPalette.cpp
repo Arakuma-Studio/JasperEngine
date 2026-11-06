@@ -82,13 +82,15 @@ namespace {
         {"Scene", "window.scene"}, {"Game", "window.game"}, {"Inspector", "window.inspector"}, {"Hierarchy", "window.hierarchy"},
         {"Project", "window.project"}, {"Console", "window.console"}, {"Animation", "window.animation"},
         {"Pose Animation", "window.poseAnimation"}, {"Animator", "window.animator"}, {"Vertex Animation Baker", "window.vertexAnimationBaker"},
-        {"Audio Mixer", "window.audioMixer"}, {"Color Picker", "window.colorPicker"},
+        {"Audio Mixer", "window.audioMixer"}, {"Sound Browser", "window.soundBrowser"}, {"Audio Captures", "window.audioCaptures"},
+        {"Color Picker", "window.colorPicker"},
         {"Terrain", "window.terrain"}, {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
         {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Physics Placement", "window.physicsPlacement"},
         {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
+        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"},
     };
 
     // A label drawn with the matched ranges highlighted
