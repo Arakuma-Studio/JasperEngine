@@ -60,6 +60,7 @@
 #include "component/UIDocumentComponent.h"
 #include "texture/CookedTextures.h"
 #include "texture/TextureExport.h"
+#include "model/ModelExport.h"
 #include "util/StringUtils.h"
 
 #include "stb_image.h"
@@ -1129,8 +1130,12 @@ void editor::Exporter::runExport() {
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!cookModels()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
     if (!writeAudioImports()) return;
+    buildReport = BuildReport();
+    measureBuildContent(getExportProjectRoot());
     if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
@@ -1175,6 +1180,8 @@ void editor::Exporter::runExport() {
             }
         }
 
+        measureBuildEngine(config.destinationDir);
+        if (!writeBuildReport(config.destinationDir, "compile")) return;
         setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
@@ -1185,6 +1192,7 @@ void editor::Exporter::runExport() {
     }
 
     if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!writeBuildReport(config.targetDir, "source")) return;
 
     setProgress("Build complete", 1.0f);
     {
@@ -2809,6 +2817,95 @@ bool editor::Exporter::writeAudioCredits() {
     return true;
 }
 
+bool editor::Exporter::cookModels() {
+    setProgress("Cooking models...", 0.34f);
+    cookedModelSources.clear();
+    cookedModelSizes.clear();
+    std::vector<std::string> platforms;
+    if (config.mode == ExportMode::Desktop) platforms = {"linux"};
+    else if (config.mode == ExportMode::Web) platforms = {"web"};
+    else if (config.mode == ExportMode::Player) platforms = {buildPlatformName(config.platform)};
+    else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
+    const std::vector<ModelFamily> families = ModelCookQueue::familiesForExport(platforms);
+
+    // the settings, the scenes' blend overrides and Read/Write's readers come from the main thread
+    ModelExportInputs inputs;
+    std::string gatherError;
+    std::promise<bool> gathered;
+    auto gatheredFuture = gathered.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &families, &gatherError, &gathered]() {
+        project->getAssetIndex().waitUntilReady();
+        gathered.set_value(ModelExport::gather(*project, families, inputs, gatherError));
+    });
+    if (!gatheredFuture.get()) {
+        setError("Model cook failed: " + gatherError);
+        return false;
+    }
+    const fs::path assetsOut = getExportProjectRoot() / "assets";
+    if (inputs.items.empty()) {
+        std::error_code ec;
+        fs::remove_all(assetsOut / CookedModels::kCookedDir, ec);
+        return true;
+    }
+    // a prebuilt player must decode what the cook writes (R30)
+    if (player && std::find(player->modelCookFormats.begin(), player->modelCookFormats.end(), CookedModels::kFormatVersion) == player->modelCookFormats.end()) {
+        setError("The player runtime " + player->id + " cannot load cooked models (format " + std::to_string(CookedModels::kFormatVersion) +
+                 "): it predates them. Install the runtime of this editor's version (Players window, or build it with tools/players), "
+                 "or export with the Compile method");
+        return false;
+    }
+    const ModelExportResult result = ModelExport::cookForExport(*project, inputs, assetsOut, (int)config.buildJobs,
+        [this](int done, int total, const std::string& path) {
+            setDetail("Cooking models " + std::to_string(done) + "/" + std::to_string(total) + ": " + path);
+        }, [this]() { return isCancelled(); });
+    if (!result.ok) {
+        if (result.error != "cancelled") setError("Model cook failed: " + result.error);
+        else setError("Build cancelled");
+        return false;
+    }
+    for (const std::string& line : StringUtils::split(ModelExport::toText(result), '\n')) {
+        if (!line.empty()) Out::info("%s", line.c_str());
+    }
+    Out::info("Models: %d cooked, %d from the cache", result.cooked, result.cacheHits);
+    cookedModelSources = result.cookedSources;
+    for (const ModelExportRow& row : result.rows)
+        for (const auto& [family, cooked] : row.families)
+            cookedModelSizes[std::string("assets/") + CookedModels::kCookedDir + "/" + row.files.at(family)] = {row.assetPath, cooked.record.sourceBytes};
+    return true;
+}
+
+void editor::Exporter::measureBuildContent(const fs::path& contentRoot) {
+    std::map<std::string, std::pair<std::string, uint64_t>> cooked = cookedModelSizes;
+    for (const auto& [file, source] : BuildReport::cookedTextures(contentRoot / "assets", project->getAssetsPath())) cooked[file] = source;
+    for (const char* tree : {"assets", "lua", "scenes", "prefabs"}) {
+        std::error_code ec;
+        if (fs::is_directory(contentRoot / tree, ec)) buildReport.addTree(contentRoot / tree, cooked, {}, std::string(tree) + "/");
+    }
+}
+
+void editor::Exporter::measureBuildEngine(const fs::path& root) {
+    buildReport.addTree(root, {}, {"engine"});
+}
+
+bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::string& method) {
+    buildReport.platform = config.mode == ExportMode::Player ? buildPlatformName(config.platform)
+                         : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
+    buildReport.method = method;
+    const fs::path file = outputDir / BuildReport::kFileName;
+    std::string error;
+    if (!buildReport.write(file, error)) {
+        setError("Build Report: " + error);
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(progressMutex);
+    result.buildReport = file;
+    result.buildBytes = buildReport.totalBytes;
+    result.buildCategories = buildReport.categories;
+    BuildReport::setLast(file);
+    Out::info("%s", buildReport.summary().c_str());
+    return true;
+}
+
 void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec) {
     ec.clear();
     // Nested links can multiply (a folder of ten links, each to a folder of ten links...), with no
@@ -2948,6 +3045,16 @@ bool editor::Exporter::copyAssets() {
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             fs::remove(assetsDst / relPath, ec);
+            return TreeStep::Enter;
+        }
+        // and a model's as assets/je-cooked/models/ (an FBX's import too, S53)
+        if (cookedModelSources.count(relPath.generic_string())) {
+            fs::remove(assetsDst / relPath, ec);
+            if (FbxImporter::isFbxFile(entry.path())) {
+                fs::path importRelPath = relPath;
+                importRelPath += ".glb";
+                fs::remove(assetsDst / importRelPath, ec);
+            }
             return TreeStep::Enter;
         }
 

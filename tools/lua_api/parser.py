@@ -3178,6 +3178,7 @@ EVENT_FIELD_ARGS = {
     ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
     ('Audio', 'onMusicBeat'): ['bar', 'beat'],
     ('Audio', 'onMusicSection'): ['section', 'clip'],
+    ('Device', 'onThermalStateChanged'): ['state'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',

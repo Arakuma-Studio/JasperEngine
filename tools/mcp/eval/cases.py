@@ -371,6 +371,74 @@ CASES = [
         "max_turns": 24,
     },
     {
+        "id": "guard_meshes_dry_run",
+        "kind": "guard",
+        "what_happened": "Asked to shrink a game's models for mobile, an agent must find the meshes group, measure the models, "
+                         "try lossy compression as a dry run before writing it, and apply it with set_model_import_settings "
+                         "instead of editing .meta files or re-exporting the sources (S53: new tools and text).",
+        "text_at_issue": "Guide 'Other areas' meshes (inspect_models, check_render_budgets); inspect_models' dry run (settings); "
+                         "set_model_import_settings' 'Dry run first'",
+        "source": "synthetic guard (S53 R22, R24)",
+        "files": GAME_FILES,
+        "prompt": "The mobile build downloads too much. Make the 3D models smaller for mobile without changing how they look "
+                  "much, and tell me how much it saves. Check before you change anything.",
+        "mocks": [
+            {"tool": "inspect_models", "args": {"settings": "re:."}, "result": ok(
+                "Dry run (nothing written; the numbers are the real cook's):\nassets/models/rock.glb: 41,204 tris, memory 3.2 MB -> 1.3 MB, "
+                "download 4.1 MB -> 0.6 MB, 3 LODs, change: Up to 0.02% of the model's size",
+                {"dry_run": True, "written": False, "models": [{"path": "assets/models/rock.glb", "platform": "mobile",
+                 "predicted": {"source_bytes": 4300000, "download_bytes": 630000, "visual_change": "Up to 0.02% of the model's size"}}]})},
+            {"tool": "inspect_models", "result": ok(
+                "2 model(s), all models, mobile: 52,000 tris, memory 4.0 MB, download 5.2 MB, 2 cooked, 0 error(s), 0 warning(s).\n"
+                "assets/models/rock.glb: 41,204 tris, 3.2 MB, 4.1 MB download, 3 LODs, cooked; rock.glb downloads 4.1 MB: Mesh "
+                "Compression Medium stores it in fewer bits (dry run with inspect_models settings first)",
+                {"platform": "mobile", "total": 2, "models": [{"path": "assets/models/rock.glb", "download_bytes": 4300000, "issues": [
+                    {"code": "mesh-download-large", "severity": "info", "message": "rock.glb downloads 4.1 MB",
+                     "fix": {"tool": "set_model_import_settings", "arguments": {"paths": ["assets/models/rock.glb"], "settings": {"mesh_compression": "medium"}}}}]},
+                    {"path": "assets/models/tree.glb", "download_bytes": 900000, "issues": []}]})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/rock.glb"], "unchanged": 0, "models": [{"path": "assets/models/rock.glb", "download_bytes": 630000}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 2 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models", "set_model_import_settings"],
+                   "order": [[{"tool": "inspect_models", "args": {"settings": "re:."}}, "set_model_import_settings"]],
+                   "must_not_call": ["write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"MB|%"]},
+        "max_turns": 24,
+    },
+    {
+        "id": "guard_meshes_load_error",
+        "kind": "guard",
+        "what_happened": "An export fails because a model requires a glTF extension the engine cannot read. The agent must read "
+                         "the model's load findings, tell the user to export the model again without that extension, and not "
+                         "try import settings or edit the .meta / the file (S53 R5: the loader's findings in inspect_models).",
+        "text_at_issue": "Guide meshes 'What the loader finds' (gltf-required-extension: status failed, exports stop until the model is "
+                         "exported again without it); inspect_models' load_diagnostics",
+        "source": "synthetic guard (S53 R5, R22)",
+        "files": GAME_FILES,
+        "prompt": "The export fails with something about assets/models/crate.glb. Find out why and tell me what to do; don't "
+                  "change anything yet.",
+        "mocks": [
+            {"tool": "inspect_models", "result": ok(
+                "1 model(s), desktop: 1,200 tris, memory 0.1 MB, download 0.1 MB, 0 cooked, 1 error(s), 0 warning(s).\n"
+                "assets/models/crate.glb: glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; "
+                "it is loaded without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed",
+                {"platform": "desktop", "total": 1, "models": [{"path": "assets/models/crate.glb", "status": "failed", "issues": [
+                    {"code": "gltf-required-extension", "severity": "error",
+                     "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded "
+                                "without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed"}],
+                    "load_diagnostics": [{"severity": "error", "extension": "VENDOR_shapes", "part": "",
+                                          "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded without it",
+                                          "fix": "export the model again without VENDOR_shapes", "cook_fixes": False}]}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 1 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models"],
+                   "must_not_call": ["set_model_import_settings", "write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"VENDOR_shapes", r"(?i)export|re-?export"]},
+        "max_turns": 16,
+    },
+    {
         "id": "bad_game_view_resolution",
         "kind": "bad",
         "what_happened": "Asked for a 20:9 phone view, agents sent configure_game_view {aspect: '20:9'}, got the aspect enum "
@@ -630,6 +698,53 @@ CASES = [
         "max_turns": 8,
     },
 
+    {
+        "id": "bad_lod_levels_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked how a model's detail levels look and where they switch, agents placed copies of the model at "
+                         "distances, moved the camera and screenshotted each, guessing which level drew; capture_model_lods "
+                         "(meshes group) draws every level side by side with its triangles, error and switch height.",
+        "text_at_issue": "capture_model_lods: 'Contact sheet of a mesh's detail levels ... the screen height it switches "
+                         "below'; tool groups line 'meshes: ... detail levels (LOD) and their captures'",
+        "source": "S54 R14 (docs/forge-meshopt-analysis/jasper-ux-agents.md, LOD verification walkthrough)",
+        "prompt": "Before we ship to phones: show me what the detail levels of models/rock.glb look like, and at what size on "
+                  "screen each one kicks in. Don't change the scene.",
+        "mocks": [
+            {"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}, "result": ok(
+                "models/rock.glb: 4 level(s) (built as the runtime would). LOD 0: 4800 tris; LOD 1: 2400 tris, error 0.0031, "
+                "below 645 px, PSNR 38.2 dB; LOD 2: 1200 tris, error 0.0074, below 270 px, PSNR 33.0 dB; LOD 3: 600 tris, "
+                "error 0.0160, below 125 px, PSNR 28.4 dB;",
+                {"path": "models/rock.glb", "source": "built", "levels": [
+                    {"level": 0, "triangles": 4800, "error": 0.0, "switches_below_px": None, "psnr_db": None},
+                    {"level": 1, "triangles": 2400, "error": 0.0031, "switches_below_px": 645, "psnr_db": 38.2},
+                    {"level": 2, "triangles": 1200, "error": 0.0074, "switches_below_px": 270, "psnr_db": 33.0},
+                    {"level": 3, "triangles": 600, "error": 0.016, "switches_below_px": 125, "psnr_db": 28.4}]})},
+        ],
+        "checks": {"calls": [{"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}}],
+                   "must_not_call": ["create_entity", "instantiate_prefab", "set_scene_camera"], "reply_must": [r"645|270|125"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_lod_tint_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked which objects draw which detail level, agents changed materials to colour objects by "
+                         "their level and later had to put the materials back; the Scene view's LOD Level Draw Mode "
+                         "tints every mesh by the level it draws, editor only.",
+        "text_at_issue": "set_scene_camera display: '... draw_mode: \"lod_level\"'; meshes guide 'See the levels in "
+                         "the Scene view'",
+        "source": "S54 R11 (docs/forge-meshopt-analysis/jasper-ux-human.md 6.3)",
+        "prompt": "In the Main scene, show me which objects are drawing which LOD level right now. Don't change any "
+                  "object or material.",
+        "mocks": [
+            {"tool": "set_scene_camera", "args": {}, "result": ok(
+                "Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "lod_level", "show_stats": True}})},
+            {"tool": "screenshot", "args": {}, "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "lod_level"}}}],
+                   "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
+        "max_turns": 10,
+    },
+
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
         "id": "guard_play_and_look",
@@ -734,6 +849,59 @@ CASES = [
         "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.product_name": "Space Dodge"}}}],
                    "max_calls": {"set_project_settings": 2}, "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 8,
+    },
+    {
+        "id": "guard_capsule_shadows",
+        "kind": "guard",
+        "what_happened": "S57 adds capsule shadows: a Capsule Shadow Caster (Cast Shadows: Capsules Only) plus the scene's "
+                         "capsule_shadows_enabled. Without the scene setting the caster draws nothing, and an agent that only "
+                         "turns the mesh's Cast Shadows off loses the character's shadow.",
+        "text_at_issue": "set_scene_settings names (capsule_shadows_enabled: 'soft shadows of the main directional light from "
+                         "the capsules of the 4 Capsule Shadow Casters nearest the camera ...'); jasper://docs/lighting",
+        "source": "docs/specs/S57-forge-lighting.md R2",
+        "prompt": "The Crate stands in for our walking character. Give it soft capsule shadows instead of shadow-map shadows, "
+                  "so moving it never redraws the cached shadow map.",
+        "mocks": [
+            {"tool": "add_component", "args": {"component": "re:(?i)capsule"}, "result": ok(
+                "Added capsuleshadowcaster to GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\ncapsule_shadows_enabled = true\ncapsule_shadow_intensity = 1\n"
+                "capsule_shadow_softness = 0.25",
+                {"scene_id": 1, "settings": {"capsule_shadows_enabled": True, "capsule_shadow_intensity": 1.0,
+                                             "capsule_shadow_softness": 0.25}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["capsule_shadows_enabled"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"entity": "re:Crate|^15$", "component": "re:(?i)capsule"}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"capsule_shadows_enabled": True}}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_light_mode_setting",
+        "kind": "guard",
+        "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
+                         "Lights Per Object is the old answer to 'my many lamps are missing', and costs every object.",
+        "text_at_issue": "graphics.light_mode description: 'How lit meshes find their point and spot lights. Tiled lights "
+                         "every point and spot light per pixel from screen tiles (Forward+, up to 32 a tile ...)'",
+        "source": "docs/specs/S57-forge-lighting.md R1",
+        "prompt": "Our night market has about 60 small point lights; set the project to light them per pixel from screen "
+                  "tiles (Forward+) on every platform.",
+        "mocks": [
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "graphics.light_mode: tiled", {"graphics.light_mode": "tiled"})},
+            {"tool": "get_project_settings", "result": ok(
+                "graphics.light_mode: automatic (automatic, per_object, tiled: how lit meshes find their point and spot "
+                "lights; Automatic is Tiled on Medium tiers and above)", {"graphics.light_mode": "automatic"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["graphics.light_mode"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"graphics.light_mode": "tiled"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"max_lights_per_object": "*"}}}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
     },
     {
         "id": "guard_physics_body",
@@ -1223,6 +1391,29 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_draw_calls_by_pass",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked whether shadows or the main view cost the draw calls and whether GPU Instancing batches, an "
+                         "agent has only the frame's total without the by-pass counters, and guesses (S55 R7).",
+        "text_at_issue": "get_render_stats result: draw_calls_by_pass {main, shadow, depth, other}, main_triangles, "
+                         "shadow_triangles, instanced_draws, batched_instances (structuredContent and the summary line)",
+        "source": "S55 R7, R13 (docs/specs/S55-draw-submission.md); no failure on record",
+        "prompt": "The game is playing. How many draw calls does the main camera make compared with the shadow maps this "
+                  "frame, and is GPU Instancing batching anything? Measure, don't guess; numbers only, no changes.",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (game): 318 draws (41 main, 262 shadow; 37 instanced), 9 passes, CPU 6.12 ms.",
+                {"view": "game", "draw_calls": 318, "draw_calls_by_pass": {"main": 41, "shadow": 262, "depth": 9, "other": 6},
+                 "main_triangles": 412806, "shadow_triangles": 1288114, "instanced_draws": 37, "batched_instances": 2014,
+                 "visible": 2311, "culled": 455, "passes": 9, "drawn": True})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": ["get_render_stats"], "reply_must": [r"\b41\b", r"\b262\b", r"\b37\b|2,?014"],
+                   "must_not_call": ["capture_profile", "set_project_settings"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_ios_simulator_without_an_account",
         "kind": "bad",
         "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
@@ -1371,5 +1562,57 @@ CASES = [
                    "any_of": [{"file_must": {"scripts/MusicDirector.lua": [r"Audio\.playMusic", r"sync\s*=\s*[\"']bar[\"']"]}},
                               {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Audio\.playMusic.*sync\s*=\s*[\"']bar[\"']"}}]}]},
         "max_turns": 25,
+    },
+    {
+        "id": "guard_device_simulation",
+        "kind": "guard",
+        "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "
+                         "editor applies no tier by itself, and the device tools are a hidden group (S56).",
+        "text_at_issue": "Guide 'Other areas': 'device tiers (set_device_simulation, then play)'; set_device_simulation's "
+                         "description; its result's next",
+        "source": "spec S56 R5, R9; no failure on record",
+        "prompt": "Show me how the game looks on a low-end phone: take a screenshot of it running at that quality.",
+        "mocks": [
+            {"tool": "set_device_simulation", "args": {"tier": "low"}, "result": ok(
+                "Device simulation set; it applies when Play starts.",
+                {"simulation": {"tier": "low", "platform": "mobile", "thermal_state": "device"}, "playing": False,
+                 "next": "play {action: \"start\"}, then get_device_info or screenshot"})},
+            {"tool": "get_device_info", "result": ok(
+                "llvmpipe (LLVM 15.0.7, 256 bits): tier Low (simulated, 5 override(s) in effect); thermal Nominal; Mobile table.",
+                {"tier": "low", "tier_applied": True, "tier_source": "simulated", "platform": "mobile",
+                 "applied_overrides": [{"setting": "render_scale", "value": 0.5, "source": "tier"}], "playing": True})},
+            {"tool": "play", "result": ok("Play started: \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (playing).", {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "set_device_simulation", "args": {"tier": "low"}}, "play", "screenshot"],
+                   "must_not_call": ["set_project_settings", "set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_device_tier_settings",
+        "kind": "guard",
+        "what_happened": "A Device Tier's overrides are a project setting per platform family and tier "
+                         "(quality.device_tiers.<family>.<tier>, an object of cells), not the scene's render scale (S56).",
+        "text_at_issue": "get_device_info's description: 'Tier table: quality.device_tiers.* in set_project_settings'",
+        "source": "spec S56 R3, R9; no failure on record",
+        "prompt": "On low-end phones the game should render at 60% resolution instead of 50%. Other devices stay as they are.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "quality.device_tiers.mobile.low {render_scale 0.5, shadow_quality low, lod_bias 0.5, ssao false, "
+                "volumetrics false, the rest null} (object)",
+                {"quality.device_tiers.mobile.low": {"render_scale": 0.5, "shadow_quality": "low", "lod_bias": 0.5,
+                                                     "ssao": False, "volumetrics": False, "msaa_samples": None}})},
+            {"tool": "get_device_info", "result": ok(
+                "NVIDIA GeForce RTX 3060: tier High detected, none applied (the editor applies a simulated or set tier only); "
+                "thermal Nominal; Desktop table.",
+                {"detected_tier": "high", "tier_applied": False, "platform": "desktop",
+                 "next": "set_device_simulation {tier}, then play: the editor applies a tier only in Play"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["quality.device_tiers.mobile.low"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
+                   "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 12,
     },
 ]

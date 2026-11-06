@@ -44,10 +44,13 @@ namespace jasperengine::editor{
         // The key's value in an asset's sidecar (null when absent)
         static YAML::Node read(const std::filesystem::path& absoluteAsset, const std::string& key);
 
-        // Told after every write, undo included (the texture cook queue requeues what an
-        // import-settings edit changed): the project, the project-relative asset and the key
+        // Told after every write, undo included (the texture and model cook queues requeue what
+        // an import-settings edit changed): the project, the project-relative asset and the key.
+        // Any number of listeners, each under its owner's key (S53 R14): adding one under a key
+        // that has one replaces it, and removing a key leaves the others alone.
         using WriteListener = std::function<void(Project* project, const std::filesystem::path& asset, const std::string& key)>;
-        static void setWriteListener(WriteListener listener);
+        static void addWriteListener(const void* owner, WriteListener listener);
+        static void removeWriteListener(const void* owner);
 
         bool execute() override;
         void undo() override;

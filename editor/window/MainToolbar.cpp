@@ -4,6 +4,7 @@
 #include "MainToolbar.h"
 #include "render/SceneRender.h"
 #include "window/PhysicsPlacementWindow.h"
+#include "window/ImporterFields.h"
 
 #include "imgui_internal.h"
 #include "App.h"
@@ -116,6 +117,8 @@ void editor::MainToolbar::togglePlay() {
     const uint32_t playSceneId = project->getPlaySessionSceneId();
     if (playSceneId != NULL_PROJECT_SCENE) {
         project->stop(playSceneId);
+    } else if (ImporterPrompt::guard([this]() { togglePlay(); })) {
+        // import settings edited and not applied (S53 R17): Play starts after Apply or Revert
     } else if (SceneProject* selected = project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()))) {
         project->start(selected->id);
     }

@@ -607,8 +607,12 @@ bool AudioSystem::init(){
         if (opened == AudioBackend::Auto) {
             result = soloud.init(flags, SoLoud::Soloud::MINIAUDIO, rate);
             outputAvailable = result == SoLoud::SO_NO_ERROR;
-            if (!outputAvailable) {
-                Log::warn("No audio output available (%s): mixing without output", soloud.getErrorString(result));
+            // info, once a process: a machine without a sound device (CI, a server, a headless editor)
+            // is a normal place to run, and an editor's Play reopens the driver every time
+            static bool noAudioOutputLogged = false;
+            if (!outputAvailable && !noAudioOutputLogged) {
+                noAudioOutputLogged = true;
+                Log::print("No audio output available: mixing without output (SoLoud result %d)", (int)result);
             }
         }
         if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null && opened != AudioBackend::Deterministic) {

@@ -97,9 +97,11 @@ json PlayerConfig::toJson() const {
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
+    out["lightMode"] = LightingTiers::getModeName(lightMode);
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
+    out["device"] = json::parse(device.toJson());
     out["tags"] = tags;
     out["layers"] = layerNames;
     out["collision3D"] = collision3D;
@@ -228,9 +230,19 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
+        // absent (a config written before it) or unknown: Automatic
+        const std::string lightMode = in.value("lightMode", "automatic");
+        if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;
         if (const auto tiers = in.find("shadowTiers"); tiers != in.end() && tiers->is_array()) {
             for (size_t i = 0; i < config.shadowTiers.size() && i < tiers->size(); i++)
                 valueOf(kShadowTier, (*tiers)[i].get<std::string>(), config.shadowTiers[i]);
+        }
+        if (const auto device = in.find("device"); device != in.end()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(device->dump(), config.device, deviceError)) {
+                error = "game.json: device: " + deviceError;
+                return false;
+            }
         }
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});

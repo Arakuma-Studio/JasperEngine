@@ -15,6 +15,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/ColorTweenComponent.h"
@@ -205,6 +206,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TextEffectComponent>(ComponentOrder::Hierarchy, "TextEffectComponent");
     registerComponent<VideoPlayerComponent>(ComponentOrder::Insertion, "VideoPlayerComponent");
     registerComponent<SafeAreaComponent>(ComponentOrder::Hierarchy, "SafeAreaComponent");
+    registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

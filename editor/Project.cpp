@@ -131,9 +131,11 @@
 
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -1076,7 +1078,7 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
 }
 
 fs::path editor::Project::getImportedModelPath(const fs::path& fbxPath) const {
-    return FileUtils::pathFromUtf8(MeshSystem::getImportedModelPath(FileUtils::pathToUtf8(fbxPath)));
+    return FileUtils::pathFromUtf8(MeshSystem::getFbxImportPath(FileUtils::pathToUtf8(fbxPath)));
 }
 
 bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
@@ -1743,6 +1745,25 @@ const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() c
     return htmlUiRender;
 }
 
+void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& settings){
+    drawSubmission = settings;
+    // the editor's scenes draw with it at once (RenderSystem reads it every update)
+    Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
+}
+
+const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
+    return drawSubmission;
+}
+
+void editor::Project::setDeviceSettings(const DeviceSettings& settings){
+    deviceSettings = settings;
+    Device::setProjectSettings(deviceSettings);
+}
+
+const DeviceSettings& editor::Project::getDeviceSettings() const{
+    return deviceSettings;
+}
+
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
     if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
         return;
@@ -1755,6 +1776,16 @@ ShadowTier editor::Project::getShadowTier(int platform) const{
     if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
         return ShadowTier::HIGH;
     return shadowTiers[platform];
+}
+
+void editor::Project::setLightMode(LightMode mode){
+    lightMode = mode;
+    // the editor's renderer reads it every frame (LightingTiers::usesTiledLights)
+    LightingTiers::setLightMode(mode);
+}
+
+LightMode editor::Project::getLightMode() const{
+    return lightMode;
 }
 
 const char* editor::Project::getShadowTierPlatformName(int platform){
@@ -3335,6 +3366,21 @@ void editor::Project::setTextureSettings(const TextureProjectSettings& settings)
     // the standalone build's main.cpp bakes the runtime quality and budgets in
     if (modelLoaded){
         markGeneratedSourcesDirty();
+    }
+}
+
+const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
+    return modelSettings;
+}
+
+void editor::Project::setModelSettings(const ModelProjectSettings& settings){
+    if (settings == modelSettings){
+        return;
+    }
+    const bool cookInputs = settings.defaults != modelSettings.defaults || settings.cacheSizeMB != modelSettings.cacheSizeMB;
+    modelSettings = settings;
+    if (cookInputs && ModelCookQueue::get().getProject() == this){
+        ModelCookQueue::get().projectSettingsChanged();
     }
 }
 
@@ -5799,9 +5845,12 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDrawSubmissionSettings(DrawSubmissionSettings());
+    setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
+    setLightMode(defaultLightMode);
     setThreadingSettings(ThreadingProjectSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
@@ -5863,7 +5912,11 @@ void editor::Project::resetConfigs() {
     if (TextureCookQueue::get().getProject() == this){
         TextureCookQueue::get().attach(nullptr);
     }
+    if (ModelCookQueue::get().getProject() == this){
+        ModelCookQueue::get().attach(nullptr);
+    }
     textureSettings = {};
+    modelSettings = {};
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();
@@ -7611,8 +7664,10 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
@@ -9703,8 +9758,10 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
