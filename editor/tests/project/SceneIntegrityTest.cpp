@@ -350,8 +350,11 @@ TEST_F(SceneIntegrityTest, MultiDeleteUndoKeepsTheSky) {
 }
 
 TEST_F(SceneIntegrityTest, CreatedChildrenJoinTheirParentsBranch) {
-    // a child created under PLAIN_OBJECT is listed after PLAIN_OBJECT's branch, not at the end
-    CreateEntityCmd* child = new CreateEntityCmd(project.get(), sceneId, "Child", EntityCreationType::EMPTY, PLAIN_OBJECT);
+    // a child created under First goes into First's branch (before Second), not to the list's end
+    CreateEntityCmd* first = new CreateEntityCmd(project.get(), sceneId, "First", EntityCreationType::EMPTY);
+    ASSERT_TRUE(history()->addCommand(first));
+    ASSERT_TRUE(history()->addCommand(new CreateEntityCmd(project.get(), sceneId, "Second", EntityCreationType::EMPTY)));
+    CreateEntityCmd* child = new CreateEntityCmd(project.get(), sceneId, "Child", EntityCreationType::EMPTY, first->getEntity());
     ASSERT_TRUE(history()->addCommand(child));
     std::vector<Entity> sorted = scene->entities;
     ProjectUtils::sortEntitiesByTransformOrder(scene->scene, sorted);
