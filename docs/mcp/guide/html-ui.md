@@ -1388,7 +1388,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 ### Particles: `<particle-system>`
 
 `<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
-Particle System (the first of its GameObjects with one, without its sub-emitters' particles; its billboards as they look: the Renderer's
+Particle System (the first of its GameObjects with one, and its sub-emitters' particles with their own Renderers; its billboards as they look: the Renderer's
 texture or soft disc, sprite sheet frames, additive or alpha blending, sizes, rotations, colours)
 and draws its particles in document order: above what comes before it,
 below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter

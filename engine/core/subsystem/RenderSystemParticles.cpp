@@ -6,7 +6,8 @@
 // at their age, thinned, sorted when the blend needs it) into this frame's streams with
 // sg_append_buffer, then drawn in one instanced draw (one per mesh in Mesh mode, one more for
 // trails) with only per-instance vertex attributes: no storage buffers, no compute. A system's
-// sub-emitter children draw right after it, in the effect's order, each with its own Renderer.
+// sub-emitter children each draw with their own Renderer: in the transparent queue by their own
+// Sort Priority and distance, under a UI hierarchy right after it in the effect's order.
 
 #include "RenderSystem.h"
 
@@ -684,7 +685,32 @@ bool RenderSystem::particleBoundsVisible(const ParticleSystemState& state, Camer
     return isInsideCamera(camera, box);
 }
 
-void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+void RenderSystem::queueParticleTree(Entity entity, ParticleSystemComponent& particles, const EmitterRuntime& emitter, ParticleRenderData& rd,
+                                     Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order){
+    // a child with nothing alive has nothing to draw
+    if (root || emitter.isAlive()){
+        Vector3 center = transform.worldPosition;
+        if (emitter.hasBounds()){
+            float lo[3], hi[3];
+            emitter.bounds(lo, hi);
+            center = matrixOf(emitter.simToWorld()) * Vector3((lo[0] + hi[0]) * 0.5f, (lo[1] + hi[1]) * 0.5f, (lo[2] + hi[2]) * 0.5f);
+        }
+        TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                   (center - cameraTransform.worldPosition).length(), rd.sortPriority, order++};
+        data.particles = &particles;
+        data.emitter = &emitter;
+        data.emitterRender = &rd;
+        transparentQueue.push_back(data);
+    }
+    for (size_t c = 0; c < emitter.childCount() && c < rd.children.size(); c++){
+        const EmitterRuntime* child = emitter.child(c);
+        if (child && child->effect() && rd.children[c])
+            queueParticleTree(entity, particles, *child, *rd.children[c], transform, cameraTransform, false, order);
+    }
+}
+
+void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+                                 const EmitterRuntime* only, ParticleRenderData* onlyRender){
     if (!particles.state || !particles.state->effect)
         return;
     ParticleSystemState& state = *particles.state;
@@ -704,7 +730,12 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
 
     uint32_t drawn = 0;
     bool sorted = false;
-    drawParticleTree(state, state.runtime, rd, transform, camera, camTransform, pipType, boundsVisible, drawn, sorted);
+    if (only){
+        if (onlyRender->loaded && !only->isPrewarming())
+            drawn = drawParticleEmitter(state, *only, *onlyRender, transform, camera, camTransform, pipType, boundsVisible, sorted);
+    }else{
+        drawParticleTree(state, state.runtime, rd, transform, camera, camTransform, pipType, boundsVisible, drawn, sorted);
+    }
 
     state.drawnViews += drawn;
     if (sorted)

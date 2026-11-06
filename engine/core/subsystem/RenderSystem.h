@@ -597,6 +597,10 @@ namespace jasperengine{
 			ParticleSystemComponent* particles = nullptr;
 			LineRendererComponent* lines = nullptr;
 			TrailRendererComponent* trail = nullptr;
+			// a system with sub-emitters queues each emitter by its own priority and distance:
+			// the one this is (null: the system has one emitter)
+			const particles::EmitterRuntime* emitter = nullptr;
+			particles::ParticleRenderData* emitterRender = nullptr;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -2413,7 +2417,12 @@ namespace jasperengine{
 		bool particleBoundsVisible(const particles::ParticleSystemState& state, CameraComponent& camera);
 		void setParticleSceneInputUser(Entity entity, uint32_t inputs);
 		uint64_t particleRenderKey(const particles::CompiledEffect& effect) const;
-		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		// only: the one emitter to draw (a queued item of a system with sub-emitters), else its whole tree
+		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
+		// an emitter and its children as items of the transparent queue
+		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
+		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
 		// an emitter, then its children in the effect's order
 		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
 		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);

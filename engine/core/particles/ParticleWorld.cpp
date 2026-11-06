@@ -78,15 +78,15 @@ double particles::cullingStep(CullingMode mode, bool looping, bool visible, doub
 }
 
 void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
-    // what each wants: its steady-state population (or what it holds now, children included);
-    // its budget covers its children, each emitter still held to its own Max Particles
+    // what each wants: its peak population with what its children will need (or what it holds
+    // now); its budget covers its children, each emitter still held to its own Max Particles
     const uint32_t total = budget();
     uint64_t want = 0;
     for (EmitterTask& t : tasks){
         const ParticleProgram* prog = t.runtime ? t.runtime->program() : nullptr;
-        t.budget = prog ? std::min({t.runtime->totalMaxParticles(), t.input.budget, total}) : 0u;
+        t.budget = prog ? std::min(t.runtime->totalMaxParticles(), t.input.budget) : 0u;
         t.emissionScale = t.input.emissionScale;
-        want += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
+        want += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(t.runtime->treeCapacityHint(), t.budget)) : 0u;
     }
     if (want <= total)
         return;
@@ -108,7 +108,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         while (j < order.size() && tasks[order[j]].priority == tasks[order[i]].priority){
             EmitterTask& t = tasks[order[j]];
             const ParticleProgram* prog = t.runtime->program();
-            tierWant += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
+            tierWant += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(t.runtime->treeCapacityHint(), t.budget)) : 0u;
             tierSignificance += std::max(t.significance, 1e-4f);
             j++;
         }
@@ -117,7 +117,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         for (size_t k = i; k < j; k++){
             EmitterTask& t = tasks[order[k]];
             const ParticleProgram* prog = t.runtime->program();
-            const uint64_t need = prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
+            const uint64_t need = prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(t.runtime->treeCapacityHint(), t.budget)) : 0u;
             uint64_t share;
             if (fill >= 1.0){
                 share = need;

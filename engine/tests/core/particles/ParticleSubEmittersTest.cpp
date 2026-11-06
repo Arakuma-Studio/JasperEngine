@@ -305,3 +305,164 @@ TEST(ParticleSubEmitters, TotalsWalkTheTree){
     EXPECT_EQ(f.runtime.totalCapacity(), f.runtime.capacity() + f.kid().capacity());
     EXPECT_EQ(f.runtime.totalMaxParticles(), 1024u + 4096u);
 }
+
+// Review round: a live parent follows what its children are made of
+
+namespace {
+
+    // a child whose fields say which version of it is bound (Max Particles is compiled in)
+    void defineChild(const std::string& path, uint32_t maxParticles, bool trails = false){
+        ParticleEffectDocument document;
+        document.tickRate = 30;
+        document.maxParticles = maxParticles;
+        document.main.startLifetime = MinMaxCurve(10.0f);
+        document.emission.rateOverTime = MinMaxCurve(0.0f);
+        if (trails)
+            document.trails.present = true;
+        ParticleEffectLibrary::set(path, document);
+    }
+
+    std::string parentWith(const std::string& entries){
+        return R"({"version": 1, "duration": 5, "seed": 4, "maxParticles": 100, "tickRate": 30, "subEmitters": [)" + entries + R"(],
+            "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0},
+                        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 5}]},
+                        {"type": "subEmitters"}]})";
+    }
+
+    std::string entry(const std::string& effect, const std::string& more = ""){
+        return R"({"trigger": "birth", "effect": ")" + effect + R"(", "emitCount": 2)" + more + "}";
+    }
+
+}
+
+TEST(ParticleSubEmitters, EditingTheListBindsTheChildrenItNames){
+    defineChild("fx/list-a.particles", 111);
+    defineChild("fx/list-b.particles", 222);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-a.particles"))));
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    ASSERT_EQ(state->runtime.childCount(), 1u);
+    EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 111u);
+
+    // another effect in the entry
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-b.particles"))));
+    state = subsystem.getState(system.getEntity());
+    ASSERT_EQ(state->runtime.childCount(), 1u);
+    EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 222u);
+
+    // one more entry
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-b.particles") + "," + entry("fx/list-a.particles"))));
+    state = subsystem.getState(system.getEntity());
+    ASSERT_EQ(state->runtime.childCount(), 2u);
+    EXPECT_EQ(state->runtime.child(1)->program()->maxParticles, 111u);
+
+    // one entry fewer: the slots follow the list
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-a.particles"))));
+    state = subsystem.getState(system.getEntity());
+    ASSERT_EQ(state->runtime.childCount(), 1u);
+    EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 111u);
+    ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSubEmitters, EditingAnEntrysFiguresKeepsTheLiveParticles){
+    defineChild("fx/keep.particles", 111);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/keep.particles"))));
+    system.play();
+    system.step(2);
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    ASSERT_EQ(subsystem.getStats(system.getEntity()).live, 15u);
+    // the probability is read when an entry fires: nothing to bind again
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/keep.particles", R"(, "probability": 0.5)"))));
+    EXPECT_EQ(subsystem.getStats(system.getEntity()).live, 15u) << "a figure of the entry does not start it over";
+    ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSubEmitters, EditingAChildsFileReachesALiveParent){
+    defineChild("fx/edit.particles", 111);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/edit.particles"))));
+    system.play();
+    system.step(2);
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    ASSERT_EQ(state->runtime.child(0)->count(), 10u);
+
+    // a parameter: the child's particles stay, as a root's do
+    ParticleEffectDocument edited = *ParticleEffectLibrary::get("fx/edit.particles").document;
+    edited.main.startLifetime = MinMaxCurve(20.0f);
+    ParticleEffectLibrary::set("fx/edit.particles", edited);
+    state = subsystem.getState(system.getEntity());
+    EXPECT_EQ(state->runtime.child(0)->effect()->document.main.startLifetime.constant, 20.0f);
+    EXPECT_EQ(state->runtime.child(0)->count(), 10u) << "a parameter edit keeps the live particles";
+
+    // another structure: it starts over with the new child
+    defineChild("fx/edit.particles", 333, true);
+    state = subsystem.getState(system.getEntity());
+    EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 333u);
+    EXPECT_TRUE(state->runtime.child(0)->program()->trails.enabled);
+    ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSubEmitters, EditingAGrandchildsFileReachesALiveParent){
+    defineChild("fx/leaf.particles", 111);
+    ParticleEffectDocument middle;
+    middle.tickRate = 30;
+    middle.emission.rateOverTime = MinMaxCurve(0.0f);
+    middle.subEmittersModule.present = true;
+    SubEmitterEntry toLeaf;
+    toLeaf.trigger = SubEmitterTrigger::Birth;
+    toLeaf.effect = "fx/leaf.particles";
+    middle.subEmitters = {toLeaf};
+    ParticleEffectLibrary::set("fx/middle.particles", middle);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/middle.particles"))));
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    ASSERT_EQ(state->runtime.child(0)->child(0)->program()->maxParticles, 111u);
+    defineChild("fx/leaf.particles", 444, true);
+    state = subsystem.getState(system.getEntity());
+    EXPECT_EQ(state->runtime.child(0)->child(0)->program()->maxParticles, 444u);
+    ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSubEmitters, ABudgetFullOfChildrenLeavesTheParentNoRoom){
+    // the tree shares one budget: children holding 90 of 100 leave its root 10
+    ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 9);
+    d.maxParticles = 1000;
+    d.main.startLifetime = MinMaxCurve(100.0f);
+    d.emission.bursts.clear();
+    d.emission.rateOverTime = MinMaxCurve(300.0f);
+    Family f(d);
+    f.input.budget = 100;
+    f.ticks(30);
+    EXPECT_LE(f.runtime.totalCount(), 100u);
+    EXPECT_GT(f.kid().count(), 0u);
+    EXPECT_LE(f.runtime.count(), 100u - f.kid().count());
+}
+
+TEST(ParticleSubEmitters, ALaterEntrysParticlesCountAgainstAnEarlierOne){
+    // both entries fire every tick: neither may spend what the other holds
+    ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 5);
+    d.subEmitters.push_back(d.subEmitters[0]);
+    d.maxParticles = 1000;
+    d.main.startLifetime = MinMaxCurve(100.0f);
+    d.emission.bursts.clear();
+    d.emission.rateOverTime = MinMaxCurve(300.0f);
+    Family f(d);
+    f.input.budget = 200;
+    f.ticks(30);
+    EXPECT_LE(f.runtime.totalCount(), 200u);
+}

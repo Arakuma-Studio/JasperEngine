@@ -171,3 +171,108 @@ TEST(ParticleBudget, TheProjectBudgetIsForWorldsWithoutTheirOwn){
     ParticleWorld::setProjectBudget(0);
     EXPECT_EQ(follows.budget(), defaultWorldBudget());
 }
+
+namespace {
+
+    // `parents` particles burst at once, each spawning `emitCount` children when it dies
+    struct Explosion {
+        EmitterRuntime runtime;
+        Explosion(uint32_t parents, int emitCount, uint32_t childMax, uint32_t seed){
+            ParticleEffectDocument kid;
+            kid.tickRate = 30;
+            kid.maxParticles = childMax;
+            kid.main.startLifetime = MinMaxCurve(100.0f);
+            kid.emission.rateOverTime = MinMaxCurve(0.0f);
+            const auto child = compileOrFail(kid);
+
+            ParticleEffectDocument d;
+            d.tickRate = 30;
+            d.maxParticles = parents;
+            d.looping = false;
+            d.main.startLifetime = MinMaxCurve(0.2f);
+            d.emission.rateOverTime = MinMaxCurve(0.0f);
+            Burst burst;
+            burst.count = MinMaxCurve((float)parents);
+            d.emission.bursts = {burst};
+            d.subEmittersModule.present = true;
+            SubEmitterEntry entry;
+            entry.trigger = SubEmitterTrigger::Death;
+            entry.effect = "child.particles";
+            entry.emitCount = emitCount;
+            d.subEmitters = {entry};
+            runtime.bind(compileOrFail(d));
+            runtime.bindSubEmitters([&](const SubEmitterEntry&){ return child; });
+            runtime.reset(seed);
+            runtime.play();
+        }
+    };
+
+}
+
+TEST(ParticleBudget, ThePriorityGetsWhatItsChildrenWillNeed){
+    // a high-priority explosion about to spawn 1 600 children, against a system that wants it all:
+    // its share covers them before they exist
+    Explosion explosion(16, 100, 2000, 1);
+    ParticleEffectDocument other;
+    other.tickRate = 30;
+    other.maxParticles = 200000;
+    other.main.startLifetime = MinMaxCurve(2.0f);
+    other.emission.rateOverTime = MinMaxCurve(50000.0f);
+    EmitterRuntime wants;
+    wants.bind(compileOrFail(other));
+    wants.reset(2);
+    wants.play();
+
+    ParticleWorld world;
+    world.setBudget(65536);
+    std::vector<EmitterTask> tasks(2);
+    tasks[0].runtime = &explosion.runtime;
+    tasks[0].priority = 10;
+    tasks[1].runtime = &wants;
+    world.shareBudget(tasks);
+    EXPECT_EQ(tasks[0].budget, 1616u);
+    EXPECT_EQ(tasks[0].emissionScale, 1.0f);
+    EXPECT_EQ(tasks[1].budget, 65536u - 1616u);
+}
+
+TEST(ParticleBudget, ManyExplosionsStayUnderTheBudgetWhenTheyGoOff){
+    // each would spawn 16 000 children at once: 8 of them on a budget of 65 536
+    std::vector<std::unique_ptr<Explosion>> explosions;
+    std::vector<EmitterTask> tasks;
+    for (uint32_t i = 0; i < 8; i++){
+        explosions.push_back(std::make_unique<Explosion>(16, 1000, 20000, i + 1));
+        EmitterTask t;
+        t.runtime = &explosions.back()->runtime;
+        t.dt = 1.0 / 30.0;
+        tasks.push_back(t);
+    }
+    ParticleWorld world;
+    world.setBudget(65536);
+    for (int frame = 0; frame < 30; frame++){
+        world.simulate(tasks);
+        ASSERT_LE(world.stats().live, 65536u) << "frame " << frame;
+    }
+    EXPECT_GT(world.stats().live, 0u);
+}
+
+TEST(ParticleBudget, OneSystemOverTheBudgetIsThinnedEvenly){
+    // no sub-emitters: wanting more than the world has scales its emission down, as it always did,
+    // instead of spawning at the full rate and hitting the cap
+    ParticleEffectDocument d;
+    d.tickRate = 30;
+    d.maxParticles = 200000;
+    d.main.startLifetime = MinMaxCurve(1.0f);
+    d.emission.rateOverTime = MinMaxCurve(100000.0f);
+    EmitterRuntime runtime;
+    runtime.bind(compileOrFail(d));
+    runtime.reset(1);
+    runtime.play();
+    ParticleWorld world;
+    world.setBudget(65536);
+    std::vector<EmitterTask> tasks(1);
+    tasks[0].runtime = &runtime;
+    world.shareBudget(tasks);
+    EXPECT_LT(tasks[0].emissionScale, 0.9f);
+    EXPECT_GT(tasks[0].emissionScale, 0.4f);
+    EXPECT_EQ(tasks[0].budget, 65536u);
+}

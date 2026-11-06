@@ -9447,6 +9447,9 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
 
 // The scene inputs an emitter and its children will read, for the ones not loaded yet
 static uint32_t predictedParticleInputs(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData* render){
+    // (no effect: a view reload unbound it, and it binds again on its next update)
+    if (!emitter.effect())
+        return 0;
     uint32_t inputs = 0;
     if (!render || !render->loaded){
         const particles::RendererModule& renderer = emitter.effect()->document.renderer;
@@ -16391,14 +16394,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
                     drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
             }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
-                const particles::ParticleSystemState& state = *particles.state;
-                const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
-                                                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
-                                                       : transform.worldPosition;
-                TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
-                                           (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
-                data.particles = &particles;
-                transparentRenders.push_back(data);
+                particles::ParticleSystemState& state = *particles.state;
+                if (state.runtime.childCount() > 0){
+                    queueParticleTree(entity, particles, state.runtime, state.render, transform, cameraTransform, true, transparentOrder);
+                }else{
+                    const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                                                     (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
+                                                           : transform.worldPosition;
+                    TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                               (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
+                    data.particles = &particles;
+                    transparentRenders.push_back(data);
+                }
             }
         }
 
@@ -16423,7 +16430,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::PARTICLES){
-            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
+            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip, renderData.emitter, renderData.emitterRender);
         }else if (renderData.type == TransparentRenderType::LINES){
             drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::TRAIL){

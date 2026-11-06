@@ -99,6 +99,11 @@ TEST(ParticleWorldBudgetSetting, ReachesTheGames){
     const size_t call = set.find("ParticleWorld::setProjectBudget(1000);");
     ASSERT_NE(call, std::string::npos);
     EXPECT_LT(call, set.find("SceneManager::loadScene")) << "before the first scene";
+    // an exported project's CMake does not define JASPERENGINE_PROJECT_PATH: the header has to be
+    // outside that block, or a compiled export does not build (the smoke test compiles one)
+    const size_t include = set.find("#include \"particles/ParticleWorld.h\"");
+    ASSERT_NE(include, std::string::npos);
+    EXPECT_LT(include, set.find("#ifdef JASPERENGINE_PROJECT_PATH"));
     EXPECT_EQ(generatedMain(0).find("setProjectBudget"), std::string::npos) << "the default costs a game nothing";
     fs::remove_all(project);
 

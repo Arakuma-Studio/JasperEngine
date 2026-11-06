@@ -99,8 +99,12 @@ void ParticleSubsystem::destroy(){
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < systems->size(); i++){
         ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
-        if (particles.state)
+        if (particles.state){
+            // the scene stays when only its view went (Android, a lost context): bound again on its
+            // next update, playing again if it was
             particles.state->runtime.unbind();
+            particles.needReload = true;
+        }
     }
 }
 
@@ -128,6 +132,55 @@ const ParticleEffectDocument* ParticleSubsystem::getDocument(const ParticleSyste
     return ParticleEffectLibrary::get(particles.effect.path).document.get();
 }
 
+namespace {
+
+    // the sub-emitter files of an effect, down the levels EmitterRuntime binds
+    uint64_t subEmitterSignature(const ParticleEffectDocument& document, int depth){
+        uint64_t h = 1469598103934665603ull;
+        if (depth >= kMaxSubEmitterDepth || !document.subEmittersModule.present || !document.subEmittersModule.enabled)
+            return h;
+        for (const SubEmitterEntry& entry : document.subEmitters){
+            for (unsigned char c : entry.effect) h = (h ^ c) * 1099511628211ull;
+            const EffectAsset& asset = ParticleEffectLibrary::get(entry.effect);
+            h = (h ^ asset.version) * 1099511628211ull;
+            if (asset.document)
+                h = (h ^ subEmitterSignature(*asset.document, depth + 1)) * 1099511628211ull;
+        }
+        return h;
+    }
+
+}
+
+CompileEnvironment ParticleSubsystem::compileEnvironment(Entity entity){
+    CompileEnvironment environment;
+    environment.mesh = [this, entity](const MeshSource& source, MeshGeometry& out){
+        ParticleMeshData data;
+        switch (source.type){
+            case MeshSourceType::Primitive:
+                ParticleMeshes::primitive(source.primitive, data);
+                break;
+            case MeshSourceType::Model:
+                if (!ParticleMeshes::model(source.model, source.submesh, data))
+                    return false;
+                break;
+            case MeshSourceType::GameObject: {
+                MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+                if (!mesh || !ParticleMeshes::meshComponent(*mesh, source.submesh, data))
+                    return false;
+                break;
+            }
+        }
+        ParticleMeshes::geometry(data, out);
+        return true;
+    };
+    return environment;
+}
+
+bool ParticleSubsystem::subEmittersOutOfDate(const ParticleSystemComponent& particles) const{
+    const ParticleSystemState* state = particles.state.get();
+    return state && state->effect && state->effect->program.subEmitters && state->subEmitterGeneration != ParticleEffectLibrary::generation();
+}
+
 bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& particles){
     if (!particles.state)
         particles.state = std::make_shared<ParticleSystemState>();
@@ -152,8 +205,36 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
     }else{
         document = &particles.inlineEffect;
     }
-    if (!particles.needReload && state.effect && state.effectPath == path && state.effectVersion == version)
+    const bool sameEffect = !particles.needReload && state.effect && state.effectPath == path && state.effectVersion == version;
+    if (sameEffect && !subEmittersOutOfDate(particles))
         return true;
+
+    CompileEnvironment environment = compileEnvironment(entity);
+    const auto resolver = [&environment](const SubEmitterEntry& entry) -> std::shared_ptr<const CompiledEffect> {
+        const EffectAsset& asset = ParticleEffectLibrary::get(entry.effect);
+        if (!asset.document)
+            return nullptr;
+        CompileEnvironment childEnvironment = environment;
+        childEnvironment.inheritsRotation = entry.inheritRotation;
+        std::shared_ptr<CompiledEffect> child = ParticleCompiler::compile(*asset.document, childEnvironment);
+        return child->valid ? child : nullptr;
+    };
+
+    bool bindAgain = false;
+    if (sameEffect){
+        // the library moved on: only a change in this tree's files costs anything more
+        state.subEmitterGeneration = ParticleEffectLibrary::generation();
+        const uint64_t signature = subEmitterSignature(state.effect->document, 1);
+        if (signature == state.subEmitterSignature)
+            return true;
+        state.subEmitterSignature = signature;
+        // (a seek's checkpoints hold what the old child spawned)
+        if (state.preview)
+            state.preview->invalidate();
+        if (state.runtime.rebindSubEmitters(resolver))
+            return true;
+        bindAgain = true;
+    }
 
     // the document with the component's exposed values written into it
     ParticleEffectDocument values = *document;
@@ -162,27 +243,6 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
             Log::warn("[Particles] %s: no exposed parameter '%s'", path.empty() ? "inline effect" : path.c_str(), v.name.c_str());
     }
 
-    CompileEnvironment environment;
-    environment.mesh = [this, entity](const MeshSource& source, MeshGeometry& out){
-        ParticleMeshData data;
-        switch (source.type){
-            case MeshSourceType::Primitive:
-                ParticleMeshes::primitive(source.primitive, data);
-                break;
-            case MeshSourceType::Model:
-                if (!ParticleMeshes::model(source.model, source.submesh, data))
-                    return false;
-                break;
-            case MeshSourceType::GameObject: {
-                MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-                if (!mesh || !ParticleMeshes::meshComponent(*mesh, source.submesh, data))
-                    return false;
-                break;
-            }
-        }
-        ParticleMeshes::geometry(data, out);
-        return true;
-    };
     std::shared_ptr<CompiledEffect> compiled = ParticleCompiler::compile(values, environment);
     particles.needReload = false;
     state.effectPath = path;
@@ -193,21 +253,18 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
         return state.effect != nullptr;
     }
 
+    const uint64_t signature = subEmitterSignature(compiled->document, 1);
+    const bool sameFiles = signature == state.subEmitterSignature;
+    state.subEmitterSignature = signature;
+    state.subEmitterGeneration = ParticleEffectLibrary::generation();
+
     // a parameter edit keeps the live particles; another structure starts over
-    if (state.effect && state.runtime.rebind(compiled)){
+    if (!bindAgain && state.effect && state.runtime.rebind(compiled) && (sameFiles || state.runtime.rebindSubEmitters(resolver))){
         state.effect = compiled;
     }else{
         const bool wasPlaying = state.runtime.isPlaying();
         state.runtime.bind(compiled);
-        state.runtime.bindSubEmitters([environment](const SubEmitterEntry& entry) -> std::shared_ptr<const CompiledEffect> {
-            const EffectAsset& asset = ParticleEffectLibrary::get(entry.effect);
-            if (!asset.document)
-                return nullptr;
-            CompileEnvironment childEnvironment = environment;
-            childEnvironment.inheritsRotation = entry.inheritRotation;
-            std::shared_ptr<CompiledEffect> child = ParticleCompiler::compile(*asset.document, childEnvironment);
-            return child->valid ? child : nullptr;
-        });
+        state.runtime.bindSubEmitters(resolver);
         state.effect = compiled;
         state.seed = particles.seed != 0 ? particles.seed : (compiled->document.seed != 0 ? compiled->document.seed : nextSeed());
         state.runtime.reset(state.seed);
@@ -839,7 +896,7 @@ void ParticleSubsystem::update(double dt){
     if (paused){
         for (size_t i = 0; i < systems->size(); i++){
             ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
-            if (particles.needReload || !particles.state)
+            if (particles.needReload || !particles.state || subEmittersOutOfDate(particles))
                 ensureEffect(systems->getEntity(i), particles);
         }
         return;
