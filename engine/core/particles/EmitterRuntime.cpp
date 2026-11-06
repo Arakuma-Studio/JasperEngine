@@ -432,7 +432,9 @@ uint32_t EmitterRuntime::treeCapacityHint() const{
     const uint32_t own = prog->capacityHint();
     if (children.empty())
         return own;
-    return (uint32_t)std::min<uint64_t>((uint64_t)own + childrenCapacityHint(own), UINT32_MAX);
+    // the children from the parents' peak itself: the storage hint's padding would multiply
+    const uint64_t parents = (uint64_t)std::ceil(prog->peakEstimate());
+    return (uint32_t)std::min<uint64_t>((uint64_t)own + childrenCapacityHint(parents), UINT32_MAX);
 }
 
 uint64_t EmitterRuntime::childrenCapacityHint(uint64_t parents) const{

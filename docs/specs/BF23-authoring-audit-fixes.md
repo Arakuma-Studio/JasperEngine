@@ -251,17 +251,22 @@ Section A (F1 to F4), 2026-11-04.
   interpolation factor follows the parent's in the same frame (it was a frame late), scene-input
   readers among them register (a soft child), and `ShaderVariantCollector` ships their variants
   (an export without them could not draw a child with another Renderer).
-- **F1, not done: the HTML UI `<particle-system>` element.** It draws one Renderer's quads with one
-  material (`UIParticleSource`), so a child with its own Renderer needs a list of materials there.
-  It keeps drawing only the root, and `docs/mcp/guide/html-ui.md` says so.
-- **F1, not done: editing a child's file while its parent is live.** `ParticleSubsystem` tracks the
-  version of the root's asset only, and a `rebind` keeps the children, so the edit shows after the
-  parent's next full bind. This was already true of the simulation; S91's authoring window will meet it.
+- **F1, the HTML UI `<particle-system>` element** draws the children too, each with its own
+  Renderer's texture and blend, after the root in the effect's order (review round 1).
+- **F1, edits reach live parents** (review round 1). An edit of a parent's sub-emitter list (an
+  entry's effect, or entries added or removed) binds the children again; an entry's other fields
+  are read when it fires and keep the particles. An edit of a child's or grandchild's file reaches
+  every live parent: a parameter keeps the particles, a structure starts the parent over.
+- **F1, draw order** (review round 1). In the transparent queue each child is its own item, with
+  its own Sort Priority and distance; a UI particle system still draws its tree in the effect's order.
 - **F2, wider than the two lines named.** `getParticleCount` (Lua's `particleCount`, and what an
   Action's controller waits for) counts children too, since a controller stopped while children
   were alive. In the budget share, three things were wrong and are fixed: children were not in what
   a system wants; a child was capped by its parent's Max Particles (each emitter is now held to its
   own); and sibling entries each saw the whole remainder, so they could overspend it.
+  Review round 1 added two: what a system wants counts what its children will need before they
+  exist (its parents times each entry's Emit Count, up to the child's Max Particles), and a root is
+  held to what its children leave of the tree's budget.
 - **F3.** The key is `particles.world_budget`, on the Graphics page, 0 for the platform's default. It
   reaches compiled games through the generated `main.cpp` and prebuilt players through
   `PlayerConfig`. A running world follows it at once; `ParticleWorld::setBudget` still overrides it

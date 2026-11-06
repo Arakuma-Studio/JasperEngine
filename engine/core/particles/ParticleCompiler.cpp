@@ -1299,6 +1299,12 @@ bool ParticleProgram::sameStructure(const ParticleProgram& other) const{
 }
 
 uint32_t ParticleProgram::capacityHint() const{
+    // storage: the peak with room to spare, never under a chunk
+    const double peak = std::ceil(peakEstimate() * 1.1) + 8.0;
+    return (uint32_t)std::min<double>(std::max(peak, 64.0), maxParticles);
+}
+
+double ParticleProgram::peakEstimate() const{
     // the continuous peak: the largest rate times the longest lifetime, plus every burst
     const unsigned char* base = reinterpret_cast<const unsigned char*>(pool.data());
     float lifetime = 1.0f;
@@ -1342,8 +1348,7 @@ uint32_t ParticleProgram::capacityHint() const{
         if (!emission.rateOverDistance.isZero())
             peak = maxParticles;
     }
-    peak = std::ceil(peak * 1.1) + 8.0;
-    return (uint32_t)std::min<double>(std::max(peak, 64.0), maxParticles);
+    return std::min<double>(peak, maxParticles);
 }
 
 size_t ParticleProgram::bytesPerParticle() const{

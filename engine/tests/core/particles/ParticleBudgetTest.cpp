@@ -230,9 +230,12 @@ TEST(ParticleBudget, ThePriorityGetsWhatItsChildrenWillNeed){
     tasks[0].priority = 10;
     tasks[1].runtime = &wants;
     world.shareBudget(tasks);
-    EXPECT_EQ(tasks[0].budget, 1616u);
+    const uint32_t need = explosion.runtime.treeCapacityHint();
+    EXPECT_GE(need, 16u + 1600u);
+    EXPECT_LE(need, 16u + 2000u);
+    EXPECT_EQ(tasks[0].budget, need);
     EXPECT_EQ(tasks[0].emissionScale, 1.0f);
-    EXPECT_EQ(tasks[1].budget, 65536u - 1616u);
+    EXPECT_EQ(tasks[1].budget, 65536u - need);
 }
 
 TEST(ParticleBudget, ManyExplosionsStayUnderTheBudgetWhenTheyGoOff){
