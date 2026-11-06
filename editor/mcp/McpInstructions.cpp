@@ -57,9 +57,9 @@ A long call past timeout_seconds returns a job id: get_job. An error says what w
 the valid choices: fix the arguments, don't repeat the call.
 
 ## Building scenes
-Place what a scene uses in the editor with real values; scripts reach it through script properties
-and spawn only what can't be placed ahead, from a Prefab property. Make what repeats a Prefab
-(create_prefab); authored motion is edit_animation, not per-frame code (jasper://docs/authoring).
+Place what a scene uses in the editor; scripts reach it through script properties and spawn only
+what can't be placed ahead, from a Prefab. Make what repeats a Prefab (create_prefab); authored
+motion is edit_animation, not per-frame code (jasper://docs/authoring).
 )JE";
 }
 

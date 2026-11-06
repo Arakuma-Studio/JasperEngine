@@ -753,7 +753,7 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
      repeats a Prefab, animation through `edit_animation`); the HUD rule is not repeated there (the HTML/CSS UI digest
      and `create_ui`'s result carry it). The Prefabs digest loses its runtime signature (in `prefabs.md` and the Lua
-     digest). Measured after merging `main` on 2026-11-05: 6,672 bytes, 20 under the line; the cut keeps intro, Addressing, The loop, Building scenes,
+     digest). Measured after merging `main` on 2026-11-06: about 6,680 bytes (the first gate run measured 6,682 before the last trim), just under the line; the cut keeps intro, Addressing, The loop, Building scenes,
      Tool groups, Code and Undo.
    - Rules agents need at the moment they act went into results (`next`, the lean rules' preferred place):
      `create_ui` in a 3D scene says where a HUD goes; `duplicate_entities` of a plain GameObject suggests a Prefab.
