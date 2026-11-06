@@ -251,3 +251,23 @@ async def test_snapshot_cue_and_an_unresolved_cue(ed: Editor):
     ed.check_eq(len(missing), 1, f"one warning for the missing sound over two passes: {missing}")
     ed.check_eq(len(nobody), 1, f"one warning for the path that binds nothing: {nobody}")
     ed.check("cue 2 of anim/build.anim" in nobody[0], f"names the cue and the clip: {nobody[0]}")
+
+
+async def test_cue_follows_a_moved_sound(ed: Editor):
+    # R3: the cue holds the sound's GUID; a move (one undo step) leaves it resolving to the new place
+    write_wav(ed.project / "sounds/door.wav", [[0.5] * 2400], RATE)
+    await ed.call("sync_files")
+    await ed.call("edit_animation", clip="anim/door.anim", create={}, wrap="once", length=0.5, frame_rate=60,
+                  events=[{"time": 0, "function": "onStart"}], audio=[{"time": 0.1, "sound": "sounds/door.wav", "name": "door"}])
+    body = json.loads((ed.project / "anim/door.anim").read_text())
+    ed.check(body["audio"][0]["sound"].get("guid"), f"the GUID is stored: {body['audio']}")
+    await ed.call("move_asset", path="sounds/door.wav", to="sounds/moved/door.wav")
+    got = await ed.call("get_animation", clip="anim/door.anim")
+    ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/moved/door.wav", f"resolved by its GUID: {got['audio']}")
+    scene = await walker_scene(ed, "Door", "anim/door.anim", {})
+    _, lines = await capture(ed, scene, 20)
+    voices = [l for l in lines if l["kind"] == "voice_start"]
+    ed.check(voices and voices[0]["clip"] == "sounds/moved/door.wav", f"Play plays the moved file: {voices}")
+    await ed.call("undo", scope="project")
+    got = await ed.call("get_animation", clip="anim/door.anim")
+    ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/door.wav", f"undo moves it back, one step: {got['audio']}")

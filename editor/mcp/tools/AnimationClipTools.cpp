@@ -511,7 +511,13 @@ Json cueJson(Project* project, const ClipAudioCue& cue, size_t index) {
     Json item = {{"index", index}, {"time", r6(cue.time)}, {"kind", anim::cueKindName(cue.kind)}};
     switch (cue.kind) {
         case ClipCueKind::Sound: {
-            Json sound = {{"path", projectPathOf(project, cue.sound.path)}};
+            // resolved: by its GUID where the project knows it (a moved sound), else its path hint (S40 R3, R12)
+            std::string resolved = projectPathOf(project, cue.sound.path);
+            if (!cue.sound.guid.isNull()) {
+                const fs::path known = project->getAssetDatabase().getPath(cue.sound.guid.str());
+                if (!known.empty()) resolved = projectRel(project, known.lexically_normal());
+            }
+            Json sound = {{"path", resolved}};
             if (!cue.sound.guid.isNull()) sound["guid"] = cue.sound.guid.str();
             item["sound"] = sound;
             item["spatial"] = cue.spatial;
