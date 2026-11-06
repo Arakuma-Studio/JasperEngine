@@ -277,7 +277,8 @@ namespace jasperengine{
         static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
                                                  bool stochasticTiling = false, bool lattice = false,
                                                  bool vertexColorVec3 = false, bool vertexColorVec4 = false,
-                                                 bool vat = false, bool vatBones = false);
+                                                 bool vat = false, bool vatBones = false,
+                                                 bool occlusionTexture = false, bool uvSet2 = false);
         // fontAtlasSdf: a Text with outline or shadow (with fontAtlasTexture only)
         static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf = false);
         static uint64_t getHtmlUIProperties(bool texture);

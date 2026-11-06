@@ -847,6 +847,13 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
+    compositeSlotFog = -1;
+    compositeSlotHeightFog = -1;
+    for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++)
+        compositeProbeSlots[slot] = std::pair<int, int>(-1, -1);
+    compositeOcclusionSlot = std::pair<int, int>(-1, -1);
+    compositeSSAOSlot = std::pair<int, int>(-1, -1);
+    ssrAlbedoSlot = std::pair<int, int>(-1, -1);
     swapchainRedirect = false;
     sceneColorRedirectAllowed = false;
     sceneColorRedirect = false;
@@ -897,6 +904,7 @@ RenderSystem::~RenderSystem(){
 }
 
 void RenderSystem::load(){
+    ssrProbeOverflowWarned = false;
     hasLights = false;
     hasShadows = false;
     hasFog = false;
@@ -1638,6 +1646,18 @@ Vector4 RenderSystem::environmentInfo() const{
         }
     }
     return Vector4(1.0, 1.0, 1.0, 0.0);
+}
+
+Vector4 RenderSystem::skyEnvironment(TextureRender*& prefiltered){
+    // the map loadMesh binds to Lit's u_GGXEnvTexture (both maps of the first sky, else black)
+    prefiltered = &emptyCubeBlack;
+    auto skys = scene->getComponentArray<SkyboxComponent>();
+    if (skys->size() > 0){
+        SkyboxComponent& sky = skys->getComponentFromIndex(0);
+        if (sky.irradianceMap && sky.prefilteredMap)
+            prefiltered = sky.prefilteredMap.get();
+    }
+    return environmentInfo();
 }
 
 void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const{
@@ -2742,11 +2762,13 @@ void RenderSystem::updateReflectionProbes(double dt){
     }
 }
 
-bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture){
+bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture, Entity* selectedProbe){
     params.position_weight = Vector4(0.0, 0.0, 0.0, 0.0);
     params.boxMin_intensity = Vector4(-1.0, -1.0, -1.0, 1.0);
     params.boxMax_lod = Vector4(1.0, 1.0, 1.0, 0.0);
     texture = &emptyCubeBlack;
+    if (selectedProbe)
+        *selectedProbe = NULL_ENTITY;
 
     if (capturingReflectionProbe)
         return false;
@@ -2754,6 +2776,7 @@ bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflec
     auto probes = scene->getComponentArray<ReflectionProbeComponent>();
     ReflectionProbeComponent* selected = nullptr;
     ReflectionProbeRuntime* selectedRuntime = nullptr;
+    Entity selectedEntity = NULL_ENTITY;
     Vector3 selectedMin;
     Vector3 selectedMax;
     float selectedDistance = 0.0f;
@@ -2782,6 +2805,7 @@ bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflec
             (probe.priority == selected->priority && distance < selectedDistance)){
             selected = &probe;
             selectedRuntime = runtimeIt->second.get();
+            selectedEntity = entity;
             selectedMin = boxMin;
             selectedMax = boxMax;
             selectedDistance = distance;
@@ -2820,6 +2844,8 @@ bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflec
     params.boxMin_intensity = Vector4(selectedMin.x, selectedMin.y, selectedMin.z, std::max(selected->intensity, 0.0f));
     params.boxMax_lod = Vector4(selectedMax.x, selectedMax.y, selectedMax.z,
         hasPrefilteredMap ? (float)(IBLEnvironment::SPECULAR_MIPS - 1) : 0.0f);
+    if (selectedProbe)
+        *selectedProbe = selectedEntity;
     return true;
 }
 
@@ -3664,6 +3690,9 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.normalTexture = !material.normalTexture.empty();
     inputs.occlusionTexture = !material.occlusionTexture.empty();
     inputs.emissiveTexture = !material.emissiveTexture.empty();
+    inputs.baseColorTexCoord = material.baseColorTexCoord;
+    inputs.metallicRoughnessTexCoord = material.metallicRoughnessTexCoord;
+    inputs.occlusionTexCoord = material.occlusionTexCoord;
     inputs.alphaMode = material.alphaMode;
     inputs.lighting = material.lighting;
     inputs.textureShadow = submesh.textureShadow;
@@ -4035,20 +4064,43 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             d_stochastic, p_lattice, inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
     }
 
+    // the environment specular the colour pass adds, which the SSR composite swaps for its
+    // reflection: none for what draws no lighting (Unity: Unlit takes no SSR) or is a planar
+    // mirror, an unknown one for a lit library shader or a Lit drawn without lights or IBL
+    // (SSR is added), else the scene ambient or the IBL (the sky, or a probe over it)
+    if (inputs.mirror){
+        variant.ssrSource = SSRSource::SKIP;
+    }else if (p_unlit){
+        variant.ssrSource = (lighting == MaterialLighting::NONE || !inputs.receiveLights) ? SSRSource::SKIP : SSRSource::ADD;
+    }else if (manifest){
+        variant.ssrSource = SSRSource::ADD;
+    }else{
+        variant.ssrSource = p_ibl ? SSRSource::ENVIRONMENT : SSRSource::AMBIENT;
+    }
+
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
     // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
     variant.gbuffer = environment.ssr;
     if (variant.gbuffer){
-        // its base colour and metallic-roughness taps as the colour pass's, so SSR reflects
-        // the surface that is shaded
+        // the occlusion the colour pass weighs its environment specular by (its map, read as
+        // Lit reads it: includes/pbr.glsl getOcclusionTexture), for the swap that replaces it
+        const bool g_occlusion = inputs.occlusionTexture && (p_hasTexture1 || p_hasTexture2) &&
+            (variant.ssrSource == SSRSource::AMBIENT || variant.ssrSource == SSRSource::ENVIRONMENT);
+        // the second UV set, when a map the G-buffer reads is on it as the colour pass reads it
+        const bool g_uv2 = !inputs.terrain && p_hasTexture2 &&
+            ((inputs.baseColorTexture && inputs.baseColorTexCoord == 1) ||
+             (inputs.metallicRoughnessTexture && inputs.metallicRoughnessTexCoord == 1) ||
+             (g_occlusion && inputs.occlusionTexCoord == 1));
+        // its base colour, metallic-roughness and occlusion taps as the colour pass's, so SSR
+        // reflects the surface that is shaded
         const bool g_stochastic = stochasticAllowed && inputs.texCoord1 &&
-            (inputs.baseColorTexture || inputs.metallicRoughnessTexture);
+            (inputs.baseColorTexture || inputs.metallicRoughnessTexture || g_occlusion);
         variant.gbufferProperties = ShaderPool::getGBufferMeshProperties(
             inputs.baseColorTexture, inputs.normal, inputs.skinning,
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
-            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2);
     }
 
     return variant;
@@ -5530,6 +5582,16 @@ bool RenderSystem::loadGBufferTextures(Material& material, ShaderData& shaderDat
         render.addTexture(slotMR, ShaderStageType::FRAGMENT, t);
     }
 
+    // the occlusion map ('Occ'), which the SSR composite weighs its swap by (color[3])
+    std::pair<int, int> slotOcclusion = shaderData.getTextureIndex(TextureShaderType::OCCULSION);
+    if (slotOcclusion.first != -1){
+        TextureRender* t = material.occlusionTexture.getRender(&emptyWhite);
+        if (!t || !t->isCreated()){
+            return false;
+        }
+        render.addTexture(slotOcclusion, ShaderStageType::FRAGMENT, t);
+    }
+
     return true;
 }
 
@@ -6420,6 +6482,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // G-buffer can flag those pixels for the energy-conserving composite
         // (see ShaderPool::getMeshProperties for the bits)
         mesh.submeshes[i].hasIBL = (variant.properties & (1u << 19)) != 0;
+        mesh.submeshes[i].ssrSource = (uint8_t)variant.ssrSource;
 
         mesh.submeshes[i].shaderProperties = variant.properties;
         mesh.submeshes[i].loadedLighting = mesh.submeshes[i].material.lighting;
@@ -6760,13 +6823,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             auto skyArray = scene->getComponentArray<SkyboxComponent>();
             TextureRender* irradiance = &emptyCubeBlack;
             TextureRender* prefiltered = &emptyCubeBlack;
-            if (skyArray->size() > 0){
-                SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
-                if (sky.irradianceMap && sky.prefilteredMap){
-                    irradiance = sky.irradianceMap.get();
-                    prefiltered = sky.prefilteredMap.get();
-                }
-            }
+            // the prefiltered map the SSR composite rebuilds the reflection with too
+            skyEnvironment(prefiltered);
+            if (prefiltered != &emptyCubeBlack)
+                irradiance = skyArray->getComponentFromIndex(0).irradianceMap.get();
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::IRRADIANCEMAP), ShaderStageType::FRAGMENT, irradiance);
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefiltered);
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::REFLECTIONPROBE), ShaderStageType::FRAGMENT, &emptyCubeBlack);
@@ -7163,7 +7223,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                         for (auto const &attr : buf.second->getAttributes()){
                             // (the colour: a lattice variant's mask reads it)
                             if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
-                                    attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
+                                    attr.first == AttributeType::TEXCOORD2 || attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
                                 gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
                             if (mesh.submeshes[i].hasSkinning || vatBones){
@@ -7192,7 +7252,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     if (attr.first == AttributeType::INDEX){
                         gbufferRender.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
                     }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
-                            attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
+                            attr.first == AttributeType::TEXCOORD2 || attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
                         gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
                     if (mesh.submeshes[i].hasSkinning || vatBones){
@@ -11150,9 +11210,10 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
 
     // MRT: color[0] = packed depth (point-sampled like the depth pre-pass),
     //      color[1] = view-space normal (oct .rg) + roughness (.b) + metallic (.a),
-    //      color[2] = linear base color (.rgb) + hasIBL flag (.a)
-    ColorFormat formats[3] = { ColorFormat::RGBA, ColorFormat::RGBA, ColorFormat::RGBA };
-    rv().gbufferFramebuffer.setColorAttachments(3, formats);
+    //      color[2] = linear base color (.rgb) + reflection source code (.a),
+    //      color[3] = the colour pass's occlusion of its environment specular (.r)
+    ColorFormat formats[4] = { ColorFormat::RGBA, ColorFormat::RGBA, ColorFormat::RGBA, ColorFormat::RED };
+    rv().gbufferFramebuffer.setColorAttachments(4, formats);
     rv().gbufferFramebuffer.setWidth(width);
     rv().gbufferFramebuffer.setHeight(height);
     rv().gbufferFramebuffer.setMinFilter(TextureFilter::NEAREST);
@@ -11167,30 +11228,85 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     return rv().gbufferFramebuffer.isCreated();
 }
 
-bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int instanceView, const LodView* lodView){
+bool RenderSystem::collectGBufferDraw(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, GBufferDraw& record){
     if (!mesh.loaded || mesh.needReload)
-        return true;
-
-    if (terrain && terrain->needUpdateTexture){
         return false;
-    }
 
-    if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
+    InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+    TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+    TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+    if (terrain && terrain->needUpdateTexture)
         return false;
-    }
+
+    // the G-buffer pass renders the view camera's selection (view 0 in draw())
+    if (!isBatchVisible(entity, mesh, transform, instmesh, 0, camera.farClip, camera.frustumPlanes))
+        return false;
 
     MeshDraw draw;
-    if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+    if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, 0, &rv().lodView, draw))
         return false;
+
+    // only a mesh with something to draw takes part (and a probe slot)
+    bool drawsSubmesh = false;
+    bool environment = false;
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        const Submesh& submesh = mesh.submeshes[i];
+        // the G-buffer shader/render only exist when SSR was enabled at load time; a
+        // mesh loaded before SSR was toggled on is skipped until it reloads. A stencil mask
+        // is no surface to reflect (see Submesh::skipsScreenEffects)
+        if (!submesh.gbufferShader || submesh.skipsScreenEffects || submesh.vertexCount == 0)
+            continue;
+        drawsSubmesh = true;
+        environment = environment || (SSRSource)submesh.ssrSource == SSRSource::ENVIRONMENT;
     }
-    unsigned int instanceCount = draw.instanceCount;
+    if (!drawsSubmesh)
+        return false;
+
+    record = GBufferDraw();
+    record.entity = entity;
+    record.mesh = &mesh;
+    record.transform = &transform;
+    record.instmesh = instmesh;
+    record.terrain = terrain;
+    record.tilemap = tilemap;
+    record.draw = draw;
+
+    // the probe its IBL submeshes reflect in the colour pass (the same selection, applyMesh)
+    if (environment && hasReflectionProbes){
+        Entity probe = NULL_ENTITY;
+        TextureRender* probeTexture = nullptr;
+        if (selectReflectionProbe(meshProbeSamplePosition(mesh, transform), record.probeParams, probeTexture, &probe) &&
+                record.probeParams.position_weight.w > 0.001f){
+            record.probe = probe;
+            record.probeWeight = record.probeParams.position_weight.w;
+            record.probeTexture = probeTexture;
+        }
+    }
+    return true;
+}
+
+void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams){
+    Entity entity = record.entity;
+    MeshComponent& mesh = *record.mesh;
+    Transform& transform = *record.transform;
+    InstancedMeshComponent* instmesh = record.instmesh;
+    TerrainComponent* terrain = record.terrain;
+    TilemapComponent* tilemap = record.tilemap;
+    unsigned int instanceCount = record.draw.instanceCount;
+    const int instanceView = 0;
+
+    // the code of its IBL submeshes: the sky, its probe's slot, or a probe without one
+    uint8_t environmentCode = SSRCode::SKY;
+    if (record.probe != NULL_ENTITY){
+        const int slot = rv().ssr.slots.slotOf(record.probe);
+        environmentCode = slot >= 0 ? SSRCode::probe(slot, record.probeWeight) : SSRCode::PROBE_NO_SLOT;
+    }
 
     updateMeshBuffers(mesh);
 
     // a mirroring model matrix draws with the face winding reversed (as the colour pass)
     const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
 
-    // the G-buffer pass renders the view camera's selection (view 0 in draw())
     TerrainView* terrainNodes = nullptr;
     if (terrain){
         terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
@@ -11198,12 +11314,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
     }
 
     for (int i = 0; i < mesh.numSubmeshes; i++){
-        // the G-buffer shader/render only exist when SSR was enabled at load time; a
-        // mesh loaded before SSR was toggled on is skipped until it reloads
         if (!mesh.submeshes[i].gbufferShader)
             continue;
 
-        // a stencil mask is no surface to reflect (see Submesh::skipsScreenEffects)
         if (mesh.submeshes[i].skipsScreenEffects)
             continue;
 
@@ -11229,26 +11342,34 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             if (gbufferRender.isDrawWaiting())
                 continue;
             mesh.needReload = true;
-            return false;
+            return;
         }
 
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferParams, sizeof(vs_gbuffer_t), &vsGBufferParams);
 
+        // what the composite swaps on these pixels (includes/ssr_source.glsl)
+        uint8_t code = SSRCode::SKIP;
+        switch ((SSRSource)mesh.submeshes[i].ssrSource){
+            case SSRSource::SKIP:        code = SSRCode::SKIP; break;
+            case SSRSource::ADD:         code = SSRCode::ADD; break;
+            case SSRSource::AMBIENT:     code = SSRCode::AMBIENT; break;
+            case SSRSource::ENVIRONMENT: code = environmentCode; break;
+        }
+
         fs_gbuffer_material_t mat;
-        // IBL source encoding: 0 = none, 0.5 = sky, 1 = local probe. The SSR
-        // composite can exactly replace sky IBL; local probes need a deferred
-        // cubemap array to be reconstructed per pixel, so they use additive SSR.
-        float iblSource = mesh.submeshes[i].hasIBL ? (hasLocalProbe ? 1.0f : 0.5f) : 0.0f;
         const Material& material = mesh.submeshes[i].material;
         const float alphaCutoff = usesAlphaMask(material, mesh.submeshes[i].textureShadow)
             ? material.alphaCutoff
             : -1.0f;
-        mat.params = Vector4(material.roughnessFactor, material.metallicFactor, iblSource, alphaCutoff);
+        mat.params = Vector4(material.roughnessFactor, material.metallicFactor, (float)code / 255.0f, alphaCutoff);
         mat.baseColorFactor = mesh.submeshes[i].material.baseColorFactor;
         mat.stochastic = Vector4(material.stochasticCellSize, material.stochasticBlendSharpness, material.stochasticContrast, material.stochasticRotation);
-        // the stochastic vec4 only to the Stochastic Tiling ('Sto') variants, which declare it
+        mat.texCoordSets = Vector4(material.baseColorTexCoord == 1 ? 1.0f : 0.0f, material.metallicRoughnessTexCoord == 1 ? 1.0f : 0.0f,
+                                   material.occlusionTexCoord == 1 ? 1.0f : 0.0f, 0.0f);
+        // the stochastic vec4 (or its padding) and the UV sets only to the variants declaring them
+        // ('Sto', 'Uv2'): the block's reflected size
         unsigned int gbufferMaterialSize = sizeof(Vector4) * 2;
-        if ((mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(10)) && mesh.submeshes[i].sizeFSGBufferMaterial > gbufferMaterialSize)
+        if (mesh.submeshes[i].sizeFSGBufferMaterial > gbufferMaterialSize)
             gbufferMaterialSize = std::min((unsigned int)sizeof(fs_gbuffer_material_t), mesh.submeshes[i].sizeFSGBufferMaterial);
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotFSGBufferMaterial, gbufferMaterialSize, &mat);
 
@@ -11279,17 +11400,15 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
 
         if (tilemap && !tilemapDrawRanges.empty()){
             if (instmesh){
-                bindInstances(gbufferRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
+                bindInstances(gbufferRender, *instmesh, instanceView, record.draw.instanceFirst, record.draw.vatFirst);
             }
             for (const TilemapDrawRange& range : tilemapDrawRanges){
                 gbufferRender.draw(range.offset, range.count, instanceCount);
             }
         }else{
-            drawSubmeshGeometry(gbufferRender, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+            drawSubmeshGeometry(gbufferRender, entity, mesh, i, instmesh, instanceView, record.draw.lod, instanceCount);
         }
     }
-
-    return true;
 }
 
 void RenderSystem::renderGBufferPass(CameraComponent& camera){
@@ -11299,11 +11418,11 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     // view-space normal (octahedral) + roughness + metallic at the same texel layout.
     Matrix4 renderVP = camera.viewProjectionMatrix;
     Matrix4 viewMatrix = camera.viewMatrix;
+    SSRView& ssr = rv().ssr;
 
-    gbufferPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // color[0] background -> depth ~1.0
-    gbufferPassRender.setLabel("gbuffer");
-    gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
-
+    // 1. the meshes that draw, and the screen the probes they are under cover
+    ssr.draws.clear();
+    ssr.candidates.clear();
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
@@ -11317,25 +11436,90 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
         if (!transform.visible || mesh.isTransparent() || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
 
-        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-        TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-        fs_reflection_probe_t probeParams;
-        TextureRender* probeTexture = nullptr;
-        Vector3 probeSamplePosition = meshProbeSamplePosition(mesh, transform);
-        bool hasLocalProbe = selectReflectionProbe(probeSamplePosition, probeParams, probeTexture)
-            && probeParams.position_weight.w > 0.001f;
+        GBufferDraw record;
+        if (!collectGBufferDraw(entity, mesh, transform, camera, record))
+            continue;
 
         // view-space normal matrix = transpose(inverse(view * model))
-        const Matrix4& model = objectModel(transform);
-        Matrix4 viewModel = viewMatrix * model;
-        Matrix4 normalMatrix = viewModel.inverse().transpose();
+        Matrix4 viewModel = viewMatrix * objectModel(transform);
+        record.normalMatrix = viewModel.inverse().transpose();
 
-        vs_gbuffer_t params = {model, renderVP, normalMatrix};
-        drawMeshGBuffer(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap, 0, &rv().lodView);
+        if (record.probe != NULL_ENTITY){
+            const float coverage = screenCoverage(mesh.worldAABB, renderVP);
+            auto candidate = std::find_if(ssr.candidates.begin(), ssr.candidates.end(),
+                                          [&record](const SSRProbeCandidate& c){ return c.probe == record.probe; });
+            if (candidate == ssr.candidates.end())
+                ssr.candidates.push_back({record.probe, coverage});
+            else
+                candidate->coverage += coverage;
+        }
+        ssr.draws.push_back(record);
+    }
+
+    // 2. the probe slots the composite rebuilds (the largest on screen, SSRProbeSlots.h)
+    assignSSRProbeSlots(ssr.candidates, ssr.previousSlots, ssr.slots);
+    ssr.previousSlots = ssr.slots;
+    for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++){
+        ssr.slotTextures[slot] = nullptr;
+        if (ssr.slots.slots[slot] == NULL_ENTITY)
+            continue;
+        for (const GBufferDraw& record : ssr.draws){
+            if (record.probe == ssr.slots.slots[slot]){
+                ssr.slotTextures[slot] = record.probeTexture;
+                ssr.slotParams[slot] = record.probeParams;
+                break;
+            }
+        }
+    }
+
+    ssr.stats.valid = true;
+    ssr.stats.meshesDrawn = (unsigned int)ssr.draws.size();
+    ssr.stats.probes.clear();
+    for (const SSRProbeCandidate& candidate : ssr.candidates)
+        ssr.stats.probes.push_back({candidate.probe, ssr.slots.slotOf(candidate.probe), candidate.coverage});
+    std::sort(ssr.stats.probes.begin(), ssr.stats.probes.end(), [](const SSRViewStats::Probe& a, const SSRViewStats::Probe& b){
+        return a.coverage > b.coverage || (a.coverage == b.coverage && a.entity < b.entity);
+    });
+    if (!ssrProbeOverflowWarned && ssr.stats.probesWithoutSlot() > 0){
+        ssrProbeOverflowWarned = true;
+        std::string names;
+        int listed = 0;
+        for (const SSRViewStats::Probe& probe : ssr.stats.probes){
+            if (probe.slot >= 0)
+                continue;
+            if (listed == 4){
+                names += ", ...";
+                break;
+            }
+            names += (listed ? ", '" : "'") + scene->getEntityName(probe.entity) + "'";
+            listed++;
+        }
+        Log::warn("SSR: %u reflection probes in view, %d have SSR slots; surfaces under %s keep their probe reflection without SSR",
+                  (unsigned int)ssr.stats.probes.size(), SSR_PROBE_SLOTS, names.c_str());
+    }
+
+    // 3. the draws, each pixel with its reflection source
+    gbufferPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // color[0] background -> depth ~1.0
+    gbufferPassRender.setLabel("gbuffer");
+    gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
+    for (GBufferDraw& record : ssr.draws){
+        vs_gbuffer_t params = {objectModel(*record.transform), renderVP, record.normalMatrix};
+        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params);
     }
     gbufferPassRender.endRenderPass();
+}
+
+unsigned int SSRViewStats::probesWithoutSlot() const{
+    unsigned int count = 0;
+    for (const Probe& probe : probes){
+        if (probe.slot < 0)
+            count++;
+    }
+    return count;
+}
+
+const SSRViewStats& RenderSystem::getSSRStats() const{
+    return primaryView.ssr.stats;
 }
 
 void RenderSystem::loadSSR(){
@@ -11353,6 +11537,7 @@ void RenderSystem::loadSSR(){
     ssrRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrRender.setShader(ssrShader.get());
     ssrSlotParams = ssrShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_FS_PARAMS);
+    ssrAlbedoSlot = ssrShader.get()->shaderData.getTextureIndex(TextureShaderType::GBUFFERALBEDOTEXTURE);
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     ssrRender.setImmediatePipelines(true);
     if (!ssrRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
@@ -11371,7 +11556,14 @@ void RenderSystem::loadSSR(){
     // (PIP_DEFAULT), so build both pipeline variants.
     compositeRender.beginLoad(PrimitiveType::TRIANGLES);
     compositeRender.setShader(compositeShader.get());
-    compositeSlotParams = compositeShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::COMPOSITE_FS_PARAMS);
+    ShaderData& compositeData = compositeShader.get()->shaderData;
+    compositeSlotParams = compositeData.getUniformBlockIndex(UniformBlockType::COMPOSITE_FS_PARAMS);
+    compositeSlotFog = compositeData.getUniformBlockIndexByName("u_fs_fog");
+    compositeSlotHeightFog = compositeData.getUniformBlockIndexByName("u_fs_heightFog");
+    for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++)
+        compositeProbeSlots[slot] = compositeData.getTextureIndexByName("u_probeTexture" + std::to_string(slot));
+    compositeOcclusionSlot = compositeData.getTextureIndexByName("u_occlusionGBufferTexture");
+    compositeSSAOSlot = compositeData.getTextureIndexByName("u_ssaoTexture");
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     compositeRender.setImmediatePipelines(true);
     if (!compositeRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
@@ -11409,6 +11601,13 @@ void RenderSystem::destroySSR(){
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
+    compositeSlotFog = -1;
+    compositeSlotHeightFog = -1;
+    for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++)
+        compositeProbeSlots[slot] = std::pair<int, int>(-1, -1);
+    compositeOcclusionSlot = std::pair<int, int>(-1, -1);
+    compositeSSAOSlot = std::pair<int, int>(-1, -1);
+    ssrAlbedoSlot = std::pair<int, int>(-1, -1);
     ssrLoaded = false;
 }
 
@@ -11490,6 +11689,8 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &rv().sceneColorFramebuffer.getRender().getColorTexture());
+        // the reflection source: no march where the composite swaps nothing
+        ssrRender.addTexture(ssrAlbedoSlot, ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(2));
         ssrRender.applyUniformBlock(ssrSlotParams, sizeof(fs_ssr_t), &fs_ssr);
         ssrRender.draw(0, 3, 1);
     }
@@ -11522,31 +11723,48 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         reflectionTexture = &rv().ssrBlurFramebuffer.getRender().getColorTexture();
     }
 
-    // --- 3. composite pass: energy-conserving SSR-over-IBL -> real destination ---
-    // The composite recomputes the IBL specular term per pixel (for surfaces flagged
-    // hasIBL in the G-buffer) and replaces it with the SSR reflection, so the env
-    // reflection already in the scene is not double-counted.
+    // --- 3. composite pass: SSR swapped for the environment specular -> real destination ---
+    // The composite rebuilds per pixel the environment specular the colour pass added (the
+    // sky, the local probe the G-buffer pass gave a slot, or the scene ambient: the G-buffer's
+    // reflection source code) and swaps it for the SSR reflection, weighed by the colour pass's
+    // occlusion and fog, so no reflection is counted twice.
     fs_composite.invProjection = renderProj.inverse();
     fs_composite.invView = camera.viewMatrix.inverse();
+    fs_composite.projectionW = Vector4(renderProj[0][3], renderProj[1][3], renderProj[2][3], renderProj[3][3]);
 
     // the GL swapchain keeps row 0 at the bottom while the offscreen sources do not,
     // so a swapchain destination samples them flipped (renderBlit does the same)
     float flipDest = (!destination && Engine::isOpenGL()) ? 1.0f : 0.0f;
     fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, (float)scene->getSSRDebugMode(), flipDest);
 
-    // environment color/rotation, matching mesh.frag's lighting.envColor; the prefiltered
-    // GGX map comes from the sky (fall back to a black cube when there is no IBL sky)
-    fs_composite.envColor = Vector4(0.0, 0.0, 0.0, 0.0);
+    // the sky as Lit's IBL reads it (skyEnvironment, also the colour pass's binding)
     TextureRender* prefilteredTexture = &emptyCubeBlack;
-    {
-        auto skys = scene->getComponentArray<SkyboxComponent>();
-        if (skys->size() > 0){
-            SkyboxComponent& sky = skys->getComponentFromIndex(0);
-            if (sky.prefilteredMap){
-                prefilteredTexture = sky.prefilteredMap.get();
-                Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
-                fs_composite.envColor = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
-            }
+    fs_composite.envColor = skyEnvironment(prefilteredTexture);
+
+    // the fog the colour pass put over the surface, with its values (the editor's Fog toggle
+    // included): none, the distance fog, or the height fog (its block's colour mode >= 0)
+    float fogMode = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    const bool fogShown = hasFog && !rv().disableFog;
+#else
+    const bool fogShown = hasFog;
+#endif
+    if (fogShown)
+        fogMode = passHeightFog.color_colorMode.w >= 0.0f ? 2.0f : 1.0f;
+    fs_composite.ambient = Vector4(passFrame.ambient.x, passFrame.ambient.y, passFrame.ambient.z, fogMode);
+
+    // the probe slots of this view's G-buffer pass
+    const SSRView& ssrView = rv().ssr;
+    for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++){
+        const fs_reflection_probe_t& probe = ssrView.slotParams[slot];
+        if (ssrView.slotTextures[slot]){
+            fs_composite.probePosition[slot] = Vector4(probe.position_weight.x, probe.position_weight.y, probe.position_weight.z, 0.0f);
+            fs_composite.probeBoxMin[slot] = probe.boxMin_intensity;
+            fs_composite.probeBoxMax[slot] = probe.boxMax_lod;
+        }else{
+            fs_composite.probePosition[slot] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            fs_composite.probeBoxMin[slot] = Vector4(-1.0f, -1.0f, -1.0f, 0.0f);
+            fs_composite.probeBoxMax[slot] = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
         }
     }
 
@@ -11569,7 +11787,21 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERALBEDOTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(2));
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefilteredTexture);
+        compositeRender.addTexture(compositeOcclusionSlot, ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(3));
+        compositeRender.addTexture(compositeSSAOSlot, ShaderStageType::FRAGMENT,
+                                   rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite);
+        for (int slot = 0; slot < SSR_PROBE_SLOTS; slot++){
+            compositeRender.addTexture(compositeProbeSlots[slot], ShaderStageType::FRAGMENT,
+                                       ssrView.slotTextures[slot] ? ssrView.slotTextures[slot] : &emptyCubeBlack);
+        }
         compositeRender.applyUniformBlock(compositeSlotParams, sizeof(fs_composite_t), &fs_composite);
+        // the distance fog's 32 bytes as the meshes take them, the colour pass's height fog
+        if (compositeSlotFog != -1){
+            static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
+            compositeRender.applyUniformBlock(compositeSlotFog, sizeof(float) * 8, fogShown ? &fs_fog : &noFog);
+        }
+        if (compositeSlotHeightFog != -1)
+            compositeRender.applyUniformBlock(compositeSlotHeightFog, sizeof(height_fog_t), &passHeightFog);
         compositeRender.draw(0, 3, 1);
     }
     ssrPassRender.endRenderPass();
@@ -17082,6 +17314,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
     bool useSSR = false;
     FramebufferRender* ssrDestination = nullptr;
+    // the view's SSR stats are this frame's: none until its G-buffer pass runs (get_render_stats)
+    if (isMainCamera)
+        rv().ssr.stats.valid = false;
     if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || useUber || swapchainRedirect)){
         loadSSR();
         unsigned int sw = (unsigned int)viewRect.getWidth();
