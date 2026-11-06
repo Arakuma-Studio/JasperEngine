@@ -374,6 +374,10 @@ namespace jasperengine::editor {
         // property bit stays out of the file
         static YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys);
         static std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node);
+        // A path as project files store it: '/' between names, on every platform, and a '\' read
+        // as a separator (Unity's rule), so a file written on Windows opens everywhere
+        static std::string portablePath(std::string path);
+        static std::string portablePath(const std::filesystem::path& path);
         // Asset references (S04 §6.5): a scalar path keeps its key and gains a sibling
         // "<key>Guid"; a shader reference's sibling holds "<vertGuid>|<fragGuid>"
         static void encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref);

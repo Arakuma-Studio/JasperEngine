@@ -458,8 +458,11 @@ namespace jasperengine {
         // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
         static void cancelUIPointer(int pointerOrButton, bool touch);
         static void cancelAllUIPointers();
-        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
         static void flushCharInput();
+        // whole typed code points to Input.inputString, the documents, onCharInput and the
+        // component UI (systemCharInput, flushCharInput)
+        static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
         static void calculateCanvas();
@@ -925,9 +928,10 @@ namespace jasperengine {
         static void systemKeyDown(int key, bool repeat, int mods);
         static void systemKeyUp(int key, bool repeat, int mods);
 
-        // One UTF-16 unit where wchar_t is 16 bits (Windows): surrogate pairs are combined
-        // before HTML UI documents see them, the game and component UI get each unit
-        static void systemCharInput(wchar_t codepoint);
+        // One UTF-16 unit (Windows WM_CHAR, Android's keyboard) or one whole code point:
+        // surrogate pairs are combined here, so documents, Input.inputString, onCharInput and the
+        // component UI all get whole code points (a lone surrogate is U+FFFD)
+        static void systemCharInput(char32_t unit);
         // Committed text: an IME commit, a paste, a platform string. Documents get the whole
         // string; unless a document consumed it, each code point then goes to onCharInput and
         // the component UI.
@@ -1000,7 +1004,9 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onMouseLeave;
         static FunctionSubscribe<void(int,bool,int)> onKeyDown;
         static FunctionSubscribe<void(int,bool,int)> onKeyUp;
-        static FunctionSubscribe<void(wchar_t)> onCharInput;
+        // one whole character per call, on every platform (a one-character string in Lua). A C++
+        // handler declared with wchar_t still compiles but is deprecated: 16 bits on Windows.
+        static FunctionSubscribe<void(char32_t)> onCharInput;
         static FunctionSubscribe<void(int)> onGamepadConnect;
         static FunctionSubscribe<void(int)> onGamepadDisconnect;
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;

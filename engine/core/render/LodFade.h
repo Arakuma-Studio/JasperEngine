@@ -121,17 +121,6 @@ namespace jasperengine{
         return projected > 0.0f ? threshold * worldHeight / projected : 0.0f;
     }
 
-    // the rank 0..63 of a pixel in the 8x8 Bayer matrix (includes/lod_fade.glsl lodFadeRank)
-    inline int lodFadeRank(int x, int y){
-        const int px = x & 7, py = y & 7;
-        const int v = px ^ py;
-        return ((v & 1) << 5) | ((py & 1) << 4) | ((v & 2) << 2) | ((py & 2) << 1) | ((v & 4) >> 1) | ((py & 4) >> 2);
-    }
-    // whether a draw of that fade keeps a pixel of that rank (includes/lod_fade.glsl lodFadeKeeps)
-    inline bool lodFadeKeeps(float fade, int rank){
-        const int k = (int)((fade < 0.0f ? -fade : fade) * LOD_FADE_STEPS + 0.5f);
-        return (fade < 0.0f) ? (rank < k) : (rank >= LOD_FADE_STEPS - k);
-    }
 }
 
 #endif //LODFADE_H

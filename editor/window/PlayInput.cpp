@@ -236,10 +236,8 @@ void editor::PlayInput::releaseAll() {
 }
 
 void editor::PlayInput::forwardCharacters(ImGuiIO& io){
-    // ImGui's queue holds 16-bit characters (IMGUI_USE_WCHAR32 is off), where a character
-    // beyond the BMP is already U+FFFD; the trail of this frame's input events keeps the
-    // whole code point. Where wchar_t is 16 bits it goes as a surrogate pair, which
-    // Engine::systemCharInput combines.
+    // The trail of this frame's input events: one whole code point each (ImGui combines the
+    // UTF-16 halves a backend sends), as Engine::systemCharInput takes them.
     ImGuiContext& g = *ImGui::GetCurrentContext();
     if (charactersFrame != g.FrameCount){
         charactersFrame = g.FrameCount;
@@ -251,13 +249,7 @@ void editor::PlayInput::forwardCharacters(ImGuiIO& io){
             if ((codepoint < 32 || codepoint == 0x7f) && codepoint != '\t' && codepoint != '\b' &&
                 codepoint != '\r' && codepoint != '\n' && codepoint != 0x1b)
                 continue;
-            if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
-                const unsigned int value = codepoint - 0x10000;
-                Engine::systemCharInput(static_cast<wchar_t>(0xD800 + (value >> 10)));
-                Engine::systemCharInput(static_cast<wchar_t>(0xDC00 + (value & 0x3FF)));
-            }else{
-                Engine::systemCharInput(static_cast<wchar_t>(codepoint));
-            }
+            Engine::systemCharInput(static_cast<char32_t>(codepoint));
         }
     }
     io.InputQueueCharacters.resize(0);
@@ -266,7 +258,7 @@ void editor::PlayInput::forwardCharacters(ImGuiIO& io){
 void editor::PlayInput::forwardKeyboard(ImGuiIO& io, int mods){
     forwardCharacters(io);
 
-    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, wchar_t charInput = 0, bool allowRepeat = true){
+    auto forwardKey = [&](ImGuiKey imguiKey, int engineKey, char32_t charInput = 0, bool allowRepeat = true){
 #ifndef __APPLE__
         // The backends queue these keys' control characters with the text (forwardCharacters),
         // repeats included; only imgui_impl_osx leaves them out

@@ -85,6 +85,27 @@ existing patterns, and say in your report what was not compiled. Apple builds us
 sources itself: after adding sources run `python3 tools/xcode_sync_engine.py` and the `tools/htmlui/xcode_sync_*.py`
 scripts (each has `--check`).
 
+## Build boxes and time efficiency (owner, 2026-11-06: time is the priority)
+
+Each feature has a rented 16-core build box (`/var/lib/orquester/workspaces/jaspersito/dc-work/BOXES.md`).
+`rbox <box> '<command>'`, run from your worktree, syncs your worktree's current files (uncommitted edits too) to the box
+and runs the command there with `JOBS=14`; `rbox <box> --fetch <path> <local>` copies results back. Several
+features share some boxes: one job runs at a time per box, so keep each job short and complete. Local `slot` is the
+fallback only. `tools/check-changed` does not work on a box (no history there): use the targeted gate.
+
+Work so that every minute of build time answers a question:
+- **One build shows every error:** `KEEP_GOING=1` on builds; fix everything it reports before building again.
+- **Build only what you need:** `SKIP_ENGINE=1` for the editor; `UNIT_SUITE=core|editor` so one test binary
+  builds; `RUN=0` when you only need it to compile.
+- **One job per round, never stopping at the first failure:** put the round's steps in one script that records each
+  step's exit code and goes on, then read all results together.
+- **Red controls in one build:** revert all fix hunks at once (`git apply -R` of one patch), build once, run every
+  regression test (each must fail), restore, build once, run them green. Not one build per fix.
+- **After a fix, rerun only what it touches:** the failed step and the tests of the files you changed, not the
+  whole round.
+- **Generated docs last:** `gen_tool_docs.py`, `tool_budget.py`, `docs/shaders/library.md` once, at the end.
+- **Never rerun green steps on unchanged code.** Use the box time to review your diff and write docs.
+
 ## Definition of done
 
 1. Every requirement and acceptance criterion of your spec is implemented, or deviated from in writing.

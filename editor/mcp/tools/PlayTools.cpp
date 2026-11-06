@@ -2984,8 +2984,31 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             error = "text event needs text";
             return false;
         }
-        // the whole string at once: documents get it as one text input, the game and the
-        // component UI each code point (surrogate pairs where wchar_t is 16 bits)
+        if (event.contains("per_unit") && !event["per_unit"].is_boolean()) {
+            error = "per_unit must be true or false";
+            return false;
+        }
+        if (event.value("per_unit", false)) {
+            // one character event per UTF-16 unit, as Windows WM_CHAR and Android's keys deliver
+            // typing: a character beyond U+FFFF arrives as two halves the engine must combine
+            std::vector<char32_t> units;
+            for (uint32_t cp : decodeUtf8(text)) {
+                if (cp > 0xFFFF) {
+                    const uint32_t value = cp - 0x10000;
+                    units.push_back(static_cast<char32_t>(0xD800 + (value >> 10)));
+                    units.push_back(static_cast<char32_t>(0xDC00 + (value & 0x3FF)));
+                } else {
+                    units.push_back(static_cast<char32_t>(cp));
+                }
+            }
+            add([units]() {
+                for (char32_t unit : units) Engine::systemCharInput(unit);
+                return std::string();
+            }, gapFrames, 0, "text per unit");
+            return true;
+        }
+        // the whole string at once (a paste, an IME commit): documents get it as one text input,
+        // the game and the component UI each code point
         add([text]() {
             Engine::systemTextInput(text);
             return std::string();
@@ -4423,7 +4446,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
-            "[shift,ctrl,alt,super]\ntext: text; ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "

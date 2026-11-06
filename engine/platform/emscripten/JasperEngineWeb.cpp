@@ -1038,7 +1038,7 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
         if (jasper_ime_is_focused())
             return 0;
 
-        wchar_t cp = toCodepoint(std::string(e->key));
+        char32_t cp = toCodepoint(std::string(e->key));
         if (cp == 0) cp = e->which;
         if (cp == 0) cp = e->keyCode;
 

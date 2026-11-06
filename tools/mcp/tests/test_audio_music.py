@@ -81,7 +81,7 @@ def window(samples, start: int, end: int, channel: int = 0):
     return [samples[i * 2 + channel] for i in range(max(start, 0), end)]
 
 
-async def test_setup(ed: Editor):
+async def _setup(ed: Editor):
     music = ed.project / "music"
     write_tone(music / "menu.wav", seconds=8.0, frequency=440.0, amplitude=0.25, rate=RATE)
     write_tone(music / "game.wav", seconds=8.0, frequency=660.0, amplitude=0.25, rate=RATE)
@@ -118,6 +118,7 @@ async def test_setup(ed: Editor):
 
 # AC1 (R1-R3): the playlist's samples are audio_refs.music_sequence's; the keys survive a round trip
 async def test_playlist_samples_match_the_oracle(ed: Editor):
+    await _setup(ed)
     scene = await scene_with(ed, "Playlist", """    if f == 1 then Audio.playMusic("music/playlist.soundevent", { group = "Master" }) end
     if f == 40 then Audio.advanceMusic() end""")
     await ed.call("set_project_settings", values={"audio.output_stage": "linear"})

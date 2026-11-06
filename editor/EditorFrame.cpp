@@ -181,6 +181,8 @@ bool EditorFrame::run(EditorFrameState& state){
 
     renderer->newFrame();
     platformNewFrame();
+    // the system's CJK and emoji fonts join the editor's fonts between frames, once found
+    app->applySystemFonts();
     ImGui::NewFrame();
 
     if (frameReady){

@@ -122,7 +122,7 @@ async def test_bad_settings_write_nothing(ed: Editor):
     ed.check("is not a model" in message, message)
     message = await ed.call("inspect_models", settings={"mesh_compression": "low"}, expect_error=True)
     ed.check("needs paths" in message, message)
-    ed.check(stored(ed, "assets/models/panel.gltf") is None, "nothing written")
+    ed.check(stored(ed, GRID) is None, "nothing written")
 
 
 async def test_job_and_refused_while_playing(ed: Editor):

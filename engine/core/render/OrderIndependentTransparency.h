@@ -15,7 +15,7 @@ namespace jasperengine {
     };
 
     // Weighted blended order-independent transparency (McGuire and Bavoil, JCGT 2013): what a
-    // device needs for it and the weight includes/oit.glsl gives a fragment
+    // device needs for it
     class JASPERENGINE_API OrderIndependentTransparency {
     public:
         // RGBA16F and R16F colour attachments rendered and blended into (and multisampled, for a
@@ -25,13 +25,6 @@ namespace jasperengine {
         // the device's again)
         static void setSupportOverride(const bool* supported);
 
-        // McGuire and Bavoil's depth weight (equation 7 without alpha) at a view depth in metres,
-        // the camera's weight scale multiplying the depth (includes/oit.glsl oitDepthWeight)
-        static float depthWeight(float viewDepth, float scale);
-
-        // lower-case names, as saved and as MCP and Lua take them: sorted, order_independent
-        static const char* getModeName(TransparencyMode mode);
-        static bool modeFromName(const char* name, TransparencyMode& mode);
     };
 
 }
