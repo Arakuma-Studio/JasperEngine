@@ -1431,7 +1431,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Duplicating an asset: move_asset copy without `to` lands beside it under Unity's free name "
                          "(hero 1.png); the agent need not list the folder to invent a free name (project-window spec 6.14).",
-        "text_at_issue": "AssetTools.cpp move_asset `to`: 'New path (folder + name). With copy, omit to duplicate beside it.'",
+        "text_at_issue": "AssetTools.cpp move_asset `to`: 'New path (folder + name); omit with copy to duplicate.'",
         "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 37d7cdc41)",
         "prompt": "Duplicate assets/sprites/hero.png.",
         "mocks": [
@@ -1448,8 +1448,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Changing the assets directory moves every referenced file; asked to check first, the agent asks "
                          "set_project_settings with dry_run, then applies (project-window spec 6.9).",
-        "text_at_issue": "ProjectTools.cpp set_project_settings dry_run: 'Validate and report (asset roots: what would move); "
-                         "change nothing.'",
+        "text_at_issue": "ProjectTools.cpp set_project_settings dry_run: 'Report only, change nothing.'",
         "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 35c8e31da)",
         "prompt": "Make the project's assets directory a folder called content. First show me what would move, then do it.",
         "mocks": [

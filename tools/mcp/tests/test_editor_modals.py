@@ -166,8 +166,8 @@ async def test_sites_table_is_complete(ed: Editor):
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
-    # Change Asset Directories came: 70
-    ed.check_eq(sum(found.values()), 70, "the 70 sites")
+    # Change Asset Directories came: 71
+    ed.check_eq(sum(found.values()), 71, "the 71 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

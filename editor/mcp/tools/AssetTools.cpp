@@ -3928,7 +3928,7 @@ void registerAssetTools(McpRegistry& registry) {
             "destination must not exist; its folder must.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"to", assetPath("New path (folder + name). With copy, omit to duplicate beside it.")},
+            {"to", assetPath("New path (folder + name); omit with copy to duplicate.")},
             {"copy", withDefault(boolean(""), false)}
         }, {"path"});
         tool.allowedWhilePlaying = false;
