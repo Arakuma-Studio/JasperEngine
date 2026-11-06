@@ -39640,6 +39640,79 @@
    "type": 89,
    "type_of_key": 89,
    "type_of_name": 89
+  },
+  {
+   "display_name": "Mixer Snapshot Action",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ef879e",
+   "key": "audiosnapshot",
+   "known_keys": [
+    "revert",
+    "revertSeconds",
+    "seconds",
+    "snapshot",
+    "unscaled"
+   ],
+   "name": "AudioSnapshotComponent",
+   "properties_of_default": {
+    "revert": [
+     0,
+     0,
+     true
+    ],
+    "revertSeconds": [
+     2,
+     0,
+     true
+    ],
+    "seconds": [
+     2,
+     0,
+     true
+    ],
+    "snapshot": [
+     1,
+     0,
+     true
+    ],
+    "unscaled": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "revert": [
+     0,
+     0,
+     true
+    ],
+    "revertSeconds": [
+     2,
+     0,
+     true
+    ],
+    "seconds": [
+     2,
+     0,
+     true
+    ],
+    "snapshot": [
+     1,
+     0,
+     true
+    ],
+    "unscaled": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 90,
+   "type_of_key": 90,
+   "type_of_name": 90
   }
  ],
  "ease_options": [
@@ -40167,6 +40240,33 @@
    "writeBones": [
     13,
     35184372088832,
+    true
+   ]
+  },
+  "AudioSnapshotComponent": {
+   "revert": [
+    0,
+    0,
+    true
+   ],
+   "revertSeconds": [
+    2,
+    0,
+    true
+   ],
+   "seconds": [
+    2,
+    0,
+    true
+   ],
+   "snapshot": [
+    1,
+    0,
+    true
+   ],
+   "unscaled": [
+    0,
+    0,
     true
    ]
   },

@@ -65,8 +65,8 @@ def cues(ed: Editor) -> list:
 
 
 async def frames_of(ed: Editor, entity: str) -> list:
-    got = await ed.call("get_entity", scene=STATE["scene"], entity=entity, components=["animation"])
-    return got["components"]["animation"].get("actions", [])
+    got = await ed.call("get_animation", scene=STATE["scene"], entity=entity)
+    return got.get("actions", [])
 
 
 async def test_setup(ed: Editor):
@@ -214,7 +214,7 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     await ui.frames(10)
     after = await frames_of(ed, "Sequencer")
     ed.check_eq(len(after), len(before) + 1, f"the drop added an audio action: {after}")
-    ed.check(after[-1]["startTime"] > 0.0, f"at the drop time: {after[-1]}")
+    ed.check(after[-1]["start_time"] > 0.0, f"at the drop time: {after[-1]}")
     await keep_shot(ed, "entity-audio-dropped")
     # the first audio block, the playhead at 1.0 s, Shift+A
     await ed.call("preview_animation", scene=STATE["scene"], animation="Sequencer", action="seek", time=1.0)
@@ -227,5 +227,5 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     await ui.key("shift+a")
     await ui.frames(10)
     aligned = await frames_of(ed, "Sequencer")
-    ed.check(abs(aligned[index]["startTime"] - 0.8) < 0.003, f"the tick's peak on 1.0 s: {aligned[index]}")
+    ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.003, f"the tick's peak on 1.0 s: {aligned[index]}")
     await keep_shot(ed, "entity-audio-aligned")

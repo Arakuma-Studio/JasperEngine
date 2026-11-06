@@ -13,6 +13,7 @@
 #include "support/AllocationCounter.h"
 
 #include "Engine.h"
+#include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
 #include "component/LightComponent.h"
 #include "component/MeshComponent.h"
@@ -217,6 +218,66 @@ TEST_F(AnimatorSystemTest, PropertyTracksPlayOnTheAnimator){
     object.setLayerWeight(1, 0.0f);
     step(kDt);
     EXPECT_NEAR(intensity(), 3.0f, 1e-5f);
+}
+
+// S40 R4: audio cues of a blend tree's clips fire by the leader rule as clip events do; a source cue
+// asks its AudioSource for a timeline start
+TEST_F(AnimatorSystemTest, AudioCuesFireOnlyTheLeadersCues){
+    AudioSourceComponent walkSource;
+    walkSource.filename = "sounds/walk.wav";
+    scene.addComponent<AudioSourceComponent>(spine, walkSource);
+    AudioSourceComponent runSource;
+    runSource.filename = "sounds/run.wav";
+    scene.addComponent<AudioSourceComponent>(head, runSource);
+    ClipAudioCue walkCue;
+    walkCue.time = 0.5f;
+    walkCue.kind = ClipCueKind::Source;
+    walkCue.path = "Hips/Spine";
+    ClipAudioCue runCue = walkCue;
+    runCue.path = "Hips/Spine/Head";
+    ClipData walkData = slide("Hips", 1.0f);
+    walkData.audio = {walkCue};
+    ClipData runData = slide("Hips", 2.0f);
+    runData.audio = {runCue};
+    ControllerDef def;
+    def.parameters = {parameter("Speed", AnimatorParameterType::Float, 0.3f)};
+    LayerDef layer;
+    layer.name = "Base Layer";
+    StateDef move;
+    move.name = "Move";
+    BlendTreeDef tree;
+    tree.type = BlendTreeType::Simple1D;
+    tree.parameter = "Speed";
+    BlendChildDef a;
+    a.motion.clip.path = clip("walkcue", walkData);
+    a.threshold = 0;
+    BlendChildDef b;
+    b.motion.clip.path = clip("runcue", runData);
+    b.threshold = 1;
+    tree.children = {a, b};
+    move.motion.tree.push_back(tree);
+    layer.machine.states.push_back(move);
+    def.layers.push_back(layer);
+    animator(controllerFile("cues", def));
+    step(0.0);
+    int walkStarts = 0;
+    int runStarts = 0;
+    for (int i = 0; i < 30; i++){
+        step(0.1);
+        AudioSourceComponent& walk = scene.getComponent<AudioSourceComponent>(spine);
+        AudioSourceComponent& run = scene.getComponent<AudioSourceComponent>(head);
+        if (walk.startTrigger){
+            walkStarts++;
+            EXPECT_TRUE(walk.timelineStart);
+            walk.startTrigger = false;
+        }
+        if (run.startTrigger){
+            runStarts++;
+            run.startTrigger = false;
+        }
+    }
+    EXPECT_EQ(walkStarts, 3) << "the leader (walk at 0.7) fires its cue each crossing of 0.5";
+    EXPECT_EQ(runStarts, 0) << "the other clip's cue does not";
 }
 
 TEST_F(AnimatorSystemTest, EventsLeaderOnlyAllAndSeek){

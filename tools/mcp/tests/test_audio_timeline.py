@@ -172,15 +172,18 @@ async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
     await ed.call("add_component", scene=scene, entity="Walker", component="animator", values={"animator": {"controller": "anim/walker.controller"}})
     await ed.call("save_scene", scene=scene)
 
+    live = {}
+
     async def montage():
         await ed.call("wait", frames=20)
-        await ed.call("control_animator", entity="Walker", scene=scene, montage={"path": "anim/wave.montage"})
+        live["state"] = (await ed.call("get_animator", entity="Walker")).get("live")
+        await ed.call("control_animator", entity="Walker", montage={"path": "anim/wave.montage"})
 
     _, lines = await capture(ed, scene, 30, during=montage)
     names = [l["name"] for l in lines if l["kind"] == "cue"]
     if "A" not in names:
         events = [l.get("function") for l in lines if l["kind"] == "animation_event"]
-        ed.fail(f"the 1D tree fires its leader's cue (S21 R9): {names}; its clip events: {events}")
+        ed.fail(f"the 1D tree fires its leader's cue (S21 R9): {names}; its clip events: {events}; live: {json.dumps(live)[:1500]}")
     ed.check("B" not in names, f"the 1D tree fires only its leader's cue (S21 R9): {names}")
     ed.check("W" in names, f"the montage fires its clip's cue: {names}")
     montage_cue = next(l for l in lines if l["kind"] == "cue" and l["name"] == "W")
