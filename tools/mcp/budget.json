@@ -14,8 +14,9 @@
         "into a raised limit or a smaller headroom."
     ],
     "default_listing": {
-        "chars": 99000,
-        "tools": 150
+        "chars": 99077,
+        "tools": 150,
+        "spec": "code-editor-git: +77 for the text a review restored (code_editor: reload drops unsaved edits; get/set_shader_uniforms pass_index: a post-process pass)"
     },
     "group_default": {
         "chars": 15000,
