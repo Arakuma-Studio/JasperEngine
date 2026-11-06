@@ -27,6 +27,13 @@ int editor::PlayInput::currentMods() {
     return mods;
 }
 
+bool editor::PlayInput::escapeWentDown() {
+    // the key's own state: ImGui's keyboard navigation reads Escape first and may own it this frame,
+    // which hides the press from ImGui::IsKeyPressed
+    const ImGuiKeyData* escape = ImGui::GetKeyData(ImGuiKey_Escape);
+    return escape && escape->Down && escape->DownDuration == 0.0f;
+}
+
 bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale, bool hovered, bool focused) {
     ImGuiIO& io = ImGui::GetIO();
     const int mods = currentMods();
@@ -42,7 +49,7 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     const bool holdsCursor = mouseMode == MouseMode::CAPTURED || mouseMode == MouseMode::CONFINED;
     if (!holdsCursor) {
         cursorReleased = false;
-    } else if (hadFocus && !cursorReleased && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    } else if (hadFocus && !cursorReleased && escapeWentDown()) {
         releaseCursor();
     } else if (cursorReleased && hovered && focused && ImGui::IsAnyMouseDown()) {
         cursorReleased = false;

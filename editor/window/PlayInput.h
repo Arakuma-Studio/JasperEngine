@@ -56,6 +56,8 @@ namespace jasperengine::editor {
         void releaseKeys(int mods);
         void releaseMouseButtons(int mods);
         static int currentMods();
+        // Escape went down this frame, whoever owns the key
+        static bool escapeWentDown();
 
     public:
         explicit PlayInput(Project* project);

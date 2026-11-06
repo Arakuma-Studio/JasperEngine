@@ -110,9 +110,9 @@ async def test_move_entity_next_to_a_skybox_is_refused(ed: Editor):
 
     # among the GameObjects with a Transform, by index
     await ed.call("move_entity", scene=scene, entity=cube, parent=None, index=0)
-    tree = await ed.call("get_scene_tree", scene=scene)
-    names = [n["name"] for n in tree["roots"] if n["name"] in ("First", "Box")]
-    ed.check_eq(names, ["Box", "First"], f"placed first: {tree['roots']}")
+    text = (await ed.call_raw("get_scene_tree", {"scene": scene, "depth": 0, "components": False})).text
+    names = [line.split(" [")[0].strip() for line in text.splitlines()[1:] if " [" in line]
+    ed.check_eq([n for n in names if n in ("First", "Box")], ["Box", "First"], f"placed first: {names}")
     # a Skybox still moves among the others (it keeps its gap)
     await ed.call("move_entity", scene=scene, entity=sky, after=cube)
 
