@@ -12083,10 +12083,10 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                 if (script.type == ScriptType::LUA) {
                     // a Lua script's name is its file name: it follows the Source File
                     propertyHeader("Module", secondColSize);
+                    UIProbe::item("inspector.editScript.module");
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                     ImGui::InputText("##new_name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_ReadOnly);
                     ImGui::PopStyleColor();
-                    UIProbe::item("inspector.editScript.module");
                     if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("The module name is the file name: pick another Source File to change it");
                     }
