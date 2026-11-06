@@ -82,6 +82,13 @@ TEST(CameraGizmo, PerspectiveNearIsClamped){
     const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
     EXPECT_FLOAT_EQ(nearFar.x, 0.001f);
     EXPECT_GT(nearFar.y, nearFar.x);
+    camera.nearClip = -1.0f;
+    EXPECT_FLOAT_EQ(RenderSystem::getCameraNearFar(camera).x, 0.001f);
+    // a small positive near is the user's: kept
+    camera.nearClip = 0.0001f;
+    camera.farClip = 100.0f;
+    EXPECT_FLOAT_EQ(RenderSystem::getCameraNearFar(camera).x, 0.0001f);
+    EXPECT_FLOAT_EQ(RenderSystem::getCameraNearFar(camera).y, 100.0f);
     // orthographic near and far stay as they are (a negative near is valid there)
     const Vector2 ortho = RenderSystem::getCameraNearFar(gizmoOrthoCamera(10.0f, 10.0f, -5.0f, 5.0f));
     EXPECT_FLOAT_EQ(ortho.x, -5.0f);

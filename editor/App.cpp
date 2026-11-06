@@ -5569,7 +5569,7 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      skinned fade variant's uniform block slots differed from its base's.
     // v49: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
     //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
-    //      the light loop (lightShadowD).
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
 }
 

@@ -6,7 +6,9 @@
 // chunk borders (Draw Distance 50: 4 then 5 chunks a side): each change destroyed or created chunk
 // entities, each parsing the mesh again, and refilled every slot (Doriax de70fa31c). It is sized
 // for the widest span now, so walking never destroys a chunk. Min Draw Distance sets the chunks'
-// near fade, and the Foliage Distance quality scale multiplies both distances (0 draws none).
+// near fade, and the Foliage Distance quality scale multiplies both distances (0 draws none). A
+// scale changed at runtime refills every slot: one past the new span kept its old chunk, its
+// instances doubling the new chunks' under the old fade.
 // glcore and Vulkan.
 
 #include "Engine.h"
@@ -30,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -105,6 +108,7 @@ namespace {
         void TearDown() override{
             Engine::removeScene(&scene);
             Engine::resetFoliageDistanceScale();
+            Engine::setFoliageDistanceScaleDefaults(1.0f, 1.0f, 1.0f);
         }
 
         MeshSystem* meshes(){
@@ -120,6 +124,26 @@ namespace {
                 frames++;
                 return current->getSystem<RenderSystem>()->isAllLoaded() && !system->hasPendingFoliageUpdates() && frames > 2;
             }, 600)) << "the foliage never settled";
+        }
+
+        // every drawn chunk fades at the layer's scaled Draw Distance, and no instance is in two
+        void expectChunksFor(float drawDistance, const char* when){
+            std::map<std::array<float, 3>, int> positions;
+            int drawn = 0;
+            for (Entity entity : chunkEntities()){
+                const InstancedMeshComponent& chunk = scene.getComponent<InstancedMeshComponent>(entity);
+                if (chunk.instances.empty())
+                    continue;
+                drawn++;
+                EXPECT_FLOAT_EQ(chunk.fadeEnd, drawDistance) << when << ": a chunk keeps another Draw Distance";
+                for (const InstanceData& instance : chunk.instances)
+                    positions[{instance.position.x, instance.position.y, instance.position.z}]++;
+            }
+            EXPECT_GT(drawn, 0) << when << ": no chunk draws";
+            int doubled = 0;
+            for (const auto& entry : positions)
+                doubled += entry.second > 1 ? 1 : 0;
+            EXPECT_EQ(doubled, 0) << when << ": instances drawn by two chunks";
         }
 
         std::set<Entity> chunkEntities(){
@@ -162,6 +186,24 @@ TEST_F(TerrainFoliageGpu, MinDrawDistanceAndTheScaleSetTheChunksFades){
     EXPECT_FLOAT_EQ(chunk.fadeStart, 25.0f * 0.75f);
     EXPECT_FLOAT_EQ(chunk.nearFadeEnd, 10.0f) << "Min Draw Distance is not scaled";
     EXPECT_FLOAT_EQ(chunk.nearFadeStart, 10.0f * 0.75f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// 50 m: 32 m chunks; 25 m: 16 m chunks; a ring of 5 a side for both, the span 4 chunks a side
+TEST_F(TerrainFoliageGpu, ChangingTheScaleRefillsEverySlot){
+    JASPER_REQUIRE_GPU();
+    settle();
+    expectChunksFor(50.0f, "at the start");
+    Engine::setFoliageDistanceScale(0.5f);
+    settle();
+    expectChunksFor(25.0f, "Engine.foliageDistanceScale 0.5");
+    Engine::resetFoliageDistanceScale();
+    settle();
+    expectChunksFor(50.0f, "the scale reset");
+    // what Project Settings' Foliage Distance sets (Project::setFoliageDistanceScale)
+    Engine::setFoliageDistanceScaleDefaults(0.5f, 0.5f, 0.5f);
+    settle();
+    expectChunksFor(25.0f, "the project's scale 0.5");
     EXPECT_NO_ENGINE_ERRORS();
 }
 

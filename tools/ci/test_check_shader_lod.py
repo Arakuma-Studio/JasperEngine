@@ -109,6 +109,91 @@ float shade(){
 }
 """), [])
 
+    def test_offset_and_projective_samples_are_flagged(self):
+        findings = scan(a="""
+float shade(){
+    float sum = 0.0;
+    for (int i = 0; i < 4; i++){
+        if (v_value.x > float(i)) continue;
+        sum += textureOffset(sampler2D(u_tex, u_smp), v_uv, ivec2(1, 0)).r;
+        sum += textureProj(sampler2D(u_tex, u_smp), v_proj).r;
+    }
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 2)
+        self.assertIn("a.glsl:6: textureOffset()", findings[0])
+        self.assertIn("a.glsl:7: textureProj()", findings[1])
+
+    def test_a_sample_through_a_macro_is_flagged(self):
+        findings = scan(lib="""
+#define HEX_NORMAL(tex, smp, uv) \\
+    texture(sampler2D(tex, smp), uv).rgb
+#define FLAT_DX dFdx(v_position)
+""", main="""
+vec3 shade(){
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < 4; i++){
+        if (v_value.x > float(i)) continue;
+        sum += HEX_NORMAL(u_tex, u_smp, v_uv);
+        sum += FLAT_DX;
+    }
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 2)
+        self.assertIn("main.glsl:6: HEX_NORMAL()", findings[0])
+        self.assertIn("main.glsl:7: FLAT_DX()", findings[1])
+
+    def test_a_loop_without_braces_is_flagged(self):
+        findings = scan(a="""
+float shade(){
+    float sum = 0.0;
+    for (int i = 0; i < 4; i++)
+        sum += texture(sampler2D(u_tex, u_smp), v_uv + vec2(float(i))).r;
+    for (int i = 0; i < 4; i++)
+        if (v_value.x > float(i)) continue; else sum += dFdx(v_uv).x;
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("a.glsl:7: dFdx()", findings[0])
+
+    def test_a_per_fragment_branch_in_a_loop_is_flagged(self):
+        findings = scan(a="""
+float shade(){
+    float sum = 0.0;
+    for (int i = 0; i < 4; i++){
+        if (v_value.x > float(i))
+            sum += texture(sampler2D(u_tex, u_smp), v_uv).r;
+        else {
+            sum += fwidth(v_uv.x);
+        }
+    }
+    for (int i = 0; i < 4; i++){
+        if (gl_FragCoord.x > float(i)) break;
+        sum += texture(sampler2D(u_tex, u_smp), v_uv).r;
+    }
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 3)
+        self.assertIn("a.glsl:6: texture()", findings[0])
+        self.assertIn("a.glsl:8: fwidth()", findings[1])
+        self.assertIn("a.glsl:13: texture()", findings[2])
+
+    def test_a_uniform_branch_in_a_loop_passes(self):
+        self.assertEqual(scan(a="""
+float shade(){
+    float sum = 0.0;
+    for (int i = 0; i < 4; i++){
+        if (i < u_count)
+            sum += texture(sampler2D(u_tex, u_smp), v_uv).r;
+    }
+    return sum;
+}
+"""), [])
+
     def test_the_engine_shader_library_passes(self):
         self.assertEqual(check_shader_lod.main([]), 0)
 

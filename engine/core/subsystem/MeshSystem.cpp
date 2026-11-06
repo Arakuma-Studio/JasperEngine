@@ -4323,6 +4323,11 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
         instances.chunks.resize(chunkCount);
         instances.needUpdate = true;
     }
+    if (instances.appliedDrawDistance != drawDistance || instances.appliedNearFadeEnd != nearFadeEnd){
+        instances.appliedDrawDistance = drawDistance;
+        instances.appliedNearFadeEnd = nearFadeEnd;
+        instances.needUpdate = true;
+    }
 
     // Reuse meshes when resizing render batches.
     if (instances.chunkSize != chunkSize){

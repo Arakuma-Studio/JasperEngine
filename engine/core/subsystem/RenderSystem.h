@@ -789,6 +789,8 @@ namespace jasperengine{
 		// the RenderSystems drawing with the static textures above (their bindings hold the
 		// handles), and whether this one is one of them: the last to go destroys them
 		static int emptyTextureUsers;
+		// the variant checks a texture edit ran (getTextureVariantChecks)
+		static uint64_t textureVariantChecks;
 		bool usesEmptyTextures = false;
 		
 		// what LatticeRender::prepare keeps between frames
@@ -3020,6 +3022,9 @@ namespace jasperengine{
 		// whether the loaded submesh draws that variant in every pass it builds (colour with its
 		// Lit defines and extension maps, depth, G-buffer, the material's extra pass)
 		static bool loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass);
+		// how many times a submesh's texture edit resolved its variant again (tests: a rebind of
+		// the same images runs none)
+		static uint64_t getTextureVariantChecks();
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)

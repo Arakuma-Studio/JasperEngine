@@ -7,7 +7,8 @@
 // reads only its first ivec4) or report it as no array, and then clamps or rejects the upload,
 // the whole block with it (Doriax ebd4b64e7). sokol uploads the count the driver reports active
 // (engine/libs/sokol/PATCHES.md, "Flattened uniform arrays"), which this checks against the
-// driver the tests run on; MeshInputsGpu.TwoUvSetsWithoutANormalMapSampleTheirSets draws the case.
+// driver the tests run on (the count, not an upload: a driver that clamps silently raises no GL
+// error); MeshInputsGpu.TwoUvSetsWithoutANormalMapSampleTheirSets draws the case.
 
 #include "GpuEnvironment.h"
 
@@ -59,7 +60,6 @@ TEST(SokolGlUniformArray, AFlattenedArrayWithAnUnusedTailUploadsWhatTheDriverKee
 
     const int uploaded = sgj_query_gl_uniform_count(shader, 0, 0);
     EXPECT_EQ(uploaded, active < 3 ? active : 3) << "sokol uploads more elements than the program has";
-    EXPECT_EQ(glGetError(), (GLenum)GL_NO_ERROR);
     sg_destroy_shader(shader);
 }
 #endif

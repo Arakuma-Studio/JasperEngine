@@ -680,7 +680,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 42;
         case ShaderType::DEPTH:  return 19;
-        case ShaderType::GBUFFER: return 17;
+        case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -830,7 +830,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
             // the Instanced Mesh distance fade (includes/instance_fade.glsl), as MESH 26 and DEPTH 8
-            case 16: return shortName ? "Ifd" : "Instance Fade";
+            // (16 and 17 are the SSR probes')
+            case 18: return shortName ? "Ifd" : "Instance Fade";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1861,7 +1862,7 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
     prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
     prop |= vatBones                ? shaderPropertyBit(15) : 0;
-    prop |= instanceFade            ? shaderPropertyBit(16) : 0;
+    prop |= instanceFade            ? shaderPropertyBit(18) : 0;
 
     return prop;
 }

@@ -6,7 +6,9 @@
 // and 2D light paths asked for normals whatever the mesh had, so a mesh without normals (a glTF
 // without NORMAL, a mesh built by a script) left a_normal unfed: zero on GL (a NaN normal, black),
 // undefined on Vulkan, invalid on Metal and D3D11 (SokolObject::checkVertexInputs counts it). It
-// now shades with flat normals, as glTF asks. The 2D lights take tangents only for a normal map.
+// now shades with flat normals, as glTF asks, turned toward the eye: the derivatives they come
+// from change handedness with the backend's framebuffer y. The 2D lights take tangents only for a
+// normal map.
 // And a mesh with two UV sets and no normal map samples each texture at its own set (the GL
 // upload of a flattened block whose tail no variant reads, sokol's PATCHES.md). glcore and Vulkan.
 
@@ -126,9 +128,9 @@ namespace {
 
         InputsQuadScene(){
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
-            // ambient light too: a normal it cannot read (unfed, a NaN) draws black even then
-            scene.setGlobalIllumination(1.0f);
-            scene.setAmbientLight2D(0.5f);
+            // no ambient: only the light's side of the face may draw lit
+            scene.setGlobalIllumination(0.0f);
+            scene.setAmbientLight2D(0.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setPosition(0.0f, 3.0f, 0.01f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
@@ -147,6 +149,13 @@ namespace {
             });
             GpuEnvironment::drawFrames(3);
             return loaded;
+        }
+
+        // the camera above the quad (its front, +y) or below it (its back)
+        void viewFrom(bool above){
+            camera.setPosition(0.0f, above ? 3.0f : -3.0f, 0.01f);
+            camera.setTarget(0.0f, 0.0f, 0.0f);
+            GpuEnvironment::drawFrames(3);
         }
 
         const Submesh& submesh() const{
@@ -193,8 +202,27 @@ TEST_P(MeshInputsGpu, ANormallessMeshFeedsEveryInput){
         const uint64_t properties = s.submesh().shaderProperties;
         EXPECT_EQ(properties & (uint64_t(1) << 6), 0u) << c.name << ": a mesh without normals asks for 'Nor'";
         EXPECT_EQ(properties & (uint64_t(1) << 8), 0u) << c.name << ": tangents without normals ('Tan')";
-        const std::array<int, 3> center = inputsCenterPixel();
+        std::array<int, 3> center = inputsCenterPixel();
         EXPECT_GT(center[0] + center[1] + center[2], 30) << c.name << ": the lit quad draws black";
+
+        if (c.lighting != InputsLighting::Lights2D){
+            // the sun behind the face leaves it dark
+            sun.setDirection(0.0f, 1.0f, 0.0f);
+            s.viewFrom(true);
+            center = inputsCenterPixel();
+            EXPECT_LT(center[0] + center[1] + center[2], 10) << c.name << ": the face lit by a light behind it";
+        }
+        if (c.lighting == InputsLighting::Pixel || c.lighting == InputsLighting::Mixed){
+            // the back of a double-sided face, from below: lit by a sun below, dark under one
+            // above (the vertex lights take the mesh's +y, the face's front, for both sides)
+            s.viewFrom(false);
+            center = inputsCenterPixel();
+            EXPECT_GT(center[0] + center[1] + center[2], 30) << c.name << ": the back face draws black under a light on its side";
+            sun.setDirection(0.0f, -1.0f, 0.0f);
+            s.viewFrom(false);
+            center = inputsCenterPixel();
+            EXPECT_LT(center[0] + center[1] + center[2], 10) << c.name << ": the back face lit by a light on the other side";
+        }
     }
     EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfed) << c.name << ": a pipeline left a vertex input without its buffer";
     EXPECT_NO_ENGINE_ERRORS();

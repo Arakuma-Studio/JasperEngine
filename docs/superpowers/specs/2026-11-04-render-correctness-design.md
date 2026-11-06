@@ -255,7 +255,7 @@ Jasper paths are at `main` `b4f7816ea`; Doriax commits are references (`analysis
    the glossary). Mobile default stays 1.0: changing it would change shipped games' look on upgrade; the docs
    recommend 0.5-0.7 for phones.
 8. **Instance distance fade applies in every pass**: the SSR G-buffer variant gets the fade ('Ifd', GBUFFER bit
-   16), and the CPU cut no longer turns off under SSR. Reason: a faded instance must not appear in reflections
+   18), and the CPU cut no longer turns off under SSR. Reason: a faded instance must not appear in reflections
    or SSR depth; and SSR scenes regain the cut.
 9. **Cylindrical Billboard works**: the instances turn about the mesh's local up axis only, facing the
    camera's view direction projected on the local XZ plane (the instanced billboard is view-aligned, one
@@ -268,8 +268,9 @@ Jasper paths are at `main` `b4f7816ea`; Doriax commits are references (`analysis
 11. **The Scene view draws a selected camera's full frustum** (near to far, Unity), and every other camera a
     compact one: depth 2 for perspective, `max(width, height) / 2` for orthographic, each capped at
     `far - near`. No new display setting (Doriax's "Show full camera frustum"): selection already says which
-    camera the user is looking at. A perspective camera renders with `near = max(near, 0.001)` and
-    `far = max(far, near + 0.001)` (the probe capture's rule).
+    camera the user is looking at. A perspective camera renders with a near of 0 or less as 0.001
+    (a smaller positive near is kept) and `far = max(far, near + 0.001)`; what linearises its depth (the
+    volumetric fog and clouds, the screen-tile lights, the shadow cascades) reads the same near and far.
 12. **Vulkan robust buffer access: editor only, guarded**: on when the device supports it and
     `robustUniformBufferDescriptorSize == uniformBufferDescriptorSize` and
     `robustStorageBufferDescriptorSize == storageBufferDescriptorSize`; logged once at startup with the reason;
@@ -399,7 +400,7 @@ float lastCullSlack = 0;
   `mix(origin, pos, factor)`. `mesh.vert`, `depth.vert`, `gbuffer.vert`, `includes/surface_vs.glsl` and
   `includes/surface_depth_vs.glsl` include it under `USE_INSTANCE_FADE` and drop their copies.
 - `applyInstanceFadeUniform` (`RenderSystem.cpp:394`) writes `nearFadeStart, nearFadeEnd` into `fade[2], fade[3]`.
-- G-buffer: `ShaderPool::getGBufferMeshProperties` gains `instanceFade` (bit 16, short name 'Ifd', long
+- G-buffer: `ShaderPool::getGBufferMeshProperties` gains `instanceFade` (bit 18, short name 'Ifd', long
   "Instance Fade" in `getShaderPropertyName`); `getSubmeshShaderVariant` passes `p_instanceFade`; `loadMesh` reads
   `slotVSGBufferFade` (new `Submesh` field, -1 by default, reset where `slotVSFade` is at `:10815`) and
   `drawMeshGBuffer` applies the fade block like the depth pass (`:9092`). `gbuffer.vert` declares the instance
@@ -722,7 +723,7 @@ Merge hotspots: `RenderSystem.cpp` (update loop, loadMesh, updateInstancedMesh),
   scans for features that are off" may change how `updateTerrainFoliage` is called; the ring logic of 6.6 is
   independent of how often it runs.
 - `ssr-probes`: works on the SSR composite and G-buffer use; this feature adds the G-buffer 'Ifd' bit and the
-  variant re-resolve on texture edits. Coordinate the GBUFFER property bit numbers (this takes bit 16) and the
+  variant re-resolve on texture edits. Coordinate the GBUFFER property bit numbers (this takes bit 18; ssr-probes has 16 and 17) and the
   shader cache version.
 - `water-reflections` / `water-boats`: Water level comes from the mesh bounds (`Water.cpp:144`); after 6.1 an
   offset water mesh's level is its real surface. They also bump the shader cache. Tell them; no API change.
@@ -798,8 +799,8 @@ Recorded during implementation (branch `dc/render-correctness`).
     map's term with given derivatives), `lightShadowD` (times the light's occlusion under `LIGHT_OCCLUSION`) and
     `lightShadow` (derivatives taken, then `lightShadowD`), so the hoisted derivatives of `mesh.frag` keep the
     occlusion. S54/S55's instance matrices carry the LOD fade in the first column's w; the instance fade reads
-    only `i_matrix_col4`, so they compose. The shader cache is v49 (main reached v48). GBUFFER bit 16 ('Ifd')
-    is also claimed by ssr-probes: whoever lands second renumbers it.
+    only `i_matrix_col4`, so they compose. The shader cache is v49 (main reached v48). GBUFFER bits 16 and 17
+    are ssr-probes'; 'Ifd' is bit 18 (lead decision); the lead renumbers the shader cache at landing.
 13. **Texture-edit swap (6.4, T9).** The swap reloads the mesh as every variant change does: the reload's
     load lands a frame or more later (its queued `changeLoaded`, its textures), so T9's "no frame without the
     mesh" is not asserted; the tests assert the settled variants. A terrain keeps main's checks (its base material's UV
@@ -807,8 +808,25 @@ Recorded during implementation (branch `dc/render-correctness`).
     array again after `invalidateTerrainDetailArray` (`TextureRebindGpu.ATerrainsLayerImageBindsANewImage` failed
     without it, and passes on main).
 14. **Zero-cost list.** `zero_cost_mesh_variants.txt` is rewritten: the normal-less setup's variants lose
-    'Nor' (6.2), the 'Ifd' vertex stages include the near fade, the 'Shw' fragment stages take the shadow
-    derivatives before the light loop; no other variant's preprocessed source changed.
+    'Nor' (6.2) and their fragment stages turn the derived normal toward the eye (deviation 16), the 'Ifd'
+    vertex stages include the near fade, the 'Shw' fragment stages take the shadow derivatives before the light
+    loop; no other variant's preprocessed source changed.
 15. **Points tests (T6, T7).** The tests turn transparency on with the Transparent flag. Auto Transparency did
     not find the alpha of the tests' 4x4 PNG images (`isTransparent()` stayed false with or without the fix,
     after the image loaded); the derivation in `drawPoints` is kept, but no test covers a texture swap.
+16. **Review round (2026-11-06).** Flat normals (6.2): `cross(dFdx, dFdy)` takes its sign from the framebuffer's
+    y, which differs between backends, so `pbr.glsl` turns the derived normal toward the eye and does not flip
+    it for back faces (the projected decal's rule); `MeshInputsGpu` runs without ambient light and checks a
+    light in front, a light behind and a double-sided back face. Foliage (6.8): a slot past the span kept its
+    old chunk, instances and fade when the scaled distances changed (doubled foliage); the layer keeps the
+    distances it filled for and refills every slot on a change, from a script or Project Settings
+    (`TerrainFoliageGpu.ChangingTheScaleRefillsEverySlot`). Cylindrical billboards (6.7) take their yaw with
+    the entity's scale applied (`atan2(sx * bx, sz * bz)`: the face's normal turns by the inverse scale).
+    Near clip (6.10): clamped only at 0 or below. Texture edits (6.4, 8): a render target's image made again,
+    seen by a Before pass, is a rebind (`Submesh::needRebindTexture`), not an edit; so is a stand-in or a
+    rebuilt image found by the update; neither runs the variant check (`RenderSystem::getTextureVariantChecks`,
+    asserted by `TextureRebuiltGpu`). The lint (6.9) also covers `textureOffset`/`textureProj`, macros, loops
+    without braces and `if` branches on a varying, gl_FragCoord, gl_FrontFacing, gl_PointCoord or a sample
+    inside loops (a `break` or `return` under one is an exit); a local computed from them is not seen.
+    `SokolGlUniformArray` asserts the uploaded count only: a driver that clamps silently raises no GL error, so
+    a `glGetError` check could not fail.

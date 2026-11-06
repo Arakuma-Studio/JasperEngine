@@ -5,7 +5,8 @@
 // (docs/superpowers/specs/2026-11-04-render-correctness-design.md 6.7):
 // - an opaque billboard on the main camera kept its first rotation: only transparent sorting and
 //   camera-dependent particles rebuilt on a camera move (Doriax e3aa4e1b8);
-// - Cylindrical Billboard was stored, shown and scripted but never drawn;
+// - Cylindrical Billboard was stored, shown and scripted but never drawn; under a non-uniform
+//   scale its face turns toward the camera's side once scaled;
 // - any horizontal eye move rebuilt a fading batch's lists and buffers; they are cut past a
 //   margin the fade has already shrunk to nothing, so small moves rebuild nothing;
 // - the near fade (Near Fade Start/End, a far level of detail's inner edge) shrinks and cuts the
@@ -142,6 +143,23 @@ TEST_F(InstancedFadeGpu, CylindricalBillboardTurnsAboutUpOnly){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+TEST_F(InstancedFadeGpu, CylindricalBillboardFacesTheCameraUnderAScale){
+    JASPER_REQUIRE_GPU();
+    batch.addInstance(Vector3(0.0f, 0.0f, 0.0f));
+    batch.setInstancedBillboard(true, true);
+    const Vector3 scale(2.0f, 1.0f, 0.5f);
+    batch.setScale(scale);
+    camera.setPosition(4.0f, 4.0f, 4.0f);
+    settle();
+    ASSERT_FALSE(instances().renderInstances.empty());
+    // the drawn face's normal: the cross of its scaled x and y axes
+    const Matrix4& m = instances().renderInstances.at(0).instanceMatrix;
+    const Vector3 x(m[0][0] * scale.x, m[0][1] * scale.y, m[0][2] * scale.z);
+    const Vector3 y(m[1][0] * scale.x, m[1][1] * scale.y, m[1][2] * scale.z);
+    expectAxisNear(x.crossProduct(y).normalized(), Vector3(1.0f, 0.0f, 1.0f).normalized(), "the scaled cylindrical billboard does not face the camera's side");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST_F(InstancedFadeGpu, SubMarginMovesDoNotRebuild){
     JASPER_REQUIRE_GPU();
     for (int i = 0; i < 8; i++)
@@ -193,8 +211,8 @@ TEST_F(InstancedFadeGpu, TheFadeCutsAndShrinksUnderSsr){
     EXPECT_EQ(instances().numVisible, 1u) << "SSR turned the distance cut off";
     const Submesh& submesh = scene.getComponent<MeshComponent>(batch.getEntity()).submeshes[0];
     ASSERT_TRUE(submesh.gbufferShader) << "SSR on draws no G-buffer";
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 16, true), "Ifd");
-    EXPECT_NE(submesh.gbufferShaderProperties & (uint64_t(1) << 16), 0u) << "the G-buffer does not shrink faded instances ('Ifd')";
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 18, true), "Ifd");
+    EXPECT_NE(submesh.gbufferShaderProperties & (uint64_t(1) << 18), 0u) << "the G-buffer does not shrink faded instances ('Ifd')";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

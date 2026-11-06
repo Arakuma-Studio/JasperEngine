@@ -434,7 +434,7 @@ namespace {
     // An instanced billboard's rotation for the batch, in the entity's space: the camera's (the
     // view-aligned billboard), or with cylindrical only its turn about the mesh's up axis toward
     // the camera's view; a camera looking straight along that axis keeps lastYaw (radians)
-    Quaternion instanceBillboardRotation(bool cylindrical, const Matrix4& cameraView, const Quaternion& entityWorldRotation, float& lastYaw){
+    Quaternion instanceBillboardRotation(bool cylindrical, const Matrix4& cameraView, const Quaternion& entityWorldRotation, const Vector3& entityWorldScale, float& lastYaw){
         Quaternion cameraRotation;
         cameraRotation.fromRotationMatrix(cameraView.inverse());
         const Quaternion local = entityWorldRotation.inverse() * cameraRotation;
@@ -442,8 +442,12 @@ namespace {
             return local;
         // the camera's back (+Z of its frame: from the scene toward the camera) on the XZ plane
         const Vector3 back = local * Vector3(0.0f, 0.0f, 1.0f);
-        if (back.x * back.x + back.z * back.z > 1e-8f)
-            lastYaw = std::atan2(back.x, back.z);
+        // the entity's scale turns the face's normal by its inverse, so the yaw is taken with it
+        // applied: the scaled face then faces the camera's side
+        const float x = back.x * entityWorldScale.x;
+        const float z = back.z * entityWorldScale.z;
+        if (x * x + z * z > 1e-8f)
+            lastYaw = std::atan2(x, z);
         return Quaternion(Angle::radToDefault(lastYaw), Vector3(0.0f, 1.0f, 0.0f));
     }
 
@@ -815,6 +819,7 @@ std::mutex RenderSystem::zeroVertexBuffersMutex;
 
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
+uint64_t RenderSystem::textureVariantChecks = 0;
 
 namespace {
     // Who uses the static textures below, and their making. Never waits for another thread: a
@@ -3351,6 +3356,10 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
     const bool shadows2d = (submesh.shaderProperties & (1u << 23)) != 0;
     const MaterialLighting lighting = unlit ? MaterialLighting::NONE : resolveLighting(submesh.material.lighting, nullptr);
     return MaterialPbr::getPbrVariant(submesh.material, lighting, false, tier, shadows2d ? 1 : 0);
+}
+
+uint64_t RenderSystem::getTextureVariantChecks(){
+    return textureVariantChecks;
 }
 
 bool RenderSystem::loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass){
@@ -7150,7 +7159,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
             // the instance distance fade, as the colour and depth passes shrink it ('Ifd')
-            mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(16)) ?
+            mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(18)) ?
                 gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
             gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
@@ -9949,12 +9958,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (order == MaterialPassOrder::BEFORE){
                     // checked once for both draws: rebinding a redrawn render target texture takes
                     // its new version, so the pass rebinding first would hide the change from the
-                    // main draw; the main draw is told through its own flag
+                    // main draw; the main draw is told through its own flag, a rebind and not an
+                    // edit (the textures are the same: no variant check every redraw)
                     const bool outdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
                     if (mesh.submeshes[i].needUpdateTexture || outdated)
                         extra->needUpdateTexture = true;
                     if (outdated)
-                        mesh.submeshes[i].needUpdateTexture = true;
+                        mesh.submeshes[i].needRebindTexture = true;
                 }
                 drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
@@ -9969,6 +9979,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             // gaining indices always reloads the mesh, which reloads the textures.
             if (mesh.submeshes[i].vertexCount == 0){
                 mesh.submeshes[i].needUpdateTexture = false;
+                mesh.submeshes[i].needRebindTexture = false;
                 continue;
             }
             if (!inQueue(i))
@@ -9989,7 +10000,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             // checked once for this draw and its After pass, which then rebinds (see above)
-            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
+            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material) || mesh.submeshes[i].needRebindTexture;
             SubmeshExtraPass* extraPass = mesh.submeshes[i].extraPass.get();
             if (extraPass && extraPass->loaded && extraPass->order == MaterialPassOrder::AFTER &&
                     (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)){
@@ -10007,6 +10018,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, mesh.submeshes[i].render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
+                    mesh.submeshes[i].needRebindTexture = false;
                     noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
@@ -13920,8 +13932,9 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
 Vector2 RenderSystem::getCameraNearFar(const CameraComponent& camera){
     if (camera.type != CameraType::CAMERA_PERSPECTIVE)
         return Vector2(camera.nearClip, camera.farClip);
-    // a perspective projection needs 0 < near < far (the reflection probe capture's rule)
-    const float nearClip = std::isfinite(camera.nearClip) ? std::max(camera.nearClip, 0.001f) : 0.001f;
+    // a perspective projection needs 0 < near < far: a near of 0 or less takes the reflection
+    // probe capture's 0.001, a smaller positive one is kept
+    const float nearClip = (std::isfinite(camera.nearClip) && camera.nearClip > 0.0f) ? camera.nearClip : 0.001f;
     const float farClip = std::isfinite(camera.farClip) ? std::max(camera.farClip, nearClip + 0.001f) : nearClip + 0.001f;
     return Vector2(nearClip, farClip);
 }
@@ -14798,7 +14811,7 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        bRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, instmesh.lastBillboardYaw);
+        bRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, instmesh.lastBillboardYaw);
     }
 
     // a version 2 Particle System's instances, aligned for the main camera
@@ -16330,12 +16343,15 @@ void RenderSystem::update(double dt){
 
                 // An image the material names that had no GPU texture when it was bound (it drew a
                 // stand-in) may be made now, and one it drew has new pixels or a new view: an image
-                // ready, or assigned, after the binding (BF15)
+                // ready, or assigned, after the binding (BF15). The same images: bound again
+                // without the variant check below
+                bool rebindOnly = false;
                 if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
                     const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
                     if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
                             (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
                         mesh.submeshes[s].needUpdateTexture = true;
+                        rebindOnly = true;
                     }
                 }
 
@@ -16371,7 +16387,8 @@ void RenderSystem::update(double dt){
                         if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                             mesh.needReload = true;
                         }
-                    }else if (mesh.loaded && !mesh.needReload){
+                    }else if (mesh.loaded && !mesh.needReload && !rebindOnly){
+                        textureVariantChecks++;
                         // the whole variant the material asks for now, in every pass (colour with
                         // its UV sets, maps, lobes and Stochastic Tiling; the depth pass's alpha
                         // clip; the SSR G-buffer's base colour and metallic-roughness), built while
@@ -19107,7 +19124,7 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
     Quaternion billboardRotation;
     if (instmesh.instancedBillboard){
         float yaw = instmesh.lastBillboardYaw;
-        billboardRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, yaw);
+        billboardRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, yaw);
     }
 
     // a version 2 Particle System's instances, aligned for this camera

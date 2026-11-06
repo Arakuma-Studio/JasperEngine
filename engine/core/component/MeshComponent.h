@@ -365,6 +365,9 @@ namespace jasperengine{
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
+        // runtime (RenderSystem): a render target image made again, seen first by a Before pass:
+        // the colour draw binds the same textures again (not an edit: no variant check)
+        bool needRebindTexture = false;
         // runtime (RenderSystem): TexturePool::getReadyEpoch when the material was bound with a
         // stand-in for an image it names (0: every image bound is its own). When it moves on, the
         // material binds again.
