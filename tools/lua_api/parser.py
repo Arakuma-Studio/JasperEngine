@@ -3474,8 +3474,8 @@ class Builder:
         c.subscribe_sig = (handler_params, ret)
 
     def handler_arg_type(self, cpp):
-        # LuaFunctionBase pushes wchar_t as a UTF-8 string
-        if bare_type(cpp)[0] == 'wchar_t':
+        # LuaFunctionBase pushes a character (char32_t) as a UTF-8 string
+        if bare_type(cpp)[0] in ('char32_t', 'wchar_t'):
             return 'string'
         return self.tm.lua(cpp) or 'any'
 

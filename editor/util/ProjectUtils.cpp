@@ -1746,15 +1746,17 @@ editor::Command* editor::ProjectUtils::buildDuplicateTileCmd(Project* project, u
         return nullptr;
     }
 
+    // a Tilemap draws at most MAX_TILEMAP_RENDERED_TILES
     unsigned int newSlot = tilemap->numTiles;
-    if (newSlot >= tilemap->tiles.size()) {
+    if (newSlot >= MAX_TILEMAP_RENDERED_TILES) {
         return nullptr;
     }
 
     ComponentType cpType = ComponentType::TilemapComponent;
     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
-    const TileData& src = tilemap->tiles[tileIndex];
+    // a copy: the commands below grow the tiles (a write one past the end), which moves them
+    const TileData src = tilemap->tiles[tileIndex];
     std::string dstPrefix = "tiles[" + std::to_string(newSlot) + "]";
 
     // Copy tile data with a small position offset

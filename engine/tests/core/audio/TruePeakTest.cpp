@@ -185,6 +185,7 @@ TEST(TruePeak, NonFiniteSamplesReadAsSilence) {
     TruePeak detector(1);
     const float bad[] = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
                          -std::numeric_limits<float>::infinity()};
+    EXPECT_EQ(detector.processSample(0, bad[0]), 0.0f);
     EXPECT_EQ(detector.process(bad, 3), 0.0f);
     float largest = 0.0f;
     for (unsigned int step = 0; step < TruePeak::TAPS; step++) {

@@ -70,7 +70,8 @@ bool ReflectedValueCmd::execute() {
         entry.applied = false;
         entry.changed = false;
         void* comp = desc->find(scene, entity);
-        const reflect::FieldRef target = comp ? reflect::resolve(*desc, comp, path) : reflect::FieldRef();
+        // (a set writes: one past the last element appends it)
+        const reflect::FieldRef target = comp ? reflect::resolve(*desc, comp, path, nullptr, op == Op::Set) : reflect::FieldRef();
         if (!target) continue;
         const bool arrayOp = op != Op::Set;
         if (arrayOp && (target.element || target.field->kind != reflect::Kind::Array || !target.field->arrayOps)) continue;

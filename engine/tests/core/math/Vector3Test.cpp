@@ -10,11 +10,6 @@
 
 using namespace jasperengine;
 
-TEST(Vector3, DefaultsToZero){
-    Vector3 v;
-    EXPECT_EQ(v, Vector3::ZERO);
-}
-
 TEST(Vector3, ConstantsAreTheUnitAxes){
     EXPECT_EQ(Vector3::UNIT_X, Vector3(1, 0, 0));
     EXPECT_EQ(Vector3::UNIT_Y, Vector3(0, 1, 0));

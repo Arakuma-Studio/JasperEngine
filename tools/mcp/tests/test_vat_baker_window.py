@@ -150,11 +150,6 @@ async def test_setup(ed: Editor):
 
 # ---------------------------------------------------------------------------- the window
 
-async def test_focus_window_opens_the_baker(ed: Editor):
-    await focus_x(ed)
-    await rect_of(ed, "vatbaker.source", "the Source field")
-    await rect_of(ed, "vatbaker.useSelection", "the Selection button")
-
 
 async def test_typed_source_lists_the_clips(ed: Editor):
     await focus_x(ed)

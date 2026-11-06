@@ -266,3 +266,51 @@ async def test_physics_runs_on_the_job_workers(ed: Editor):
     ed.check(not any("jolt" in n.lower() for n in during), f"no Jolt-named threads: {during}")
     ed.check_eq(during.count(main), before.count(main), f"Play started threads named like the main thread: {during}")
     ed.check_eq(sum(n.startswith("je-worker-") for n in during), default_workers(), "the same workers")
+
+
+async def pipeline_descs(ed: Editor) -> dict:
+    stats = await ed.call("get_memory_stats", prefix="Render.PipelineDescs")
+    records = [r for r in stats["records"] if r["name"] == "Render.PipelineDescs"]
+    ed.check_eq(len(records), 1, f"the record: {stats['records']}")
+    return records[0]
+
+
+async def test_pipeline_desc_record(ed: Editor):
+    """mesh-memory: render objects share their base pipeline descriptions (Render.PipelineDescs):
+    63 more sprites equal to a first one, drawn, add none."""
+    sid = (await ed.call("create_scene", name="Descs", type="2D"))["scene"]["id"]
+    await ed.call("create_entity", scene=sid, type="sprite", name="Desc0", select=False)
+    await ed.call("wait", frames=10)
+    one = await pipeline_descs(ed)
+    ed.check(one["count"] > 0 and one["current"] > 0, f"descriptions are counted: {one}")
+    for i in range(1, 64):
+        await ed.call("create_entity", scene=sid, type="sprite", name=f"Desc{i}", position=[i * 0.1, 0, 0], select=False)
+    await ed.call("wait", frames=10)
+    many = await pipeline_descs(ed)
+    ed.check(many["count"] <= one["count"] + 2, f"equal sprites share them: {one['count']} for one, {many['count']} for 64")
+
+
+def type_entry(stats, name):
+    for entry in stats["types"]:
+        if entry["name"].lower() == name:
+            return entry
+    return None
+
+
+async def test_mesh_component_memory(ed: Editor):
+    """A sprite's MeshComponent costs what it holds (mesh-memory spec): a few KB, not 200 KB of
+    fixed submesh, bone and buffer arrays."""
+    made = []
+    for i in range(64):
+        made.append((await ed.call("create_entity", type="sprite", name=f"MemorySprite{i}", select=False))["entity_id"])
+    try:
+        stats = await ed.call("get_ecs_stats")
+        mesh = type_entry(stats, "mesh")
+        ed.check(mesh is not None, f"a MeshComponent array: {[t['name'] for t in stats['types']]}")
+        per = mesh["bytes"] / mesh["count"]
+        ed.check(per <= 4096, f"MeshComponent storage per component: {per:.0f} bytes")
+        ed.check(mesh["element_bytes"] <= 2048, f"sizeof(MeshComponent): {mesh['element_bytes']}")
+        ed.check(0 < mesh["heap_bytes"] / mesh["count"] <= 10240, f"arrays per mesh: {mesh['heap_bytes'] / mesh['count']:.0f}")
+        ed.check_eq(stats["bytes"]["heap"], sum(t.get("heap_bytes", 0) for t in stats["types"]), "heap total")
+    finally:
+        await ed.call("delete_entities", entities=made)

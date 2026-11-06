@@ -20,8 +20,8 @@ namespace jasperengine {
     // Capsule shadows (docs/specs/S57-forge-lighting.md R2): the geometry the renderer and the
     // editor share. The occlusion is the closest approach of the ray from a receiver towards the
     // light to each capsule's segment, smoothstepped over a penumbra that widens with the
-    // distance along the ray (includes/capsule_shadows.glsl evaluates it per pixel; occlusion()
-    // here is its CPU twin, for tests). Re-derived from the geometry, after The Forge's UT28.
+    // distance along the ray (includes/capsule_shadows.glsl evaluates it per pixel).
+    // Re-derived from the geometry, after The Forge's UT28.
     class JASPERENGINE_API CapsuleShadows {
     public:
         // the casters drawn at once (the nearest to the camera) and their capsules
@@ -62,9 +62,6 @@ namespace jasperengine {
         // whether a capsule can shadow anything in a receiver's bounds, for a light from towardsLight
         static bool reaches(const World& capsule, const Vector3& towardsLight, float softness, const AABB& receiver);
 
-        // the visibility (1 lit .. 0 occluded) of point towards a light (unit towardsLight) past
-        // one capsule, as includes/capsule_shadows.glsl computes it
-        static float occlusion(const World& capsule, const Vector3& point, const Vector3& towardsLight, float softness);
     };
 
 }

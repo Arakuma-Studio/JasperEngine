@@ -162,8 +162,9 @@ TEST(CompatLoader, DependenciesAreComplete){
     // a remote URL: its import would change the output
     EXPECT_TRUE(contains(dependencies, ImportManifest::kPath));
     // @import chains are the CSS rewriter's (p2-css); the seam does not follow them
-    if (CssRewriter::rewriteSelector("body", nullptr) != "body")
+    if (CssRewriter::rewriteSelector("body", nullptr) != "body"){
         EXPECT_TRUE(contains(dependencies, files.path("base.css")));
+    }
     ASSERT_EQ(compiled->scripts.size(), 1u);
     EXPECT_EQ(compiled->scripts[0].srcPath, files.path("menu.lua"));
     EXPECT_EQ(compiled->scripts[0].code, "local x = 1\n");
@@ -452,8 +453,9 @@ TEST_F(CompatLoaderSceneTest, DiagnosticsAndThemes){
     EXPECT_FALSE(context->IsThemeActive("light"));
     updateDocuments(scene);
     // the media query becomes (theme: dark) with the CSS rewriter (p2-css)
-    if (documentSystem(scene).getCompiledDocument(document.getEntity())->stylesheets[0].rcss.find("theme: dark") != std::string::npos)
+    if (documentSystem(scene).getCompiledDocument(document.getEntity())->stylesheets[0].rcss.find("theme: dark") != std::string::npos){
         EXPECT_FLOAT_EQ(document.getElementById("box").getBoundingClientRect().width, 20.0f);
+    }
 
     // a missing document: why, through the same API
     UIDocument missing = fixture.addDocument(files.path("none.html"));

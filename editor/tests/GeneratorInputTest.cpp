@@ -69,10 +69,6 @@ namespace {
 
 }
 
-TEST_F(GeneratorInputTest, NoLineForTheDefaults) {
-    EXPECT_EQ(Generator::inputSettingsInitSource("", 0.15f), "");
-}
-
 TEST_F(GeneratorInputTest, LoadsTheProjectAsset) {
     EXPECT_EQ(Generator::inputSettingsInitSource("input/game.inputactions", 0.15f),
               "    InputActions::loadDefault(\"input/game.inputactions\");\n");

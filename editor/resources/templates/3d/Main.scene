@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 4dd511a95b3ee7ce57572cca66647b43
-id: 1755752265
+guid: 2b99a72e2e4e04577919276fa9922450
+id: 881594344
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -34,18 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 1112
@@ -205,13 +193,13 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 6b5b73c5ae5af2d5f6728cde5eafc7be
+              nameGuid: 71fab0881240ee01d00e0379167cbe0f
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
             faceCulling: true
             textureShadow: false
-            overrideFields: 8589905919
+            overrideFields: 17179840511
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
