@@ -61,3 +61,12 @@ TEST(FlatPng, RealContentIsNotFlat) {
     for (int i = 0; i < 64; i++) gradient.insert(gradient.end(), {static_cast<uint8_t>(i), 0, 0});
     EXPECT_FALSE(isFlatPng(flatPngOf(gradient, 64, 1), colour));
 }
+
+TEST(FlatPng, TheToleranceIsTwoLevels) {
+    std::vector<uint8_t> rgb = flatPngPixels(16, 16, 10, 20, 30);
+    rgb[3] += 2;
+    std::string colour;
+    EXPECT_TRUE(isFlatPng(flatPngOf(rgb, 16, 16), colour));
+    rgb[3] += 1;
+    EXPECT_FALSE(isFlatPng(flatPngOf(rgb, 16, 16), colour));
+}

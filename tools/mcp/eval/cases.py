@@ -899,4 +899,38 @@ CASES = [
         "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
         "max_turns": 6,
     },
+    {
+        "id": "guard_patch_did_you_mean",
+        "kind": "guard",
+        "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "
+                         "the field meant, and the agent should send that name instead of inspecting the effect's format.",
+        "text_at_issue": "edit_particle_effect's refusal: 'did you mean'",
+        "source": "audit (BF23 F10); no failure on record",
+        "prompt": "In assets/fx/fire.particles set the emission rate over time to 20. Use field rateOverTim.",
+        "mocks": [
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTim": "*"}}}}, "result": err(
+                "The patch was refused (emission.rateOverTim: unknown field of Emission (did you mean 'rateOverTime'?)); nothing changed.")},
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}}],
+                   "max_calls": {"edit_particle_effect": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_graph_new_ids",
+        "kind": "guard",
+        "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "
+                         "the result's added names the new node, and the next call should use it.",
+        "text_at_issue": "edit_graph's result: added [{op_index, id}]",
+        "source": "audit (BF23 F6); no failure on record",
+        "prompt": "In graphs/Blend.testgraph add a speed node, then connect its value output to input a of node n2.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"ops": [{"op": "addNode"}]}, "result": ok(
+                "Add Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "n4"}], "issues": []})},
+            {"tool": "edit_graph", "result": ok("Connect Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "e5"}], "issues": []})},
+        ],
+        "checks": {"calls": ["edit_graph"], "max_calls": {"edit_graph": 3}, "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
 ]
