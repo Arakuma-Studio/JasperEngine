@@ -1136,6 +1136,12 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, priority, 0xd8e5ece2u, Int),
     JE_RF(AudioSourceComponent, maxVoices, 0x4ff0bbabu, Int),
     JE_RF(AudioSourceComponent, ignoreListenerPause, 0x6bb3160au, Bool),
+    JE_RF(AudioSourceComponent, event, 0xa0dbf9aau, AssetPath),
+    JE_RF(AudioSourceComponent, playOn, 0x917e5359u, UInt),
+    JE_RF(AudioSourceComponent, minImpactSpeed, 0x2b7c314bu, Float),
+    JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
+    JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
+    JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
@@ -1584,8 +1590,6 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
-    JE_RF(SpriteComponent, pixelsPerUnit, 0xd42e8cc4u, Float),
-    JE_RF(SpriteComponent, pixelRotation, 0x236ae730u, Enum),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -1637,7 +1641,6 @@ const FieldEntry kBody_TilemapComponent_fields[] = {
     JE_RF(TilemapComponent, automaticFlipY, 0x66dfd1a6u, Bool),
     JE_RF(TilemapComponent, flipY, 0x357fc631u, Bool),
     JE_RF(TilemapComponent, textureScaleFactor, 0x1543f1a5u, Float),
-    JE_RF(TilemapComponent, pixelsPerUnit, 0xde152a5du, Float),
     JE_RF(TilemapComponent, reserveTiles, 0x82fb6b88u, UInt),
     JE_RF(TilemapComponent, numTilesRect, 0x677b6dc6u, UInt),
     JE_RF(TilemapComponent, tilesRect, 0x83fb4258u, Array),
@@ -2359,18 +2362,14 @@ const FieldEntry kBody_CapsuleShadowCasterComponent_fields[] = {
 };
 const StructTable kBody_CapsuleShadowCasterComponent{"capsuleshadowcaster", kBody_CapsuleShadowCasterComponent_fields, std::size(kBody_CapsuleShadowCasterComponent_fields)};
 
-const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
-    JE_RF(PixelPerfectCameraComponent, enabled, 0x5f55db78u, Bool),
-    JE_RF(PixelPerfectCameraComponent, referenceWidth, 0xec604284u, UInt),
-    JE_RF(PixelPerfectCameraComponent, referenceHeight, 0x8cfdacb3u, UInt),
-    JE_RF(PixelPerfectCameraComponent, upscaleMode, 0x450a5fd7u, Enum),
-    JE_RF(PixelPerfectCameraComponent, upscaleRenderTexture, 0xb491256fu, Bool),
-    JE_RF(PixelPerfectCameraComponent, pixelSnapping, 0x97e12055u, Bool),
-    JE_RF(PixelPerfectCameraComponent, rotationMode, 0xf779ad8au, Enum),
-    JE_RF(PixelPerfectCameraComponent, subpixelSmoothing, 0xdd22b981u, Bool),
-    JE_RF(PixelPerfectCameraComponent, letterboxColor, 0x7cab54bfu, Vector4),
+const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
+    JE_RF(AudioSnapshotComponent, snapshot, 0x57c2b1cdu, String),
+    JE_RF(AudioSnapshotComponent, seconds, 0x4830312au, Float),
+    JE_RF(AudioSnapshotComponent, unscaled, 0x7ff40b5cu, Bool),
+    JE_RF(AudioSnapshotComponent, revert, 0xedc2bdc3u, Bool),
+    JE_RF(AudioSnapshotComponent, revertSeconds, 0x29739228u, Float),
 };
-const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
+const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
@@ -2478,7 +2477,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(VideoPlayerComponent, "videoplayer", 0x8938ef21u),
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
-    JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
     JE_RF_COMPONENTS_END
 };
 

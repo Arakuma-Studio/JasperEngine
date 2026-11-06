@@ -4437,6 +4437,32 @@
 		4A534E4714F124B7093B7DFD /* ModelCpuData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47297026DDD66F700A /* ModelCpuData.cpp */; };
 		4A534E47F347D8CAEA5F4E40 /* ModelCpuData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47297026DDD66F700A /* ModelCpuData.cpp */; };
 		4A534E4727D811DBFC972943 /* ModelCpuData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */; };
+		4A534E47C51C368A5C99A423 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */; };
+		4A534E47C7CF6DAC1F5BA41D /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */; };
+		4A534E478FAA9EE506FB4F58 /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6EB0BA248C991A /* AudioClock.cpp */; };
+		4A534E47FA249C28C2C699FA /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6EB0BA248C991A /* AudioClock.cpp */; };
+		4A534E47416CECF929590CD2 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */; };
+		4A534E471A1F976B2770BB4D /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */; };
+		4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B486A99BC6CE00DA /* AudioTap.cpp */; };
+		4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B486A99BC6CE00DA /* AudioTap.cpp */; };
+		4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C6982B721B359B07 /* ClipAudio.cpp */; };
+		4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C6982B721B359B07 /* ClipAudio.cpp */; };
+		4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */; };
+		4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */; };
+		4A534E4752B4468DE06775EE /* ClipAudio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */; };
+		4A534E475ED7F8380EA7B62F /* AudioCapture.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4766910C7974E5EC6E /* AudioCapture.h */; };
+		4A534E472614E8DC45B9E9EB /* AudioClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479C42ED67E272320E /* AudioClock.h */; };
+		4A534E47375E7096D68E1B83 /* AudioImport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478F87929ECAF99530 /* AudioImport.h */; };
+		4A534E47C7F6195C377CC47F /* AudioMarkers.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CAAD46B70D970B81 /* AudioMarkers.h */; };
+		4A534E473E4A21B9332ED4EB /* AudioTap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472CE48F231AFCFA58 /* AudioTap.h */; };
+		4A534E47BEB5742F55E91E08 /* ClipSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6912F8BA64614A /* ClipSource.h */; };
+		4A534E47768AC542AC6CDFAD /* SoundEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475196A86E3CE85658 /* SoundEvent.h */; };
+		4A534E47BAAAE79CEDF7C7B1 /* SoundEventIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478989D5CF2F0ED94E /* SoundEventIO.h */; };
+		4A534E47E707C6CB4E1BB995 /* SoundEventLibrary.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */; };
+		4A534E47B2EE32AF175D8A71 /* TimelineAudio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47636F8B5454FF632F /* TimelineAudio.h */; };
+		4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */; };
+		4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C31E68F4C6398B1 /* Audio.h */; };
+		4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4779D650DFEE40600C /* SoundHandle.h */; };
 		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
@@ -4449,6 +4475,8 @@
 		4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
 		4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
 		4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479455F5D4C55C2B3C /* MusicPlayer.h */; };
+		4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47858C3240395205D8 /* MusicSequenceSource.h */; };
 		4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */; };
 		4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479A02188939300830 /* PixelPerfectCamera.h */; };
 		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
@@ -8699,12 +8727,34 @@
 		4A534E4760EC6F30B7FC19D5 /* LinkedFolders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LinkedFolders.h; sourceTree = "<group>"; };
 		4A534E47297026DDD66F700A /* ModelCpuData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelCpuData.cpp; sourceTree = "<group>"; };
 		4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelCpuData.h; sourceTree = "<group>"; };
+		4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioCapture.cpp; sourceTree = "<group>"; };
+		4A534E470F6EB0BA248C991A /* AudioClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClock.cpp; sourceTree = "<group>"; };
+		4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMarkers.cpp; sourceTree = "<group>"; };
+		4A534E47B486A99BC6CE00DA /* AudioTap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioTap.cpp; sourceTree = "<group>"; };
+		4A534E47C6982B721B359B07 /* ClipAudio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClipAudio.cpp; sourceTree = "<group>"; };
+		4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipAudio.h; sourceTree = "<group>"; };
+		4A534E4766910C7974E5EC6E /* AudioCapture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioCapture.h; sourceTree = "<group>"; };
+		4A534E479C42ED67E272320E /* AudioClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioClock.h; sourceTree = "<group>"; };
+		4A534E478F87929ECAF99530 /* AudioImport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioImport.h; sourceTree = "<group>"; };
+		4A534E47CAAD46B70D970B81 /* AudioMarkers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMarkers.h; sourceTree = "<group>"; };
+		4A534E472CE48F231AFCFA58 /* AudioTap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioTap.h; sourceTree = "<group>"; };
+		4A534E476C6912F8BA64614A /* ClipSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipSource.h; sourceTree = "<group>"; };
+		4A534E475196A86E3CE85658 /* SoundEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEvent.h; sourceTree = "<group>"; };
+		4A534E478989D5CF2F0ED94E /* SoundEventIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventIO.h; sourceTree = "<group>"; };
+		4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventLibrary.h; sourceTree = "<group>"; };
+		4A534E47636F8B5454FF632F /* TimelineAudio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TimelineAudio.h; sourceTree = "<group>"; };
+		4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSnapshotComponent.h; sourceTree = "<group>"; };
+		4A534E470C31E68F4C6398B1 /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
+		4A534E4779D650DFEE40600C /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
 		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
 		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
 		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
 		4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelSnap.cpp; sourceTree = "<group>"; };
 		4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectCamera.cpp; sourceTree = "<group>"; };
 		4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemPixelArt.cpp; sourceTree = "<group>"; };
+		4A534E479455F5D4C55C2B3C /* MusicPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicPlayer.h; sourceTree = "<group>"; };
+		4A534E47858C3240395205D8 /* MusicSequenceSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicSequenceSource.h; sourceTree = "<group>"; };
 		4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCameraComponent.h; sourceTree = "<group>"; };
 		4A534E479A02188939300830 /* PixelPerfectCamera.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCamera.h; sourceTree = "<group>"; };
 		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
@@ -9270,6 +9320,7 @@
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
+				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10176,6 +10227,8 @@
 				4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */,
 				4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */,
 				4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */,
+				4A534E47C6982B721B359B07 /* ClipAudio.cpp */,
+				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -10198,6 +10251,22 @@
 				4A534E47B2A2155B16BB00CE /* TruePeak.cpp */,
 				4A534E4799D5B065A0FD015C /* AudioMeter.h */,
 				4A534E47EA336A0838677E68 /* TruePeak.h */,
+				4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */,
+				4A534E470F6EB0BA248C991A /* AudioClock.cpp */,
+				4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */,
+				4A534E47B486A99BC6CE00DA /* AudioTap.cpp */,
+				4A534E4766910C7974E5EC6E /* AudioCapture.h */,
+				4A534E479C42ED67E272320E /* AudioClock.h */,
+				4A534E478F87929ECAF99530 /* AudioImport.h */,
+				4A534E47CAAD46B70D970B81 /* AudioMarkers.h */,
+				4A534E472CE48F231AFCFA58 /* AudioTap.h */,
+				4A534E476C6912F8BA64614A /* ClipSource.h */,
+				4A534E475196A86E3CE85658 /* SoundEvent.h */,
+				4A534E478989D5CF2F0ED94E /* SoundEventIO.h */,
+				4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */,
+				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
+				4A534E479455F5D4C55C2B3C /* MusicPlayer.h */,
+				4A534E47858C3240395205D8 /* MusicSequenceSource.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -10893,6 +10962,7 @@
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
+				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 			);
 			path = component;
@@ -11620,6 +11690,8 @@
 			children = (
 				717AD966290B6602007D7DB5 /* AudioSource.cpp */,
 				717AD967290B6602007D7DB5 /* AudioSource.h */,
+				4A534E470C31E68F4C6398B1 /* Audio.h */,
+				4A534E4779D650DFEE40600C /* SoundHandle.h */,
 			);
 			path = sound;
 			sourceTree = "<group>";
@@ -15480,6 +15552,22 @@
 				4A534E4798C6BB69B8F4CB9F /* CookedModels.h in Headers */,
 				4A534E473B73F5CF696B8061 /* LinkedFolders.h in Headers */,
 				4A534E4727D811DBFC972943 /* ModelCpuData.h in Headers */,
+				4A534E4752B4468DE06775EE /* ClipAudio.h in Headers */,
+				4A534E475ED7F8380EA7B62F /* AudioCapture.h in Headers */,
+				4A534E472614E8DC45B9E9EB /* AudioClock.h in Headers */,
+				4A534E47375E7096D68E1B83 /* AudioImport.h in Headers */,
+				4A534E47C7F6195C377CC47F /* AudioMarkers.h in Headers */,
+				4A534E473E4A21B9332ED4EB /* AudioTap.h in Headers */,
+				4A534E47BEB5742F55E91E08 /* ClipSource.h in Headers */,
+				4A534E47768AC542AC6CDFAD /* SoundEvent.h in Headers */,
+				4A534E47BAAAE79CEDF7C7B1 /* SoundEventIO.h in Headers */,
+				4A534E47E707C6CB4E1BB995 /* SoundEventLibrary.h in Headers */,
+				4A534E47B2EE32AF175D8A71 /* TimelineAudio.h in Headers */,
+				4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */,
+				4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */,
+				4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */,
+				4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */,
+				4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */,
 				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
 				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
@@ -18002,6 +18090,12 @@
 				4A534E474522911DC0F0BCB9 /* CookedModels.cpp in Sources */,
 				4A534E474B0005987EBB5BD7 /* LinkedFolders.cpp in Sources */,
 				4A534E4714F124B7093B7DFD /* ModelCpuData.cpp in Sources */,
+				4A534E47C51C368A5C99A423 /* AudioCapture.cpp in Sources */,
+				4A534E478FAA9EE506FB4F58 /* AudioClock.cpp in Sources */,
+				4A534E47416CECF929590CD2 /* AudioMarkers.cpp in Sources */,
+				4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */,
+				4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */,
+				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
 				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
 				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
@@ -18819,6 +18913,12 @@
 				4A534E47DD85AEB50F1EF42F /* CookedModels.cpp in Sources */,
 				4A534E47C0EB4F74C00457B3 /* LinkedFolders.cpp in Sources */,
 				4A534E47F347D8CAEA5F4E40 /* ModelCpuData.cpp in Sources */,
+				4A534E47C7CF6DAC1F5BA41D /* AudioCapture.cpp in Sources */,
+				4A534E47FA249C28C2C699FA /* AudioClock.cpp in Sources */,
+				4A534E471A1F976B2770BB4D /* AudioMarkers.cpp in Sources */,
+				4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */,
+				4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */,
+				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
 				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
 				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,

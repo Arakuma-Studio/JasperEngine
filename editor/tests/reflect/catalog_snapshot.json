@@ -24473,7 +24473,9 @@
     "dopplerFactor",
     "enableClocked",
     "enabled",
+    "event",
     "filename",
+    "fullVolumeImpactSpeed",
     "ignoreListenerPause",
     "inaudibleBehaviorKill",
     "inaudibleBehaviorMustTick",
@@ -24483,14 +24485,18 @@
     "maxDistance",
     "maxVoices",
     "minDistance",
+    "minImpactSpeed",
     "outputGroup",
     "outputGroupName",
     "pan",
+    "pitchRandomSemitones",
+    "playOn",
     "priority",
     "protectVoice",
     "speed",
     "state",
-    "volume"
+    "volume",
+    "volumeRandomDb"
    ],
    "name": "AudioSourceComponent",
    "properties_of_default": {
@@ -24519,8 +24525,18 @@
      0,
      true
     ],
+    "event": [
+     18,
+     134217728,
+     true
+    ],
     "filename": [
      18,
+     134217728,
+     true
+    ],
+    "fullVolumeImpactSpeed": [
+     2,
      134217728,
      true
     ],
@@ -24574,6 +24590,11 @@
      134217728,
      true
     ],
+    "minImpactSpeed": [
+     2,
+     134217728,
+     true
+    ],
     "outputGroup": [
      1,
      134217728,
@@ -24581,6 +24602,16 @@
     ],
     "pan": [
      2,
+     134217728,
+     true
+    ],
+    "pitchRandomSemitones": [
+     2,
+     134217728,
+     true
+    ],
+    "playOn": [
+     9,
      134217728,
      true
     ],
@@ -24611,6 +24642,11 @@
     ],
     "volume": [
      3,
+     134217728,
+     true
+    ],
+    "volumeRandomDb": [
+     2,
      134217728,
      true
     ]
@@ -24641,8 +24677,18 @@
      0,
      true
     ],
+    "event": [
+     18,
+     134217728,
+     true
+    ],
     "filename": [
      18,
+     134217728,
+     true
+    ],
+    "fullVolumeImpactSpeed": [
+     2,
      134217728,
      true
     ],
@@ -24696,6 +24742,11 @@
      134217728,
      true
     ],
+    "minImpactSpeed": [
+     2,
+     134217728,
+     true
+    ],
     "outputGroup": [
      1,
      134217728,
@@ -24703,6 +24754,16 @@
     ],
     "pan": [
      2,
+     134217728,
+     true
+    ],
+    "pitchRandomSemitones": [
+     2,
+     134217728,
+     true
+    ],
+    "playOn": [
+     9,
      134217728,
      true
     ],
@@ -24733,6 +24794,11 @@
     ],
     "volume": [
      3,
+     134217728,
+     true
+    ],
+    "volumeRandomDb": [
+     2,
      134217728,
      true
     ]
@@ -29578,23 +29644,6 @@
       "bottom_right",
       "Bottom Right"
      ]
-    ],
-    "pixelRotation": [
-     [
-      0,
-      "camera",
-      "Camera"
-     ],
-     [
-      1,
-      "steps_90",
-      "90 Degree Steps"
-     ],
-     [
-      2,
-      "on_grid",
-      "Rotate On Grid"
-     ]
     ]
    },
    "has_enabled": true,
@@ -29607,8 +29656,6 @@
     "framesRect",
     "height",
     "pivotPreset",
-    "pixelRotation",
-    "pixelsPerUnit",
     "textureScaleFactor",
     "width"
    ],
@@ -29641,16 +29688,6 @@
     ],
     "pivotPreset": [
      13,
-     1024,
-     true
-    ],
-    "pixelRotation": [
-     13,
-     0,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      1024,
      true
     ],
@@ -29693,16 +29730,6 @@
     ],
     "pivotPreset": [
      13,
-     1024,
-     true
-    ],
-    "pixelRotation": [
-     13,
-     0,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      1024,
      true
     ],
@@ -30101,7 +30128,6 @@
     "enabled",
     "flipY",
     "height",
-    "pixelsPerUnit",
     "reserveTiles",
     "textureScaleFactor",
     "tiles",
@@ -30137,11 +30163,6 @@
     ],
     "numTilesRect": [
      9,
-     4194304,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      4194304,
      true
     ],
@@ -30189,11 +30210,6 @@
     ],
     "numTilesRect": [
      9,
-     4194304,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      4194304,
      true
     ],
@@ -40710,235 +40726,71 @@
    "type_of_name": 90
   },
   {
-   "display_name": "Pixel Perfect Camera",
-   "enum_options": {
-    "rotationMode": [
-     [
-      1,
-      "steps_90",
-      "90 Degree Steps"
-     ],
-     [
-      2,
-      "on_grid",
-      "Rotate On Grid"
-     ]
-    ],
-    "upscaleMode": [
-     [
-      0,
-      "integer",
-      "Integer (Letterbox)"
-     ],
-     [
-      1,
-      "integer_expand",
-      "Integer (Expand)"
-     ],
-     [
-      2,
-      "stretch_fill",
-      "Stretch Fill"
-     ]
-    ]
-   },
-   "has_enabled": true,
-   "icon": "ef808a",
-   "key": "pixelperfectcamera",
+   "display_name": "Mixer Snapshot Action",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ef879e",
+   "key": "audiosnapshot",
    "known_keys": [
-    "enabled",
-    "letterboxColor",
-    "pixelSnapping",
-    "referenceHeight",
-    "referenceWidth",
-    "rotationMode",
-    "subpixelSmoothing",
-    "upscaleMode",
-    "upscaleRenderTexture"
+    "revert",
+    "revertSeconds",
+    "seconds",
+    "snapshot",
+    "unscaled"
    ],
-   "name": "PixelPerfectCameraComponent",
+   "name": "AudioSnapshotComponent",
    "properties_of_default": {
-    "baseHeight": [
-     8,
-     0,
-     false
-    ],
-    "baseWidth": [
-     8,
-     0,
-     false
-    ],
-    "cropped": [
-     0,
-     0,
-     false
-    ],
-    "enabled": [
+    "revert": [
      0,
      0,
      true
     ],
-    "letterboxColor": [
-     6,
+    "revertSeconds": [
+     2,
      0,
      true
     ],
-    "pixelRatio": [
-     8,
-     0,
-     false
-    ],
-    "pixelSnapping": [
-     0,
+    "seconds": [
+     2,
      0,
      true
     ],
-    "referenceHeight": [
-     9,
+    "snapshot": [
+     1,
      0,
      true
     ],
-    "referenceWidth": [
-     9,
-     0,
-     true
-    ],
-    "rotationMode": [
-     13,
-     0,
-     true
-    ],
-    "snappedPosition": [
-     5,
-     0,
-     false
-    ],
-    "subpixelOffset": [
-     4,
-     0,
-     false
-    ],
-    "subpixelSmoothing": [
+    "unscaled": [
      0,
      0,
      true
-    ],
-    "targetHeight": [
-     8,
-     0,
-     false
-    ],
-    "targetWidth": [
-     8,
-     0,
-     false
-    ],
-    "upscaleMode": [
-     13,
-     0,
-     true
-    ],
-    "upscaleRenderTexture": [
-     0,
-     0,
-     true
-    ],
-    "viewport": [
-     6,
-     0,
-     false
     ]
    },
    "properties_without_component": {
-    "baseHeight": [
-     8,
-     0,
-     false
-    ],
-    "baseWidth": [
-     8,
-     0,
-     false
-    ],
-    "cropped": [
-     0,
-     0,
-     false
-    ],
-    "enabled": [
+    "revert": [
      0,
      0,
      true
     ],
-    "letterboxColor": [
-     6,
+    "revertSeconds": [
+     2,
      0,
      true
     ],
-    "pixelRatio": [
-     8,
-     0,
-     false
-    ],
-    "pixelSnapping": [
-     0,
+    "seconds": [
+     2,
      0,
      true
     ],
-    "referenceHeight": [
-     9,
+    "snapshot": [
+     1,
      0,
      true
     ],
-    "referenceWidth": [
-     9,
-     0,
-     true
-    ],
-    "rotationMode": [
-     13,
-     0,
-     true
-    ],
-    "snappedPosition": [
-     5,
-     0,
-     false
-    ],
-    "subpixelOffset": [
-     4,
-     0,
-     false
-    ],
-    "subpixelSmoothing": [
+    "unscaled": [
      0,
      0,
      true
-    ],
-    "targetHeight": [
-     8,
-     0,
-     false
-    ],
-    "targetWidth": [
-     8,
-     0,
-     false
-    ],
-    "upscaleMode": [
-     13,
-     0,
-     true
-    ],
-    "upscaleRenderTexture": [
-     0,
-     0,
-     true
-    ],
-    "viewport": [
-     6,
-     0,
-     false
     ]
    },
    "structural_update_flags": 0,
@@ -41475,6 +41327,33 @@
     true
    ]
   },
+  "AudioSnapshotComponent": {
+   "revert": [
+    0,
+    0,
+    true
+   ],
+   "revertSeconds": [
+    2,
+    0,
+    true
+   ],
+   "seconds": [
+    2,
+    0,
+    true
+   ],
+   "snapshot": [
+    1,
+    0,
+    true
+   ],
+   "unscaled": [
+    0,
+    0,
+    true
+   ]
+  },
   "AudioSourceComponent": {
    "attenuationModel": [
     13,
@@ -41501,8 +41380,18 @@
     0,
     true
    ],
+   "event": [
+    18,
+    134217728,
+    true
+   ],
    "filename": [
     18,
+    134217728,
+    true
+   ],
+   "fullVolumeImpactSpeed": [
+    2,
     134217728,
     true
    ],
@@ -41556,6 +41445,11 @@
     134217728,
     true
    ],
+   "minImpactSpeed": [
+    2,
+    134217728,
+    true
+   ],
    "outputGroup": [
     1,
     134217728,
@@ -41563,6 +41457,16 @@
    ],
    "pan": [
     2,
+    134217728,
+    true
+   ],
+   "pitchRandomSemitones": [
+    2,
+    134217728,
+    true
+   ],
+   "playOn": [
+    9,
     134217728,
     true
    ],
@@ -41593,6 +41497,11 @@
    ],
    "volume": [
     3,
+    134217728,
+    true
+   ],
+   "volumeRandomDb": [
+    2,
     134217728,
     true
    ]
@@ -45740,98 +45649,6 @@
     true
    ]
   },
-  "PixelPerfectCameraComponent": {
-   "baseHeight": [
-    8,
-    0,
-    false
-   ],
-   "baseWidth": [
-    8,
-    0,
-    false
-   ],
-   "cropped": [
-    0,
-    0,
-    false
-   ],
-   "enabled": [
-    0,
-    0,
-    true
-   ],
-   "letterboxColor": [
-    6,
-    0,
-    true
-   ],
-   "pixelRatio": [
-    8,
-    0,
-    false
-   ],
-   "pixelSnapping": [
-    0,
-    0,
-    true
-   ],
-   "referenceHeight": [
-    9,
-    0,
-    true
-   ],
-   "referenceWidth": [
-    9,
-    0,
-    true
-   ],
-   "rotationMode": [
-    13,
-    0,
-    true
-   ],
-   "snappedPosition": [
-    5,
-    0,
-    false
-   ],
-   "subpixelOffset": [
-    4,
-    0,
-    false
-   ],
-   "subpixelSmoothing": [
-    0,
-    0,
-    true
-   ],
-   "targetHeight": [
-    8,
-    0,
-    false
-   ],
-   "targetWidth": [
-    8,
-    0,
-    false
-   ],
-   "upscaleMode": [
-    13,
-    0,
-    true
-   ],
-   "upscaleRenderTexture": [
-    0,
-    0,
-    true
-   ],
-   "viewport": [
-    6,
-    0,
-    false
-   ]
-  },
   "PointsComponent": {
    "autoTransparency": [
     0,
@@ -47393,16 +47210,6 @@
     1024,
     true
    ],
-   "pixelRotation": [
-    13,
-    0,
-    true
-   ],
-   "pixelsPerUnit": [
-    2,
-    1024,
-    true
-   ],
    "textureScaleFactor": [
     2,
     1024,
@@ -47823,11 +47630,6 @@
    ],
    "numTilesRect": [
     9,
-    4194304,
-    true
-   ],
-   "pixelsPerUnit": [
-    2,
     4194304,
     true
    ],

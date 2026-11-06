@@ -224,6 +224,8 @@ namespace jasperengine::editor{
         SafeAreaComponent,
         // soft capsule shadows of a character from its bones (S57 R2)
         CapsuleShadowCasterComponent,
+        // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+        AudioSnapshotComponent,
         // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
         PixelPerfectCameraComponent
     };

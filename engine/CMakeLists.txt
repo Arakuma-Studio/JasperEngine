@@ -40,6 +40,10 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# The sound layer (S34 module soundlayer, specs S36 and S37): Sound Events, triggers, free voices and
+# what a clip's import settings do at run time. A Compile build leaves it out when its project does
+# not use it.
+option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and clip import settings" ON)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
 # libwebm). A player variant or a Compile build leaves out what its project cannot reach
@@ -1179,6 +1183,15 @@ else()
     set(JASPERENGINE_PROFILER_DEFAULT OFF)
 endif()
 option(JASPERENGINE_PROFILER "Compile the CPU/GPU profiler, the frame pass recorder and the VRAM tracker" ${JASPERENGINE_PROFILER_DEFAULT})
+# Audio captures (core/audio/AudioCapture, AudioMarkers, spec S35): the editor, the unit tests and
+# desktop development players; a release player and the mobile and web ones (no path a harness
+# reads) leave them out, and their sites compile to nothing
+if(JASPERENGINE_PROFILER_DEFAULT AND NOT (EMSCRIPTEN OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+    set(JASPERENGINE_AUDIO_CAPTURE_DEFAULT ON)
+else()
+    set(JASPERENGINE_AUDIO_CAPTURE_DEFAULT OFF)
+endif()
+option(JASPERENGINE_AUDIO_CAPTURE "Compile audio captures and their gameplay markers" ${JASPERENGINE_AUDIO_CAPTURE_DEFAULT})
 # Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
 option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
 if(JASPERENGINE_TRACY)
@@ -1338,11 +1351,15 @@ set(JASPERENGINE_SRCS
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
     core/input/InputVirtualControls.cpp
+    core/audio/AudioCapture.cpp
+    core/audio/AudioClock.cpp
     core/audio/AudioEffects.cpp
     core/audio/AudioFileCheck.cpp
+    core/audio/AudioMarkers.cpp
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
+    core/audio/AudioTap.cpp
     core/audio/SoloudEngineFile.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
@@ -1412,6 +1429,7 @@ set(JASPERENGINE_SRCS
     core/camera/ShakePresets.cpp
     core/camera/ShakerRuntime.cpp
     core/animation/AnimationEvent.cpp
+    core/animation/ClipAudio.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/AnimatorAssetIO.cpp
     core/animation/AnimatorIK.cpp
@@ -1720,6 +1738,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/AudioClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
@@ -1940,6 +1959,12 @@ list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTI
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
+
+# The sound layer (S34 module soundlayer): its own list, which S36, S37, S39 and S40 add to
+include(core/audio/SoundLayerSources.cmake)
+if(JASPERENGINE_SOUND_LAYER)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SOUND_LAYER_SRCS})
+endif()
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
@@ -2120,9 +2145,11 @@ target_compile_definitions(jasperengine
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
         JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
     PRIVATE
@@ -2168,7 +2195,7 @@ endif()
 # The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
 # new version recompiles nothing else
 if(JASPERENGINE_EDITOR_VERSION)
-    set_property(SOURCE core/net/Http.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp APPEND PROPERTY COMPILE_DEFINITIONS
         "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
 endif()
 

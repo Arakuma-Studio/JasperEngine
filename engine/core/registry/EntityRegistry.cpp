@@ -5,6 +5,7 @@
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -208,6 +209,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<VideoPlayerComponent>(ComponentOrder::Insertion, "VideoPlayerComponent");
     registerComponent<SafeAreaComponent>(ComponentOrder::Hierarchy, "SafeAreaComponent");
     registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
+    // S40 R18: after the last one, so no ComponentType moves
+    registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
     // complete: markChangedComponent may look into it

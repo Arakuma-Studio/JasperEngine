@@ -914,6 +914,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameObjectClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
+    registerAudioClasses(L);
     registerIOClasses(L);
     registerMathClasses(L);
     // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)

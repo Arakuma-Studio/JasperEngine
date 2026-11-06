@@ -151,6 +151,13 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createAvatarMask", "Create Avatar Mask", AppMenuCommand::AssetsCreateAvatarMask);
     b.menu("assets.createAnimationMontage", "Create Animation Montage", AppMenuCommand::AssetsCreateAnimationMontage);
     b.menu("assets.createAudioMixer", "Create Audio Mixer", AppMenuCommand::AssetsCreateAudioMixer);
+    b.menu("assets.createSoundEvent", "Create Sound Event", AppMenuCommand::AssetsCreateSoundEvent);
+    b.menu("assets.createSoundEventFromClips", "Create Sound Event from Clips", AppMenuCommand::AssetsCreateSoundEventFromClips);
+    b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
+    b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
+        "Drop the cached measurements of the selected audio files: they are measured again";
+    b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
+        "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
@@ -223,6 +230,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
@@ -361,6 +370,19 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("animation.frameSelected", "Frame Selected Keys", C::Animation, "F");
     b.add("animation.frameAll", "Frame All Keys", C::Animation, "A");
     b.add("animation.record", "Record", C::Animation, "R").description = "Record mode on or off";
+    // timeline audio (S40 R10, R22): the selected cue or audio action, in either mode
+    b.add("animation.alignCueStart", "Align Start to Playhead", C::Animation).description = "The selected audio cue starts at the playhead";
+    b.add("animation.alignCuePeak", "Align Peak to Playhead", C::Animation, "Shift+A").description =
+        "The selected audio cue's loudest moment lands on the playhead";
+    b.add("animation.alignCueEnd", "Align End to Playhead", C::Animation).description = "The selected audio cue ends at the playhead";
+    b.add("animation.addAudioCue", "Add Audio Cue", C::Animation).description = "A clip or Sound Event at the playhead (clip mode)";
+    b.add("animation.addSourceCue", "Add Source Cue", C::Animation).description = "Starts an Audio Source of the hierarchy (clip mode)";
+    b.add("animation.addSnapshotCue", "Add Snapshot Cue", C::Animation).description = "A mixer snapshot transition (clip mode)";
+    b.add("animation.addAudioAction", "Add Audio Clip Action", C::Animation).description = "An audio action at the playhead (Animation sequence)";
+    b.add("animation.addSoundEventAction", "Add Sound Event Action", C::Animation).description =
+        "A Sound Event action at the playhead (Animation sequence)";
+    b.add("animation.addSnapshotAction", "Add Mixer Snapshot Action", C::Animation).description =
+        "A Mixer Snapshot action at the playhead (Animation sequence)";
 
     // The Pose Animation window (docs/pose-animation.md): while it has focus, or in a Scene view
     // posing its character
@@ -393,6 +415,29 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("project.delete", "Delete Assets", C::Project, "Delete", "Backspace");
     b.add("project.rename", "Rename Asset", C::Project, "F2");
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
+
+    b.group = "Sound Browser";
+    b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
+    b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");
+    b.add("audioCaptures.nextMoment", "Next Moment", C::AudioCaptures, "Down");
+    b.add("audioCaptures.previousMoment", "Previous Moment", C::AudioCaptures, "Up");
+    b.add("soundBrowser.focusSearch", "Search Sounds", C::SoundBrowser, "Ctrl+F");
+    b.add("soundBrowser.next", "Next Sound", C::SoundBrowser, "Down", "Right");
+    b.add("soundBrowser.previous", "Previous Sound", C::SoundBrowser, "Up", "Left");
+    b.add("soundBrowser.play", "Play or Stop Sound", C::SoundBrowser, "Space");
+    b.add("soundBrowser.playMatched", "Play Sound Loudness-Matched", C::SoundBrowser, "Shift+Space");
+    b.add("soundBrowser.use", "Use Sound", C::SoundBrowser, "Enter").description = "Selects it; a built-in clip is imported first";
+    b.add("soundBrowser.selectAll", "Select All Sounds", C::SoundBrowser, "Ctrl+A");
+    b.add("soundBrowser.stop", "Stop Sound or Clear Search", C::SoundBrowser, "Escape");
+
+    b.group = "Sound Event";
+    b.add("soundEvent.audition", "Audition x8", C::Editor).description = "The selected Sound Event's next 8 plays, rendered offline";
+    b.add("soundEvent.matchLevels", "Match Clip Levels", C::Editor).description = "The selected Sound Event's clips at their average loudness";
+    b.add("soundEvent.playAsMusic", "Play as Music", C::Editor).description = "The selected Sound Event as a music playlist, through the music system";
+
+    b.group = "Audio Clip";
+    b.add("audioClip.detectTempo", "Detect Tempo", C::Editor).description =
+        "The selected audio file's tempo, beats per bar and first beat, drawn in its Inspector; Use writes them";
 
     b.group = "Console";
     b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");

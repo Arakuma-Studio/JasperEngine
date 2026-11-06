@@ -79,6 +79,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool textureSynthesis = false;
     bool audioMixer = false;
+    bool soundBrowser = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -97,6 +98,7 @@ struct PanelVisibilitySettings {
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && audioMixer == other.audioMixer
+            && soundBrowser == other.soundBrowser
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
@@ -314,6 +316,8 @@ private:
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
+    static bool soundBrowserAutoplay;
+    static bool soundBrowserMatchLoudness;
     static std::filesystem::path hubLastLocation;
     static float uiScale;
     static bool poseDockGrown;
@@ -459,6 +463,11 @@ public:
     // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
     static bool getProjectHubAlways();
     static void setProjectHubAlways(bool always);
+    // the Sound Browser's auditions (S37): on selecting a card, and at -20 LUFS-M
+    static bool getSoundBrowserAutoplay();
+    static void setSoundBrowserAutoplay(bool autoplay);
+    static bool getSoundBrowserMatchLoudness();
+    static void setSoundBrowserMatchLoudness(bool matched);
     // the Project Hub's last parent folder of a new or imported project ("" before any)
     static std::filesystem::path getHubLastLocation();
     static void setHubLastLocation(const std::filesystem::path& location);

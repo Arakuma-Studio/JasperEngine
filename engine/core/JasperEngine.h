@@ -141,6 +141,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"

@@ -111,6 +111,7 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kCapsuleShadowCasterDesc,
+        &kAudioSnapshotDesc,
         &kPixelPerfectCameraDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -209,6 +210,7 @@ namespace {
         &kTextEffectDesc,
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
+        &kAudioSnapshotDesc,
         &kPixelPerfectCameraDesc,
     };
 
@@ -305,6 +307,7 @@ namespace {
         &kTextEffectDesc,
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
+        &kAudioSnapshotDesc,
         &kPixelPerfectCameraDesc,
     };
 

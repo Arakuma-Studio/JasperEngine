@@ -2972,8 +2972,23 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.mixer != defaults.mixer) audioNode["mixer"] = audio.mixer;
         if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
+        if (audio.seed != defaults.seed) audioNode["seed"] = audio.seed;
+        if (audio.captureMaxSeconds != defaults.captureMaxSeconds) audioNode["captureMaxSeconds"] = audio.captureMaxSeconds;
+        if (audio.captureKeep != defaults.captureKeep) audioNode["captureKeep"] = audio.captureKeep;
+        if (audio.captureStems != defaults.captureStems) audioNode["captureStems"] = audio.captureStems;
+        if (audio.qa != defaults.qa) {
+            YAML::Node qaNode;
+            for (const AudioQaField& field : audioQaFields()) {
+                if (field.real && audio.qa.*field.real != defaults.qa.*field.real) qaNode[field.yaml] = audio.qa.*field.real;
+                if (field.whole && audio.qa.*field.whole != defaults.qa.*field.whole) qaNode[field.yaml] = audio.qa.*field.whole;
+            }
+            if (audio.qa.musicGroup != defaults.qa.musicGroup) qaNode["musicGroup"] = audio.qa.musicGroup;
+            audioNode["qa"] = qaNode;
+        }
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audio.musicGroup != defaults.musicGroup) audioNode["musicGroup"] = audio.musicGroup;
+        if (audio.creditsFile != defaults.creditsFile) audioNode["creditsFile"] = audio.creditsFile;
         if (audio.loudnessTargetLufs != defaults.loudnessTargetLufs) audioNode["loudnessTargetLufs"] = audio.loudnessTargetLufs;
         if (audio.loudnessToleranceLu != defaults.loudnessToleranceLu) audioNode["loudnessToleranceLu"] = audio.loudnessToleranceLu;
         if (audio.truePeakCeilingDbtp != defaults.truePeakCeilingDbtp) audioNode["truePeakCeilingDbtp"] = audio.truePeakCeilingDbtp;
@@ -3751,8 +3766,23 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["mixer"]) audio.mixer = audioNode["mixer"].as<std::string>();
             if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
+            if (audioNode["seed"]) audio.seed = YamlNumbers::as<int>(audioNode["seed"]);
+            if (audioNode["captureMaxSeconds"]) audio.captureMaxSeconds = YamlNumbers::as<int>(audioNode["captureMaxSeconds"]);
+            if (audioNode["captureKeep"]) audio.captureKeep = YamlNumbers::as<int>(audioNode["captureKeep"]);
+            if (audioNode["captureStems"]) audio.captureStems = audioNode["captureStems"].as<bool>();
+            if (audioNode["qa"] && audioNode["qa"].IsMap()) {
+                const YAML::Node qaNode = audioNode["qa"];
+                for (const AudioQaField& field : audioQaFields()) {
+                    if (!qaNode[field.yaml]) continue;
+                    if (field.real) audio.qa.*field.real = YamlNumbers::as<float>(qaNode[field.yaml]);
+                    else audio.qa.*field.whole = YamlNumbers::as<int>(qaNode[field.yaml]);
+                }
+                if (qaNode["musicGroup"]) audio.qa.musicGroup = qaNode["musicGroup"].as<std::string>();
+            }
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+            if (audioNode["musicGroup"]) audio.musicGroup = audioNode["musicGroup"].as<std::string>();
+            if (audioNode["creditsFile"]) audio.creditsFile = audioNode["creditsFile"].as<bool>();
             if (audioNode["loudnessTargetLufs"]) audio.loudnessTargetLufs = YamlNumbers::as<float>(audioNode["loudnessTargetLufs"]);
             if (audioNode["loudnessToleranceLu"]) audio.loudnessToleranceLu = YamlNumbers::as<float>(audioNode["loudnessToleranceLu"]);
             if (audioNode["truePeakCeilingDbtp"]) audio.truePeakCeilingDbtp = YamlNumbers::as<float>(audioNode["truePeakCeilingDbtp"]);

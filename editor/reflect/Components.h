@@ -132,6 +132,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kTextEffectDesc;
     extern const ComponentDesc kVideoPlayerDesc;
     extern const ComponentDesc kSafeAreaDesc;
+    extern const ComponentDesc kAudioSnapshotDesc;
     // pixel art (PixelArtReflect.cpp)
     extern const ComponentDesc kPixelPerfectCameraDesc;
 

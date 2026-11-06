@@ -50,6 +50,7 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
@@ -887,6 +888,13 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
+    // a copy has not started: it has nothing to revert
+    snapshot.previousSnapshot.clear();
+    snapshot.applied = false;
+}
+
+template<>
 void prepare<PixelPerfectCameraComponent>(PixelPerfectCameraComponent& camera, Entity, CloneContext&) {
     // the copy's layout is made by the next render update
     const PixelPerfectCameraComponent defaults;
@@ -1266,6 +1274,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
