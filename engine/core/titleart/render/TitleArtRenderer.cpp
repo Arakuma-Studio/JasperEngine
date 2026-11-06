@@ -173,9 +173,9 @@ void TitlePlanner::finishOutput(TitlePx acc) {
     bool premultiplied = true;
     if (req.output != TitleOutputFormat::Linear) {
         const RenderFeatures& features = SystemRender::getFeatures();
-        const bool sixteen = req.output == TitleOutputFormat::Srgb16 && features.renderRGBA16F &&
-                             !(req.testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS);
-        if (req.output == TitleOutputFormat::Srgb16 && !sixteen) {
+        const bool wants16 = req.output == TitleOutputFormat::Srgb16 || (req.output == TitleOutputFormat::Srgb8 && req.outputBitDepth == 16);
+        const bool sixteen = wants16 && features.renderRGBA16F && !(req.testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS);
+        if (wants16 && !sixteen) {
             TitleProblem p;
             p.code = "bit_depth_unsupported";
             p.message = "this device renders no half floats: the 16-bit output is 8-bit";

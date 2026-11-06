@@ -86,6 +86,11 @@ TextureRender& SokolTitleTarget::texture() {
     return target.getRender().getColorTexture();
 }
 
+TextureRender* SokolTitleTarget::colorTexture() const {
+    // the framebuffer's accessors are not const; the texture is the target's own
+    return &const_cast<Framebuffer&>(target).getRender().getColorTexture();
+}
+
 FramebufferRender& SokolTitleTarget::framebuffer() {
     return target.getRender();
 }

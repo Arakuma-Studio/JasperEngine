@@ -407,3 +407,24 @@ TEST_F(TitleArtRendererGpu, ClassicFixtureBudget) {
     std::printf("[ budget   ] classic fixture full render %.0f ms (%u passes)\n", ms, job->passesTotal());
     EXPECT_LE(ms, 8000.0);
 }
+
+TEST_F(TitleArtRendererGpu, SixteenBitOutput) {
+    // a 16-bit bake (RenderRequest::outputBitDepth): straight sRGB half floats, no dither, and
+    // the target's colour texture readable by the editor (TitleTarget::colorTexture)
+    if (!SystemRender::getFeatures().renderRGBA16F) GTEST_SKIP() << "this device renders no half floats";
+    auto renderer = makeRenderer();
+    auto doc = makeDoc({{"canvas", canvas(128, 64)}, {"layers", Json::array({shapeLayer("00000001", "rect", 32, solidFace("#ff8000"))})}});
+    RenderRequest request = requestOf(doc);
+    request.outputBitDepth = 16;
+    std::unique_ptr<TitleRenderJob> job;
+    Pixels p = render(*renderer, request, &job);
+    ASSERT_EQ(job->image().format, ColorFormat::RGBA16F);
+    ASSERT_NE(job->image().target.get(), nullptr);
+    EXPECT_NE(job->image().target.get()->colorTexture(), nullptr);
+    const float* centre = p.at(64, 32);
+    EXPECT_NEAR(centre[0], 1.0f, 1e-3f);
+    EXPECT_NEAR(centre[1], 128.0f / 255.0f, 2e-3f);
+    EXPECT_NEAR(centre[2], 0.0f, 1e-3f);
+    EXPECT_NEAR(centre[3], 1.0f, 1e-3f);
+    EXPECT_EQ(p.at(0, 0)[3], 0.0f);
+}

@@ -52,6 +52,7 @@ namespace jasperengine::titleart {
 
         const TargetKey& key() const { return targetKey; }
         TextureRender& texture();
+        TextureRender* colorTexture() const override;
         FramebufferRender& framebuffer();
 
     private:

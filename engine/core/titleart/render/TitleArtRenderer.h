@@ -71,7 +71,12 @@ namespace jasperengine::titleart {
         std::optional<GlyphCellRequest> glyphCell;
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
+        // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
+        // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes
+        // per pixel)
+        int outputBitDepth = 8;
         uint32_t testFlags = 0;                     // TITLE_ART_TEST_* (TitleArtCaps.h): per request
+        // the image's pixels; Srgb8 with outputBitDepth 16 writes Srgb16
         TitleOutputFormat output = TitleOutputFormat::Srgb8;
         const AssetResolver* assets = nullptr;      // fonts, images, SVGs (editor or player resolver)
     };
