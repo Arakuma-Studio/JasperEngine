@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 
 import ui_input
-from harness import Editor, skip
+from harness import Editor
 
 CI = True
 EDITOR = {"create": True, "name": "Modals", "xvfb": "harness"}
@@ -107,9 +107,15 @@ async def wait_dialog(ed: Editor, title: str | None = None, seconds: float = 20.
     return None
 
 
+async def frame_dialog(ed: Editor, title: str | None = None):
+    await ui_input.frames(ed)
+    d = await dialog(ed)
+    return d if d and (title is None or d.get("title") == title) else None
+
+
 async def open_modal(ed: Editor, command: str, title: str):
     await ed.call("run_command", id=command)
-    d = await wait_dialog(ed, title)
+    d = await frame_dialog(ed, title)
     ed.check(d, f"{command} opens {title}: {await dialog(ed)}")
     return d
 
@@ -217,7 +223,7 @@ async def test_focus_window_drives_preferences_under_itself(ed: Editor):
     """focus_window's page and close act on Preferences, so its refusal of edits does not stop them; any
     other panel is refused meanwhile"""
     await ed.call("focus_window", window="preferences", page="Logging")
-    d = await wait_dialog(ed, "Preferences")
+    d = await frame_dialog(ed, "Preferences")
     ed.check(d, "open")
     r = await ed.call_raw("focus_window", {"window": "preferences", "page": "General"})
     ed.check(not r.is_error, f"another page: {r.text[:300]}")
@@ -247,11 +253,16 @@ async def test_error_box_is_dismissed_by_the_next_edit(ed: Editor):
     await open_rename(ed, helper)
     # no name: Invalid Name on top
     await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": ""}})
-    box = await wait_dialog(ed, "Invalid Name")
+    box = await frame_dialog(ed, "Invalid Name")
     ed.check_eq(box.get("choices"), ["ok"], "an error box")
-    await ed.call("respond_dialog", choice="ok")
+    made = await ed.call("create_entity", name="AfterError", type="cube")
+    got = await ed.call("get_entity", entity="AfterError", detail="summary")
+    ed.check_eq(got["id"], made["entity"]["id"], "the next edit ran")
+    await ui_input.frames(ed)
+    ed.check_eq((await dialog(ed))["title"], "Rename File", "the edit dismissed only the error box")
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
+    await ed.call("delete_entities", entity=made["entity"]["id"])
     (ed.project / "RenameMe.lua").unlink()
     (ed.project / "Taken.lua").unlink()
 
@@ -440,7 +451,7 @@ async def test_add_shader_nested(ed: Editor):
         await helper.click_revealed("Shaders", "Build Settings")
     add = await helper.reveal("+ Add", "Build Settings")
     await helper.click(helper.centre(add["rect"]))
-    d = await wait_dialog(ed, "Add Shader")
+    d = await frame_dialog(ed, "Add Shader")
     ed.check(d, "Add Shader is reported")
     ed.check_in("type", fields(d), f"its type: {d}")
     await ed.call("respond_dialog", choice="cancel")
@@ -485,7 +496,7 @@ async def test_save_template_fields(ed: Editor):
     async with Editor(project=REPO / "tools/fixtures/stencil", xvfb="editor", env={"TMPDIR": str(other_temp)}) as saved:
         # right after the project opens, while its shaders build: asked once, as a person does
         await saved.call("run_command", id="file.saveProjectAsTemplate")
-        d = await wait_dialog(saved, "Save Project as Template")
+        d = await frame_dialog(saved, "Save Project as Template")
         ed.check(d, f"it opens: {await dialog(saved)}")
         ed.check_in("name", fields(d), f"{d}")
         ed.check_in("description", fields(d), f"{d}")
@@ -587,7 +598,7 @@ async def test_file_picker_from_a_click(ed: Editor):
     folder = ed.scratch.root / "picked"
     folder.mkdir(exist_ok=True)
     await ed.call("respond_dialog", values={"path": str(folder)})
-    d = await wait_dialog(ed, "Build Settings")
+    d = await frame_dialog(ed, "Build Settings")
     ed.check_eq(fields(d)["output_directory"]["value"], str(folder), "the Browse button took the answer")
     await ed.call("respond_dialog", choice="cancel")
 
@@ -617,7 +628,7 @@ async def test_add_game_resolution(ed: Editor):
     ed.check(combo, "the Game view's resolution menu")
     await helper.click(helper.centre(combo["rect"]))
     await helper.click_item("+ Add custom...")
-    d = await wait_dialog(ed, "Add Game View Resolution")
+    d = await frame_dialog(ed, "Add Game View Resolution")
     ed.check(d, "the dialog")
     ed.check_eq(fields(d)["width"]["type"], "int", f"{d}")
     ed.check_eq(fields(d)["dpi"]["type"], "float", f"{d}")
@@ -635,7 +646,7 @@ async def test_clear_undo_history(ed: Editor):
     clear = await helper.find("Clear History...", "Undo History")
     ed.check(clear, "the Clear button")
     await helper.click(helper.centre(clear["rect"]))
-    d = await wait_dialog(ed, "Clear Undo History")
+    d = await frame_dialog(ed, "Clear Undo History")
     ed.check(d, "the question")
     ed.check_eq(d["choices"], ["yes", "cancel"], f"{d}")
     ed.check_in("[yes = Clear, cancel = Cancel]", d["message"], "says what yes presses")
@@ -668,7 +679,7 @@ async def test_script_create(ed: Editor):
     await ed.call("focus_window", window="inspector")
     await helper.frames(4)
     await open_new_script(helper)
-    d = await wait_dialog(ed, "New Script")
+    d = await frame_dialog(ed, "New Script")
     ed.check(d, "the dialog")
     ed.check_eq(fields(d)["source"]["options"], ["New Script", "Existing Script"], f"{d}")
     ed.check_in("Lua Script", fields(d)["template"]["options"], f"{d}")
@@ -681,7 +692,7 @@ async def test_script_create(ed: Editor):
     # again: its files exist, which is asked
     await helper.frames(4)
     await open_new_script(helper)
-    await wait_dialog(ed, "New Script")
+    await frame_dialog(ed, "New Script")
     await ed.call("respond_dialog", values={"template": "Lua Script", "name": "AgentScript"})
     r = await ed.call("respond_dialog", choice="yes")
     ed.check_eq(r["dialog"]["title"], "Script Files Already Exist", f"{r}")
@@ -711,7 +722,7 @@ async def test_texture_slicer(ed: Editor):
     await helper.frames(4)
     button = await helper.reveal("\uf58d Slicer Tool", "Inspector")
     await helper.click(helper.centre(button["rect"]))
-    d = await wait_dialog(ed)
+    d = await frame_dialog(ed)
     ed.check(d and "Slice" in d["title"], f"the dialog: {d}")
     ed.check_in("columns", fields(d), f"{d}")
     r = await ed.call("respond_dialog", values={"columns": 4, "rows": 2})
@@ -731,7 +742,7 @@ async def test_shader_fork(ed: Editor):
     await helper.frames(4)
     fork = await helper.reveal("##fork_custom_shader", "Inspector")
     await helper.click(helper.centre(fork["rect"]))
-    d = await wait_dialog(ed)
+    d = await frame_dialog(ed)
     ed.check(d and "Fork" in d["title"], f"the dialog: {d}")
     ed.check_in("name", fields(d), f"{d}")
     ed.check_in("fork_includes", fields(d), f"{d}")
@@ -745,14 +756,14 @@ async def test_shader_fork(ed: Editor):
 async def test_alert_keeps_its_kind(ed: Editor):
     """The alert still reports first, as itself, and takes no values"""
     await ed.call("run_command", id="assets.prefabs")
-    await wait_dialog(ed, "Prefabs")
+    await frame_dialog(ed, "Prefabs")
     await ed.call("respond_dialog", choice="cancel")
-    # a cancelled empty script path: Cannot Play is what a busy editor alerts; Clear Trash is not for agents,
-    # so the alert comes from Remove Scene on the only open scene
+    # Remove Scene asks before discarding this case's own unsaved scene.
+    made = await ed.call("create_scene", name="ModalAlert", type="3D")
+    await ed.call("create_entity", scene=made["scene"]["id"], name="AlertDirty", type="empty")
     r = await ed.call_raw("run_command", {"id": "file.removeScene"})
     d = await dialog(ed)
-    if not d or d.get("kind") != "alert":
-        skip(f"no alert from Remove Scene here: {r.text[:200]}")
+    ed.check(d and d.get("kind") == "alert", f"Remove Scene asks about the unsaved scene: {r.text[:200]} {d}")
     ed.check_in(d["choices"][0], ("ok", "yes"), f"{d}")
     bad = await ed.call_raw("respond_dialog", {"choice": d["choices"][0], "values": {"name": "x"}})
     ed.check(bad.is_error and "no fields" in bad.text, f"{bad.text[:300]}")

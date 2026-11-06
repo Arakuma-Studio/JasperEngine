@@ -1060,13 +1060,6 @@ const std::vector<AssetRefField>& AssetRefSchema::fields() {
     return generatedRefTable().rows;
 }
 
-std::vector<AssetRefField> AssetRefSchema::fieldsOf(const reflect::ComponentDesc& desc) {
-    std::vector<AssetRefField> rows;
-    std::vector<RefWalkNode> nodes;
-    generateComponentRefs(desc, rows, nodes);
-    return rows;
-}
-
 const std::vector<AssetRefField>& AssetRefSchema::documentFields() {
     static const std::vector<AssetRefField> rows = buildDocumentFields();
     return rows;

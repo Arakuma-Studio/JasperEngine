@@ -27,6 +27,7 @@
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 #include "util/FileUtils.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -616,31 +617,6 @@ Json McpServer::serverInfo() {
 
 namespace {
 
-// Length of the valid UTF-8 sequence at text[i], or 0 if it is invalid (overlong forms,
-// surrogates and code points past U+10FFFF are invalid, as nlohmann::json's parser says)
-size_t utf8SequenceLength(const std::string& text, size_t i) {
-    const auto byte = [&](size_t k) { return static_cast<unsigned char>(text[k]); };
-    const unsigned char c = byte(i);
-    if (c < 0x80) return 1;
-    size_t length = 0;
-    unsigned char low = 0x80, high = 0xBF;
-    if (c >= 0xC2 && c <= 0xDF) length = 2;
-    else if (c == 0xE0) { length = 3; low = 0xA0; }
-    else if (c >= 0xE1 && c <= 0xEC) length = 3;
-    else if (c == 0xED) { length = 3; high = 0x9F; }
-    else if (c >= 0xEE && c <= 0xEF) length = 3;
-    else if (c == 0xF0) { length = 4; low = 0x90; }
-    else if (c >= 0xF1 && c <= 0xF3) length = 4;
-    else if (c == 0xF4) { length = 4; high = 0x8F; }
-    else return 0;
-    if (i + length > text.size()) return 0;
-    if (byte(i + 1) < low || byte(i + 1) > high) return 0;
-    for (size_t k = 2; k < length; k++) {
-        if (byte(i + k) < 0x80 || byte(i + k) > 0xBF) return 0;
-    }
-    return length;
-}
-
 constexpr size_t MAX_RESULT_TEXT_BYTES = 256 * 1024;
 constexpr size_t MAX_RESULT_STRUCTURED_BYTES = 1024 * 1024;
 
@@ -662,20 +638,9 @@ void McpServer::trace(const char* stage, const std::string& detail) {
 }
 
 std::string McpServer::sanitizeUtf8(const std::string& text) {
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        const size_t length = utf8SequenceLength(text, i);
-        if (length == 0) {
-            out += "\xEF\xBF\xBD";
-            i++;
-        } else {
-            out.append(text, i, length);
-            i += length;
-        }
-    }
-    return out;
+    // overlong forms, surrogates and code points past U+10FFFF are invalid, as nlohmann::json's
+    // parser says
+    return StringUtils::repairUtf8(text);
 }
 
 void McpServer::truncateUtf8(std::string& text, size_t maxBytes) {

@@ -95,7 +95,8 @@ def differing_fraction(a, b, tolerance: int = 24) -> float:
 # ------------------------------------------------------------------ editor helpers
 
 async def shot(ed: Editor, frames: int = 30, view: str = "game"):
-    await ed.call("wait", frames=frames, timeout_seconds=900)
+    if frames:
+        await ed.call("wait", frames=frames, timeout_seconds=900)
     r = await ed.call_raw("screenshot", {"view": view, "max_width": 0}, timeout=300)
     ed.check(not r.is_error and r.images, f"no {view} screenshot: {r.text[:300]}")
     return pngdiff.decode(r.images[0][0])
@@ -212,14 +213,12 @@ async def without_sky(ed: Editor):
 
 # ------------------------------------------------------------------ values and tools
 
-async def test_setup(ed: Editor):
+async def test_new_scene_is_high_and_saved(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "set_properties", "get_material_variant", "set_light_unit",
                      "create_material", "update_material", "list_material_presets", "apply_material_preset",
                      "get_scene_settings", "set_scene_settings", "screenshot", "eval_lua", "play")
     await new_scene(ed, "Materials")
 
-
-async def test_new_scene_is_high_and_saved(ed: Editor):
     s = (await ed.call("get_scene_settings", names=["lit_quality", "physical_light_ev100"]))["settings"]
     ed.check_eq(s["lit_quality"], "high", "a new scene shades at High")
     ed.check_eq(s["physical_light_ev100"], 15, "EV100 default")
@@ -661,14 +660,10 @@ def _make_khronos_test(model: str, lobes: list[str]) -> None:
         await ed.call("wait", frames=60, timeout_seconds=900)
         # the entities with submeshes, once the model has loaded (in the background)
         meshes = []
-        for _ in range(60):
-            for eid in await entities_with(ed, "MeshComponent"):
-                r = await ed.call_raw("get_material_variant", {"entity": eid, "submesh": 0})
-                if not r.is_error:
-                    meshes.append(eid)
-            if meshes:
-                break
-            await ed.call("wait", frames=10, timeout_seconds=900)
+        for eid in await entities_with(ed, "MeshComponent"):
+            r = await ed.call_raw("get_material_variant", {"entity": eid, "submesh": 0})
+            if not r.is_error:
+                meshes.append(eid)
         ed.check(meshes, f"{model} has meshes")
         # every material's variant built
         problems = await all_ready(ed, meshes)
@@ -676,7 +671,7 @@ def _make_khronos_test(model: str, lobes: list[str]) -> None:
         ed.check(not failed, f"{model}: variants failed: {failed[:3]!r}")
         if problems:
             print(f"     [khronos] {model}: still building after the deadline: {problems[:3]!r}", flush=True)
-        img = await shot(ed, frames=30)
+        img = await shot(ed, frames=0)
         ed.check(not pngdiff.flat(img), f"{model} draws something")
         errors = [l for l in await ed.console_since("last", limit=1000) if l.get("level") == "error"]
         ed.check(not errors, f"{model}: errors: {errors[:3]}")
@@ -703,9 +698,8 @@ def _make_khronos_test(model: str, lobes: list[str]) -> None:
             off_lobes = []
         if off_lobes or model == "EmissiveStrengthTest":
             await lobes_off(ed, meshes, off_lobes)
-            await ed.call("wait", frames=10, timeout_seconds=900)
             await all_ready(ed, meshes)
-            twin = await shot(ed, frames=30)
+            twin = await shot(ed, frames=0)
             # (a lobe can be subtle under the sky: a clear coat adds 4% reflection face on, 6 levels
             # of 255; the render is deterministic, so any change beyond rounding counts)
             fraction = differing_fraction(img, twin, 4)

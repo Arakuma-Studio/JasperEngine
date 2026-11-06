@@ -18,7 +18,6 @@
 #include "ContactShadows.h"
 
 #include <algorithm>
-#include <cmath>
 
 using namespace jasperengine;
 
@@ -49,18 +48,4 @@ void ContactShadows::sampleGroups(int samples, int& hard, int& fade){
     fade = std::max(2, samples / 4);
     if (samples - hard - fade < 4)
         fade = std::max(0, samples - hard - 4);
-}
-
-float ContactShadows::thicknessShare(const Matrix4& projection, float viewDepth, float thickness){
-    // the packed depth of a view depth (z negative in front): 0.5 * ndc z + 0.5
-    auto packed = [&projection](float z){
-        const float clipZ = projection.get(2, 2) * z + projection.get(3, 2);
-        const float clipW = projection.get(2, 3) * z + projection.get(3, 3);
-        return clipW != 0.0f ? 0.5f * clipZ / clipW + 0.5f : 1.0f;
-    };
-    const float z = -std::abs(viewDepth);
-    const float depth = packed(z);
-    const float behind = packed(z - std::abs(thickness));
-    const float remaining = std::max(1.0f - depth, 1e-7f);
-    return std::clamp((behind - depth) / remaining, 1e-5f, 1.0f);
 }

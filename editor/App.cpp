@@ -2534,6 +2534,13 @@ void editor::App::setup() {
     configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
+    // the system's CJK and emoji fonts, merged into these when a background search (started
+    // with the job system, engineInit) has found them (applySystemFonts): CJK names and text
+    // show as glyphs, and the start is not slower
+    systemFontTargets = {{font1, uiFontSize, config1.RasterizerMultiply},
+                         {boldFont, uiFontSize, configBold.RasterizerMultiply},
+                         {codeFont, 16.0f, config3.RasterizerMultiply}};
+
     io.FontDefault = font1;
 
     io.ConfigDragClickToInputText = true;
@@ -3177,6 +3184,8 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
+    SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 
     Engine::pauseGameEvents(true);
 
@@ -3864,6 +3873,10 @@ bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
         return true;
     }
     return false;
+}
+
+void editor::App::applySystemFonts(){
+    SystemFonts::applyPending(systemFontTargets);
 }
 
 void editor::App::engineRender(){

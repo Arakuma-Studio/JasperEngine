@@ -29,15 +29,12 @@ async def test_the_group_hides_it_until_enabled(ed: Editor):
     ed.check_in("edit_sound_event", [t.name for t in await ed.tools()], "the audio group lists it")
 
 
-async def test_setup(ed: Editor):
+async def test_create_and_refuse_a_second_create(ed: Editor):
     write_tone(ed.project / "sounds/loud.wav", seconds=0.6, amplitude=0.8, frequency=800)
     write_tone(ed.project / "sounds/quiet.wav", seconds=0.6, amplitude=0.05, frequency=500)
     write_tone(ed.project / "sounds/mid.wav", seconds=0.6, amplitude=0.3, frequency=300)
     await ed.call("sync_files")
     await ed.call("set_project_settings", values={"audio.seed": SEED})
-
-
-async def test_create_and_refuse_a_second_create(ed: Editor):
     made = await ed.call("edit_sound_event", path=EVENT, create=True, values={
         "mode": "random", "clips": ["sounds/loud.wav", {"clip": "sounds/quiet.wav", "weight": 2}, "sounds/mid.wav"],
         "pitch_semitones": [-1, 1], "volume_db": [-3, 0]})

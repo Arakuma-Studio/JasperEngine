@@ -137,15 +137,18 @@ size_t Backtrace::capture(void** frames, size_t maxFrames, size_t skip) {
 
 void Backtrace::describe(const void* address, std::string& out) {
 #if defined(_WIN32)
-    char moduleName[MAX_PATH] = {0};
+    char moduleName[MAX_PATH * 3] = {0};
     unsigned long long moduleOffset = 0;
     HMODULE module = nullptr;
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            static_cast<LPCSTR>(address), &module) && module) {
-        GetModuleFileNameA(module, moduleName, static_cast<DWORD>(sizeof(moduleName)));
+        // UTF-8, whatever the code page (a game in a folder named "José" before Windows 10 1903)
+        wchar_t wideName[MAX_PATH] = {0};
+        if (GetModuleFileNameW(module, wideName, MAX_PATH) > 0)
+            WideCharToMultiByte(CP_UTF8, 0, wideName, -1, moduleName, static_cast<int>(sizeof(moduleName)), nullptr, nullptr);
         moduleOffset = static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(module));
     }
-    char buffer[MAX_PATH + 320];
+    char buffer[MAX_PATH * 3 + 320];
     if (!module) {
         std::snprintf(buffer, sizeof(buffer), "module?+0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(address)));
         out += buffer;
