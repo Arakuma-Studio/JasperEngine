@@ -221,8 +221,9 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     pixels_per_second = (target[0] - tracks[0]) / after[-1]["start_time"]
     await ui.click((int(tracks[0] + pixels_per_second * 1.0), int(tracks[1] - 8)))
     await ui.frames(4)
-    # the Sound Browser closed (it keeps the keys), the dropped block clicked: Align Peak acts on it
-    await ed.call("run_command", id="window.soundBrowser")
+    # a click on the ruler scrubs: the window previews, and edits wait until the preview is off (the
+    # Preview toggle keeps the playhead); the Sound Browser stays open beside it
+    await ui.click_item("Preview", "Animation")
     await ui.frames(4)
     index = len(after) - 1
     await ui.click(middle(ui, await rect_of(ed, f"entity.frame.{index}")))
