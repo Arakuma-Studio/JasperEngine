@@ -79,11 +79,11 @@ async def test_check_rules():
     cases = {
         "core chars": ok + [row("get_b", 200)],
         "core tools": ok + [row("get_b", 10), row("get_c", 10)],
-        "tool limit": [row("get_a", 301)],
+        "tool limit": [row("big_tool", 590), row("get_a", 301)],
         "exception limit": [row("big_tool", 601)],
         "group entry": ok + [row("get_q", 10, "profiling")],
-        "group default": [row("get_s", 260, "splines"), row("get_t", 260, "splines")],
-        "group default count": [row("get_s", 10, "splines"), row("get_t", 10, "splines"), row("get_u", 10, "splines")],
+        "group default": [row("big_tool", 590), row("get_s", 260, "splines"), row("get_t", 260, "splines")],
+        "group default count": [row("big_tool", 590), row("get_s", 10, "splines"), row("get_t", 10, "splines"), row("get_u", 10, "splines")],
     }
     for label, rows in cases.items():
         assert tool_budget.check(rows, budget, {"core", "profiling", "splines"}), f"{label} passed"

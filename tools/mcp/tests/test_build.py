@@ -58,21 +58,23 @@ MIXER_LINE = "mixer groups: Master,Music exposed MusicVolume"
 ACTION_NAMES_LINE = "input actions: Horizontal,Vertical,Fire1,Fire2,Fire3,Jump,Mouse X,Mouse Y,Mouse ScrollWheel,Submit,Cancel,Dash"
 
 
+# the fixed component capacities exports passed before mesh-memory
+CAPACITY_MACROS = {"MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES",
+                   "MAX_EXTERNAL_BUFFERS", "MAX_BONES"}
+
 # what a game's clip measures, read back from the player's log
 CLIP_LENGTH_LUA = """local clipLength = {}
 
 function clipLength:init()
     RegisterEngineEvent(self, "onUpdate")
-    self.done = false
 end
 
 function clipLength:onUpdate()
-    if self.done then return end
     local source = AudioSource(self.scene, self.entity)
     local length = source:getLength()
     if length > 0 then
         print(string.format("CLIPLEN %.3f", length))
-        self.done = true
+        Engine.quit(0)
     end
 end
 
@@ -137,8 +139,9 @@ async def check_xcode_workspace(ed: Editor, out: Path) -> None:
             ed.check(re.fullmatch(r'"?gnu\+\+\d+"?', settings["CLANG_CXX_LANGUAGE_STANDARD"]) is not None,
                      f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
     for settings in pbxproj.project_settings(root):
-        definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
-        ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
+        definitions = settings.get("GCC_PREPROCESSOR_DEFINITIONS", [])
+        # components grow their arrays: no capacity definitions (mesh-memory)
+        ed.check(not any(d.split("=")[0].strip('"') in CAPACITY_MACROS for d in definitions), f"no capacities: {definitions}")
         ed.check_eq(len(definitions), len(set(definitions)), f"no definition twice: {definitions}")
 
 

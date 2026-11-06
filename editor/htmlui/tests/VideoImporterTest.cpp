@@ -136,8 +136,9 @@ TEST_F(VideoImporterTest, LookupOrder){
     std::string why;
     const std::string withMissing = VideoImporter::findFfmpeg(&why, &missing);
     EXPECT_NE(withMissing, fake);
-    if (withMissing.empty())
+    if (withMissing.empty()){
         EXPECT_NE(why.find("not-there"), std::string::npos) << why;
+    }
     EXPECT_EQ(VideoImporter::findFfmpeg(), fake);
     // JASPER_FFMPEG wins over the setting, also when it names nothing
     setenv("JASPER_FFMPEG", "", 1);

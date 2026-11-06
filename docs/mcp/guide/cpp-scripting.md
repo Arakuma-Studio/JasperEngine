@@ -157,6 +157,10 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped. Registering in the constructor or in `init()` both work.
 
+`onCharInput` passes one whole typed character: declare it `void onCharInput(char32_t character)`.
+The older form `void onCharInput(wchar_t)` still compiles but is deprecated: on Windows `wchar_t` is
+16 bits, so a character beyond U+FFFF (an emoji) arrives cut to its low 16 bits there.
+
 ## Choosing Lua or C++
 
 Keep the language of the project's existing scripts. A project without scripts gets Lua unless the

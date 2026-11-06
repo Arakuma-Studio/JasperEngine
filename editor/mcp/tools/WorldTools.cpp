@@ -360,7 +360,8 @@ bool addCatalogProperties(Project* project, SceneProject* scene, Entity entity, 
         return false;
     }
     for (auto it = props.begin(); it != props.end(); ++it) {
-        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key());
+        // (a write follows: "frames[N]" one past the last appends it)
+        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key(), true);
         if (!property.ref) {
             std::vector<std::string> names;
             for (const auto& item : Catalog::findEntityProperties(scene->scene, entity, component)) {
@@ -420,7 +421,8 @@ std::string meshTexturePath(Scene* scene, Entity entity, int submesh) {
 // Sets MeshComponent submeshes[N].material.baseColorTexture from a project-relative path
 bool addMeshTexture(const Target& target, Entity entity, int submesh, const Json& path, MultiPropertyCmd& multi, std::string& error) {
     const std::string name = "submeshes[" + std::to_string(submesh) + "].material.baseColorTexture";
-    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name);
+    // (a write follows: a sprite just made holds no submesh until its first, appended here)
+    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name, true);
     if (!property.ref) {
         error = "The GameObject has no mesh submesh " + std::to_string(submesh) + " to hold a texture.";
         return false;
@@ -2798,7 +2800,7 @@ void editTilemapTool(const CallPtr& call) {
                 return;
             }
             std::vector<SliceRect> slices;
-            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, MAX_TILEMAP_TILESRECT, error)) {
+            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, ARRAY_INDEX_LIMIT, error)) {
                 delete setup;
                 failWith("tileset: " + error);
                 return;
@@ -2843,9 +2845,9 @@ void editTilemapTool(const CallPtr& call) {
                 if (!replaced) rects.push_back(rect);
             }
         }
-        if (rects.size() > MAX_TILEMAP_TILESRECT) {
+        if (rects.size() > ARRAY_INDEX_LIMIT) {
             delete setup;
-            failWith("A tilemap holds at most " + std::to_string(MAX_TILEMAP_TILESRECT) + " tile rects.");
+            failWith("A tilemap holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " tile rects.");
             return;
         }
         for (size_t i = 0; i < std::max(before.size(), rects.size()); i++) {
@@ -3002,7 +3004,7 @@ void editTilemapTool(const CallPtr& call) {
                 if (kind == "fill" && ref.rect < 0) { failWith(where + ": fill needs tile (a tile rect name or index)."); return; }
                 const int c0 = static_cast<int>(std::min(from.x, to.x)), c1 = static_cast<int>(std::max(from.x, to.x));
                 const int r0 = static_cast<int>(std::min(from.y, to.y)), r1 = static_cast<int>(std::max(from.y, to.y));
-                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_TILES * 4) { failWith(where + ": the area is too large."); return; }
+                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_RENDERED_TILES * 4) { failWith(where + ": the area is too large."); return; }
                 for (int r = r0; r <= r1; r++) {
                     for (int c = c0; c <= c1; c++) {
                         if (!setCell(c, r, ref)) { failWith(where + ": " + error); return; }
@@ -3038,8 +3040,8 @@ void editTilemapTool(const CallPtr& call) {
     for (size_t i = 0; i < tiles.size(); i++) {
         if (!removed[i]) finalTiles.push_back(tiles[i]);
     }
-    if (finalTiles.size() > MAX_TILEMAP_TILES) {
-        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; the maximum is " + std::to_string(MAX_TILEMAP_TILES) + ".");
+    if (finalTiles.size() > MAX_TILEMAP_RENDERED_TILES) {
+        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; a Tilemap draws at most " + std::to_string(MAX_TILEMAP_RENDERED_TILES) + ".");
         return;
     }
     auto* tileCmd = new MultiPropertyCmd();
@@ -3155,7 +3157,7 @@ void setSpriteFramesTool(const CallPtr& call) {
     if (has(args, "slice")) {
         int sheetW = 0, sheetH = 0;
         if (!sheetSize(target.project, args["slice"], stored, sheetW, sheetH, error) ||
-            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, MAX_SPRITE_FRAMES, error)) {
+            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, ARRAY_INDEX_LIMIT, error)) {
             delete multi;
             failWith("slice: " + error);
             return;
@@ -3177,9 +3179,9 @@ void setSpriteFramesTool(const CallPtr& call) {
             }
             frames.push_back(slice);
         }
-        if (frames.size() > MAX_SPRITE_FRAMES) {
+        if (frames.size() > ARRAY_INDEX_LIMIT) {
             delete multi;
-            failWith("A sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+            failWith("A sprite holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
             return;
         }
         framesGiven = true;
@@ -3296,8 +3298,8 @@ void setSpriteAnimationTool(const CallPtr& call) {
     } else {
         for (unsigned i = 0; i < sprite->numFramesRect; i++) frames.push_back(static_cast<int>(i));
     }
-    if (frames.size() > MAX_SPRITE_FRAMES) {
-        call->fail("At most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+    if (frames.size() > ARRAY_INDEX_LIMIT) {
+        call->fail("At most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
         return;
     }
     std::vector<int> times(frames.size(), static_cast<int>(std::lround(1000.0f / std::max(0.1f, numberOr(args, "fps", 10.0f)))));

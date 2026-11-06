@@ -69,7 +69,7 @@ const std::vector<ScriptEvent>& eventList() {
 
         {S::Input, "onKeyDown", "Keyboard", "A key is pressed", key},
         {S::Input, "onKeyUp", "Keyboard", "A key is released", key},
-        {S::Input, "onCharInput", "Keyboard", "A text character is typed", {{"wchar_t", "codepoint"}}},
+        {S::Input, "onCharInput", "Keyboard", "A character is typed (one whole character, emoji included)", {{"char32_t", "character"}}},
         {S::Input, "onMouseDown", "Mouse", "A mouse button is pressed", mouseButton},
         {S::Input, "onMouseUp", "Mouse", "A mouse button is released", mouseButton},
         {S::Input, "onMouseMove", "Mouse", "The mouse moves", {{"float", "x"}, {"float", "y"}, {"int", "mods"}}},

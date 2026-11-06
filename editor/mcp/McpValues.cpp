@@ -4066,7 +4066,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     entryKeys[entryCollection].insert(entryKey);
                     continue;
                 }
-                const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property);
+                // (a set writes: one past the last element appends it)
+                const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property, change.op == "set");
                 const bool typedProperty = property.ref && change.op == "set" &&
                     (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||

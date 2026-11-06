@@ -111,9 +111,10 @@ def linked_folders(ed: Editor):
 
 
 def cooked_at(files: dict, rel: str) -> bool:
-    """the texture ships cooked: an index.json of assets/je-cooked/<family>/ names it, in place of its source (S14)"""
-    return rel.endswith(".png") and any(name.startswith("je-cooked/") and name.endswith("index.json") and rel.encode() in data
-                                        for name, data in files.items())
+    """the texture or model ships cooked: an index.json of assets/je-cooked/<family>/ (S14) or of
+    assets/je-cooked/models/ (S53) names it, in place of its source"""
+    return rel.endswith((".png", ".gltf", ".glb", ".fbx", ".obj")) and any(
+        name.startswith("je-cooked/") and name.endswith("index.json") and rel.encode() in data for name, data in files.items())
 
 
 def check_shipped(ed: Editor, label: str, files: dict, expected: dict):

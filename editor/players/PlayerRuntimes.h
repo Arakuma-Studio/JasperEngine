@@ -35,7 +35,9 @@ namespace jasperengine::editor {
         // the cooked model formats it decodes (CookedModels::kFormatVersion, S53 R30); empty in a
         // runtime built before model cooks
         std::vector<int> modelCookFormats;
-        std::map<std::string, unsigned int> capacities;   // MAX_SUBMESHES, ...
+        // the fixed array capacities of a player packaged before components grew their arrays
+        // (MAX_SUBMESHES, ...): such a player is never chosen (Exporter::chooseBuildMethod)
+        std::map<std::string, unsigned int> capacities;
         std::vector<std::string> features;                // the modules (htmlui video runtimeshaders physics3d ...), tracy
         std::string variant = "full";                     // the release variant it was built for
         std::vector<std::string> notices;                 // licenses/<lib>-LICENSE of each
