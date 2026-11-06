@@ -350,6 +350,9 @@ namespace jasperengine::editor {
         // CMake that fails a plugin configure below the compiler floors of the engine build
         // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
         static std::string getToolchainFloorCheck();
+        // The Jolt and Box2D macros the editor's engine library was built with (space-separated
+        // definitions): every C++ that links it compiles with them (scripts, editor scripts, clangd)
+        static std::string physicsCompileDefinitions();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();

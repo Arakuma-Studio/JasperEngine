@@ -573,6 +573,10 @@ elseif(API_BACKEND STREQUAL "mac")
 endif()
 include_directories (${JASPERENGINE_ROOT}/renders)
 
+# cl's /MP for the engine's and the editor's targets under Visual Studio generators
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
+
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -910,6 +914,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/ExportFeatureScan.cpp
     ${EDITOR_DIR}/util/NativeExportAndroid.cpp
+    ${EDITOR_DIR}/util/CMakeText.cpp
+    ${EDITOR_DIR}/util/VersionControlFiles.cpp
     ${EDITOR_DIR}/util/NativePlugins.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
@@ -1872,8 +1878,10 @@ else()
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
+    # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
+            USE_SOURCE_PERMISSIONS
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE
