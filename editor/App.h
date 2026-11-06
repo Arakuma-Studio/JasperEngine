@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "render/RenderStats.h"
 #include "imgui.h"
 #include "json.hpp"
 
@@ -88,6 +89,8 @@ namespace jasperengine::editor{
     class AssetReferencesWindow;
     class SpriteNormalsWatcher;
     class JobsMemoryWindow;
+    class MeshAuditWindow;
+    class BuildReportWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -183,6 +186,7 @@ namespace jasperengine::editor{
         int benchmarkMeasureFrames = 180;
         // scene setting overrides: -1 keeps the scene's value
         int benchmarkMeshLod = -1;
+        int benchmarkGpuInstancing = -1;   // --gpu-instancing on|off (-1: the project's)
         int benchmarkDepthPrepass = -1;
         int benchmarkLitQuality = -1;   // --lit-quality: 0 standard, 1 high
         // --play: the scene is measured playing (scripts, animation, physics), not in edit mode
@@ -194,6 +198,10 @@ namespace jasperengine::editor{
         std::vector<uint32_t> benchmarkDraws;
         std::vector<uint32_t> benchmarkInstances;
         std::vector<uint64_t> benchmarkTris;
+        // the game frame's render counters (S55 R7, by kind of pass) and its draw-and-commit CPU
+        // time (Engine::getFrameDrawCpuTime), per measured frame
+        std::vector<RenderStats> benchmarkRenderStats;
+        std::vector<double> benchmarkRenderCpuMs;
         // --ui-stats (S16 R29): the scene's HTML UI statistics, summed over the measured frames
         bool benchmarkUiStats = false;
         std::vector<std::pair<std::string, double>> benchmarkUiTotals;
@@ -252,6 +260,8 @@ namespace jasperengine::editor{
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        MeshAuditWindow* meshAuditWindow;
+        BuildReportWindow* buildReportWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
@@ -670,6 +680,9 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openBuildReport(const std::filesystem::path& report) override;
+        void openMeshAudit() override;
+        void openConsole() override;
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

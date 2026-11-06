@@ -91,6 +91,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
@@ -1202,6 +1203,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_LIGHTBULB;
     }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
         return ICON_FA_CIRCLE_HALF_STROKE;
+    }else if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>())){
+        return ICON_FA_CAPSULES;
     }else if (signature.test(scene->getComponentId<CameraComponent>())){
         return ICON_FA_VIDEO;
     }else if (signature.test(scene->getComponentId<Joint2DComponent>()) || signature.test(scene->getComponentId<Joint3DComponent>())){

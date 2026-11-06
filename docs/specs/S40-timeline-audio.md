@@ -474,6 +474,9 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
   GUID through the asset map) without rewriting the `.anim`; the path hint is refreshed when an open
   clip document follows the move, or at the clip's next save. A cue written by hand without a GUID
   follows only its path.
+- **No instructions line:** §6.1's "Clip property tracks" line is not in the server instructions on
+  this tree, so nothing was appended there; agents reach cues through `edit_animation`'s `audio`
+  parameter and `jasper://docs/sound`'s Timeline audio section (the eval case shows they do).
 - **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
   when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
 - **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is

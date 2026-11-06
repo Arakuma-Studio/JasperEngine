@@ -27,6 +27,8 @@ namespace jasperengine{
         // pass actions of the next startRenderPass. setDepthStencilActions writes depth and
         // stencil alike (Metal takes the stencil store action from depth)
         void setColorActions(LoadAction load, StoreAction store, Vector4 clearColor = Vector4(0, 0, 0, 0));
+        // the same for another colour attachment of an MRT target (attachment 0 is the one above)
+        void setColorActions(int attachment, LoadAction load, StoreAction store, Vector4 clearColor);
         void setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth = 1.0f, uint8_t clearStencil = 0);
         // the name of its passes (a string literal) in debuggers and in the frame stats' pass
         // list (JASPERENGINE_FRAME_STATS)

@@ -156,6 +156,18 @@
       "Front"
      ]
     ],
+    "lodFadeMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "cross_fade",
+      "Cross Fade"
+     ]
+    ],
     "submeshes[0].material.alphaMode": [
      [
       0,
@@ -10802,6 +10814,7 @@
    "key": "mesh",
    "known_keys": [
     "aabb",
+    "allowGpuInstancing",
     "autoTransparency",
     "bonesMatrix",
     "buffer",
@@ -10812,8 +10825,12 @@
     "eBuffers",
     "enabled",
     "indices",
+    "lodAnimateCrossFading",
     "lodBias",
+    "lodCullBelow",
     "lodEnabled",
+    "lodFadeMode",
+    "lodFadeTransitionWidth",
     "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
@@ -10834,6 +10851,11 @@
    ],
    "name": "MeshComponent",
    "properties_of_default": {
+    "allowGpuInstancing": [
+     0,
+     8,
+     true
+    ],
     "autoTransparency": [
      0,
      8,
@@ -10864,7 +10886,17 @@
      0,
      true
     ],
+    "lodAnimateCrossFading": [
+     0,
+     0,
+     true
+    ],
     "lodBias": [
+     2,
+     0,
+     true
+    ],
+    "lodCullBelow": [
      2,
      0,
      true
@@ -10872,6 +10904,16 @@
     "lodEnabled": [
      0,
      8,
+     true
+    ],
+    "lodFadeMode": [
+     13,
+     8,
+     true
+    ],
+    "lodFadeTransitionWidth": [
+     2,
+     0,
      true
     ],
     "morphWeights[0]": [
@@ -11230,6 +11272,56 @@
      true
     ],
     "submeshes[0].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[0].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -11774,6 +11866,56 @@
      0,
      true
     ],
+    "submeshes[10].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[10].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[10].material.pbr.hex.contrast": [
      2,
      0,
@@ -12310,6 +12452,56 @@
      true
     ],
     "submeshes[11].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[11].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -12854,6 +13046,56 @@
      0,
      true
     ],
+    "submeshes[12].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[12].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[12].material.pbr.hex.contrast": [
      2,
      0,
@@ -13390,6 +13632,56 @@
      true
     ],
     "submeshes[13].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[13].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -13934,6 +14226,56 @@
      0,
      true
     ],
+    "submeshes[14].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[14].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[14].material.pbr.hex.contrast": [
      2,
      0,
@@ -14470,6 +14812,56 @@
      true
     ],
     "submeshes[15].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[15].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -15014,6 +15406,56 @@
      0,
      true
     ],
+    "submeshes[1].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[1].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[1].material.pbr.hex.contrast": [
      2,
      0,
@@ -15550,6 +15992,56 @@
      true
     ],
     "submeshes[2].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[2].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -16094,6 +16586,56 @@
      0,
      true
     ],
+    "submeshes[3].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[3].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[3].material.pbr.hex.contrast": [
      2,
      0,
@@ -16630,6 +17172,56 @@
      true
     ],
     "submeshes[4].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[4].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -17174,6 +17766,56 @@
      0,
      true
     ],
+    "submeshes[5].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[5].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[5].material.pbr.hex.contrast": [
      2,
      0,
@@ -17710,6 +18352,56 @@
      true
     ],
     "submeshes[6].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[6].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -18254,6 +18946,56 @@
      0,
      true
     ],
+    "submeshes[7].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[7].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[7].material.pbr.hex.contrast": [
      2,
      0,
@@ -18790,6 +19532,56 @@
      true
     ],
     "submeshes[8].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[8].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -19334,6 +20126,56 @@
      0,
      true
     ],
+    "submeshes[9].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[9].material.pbr.hair.secondaryWidth": [
+     2,
+     0,
+     true
+    ],
     "submeshes[9].material.pbr.hex.contrast": [
      2,
      0,
@@ -19596,6 +20438,11 @@
     ]
    },
    "properties_without_component": {
+    "allowGpuInstancing": [
+     0,
+     8,
+     true
+    ],
     "autoTransparency": [
      0,
      8,
@@ -19626,7 +20473,17 @@
      0,
      true
     ],
+    "lodAnimateCrossFading": [
+     0,
+     0,
+     true
+    ],
     "lodBias": [
+     2,
+     0,
+     true
+    ],
+    "lodCullBelow": [
      2,
      0,
      true
@@ -19634,6 +20491,16 @@
     "lodEnabled": [
      0,
      8,
+     true
+    ],
+    "lodFadeMode": [
+     13,
+     8,
+     true
+    ],
+    "lodFadeTransitionWidth": [
+     2,
+     0,
      true
     ],
     "morphWeights[]": [
@@ -19957,6 +20824,56 @@
      true
     ],
     "submeshes[].material.pbr.clearcoat.roughness": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.enabled": [
+     0,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.hair.flowMap": [
+     11,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.hair.flowMapTexCoord": [
+     8,
+     16,
+     true
+    ],
+    "submeshes[].material.pbr.hair.primaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.primaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.primaryWidth": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.rotation": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.secondaryColor": [
+     5,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.secondaryShift": [
+     2,
+     0,
+     true
+    ],
+    "submeshes[].material.pbr.hair.secondaryWidth": [
      2,
      0,
      true
@@ -20985,6 +21902,10 @@
     "cascadeSplits",
     "color",
     "colorTemperature",
+    "contactShadowLength",
+    "contactShadowSampleCount",
+    "contactShadowThickness",
+    "contactShadows",
     "cullingMask",
     "direction",
     "enabled",
@@ -21036,6 +21957,26 @@
     ],
     "colorTemperature": [
      2,
+     0,
+     true
+    ],
+    "contactShadowLength": [
+     2,
+     0,
+     true
+    ],
+    "contactShadowSampleCount": [
+     8,
+     0,
+     true
+    ],
+    "contactShadowThickness": [
+     2,
+     0,
+     true
+    ],
+    "contactShadows": [
+     0,
      0,
      true
     ],
@@ -21193,6 +22134,26 @@
     ],
     "colorTemperature": [
      2,
+     0,
+     true
+    ],
+    "contactShadowLength": [
+     2,
+     0,
+     true
+    ],
+    "contactShadowSampleCount": [
+     8,
+     0,
+     true
+    ],
+    "contactShadowThickness": [
+     2,
+     0,
+     true
+    ],
+    "contactShadows": [
+     0,
      0,
      true
     ],
@@ -23512,9 +24473,7 @@
     "dopplerFactor",
     "enableClocked",
     "enabled",
-    "event",
     "filename",
-    "fullVolumeImpactSpeed",
     "ignoreListenerPause",
     "inaudibleBehaviorKill",
     "inaudibleBehaviorMustTick",
@@ -23524,18 +24483,14 @@
     "maxDistance",
     "maxVoices",
     "minDistance",
-    "minImpactSpeed",
     "outputGroup",
     "outputGroupName",
     "pan",
-    "pitchRandomSemitones",
-    "playOn",
     "priority",
     "protectVoice",
     "speed",
     "state",
-    "volume",
-    "volumeRandomDb"
+    "volume"
    ],
    "name": "AudioSourceComponent",
    "properties_of_default": {
@@ -23564,18 +24519,8 @@
      0,
      true
     ],
-    "event": [
-     18,
-     134217728,
-     true
-    ],
     "filename": [
      18,
-     134217728,
-     true
-    ],
-    "fullVolumeImpactSpeed": [
-     2,
      134217728,
      true
     ],
@@ -23629,11 +24574,6 @@
      134217728,
      true
     ],
-    "minImpactSpeed": [
-     2,
-     134217728,
-     true
-    ],
     "outputGroup": [
      1,
      134217728,
@@ -23641,16 +24581,6 @@
     ],
     "pan": [
      2,
-     134217728,
-     true
-    ],
-    "pitchRandomSemitones": [
-     2,
-     134217728,
-     true
-    ],
-    "playOn": [
-     9,
      134217728,
      true
     ],
@@ -23681,11 +24611,6 @@
     ],
     "volume": [
      3,
-     134217728,
-     true
-    ],
-    "volumeRandomDb": [
-     2,
      134217728,
      true
     ]
@@ -23716,18 +24641,8 @@
      0,
      true
     ],
-    "event": [
-     18,
-     134217728,
-     true
-    ],
     "filename": [
      18,
-     134217728,
-     true
-    ],
-    "fullVolumeImpactSpeed": [
-     2,
      134217728,
      true
     ],
@@ -23781,11 +24696,6 @@
      134217728,
      true
     ],
-    "minImpactSpeed": [
-     2,
-     134217728,
-     true
-    ],
     "outputGroup": [
      1,
      134217728,
@@ -23793,16 +24703,6 @@
     ],
     "pan": [
      2,
-     134217728,
-     true
-    ],
-    "pitchRandomSemitones": [
-     2,
-     134217728,
-     true
-    ],
-    "playOn": [
-     9,
      134217728,
      true
     ],
@@ -23833,11 +24733,6 @@
     ],
     "volume": [
      3,
-     134217728,
-     true
-    ],
-    "volumeRandomDb": [
-     2,
      134217728,
      true
     ]
@@ -24928,6 +25823,18 @@
       "Linear"
      ]
     ],
+    "transparencyMode": [
+     [
+      0,
+      "sorted",
+      "Sorted"
+     ],
+     [
+      1,
+      "order_independent",
+      "Order Independent"
+     ]
+    ],
     "type": [
      [
       1,
@@ -24957,10 +25864,12 @@
     "framebufferWidth",
     "leftClip",
     "nearClip",
+    "oitWeightScale",
     "renderToTexture",
     "rightClip",
     "target",
     "topClip",
+    "transparencyMode",
     "transparentSort",
     "type",
     "up",
@@ -25029,6 +25938,11 @@
      2,
      true
     ],
+    "oitWeightScale": [
+     2,
+     0,
+     true
+    ],
     "renderToTexture": [
      0,
      2,
@@ -25047,6 +25961,11 @@
     "top": [
      2,
      2,
+     true
+    ],
+    "transparencyMode": [
+     13,
+     0,
      true
     ],
     "transparentSort": [
@@ -25136,6 +26055,11 @@
      2,
      true
     ],
+    "oitWeightScale": [
+     2,
+     0,
+     true
+    ],
     "renderToTexture": [
      0,
      2,
@@ -25154,6 +26078,11 @@
     "top": [
      2,
      2,
+     true
+    ],
+    "transparencyMode": [
+     13,
+     0,
      true
     ],
     "transparentSort": [
@@ -39642,68 +40571,84 @@
    "type_of_name": 89
   },
   {
-   "display_name": "Mixer Snapshot Action",
-   "enum_options": {},
-   "has_enabled": false,
-   "icon": "ef879e",
-   "key": "audiosnapshot",
+   "display_name": "Capsule Shadow Caster",
+   "enum_options": {
+    "castShadows": [
+     [
+      0,
+      "on",
+      "On"
+     ],
+     [
+      1,
+      "capsules_only",
+      "Capsules Only"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef91ab",
+   "key": "capsuleshadowcaster",
    "known_keys": [
-    "revert",
-    "revertSeconds",
-    "seconds",
-    "snapshot",
-    "unscaled"
+    "capsules",
+    "castShadows",
+    "enabled"
    ],
-   "name": "AudioSnapshotComponent",
+   "name": "CapsuleShadowCasterComponent",
    "properties_of_default": {
-    "revert": [
-     0,
-     0,
-     true
-    ],
-    "revertSeconds": [
-     2,
+    "capsules": [
+     15,
      0,
      true
     ],
-    "seconds": [
-     2,
+    "castShadows": [
+     13,
      0,
      true
     ],
-    "snapshot": [
-     1,
-     0,
-     true
-    ],
-    "unscaled": [
+    "enabled": [
      0,
      0,
      true
     ]
    },
    "properties_without_component": {
-    "revert": [
-     0,
-     0,
-     true
-    ],
-    "revertSeconds": [
-     2,
+    "capsules": [
+     15,
      0,
      true
     ],
-    "seconds": [
-     2,
-     0,
-     true
-    ],
-    "snapshot": [
+    "capsules[].bone": [
      1,
      0,
      true
     ],
-    "unscaled": [
+    "capsules[].direction": [
+     13,
+     0,
+     true
+    ],
+    "capsules[].length": [
+     2,
+     0,
+     true
+    ],
+    "capsules[].offset": [
+     5,
+     0,
+     true
+    ],
+    "capsules[].radius": [
+     2,
+     0,
+     true
+    ],
+    "castShadows": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
      0,
      0,
      true
@@ -40243,33 +41188,6 @@
     true
    ]
   },
-  "AudioSnapshotComponent": {
-   "revert": [
-    0,
-    0,
-    true
-   ],
-   "revertSeconds": [
-    2,
-    0,
-    true
-   ],
-   "seconds": [
-    2,
-    0,
-    true
-   ],
-   "snapshot": [
-    1,
-    0,
-    true
-   ],
-   "unscaled": [
-    0,
-    0,
-    true
-   ]
-  },
   "AudioSourceComponent": {
    "attenuationModel": [
     13,
@@ -40296,18 +41214,8 @@
     0,
     true
    ],
-   "event": [
-    18,
-    134217728,
-    true
-   ],
    "filename": [
     18,
-    134217728,
-    true
-   ],
-   "fullVolumeImpactSpeed": [
-    2,
     134217728,
     true
    ],
@@ -40361,11 +41269,6 @@
     134217728,
     true
    ],
-   "minImpactSpeed": [
-    2,
-    134217728,
-    true
-   ],
    "outputGroup": [
     1,
     134217728,
@@ -40373,16 +41276,6 @@
    ],
    "pan": [
     2,
-    134217728,
-    true
-   ],
-   "pitchRandomSemitones": [
-    2,
-    134217728,
-    true
-   ],
-   "playOn": [
-    9,
     134217728,
     true
    ],
@@ -40413,11 +41306,6 @@
    ],
    "volume": [
     3,
-    134217728,
-    true
-   ],
-   "volumeRandomDb": [
-    2,
     134217728,
     true
    ]
@@ -40589,6 +41477,11 @@
     2,
     true
    ],
+   "oitWeightScale": [
+    2,
+    0,
+    true
+   ],
    "renderToTexture": [
     0,
     2,
@@ -40607,6 +41500,11 @@
    "top": [
     2,
     2,
+    true
+   ],
+   "transparencyMode": [
+    13,
+    0,
     true
    ],
    "transparentSort": [
@@ -40798,6 +41696,48 @@
    "renderMode": [
     13,
     2251799813685248,
+    true
+   ]
+  },
+  "CapsuleShadowCasterComponent": {
+   "capsules": [
+    15,
+    0,
+    true
+   ],
+   "capsules[N].bone": [
+    1,
+    0,
+    true
+   ],
+   "capsules[N].direction": [
+    13,
+    0,
+    true
+   ],
+   "capsules[N].length": [
+    2,
+    0,
+    true
+   ],
+   "capsules[N].offset": [
+    5,
+    0,
+    true
+   ],
+   "capsules[N].radius": [
+    2,
+    0,
+    true
+   ],
+   "castShadows": [
+    13,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
     true
    ]
   },
@@ -42383,6 +43323,26 @@
     0,
     true
    ],
+   "contactShadowLength": [
+    2,
+    0,
+    true
+   ],
+   "contactShadowSampleCount": [
+    8,
+    0,
+    true
+   ],
+   "contactShadowThickness": [
+    2,
+    0,
+    true
+   ],
+   "contactShadows": [
+    0,
+    0,
+    true
+   ],
    "cullingMask": [
     9,
     0,
@@ -42729,6 +43689,11 @@
    ]
   },
   "MeshComponent": {
+   "allowGpuInstancing": [
+    0,
+    8,
+    true
+   ],
    "autoTransparency": [
     0,
     8,
@@ -42759,7 +43724,17 @@
     0,
     true
    ],
+   "lodAnimateCrossFading": [
+    0,
+    0,
+    true
+   ],
    "lodBias": [
+    2,
+    0,
+    true
+   ],
+   "lodCullBelow": [
     2,
     0,
     true
@@ -42767,6 +43742,16 @@
    "lodEnabled": [
     0,
     8,
+    true
+   ],
+   "lodFadeMode": [
+    13,
+    8,
+    true
+   ],
+   "lodFadeTransitionWidth": [
+    2,
+    0,
     true
    ],
    "morphWeights[N]": [
@@ -43090,6 +44075,56 @@
     true
    ],
    "submeshes[N].material.pbr.clearcoat.roughness": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.enabled": [
+    0,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.flowMap": [
+    11,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.flowMapTexCoord": [
+    8,
+    16,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.primaryColor": [
+    5,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.primaryShift": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.primaryWidth": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.rotation": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.secondaryColor": [
+    5,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.secondaryShift": [
+    2,
+    0,
+    true
+   ],
+   "submeshes[N].material.pbr.hair.secondaryWidth": [
     2,
     0,
     true

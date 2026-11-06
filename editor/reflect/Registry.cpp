@@ -110,6 +110,7 @@ namespace {
         &kTextEffectDesc,
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
+        &kCapsuleShadowCasterDesc,
         &kAudioSnapshotDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -134,6 +135,7 @@ namespace {
         &kLightDesc,
         &kLight2DDesc,
         &kShadowCaster2DDesc,
+        &kCapsuleShadowCasterDesc,
         &kFogDesc,
         &kForceFieldDesc,
         &kLocalVolumetricFogDesc,
@@ -222,6 +224,7 @@ namespace {
         &kPrefabDesc,
         &kButtonDesc,
         &kCameraDesc,
+        &kCapsuleShadowCasterDesc,
         &kColorTweenDesc,
         &kFogDesc,
         &kLocalVolumetricFogDesc,
@@ -313,7 +316,7 @@ namespace {
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
         &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
-        &enums::kLightType, &enums::kLightUnit,
+        &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,
@@ -329,7 +332,8 @@ namespace {
         &enums::kSplineSpanOverrideKind, &enums::kSplineAnimateMethod, &enums::kSplineLoop, &enums::kSplineEasing, &enums::kSplineAlignment,
         &enums::kLineRendererMode, &enums::kLineWidthUnit, &enums::kLineAlignment, &enums::kLineTextureMode, &enums::kCanvasGroupRenderMode, &enums::kOnScreenStickMode,
         &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
-        &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget,
+        &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
+        &enums::kCapsuleDirection,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

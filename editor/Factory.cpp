@@ -1212,6 +1212,17 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (!mesh.allowGpuInstancing)
+        code << ind << "mesh.allowGpuInstancing = false;\n";
+    // the fade settings only away from their defaults (spec S54 R9)
+    if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
+        code << ind << "mesh.lodFadeMode = LodFadeMode::NONE;\n";
+    if (!mesh.lodAnimateCrossFading)
+        code << ind << "mesh.lodAnimateCrossFading = false;\n";
+    if (mesh.lodFadeTransitionWidth != 0.1f)
+        code << ind << "mesh.lodFadeTransitionWidth = " << formatFloat(mesh.lodFadeTransitionWidth) << ";\n";
+    if (mesh.lodCullBelow != 0.0f)
+        code << ind << "mesh.lodCullBelow = " << formatFloat(mesh.lodCullBelow) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
     code << ind << "mesh.transparent = " << formatBool(mesh.transparent) << ";\n";
     code << ind << "mesh.autoTransparency = " << formatBool(mesh.autoTransparency) << ";\n";
@@ -3058,6 +3069,10 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setShadowCascadeBlend(" << formatBool(scene->isShadowCascadeBlend()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
+    if (scene->isMeshLodCrossFade() != SceneSettings().meshLodCrossFade)
+        out << ind2 << "scene->setMeshLodCrossFade(" << formatBool(scene->isMeshLodCrossFade()) << ");\n";
+    if (scene->getMeshLodCrossFadeDuration() != SceneSettings().meshLodCrossFadeDuration)
+        out << ind2 << "scene->setMeshLodCrossFadeDuration(" << formatFloat(scene->getMeshLodCrossFadeDuration()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
@@ -3069,6 +3084,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setLitQuality(" << (scene->getLitQuality() == LitQuality::HIGH ? "LitQuality::HIGH" : "LitQuality::STANDARD") << ");\n";
     if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
         out << ind2 << "scene->setPhysicalLightEV100(" << formatFloat(scene->getPhysicalLightEV100()) << ");\n";
+    if (scene->isCapsuleShadowsEnabled() != SceneSettings().capsuleShadowsEnabled)
+        out << ind2 << "scene->setCapsuleShadowsEnabled(" << formatBool(scene->isCapsuleShadowsEnabled()) << ");\n";
+    if (scene->getCapsuleShadowIntensity() != SceneSettings().capsuleShadowIntensity)
+        out << ind2 << "scene->setCapsuleShadowIntensity(" << formatFloat(scene->getCapsuleShadowIntensity()) << ");\n";
+    if (scene->getCapsuleShadowSoftness() != SceneSettings().capsuleShadowSoftness)
+        out << ind2 << "scene->setCapsuleShadowSoftness(" << formatFloat(scene->getCapsuleShadowSoftness()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatVector3(scene->getAmbientLight2DColor()) << ");\n";
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
