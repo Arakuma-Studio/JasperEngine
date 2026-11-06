@@ -35,8 +35,14 @@ namespace {
         void setUniforms(uint32_t, const UniformBlock&) override {
             uniformEdits++;
             remaining = slices;
+            cancelled = false;
         }
         bool advance(double, EvaluationResult& result) override {
+            if (cancelled) {
+                cancelled = false;
+                result = EvaluationResult();
+                return true;
+            }
             if (remaining > 0 && --remaining > 0) return false;
             evaluations++;
             result.ok = !failNext;
@@ -45,7 +51,10 @@ namespace {
             result.outputs.push_back({"image", 1, 1, {(uint8_t)evaluations, 0, 0, 255}});
             return true;
         }
-        void cancel() override { remaining = 0; }
+        void cancel() override {
+            remaining = 0;
+            cancelled = true;
+        }
 
         int prepares = 0;
         int uniformEdits = 0;
@@ -54,6 +63,7 @@ namespace {
         int remaining = 0;
         bool refusePrepare = false;
         bool failNext = false;
+        bool cancelled = false;
     };
 
     // Graph::findNode looks nodes up in id order, as load() and the edit ops keep them
@@ -280,5 +290,41 @@ TEST_F(ProceduralSessionTest, ASeedEditIsAValueEditAndASizeEditRebuilds) {
     session.setOptions(larger, 3.0);
     EXPECT_TRUE(session.isRebuildPending());
     session.update(3.5, 8.0);
+    EXPECT_EQ(evaluator.prepares, 2);
+}
+
+TEST_F(ProceduralSessionTest, AnEditBackAfterACancelledEvaluationDrawsAgain) {
+    ProceduralSession session(evaluator, library, options);
+    start(session);
+    const EvaluationResult before = session.latest();
+    evaluator.slices = 3;
+
+    // a drag, still being drawn when an invalid edit cancels it; then undo brings the dragged graph back
+    file.findNode("n")->params["persistence"] = 0.25;
+    session.setGraph(file, 1.0);
+    session.update(1.0, 1.0);
+    ASSERT_FALSE(session.hasImage() && session.latest().outputs[0].rgba != before.outputs[0].rgba) << "still drawing";
+    graph::Graph broken = file;
+    broken.findNode("n")->params["persistence"] = "not a number";
+    session.setGraph(broken, 1.1);
+    session.setGraph(file, 1.2);
+    EXPECT_TRUE(session.isStale()) << "the image is still the one before the drag";
+
+    for (double now = 1.2; now < 3.0 && session.isStale(); now += 0.1) session.update(now, 1.0);
+    EXPECT_FALSE(session.isStale());
+    EXPECT_NE(session.latest().outputs[0].rgba, before.outputs[0].rgba) << "the dragged graph was drawn";
+}
+
+TEST_F(ProceduralSessionTest, AValueEditDoesNotHoldBackAPendingRebuild) {
+    ProceduralSession session(evaluator, library, options);
+    start(session);
+    file.findNode("b")->params["blend_type"] = "multiply";
+    session.setGraph(file, 1.0);
+    // a slider dragged meanwhile: R7's debounce runs from the last structural edit
+    file.findNode("n")->params["persistence"] = 0.3;
+    session.setGraph(file, 1.1);
+    file.findNode("n")->params["persistence"] = 0.35;
+    session.setGraph(file, 1.15);
+    session.update(1.0 + ProceduralSession::REBUILD_DEBOUNCE_SECONDS, 8.0);
     EXPECT_EQ(evaluator.prepares, 2);
 }

@@ -109,13 +109,18 @@ namespace jasperengine::editor::procmat {
         std::set<std::pair<Generator*, int>> loopedInputs;
         // the graph nodes whose code this pass holds
         std::set<std::string> nodes;
+        // where each Buffer's size is in the block: a shrinking Iterate Buffer's changes per step
+        std::map<TextureSource*, size_t> sizeSlots;
 
         std::string floatSlot(const std::string& key, double value);
         std::string vec4Slot(const std::string& key, const double value[4]);
         std::string texture(const std::string& name, TextureSource* source, int port);
+        // the float a slot made by floatSlot is, in the block
+        size_t floatIndex(const std::string& key) const { return indices.at(key); }
 
     private:
         std::unordered_map<std::string, std::string> slots;
+        std::unordered_map<std::string, size_t> indices;
     };
 
     class Generator {
@@ -175,6 +180,7 @@ namespace jasperengine::editor::procmat {
 
     private:
         std::string textureName(int port) const;
+        std::string sizeSlot(PassBuilder& pass);
 
         Json parameters;
         Kind passKind;

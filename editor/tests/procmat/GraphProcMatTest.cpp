@@ -280,3 +280,53 @@ TEST_F(GraphProcMatTest, EveryCatalogPresetIsAValidNode) {
     }
     EXPECT_GT(checked, 150) << "the catalog has presets for most nodes";
 }
+
+TEST_F(GraphProcMatTest, AMisspelledParameterIsAnErrorWithASuggestion) {
+    // R28: the kind is strict, so edit_graph refuses what validate reports as an error
+    auto kind = graph::GraphRegistry::get().kind(PROCEDURAL_MATERIAL_KIND);
+    ASSERT_TRUE(kind);
+    EXPECT_TRUE(kind->strictParams);
+    graph::Graph file;
+    file.kind = PROCEDURAL_MATERIAL_KIND;
+    graph::Node node;
+    node.id = "n1";
+    node.type = "perlin";
+    node.params = {{"scale_z", 8}};
+    file.nodes.push_back(node);
+    const std::vector<graph::Issue> issues = graph::validate(file);
+    const auto unknown = std::find_if(issues.begin(), issues.end(), [](const graph::Issue& issue) { return issue.code == "unknown-param"; });
+    ASSERT_NE(unknown, issues.end());
+    EXPECT_EQ(unknown->severity, graph::Severity::Error);
+    EXPECT_NE(unknown->suggestion.find("scale_x"), std::string::npos) << unknown->suggestion;
+    file.nodes[0].params = {{"scale_x", 1000}};
+    bool range = false;
+    for (const graph::Issue& issue : graph::validate(file)) range = range || (issue.code == "param-range" && issue.severity == graph::Severity::Error);
+    EXPECT_TRUE(range) << "out of range is an error too";
+}
+
+TEST_F(GraphProcMatTest, ShapesAndImagesHaveBounds) {
+    // R3: every number that becomes a cast, a table or a loop in GLSL has a range a file cannot leave
+    const std::vector<std::string> paramType = {"param-type"};
+    const auto image = [](double w, double h, double bpp, graph::Json px, size_t colors) {
+        graph::Json palette = graph::Json::array();
+        for (size_t i = 0; i < colors; i++) palette.push_back({{"r", 0}, {"g", 0}, {"b", 0}, {"a", 1}});
+        return graph::Json{{"w", w}, {"h", h}, {"bpp", bpp}, {"pl", palette}, {"px", px}};
+    };
+    EXPECT_TRUE(paramIssues("pixels", {{"pixels", image(8, 8, 1, {42, 42}, 2)}}).empty()) << "the library's own default";
+    EXPECT_EQ(paramIssues("pixels", {{"pixels", image(1e300, 8, 1, {42, 42}, 2)}}), paramType);
+    EXPECT_EQ(paramIssues("pixels", {{"pixels", image(8, 8, 1, {42}, 2)}}), paramType) << "too few words";
+    EXPECT_EQ(paramIssues("pixels", {{"pixels", image(8, 8, 1, {1e300, 42}, 2)}}), paramType);
+    EXPECT_EQ(paramIssues("pixels", {{"pixels", image(4, 4, 2, {3}, 2)}}), paramType) << "pixel 0 is colour 3 of 2";
+    EXPECT_EQ(paramIssues("pixels", {{"pixels", image(4, 4, 1, {0}, 3)}}), paramType) << "3 colours in 1 bit";
+    graph::Json points = graph::Json::array();
+    for (int i = 0; i < 65; i++) points.push_back({{"x", 0}, {"y", 0}});
+    EXPECT_EQ(paramIssues("sdpolygon", {{"polygon", {{"points", points}}}}), paramType);
+    const graph::Json corners = graph::Json::array({{{"x", 0}, {"y", 0}}, {{"x", 1}, {"y", 0}}, {{"x", 0}, {"y", 1}}, {{"x", 1}, {"y", 1}}});
+    EXPECT_TRUE(paramIssues("distort", {{"lattice", {{"points", corners}, {"size", {{"x", 1}, {"y", 1}}}}}}).empty());
+    EXPECT_EQ(paramIssues("distort", {{"lattice", {{"points", corners}, {"size", {{"x", 1e300}, {"y", 1}}}}}}), paramType);
+    EXPECT_EQ(paramIssues("distort", {{"lattice", {{"points", corners}, {"size", {{"x", 2}, {"y", 1}}}}}}), paramType) << "6 points for 2 x 1";
+    // a generic node's ports from a huge size: clamped as a number, never cast first
+    const graph::NodeTypeDesc* blend = graph::GraphRegistry::nodeType(*graph::GraphRegistry::get().kind(PROCEDURAL_MATERIAL_KIND), "blend2");
+    ASSERT_TRUE(blend && blend->dynamicPorts);
+    EXPECT_FALSE(blend->dynamicPorts(graph::Json{{"generic_size", 1e300}}).empty());
+}

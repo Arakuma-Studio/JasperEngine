@@ -351,3 +351,38 @@ TEST(PassPlanner, EditsThatOnlyChangeValuesKeepTheStructure) {
     ASSERT_TRUE(planGraph(file, library, {}, larger, edited, error)) << error;
     EXPECT_FALSE(base.sameStructure(edited)) << "a size rebuilds";
 }
+
+TEST(PassPlanner, AValueEditInsideAnIterationRedrawsFromItsInitialStep) {
+    // an Iterate Buffer X (initial pass 0, loop pass 2) whose loop reads a Buffer Y the planner cut (pass 1)
+    PassPlan plan;
+    plan.steps = {{0, 0, 16}, {1, 1, 16}, {2, 0, 16}, {1, 1, 16}, {2, 0, 16}, {3, 2, 16}};
+    EXPECT_EQ(firstStepToRedraw(plan, 1), 0u) << "Y's pass reads X, which starts over from its initial step";
+    EXPECT_EQ(firstStepToRedraw(plan, 2), 0u);
+    EXPECT_EQ(firstStepToRedraw(plan, 0), 0u);
+    EXPECT_EQ(firstStepToRedraw(plan, 3), 5u) << "a pass after the loop redraws alone";
+    EXPECT_EQ(firstStepToRedraw(plan, 9), plan.steps.size()) << "a pass no step draws";
+}
+
+TEST(PassPlanner, APassKnowsWhereTheSizeOfEachBufferItReadsIs) {
+    const auto library = repositoryLibrary();
+    ASSERT_TRUE(library);
+    // auto_tones' loop snaps to the nearest texel of a Buffer that halves each iteration (M4 of the review)
+    Expander expander(library);
+    NodeInstance tones = expander.instantiate("auto_tones", Json::object());
+    NodeInstance noise = expander.instantiate("perlin", Json::object());
+    expander.connect(tones.inputs.at(0), SourceRef{noise.generator, 0, false});
+    PassPlan plan;
+    std::string error;
+    PlanOptions options;
+    options.size = 64;
+    ASSERT_TRUE(planPasses(expander, {{"out", *tones.outputs.at(0)}}, options, plan, error)) << error;
+    int sized = 0;
+    for (const PlannedPass& pass : plan.passes) {
+        for (const PlannedSize& size : pass.sizes) {
+            ASSERT_LT(size.index, pass.uniforms.values.size());
+            EXPECT_EQ(pass.uniforms.values[size.index], (float)plan.buffers[(size_t)size.buffer].size) << "generated with the Buffer's first size";
+            sized++;
+        }
+    }
+    EXPECT_GT(sized, 0);
+}

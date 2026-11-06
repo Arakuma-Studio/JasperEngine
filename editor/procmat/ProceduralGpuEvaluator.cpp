@@ -197,23 +197,8 @@ void ProceduralGpuEvaluator::dropUnusedTargets() {
 void ProceduralGpuEvaluator::setUniforms(uint32_t pass, const UniformBlock& block) {
     if (pass >= plan.passes.size()) return;
     plan.passes[pass].uniforms = block;
-    // from the first step of what this pass affects: an iteration starts over from its initial step,
-    // because its buffer holds the result of the last one
-    size_t first = plan.steps.size();
-    for (size_t i = 0; i < plan.steps.size(); i++) {
-        if (plan.steps[i].pass == (int)pass) {
-            first = i;
-            break;
-        }
-    }
+    const size_t first = firstStepToRedraw(plan, pass);
     if (first == plan.steps.size()) return;
-    const int target = plan.steps[first].buffer;
-    for (size_t i = 0; i < first; i++) {
-        if (plan.steps[i].buffer == target) {
-            first = i;
-            break;
-        }
-    }
     // what was drawn before it stays, and a cancelled evaluation may not have got that far
     nextStep = std::min(nextStep, first);
     nextOutput = 0;
@@ -339,7 +324,8 @@ bool ProceduralGpuEvaluator::drawStep(size_t index, EvaluationResult& result, bo
         pass.startRenderPass(target->texture.get(), 0, 0);
         pass.endRenderPass();
         buffer.front = target;
-        return true;
+        // its levels are read like a drawn Buffer's, and were never written
+        return mips ? generateMips(*target, result, failed) : true;
     }
 
     const PlannedPass& planned = plan.passes[(size_t)step.pass];
@@ -369,6 +355,12 @@ bool ProceduralGpuEvaluator::drawStep(size_t index, EvaluationResult& result, bo
     block.resize((block.size() + 3) / 4 * 4, 0.0f);
     const size_t bytes = block.size() * sizeof(float);
     if (!frameHasRoom(bytes)) return false;
+
+    // the size each Buffer read here has now: a shrinking Iterate Buffer's is not the one generated
+    for (const PlannedSize& size : planned.sizes) {
+        const Target* front = buffers[(size_t)size.buffer]->front;
+        if (front && size.index < block.size()) block[size.index] = (float)front->size;
+    }
 
     bool sampledByItself = false;
     std::vector<std::pair<std::pair<int, int>, TextureRender*>> textures;

@@ -515,6 +515,38 @@ INPUT_DEFAULT_FIXES = {("normal2height/normal2height_base", "h"): "0.5"}
 # node, used inside graphs, and blend2 has the function. The value is the last, so no index moves.
 ENUM_VALUE_REMOVALS = {("blend", "blend_type"): {"linear_light"}}
 
+# Formulas whose result is not defined, so each device draws its own (S90 R20, the per-node image test):
+# each gets a rule that is the same on every tier. One (old, new) per change, and each old text must be
+# there exactly once, so a new Material Maker version that rewrites the node fails here instead of
+# silently keeping the old fix. The spec's Deviations list them.
+_MORPHOLOGY_LOOP = [
+    # a float counter stepped by 1/s against a float bound: whether the last step runs depends on rounding
+    ("\tfloat {a} = floor($d/e)*e;", "\tint n = int(floor($d/e));"),
+    ("\tfor (float {v} = 0.0; {v} < {a}; {v} += e) {{", "\tfor (int i = 0; i < n; i++) {{\n\t\tfloat {v} = float(i)*e;"),
+]
+TEXT_FIXES = {
+    # sign() of width - height, zero up to rounding on square bricks (Running Bond 2): ties are 0.5
+    "bricks": [("0.5*(sign($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y)+1.0)",
+                "(abs($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y) < 1e-4 ? 0.5 : "
+                "step(0.0, $(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y))")],
+    # atan(0, 0) on a flat input: no slope is angle 0
+    "height_to_angle": [("\treturn atan(dh.y, dh.x)/3.141592;", "\treturn dot(dh, dh) < 1e-12 ? 0.0 : atan(dh.y, dh.x)/3.141592;")],
+    "morphology3/shape_2": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP],
+    "morphology3/shape_3": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP],
+    "morphology3/shape_4": [(o.format(a="dy", v="y"), n.format(a="dy", v="y")) for o, n in _MORPHOLOGY_LOOP],
+}
+
+
+def apply_text_fixes(owner: str, instance: str, code: str, outputs: list[dict]) -> tuple[str, str]:
+    for old, new in TEXT_FIXES.get(owner, []):
+        found = instance.count(old) + code.count(old) + sum(output["expr"].count(old) for output in outputs)
+        if found != 1:
+            raise ImportFailure(f"{owner}: a formula fix expects its text once, found it {found} times: {old!r}")
+        instance, code = instance.replace(old, new), code.replace(old, new)
+        for output in outputs:
+            output["expr"] = output["expr"].replace(old, new)
+    return instance, code
+
 
 
 def typed_default(default: str, port_type: str) -> str:
@@ -605,6 +637,7 @@ class Body:
             self.outputs.append({"type": types[0], "expr": text_of(output[types[0]]),
                                  "label": output.get("shortdesc", ""), "description": output.get("longdesc", ""),
                                  "group_size": output.get("group_size", 0)})
+        instance, code = apply_text_fixes(owner, instance, code, self.outputs)
         self.parameters = [dict(p) for p in model.get("parameters", [])]
         for parameter in self.parameters:
             refused = ENUM_VALUE_REMOVALS.get((owner, parameter["name"]))

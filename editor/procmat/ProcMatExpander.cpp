@@ -276,6 +276,7 @@ std::string PassBuilder::floatSlot(const std::string& key, double value) {
     if (it != slots.end()) return it->second;
     const size_t index = values.size();
     values.push_back(value);
+    indices[key] = index;
     const char component[] = {"xyzw"[index % 4], 0};
     std::string slot = "pm.v[" + std::to_string(index / 4) + "]." + component;
     slots[key] = slot;
@@ -367,11 +368,18 @@ std::string TextureSource::textureName(int port) const {
     return genName() + (passKind == Kind::Iterate && port == 1 ? "_loop" : "_tex");
 }
 
+std::string TextureSource::sizeSlot(PassBuilder& pass) {
+    const std::string key = genName() + "_size";
+    const std::string slot = pass.floatSlot(key, (double)bufferSize);
+    pass.sizeSlots[this] = pass.floatIndex(key);
+    return slot;
+}
+
 bool TextureSource::getOutputAttribute(int port, const std::string& attribute, std::string& value) {
     // both are read in the same order as the reference: the texture is used by either attribute
     PassBuilder& current = expander.currentPass();
     const std::string texture = current.texture(textureName(port), this, port);
-    const std::string size = current.floatSlot(genName() + "_size", (double)bufferSize);
+    const std::string size = sizeSlot(current);
     if (attribute == "texture") {
         value = texture;
     } else if (attribute == "texture_size") {
@@ -391,8 +399,10 @@ ExpandedCode TextureSource::generate(const std::string& uv, int port, ExpansionC
     int variant = context.getVariant(this, uv);
     if (variant == -1) {
         variant = context.getVariant(this, uv);
-        const std::string size = current.floatSlot(genName() + "_size", (double)bufferSize);
-        const std::string adjusted = filter ? "fract(" + uv + ")" : "((floor(fract(" + uv + ") * " + size + ")+vec2(0.5))/" + size + ")";
+        const std::string size = sizeSlot(current);
+        // nearest texel. A sample exactly on a texel edge (another grid's coordinates, the GPU's interpolated
+        // ones) would round either way per device: the edge moves by 1/64 texel, between any grid's points
+        const std::string adjusted = filter ? "fract(" + uv + ")" : "((floor(fract(" + uv + ") * " + size + " + 0.015625)+vec2(0.5))/" + size + ")";
         result.code = std::string(grey ? "float" : "vec4") + " " + genName() + "_" + std::to_string(variant) + " = textureLod(" + sampler + ", " + adjusted + ", 0.0)" + (grey ? ".r" : "") + ";\n";
     }
     result.outputValues[result.outputType] = genName() + "_" + std::to_string(variant);

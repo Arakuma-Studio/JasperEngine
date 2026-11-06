@@ -3318,6 +3318,8 @@ bool editor::Exporter::copyLua() {
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) return TreeStep::Skip;
         // editor scripts (Editor/ with ---@menu annotations) never ship
         if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
+        // nor does a Procedural Material in a Lua root of its own (S90 R4)
+        if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Skip;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);

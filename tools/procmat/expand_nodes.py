@@ -236,7 +236,9 @@ class TextureSource(Generator):
         if variant == -1:
             variant = context.get_variant(self, uv)
             size = current.float_slot(f"{self.genname}_size", self.size)
-            adjusted = f"fract({uv})" if self.filter else f"((floor(fract({uv}) * {size})+vec2(0.5))/{size})"
+            # nearest texel. A sample exactly on a texel edge (another grid's coordinates, the GPU's interpolated
+            # ones) would round either way per device: the edge moves by 1/64 texel, between any grid's points
+            adjusted = f"fract({uv})" if self.filter else f"((floor(fract({uv}) * {size} + 0.015625)+vec2(0.5))/{size})"
             result.code = f"{kind} {self.genname}_{variant} = textureLod({sampler}, {adjusted}, 0.0){select};\n"
         result.output_values[result.output_type] = f"{self.genname}_{variant}"
         return result

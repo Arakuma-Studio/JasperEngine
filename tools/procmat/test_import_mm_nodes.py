@@ -121,6 +121,20 @@ class ImportTest(unittest.TestCase):
 
     # -- AC11: attribution comments --
 
+    def test_a_formula_fix_applies_once_or_fails(self):
+        outputs = [{"expr": "0.5*(sign(a-b)+1.0)"}]
+        saved = dict(importer.TEXT_FIXES)
+        try:
+            importer.TEXT_FIXES["n"] = [("sign(a-b)", "step(0.0, a-b)")]
+            importer.apply_text_fixes("n", "", "", outputs)
+            self.assertEqual(outputs[0]["expr"], "0.5*(step(0.0, a-b)+1.0)")
+            # a node rewritten upstream: the fix no longer finds its text
+            with self.assertRaises(importer.ImportFailure):
+                importer.apply_text_fixes("n", "", "", [{"expr": "0.5*(sign(b-a)+1.0)"}])
+        finally:
+            importer.TEXT_FIXES.clear()
+            importer.TEXT_FIXES.update(saved)
+
     def test_unrecognised_attribution_comment_fails(self):
         self.source.add("plain", shader(global_code="// Based on https://www.shadertoy.com/view/abcd\nfloat f(float x) { return x; }\n"))
         self.assertRefuses(r"plain: unrecognised attribution comment: .*shadertoy")

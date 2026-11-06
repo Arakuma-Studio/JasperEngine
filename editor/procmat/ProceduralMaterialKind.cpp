@@ -105,10 +105,18 @@ namespace {
         }
         if (kind == "polygon" || kind == "polyline" || kind == "lattice") {
             if (!value.is_object() || !value.contains("points") || !value["points"].is_array() || value["points"].empty()) return "is not a shape {points: [{x, y}]}";
+            // every point is a vec4 of the pass's uniforms (GL 4.1 guarantees 256)
+            if (value["points"].size() > SHAPE_POINTS_MAX) return "has more than " + std::to_string(SHAPE_POINTS_MAX) + " points";
             for (const Json& point : value["points"]) {
                 if (!hasFields(point, {"x", "y"})) return "has a point that is not {x, y}";
             }
-            if (kind == "lattice" && !(value.contains("size") && hasFields(value["size"], {"x", "y"}))) return "has no size {x, y}";
+            if (kind == "lattice") {
+                const Json* size = value.contains("size") ? &value["size"] : nullptr;
+                const auto cells = [&](const char* axis) { return size && isWholeNumber((*size)[axis]) && (*size)[axis].get<double>() >= 1.0 && (*size)[axis].get<double>() <= 8.0; };
+                if (!size || !cells("x") || !cells("y")) return "has no size {x, y} of 1 to 8 cells";
+                const double points = ((*size)["x"].get<double>() + 1.0) * ((*size)["y"].get<double>() + 1.0);
+                if ((double)value["points"].size() != points) return "has not (x + 1) * (y + 1) points";
+            }
             return {};
         }
         if (kind == "pixels") {
@@ -117,11 +125,24 @@ namespace {
             }
             const double bpp = value["bpp"].get<double>();
             if (bpp != 1.0 && bpp != 2.0 && bpp != 4.0 && bpp != 8.0) return "has a depth other than 1, 2, 4 or 8 bits";
+            const auto side = [&](const char* field) { return isWholeNumber(value[field]) && value[field].get<double>() >= 1.0 && value[field].get<double>() <= (double)PIXELS_SIDE_MAX; };
+            if (!side("w") || !side("h")) return "is not 1 to " + std::to_string(PIXELS_SIDE_MAX) + " pixels on a side";
+            const int depth = (int)bpp, perWord = 32 / depth;
+            const size_t pixels = (size_t)value["w"].get<double>() * (size_t)value["h"].get<double>();
+            if (value["px"].size() != (pixels + perWord - 1) / perWord) return "has not the words its size needs";
+            const size_t colors = value["pl"].size();
+            if (colors < 1 || colors > (size_t)1 << depth) return "has a palette of 0 or more than 2^bpp colours";
             for (const Json& color : value["pl"]) {
                 if (!hasFields(color, {"r", "g", "b"}) || !optionalNumber(color, "a")) return "has a palette entry that is not {r, g, b, a}";
             }
+            // the shader reads each word as a signed int and indexes the palette with it: no index past it
+            size_t pixel = 0;
             for (const Json& word : value["px"]) {
-                if (!isWholeNumber(word)) return "has a word that is not a whole number";
+                if (!isWholeNumber(word) || word.get<double>() < -2147483648.0 || word.get<double>() > 4294967295.0) return "has a word that is not a 32-bit whole number";
+                const uint32_t bits = (uint32_t)(int64_t)word.get<double>();
+                for (int k = 0; k < perWord && pixel < pixels; k++, pixel++) {
+                    if (((bits >> (depth * k)) & ((1u << depth) - 1u)) >= colors) return "has a pixel past its palette";
+                }
             }
             return {};
         }
@@ -203,8 +224,11 @@ namespace {
             // captured by value: the kind holds these functions for as long as it is registered
             type.dynamicPorts = [descriptor](const graph::Json& params) {
                 int genericSize = 1;
-                if (auto it = params.find("generic_size"); it != params.end() && it->is_number()) genericSize = (int)it->get<double>();
-                return nodePorts(descriptor, std::clamp(genericSize, 1, GENERIC_SIZE_MAX));
+                // clamped as a double: a file's 1e300 is no int (S23's ops run this before any range check)
+                if (auto it = params.find("generic_size"); it != params.end() && it->is_number()) {
+                    genericSize = (int)std::clamp(it->get<double>(), 1.0, (double)GENERIC_SIZE_MAX);
+                }
+                return nodePorts(descriptor, genericSize);
             };
         }
         return type;
@@ -375,6 +399,8 @@ graph::GraphKindDesc jasperengine::editor::procmat::makeProceduralMaterialKind(c
     kind.fileExtension = PROCEDURAL_MATERIAL_EXTENSION;
     kind.kindVersion = 1;
     kind.acyclic = true;
+    // R28: a misspelled parameter or an out-of-range value is an error edit_graph refuses
+    kind.strictParams = true;
     for (const auto& [name, type] : library->portTypes()) {
         graph::PortTypeDesc port;
         port.id = name;

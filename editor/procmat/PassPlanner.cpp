@@ -176,6 +176,8 @@ namespace {
             const std::vector<PassBuilder::TextureUse> uses = pass.textures;
             // dependencies draw first: a Buffer's steps come before any step reading it
             for (const PassBuilder::TextureUse& use : uses) planned.textures.push_back({use.name, bufferFor(use.source)});
+            for (const auto& [source, index] : pass.sizeSlots) planned.sizes.push_back({(uint32_t)index, bufferFor(source)});
+            std::sort(planned.sizes.begin(), planned.sizes.end(), [](const PlannedSize& a, const PlannedSize& b) { return a.index < b.index; });
             const int index = (int)plan.passes.size();
             plan.passes.push_back(std::move(planned));
             passes[key] = index;
@@ -288,6 +290,10 @@ bool PassPlan::sameStructure(const PassPlan& other) const {
         for (size_t t = 0; t < a.textures.size(); t++) {
             if (a.textures[t].name != b.textures[t].name || a.textures[t].buffer != b.textures[t].buffer) return false;
         }
+        if (a.sizes.size() != b.sizes.size()) return false;
+        for (size_t t = 0; t < a.sizes.size(); t++) {
+            if (a.sizes[t].index != b.sizes[t].index || a.sizes[t].buffer != b.sizes[t].buffer) return false;
+        }
     }
     for (size_t i = 0; i < buffers.size(); i++) {
         if (buffers[i].size != other.buffers[i].size || buffers[i].mips != other.buffers[i].mips) return false;
@@ -299,6 +305,31 @@ bool PassPlan::sameStructure(const PassPlan& other) const {
         if (outputs[i].name != other.outputs[i].name || outputs[i].buffer != other.outputs[i].buffer) return false;
     }
     return true;
+}
+
+size_t jasperengine::editor::procmat::firstStepToRedraw(const PassPlan& plan, uint32_t pass) {
+    size_t first = plan.steps.size();
+    for (size_t i = 0; i < plan.steps.size(); i++) {
+        if (plan.steps[i].pass == (int)pass) {
+            first = i;
+            break;
+        }
+    }
+    // a buffer drawn again from `first` on starts from what it held before: go back to where that was drawn,
+    // until no buffer drawn from there on was drawn before it
+    for (bool moved = true; moved;) {
+        moved = false;
+        std::set<int> later;
+        for (size_t i = first; i < plan.steps.size(); i++) later.insert(plan.steps[i].buffer);
+        for (size_t i = 0; i < first; i++) {
+            if (later.count(plan.steps[i].buffer)) {
+                first = i;
+                moved = true;
+                break;
+            }
+        }
+    }
+    return first;
 }
 
 std::vector<PlanRoot> jasperengine::editor::procmat::materialOutputRoots(const graph::Graph& file) {

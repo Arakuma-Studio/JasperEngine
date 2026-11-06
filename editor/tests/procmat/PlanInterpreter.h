@@ -58,16 +58,21 @@ namespace jasperengine::editor::procmat::test {
             }
         }
         std::vector<std::shared_ptr<const SpirvImage>> buffers(plan.buffers.size());
+        std::vector<int> sizes(plan.buffers.size(), 0);
         for (const PlannedStep& step : plan.steps) {
             const size_t texels = (size_t)step.size * step.size;
             std::vector<float> rgba(texels * 4, 0.0f);
             if (step.pass >= 0) {
                 const PlannedPass& pass = plan.passes[(size_t)step.pass];
                 const SpirvProgram& program = *programs[(size_t)step.pass];
+                std::vector<float> block = pass.uniforms.values;
+                for (const PlannedSize& size : pass.sizes) {
+                    if (size.index < block.size() && sizes[(size_t)size.buffer] > 0) block[size.index] = (float)sizes[(size_t)size.buffer];
+                }
                 std::atomic<int> nextRow{0};
                 const auto worker = [&]() {
                     SpirvMachine machine(program);
-                    machine.setUniforms(pass.uniforms.values.data(), pass.uniforms.values.size());
+                    machine.setUniforms(block.data(), block.size());
                     for (const PlannedTexture& texture : pass.textures) {
                         const int slot = program.textureSlot("t_" + texture.name);
                         if (slot >= 0) machine.setTexture(slot, buffers[(size_t)texture.buffer].get());
@@ -87,6 +92,7 @@ namespace jasperengine::editor::procmat::test {
                 for (float& value : rgba) value = roundedToHalf(value);
             }
             buffers[(size_t)step.buffer] = std::make_shared<SpirvImage>(step.size, step.size, std::move(rgba));
+            sizes[(size_t)step.buffer] = step.size;
         }
         outputs.clear();
         for (const PlannedOutput& output : plan.outputs) {

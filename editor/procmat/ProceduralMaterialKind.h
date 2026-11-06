@@ -27,6 +27,9 @@ namespace jasperengine::editor::procmat {
     inline constexpr int GENERIC_SIZE_MAX = 8;
     // R26: a procedural ramp holds up to 32 keys
     inline constexpr size_t RAMP_KEYS_MAX = 32;
+    // a shape's points and an image's side: each point is a uniform vec4, each image a constant table
+    inline constexpr size_t SHAPE_POINTS_MAX = 64;
+    inline constexpr int PIXELS_SIDE_MAX = 64;
 
     graph::GraphKindDesc makeProceduralMaterialKind(const std::shared_ptr<const NodeLibrary>& library);
     // Registers the kind with the library embedded in the editor, once

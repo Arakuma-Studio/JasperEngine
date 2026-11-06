@@ -419,3 +419,42 @@ TEST(ProceduralEvaluatorGpu, APassMatchesTheInterpreter) {
     std::printf("[gpu] perlin on %s against the interpreter: %.3f mean, %d at p99\n", jasperengine::test::HeadlessContext::getRendererName(), difference.mean, difference.p99);
     EXPECT_TRUE(difference.withinAc8()) << difference.mean << " mean, " << difference.p99 << " at p99";
 }
+
+TEST(ProceduralEvaluatorGpu, AValueEditInsideAnIterationStartsItOver) {
+    JASPER_REQUIRE_GPU();
+    // X iterates twice; its loop reads Y, a Buffer the planner cut, whose pass adds a uniform to X
+    const auto pass = [](const char* label, const char* reads, const char* body, bool block) {
+        PlannedPass planned;
+        planned.label = label;
+        planned.fragment = std::string("#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\n") +
+            (reads[0] ? std::string("uniform texture2D t_") + reads + ";\nuniform sampler s_" + reads + ";\n" : std::string()) +
+            (block ? "uniform u_fs_procmat {\n\tvec4 v[1];\n} pm;\n" : "") + "void main() {\n\tg_finalColor = " + body + ";\n}\n";
+        return planned;
+    };
+    PassPlan plan;
+    plan.size = 16;
+    plan.passes.push_back(pass("init", "", "vec4(0.0, 0.0, 0.0, 1.0)", false));
+    plan.passes.push_back(pass("add", "x", "textureLod(sampler2D(t_x, s_x), v_uv, 0.0) + vec4(pm.v[0].x, 0.0, 0.0, 0.0)", true));
+    plan.passes.push_back(pass("loop", "y", "textureLod(sampler2D(t_y, s_y), v_uv, 0.0)", false));
+    plan.passes.push_back(pass("out", "x", "textureLod(sampler2D(t_x, s_x), v_uv, 0.0)", false));
+    plan.passes[1].uniforms.values = {0.1f, 0.0f, 0.0f, 0.0f};
+    plan.passes[1].textures = {{"x", 0}};
+    plan.passes[2].textures = {{"y", 1}};
+    plan.passes[3].textures = {{"x", 0}};
+    plan.buffers = {{"x", 16, false}, {"y", 16, false}, {"out", 16, false}};
+    plan.steps = {{0, 0, 16}, {1, 1, 16}, {2, 0, 16}, {1, 1, 16}, {2, 0, 16}, {3, 2, 16}};
+    plan.outputs = {{"out", 2}};
+
+    ProceduralGpuEvaluator evaluator(EvaluatorTier::Software);
+    std::string error;
+    ASSERT_TRUE(evaluator.prepare(plan, error)) << error;
+    EvaluationResult result;
+    ASSERT_TRUE(evaluate(evaluator, result));
+    ASSERT_TRUE(result.ok) << result.error << "\n" << result.log;
+    EXPECT_NEAR(result.outputs[0].rgba[0], 51, 1) << "two iterations of + 0.1";
+
+    evaluator.setUniforms(1, UniformBlock{{0.2f, 0.0f, 0.0f, 0.0f}});
+    ASSERT_TRUE(evaluate(evaluator, result));
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_NEAR(result.outputs[0].rgba[0], 102, 1) << "two iterations of + 0.2 from the start, not on top of the last result";
+}

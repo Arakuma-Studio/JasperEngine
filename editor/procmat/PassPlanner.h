@@ -34,12 +34,19 @@ namespace jasperengine::editor::procmat {
         int buffer = 0;
     };
 
+    // A float of a pass's block the evaluator sets to the size the buffer it reads has at that step
+    struct PlannedSize {
+        uint32_t index = 0;
+        int buffer = 0;
+    };
+
     struct PlannedPass {
         std::string label;              // what a failure names (R9)
         std::vector<std::string> nodes; // the graph nodes inlined in it
         std::string fragment;
         UniformBlock uniforms;
         std::vector<PlannedTexture> textures;
+        std::vector<PlannedSize> sizes;
     };
 
     struct PlannedBuffer {
@@ -96,6 +103,11 @@ namespace jasperengine::editor::procmat {
         std::string name;
         SourceRef source;
     };
+
+    // The first step to draw again after `pass`'s uniforms change: its first step, or earlier when a buffer
+    // drawn from there on was drawn before it too (an Iterate Buffer's loop starts over from its initial
+    // step, whatever pass of the loop changed)
+    size_t firstStepToRedraw(const PassPlan& plan, uint32_t pass);
 
     // The roots of a material's bake: each connected port of its material_output node, and "orm" when
     // any of occlusion, roughness and metallic is, in the order R14 lists them

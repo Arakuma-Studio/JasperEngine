@@ -7,9 +7,13 @@ Red control: without the skip in Exporter::copyAssets and writeAssetMap the firs
 
 from __future__ import annotations
 
+import shutil
 import struct
+import tempfile
 import zlib
 from pathlib import Path
+
+import yaml
 
 from harness import Editor
 
@@ -70,3 +74,28 @@ async def test_a_procmat_is_absent_from_an_export():
         ed.check(shipped or cooked, f"the baked PNG ships: {[str(p) for p in files][:20]}")
         carrying = [str(p) for p in files if b"jasper." in p.read_bytes()]
         ed.check(not carrying, f"no jasper.* chunk ships: {carrying}")
+
+
+async def test_a_procmat_in_a_lua_root_of_its_own_is_absent_from_an_export():
+    """copyLua ships every file of a Lua root that is neither the project's nor the assets' own"""
+    with tempfile.TemporaryDirectory() as scratch:
+        project = Path(scratch) / "project"
+        async with Editor(create=True, name="Procmat lua root") as ed:
+            await ed.call("save_project")
+            shutil.copytree(ed.project, project)
+        settings = yaml.safe_load((project / "project.yaml").read_text())
+        settings["luaDir"] = "scripts"
+        (project / "project.yaml").write_text(yaml.safe_dump(settings))
+        (project / "scripts").mkdir(exist_ok=True)
+        (project / "scripts" / "main.lua").write_text("-- a script\n")
+        (project / "scripts" / "stray.procmat").write_text(GRAPH)
+        async with Editor(project=str(project), label="procmat-lua") as ed:
+            lua = await ed.call("get_project_summary")
+            ed.check_eq(lua.get("lua_dir"), "scripts", f"the Lua root: {lua}")
+            out = ed.scratch.root / "export"
+            r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+                              allow_missing_assets=True, overwrite=True, timeout_seconds=900)
+            ed.check_eq(r["status"], "succeeded", f"{r}")
+            shipped = [str(p) for p in (out / "project").rglob("*") if p.is_file()]
+            ed.check(any(p.endswith("main.lua") for p in shipped), f"the Lua root shipped: {shipped[:20]}")
+            ed.check(not [p for p in shipped if p.endswith(".procmat")], f"no .procmat ships: {[p for p in shipped if p.endswith('.procmat')]}")

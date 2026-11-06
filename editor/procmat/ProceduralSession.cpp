@@ -31,6 +31,8 @@ void ProceduralSession::replan(double now) {
             EvaluationResult dropped;
             evaluator.advance(0.0, dropped);
             running = false;
+            // what it holds was never drawn: an edit back to it must draw it, not take it as the image
+            active.reset();
         }
         return;
     }
@@ -48,8 +50,9 @@ void ProceduralSession::replan(double now) {
         if (!running) stale = false;
         return;
     }
-    // the first image has nothing to keep on screen meanwhile: only an edit waits
-    rebuildAt = active ? now + REBUILD_DEBOUNCE_SECONDS : now;
+    // the first image has nothing to keep on screen meanwhile: only an edit waits, and the wait runs from
+    // the last structural edit, so dragging a slider meanwhile does not hold the rebuild back
+    if (!pending || !plan.sameStructure(*pending)) rebuildAt = active ? now + REBUILD_DEBOUNCE_SECONDS : now;
     pending = std::move(plan);
 }
 
