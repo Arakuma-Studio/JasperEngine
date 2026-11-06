@@ -349,6 +349,7 @@ TEST_F(SceneIntegrityTest, MultiDeleteUndoKeepsTheSky) {
     EXPECT_EQ(skies->getEntity(0), sky1) << "the sky is the one it was";
 }
 
+// A guard, not a red control: CreateEntityCmd already lists a created child in its parent's branch
 TEST_F(SceneIntegrityTest, CreatedChildrenJoinTheirParentsBranch) {
     // a child created under First goes into First's branch (before Second), not to the list's end
     CreateEntityCmd* first = new CreateEntityCmd(project.get(), sceneId, "First", EntityCreationType::EMPTY);

@@ -1031,10 +1031,6 @@ bool editor::CreateEntityCmd::execute(){
         Catalog::updateEntity(scene, child.entity, updateFlags);
         sceneProject->entities.push_back(child.entity);
     }
-    // under a parent it goes into the parent's branch of the list, as in the Transform array
-    if (parent != NULL_ENTITY || !childEntities.empty()){
-        ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
-    }
 
     if (!quiet){
         project->setSelectedEntity(sceneId, entity);

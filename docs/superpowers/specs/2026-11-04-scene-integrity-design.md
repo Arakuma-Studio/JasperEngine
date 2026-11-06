@@ -1023,3 +1023,8 @@ Recorded during the implementation (branch `dc/scene-integrity`).
     copied outside the editor carries its original's in-file GUID until the asset database settles it,
     so the GUID was not the same at every load (`SceneIntegrityTest.AClashAtLoadGetsTheSameReplacementEveryTime`
     found it). The path is stable until the file moves, and the first save writes the id anyway.
+13. **CreateEntityCmd is unchanged**: with the fix taken out, `SceneIntegrityTest.CreatedChildrenJoinTheirParentsBranch`
+    still passed (a created child already joins its parent's branch of the tracked list), so the sort it
+    planned was not needed; the test stays as a guard. The generator and cooker sort their copy whatever
+    the list says (`GeneratedScenes.ParentsAreCreatedBeforeChildren`, red without it); the sorts after a
+    model load and a duplicate are kept from reading the code, not from a failing test.
