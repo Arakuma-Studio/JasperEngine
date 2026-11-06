@@ -48,7 +48,7 @@ green and blue channels: slot 0 for layers 0-2, slot 1 for 3-5, slot 2 for 6-8.
 
 ## Details
 
-A detail layer scatters instances of one model (`.obj`, `.gltf` or `.glb`) over the terrain where
+A detail layer scatters instances of one model (`.obj`, `.gltf`, `.glb` or `.fbx`) over the terrain where
 its density map is painted, filtered by slope and height, with a random scale and yaw. They are
 drawn instanced in chunks around the camera.
 
@@ -63,7 +63,7 @@ layers. Every value is checked first: one bad value changes nothing.
 
 | Field | Range | Meaning |
 |---|---|---|
-| `mesh` | an `.obj`, `.gltf` or `.glb` under the assets folder | required to add |
+| `mesh` | an `.obj`, `.gltf`, `.glb` or `.fbx` under the assets folder | required to add |
 | `density_map` | an image path, `""` (none), or `{fill: 0-1, resolution: 2-4096}` | a layer without one draws nothing |
 | `density` | 0-128 | instances per square unit where the map is full; the engine draws at most 8192 per 8 m cell |
 | `min_scale`, `max_scale` | 0.01-20, min ≤ max | random scale per instance |
@@ -72,6 +72,7 @@ layers. Every value is checked first: one bad value changes nothing.
 | `min_slope`, `max_slope` | 0-90 degrees, min ≤ max | where it grows |
 | `min_height`, `max_height` | 0-1 of `max_height`, min ≤ max | where it grows |
 | `draw_distance` | 1-500 | world units from the camera |
+| `min_draw_distance` | 0-500, at most `draw_distance` | where instances start to show (a nearer copy of the layer, with a finer mesh, ends there) |
 | `seed` | 0-4294967295 | another seed reshuffles the positions |
 | `cast_shadows` | bool | off for grass-scale scatter: it skips the shadow cascades |
 

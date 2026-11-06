@@ -81,8 +81,30 @@ TEST(CameraUpFor, KeepsTheUpUnlessParallel){
     EXPECT_EQ(cameraUpFor(Vector3(1, -1, 0), Vector3(0, 1, 0)), Vector3(0, 1, 0));
     EXPECT_EQ(cameraUpFor(Vector3(0, -1, 0), Vector3(0, 1, 0)), Vector3(0, 0, 1));
     EXPECT_EQ(cameraUpFor(Vector3(0, 3, 0), Vector3(0, 1, 0)), Vector3(0, 0, -1));
-    // nearly parallel (under a degree) counts as parallel
-    EXPECT_EQ(cameraUpFor(Vector3(0.001f, -1, 0), Vector3(0, 1, 0)), Vector3(0, 0, 1));
+    // a direction a little off parallel keeps the up: only exactly parallel vectors degenerate
+    EXPECT_EQ(cameraUpFor(Vector3(0.001f, -1, 0), Vector3(0, 1, 0)), Vector3(0, 1, 0));
     // a zero direction (target on the camera) keeps the up: there is nothing to look along
     EXPECT_EQ(cameraUpFor(Vector3(0, 0, 0), Vector3(0, 1, 0)), Vector3(0, 1, 0));
+}
+
+// the orbit clamp (Camera::ELEVATION_DOT_LIMIT, 1 degree from vertical): an orbit dragged to its top
+// keeps world up, or the view would roll as it reaches the clamp
+TEST(CameraUpFor, OrbitClampKeepsWorldUp){
+    const float angle = 1.0f * 3.14159265f / 180.0f;
+    EXPECT_EQ(cameraUpFor(Vector3(std::sin(angle), -std::cos(angle), 0), Vector3(0, 1, 0)), Vector3(0, 1, 0));
+    EXPECT_EQ(cameraUpFor(Vector3(0, std::cos(angle), std::sin(angle)), Vector3(0, 1, 0)), Vector3(0, 1, 0));
+}
+
+// the fallback is perpendicular to the view: with up (0, 0, 1) and a view along Z it is not (0, 0, -1)
+TEST(CameraUpFor, FallbackIsPerpendicularToTheView){
+    for (const Vector3& direction : {Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(0, -1, 0), Vector3(0, 1, 0)}){
+        for (const Vector3& up : {Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 1, 0)}){
+            if (direction.crossProduct(up).length() > 0.0f) continue;   // only the parallel pairs
+            const Vector3 chosen = cameraUpFor(direction, up);
+            EXPECT_NEAR(chosen.dotProduct(direction), 0.0f, 1e-6f) << "view (" << direction.x << ", " << direction.y << ", " << direction.z << ")";
+            EXPECT_NEAR(chosen.length(), 1.0f, 1e-6f);
+        }
+    }
+    EXPECT_EQ(cameraUpFor(Vector3(0, 0, 1), Vector3(0, 0, 1)), Vector3(0, 1, 0));
+    EXPECT_EQ(cameraUpFor(Vector3(0, 0, -1), Vector3(0, 0, 1)), Vector3(0, 1, 0));
 }

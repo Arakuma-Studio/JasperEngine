@@ -1556,12 +1556,19 @@ void editBuildShadersTool(const CallPtr& call) {
     ShaderOverrides next = project->getShaderOverrides();
     std::string error;
     const bool editing = args.contains("add") || args.contains("exclude") || args.contains("remove") || args.contains("clear");
-    if (editing && (!editShaderOverrides(args, next, error) || !commitShaderOverrides(project, next, error))) {
+    if (editing && !editShaderOverrides(args, next, error)) {
+        call->fail(error);
+        return;
+    }
+    const ShaderOverrides& current = project->getShaderOverrides();
+    const bool changed = editing && (next.additions != current.additions || next.exclusions != current.exclusions);
+    if (changed && !commitShaderOverrides(project, next, error)) {
         call->fail(error);
         return;
     }
     Json data = shaderOverridesJson(project->getShaderOverrides());
-    const std::string text = std::string(editing ? "Shader overrides set (one project undo step, project.yaml saved): " : "Shader overrides: ") +
+    const std::string text = std::string(changed ? "Shader overrides set (one project undo step, project.yaml saved): "
+                                         : editing ? "Shader overrides unchanged (no undo step): " : "Shader overrides: ") +
                              std::to_string(data["added"].size()) + " added, " + std::to_string(data["excluded"].size()) +
                              " excluded besides the scenes' own shaders.";
     call->ok(text, data);

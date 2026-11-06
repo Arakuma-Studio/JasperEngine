@@ -785,3 +785,15 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    from Window > Terrain need not draw (a docked tab), so the red build passed that test. The test now makes a
    `sculpt_terrain` stroke on a terrain with no height map before the window ever opens: the missing map is created
    at the window's resolution, the saved 64 pixels, where the old code used the constructor's 512.
+9. **`Camera::upFor` is the free function `cameraUpFor`** in `engine/core/component/CameraComponent.h`: the
+   render system and the editor call it with no Camera object. After review it catches only truly parallel
+   vectors (sine below 1e-6), so an orbit clamped 1 degree from vertical keeps its up, and its fallback is
+   perpendicular to the view (looking along Y: the Top/Bottom views' Z; otherwise world Y).
+10. **The near-unit quaternion rule is documented in `docs/mcp/DESIGN.md` (Values)** and the `read_file`
+    route in `editor-integration.md` ("Reading the API"); reads return the stored rotation normalized, so a
+    read-modify-write of a rotation stored off unit length succeeds.
+11. **Detail meshes are every model the import pipeline loads** (`Util::isModelFile`: .obj, .gltf, .glb, .fbx,
+    an FBX through its import as in the Terrain window); `edit_terrain_details` writes its density maps
+    inside its undoable step (undo removes them) only after every item was checked, and `set_properties`
+    checks only the detail layers it changes. A layer clamped on load is a load-report issue naming the
+    layer, at the terrain's line of the scene file.

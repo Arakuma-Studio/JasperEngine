@@ -23,7 +23,7 @@ namespace jasperengine::editor::terrain {
     // density, scales, rotation and alignment, slopes, heights, draw distance
     const std::vector<DetailRange>& detailRanges();
 
-    // .obj, .gltf or .glb (MeshSystem::loadFoliageMesh)
+    // a model file the import pipeline loads (Util::isModelFile: .obj, .gltf, .glb, .fbx)
     bool isDetailMeshPath(const std::string& path);
 
     // The first violation ("" when the layer is valid): a range, a min above its max, the mesh type

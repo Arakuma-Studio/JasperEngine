@@ -64,3 +64,19 @@ TEST(McpQuaternion, EulerIsUnchanged){
     EXPECT_NEAR(q.z, expected.z, 1e-6f);
     EXPECT_NEAR(q.w, expected.w, 1e-6f);
 }
+
+// a rotation stored off unit length (an older file, a script) reads back normalized and writes back as
+// read: a read-modify-write of the transform must not be refused
+TEST(McpQuaternion, StoredOffUnitWritesBackAsRead){
+    Quaternion stored(1.0f, 90.0f, 0.0f, 0.0f);   // w, x, y, z: [90, 0, 0, 1] stored as given
+    const Json read = McpValues::toJson(stored);
+    EXPECT_NEAR(std::sqrt(read["quat"][0].get<float>() * read["quat"][0].get<float>() + read["quat"][3].get<float>() * read["quat"][3].get<float>()),
+                1.0f, 1e-5f);
+    Quaternion written = stored;
+    std::string why;
+    ASSERT_TRUE(McpValues::parseQuaternion(read, written, &why)) << why;
+    EXPECT_NEAR(length(written), 1.0f, 1e-5f);
+    // the quat alone, as read, is a unit quaternion too
+    written = stored;
+    ASSERT_TRUE(McpValues::parseQuaternion(Json{{"quat", read["quat"]}}, written, &why)) << why;
+}

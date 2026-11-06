@@ -1264,6 +1264,7 @@ std::string playStateText(const Project& project) {
     for (const SceneProject& scene : project.getScenes()) {
         if (scene.playState == ScenePlayState::LOADING) return "Play mode is starting";
         if (scene.playState == ScenePlayState::CANCELLING) return "Play mode is stopping";
+        if (scene.playState == ScenePlayState::SAVING) return "Play mode is saving the scenes before it starts";
     }
     return "a scene is playing";
 }

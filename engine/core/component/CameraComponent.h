@@ -14,6 +14,8 @@
 #include "render/OrderIndependentTransparency.h"
 #include "registry/TagManager.h"
 
+#include <cmath>
+
 #define DEFAULT_ORTHO_NEAR          -10
 #define DEFAULT_ORTHO_FAR           10
 #define DEFAULT_PERSPECTIVE_NEAR    0.2
@@ -128,19 +130,24 @@ namespace jasperengine{
         bool needUpdate = true;
     };
 
-    // The up vector a camera looking along viewDirection uses: preferredUp, unless the two are
-    // (nearly) parallel and lookAt would get a zero side vector. Then the Scene view's Top/Bottom
-    // axis-view convention: +Z up on the screen looking down, -Z looking up.
+    // The up vector a camera looking along viewDirection uses: preferredUp, unless the two are parallel
+    // (lookAt would get a zero side vector). Then an up perpendicular to the view: looking along Y the
+    // Scene view's Top/Bottom axis-view convention (+Z up on the screen looking down, -Z looking up),
+    // else world Y. Only truly parallel vectors: an orbit clamped near vertical keeps its own up.
     inline Vector3 cameraUpFor(const Vector3& viewDirection, const Vector3& preferredUp){
         const float dirLength = viewDirection.length();
         const float upLength = preferredUp.length();
         if (!(dirLength > 0.0f)){
             return preferredUp;
         }
-        if (upLength > 0.0f && (viewDirection / dirLength).crossProduct(preferredUp / upLength).length() >= 0.0175f){
+        const Vector3 direction = viewDirection / dirLength;
+        if (upLength > 0.0f && direction.crossProduct(preferredUp / upLength).length() > 1e-6f){
             return preferredUp;
         }
-        return Vector3(0.0f, 0.0f, viewDirection.y < 0.0f ? 1.0f : -1.0f);
+        if (std::fabs(direction.y) > 0.5f){
+            return Vector3(0.0f, 0.0f, direction.y < 0.0f ? 1.0f : -1.0f);
+        }
+        return Vector3(0.0f, 1.0f, 0.0f);
     }
 
 }

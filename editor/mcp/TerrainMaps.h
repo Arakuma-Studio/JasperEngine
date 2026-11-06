@@ -45,6 +45,7 @@ struct TerrainBlendmapResult {
     std::string error;
     std::string relativePath;
     std::filesystem::path fullPath;
+    std::string encoded;    // the PNG bytes (written to fullPath unless the caller writes them)
 };
 
 struct TerrainDensityMapRequest {
@@ -66,10 +67,12 @@ public:
                                                 Entity entity,
                                                 const TerrainBlendmapRequest& request);
 
-    // a detail layer's density map, the same grey everywhere (result like createBlendmap's)
-    static TerrainBlendmapResult createDensityMap(Project* project,
+    // A detail layer's density map, the same grey everywhere: encoded, not written (edit_terrain_details
+    // writes it in its undoable step); named after the layer so maps of one call never share a path
+    static TerrainBlendmapResult encodeDensityMap(Project* project,
                                                   uint32_t sceneId,
                                                   Entity entity,
+                                                  int layer,
                                                   const TerrainDensityMapRequest& request);
 };
 

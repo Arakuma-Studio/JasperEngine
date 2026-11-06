@@ -3,6 +3,8 @@
 
 #include "TerrainDetailRules.h"
 
+#include "util/Util.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -30,6 +32,7 @@ const DetailPair kPairs[] = {
     {"min_scale", "max_scale", &TerrainFoliageLayer::minScale, &TerrainFoliageLayer::maxScale},
     {"min_slope", "max_slope", &TerrainFoliageLayer::minSlope, &TerrainFoliageLayer::maxSlope},
     {"min_height", "max_height", &TerrainFoliageLayer::minHeight, &TerrainFoliageLayer::maxHeight},
+    {"min_draw_distance", "draw_distance", &TerrainFoliageLayer::minDrawDistance, &TerrainFoliageLayer::drawDistance},
 };
 
 }
@@ -48,16 +51,15 @@ const std::vector<editor::terrain::DetailRange>& editor::terrain::detailRanges()
         {"min_height", &TerrainFoliageLayer::minHeight, 0.0f, 1.0f, "ground height from the terrain base (0) to its max height (1)"},
         {"max_height", &TerrainFoliageLayer::maxHeight, 0.0f, 1.0f, "ground height from the terrain base (0) to its max height (1)"},
         {"draw_distance", &TerrainFoliageLayer::drawDistance, 1.0f, 500.0f, "world units from the camera"},
+        {"min_draw_distance", &TerrainFoliageLayer::minDrawDistance, 0.0f, 500.0f,
+         "world units from the camera where instances start to show (a nearer copy of the layer ends there)"},
     };
     return ranges;
 }
 
 bool editor::terrain::isDetailMeshPath(const std::string& path) {
-    const size_t dot = path.find_last_of('.');
-    if (dot == std::string::npos) return false;
-    std::string ext = path.substr(dot + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    return ext == "obj" || ext == "gltf" || ext == "glb";
+    // every model the import pipeline loads (an FBX through its imported .glb, as the Terrain window assigns it)
+    return Util::isModelFile(path);
 }
 
 std::string editor::terrain::checkDetailLayer(const TerrainFoliageLayer& layer) {
@@ -76,7 +78,7 @@ std::string editor::terrain::checkDetailLayer(const TerrainFoliageLayer& layer) 
     }
     const std::string& mesh = layer.meshPath;
     if (!mesh.empty() && !isDetailMeshPath(mesh)) {
-        return "mesh \"" + mesh + "\" is not a model a detail layer draws: use an .obj, .gltf or .glb file.";
+        return "mesh \"" + mesh + "\" is not a model a detail layer draws: use an .obj, .gltf, .glb or .fbx file.";
     }
     return {};
 }

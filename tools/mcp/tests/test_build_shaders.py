@@ -70,7 +70,20 @@ async def test_build_project_shaders_is_undoable(ed: Editor):
 
 
 async def test_build_info_reports_plays_toolchain_check(ed: Editor):
+    """cpp_scripts is the check compile_scripts and Play run: with no compiler or CMake on the PATH both
+    say what is missing, in the same words (on Windows get_build_info used to skip the editor-compatible
+    kit check that Play makes)"""
     info = await ed.call("get_build_info")
     cpp = info["cpp_scripts"]
     ed.check(isinstance(cpp["can_build"], bool) and "missing_tools" in cpp and "kit" in cpp, f"{cpp}")
-    ed.check_eq(cpp["can_build"], cpp["missing_tools"] == "", "can_build is no missing tools")
+    async with Editor(create=True, name="No Toolchain", env={"PATH": "/nonexistent"}) as bare:
+        sid = (await bare.call("create_scene", name="Main", type="3d"))["scene"]["id"]
+        box = (await bare.call("create_entity", scene=sid, name="Box", type="box"))["entity_id"]
+        await bare.call("create_script", kind="cpp_script", name="Mover", entity=box)
+        await bare.call("save_project", untitled_scene_dir="scenes")
+        missing = (await bare.call("get_build_info"))["cpp_scripts"]
+        bare.check(missing["can_build"] is False and missing["missing_tools"], f"no toolchain on the PATH: {missing}")
+        built = await bare.call_raw("compile_scripts", {"timeout_seconds": 120})
+        bare.check(built.is_error, f"compile_scripts refuses too: {built.text[:300]}")
+        first = missing["missing_tools"].strip().splitlines()[0]
+        bare.check_in(first, built.text, "compile_scripts reports the same missing tools")

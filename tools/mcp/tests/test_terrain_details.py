@@ -5,6 +5,9 @@ validated detail layers in one undo step, density maps, the drawn instances in s
 set_properties refusing invalid foliageLayers, and set_terrain_maps' blend map slots and Terrain
 Layer factors."""
 
+import shutil
+from pathlib import Path
+
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Terrain Details"}
@@ -83,6 +86,31 @@ async def test_add_update_remove(ed: Editor):
     ed.check_eq(await details(ed, sid, eid), [], "every call was one undo step")
 
 
+async def test_fbx_layer(ed: Editor):
+    """an FBX is a detail mesh as in the Terrain window (it draws from its import); red before the fix:
+    refused as not .obj, .gltf or .glb"""
+    sid, eid = await terrain(ed, "Fbx")
+    target = ed.project / "assets" / "models" / "rigged_cube.fbx"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(Path(__file__).resolve().parents[3] / "editor" / "tests" / "fixtures" / "rigged_cube.fbx", target)
+    await ed.call("sync_files")
+    added = await ed.call("edit_terrain_details", scene=sid, entity=eid,
+                          add=[{"mesh": "assets/models/rigged_cube.fbx", "density": 1, "density_map": {"fill": 1, "resolution": 8}}])
+    ed.check_eq(added["layers"][0]["mesh"], "assets/models/rigged_cube.fbx", "the FBX layer")
+    drawn = 0
+    for _ in range(20):
+        await ed.call("wait", frames=5)
+        drawn = (await details(ed, sid, eid))[0]["drawn"]
+        if drawn > 0:
+            break
+    ed.check(drawn > 0, f"the FBX layer draws instances: {drawn}")
+    # undo removes the layer and the density map the call wrote
+    density = ed.project / added["layers"][0]["density_map"]
+    ed.check(density.exists(), f"the density map: {density}")
+    await ed.call("undo", scene=sid)
+    ed.check(not density.exists(), "undo removes the density map the call wrote")
+
+
 async def test_refusals(ed: Editor):
     sid, eid = await terrain(ed, "Refusals")
     mesh = grass(ed)
@@ -102,6 +130,11 @@ async def test_refusals(ed: Editor):
         for needle in needles:
             ed.check_in(needle, err, f"error of {args}")
     ed.check_eq(await details(ed, sid, eid), [], "a refused call changes nothing")
+    # every item is checked before anything is written: a density map of a refused call is not on disk
+    before = {p.name for p in ed.project.rglob("*density*.png")}
+    await ed.call("edit_terrain_details", scene=sid, entity=eid, expect_error=True,
+                  add=[{"mesh": mesh, "density_map": {"fill": 1, "resolution": 8}}, {"mesh": mesh, "density": 500}])
+    ed.check_eq({p.name for p in ed.project.rglob("*density*.png")}, before, "no density map written by a refused call")
 
 
 async def test_set_properties_refuses_invalid_layers(ed: Editor):

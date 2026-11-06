@@ -12,10 +12,15 @@ editor::ShaderOverridesCmd::ShaderOverridesCmd(Project* project, ShaderOverrides
 }
 
 bool editor::ShaderOverridesCmd::apply(const ShaderOverrides& overrides){
+    // project.yaml is written from memory: a refused save puts the previous lists back, so memory and
+    // the file never disagree (the history drops a command whose execute failed)
+    const ShaderOverrides previous = project->getShaderOverrides();
     project->getShaderOverrides() = overrides;
-    if (project->getProjectPath().empty())
-        return true;
-    return project->saveProjectFile();
+    if (!project->getProjectPath().empty() && !project->saveProjectFile()){
+        project->getShaderOverrides() = previous;
+        return false;
+    }
+    return true;
 }
 
 bool editor::ShaderOverridesCmd::execute(){

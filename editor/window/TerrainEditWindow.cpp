@@ -3424,12 +3424,13 @@ void editor::TerrainEditWindow::show(){
             ImGui::EndDisabled();
 
             terrainPropertyRow("Density", "Instances per square world unit at full painted density.");
-            if (ImGui::DragFloat("##foliage_density", &layer.density, 0.05f, 0.0f, 20.0f, "%.2f")){
-                setFoliageLayerProperty("density", std::max(0.0f, layer.density));
+            if (ImGui::DragFloat("##foliage_density", &layer.density, 0.05f, 0.0f, 128.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+                // the detail rules' range (the engine draws at most 8192 instances per 8 m cell)
+                setFoliageLayerProperty("density", std::clamp(layer.density, 0.0f, 128.0f));
             }
             const TerrainFoliageLayer& currentLayer = terrain.foliageLayers[selectedFoliageLayer];
             terrainPropertyRow("Scale range", "Minimum and maximum random scale per instance.");
-            if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f")){
+            if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp)){
                 layer.minScale = std::max(0.01f, layer.minScale);
                 layer.maxScale = std::max(layer.minScale, layer.maxScale);
                 if (layer.minScale != currentLayer.minScale){
@@ -3470,7 +3471,7 @@ void editor::TerrainEditWindow::show(){
             terrainPropertyRow("Draw range", "Instances show between these distances, in world units, fading in after Min and out before Max. "
                                "A copy of the layer with a cheaper mesh whose Min equals this layer's Max takes over with a cross-fade. "
                                "Scaled by Project Settings > Quality > Foliage Distance. Ignored while editing terrain; restored when editing ends or play starts.");
-            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 500.0f, "Min %.0f", "Max %.0f")){
+            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 500.0f, "Min %.0f", "Max %.0f", ImGuiSliderFlags_AlwaysClamp)){
                 if (layer.minDrawDistance != currentLayer.minDrawDistance){
                     setFoliageLayerProperty("minDrawDistance", std::clamp(layer.minDrawDistance, 0.0f, std::max(1.0f, layer.drawDistance)));
                 }

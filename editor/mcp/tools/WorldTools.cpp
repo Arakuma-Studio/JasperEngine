@@ -36,6 +36,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/WriteFilesCmd.h"
 #include "physics/PolygonDecomposition2D.h"
 #include "physics/PhysicsMaterial.h"
 #include "util/PhysicsMaterialAssets.h"
@@ -969,10 +970,13 @@ void editTerrainDetailsTool(const CallPtr& call) {
     const bool editing = has(args, "remove") || has(args, "update") || has(args, "add");
     Json notes = Json::array();
     Json written = Json::array();
+    // generated density maps: written by the command, so undo removes them and a refused call writes none
+    std::vector<WriteFilesCmd::Item> maps;
+    std::vector<std::string> meshes;
     std::string error;
 
-    // the fields of an update or add item onto a layer; where: "update[0]"
-    auto applyFields = [&](const Json& item, TerrainFoliageLayer& layer, const std::string& where, bool isAdd) {
+    // the fields of an update or add item onto layer `index`; where: "update[0]"
+    auto applyFields = [&](const Json& item, TerrainFoliageLayer& layer, int index, const std::string& where, bool isAdd) {
         if (!item.is_object()) {
             error = where + " must be an object of detail layer fields.";
             return false;
@@ -995,7 +999,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
             std::filesystem::path absolute;
             std::string stored;
             if (!mesh.is_string() || mesh.get<std::string>().empty()) {
-                error = where + ".mesh must be a project-relative model path (.obj, .gltf or .glb).";
+                error = where + ".mesh must be a project-relative model path (.obj, .gltf, .glb or .fbx).";
                 return false;
             }
             if (!McpRefs::resolveProjectPath(project, mesh.get<std::string>(), absolute, error, true) ||
@@ -1004,12 +1008,13 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 return false;
             }
             if (!editor::terrain::isDetailMeshPath(stored)) {
-                error = where + ".mesh \"" + mesh.get<std::string>() + "\" is not a model a detail layer draws: use an .obj, .gltf or .glb file.";
+                error = where + ".mesh \"" + mesh.get<std::string>() + "\" is not a model a detail layer draws: use an .obj, .gltf, .glb or .fbx file.";
                 return false;
             }
+            meshes.push_back(stored);
             layer.meshPath = stored;
         } else if (isAdd) {
-            error = where + ".mesh is required: the model each instance draws (.obj, .gltf or .glb).";
+            error = where + ".mesh is required: the model each instance draws (.obj, .gltf, .glb or .fbx).";
             return false;
         }
         for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) {
@@ -1069,13 +1074,13 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 }
                 request.fill = fill.get<float>();
                 request.resolution = resolution.get<int>();
-                TerrainBlendmapResult generated = TerrainMaps::createDensityMap(project, sceneId, entity, request);
+                TerrainBlendmapResult generated = TerrainMaps::encodeDensityMap(project, sceneId, entity, index, request);
                 if (!generated.success) {
-                    error = where + ".density_map: " + (generated.error.empty() ? "could not write the density map." : generated.error);
+                    error = where + ".density_map: " + (generated.error.empty() ? "could not make the density map." : generated.error);
                     return false;
                 }
                 layer.densityMap = Texture(generated.relativePath);
-                if (ProjectWindow* window = call->ctx().projectWindow()) window->requestThumbnailGeneration(generated.fullPath, true);
+                maps.push_back({generated.fullPath, std::move(generated.encoded)});
                 written.push_back(McpValues::assetPathToJson(project, generated.relativePath));
             } else {
                 error = where + ".density_map must be an image path, \"\" (none) or {fill: 0-1, resolution}.";
@@ -1124,7 +1129,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
                            " (after remove); nothing was changed.");
                 return;
             }
-            if (!applyFields(item, layers[index], where, false)) {
+            if (!applyFields(item, layers[index], index, where, false)) {
                 call->fail(error + " Nothing was changed.");
                 return;
             }
@@ -1138,7 +1143,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
         }
         for (size_t i = 0; i < args["add"].size(); i++) {
             TerrainFoliageLayer layer;
-            if (!applyFields(args["add"][i], layer, "add[" + std::to_string(i) + "]", true)) {
+            if (!applyFields(args["add"][i], layer, static_cast<int>(layers.size()), "add[" + std::to_string(i) + "]", true)) {
                 call->fail(error + " Nothing was changed.");
                 return;
             }
@@ -1148,7 +1153,21 @@ void editTerrainDetailsTool(const CallPtr& call) {
     }
 
     if (editing) {
+        // an FBX draws from its import, made the first time (as the Terrain window does)
+        for (const std::string& mesh : meshes) {
+            if (!project->prepareModelFile(mesh)) {
+                call->fail("Could not import " + mesh + " (see the console). Nothing was changed.");
+                return;
+            }
+        }
         auto multi = std::make_unique<MultiPropertyCmd>();
+        if (!maps.empty()) {
+            ProjectWindow* window = call->ctx().projectWindow();
+            multi->addCommand(std::make_unique<WriteFilesCmd>(std::move(maps), [window](const std::vector<std::filesystem::path>& paths) {
+                if (!window) return;
+                for (const std::filesystem::path& path : paths) window->requestThumbnailGeneration(path, true);
+            }));
+        }
         multi->addPropertyCmd<std::vector<TerrainFoliageLayer>>(project, sceneId, entity, ComponentType::TerrainComponent,
                                                                 "foliageLayers", layers);
         if (!runSceneCommand(sceneId, multi.release(), error, "Could not change the terrain detail layers.")) {

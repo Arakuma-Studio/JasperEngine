@@ -51,6 +51,15 @@ TEST(TerrainDetailRules, PairsAndMeshes){
     EXPECT_TRUE(terrain::isDetailMeshPath("models/Grass.GLB"));
     EXPECT_TRUE(terrain::isDetailMeshPath("models/rock.obj"));
     EXPECT_FALSE(terrain::isDetailMeshPath("models/rock"));
+    // every model the import pipeline loads: an FBX draws from its import (the Terrain window assigns them)
+    EXPECT_TRUE(terrain::isDetailMeshPath("models/tree.FBX"));
+    EXPECT_FALSE(terrain::isDetailMeshPath("models/tree.png"));
+    layer = TerrainFoliageLayer();
+    layer.meshPath = "models/tree.fbx";
+    EXPECT_EQ(terrain::checkDetailLayer(layer), "");
+    layer = TerrainFoliageLayer();
+    layer.minDrawDistance = 80.0f;   // past drawDistance (50)
+    EXPECT_NE(terrain::checkDetailLayer(layer).find("min_draw_distance"), std::string::npos);
 }
 
 TEST(TerrainDetailRules, ClampReportsWhatChanged){

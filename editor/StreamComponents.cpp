@@ -43,6 +43,7 @@
 #include "util/TerrainDetailRules.h"
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
+#include "LoadReport.h"
 #include "particles/ParticleEffectCodec.h"
 #include "stream/CurveCodec.h"
 #include "animation/AnimationClipIO.h"
@@ -636,7 +637,7 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     return node;
 }
 
-TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp) {
+TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp, int index) {
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
@@ -659,7 +660,23 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     if (!clamped.empty()) {
         std::string what;
         for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
-        Out::warning("Terrain detail layer (foliageLayers) out of range, clamped: %s.", what.c_str());
+        // the load report names the file and line, so the terrain; the console line the layer too
+        LoadIssue issue;
+        issue.kind = LoadIssueKind::InvalidValue;
+        issue.fate = LoadIssueFate::Info;
+        issue.component = "Terrain";
+        issue.field = index >= 0 ? "foliageLayers[" + std::to_string(index) + "]" : "foliageLayers";
+        issue.message = "detail layer out of range, clamped: " + what;
+        const YAML::Mark mark = node.Mark();
+        if (mark.line >= 0) {
+            issue.line = mark.line + 1;
+            issue.column = mark.column + 1;
+        }
+        if (ScopedLoadReport::current()) {
+            recordLoadIssue(std::move(issue));
+        } else {
+            Out::warning("Terrain %s: detail layer out of range, clamped: %s.", issue.field.c_str(), what.c_str());
+        }
     }
     return layer;
 }
@@ -795,7 +812,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             if (!node["foliageLayers"][i] || node["foliageLayers"][i].IsNull()) {
                 continue;
             }
-            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i]));
+            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i], true, static_cast<int>(i)));
         }
     }
 
