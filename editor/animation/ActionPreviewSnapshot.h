@@ -42,8 +42,10 @@ namespace jasperengine::editor{
         ActionPreviewSnapshot(const ActionPreviewSnapshot&) = delete;
         ActionPreviewSnapshot& operator=(const ActionPreviewSnapshot&) = delete;
 
-        // The types a preview of actions reads and never writes: the Animation and the key data.
-        // Keys authored while a scrub preview is paused (Snapshot, right-click keying) are kept.
+        // The types a preview of actions does not restore: the Animation and the key data, so keys
+        // authored while a scrub preview is paused (Snapshot, right-click keying) are kept. The one
+        // part of them a preview writes, a keyframe track's playhead (index, interpolation), is
+        // still put back.
         static const std::vector<ComponentType>& readOnlyTypes();
 
         // Takes `entity`'s components (once; later calls for it do nothing), leaving out the

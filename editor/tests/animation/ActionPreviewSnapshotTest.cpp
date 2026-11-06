@@ -14,6 +14,7 @@
 #include "animation/ClipRecordHooks.h"
 #include "component/ActionComponent.h"
 #include "component/Transform.h"
+#include "component/KeyframeTracksComponent.h"
 #include "component/TweenComponent.h"
 
 using namespace jasperengine;
@@ -172,4 +173,26 @@ TEST(ActionPreviewSnapshotTest, ClearStopsListening) {
     // the destroyed snapshot listens no more
     commandWrite(target, ComponentType::Transform, "position", [&]() { transformOf(scene, target).position = Vector3(5, 0, 0); });
     EXPECT_EQ(transformOf(scene, target).position, Vector3(5, 0, 0));
+}
+
+// the key data is left out of the snapshot (keys authored while a scrub preview is paused stay), but
+// the playhead the preview moves in it (index, interpolation: saved fields) goes back
+TEST(ActionPreviewSnapshotTest, KeyframePlayheadGoesBackAndKeysStay) {
+    Scene scene;
+    const Entity track = scene.createEntity();
+    KeyframeTracksComponent keyframe;
+    keyframe.times = {0.0f, 1.0f};
+    scene.addComponent<KeyframeTracksComponent>(track, keyframe);
+    ActionPreviewSnapshot snapshot;
+    snapshot.add(kSceneId, &scene, track);
+
+    KeyframeTracksComponent& live = scene.getComponent<KeyframeTracksComponent>(track);
+    live.index = 1;                     // the preview sampled the second segment
+    live.interpolation = 0.5f;
+    live.times.push_back(2.0f);         // a key authored meanwhile
+    snapshot.restore(&scene);
+
+    EXPECT_EQ(live.index, 0) << "the previewed playhead is not saved";
+    EXPECT_FLOAT_EQ(live.interpolation, 0.0f);
+    EXPECT_EQ(live.times.size(), 3u) << "the key authored during the preview stays";
 }

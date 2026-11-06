@@ -117,6 +117,11 @@ struct ActionPreviewSnapshot::Data{
         Entity parent = NULL_ENTITY;
         std::vector<Component> components;
         std::vector<ComponentType> excluded;
+        // a keyframe track's playhead (saved fields the preview moves) when its key data is
+        // left out: the keys authored meanwhile stay, the playhead goes back
+        bool keyframePlayhead = false;
+        int keyframeIndex = 0;
+        float keyframeInterpolation = 0;
     };
 
     uint32_t sceneId = 0;
@@ -282,6 +287,13 @@ void ActionPreviewSnapshot::add(uint32_t sceneId, Scene* scene, Entity entity, c
     if (const Transform* transform = scene->findComponent<Transform>(entity)) {
         state.parent = transform->parent;
     }
+    if (const KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity)) {
+        if (std::find(excluded.begin(), excluded.end(), ComponentType::KeyframeTracksComponent) != excluded.end()) {
+            state.keyframePlayhead = true;
+            state.keyframeIndex = keyframe->index;
+            state.keyframeInterpolation = keyframe->interpolation;
+        }
+    }
     const YAML::Node encoded = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
     for (const reflect::ComponentDesc* desc : reflect::serializationOrder()){
         if (std::find(excluded.begin(), excluded.end(), desc->type) != excluded.end()) continue;
@@ -339,6 +351,10 @@ void ActionPreviewSnapshot::restore(Scene* scene) const{
         // a relative track takes its base again from the restored pose when the preview starts it
         if (KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
             keyframe->hasBase = false;
+            if (state.keyframePlayhead) {
+                keyframe->index = state.keyframeIndex;
+                keyframe->interpolation = state.keyframeInterpolation;
+            }
         }
     }
 }
