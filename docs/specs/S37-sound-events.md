@@ -523,4 +523,36 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **S35 lands after M1-M4.** There is no capture, deterministic driver or `audio.seed` yet, so:
+  - `AudioSystem::setVoiceObserver` and `AudioVoiceLine` hold R14's fields and are the seam S35's capture plugs
+    into; `JASPERENGINE_AUDIO_TRACE=1` logs each line as JSON, which is how the MCP tests read them. AC3-AC7 are
+    verified on these lines rather than on capture files; AC8 waits for S35.
+  - A "deterministic run" is, until S35, a run mixed on the null driver (`AudioSystem::isDeterministic`), whose cursor
+    is the frames it mixed. This includes `--headless` players, which have no output to vary.
+  - The `audio.seed` setting (Project Settings > Audio, `AudioConfig::seed`, `game.json`) is added here. S35 keeps it.
+- **`hasSubscribers()` is not bound to Lua.** AC6's "no subscription" is `SoundEventTriggerTest.NoFlagNoSubscription`,
+  not an MCP test.
+- **The `type` vocabulary is listed in `SoundEventIO`** as well as in S36's `editor/audio/SoundTypes.h`: the engine
+  cannot include an editor header. M6 adds a test that the two lists match, once S36 is on `main`.
+- **`Audio.play`'s `delay`** runs on frames of scaled time (`unscaled`: of unscaled time), so it is exact to a frame;
+  the event's own `delay_ms` stays exact to the sample (R7).
+- **`AudioStealPolicy` and the source cap:** a play's voices never steal from each other through `maxVoices`. A voice
+  with no one-shot to steal is rejected with reason `max_voices` (a reason R14 did not list).
+- **`AudioSource.event` and S73.** S73 landed first: `event` is `AssetKind::SoundEvent` in the generated table, with one added row in `asset_ref_rows_frozen.txt` and the six new AudioSource fields in `parity_golden`.
+- **`SoundSearch::eventProblems`** is added as S36 left it (the analysis cache, near-duplicates, inaudible layers). Match Levels
+  lives in `SoundEventRender::matchLevels`, not `SoundSearch`: it measures clips as they play, with their import settings.
+- **The Browser's detail pane is the Inspector** for project sounds: selecting a card inspects the asset, which is S36's clip view
+  or R16's editor. A built-in clip has no file yet, so the Browser shows its description and licence.
+- **Previews stop for a capture through `AudioSystem::isOfflineCapture()`** (the Recorder). S35 adds its own capture to that test.
+- **AudioSource's rows are in the hand drawer `drawAudioComponent`** (`drawAudioEventRows`), not named drawers: the component has no
+  reflection-drawn Inspector to host them.
+- **R16's labels row is read-only:** labels are edited in the Project window's bar, S25's one place for them.
+- **AC12's bench is in `editor/tests/audio/SoundEventBenchTest.cpp`** (suite `SoundEventBench`), not `engine/tests/core/bench`: it plays through the same
+  `AudioSystem` as the other runtime tests, with the fixtures the editor's test target already has. Server F no longer exists; it ran on the server named in the report.
+- **AC11's tests are `test_audio_events_prebuilt.py` and `test_audio_module_compile.py`**, not `test_build.py::test_sound_events_prebuilt`: each needs its own project,
+  and the second a project that never held an event. Picks are read from the voice lines until S35's player capture lands.
+- **`editor/audio/SoundDrop` adds the drops** of M6 (a sound onto a Button, an entity or empty scene space); a built-in sound is imported first, on one undo step with the assignment.
+- **The module's size is measured on Linux only** (S34's last M entry): the Android and wasm players were not built for it.
+- **AC12's budgets are printed, not enforced, without `JASPER_TEST_PERF_SLACK`**, as for every wall-clock test. Server F no longer exists, and the bench run was not on the benchmark server.
+- **AC8 is S35's** (`tools/mcp/tests/test_audio_capture_events.py`): the capture's `instance` and `by_instance` are numbered from 1
+  in each session, since the editor's counter runs on between Plays and two runs must be the same bytes.

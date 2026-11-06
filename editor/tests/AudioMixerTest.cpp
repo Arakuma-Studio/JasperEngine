@@ -22,12 +22,16 @@
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
 #include "audio/AudioMixerIO.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/CameraComponent.h"
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
 #include "player/PlayerConfig.h"
 #include "pool/SoundPool.h"
 #include "reflect/Reflect.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 
 #include "LuaBridge.h"
@@ -35,6 +39,7 @@
 #include "soloud_bus.h"
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
+#include "audio/AudioTap.h"
 #include "soloud_wav.h"
 
 #include <cmath>
@@ -147,7 +152,6 @@ namespace {
         }
 
         void TearDown() override {
-            AudioSystem::endOfflineCapture();
             Engine::removeScene(scene);
             delete scene;
             scene = nullptr;
@@ -177,10 +181,12 @@ namespace {
             loadMixer(json.dump());
         }
 
-        // one frame: the mixer mixes `dt` of audio, the scene's system updates
+        // one frame: the mixer mixes `dt` of audio, the scene's system updates (on the deterministic
+        // driver, as Engine::runFrame, the mix is after the scene)
         void step(double dt, double scaled = -1.0) {
             AudioMixer::update(scaled < 0.0 ? dt : scaled, dt);
             scene->getSystem<AudioSystem>()->update(scaled < 0.0 ? dt : scaled);
+            AudioSystem::pumpDeterministic(dt);
         }
 
         void run(double seconds, double dt = 0.02) {
@@ -1228,42 +1234,40 @@ TEST_F(AudioMixerRuntimeTest, TheNullPumpMixesExactlyTheTimeOfItsFrames) {
 // ---- X-1: a Recorder capture mixes each frame once ---------------------------------------------
 
 TEST_F(AudioSourceTest, ARecorderCaptureMixesEachFrameOnce) {
-    ASSERT_TRUE(AudioSystem::beginOfflineCapture(48000, 2));
+    ASSERT_TRUE(AudioSystem::beginDeterministic());
     AudioSource loop = source();
     loop.setLooping(true);
     loop.play();
-    // the Recorder's frame: the game steps 1/30 s (the mixer's update), then takes 1/30 s of audio
-    std::vector<float> out(1600 * 2);
+    // the Recorder's frame: the game steps 1/30 s, the driver's pump mixes 1/30 s of audio
     const double start = soloud().mStreamTime;
-    for (int i = 0; i < 30; i++) {
-        step(1.0 / 30.0);
-        AudioSystem::mixOffline(out.data(), 1600);
-    }
+    for (int i = 0; i < 30; i++) step(1.0 / 30.0);
     EXPECT_NEAR(soloud().mStreamTime - start, 1.0, 1e-3) << "one second of frames, one second mixed";
-    AudioSystem::endOfflineCapture();
+    AudioSystem::endDeterministic();
 }
 
 TEST_F(AudioSourceTest, ARecorderCaptureHearsTheMixer) {
     loadMusicMixer();
-    ASSERT_TRUE(AudioSystem::beginOfflineCapture(48000, 2));
+    ASSERT_TRUE(AudioSystem::beginDeterministic());
     EXPECT_NE(AudioMixer::getBusHandle("Music"), AudioMixer::getBusHandle("Master")) << "the groups' buses are there";
     writeLevel(root / "assets" / "level.wav", 1.0);
     AudioSource music = source("level.wav", "Music");
     AudioMixer::setGroupMute("Music", true);
     music.setLooping(true);
     music.play();
-    std::vector<float> out(1600 * 2);
+    uint64_t mixed = 0;
     float peak = 0.0f;
-    for (int i = 0; i < 10; i++) {
-        step(1.0 / 30.0);
-        AudioSystem::mixOffline(out.data(), 1600);
-        // (SoLoud ramps a volume change over the mix call that takes it: the group's mute, set
-        // before the first, ramps in the first)
-        if (i > 0) for (float v : out) peak = std::max(peak, std::fabs(v));
-    }
+    const int tap = AudioTap::subscribe("test", [&](const float* out, uint32_t frames, uint64_t first) {
+        // (SoLoud ramps a volume change over the mix call that takes it, and each bus below it holds
+        // a sample of that: the group's mute, set before the first frame, is over after it)
+        mixed = first + frames;
+        if (first >= 1600) for (uint32_t i = 0; i < frames * 2; i++) peak = std::max(peak, std::fabs(out[i]));
+    });
+    for (int i = 0; i < 10; i++) step(1.0 / 30.0);
+    AudioTap::unsubscribe(tap);
+    EXPECT_EQ(mixed, 16000u);
     EXPECT_TRUE(music.isPlaying());
     EXPECT_FLOAT_EQ(peak, 0.0f) << "a muted group is muted in the capture too";
-    AudioSystem::endOfflineCapture();
+    AudioSystem::endDeterministic();
 }
 
 // ---- B5: --headless and --silent-audio mix on the null driver ------------------------------------
@@ -1290,22 +1294,17 @@ TEST_F(AudioSourceTest, AHeadlessRunPlaysItsSoundsAsANormalRunDoes) {
 
 // ---- B9: clocked voices start at the game time they were played --------------------------------
 
+// A deliberate change: this drove AudioSystem::beginOfflineCapture, which S35 deleted. No null pump
+// lets a test place a mix between two frames now, so it plays at the frames' clock times itself.
 TEST_F(AudioSourceTest, ClockedVoicesStartAsFarApartAsTheFramesThatPlayedThem) {
-    ASSERT_TRUE(AudioSystem::beginOfflineCapture(44100, 2));
+    ASSERT_TRUE(AudioSystem::beginDeterministic());
     writeLevel(root / "assets" / "level.wav", 1.0, 0.25);
-    AudioSource first = source("level.wav");
-    AudioSource second = source("level.wav");
-    first.setClockedSound(true);
-    second.setClockedSound(true);
-    // two frames of 1/60 s, one sound each, before the output takes its next buffer
-    step(kFrame60);
-    first.play();
-    scene->getSystem<AudioSystem>()->update(kFrame60);
-    step(kFrame60);
-    second.play();
-    scene->getSystem<AudioSystem>()->update(kFrame60);
+    SoLoud::Wav wav;
+    ASSERT_EQ(wav.load((root / "assets" / "level.wav").string().c_str()), SoLoud::SO_NO_ERROR);
+    ASSERT_NE(AudioMixer::play("", wav, false, Vector3(0, 0, 0), 1.0f, true, kFrame60), 0u);
+    ASSERT_NE(AudioMixer::play("", wav, false, Vector3(0, 0, 0), 1.0f, true, 2.0 * kFrame60), 0u);
     std::vector<float> out(4096 * 2);
-    AudioSystem::mixOffline(out.data(), 4096);
+    soloud().mix(out.data(), 4096);
     // the first is one level, both are twice it: the second starts where the level doubles
     const int a = onsetOf(out, 0, 0.01f);
     ASSERT_GE(a, 0);
@@ -1313,8 +1312,8 @@ TEST_F(AudioSourceTest, ClockedVoicesStartAsFarApartAsTheFramesThatPlayedThem) {
     ASSERT_GT(one, 0.05f);
     const int b = onsetOf(out, 0, one * 1.5f);
     ASSERT_GE(b, 0);
-    EXPECT_NEAR(b - a, 735, 1) << "a frame of 1/60 s apart (enableClocked)";
-    AudioSystem::endOfflineCapture();
+    EXPECT_NEAR(b - a, 800, 1) << "a frame of 1/60 s apart (enableClocked)";
+    AudioSystem::endDeterministic();
 }
 
 // ---- B11: a game's global volume ends with its Play ---------------------------------------------
@@ -1824,4 +1823,55 @@ TEST(NewProjectAudioTest, TheMixerIsTheSpecsAndATemplatesAudioNodeIsLeftAlone) {
     EXPECT_FALSE(fs::exists(dir / "assets" / "audio"));
     EXPECT_EQ(YAML::LoadFile((dir / "project.yaml").string())["audio"]["maxVoices"].as<int>(), 12);
     fs::remove_all(dir);
+}
+
+// S40 + S39: a timeline's Mixer Snapshot action and a music switch asking for other snapshots in one
+// frame. The animation update runs first and the music's switch after it (MusicPlayer, in the audio
+// update), so the music's snapshot holds; at the action's end its revert leaves it, since the mixer no
+// longer shows the action's own snapshot (S40 R18, Deviations "Snapshots with music")
+TEST_F(AudioMixerMathRuntimeTest, MusicSwitchInTheFrameOfASnapshotActionHolds) {
+    loadMixer(R"({"format": "jasperengine.mixer", "groups": [{"id": "00000001", "name": "Master"}],
+      "snapshots": [{"name": "Calm", "values": {}}, {"name": "Duck", "values": {}}, {"name": "Combat", "values": {}}],
+      "startSnapshot": "Calm"})");
+    ASSERT_EQ(AudioMixer::getCurrentSnapshot(), "Calm");
+
+    auto timeline = [this](){
+        const Entity snapshot = scene->createEntity();
+        scene->addComponent<ActionComponent>(snapshot, {});
+        AudioSnapshotComponent duck;
+        duck.snapshot = "Duck";
+        scene->addComponent<AudioSnapshotComponent>(snapshot, duck);
+        const Entity animation = scene->createEntity();
+        scene->addComponent<ActionComponent>(animation, {});
+        AnimationComponent frames;
+        ActionFrame frame;
+        frame.startTime = 0.0f;
+        frame.duration = 0.1f;
+        frame.action = snapshot;
+        frames.actions.push_back(frame);
+        scene->addComponent<AnimationComponent>(animation, frames);
+        scene->getComponent<ActionComponent>(animation).startTrigger = true;
+        return snapshot;
+    };
+    ActionSystem* actions = scene->getSystem<ActionSystem>().get();
+
+    // the control: alone, the action reverts to what was there at its end
+    const Entity alone = timeline();
+    actions->update(1.0 / 60.0);
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Duck") << "the action transitions at its start";
+    for (int i = 0; i < 12; i++) actions->update(1.0 / 60.0);
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Calm") << "and reverts at its end, the mixer still showing its snapshot";
+    EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(alone).applied);
+    scene->destroyEntity(alone);
+
+    // with a music switch in the action's first frame
+    const Entity withMusic = timeline();
+    actions->update(1.0 / 60.0);
+    ASSERT_EQ(AudioMixer::getCurrentSnapshot(), "Duck");
+    // the music player's switch in the same frame, after the animation update (MusicPlayer.cpp's call)
+    ASSERT_TRUE(AudioMixer::transitionTo("Combat", 0.0f, false, "music"));
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "the last asked holds";
+    for (int i = 0; i < 12; i++) actions->update(1.0 / 60.0);
+    EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(withMusic).applied) << "the action ended";
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "its revert leaves the music's snapshot";
 }

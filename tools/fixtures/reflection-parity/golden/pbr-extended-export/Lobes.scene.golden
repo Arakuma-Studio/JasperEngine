@@ -38,7 +38,7 @@ maxValues:
   maxSubmeshes: 1
   maxTilemapTilesRect: 0
   maxTilemapTiles: 0
-  maxExternalBuffers: 2
+  maxExternalBuffers: 5
   maxSpriteFrames: 0
   maxBones: 128
   maxColliders2D: 0
@@ -71,9 +71,77 @@ shaderKeys:
     properties: 8623489370
   - type: mesh
     properties: 8623489498
+  - type: mesh
+    properties: 68719477082
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 68719477850
+  - type: mesh
+    properties: 68753031512
+  - type: mesh
+    properties: 68753031514
+  - type: mesh
+    properties: 68753031642
+  - type: mesh
+    properties: 77309411674
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 77309412442
+  - type: mesh
+    properties: 77342966104
+  - type: mesh
+    properties: 77342966106
+  - type: mesh
+    properties: 77342966234
+  - type: mesh
+    properties: 2199023256664
+  - type: mesh
+    properties: 2199023256666
+  - type: mesh
+    properties: 2199056810328
+  - type: mesh
+    properties: 2199056810330
+  - type: mesh
+    properties: 2199056810458
+  - type: mesh
+    properties: 2207613191256
+  - type: mesh
+    properties: 2207613191258
+  - type: mesh
+    properties: 2207646744920
+  - type: mesh
+    properties: 2207646744922
+  - type: mesh
+    properties: 2207646745050
+  - type: mesh
+    properties: 2267742733400
+  - type: mesh
+    properties: 2267742733402
+  - type: mesh
+    properties: 2267776287064
+  - type: mesh
+    properties: 2267776287066
+  - type: mesh
+    properties: 2267776287194
+  - type: mesh
+    properties: 2276332667992
+  - type: mesh
+    properties: 2276332667994
+  - type: mesh
+    properties: 2276366221656
+  - type: mesh
+    properties: 2276366221658
+  - type: mesh
+    properties: 2276366221786
   - type: sky
   - type: depth
+  - type: depth
+    properties: 262144
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 1112
@@ -82,6 +150,24 @@ shaderKeys:
     properties: 8589935704
     customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
   - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256664
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191256
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733400
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667992
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
@@ -92,6 +178,24 @@ shaderKeys:
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935706
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477850
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412442
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256666
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191258
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733402
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667994
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
@@ -118,6 +222,42 @@ shaderKeys:
     properties: 8623489370
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 68719477850
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031514
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412442
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966106
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256666
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810330
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191258
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646744922
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733402
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287066
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667994
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221658
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
@@ -136,6 +276,42 @@ shaderKeys:
     properties: 8623489498
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 68753031514
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031642
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966106
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966234
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810330
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810458
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646744922
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646745050
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287066
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287194
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221658
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221786
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
@@ -146,36 +322,150 @@ shaderKeys:
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
     properties: 8623489498
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031512
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031642
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966104
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966234
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810328
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810458
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646744920
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646745050
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287064
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287194
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221656
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221786
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
     properties: 1114
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935706
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477850
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412442
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256666
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191258
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733402
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667994
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256664
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191256
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733400
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667992
     customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256664
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191256
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733400
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667992
     customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256664
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191256
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733400
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667992
     customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
   - type: mesh
     properties: 346
@@ -206,6 +496,84 @@ shaderKeys:
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8623489498
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477082
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031512
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031514
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68753031642
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309411674
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966104
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966106
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77342966234
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199023256664
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810328
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810330
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2199056810458
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207613191256
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646744920
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646744922
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2207646745050
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267742733400
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287064
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287066
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2267776287194
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276332667992
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221656
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221658
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 2276366221786
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity

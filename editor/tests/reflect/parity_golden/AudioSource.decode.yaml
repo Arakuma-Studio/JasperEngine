@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 3c39f9548bc95206
+digest 234c1332fb1af82a
 --- 0
 enabled: true
 state: playing
@@ -23,6 +23,10 @@ outputGroupName: a
 priority: 0
 maxVoices: 7
 ignoreListenerPause: true
+event: textures/a.png
+minImpactSpeed: 0.605338
+fullVolumeImpactSpeed: -27
+pitchRandomSemitones: -0.85393506
 --- 1
 enabled: false
 state: paused
@@ -45,6 +49,9 @@ outputGroup: true
 loadType: compressed_in_memory
 priority: 20
 ignoreListenerPause: true
+playOn: [ui_hover, collision_3d, sensor_3d]
+pitchRandomSemitones: 5619.7856
+volumeRandomDb: 45
 --- 2
 enabled: true
 state: playing
@@ -68,6 +75,11 @@ loadType: streaming
 priority: 7
 maxVoices: 12
 ignoreListenerPause: true
+event: ui/menu.html
+playOn: [ui_press, ui_hover, collision_2d, sensor_3d]
+minImpactSpeed: 0.88441986
+fullVolumeImpactSpeed: 121
+volumeRandomDb: 5894.787
 --- 3
 enabled: false
 state: playing
@@ -88,6 +100,11 @@ outputGroup: "Hello, YAML: [1, 2]"
 outputGroupName: textures/a.png
 priority: 256
 maxVoices: 2
+event: a b/c.png
+playOn: [ui_hover, collision_3d]
+minImpactSpeed: -34.714287
+fullVolumeImpactSpeed: 0.5714286
+volumeRandomDb: 7408.1084
 --- 4
 enabled: false
 state: playing
@@ -109,6 +126,10 @@ loadType: streaming
 priority: 0
 maxVoices: 11
 ignoreListenerPause: true
+event: fonts/Main.ttf
+playOn: [ui_hover, collision_2d, sensor_2d, sensor_3d]
+pitchRandomSemitones: -10.428572
+volumeRandomDb: 4470.4014
 --- 5
 enabled: false
 state: stopped
@@ -129,6 +150,7 @@ attenuationRolloffFactor: 8815.627
 dopplerFactor: -112
 maxVoices: 1
 ignoreListenerPause: true
+volumeRandomDb: 87
 --- 6
 enabled: true
 state: stopped
@@ -153,6 +175,11 @@ loadType: decompress_on_load
 priority: 13
 maxVoices: 1
 ignoreListenerPause: true
+playOn: [ui_click, ui_press, ui_hover, sensor_2d, sensor_3d]
+minImpactSpeed: 106.14286
+fullVolumeImpactSpeed: 124.14286
+pitchRandomSemitones: 79.42857
+volumeRandomDb: 51
 --- 7
 enabled: false
 state: paused
@@ -172,3 +199,7 @@ attenuationModel: linear_distance
 dopplerFactor: 79
 outputGroup: "- dash"
 maxVoices: 1
+playOn: [ui_click, collision_2d, collision_3d]
+fullVolumeImpactSpeed: 21
+pitchRandomSemitones: 139.42857
+volumeRandomDb: 80.57143

@@ -3,6 +3,8 @@
 
 #include "AddActionFrameCmd.h"
 
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
 #include "subsystem/ActionSystem.h"
 
 #include <algorithm>
@@ -14,6 +16,11 @@ editor::AddActionFrameCmd::AddActionFrameCmd(Project* project, uint32_t sceneId,
     : project(project), sceneId(sceneId), animEntity(animEntity), track(track){
     if (creationType != EntityCreationType::EMPTY){
         createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, creationType, target);
+        // a timeline sound keeps the Animation selected: the window stays on its tracks (S40 R22)
+        if (creationType == EntityCreationType::AUDIO_ACTION || creationType == EntityCreationType::SOUND_EVENT_ACTION ||
+            creationType == EntityCreationType::MIXER_SNAPSHOT_ACTION){
+            createCmd->setQuiet(true);
+        }
     }
 }
 
@@ -33,12 +40,21 @@ bool editor::AddActionFrameCmd::execute(){
             return false;
         }
         actionEntity = createCmd->getEntity();
+        // an audio or snapshot action's content, set before the frame measures its duration
+        if (AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(actionEntity); audio && sound.isSet()){
+            if (soundIsEvent) audio->event = sound;
+            else audio->filename = sound;
+            audio->needUpdate = true;
+        }
+        if (AudioSnapshotComponent* mixerSnapshot = scene->findComponent<AudioSnapshotComponent>(actionEntity); mixerSnapshot && !snapshot.empty()){
+            mixerSnapshot->snapshot = snapshot;
+        }
     }
 
     // Duration 0 = auto: the frame follows the action's own duration.
     // Empty frames have no action to resolve, so give a visible default.
     float newDuration = (actionEntity != NULL_ENTITY) ? 0.0f : 1.0f;
-    ActionFrame newFrame = {0.0f, newDuration, actionEntity, track};
+    ActionFrame newFrame = {std::max(0.0f, startTime), newDuration, actionEntity, track};
 
     // Read after the create: an Animation action adds an AnimationComponent, which can
     // move the other AnimationComponents in memory
@@ -91,7 +107,7 @@ void editor::AddActionFrameCmd::undo(){
 }
 
 std::string editor::AddActionFrameCmd::describe() const{
-    return "Add Action (" + CommandNames::entity(project, sceneId, animEntity) + ")";
+    return (undoLabel.empty() ? std::string("Add Action") : undoLabel) + " (" + CommandNames::entity(project, sceneId, animEntity) + ")";
 }
 
 size_t editor::AddActionFrameCmd::memoryBytes() const{

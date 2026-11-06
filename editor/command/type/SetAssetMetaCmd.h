@@ -29,6 +29,8 @@ namespace jasperengine::editor{
         YAML::Node oldValue;            // null: the key was absent
         bool fileExisted = false;
         bool captured = false;
+        // the undo step's verb when the key alone does not say what was done
+        std::string action;
 
         std::filesystem::path metaPath() const;
         bool write(const YAML::Node& value, bool removeFileIfEmpty);
@@ -54,8 +56,9 @@ namespace jasperengine::editor{
         void undo() override;
         bool affectsStructure() const override { return false; }
 
-        // "Set Import Compression (a.png)"
+        // "Set Import Compression (a.png)", or "<action> (a.png)" once setAction gave one
         std::string describe() const override;
+        void setAction(std::string name) { action = std::move(name); }
         // the project-relative asset whose sidecar it writes (lock-on-edit, S29 R12)
         const std::filesystem::path& getAsset() const { return asset; }
         const char* typeName() const override { return "SetAssetMetaCmd"; }

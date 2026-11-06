@@ -9,3 +9,33 @@
 ---@class AudioFadeOutOptions
 ---@field pause? boolean # pause at the end instead of stopping
 ---@field unscaled? boolean # unscaled time (default scaled)
+
+---@class AudioPlayOptions
+---@field target? GameObject # 3D, follows it; stops when it is destroyed
+---@field position? Vector3 # 3D, at a fixed place
+---@field scene? Scene # the owner: it holds and stops with it. Default the target's scene, else the main scene
+---@field volume? number # linear, as AudioSource.volume (default 1)
+---@field pitch? number # relative speed, as AudioSource.pitch (default 1)
+---@field group? string # a mixer group name, as AudioSource.outputGroup. Default the event's, else Master
+---@field delay? number # seconds before it starts (default 0)
+---@field unscaled? boolean # the delay runs on unscaled time (default false)
+
+---@class MusicOptions
+---@field crossfade? number # seconds of an equal-power crossfade from the switch point (default 0: a cut)
+---@field sync? string # the switch point: "now" (default), or the playing track's next "beat", "bar" or "section_end"
+---@field snapshot? string # a mixer snapshot reached at the switch point
+---@field snapshotSeconds? number # its transition (default the crossfade)
+---@field group? string # a mixer group name. Default the event's output, else Project Settings audio.music_group, else Master
+---@field volume? number # linear, on top of the event's volume (default 1)
+---@field ignoreListenerPause? boolean # plays on while AudioListener.pause holds (default false)
+
+---@class MusicStopOptions
+---@field sync? string # when the fade starts: "now" (default), "beat", "bar" or "section_end"
+
+---@class MusicPosition
+---@field section integer # 1-based
+---@field bar integer # 1-based from the section's start; 0 before its first beat
+---@field beat integer # 1-based in the bar; 0 before the first beat
+---@field beatFraction number # 0..1 into the beat
+---@field bpm number
+---@field beatsPerBar integer

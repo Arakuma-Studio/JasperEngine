@@ -79,6 +79,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool textureSynthesis = false;
     bool audioMixer = false;
+    bool soundBrowser = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -97,6 +98,7 @@ struct PanelVisibilitySettings {
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && audioMixer == other.audioMixer
+            && soundBrowser == other.soundBrowser
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
@@ -315,6 +317,8 @@ private:
     // Preferences > General > Editor Font > CJK Font Language: auto, japanese, korean,
     // simplified_chinese or traditional_chinese (SystemFonts)
     static std::string cjkFontLanguage;
+    static bool soundBrowserAutoplay;
+    static bool soundBrowserMatchLoudness;
     static std::filesystem::path hubLastLocation;
     static float uiScale;
     static bool poseDockGrown;
@@ -457,11 +461,17 @@ public:
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
-    // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
+    // Preferences > General > Editor Font > CJK Font Language (SystemFonts::isLanguageSetting)
     static std::string getCjkFontLanguage();
     static void setCjkFontLanguage(const std::string& language);
+    // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
     static bool getProjectHubAlways();
     static void setProjectHubAlways(bool always);
+    // the Sound Browser's auditions (S37): on selecting a card, and at -20 LUFS-M
+    static bool getSoundBrowserAutoplay();
+    static void setSoundBrowserAutoplay(bool autoplay);
+    static bool getSoundBrowserMatchLoudness();
+    static void setSoundBrowserMatchLoudness(bool matched);
     // the Project Hub's last parent folder of a new or imported project ("" before any)
     static std::filesystem::path getHubLastLocation();
     static void setHubLastLocation(const std::filesystem::path& location);

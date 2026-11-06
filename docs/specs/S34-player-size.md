@@ -469,6 +469,8 @@ variant, gles3 and vulkan full) linked with it on B without a failure. Frame tim
 regression rather than measuring a gain; S30's 15 s budget is for CI's runner and its engine
 sample, not this scene on E's Mesa 23.
 
+**M10. The `soundlayer` module** (S36, S37; `lib_size.py --modules` on the glcore release runtime of `feat/s37-sound-events`, server H, GCC 11, no LTO): 58.4 KB of named symbols in the 49.75 MB stripped player, every variant of `variants.json` included. Android and wasm are not measured. Code inside `AudioSystem` that the module's `#if` removes but whose names read as audio counts as core here, so this is a lower bound, against S37's estimate of 90-140 KB.
+
 ## Deviations
 
 - **(a) R12, static libc++ on Android: not done.** With `ANDROID_STL=c++_static` the Android Gradle
