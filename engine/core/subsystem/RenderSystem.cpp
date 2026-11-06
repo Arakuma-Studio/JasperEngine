@@ -3835,8 +3835,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
 
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // a mesh without normals lights with the face's (pbr.glsl, as glTF asks): a vertex input
+        // with no buffer behind it reads zero on OpenGL and fails the pipeline on Metal and D3D11.
+        // A terrain makes its normal from the height map (it needs the input).
+        p_hasNormal = inputs.normal || inputs.terrain;
+        if (p_hasNormal && inputs.tangent){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
@@ -3860,8 +3863,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
     if (useLight2D){
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // as the lit path: no input without its buffer
+        p_hasNormal = inputs.normal || inputs.terrain;
+        if (p_hasNormal && inputs.tangent){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
