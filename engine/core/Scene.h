@@ -281,6 +281,8 @@ namespace jasperengine{
         void setSSRBlur(float blur);
         float getSSRBlur() const;
 
+        // the SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo,
+        // 6 environment specular, 7 reflection source, 8 occlusion (docs/rendering/reflections.md)
         void setSSRDebugMode(int mode);
         int getSSRDebugMode() const;
 

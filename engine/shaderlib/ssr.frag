@@ -31,6 +31,8 @@ uniform texture2D u_gbufferTexture;
 uniform sampler u_gbuffer_smp;
 uniform texture2D u_sceneColorTexture;
 uniform sampler u_sceneColor_smp;
+uniform texture2D u_albedoTexture;    // G-buffer color[2]: .a the reflection source
+uniform sampler u_albedo_smp;
 
 uniform u_fs_ssrParams {
     mat4 projection;
@@ -41,6 +43,7 @@ uniform u_fs_ssrParams {
 
 #include "includes/depth_util.glsl"
 #include "includes/octahedral.glsl"
+#include "includes/ssr_source.glsl"
 
 float sampleDepth(vec2 uv){
     // Explicit LOD keeps the D3D11 ray-march loop dynamic.
@@ -90,6 +93,12 @@ void main(){
     // G-buffer .b: the surface's perceptual roughness
     float roughness = g.b;
     if (roughness >= SSR_MAX_ROUGHNESS){ // too rough: no march, the IBL alone
+        frag_color = vec4(0.0);
+        return;
+    }
+
+    // a surface the composite leaves as drawn (unlit, a planar mirror, a probe without a slot)
+    if (ssrSourceSkips(ssrSourceCode(texture(sampler2D(u_albedoTexture, u_albedo_smp), d).a))){
         frag_color = vec4(0.0);
         return;
     }
