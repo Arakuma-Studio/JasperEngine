@@ -1011,6 +1011,14 @@
    "label": "Auto Resize",
    "path": "autoResize",
    "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
+   "read_only": false
   }
  ],
  "camera#1": [
@@ -1157,6 +1165,14 @@
    "label": "Auto Resize",
    "path": "autoResize",
    "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
+   "read_only": false
   }
  ],
  "camera#2": [
@@ -1302,6 +1318,14 @@
    "kind": "Bool",
    "label": "Auto Resize",
    "path": "autoResize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
    "read_only": false
   },
   {
@@ -1514,6 +1538,38 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
    "read_only": false
   },
   {
@@ -4251,6 +4307,38 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Allow GPU Instancing",
    "path": "allowGpuInstancing",
@@ -4416,6 +4504,38 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
    "read_only": false
   },
   {
@@ -6865,6 +6985,38 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Allow GPU Instancing",
    "path": "allowGpuInstancing",
@@ -7120,6 +7272,38 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
    "read_only": false
   },
   {
@@ -7588,6 +7772,38 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
    "read_only": false
   },
   {

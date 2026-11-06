@@ -65,6 +65,8 @@ shaderKeys:
     properties: 9
   - type: shadow2d
   - type: blit
+  - type: blit
+    properties: 4096
   - type: htmlui
   - type: htmlui
     properties: 1
@@ -2593,3 +2595,30 @@ entities:
         right: false
         bottom: false
         includeExtraInsets: false
+  - type: Entity
+    entity: 1091
+    name: CapsuleShadowCasterComponent
+    components:
+      transform:
+        position: [90, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      capsuleshadowcaster:
+        enabled: false
+        castShadows: capsules_only
+        capsules:
+          - bone: Spine
+            radius: 0.2
+            length: 0.65
+            offset: [0, 0.1, 0.05]
+            direction: x_axis
+          - bone: ""
+            radius: 0.1
+            length: 0.5
+            offset: [0, 0, 0]
+            direction: y_axis
