@@ -118,6 +118,8 @@ namespace jasperengine::player {
         int audioSampleRate = 0;
         std::string audioOutputStage = "roundoff";
         std::string audioIosSession = "default";
+        // the group music plays through when nothing names one ("" = Master)
+        std::string audioMusicGroup;
 
         PlayerConfig();
 

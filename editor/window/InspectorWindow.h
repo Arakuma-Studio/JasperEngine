@@ -853,6 +853,7 @@ namespace jasperengine::editor{
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -986,6 +987,10 @@ namespace jasperengine::editor{
         // the commands soundEvent.audition and soundEvent.matchLevels, on the inspected .soundevent
         void requestSoundEventAudition();
         void requestSoundEventMatchLevels();
+        // soundEvent.playAsMusic: the inspected event through the music system (S39 R18), or stops it
+        void requestSoundEventPlayAsMusic();
+        // the command audioClip.detectTempo, on the inspected audio file (InspectorAudioClip.cpp)
+        void requestAudioClipDetectTempo();
 
         static constexpr const char* WINDOW_NAME = "Inspector";
 

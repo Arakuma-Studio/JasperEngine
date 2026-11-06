@@ -1925,7 +1925,7 @@ Create or change a .soundevent (Unity's Audio Random Container): clips played by
 | `match_levels` | boolean |  | After values: every clip's volume_db so all play equally loud, none past -1 dBTP. Not for layer. |
 | `path` | string | yes | A .soundevent in the assets folder. |
 | `slice` | object |  | With create: {source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview}. |
-| `values` | object |  | mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms}; the whole list), avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, steal, cooldown_ms, priority, loop, spatial, type. null resets a key. |
+| `values` | object |  | mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}; the whole list), avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, steal, cooldown_ms, priority, loop, spatial, type. null resets a key. |
 
 
 ## Audio Mixer
@@ -2022,7 +2022,7 @@ Sets how clips play and where they came from, in their .meta: gain, trims, click
 | `labels` | array of string |  | S25 labels to set: replaces the clips' labels. |
 | `paths` | array of string | yes | Sound files inside the assets folder. |
 | `provenance` | object |  | Provenance keys: licence, licence_url, author, attribution, source, url. |
-| `settings` | object |  | Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms. |
+| `settings` | object |  | Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, music. |
 
 
 ## Audio captures
@@ -3226,12 +3226,13 @@ Build a UI tree from one root node {type, name, layout, text, font_size, font, t
 
 Group: `core`
 
-Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; property: component + property; humanoid: bone.
+Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `add_actions` | array of object {action, duration, lane, start_time} |  |  |
 | `animation` | integer or string |  |  |
+| `audio` | array of object {snapshot, sound, source, time} |  |  |
 | `autoplay` | boolean |  |  |
 | `clip` | string |  |  |
 | `create` | object {from, humanoid, remove_tracks} |  |  |

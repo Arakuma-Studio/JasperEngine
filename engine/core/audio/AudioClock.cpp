@@ -22,6 +22,12 @@ uint32_t AudioClock::advance(double seconds) {
     return count;
 }
 
+uint32_t AudioClock::peek(double seconds) const {
+    if (!(seconds > 0.0)) return 0;
+    const uint64_t due = (uint64_t)std::llround((accumulated + seconds) * sampleRate);
+    return due > frames ? (uint32_t)(due - frames) : 0;
+}
+
 uint64_t AudioClock::cursor() const {
     return frames;
 }

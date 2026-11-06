@@ -8,6 +8,7 @@
 #include "Factory.h"
 #include "audio/SoundEvent.h"
 #include "pool/SoundPool.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
 
@@ -243,6 +244,27 @@ namespace {
         "event", "playOn", "minImpactSpeed", "fullVolumeImpactSpeed", "pitchRandomSemitones", "volumeRandomDb"
     };
 
+    // ---------------------------------------------------------------- Mixer Snapshot action (S40 R18)
+
+    constexpr FieldDesc kAudioSnapshotFields[] = {
+        JE_FIELD(AudioSnapshotComponent, snapshot, .flags = OmitIfDefault, .label = "Snapshot"),
+        JE_FIELD(AudioSnapshotComponent, seconds, .flags = OmitIfDefault, .unit = Unit::Seconds, .min = 0.0f, .step = 0.05f,
+                 .label = "Transition"),
+        JE_FIELD(AudioSnapshotComponent, unscaled, .flags = OmitIfDefault, .label = "Unscaled Time"),
+        JE_FIELD(AudioSnapshotComponent, revert, .flags = OmitIfDefault, .label = "Revert On Stop"),
+        JE_FIELD(AudioSnapshotComponent, revertSeconds, .flags = OmitIfDefault, .unit = Unit::Seconds, .min = -1.0f, .step = 0.05f,
+                 .label = "Revert Transition", .tooltip = "-1: the same as Transition"),
+    };
+
+    void audioSnapshotPostDecode(void* comp, const DecodeContext& ctx) {
+        // the runtime state stays with the component (an Inspector edit in Play keeps what it reverts to)
+        AudioSnapshotComponent& snapshot = *static_cast<AudioSnapshotComponent*>(comp);
+        if (const AudioSnapshotComponent* old = static_cast<const AudioSnapshotComponent*>(ctx.old)) {
+            snapshot.previousSnapshot = old->previousSnapshot;
+            snapshot.applied = old->applied;
+        }
+    }
+
     void audioSourceCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {
         const AudioSourceComponent& audio = *static_cast<const AudioSourceComponent*>(comp);
         const std::string ind = Factory::indentation(ctx.indentSpaces);
@@ -293,6 +315,15 @@ const ComponentDesc kCameraDesc{
     .body = JE_STRUCT_DESC(CameraComponent, "CameraComponent", kCameraFields),
     .hasEnabled = true, .structural = true, JE_COMPONENT_ACCESS(CameraComponent),
     .codegenVar = "camera", .codegenOrder = kCameraCodegenOrder,
+};
+
+const ComponentDesc kAudioSnapshotDesc{
+    .type = ComponentType::AudioSnapshotComponent, .cppName = "AudioSnapshotComponent", .key = "audiosnapshot", .displayName = "Mixer Snapshot Action",
+    .icon = ICON_FA_SLIDERS,
+    .body = JE_STRUCT_DESC(AudioSnapshotComponent, "AudioSnapshotComponent", kAudioSnapshotFields),
+    .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(AudioSnapshotComponent),
+    .postDecode = &audioSnapshotPostDecode,
+    .codegenVar = "audiosnapshot",
 };
 
 const ComponentDesc kAudioSourceDesc{

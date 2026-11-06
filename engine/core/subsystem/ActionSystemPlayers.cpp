@@ -8,6 +8,7 @@
 #include "component/ModelComponent.h"
 #include "ActionSystemPlayersDetail.h"
 #include "audio/AudioMarkers.h"
+#include "audio/TimelineAudio.h"
 
 #include "Scene.h"
 #include "Log.h"
@@ -606,6 +607,19 @@ namespace {
             const std::vector<ClipEventData>& events = clip.getEvents();
             for (const anim::CrossedEvent& event : crossed){
                 pendEvent(runtime, state, events[event.index], when(event.position));
+            }
+            // audio cues by the same crossing (S40 R4); a clip without cues pays this test
+            if (!clip.getAudioCues().empty()){
+                crossed.clear();
+                anim::collectCrossedCues(clip, wrap, (float)from, (float)eventsTo, includeStart, crossed);
+                for (const anim::CrossedEvent& cue : crossed){
+                    anim::PendingPlayerCue pending;
+                    pending.state = (size_t)(&state - runtime.states.data());
+                    pending.cue = cue.index;
+                    pending.position = cue.position;
+                    pending.when = when(cue.position);
+                    runtime.pendingCues.push_back(pending);
+                }
             }
         }
 
@@ -1288,12 +1302,73 @@ void ActionSystem::updatePlayers(double dt){
         }
         advancePlayer(entity, player, step);
         samplePlayerStates(entity, player);
+        if (!runtime.pendingCues.empty() || !runtime.cueVoices.empty()) firePlayerCues(entity, player, step);
 
         if (!runtime.pending.empty() &&
             std::find(playersWithCallbacks.begin(), playersWithCallbacks.end(), entity) == playersWithCallbacks.end()){
             playersWithCallbacks.push_back(entity);
         }
     }
+}
+
+void ActionSystem::firePlayerCues(Entity entity, AnimationPlayerComponent& player, float dt){
+    anim::AnimationPlayerRuntime& runtime = *player.runtime;
+    // (kept, not swapped: a crowd crossing cues every frame allocates nothing; firing adds no cue)
+    std::vector<anim::PendingPlayerCue>& pending = runtime.pendingCues;
+#if JASPERENGINE_SOUND_LAYER
+    if (pending.size() > 1){
+        std::stable_sort(pending.begin(), pending.end(), [](const anim::PendingPlayerCue& a, const anim::PendingPlayerCue& b){
+            return a.when < b.when;
+        });
+    }
+    for (const anim::PendingPlayerCue& crossed : pending){
+        if (crossed.state >= runtime.states.size()) continue;
+        const anim::PlayerStateRuntime& state = runtime.states[crossed.state];
+        if (!state.bindings.clip || crossed.cue >= state.bindings.clip->getAudioCues().size()) continue;
+        const ClipAudioCue& cue = state.bindings.clip->getAudioCues()[crossed.cue];
+        TimelineCueInfo info;
+        info.clip = state.clip;
+        info.cue = (int)crossed.cue;
+        info.scene = scene;
+        info.player = entity;
+        info.state = state.name;
+        info.layer = runtime.stateLayer(state);
+        info.position = crossed.position;
+        const float speed = anim::effectiveSpeed(player, state);
+        const TimelineVoice voice = TimelineAudio::fireCue(scene, entity, cue, TimelineAudio::delayFramesAt(crossed.when, dt), speed, info);
+        if (!voice.empty()) runtime.cueVoices.push_back({state.name, voice.id, voice.generation, voice.source});
+    }
+    pending.clear();
+
+    // state_exit (R7): its state stopped (stop(), its end), was left or faded out
+    for (size_t i = 0; i < runtime.cueVoices.size();){
+        const anim::PlayerCueVoice& voice = runtime.cueVoices[i];
+        const anim::PlayerStateRuntime* state = nullptr;
+        for (const anim::PlayerStateRuntime& candidate : runtime.states){
+            if (candidate.name == voice.state) state = &candidate;
+        }
+        const bool exited = !state || !state->enabled || (state->targetWeight <= 0.0f && state->weight <= 0.0f);
+        if (!exited){
+            i++;
+            continue;
+        }
+        TimelineVoice stopped;
+        stopped.id = voice.id;
+        stopped.generation = voice.generation;
+        stopped.source = voice.source;
+        TimelineAudio::stop(scene, stopped);
+        runtime.cueVoices.erase(runtime.cueVoices.begin() + (std::ptrdiff_t)i);
+    }
+#else
+    (void)entity;
+    (void)dt;
+    if (!pending.empty() && !warnedNoSoundLayer){
+        warnedNoSoundLayer = true;
+        Log::error("Animation Player: clip audio cues need the soundlayer module, which this build leaves out");
+    }
+    pending.clear();
+    runtime.cueVoices.clear();
+#endif
 }
 
 void ActionSystem::dispatchPlayerCallbacks(){

@@ -242,6 +242,24 @@ def click_train(times, seconds: float, rate: int, amplitude: float = 1.0) -> lis
     return out
 
 
+def click_track(bpm: float, first_beat_s: float, beats_per_bar: int, seconds: float, rate: int = 48000) -> list:
+    """S39's tempo oracle (sound-layer P6 §3.9): a 2 ms 3 kHz click at 0.5 on every beat from first_beat_s,
+    and a 40 ms 60 Hz thump at 0.5 added on each downbeat (the beat at first_beat_s is one)."""
+    out = [0.0] * int(seconds * rate)
+    click, thump = int(0.002 * rate), int(0.040 * rate)
+    k = 0
+    while True:
+        start = int(round((first_beat_s + k * 60.0 / bpm) * rate))
+        if start >= len(out):
+            return out
+        for i in range(min(click, len(out) - start)):
+            out[start + i] += 0.5 * math.sin(2.0 * math.pi * 3000.0 * i / rate)
+        if k % beats_per_bar == 0:
+            for i in range(min(thump, len(out) - start)):
+                out[start + i] += 0.5 * math.sin(2.0 * math.pi * 60.0 * i / rate)
+        k += 1
+
+
 def white_noise(seconds: float, rate: int, seed: int = 1, dbfs: float = -12.0) -> list:
     """Seeded uniform white noise of peak level dbfs (random.Random, so the same on every host)."""
     rng = random.Random(seed)
@@ -885,3 +903,83 @@ def voice_lines(entries: list[dict]) -> list[dict]:
         if at >= 0:
             lines.append(json.loads(message[at + len(TRACE_PREFIX):]))
     return lines
+
+
+# ---- the music system (docs/specs/S39-music.md R2, R8, R9): written from the spec's text
+
+
+def triangle(period: int, frames: int, amplitude: float = 0.5) -> list:
+    """A triangle wave from -amplitude, `period` frames a cycle: with a power-of-two period every value
+    is exact in float32, so a sequence of them compares bit for bit."""
+    half = period / 2
+    out = []
+    for i in range(frames):
+        t = i % period
+        rise = t / half if t < half else 2.0 - t / half
+        out.append(f32((rise * 2.0 - 1.0) * amplitude))
+    return out
+
+
+@dataclass
+class MusicSection:
+    """One section as it plays: its clip's planar channels (the whole file), the trimmed region
+    [start, end), the loop region [loop_start, loop_end) and the passes of it played (counting the
+    first), at a linear gain."""
+    channels: list
+    start: int
+    end: int
+    loop_start: int
+    loop_end: int
+    passes: int
+    gain: float = 1.0
+
+
+def music_sequence(sections: list) -> list:
+    """R2: each section plays from its trimmed start to its loop end, its loop region again until it
+    played it `passes` times, then its tail to the trimmed end; the next section follows at the next
+    frame. Planar channels of the whole track."""
+    count = len(sections[0].channels)
+    out = [[] for _ in range(count)]
+    for s in sections:
+        spans = [(s.start, s.loop_end)] + [(s.loop_start, s.loop_end)] * (s.passes - 1) + [(s.loop_end, s.end)]
+        gain = f32(s.gain)
+        for c in range(count):
+            for a, b in spans:
+                if gain == 1.0:
+                    out[c].extend(s.channels[c][a:b])
+                else:
+                    out[c].extend(f32(v * gain) for v in s.channels[c][a:b])
+    return out
+
+
+def float_hash(channels: list) -> int:
+    """FNV-1a 64 over the float32 bits of the frames, channels interleaved, little-endian."""
+    h = 14695981039346656037
+    for frame in zip(*channels):
+        for byte in struct.pack("<%df" % len(frame), *frame):
+            h ^= byte
+            h = (h * 1099511628211) & MASK
+    return h
+
+
+def beat_frames(bpm: float, first_beat_frame: int, trim_head_frames: int, rate: int, until: int) -> list:
+    """R8: the section frames of the beats before `until`, k = 0, 1, ...: first - trim + k x rate x 60 / bpm,
+    each rounded to the nearest frame."""
+    per_beat = rate * 60.0 / bpm
+    out = []
+    k = 0
+    while True:
+        frame = first_beat_frame - trim_head_frames + k * per_beat
+        if round(frame) >= until:
+            return out
+        if frame >= 0:
+            out.append(int(round(frame)))
+        k += 1
+
+
+def music_boundary(position: float, sync: str, bpm: float, beats_per_bar: int, first_beat: float, rate: int) -> float:
+    """R9: the first grid frame of kind `sync` (beat or bar) at or after section frame `position`."""
+    step = rate * 60.0 / bpm * (beats_per_bar if sync == "bar" else 1)
+    if position <= first_beat:
+        return first_beat
+    return first_beat + math.ceil((position - first_beat) / step - 1e-9) * step

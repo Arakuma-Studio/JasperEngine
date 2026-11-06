@@ -2866,6 +2866,10 @@ std::string editor::Generator::audioInitSource(const AudioSettings& audioSetting
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";
     }
+    if (audioSettings.musicGroup != defaults.musicGroup) {
+        source += "    { AudioConfig audioConfig = AudioSystem::getConfig(); audioConfig.musicGroup = " + Factory::formatString(audioSettings.musicGroup) +
+                  "; AudioSystem::configure(audioConfig); }\n";
+    }
     return source;
 }
 

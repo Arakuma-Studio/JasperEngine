@@ -1169,6 +1169,27 @@ Audio.mark("doc test")
 assert(type(Audio.isCapturing()) == "boolean")
 ```
 
+The music (one track that survives scene loads; `jasper://docs/sound` Music): `Audio.playMusic(eventOrClip [, opts])`
+-> bool (a clip, or a Sound Event played as a playlist; `opts = {crossfade = 0 (s, equal power), sync = "now" | "beat"
+| "bar" | "section_end" (the playing track's next one), snapshot = "Combat" (reached at the switch), snapshotSeconds
+(default the crossfade), group (default the event's output, else `audio.music_group`), volume = 1,
+ignoreListenerPause = false}`; the playing track again does nothing; false for a `layer` event),
+`Audio.stopMusic([fade [, {sync}]])`, `Audio.advanceMusic()` -> bool (the section ends at its next loop end),
+`Audio.playStinger(eventOrClip [, sync = "beat"])` -> `SoundHandle` (on the next beat or bar, owned by the music),
+`Audio.getMusic()` -> string, `Audio.getMusicTime()` -> seconds, `Audio.getMusicPosition()` -> `{section, bar, beat,
+beatFraction, bpm, beatsPerBar}` or nil (no music or no tempo). `Audio.onMusicBeat` (bar, beat) and
+`Audio.onMusicSection` (section, clip) are called in the frame whose mix holds them: frame-accurate; a stinger or a
+synced switch is the sample-exact way. A time that is negative or not a number, or an unknown `sync`, is refused
+with one warning.
+
+```lua run
+assert(Audio.getMusic() == "")
+assert(Audio.getMusicPosition() == nil)
+assert(Audio.advanceMusic() == false)
+Audio.onMusicBeat:add("doc", function(bar, beat) end)
+Audio.onMusicBeat:remove("doc")
+```
+
 `SoundHandle` (a value naming one play): `isValid()`, `isPlaying()`, `stop()`, `pause()`, `resume()`,
 `fadeOut(seconds [, opts])` (`opts.pause`, `opts.unscaled`, as `AudioSource:fadeOut`),
 `fadeTo(volume, seconds [, opts])`; properties `volume`, `pitch`, `pan`, `position` (rw; setting it
@@ -1943,6 +1964,8 @@ missing; `GameObject:getAnimationPlayer()` returns `nil` without one. Players ru
 and in games (edit mode previews clips in the Animation window). Calls made before the clips load
 are kept. Clip tracks bind by path below the player's GameObject; renames and reparents rebind
 on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs/animation`.
+A clip's audio cues play by themselves (no Lua API; author them with `edit_animation {clip, audio}`):
+to play a sound from code use `Audio.play`, and react to clip events as below.
 
 | Member | Notes |
 |---|---|
@@ -2678,6 +2701,12 @@ tw:setAction(Vector3(0, 0, 0), Vector3(200, 0, 0), 1.0, false)
 tw:setFunctionType(EaseType.QUAD_OUT)
 tw:start()
 ```
+
+Audio actions (an action GameObject with an `AudioSourceComponent`) and Mixer Snapshot actions start
+and stop with the Action API above (their sound follows; a standalone audio action stops itself when its
+sound ends, so `onStop` fires). `GameObject:getAudioSnapshotComponent()` (nil without one) gives the
+`AudioSnapshotComponent`: rw `snapshot` (a mixer snapshot name), `seconds`, `unscaled`, `revert` (back to
+the previous snapshot on stop, while the mixer still shows this one), `revertSeconds` (-1: `seconds`).
 
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,

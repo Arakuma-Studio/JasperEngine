@@ -2622,3 +2622,22 @@ entities:
             length: 0.5
             offset: [0, 0, 0]
             direction: y_axis
+  - type: Entity
+    entity: 1092
+    name: AudioSnapshotComponent
+    components:
+      transform:
+        position: [91, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      audiosnapshot:
+        snapshot: Snap7
+        seconds: 2.5
+        unscaled: true
+        revert: false
+        revertSeconds: 0.75
