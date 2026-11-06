@@ -2421,8 +2421,9 @@ void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, con
         return true;
     };
 
-    ImGui::BeginChild("##script_list", ImVec2(Theme::dpi(320.0f), std::min(Theme::dpi(260.0f), ImGui::GetTextLineHeightWithSpacing() * (addScriptCandidates.size() + 1.0f))),
-                      false);
+    // rows and the message line, inside the child's padding
+    const float listHeight = ImGui::GetTextLineHeightWithSpacing() * (addScriptCandidates.size() + 1.0f) + ImGui::GetStyle().WindowPadding.y * 2.0f;
+    ImGui::BeginChild("##script_list", ImVec2(Theme::dpi(320.0f), std::min(Theme::dpi(260.0f), listHeight)), false);
     size_t shown = 0;
     for (const ScriptCandidate& candidate : addScriptCandidates) {
         if (!query.empty() && search::normalize(candidate.name).find(query) == std::string::npos) continue;

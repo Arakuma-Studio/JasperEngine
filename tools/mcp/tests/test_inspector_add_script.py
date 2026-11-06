@@ -65,9 +65,7 @@ async def test_add_script_picks_a_lua_script(ed: Editor):
     await ui.frames(4)
     await ui.type("ene")
     await ui.frames(4)
-    row = await ed.ui_rect("inspector.addScript.row.Enemy")
-    ed.check(row, f"the picker lists Enemy: {sorted(ed.ui_items())}")
-    await ui.click(ui.at(list(centre(row))))
+    await ui.click_item("Enemy  [Lua]")
     await ui.frames(6)
 
     scripts = await scripts_of(ed, "Grunt")

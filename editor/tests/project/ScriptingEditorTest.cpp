@@ -138,6 +138,9 @@ namespace {
             ASSERT_TRUE(headless().ready);
             setEditorHost(&host);
         }
+        void TearDown() override {
+            setEditorHost(nullptr);
+        }
         fs::path lua(const std::string& name) { return project()->getProjectPath() / "lua" / name; }
     };
 
