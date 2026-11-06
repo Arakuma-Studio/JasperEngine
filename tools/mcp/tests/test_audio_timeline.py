@@ -154,7 +154,8 @@ async def test_a_loop_fires_its_cue_once_a_pass(ed: Editor):
 async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
     # a track on the root: the Animator's rig has a bone to bind
     bob = [{"path": "", "channel": "position", "keys": [[0, [0, 0, 0]], [1, [0, 1, 0]]]}]
-    await ed.call("write_file", path="anim/a.anim", content=anim(steps([0.2], name="A"), wrap="loop", length=1.0, events=[], tracks=bob))
+    await ed.call("write_file", path="anim/a.anim", content=anim(steps([0.2], name="A"), wrap="loop", length=1.0,
+                                                                 events=[{"time": 0.2, "function": "onA"}], tracks=bob))
     await ed.call("write_file", path="anim/b.anim", content=anim(steps([0.3], name="B"), wrap="loop", length=1.0, events=[], tracks=bob))
     await ed.call("write_file", path="anim/wave.anim", content=anim(steps([0.05], name="W"), length=0.5, events=[], tracks=bob))
     await ed.call("sync_files")
@@ -178,8 +179,8 @@ async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
     _, lines = await capture(ed, scene, 30, during=montage)
     names = [l["name"] for l in lines if l["kind"] == "cue"]
     if "A" not in names:
-        state = await ed.call("get_animator", entity="Walker", scene=scene)
-        ed.fail(f"the 1D tree fires its leader's cue (S21 R9): {names}; {json.dumps(state)[:2500]}")
+        events = [l.get("function") for l in lines if l["kind"] == "animation_event"]
+        ed.fail(f"the 1D tree fires its leader's cue (S21 R9): {names}; its clip events: {events}")
     ed.check("B" not in names, f"the 1D tree fires only its leader's cue (S21 R9): {names}")
     ed.check("W" in names, f"the montage fires its clip's cue: {names}")
     montage_cue = next(l for l in lines if l["kind"] == "cue" and l["name"] == "W")
@@ -267,10 +268,11 @@ async def test_cue_follows_a_moved_sound(ed: Editor):
     await ed.call("move_asset", path="sounds/door.wav", to="sounds/moved/door.wav")
     got = await ed.call("get_animation", clip="anim/door.anim")
     ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/moved/door.wav", f"resolved by its GUID: {got['audio']}")
+    await ed.call("undo", scope="project")
+    got = await ed.call("get_animation", clip="anim/door.anim")
+    ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/door.wav", f"undo moves it back, one step: {got['audio']}")
+    await ed.call("redo", scope="project")
     scene = await walker_scene(ed, "Door", "anim/door.anim", {})
     _, lines = await capture(ed, scene, 20)
     voices = [l for l in lines if l["kind"] == "voice_start"]
     ed.check(voices and voices[0]["clip"] == "sounds/moved/door.wav", f"Play plays the moved file: {voices}")
-    await ed.call("undo", scope="project")
-    got = await ed.call("get_animation", clip="anim/door.anim")
-    ed.check_eq(got["audio"][0]["sound"]["path"], "sounds/door.wav", f"undo moves it back, one step: {got['audio']}")

@@ -188,7 +188,10 @@ async def test_entity_mode_add_property_sound_adds_an_audio_action_in_one_undo_s
     await ui.click_item(TICK)
     await ui.frames(10)
     actions = await frames_of(ed, "Sequencer")
-    ed.check_eq(len(actions), before + 1, f"an audio action's frame: {actions}")
+    if len(actions) != before + 1:
+        await keep_shot(ed, "entity-audio-action-missing")
+        seen = {label: (await ed.call("find_ui_item", label=label)).get("items", [])[:2] for label in ("Add Property", "Sound", "Audio Clip", TICK)}
+        ed.fail(f"an audio action's frame: {actions}; items: {json.dumps(seen)[:1500]}")
     await keep_shot(ed, "entity-audio-action")
     await ed.call("undo", scene=STATE["scene"])
     ed.check_eq(len(await frames_of(ed, "Sequencer")), before, "the action and its frame are one undo step")
