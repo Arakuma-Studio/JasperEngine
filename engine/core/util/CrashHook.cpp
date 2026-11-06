@@ -116,7 +116,7 @@ std::string CrashHook::describeCurrentException() {
     }
 }
 
-void CrashHook::logFailure(const std::string& tag, const std::string& errorInfo) {
+void CrashHook::logFailure(const std::string& tag) {
     // a callback failing every frame logs once a second (ScriptMessages' rate)
     // (events PhysicsSystem calls from Jolt threads fail there)
     static std::mutex mutex;
@@ -130,5 +130,5 @@ void CrashHook::logFailure(const std::string& tag, const std::string& errorInfo)
         }
         lastLogged[tag] = now;
     }
-    Log::error("%s failed: %s", tag.c_str(), errorInfo.c_str());
+    Log::error("%s failed: %s", tag.c_str(), describeCurrentException().c_str());
 }

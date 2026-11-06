@@ -140,8 +140,7 @@ namespace jasperengine {
                 try {
                     call(slot.function);
                 } catch (...) {
-                    CrashHook::logFailure(slot.tag.empty() ? std::string("event subscriber") : slot.tag,
-                                          CrashHook::describeCurrentException());
+                    CrashHook::logFailure(slot.tag.empty() ? std::string("event subscriber") : slot.tag);
                     return false;
                 }
                 return true;

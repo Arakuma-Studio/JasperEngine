@@ -1066,7 +1066,7 @@ namespace {
             try {
                 (*fn)();
             } catch (...) {
-                CrashHook::logFailure("timer:C++", CrashHook::describeCurrentException());
+                CrashHook::logFailure("timer:C++");
             }
             return;
         }

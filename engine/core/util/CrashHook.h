@@ -41,9 +41,10 @@ namespace jasperengine {
         static bool runCatching(void (*function)(void*), void* context, std::string& errorInfo);
         // "C++ exception <type>: <what>" of the exception being handled (call it in a catch)
         static std::string describeCurrentException();
-        // A callback that failed while no hook is set (an exported game): an error in the log,
-        // at most once a second per tag. Any thread.
-        static void logFailure(const std::string& tag, const std::string& errorInfo);
+        // A callback that threw while no hook is set (an exported game): the exception being
+        // handled (call it in a catch) in the log, at most once a second per tag; a callback
+        // throwing every frame is not described (rethrown, demangled) each time. Any thread.
+        static void logFailure(const std::string& tag);
     };
 
 }
