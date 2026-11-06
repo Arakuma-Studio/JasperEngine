@@ -177,6 +177,12 @@ at a filmstrip, check and export with the six `title_art` tools. S85 adds no too
   `ANIM_VERSION` is still 2 (`AnimationClipIO.h:55`). What exists:
   `AudioSystem::playOneShot(AudioSourceComponent&, filename, volumeScale)` and
   `playClipAtPoint(filename, position, volume, group)` (`subsystem/AudioSystem.h:196-200`).
+  Since the merge of origin/main into feature/title-art, S37 and S40 have landed:
+  `engine/core/animation/ClipAudio.h` holds the clip cues, `ANIM_VERSION` is 3, Sound Events
+  play through `AudioSystem::playFree` (Lua `Audio.play`), and a cue starts through
+  `AudioSystem::playFreeFromTimeline(eventOrClip, options, delayFrames)` with the delay from
+  `TimelineAudio::delayFrames(fraction)` (S40 R5, R6); the editor previews cues with
+  `TimelineAudioPreview` (Deviation 6).
 - **Expressions.** `editor/util/NumericExpression.h` evaluates tinyexpr text for numeric fields,
   with no variables API.
 
@@ -319,8 +325,7 @@ S80's.
 - **R10. Markers.** An animation has up to 64 markers `{time, name, args, sound, volume_db, group}`:
   - `name` is a Lua identifier. Names may repeat, and the ops address duplicates by `index`.
   - `args` holds at most 8 JSON scalars (`MAX_ANIMATION_EVENT_ARGS`).
-  - `sound` is an AssetRef to an audio clip (`.wav .ogg .mp3 .flac`), or a `.soundevent` once S37
-    lands.
+  - `sound` is an AssetRef to an audio clip (`.wav .ogg .mp3 .flac`) or a `.soundevent` (S37).
   - `volume_db` is −60..12 (default 0). `group` is a mixer group (default `""`: the source's
     group, else Master).
 
@@ -545,11 +550,9 @@ S80's.
   - **With an Audio Source** on the GameObject: `AudioSystem::playOneShot` on it, with its group,
     2D/3D settings and `volume_db`.
   - **Without one:** `playClipAtPoint` at the scene camera's position, on `group`.
-  - **Timing.** Sounds are frame-quantized until S40 M2 lands. Then they start through S40's
-    `AudioSystem::playFromTimeline` with S40 R5's sub-frame placement, from the marker's crossing
-    fraction.
-  - **`.soundevent` refs** go through S37's `Audio::play` once S37 lands. Before that, the ops
-    refuse them (`sound_event_unavailable`).
+  - **Timing.** Sounds start through S40's `AudioSystem::playFreeFromTimeline` with S40 R5's
+    sub-frame placement (`TimelineAudio::delayFrames` of the marker's crossing fraction).
+  - **`.soundevent` refs** play through S37's runtime (`AudioSystem::playFree`, Lua `Audio.play`).
   - An unresolved sound warns once per marker per Play.
 - **R30. Unknown names.** `play`, `playOverlay`, `stop(name)`, `sample`, `prepare` and
   `driveAnimation` with an unknown animation warn once per name per component (S21's rule). They
@@ -669,7 +672,7 @@ S80's.
     - Realtime plays re-render at its rate;
     - Glyph Atlas omits unplayed tracks.
   - **Sound markers** play during preview through an editor preview voice outside the mixer groups
-    (`TitleAnimPreview`, replaced by S40's `TimelineAudioPreview` when it lands), muted by the
+    (S40's `TimelineAudioPreview`), muted by the
     panel's speaker toggle. Scrubbing is silent.
 - **R47. Onion skin** (Preferences > Title Designer; off by default): 2 frames before and 2 after
   at 1/fps, drawn as ghosts (red-tinted before, green-tinted after, 25 %). Ghosts use title-live,
@@ -1311,3 +1314,10 @@ rest of S82 lands in 6B.
    (S80 §6.11).
 5. **Reconciled: flipbook bakes are not undo steps** (S80 §6.9's rule for derived files); user
    presets live in S84's library folders.
+6. **S37 and S40 landed before S85 (origin/main merge).** R10, R29 and R46 name the landed API:
+   marker sounds start through `AudioSystem::playFreeFromTimeline` with
+   `TimelineAudio::delayFrames` (the `AudioSystem::playFromTimeline` the spec first named does not
+   exist), `.soundevent` refs play through `AudioSystem::playFree` (no `sound_event_unavailable`
+   refusal), and the marker sounds' editor preview voice is S40's `TimelineAudioPreview`. D15's
+   frame-quantized interim and the risk "Frame-quantized marker sounds before S40" no longer
+   apply.
