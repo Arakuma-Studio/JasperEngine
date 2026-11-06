@@ -84,7 +84,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Done |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Done |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Ready at `df5260cc7`, with `main` merged; fourth full suite with S40 |
-| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
+| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37, S39 | Ready at `438b5081c`; merging S39 (6 shared files), then the fourth full suite |
 
 ## Decisions
 
@@ -197,3 +197,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-06: S39 ready. Its bisect found `CameraShakeEditor` leaving the game's events paused for every later suite; fixed.
 - 2026-11-06: Found by S35 checking `main` alone: since the Forge/meshoptimizer landing, the editor unit test binary segfaults in `LodFadeVariantKeys.OnlyMeshesThatCanFadeShipTheFadeVariant`, so no editor test runs on `main`; core fails `PbrVariant.ALobesMapAsksForTheMeshsUVs`. Fixing on `fix/main-editor-tests`. The other programs should know their gates on `main` are not running the editor tests.
 - 2026-11-06: The sound trio landed. Next: `fix/main-editor-tests`, then S39 and S40 merge `main` for a fourth full suite.
+- 2026-11-06: S40 ready. It found and fixed two bugs in existing code: the Animation window's shortcut context was off in entity mode, so none of its keys reached it; and the Sound submenu lost its frame by adding components while holding the `AnimationComponent` they move.
