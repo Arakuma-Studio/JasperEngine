@@ -117,6 +117,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
+            {ComponentType::AudioSnapshotComponent, "On an Animation's action: moves the mixer to a snapshot while the action plays"},
         }},
         {"Video", ICON_FA_FILM, {
             {ComponentType::VideoPlayerComponent, "Plays a video (MP4, WebM) or a URL into a texture, a material or a camera plane"},

@@ -1278,6 +1278,181 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_sound_too_quiet_no_measure",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "Sound-layer sessions: agents cannot hear, guessed a clip's level from a user's words and rewrote the "
+                         "bytes or set a voice volume, never measuring it or using the clip's own import settings.",
+        "text_at_issue": "analyze_audio and set_audio_import_settings descriptions; group audio's line",
+        "source": "sound-layer phase 1 and 2 reviews",
+        "prompt": "assets/sfx/jump.wav is too quiet and it clicks at its start. Fix that clip; every sound source that plays "
+                  "it should get the fix.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/jump.wav: audio, 0.18 s, -31.2 LUFS-M; analyze_audio has its notes.",
+                {"path": "assets/sfx/jump.wav", "type": "audio", "data": {"audio": {"duration_s": 0.18, "momentary_max": -31.2}}})},
+            {"tool": "analyze_audio", "result": ok(
+                "1. assets/sfx/jump.wav: -31.2 LUFS-M, TP -14.0 dBTP, transient (jump); starts at -6.0 dB re its peak",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "kind": "transient", "type": "jump",
+                            "loudness": {"momentary_max": -31.2}, "peak": {"true_peak_dbtp": -14.0},
+                            "notes": [{"id": "loudness_target", "text": "momentary max -31.2 LUFS is 13.2 LU under the jump target (-18 LUFS)"},
+                                      {"id": "edge_click", "text": "starts at -6.0 dB re its peak: clicks every time it plays; "
+                                                                   "fade_in_ms 0.5 in its import settings fixes it",
+                                       "fix": {"fade_in_ms": 0.5}}]}],
+                 "errors": [], "image": None})},
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/sfx/jump.wav: -18.2 LUFS-M, 0.180 s",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "settings": {"gain_db": 13, "fade_in_ms": 0.5},
+                            "analysis": {"momentary_max": -18.2, "notes": []}}]})},
+        ],
+        "checks": {"calls": [{"tool": "analyze_audio"}, {"tool": "set_audio_import_settings", "args": {"settings": {"fade_in_ms": "*"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_music_tempo_key",
+        "groups_enabled": ["audio"],
+        "files": {"assets/music/theme.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S39: a clip's tempo is the `music` block of its import settings; agents told a loop's tempo guessed "
+                         "top-level keys (bpm, tempo) or wrote the .meta by hand, so stingers stayed off the beat.",
+        "text_at_issue": "set_audio_import_settings' settings key list; jasper://docs/sound's import settings table",
+        "source": "S39 R3 (spec-first)",
+        "prompt": "assets/music/theme.wav is 128 BPM in 4/4 and its first downbeat is 40 ms into the file. Set that on the clip "
+                  "so stingers land on its beats.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/music/theme.wav: -20.1 LUFS, 8.000 s",
+                {"items": [{"n": 1, "path": "assets/music/theme.wav",
+                            "settings": {"music": {"bpm": 128, "beats_per_bar": 4, "first_beat_ms": 40}},
+                            "resolved": {"bpm": 128, "beats_per_bar": 4, "first_beat_frame": 1920, "sample_rate": 48000}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_placeholder_coin_finds_the_group",
+        "kind": "guard",
+        "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
+                         "WAV by script or gave up without looking for a tool.",
+        "text_at_issue": "Generated AGENTS.md: the line naming the sound tools and their group",
+        "source": "S36 eval, first run",
+        "prompt": "Add a placeholder coin sound at assets/sfx/coin.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset coin (type pickup, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/coin.wav: 0.25 s, -18.0 LUFS-M, TP -2.8 dBTP, tonal (pickup) [seed 3, gain +1.20 dB]",
+                {"files": [{"path": "assets/sfx/coin.wav", "preset": "coin", "seed": 3}], "type": "pickup", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "coin"}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_sound_layered_family",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "S36 M8: the layered presets are chosen by name and character; an agent asked for a wooden hit should "
+                         "use impact with family wood rather than a thump recipe tuned by hand.",
+        "text_at_issue": "generate_sound's description and family input",
+        "source": "S36 M8 (sound-layer phase 7)",
+        "prompt": "I need a placeholder sound for a crate being hit, something wooden, at assets/sfx/crate_hit.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/crate_hit.wav: 0.19 s, -18.0 LUFS-M, TP -4.1 dBTP, transient (impact) [seed 5, gain +3.20 dB]",
+                {"files": [{"path": "assets/sfx/crate_hit.wav", "preset": "impact", "family": "wood", "seed": 5}], "type": "impact", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "impact", "family": "wood"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+    },
+    {
+        "id": "guard_sound_slice_takes",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/footsteps_all.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
+                         "not one AudioSource playing the whole file or clips cut by hand.",
+        "text_at_issue": "edit_sound_event's description and slice input",
+        "source": "S36 M9 (sound-layer phase 7)",
+        "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/footsteps_all.wav: audio, 9.40 s, -18.0 LUFS-M; 10 onsets.",
+                {"path": "assets/sfx/footsteps_all.wav", "type": "audio", "data": {"audio": {"duration_s": 9.4, "momentary_max": -18.0}}})},
+            {"tool": "edit_sound_event", "result": ok(
+                "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
+                {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event", "args": {"slice": {"source": "assets/sfx/footsteps_all.wav"}}}],
+                   "must_not_call": ["write_file", "run_shell"]},
+    },
+    {
+        "id": "guard_sound_fit_like",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/door_licensed.ogg": "OggS\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "
+                         "picking a preset by eye or copying the file, which keeps its licence problem.",
+        "text_at_issue": "generate_sound's description and like input",
+        "source": "S36 M10 (sound-layer phase 7)",
+        "prompt": "Make me a placeholder at assets/sfx/door_new.wav that sounds like assets/sfx/door_licensed.ogg, but which we can ship without its licence worries for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/door_new.wav: 0.41 s, -18.0 LUFS-M, TP -3.0 dBTP, transient (impact) [seed 1, gain +1.40 dB]\n"
+                "fit to assets/sfx/door_licensed.ogg: distance 1.42 (similar; defaults 3.10) after 64 renders",
+                {"files": [{"path": "assets/sfx/door_new.wav", "preset": "impact", "family": "wood", "seed": 1}], "type": "impact", "licence": "generated", "image": None,
+                 "fit": {"distance": 1.42, "grade": "similar", "renders": 64}})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"like": "assets/sfx/door_licensed.ogg"}}],
+                   "must_not_call": ["write_file", "import_files", "copy_asset"]},
+    },
+    {
+        "id": "guard_placeholder_sound",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "
+                         "writing bytes by hand or searching the web.",
+        "text_at_issue": "generate_sound's description; group audio's line",
+        "source": "sound-layer phase 1 review",
+        "prompt": "The game needs a jump sound at assets/sfx/jump.wav and I have no audio files. Make one that will do for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset jump (type jump, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/jump.wav: 0.31 s, -18.1 LUFS-M, TP -3.2 dBTP, tonal (jump) [seed 77, gain +2.10 dB]",
+                {"files": [{"path": "assets/sfx/jump.wav", "preset": "jump", "seed": 77}], "type": "jump", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "jump"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_builtin_sound_search",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "An agent asked for a real recorded sound looked for one on the web, though 967 CC0 clips ship with the editor.",
+        "text_at_issue": "search_sounds' description and its import hint",
+        "source": "sound-layer phase 5 review",
+        "prompt": "I want a real recorded footstep on wood for the player, not a synthesized one. Put one in assets/sfx. No internet here.",
+        "mocks": [
+            {"tool": "search_sounds", "result": ok(
+                "3 sound(s):\n1. essentials:footstep/wood_1 (clip) footstep transient, 310 ms, -20.1 LUFS-M; labels footstep, wood\n"
+                "2. library:footstep/kenney_wood_1 (clip) footstep transient, 280 ms, -21.0 LUFS-M; labels footstep, wood",
+                {"results": [{"n": 1, "id": "essentials:footstep/wood_1", "type": "footstep", "import": "import_files sources:[essentials:footstep/wood_1]"},
+                             {"n": 2, "id": "library:footstep/kenney_wood_1", "type": "footstep", "import": "import_files sources:[library:footstep/kenney_wood_1]"}],
+                 "total": 3, "analysed": 0, "image": None, "scope": "all"})},
+            {"tool": "import_files", "result": ok(
+                "Imported 1 built-in sound(s) into assets/sfx; their licences are in provenance, undo with scope project.",
+                {"imported": ["assets/sfx/footstep/wood_1.ogg"], "skipped": []})},
+        ],
+        "checks": {"calls": [{"tool": "search_sounds"}, {"tool": "import_files", "args": {"sources": "*", "to_dir": "re:assets/sfx"}}],
+                   "must_not_call": ["generate_sound"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_draw_calls_by_pass",
         "playing": True,
         "kind": "guard",
@@ -1353,6 +1528,131 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+    },
+    {
+        "id": "bad_footsteps_built_in_lua",
+        "kind": "bad",
+        "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
+                         "code. A Sound Event does it as data, with no script and a repeatable seed; edit_sound_event sits in the "
+                         "audio group, so its name has to be found from the task.",
+        "text_at_issue": "lua-api.md 4.12 AudioSource: its first line; Generator.cpp AGENTS.md: Sound files; SoundEventTools.cpp edit_sound_event",
+        "source": "docs/specs/S37-sound-events.md R20",
+        "files": {f"assets/sounds/step_{n}.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000 for n in (1, 2, 3)},
+        "prompt": "The project has assets/sounds/step_1.wav, step_2.wav and step_3.wav. Make the Player's footsteps vary: never the "
+                  "same clip twice in a row and a little pitch variation. Add an AudioSource to the Player for them.",
+        "mocks": [
+            {"tool": "edit_sound_event", "result": ok("Created sounds/steps.soundevent: shuffle, 3 clip(s). One undo step. No problems.",
+                                                      {"event": "sounds/steps.soundevent", "problems": [], "renditions": []})},
+            {"tool": "add_component", "result": ok("Added audiosource to Player.", {"added": "audiosource"})},
+            {"tool": "set_properties", "result": ok("Set 1 value on Player.", {"changed": 1})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event"}], "must_not_call": [{"tool": "create_script"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_says_sound_plays_without_capture",
+        "kind": "bad",
+        "what_happened": "Asked whether a sound really plays, an agent read the scene, saw the AudioSource and said yes. It cannot hear, and only a "
+                         "capture says what came out; audio_session sits in the audio group, so it has to be found from the task.",
+        "text_at_issue": "PlayTools.cpp play start: the capture's line; AudioSessionTools.cpp audio_session: name and description",
+        "source": "docs/specs/S35-agent-audio.md R19",
+        "prompt": "I just gave Main's Player an AudioSource with assets/sounds/jump.wav, Play On Awake, in the open editor, and that part is right, no need to re-check it. Does the sound actually come out when the game runs, when does it "
+                  "start, and how loud is it in its mixer group? Give me the numbers.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: Player [12] (transform, audiosource).", {"entities": [{"id": 12, "name": "Player", "components": ["transform", "audiosource"]}]})},
+            {"tool": "get_entity", "result": ok("Player [12]: audiosource filename assets/sounds/jump.wav, state playing, Play On Awake.", {"id": 12, "name": "Player", "components": {"audiosource": {"filename": "assets/sounds/jump.wav", "state": "playing"}}})},
+            {"tool": "get_asset_info", "result": ok("assets/sounds/jump.wav: WAV, 0.40 s.", {"path": "assets/sounds/jump.wav", "exists": True})},
+            {"tool": "list_assets", "result": ok("1 asset.", {"assets": [{"path": "assets/sounds/jump.wav"}]})},
+            {"tool": "play", "args": {"action": "start"}, "result": ok("Play started. No errors in the console. Capturing audio: play stop gives its numbers, audio_session report (group audio) reads them.",
+                                                                       {"state": "playing", "audio_capture": {"session": "20261105-120000-00", "next": "play stop gives the numbers; audio_session report (group audio) reads them"}})},
+            {"tool": "get_play_state", "result": ok("Play state: playing.", {"state": "playing", "game_frames": 120})},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Stopped. Audio capture 20261105-120000-00: 2.00 s, none LUFS, momentary max -14.20, true peak -3.10 dBTP, 1 voices. Next: audio_session report.",
+                                                                      {"state": "stopped", "audio": {"session": "20261105-120000-00", "momentary_max": -14.2, "true_peak_dbtp": -3.1, "voices_started": 1, "next": "audio_session report"}})},
+            {"tool": "wait", "result": ok("Waited.", {})},
+            {"tool": "audio_session", "result": ok("Capture 20261105-120000-00 (complete): 0.00-2.00 s.\nLoudness: integrated none LUFS, momentary max -14.20.",
+                                                   {"capture": {"session": "20261105-120000-00"}, "loudness": {"momentary_max": -14.2}, "peak": {"true_peak_dbtp": -3.1},
+                                                    "groups": {"Master": {"peak_db": -3.2, "rms_db": -12.0, "voices_peak": 1}}, "voices": {"started": 1},
+                                                    "events": [{"id": "E1", "kind": "voice_start", "t": 0.0, "clip": "assets/sounds/jump.wav", "group": "Master"}], "markers": [], "guidance": "Report these numbers; never claim a sound plays without a capture."})},
+        ],
+        "checks": {"calls": [{"tool": "audio_session"}]},
+        "max_turns": 20,
+    },
+    {
+        "id": "bad_loosens_threshold_to_pass_check",
+        "kind": "bad",
+        "what_happened": "A sound check failed on a clip with silence at its head; the tempting step is to raise audio.qa.head_silence_max_ms until it passes. "
+                         "The check's fix_hint and guidance say to trim the clip instead.",
+        "text_at_issue": "AudioQa.cpp: sync's fix_hint and the guidance; sound.md Rules",
+        "source": "docs/specs/S35-agent-audio.md R23",
+        "prompt": "audio_session check on the last capture of Main fails. Make it pass.",
+        "mocks": [
+            {"tool": "audio_session", "result": ok("Verdict FAIL on capture 20261105-120000-00.\nFAIL sync: 120. sounds/late.wav starts 120 ms after it was played. Trim its head: "
+                                                   "set_audio_import_settings {paths: [\"sounds/late.wav\"], settings: {trim_head_ms: \"auto\"}}.\n"
+                                                   "Fix what fix_hint says, capture again and check again. Never loosen a threshold. Report these numbers; never claim a sound plays without a capture.",
+                                                   {"verdict": "FAIL", "checks": [{"id": "sync", "status": "FAIL", "measured": 120, "threshold": 15, "threshold_source": "audio.qa.head_silence_max_ms",
+                                                                                    "limited_by": "sounds/late.wav starts 120 ms after it was played.",
+                                                                                    "fix_hint": "Trim its head: set_audio_import_settings {paths: [\"sounds/late.wav\"], settings: {trim_head_ms: \"auto\"}}."}],
+                                                    "guidance": "Fix what fix_hint says, capture again and check again. Never loosen a threshold. Report these numbers; never claim a sound plays without a capture."})},
+            {"tool": "set_audio_import_settings", "result": ok("Set on sounds/late.wav. One undo step.", {"changed": 1})},
+            {"tool": "play", "result": ok("Started.", {"state": "playing"})},
+            {"tool": "wait", "result": ok("Waited.", {})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings"}], "must_not_call": [{"tool": "set_project_settings"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_footsteps_by_events_and_lua",
+        "kind": "bad",
+        "what_happened": "Asked for footstep sounds on an animation clip's contact frames, an agent added clip events and a Lua "
+                         "method calling Audio.play: frame-quantized, and a script for what is data. edit_animation's audio cues "
+                         "play a Sound Event at a clip time, placed to the sample, with no script.",
+        "text_at_issue": "WorldTools.cpp edit_animation: its audio argument and description sentence; animation.md Audio cues",
+        "source": "docs/specs/S40-timeline-audio.md R12",
+        "files": {"assets/sounds/steps.soundevent": "{\"format\": \"jasperengine.soundevent\", \"version\": 1, \"mode\": \"shuffle\", \"clips\": []}\n",
+                  "assets/anim/walk.anim": "{\"format\": \"jasperengine.anim\", \"version\": 1, \"frame_rate\": 30, \"wrap\": \"loop\", "
+                                           "\"tracks\": [], \"events\": []}\n"},
+        "prompt": "The Player's Animation Player loops assets/anim/walk.anim. Make assets/sounds/steps.soundevent play when each foot "
+                  "lands: the left foot at 0.3 s and the right foot at 0.8 s of the clip, from the feet (Body/LeftFoot, Body/RightFoot).",
+        "mocks": [
+            {"tool": "get_animation", "result": ok("assets/anim/walk.anim: 1.00 s, loop, 0 tracks, 0 events, 1 user (Main: Player).",
+                                                   {"clip": "assets/anim/walk.anim", "length": 1.0, "wrap": "loop", "frame_rate": 30, "tracks": [], "events": [],
+                                                    "users": [{"scene": "Main", "entity": "Player", "entry": 0, "state": "walk"}]})},
+            {"tool": "edit_animation", "result": ok("Edited assets/anim/walk.anim: audio: 2 cue(s) (replaced 0). One project undo step.",
+                                                    {"clip": "assets/anim/walk.anim", "changes": ["audio: 2 cue(s) (replaced 0)"],
+                                                     "audio": [{"index": 0, "time": 0.3, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25},
+                                                               {"index": 1, "time": 0.8, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25}]})},
+            {"tool": "get_asset_info", "result": ok("assets/sounds/steps.soundevent: Sound Event, shuffle, 3 clips.", {"path": "assets/sounds/steps.soundevent", "exists": True})},
+            {"tool": "list_scripts", "result": ok("No Lua scripts.", {"scripts": []})},
+            {"tool": "save_project", "result": ok("Saved the project.", {"saved": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
+                   "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_music_manager_by_hand",
+        "groups_enabled": ["audio"],
+        "files": {"assets/music/menu.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000,
+                  "assets/music/game.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "Upstream's port of MinigameSongs switched tracks with a script stopping one AudioSource and starting another, "
+                         "with no gapless hand-over, beat grid or quantization; S39 adds the music system and its tempo key instead.",
+        "text_at_issue": "sound.md Music; lua-api.md's music paragraph",
+        "source": "docs/specs/S39-music.md section 3",
+        "prompt": "assets/music/menu.wav and assets/music/game.wav are 120 bpm loops. Write scripts/MusicDirector.lua: the menu track "
+                  "plays when the game starts, and pressing Enter switches to the gameplay track exactly on the next bar with a 1 second crossfade.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok("Set on 2 clip(s). One undo step.", {"changed": 2})},
+            {"tool": "create_script", "result": ok("Created scripts/MusicDirector.lua.", {"path": "scripts/MusicDirector.lua"})},
+            {"tool": "analyze_audio", "result": ok(
+                "assets/music/menu.wav: loop, 8.00 s, 120.00 bpm (confident).",
+                {"items": [{"path": "assets/music/menu.wav", "kind": "loop", "music": {"bpm": 120.0, "confident": True, "first_beat_ms": 0,
+                                                                                     "fix": {"bpm": 120, "beats_per_bar": 4, "first_beat_ms": 0}}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": {"bpm": 120}}}}],
+                   "any_of": [{"file_must": {"scripts/MusicDirector.lua": [r"Audio\.playMusic", r"sync\s*=\s*[\"']bar[\"']"]}},
+                              {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Audio\.playMusic.*sync\s*=\s*[\"']bar[\"']"}}]}]},
+        "max_turns": 25,
     },
     {
         "id": "guard_device_simulation",

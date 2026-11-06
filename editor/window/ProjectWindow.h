@@ -434,6 +434,10 @@ namespace jasperengine::editor {
         static std::string thumbnailRequestKey(const fs::path& filePath);
         static unsigned char textureByteAt(TextureData& data, size_t pixel, int channel, int bytesPerChannel);
         static bool writeImageThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
+        void drawPlaceholderSoundDialog();
+        bool openPlaceholderSoundDialog = false;
+        // an audio file's waveform (AudioWaveform's cache)
+        bool writeAudioThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
 
         void queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate = false);
         void thumbnailStep();
@@ -533,6 +537,14 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer();
+        void assetsCreateSoundEvent();
+        // a shuffle event of the selected audio files
+        void assetsCreateSoundEventFromClips();
+        bool hasAudioSelection() const;
+        // the sound commands (ProjectWindowSound.cpp)
+        void assetsImportSoundEssentials();
+        void assetsCreatePlaceholderSound();
+        void assetsReanalyzeAudio(const std::vector<fs::path>& files);
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);
