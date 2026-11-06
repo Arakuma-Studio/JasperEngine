@@ -177,23 +177,6 @@ namespace jasperengine::editor{
         bool reused = false;                // an earlier load wrote it already (kept as it is now)
     };
 
-    struct SceneMaxValues {
-        unsigned int maxSubmeshes = 0;
-        unsigned int maxTilemapTilesRect = 0;
-        unsigned int maxTilemapTiles = 0;
-        unsigned int maxExternalBuffers = 0;
-        unsigned int maxSpriteFrames = 0;
-        unsigned int maxBones = 0;
-        // the collider caps of scenes saved before colliders had none (maxColliders2D,
-        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
-        // nothing reads them, kept as they were so re-saving an old scene changes no line
-        std::optional<unsigned int> legacyMaxColliders2D;
-        std::optional<unsigned int> legacyMaxColliderPoints2D;
-        std::optional<unsigned int> legacyMaxColliders3D;
-        std::optional<unsigned int> legacyMaxColliderVertices3D;
-        std::optional<unsigned int> legacyMaxColliderIndices3D;
-    };
-
     struct ChildSceneRef {
         uint32_t id = NULL_PROJECT_SCENE;
         bool startActive = true;
@@ -261,7 +244,10 @@ namespace jasperengine::editor{
         bool playStateModified = false;
         // The prefab instances' bookkeeping when the snapshot was taken (capturePlayPrefabState)
         PlayPrefabState playPrefabState;
-        SceneMaxValues maxValues;
+        // the maxValues block of a scene saved by an editor that sized fixed arrays (capacities) and
+        // collider caps: nothing reads it, written back as it was so re-saving changes no line; a
+        // scene saved since has none (null)
+        YAML::Node legacyMaxValues;
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
@@ -1312,7 +1298,6 @@ namespace jasperengine::editor{
         template<typename T>
         T* findScene(uint32_t sceneId) const;
 
-        void calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const;
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
 
@@ -1497,6 +1482,7 @@ namespace jasperengine::editor{
     private:
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
+        SceneProject* materialAssetScene = nullptr;
 
     public:
         // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
@@ -1517,11 +1503,6 @@ namespace jasperengine::editor{
         // of the loaded scenes are collected again first. Returns the scripts the build compiles.
         // Main thread, not while playing (MCP compile_scripts).
         std::vector<SceneScriptSource> prepareScriptBuild();
-
-        // The external buffers MeshSystem::loadGLTF gives the model in a .gltf/.glb (merged: with
-        // mergeStaticMeshes), read from the file: a command line export loads no model, so the
-        // meshes' numExternalBuffers alone would undersize MAX_EXTERNAL_BUFFERS. 0 when unreadable.
-        static unsigned int countGltfExternalBuffers(const std::filesystem::path& path, bool merged);
 
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
@@ -2138,6 +2119,9 @@ namespace jasperengine::editor{
         // The .material files submeshes are linked to (project-relative). Their changes on
         // disk reach the links through the hot reload (editor/reload, S05).
         std::vector<std::string> getLinkedMaterialFiles() const;
+        // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
+        // before an edit made while playing)
+        void reapplyLinkedMaterialFiles();
         // `relativePath` was read again: every submesh linked to it takes `material`
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
@@ -2491,6 +2475,11 @@ namespace jasperengine::editor{
         // unless the policy accepts the loss
         SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
                                      DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The text of a .material with its identity, for an undoable write of it
+        std::string materialFileText(const std::filesystem::path& file, const Material& material);
+        // The Inspector's scene for a .material's rows: getScene answers to its id, no scene list
+        // holds it, so nothing else ever draws, saves or closes it
+        void setMaterialAssetScene(SceneProject* sceneProject) { materialAssetScene = sceneProject; }
         // The edges of the loaded documents, unsaved edits included (the index overlay)
         void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
         // After assets moved: the path hints of the loaded documents follow their GUIDs

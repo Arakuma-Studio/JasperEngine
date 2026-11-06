@@ -327,7 +327,33 @@ void AnimatorWindow::syncToDocument(){
         selection = Selection();
         return;
     }
-    if (!selectionExists(def)) selection = Selection();
+    if (!selectionExists(def)){
+        selection = Selection();
+        return;
+    }
+    // the rest of a multi-selection without what is gone
+    if (const StateMachineDef* machine = machineOf(const_cast<ControllerDef&>(def))){
+        auto gone = [machine](const std::string& name){
+            if (name == "Entry" || name == "Any State" || name == "Exit") return false;
+            for (const StateDef& st : machine->states) if (st.name == name) return false;
+            for (const StateMachineDef& m : machine->subMachines) if (m.name == name) return false;
+            return true;
+        };
+        selection.others.erase(std::remove_if(selection.others.begin(), selection.others.end(), gone), selection.others.end());
+    }
+}
+
+bool AnimatorWindow::isNodeSelected(const std::string& name) const{
+    if ((selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine) && selection.name == name) return true;
+    return std::find(selection.others.begin(), selection.others.end(), name) != selection.others.end();
+}
+
+std::vector<std::string> AnimatorWindow::selectedNodes(){
+    syncToDocument();
+    std::vector<std::string> names;
+    if (selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine) names.push_back(selection.name);
+    names.insert(names.end(), selection.others.begin(), selection.others.end());
+    return names;
 }
 
 void AnimatorWindow::followSelection(){
@@ -528,23 +554,33 @@ bool AnimatorWindow::removeSelection(){
     if (!machine) return false;
     bool removed = false;
     std::string what;
-    if (selection.kind == SelectionKind::State){
-        for (size_t i = 0; i < machine->states.size(); i++){
-            if (machine->states[i].name != selection.name) continue;
-            machine->states.erase(machine->states.begin() + (long)i);
-            if (machine->defaultState == selection.name) machine->defaultState = machine->states.empty() ? std::string() : machine->states.front().name;
-            removed = true;
-            what = "Delete State " + selection.name;
-            break;
+    // the nodes going: the Inspector's and the rest of a multi-selection, in one step
+    std::vector<std::string> gone;
+    if (selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine){
+        std::vector<std::string> selected = {selection.name};
+        selected.insert(selected.end(), selection.others.begin(), selection.others.end());
+        // (only what is erased: a selected Exit stays, and with it the transitions to it)
+        for (const std::string& name : selected){
+            for (size_t i = 0; i < machine->states.size(); i++){
+                if (machine->states[i].name != name) continue;
+                machine->states.erase(machine->states.begin() + (long)i);
+                gone.push_back(name);
+                break;
+            }
+            for (size_t i = 0; i < machine->subMachines.size(); i++){
+                if (machine->subMachines[i].name != name) continue;
+                machine->subMachines.erase(machine->subMachines.begin() + (long)i);
+                gone.push_back(name);
+                break;
+            }
         }
-    }else if (selection.kind == SelectionKind::SubMachine){
-        for (size_t i = 0; i < machine->subMachines.size(); i++){
-            if (machine->subMachines[i].name != selection.name) continue;
-            machine->subMachines.erase(machine->subMachines.begin() + (long)i);
-            removed = true;
-            what = "Delete Sub-State Machine " + selection.name;
-            break;
+        const size_t count = gone.size();
+        removed = count > 0;
+        if (std::find(gone.begin(), gone.end(), machine->defaultState) != gone.end()){
+            machine->defaultState = machine->states.empty() ? std::string() : machine->states.front().name;
         }
+        if (count > 1) what = "Delete " + std::to_string(count) + " Nodes";
+        else what = std::string(selection.kind == SelectionKind::State ? "Delete State " : "Delete Sub-State Machine ") + selection.name;
     }else if (selection.kind == SelectionKind::Transition){
         std::vector<TransitionDef>* list = nullptr;
         if (selection.list == ListKind::AnyState) list = &machine->anyState;
@@ -561,10 +597,12 @@ bool AnimatorWindow::removeSelection(){
         }
     }
     if (!removed) return false;
-    if (selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine){
-        // the transitions into it (or into the sub-machine's states) go with it
-        const std::string gone = selection.name;
-        auto into = [&](const TransitionDef& t){ return t.to == gone || t.to.rfind(gone + "/", 0) == 0; };
+    if (!gone.empty()){
+        // the transitions into them (or into a sub-machine's states) go with them
+        auto into = [&](const TransitionDef& t){
+            for (const std::string& name : gone) if (t.to == name || t.to.rfind(name + "/", 0) == 0) return true;
+            return false;
+        };
         auto prune = [&](std::vector<TransitionDef>& list){ list.erase(std::remove_if(list.begin(), list.end(), into), list.end()); };
         prune(machine->entry);
         prune(machine->anyState);
@@ -667,6 +705,7 @@ bool AnimatorWindow::renameState(const std::string& from, const std::string& to)
     if (machine->defaultState == from) machine->defaultState = unique;
     if (!commit(def, "Rename State " + from + " -> " + unique)) return false;
     if (selection.kind == SelectionKind::State && selection.name == from) selection.name = unique;
+    std::replace(selection.others.begin(), selection.others.end(), from, unique);
     if (selection.kind == SelectionKind::Transition && selection.owner == from) selection.owner = unique;
     return true;
 }
@@ -1137,7 +1176,8 @@ void AnimatorWindow::show(){
         AnimatorWindow* window;
         Selection before;
         ~ClaimOnChange(){
-            if (window->selection.kind == SelectionKind::None) window->inspectorClaim = false;
+            if (window->restoredByEsc) window->restoredByEsc = false;
+            else if (window->selection.kind == SelectionKind::None) window->inspectorClaim = false;
             else if (!(window->selection == before)) window->claimInspector();
         }
     } claimOnChange{this, before};
@@ -1403,6 +1443,7 @@ void AnimatorWindow::drawGraph(){
         node.position = ImVec2(position.x, position.y);
         node.size = ImVec2(120, 34);
         node.fill = fill;
+        node.selected = isNodeSelected(label);
         nodes.push_back(node);
     };
     special(kEntry, "Entry", machine->entryPosition, kFillEntry);
@@ -1419,7 +1460,7 @@ void AnimatorWindow::drawGraph(){
         node.position = ImVec2(s.position.x, s.position.y);
         node.size = ImVec2(180, 46);
         node.fill = s.name == defaultName ? kFillDefault : kFillState;
-        node.selected = selection.kind == SelectionKind::State && selection.name == s.name;
+        node.selected = isNodeSelected(s.name);
         const std::string full = prefix + s.name;
         if (full == liveState){
             node.highlighted = true;
@@ -1439,7 +1480,7 @@ void AnimatorWindow::drawGraph(){
         node.size = ImVec2(180, 46);
         node.fill = kFillMachine;
         node.rounded = false;
-        node.selected = selection.kind == SelectionKind::SubMachine && selection.name == m.name;
+        node.selected = isNodeSelected(m.name);
         if (!liveState.empty() && liveState.rfind(prefix + m.name + ".", 0) == 0) node.highlighted = true;
         nodes.push_back(node);
     }
@@ -1508,7 +1549,10 @@ void AnimatorWindow::drawGraph(){
         const ImVec2 b = canvas.toScreen(ImVec2(node.position.x + node.size.x, node.position.y + node.size.y));
         if (node.id == kAny) UIProbe::rect("animator.any_state", a.x, a.y, b.x, b.y);
         else if (node.id == kEntry) UIProbe::rect("animator.entry", a.x, a.y, b.x, b.y);
-        else if (node.id >= kStateBase && node.id < kMachineBase) UIProbe::rect("animator.state." + std::to_string(node.id - kStateBase), a.x, a.y, b.x, b.y);
+        else if (node.id >= kStateBase && node.id < kMachineBase){
+            UIProbe::rect("animator.state." + std::to_string(node.id - kStateBase), a.x, a.y, b.x, b.y);
+            if (node.selected) UIProbe::rect("animator.state." + std::to_string(node.id - kStateBase) + ".selected", a.x, a.y, b.x, b.y);
+        }
     }
 
     auto nameOf = [&](uint64_t id) -> std::string {
@@ -1516,19 +1560,54 @@ void AnimatorWindow::drawGraph(){
         if (id >= kStateBase) return machine->states[id - kStateBase].name;
         return std::string();
     };
-    if (result.clickedNode){
-        selection = Selection();
-        if (result.clickedNode >= kMachineBase){
-            selection.kind = SelectionKind::SubMachine;
-            selection.name = nameOf(result.clickedNode);
-        }else if (result.clickedNode >= kStateBase){
-            selectState(nameOf(result.clickedNode));
-        }
+    auto selectionName = [&](uint64_t id) -> std::string {
+        if (id == kEntry) return "Entry";
+        if (id == kAny) return "Any State";
+        if (id == kExit) return "Exit";
+        return nameOf(id);
+    };
+    auto isItem = [](uint64_t id){ return id >= kStateBase; };
+    if (result.clickedNode || result.clickedBackground){
+        selectionAtPress = selection;
+        claimAtPress = inspectorClaim;
     }
-    if (result.clickedLink){
-        const uint64_t list = result.clickedLink >> 40;
-        const uint64_t owner = (result.clickedLink >> 20) & 0xFFFFF;
-        const int index = (int)(result.clickedLink & 0xFFFFF);
+    if (result.cancelled){
+        selection = selectionAtPress;
+        inspectorClaim = claimAtPress;
+        restoredByEsc = true;
+    }else if (result.selectionChanged && !result.clickedLink){
+        // the canvas' nodes as the window's selection. The Inspector's node: the one clicked, else
+        // the one it was while it stays selected, else the first state or sub-machine
+        const auto& picked = result.selectedNodes;
+        auto has = [&](uint64_t id){ return std::find(picked.begin(), picked.end(), id) != picked.end(); };
+        uint64_t primary = isItem(result.clickedNode) && has(result.clickedNode) ? result.clickedNode : 0;
+        for (uint64_t id : picked){
+            if (primary == 0 && isItem(id) && selectionName(id) == selection.name) primary = id;
+        }
+        for (uint64_t id : picked){
+            if (primary == 0 && isItem(id)) primary = id;
+        }
+        Selection next;
+        if (primary != 0){
+            next.kind = primary >= kMachineBase ? SelectionKind::SubMachine : SelectionKind::State;
+            next.name = nameOf(primary);
+        }
+        for (uint64_t id : picked){
+            if (id != primary && id != kUp) next.others.push_back(selectionName(id));
+        }
+        selection = next;
+    }
+    // a right click on a selected node: the menu and the Inspector act on it, the rest stay selected
+    if (isItem(result.contextNode) && selection.name != nameOf(result.contextNode) && isNodeSelected(nameOf(result.contextNode))){
+        std::replace(selection.others.begin(), selection.others.end(), nameOf(result.contextNode), selection.name);
+        selection.kind = result.contextNode >= kMachineBase ? SelectionKind::SubMachine : SelectionKind::State;
+        selection.name = nameOf(result.contextNode);
+    }
+    // a click, or the link a right click's menu deletes: never a node selection left behind
+    if (const uint64_t pickedLink = result.clickedLink ? result.clickedLink : result.contextLink){
+        const uint64_t list = pickedLink >> 40;
+        const uint64_t owner = (pickedLink >> 20) & 0xFFFFF;
+        const int index = (int)(pickedLink & 0xFFFFF);
         if (list != kListDefault){
             selection = Selection();
             selection.kind = SelectionKind::Transition;
@@ -1537,9 +1616,10 @@ void AnimatorWindow::drawGraph(){
             else if (list == kListAny) selection.list = ListKind::AnyState;
             else if (list == kListEntry) selection.list = ListKind::Entry;
             else { selection.list = ListKind::Exit; selection.owner = machine->subMachines[owner].name; }
+        }else if (result.contextLink){
+            selection = Selection();
         }
     }
-    if (result.clickedBackground && !canvas.isLinking()) selection = Selection();
     if (result.doubleClickedNode >= kMachineBase){
         machinePath.push_back(nameOf(result.doubleClickedNode));
         selection = Selection();

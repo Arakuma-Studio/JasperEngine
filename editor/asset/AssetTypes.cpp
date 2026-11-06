@@ -26,7 +26,7 @@ namespace {
             {{AssetType::Scene, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".scene"}},
             {{AssetType::Material, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".material"}},
             {{AssetType::Texture, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false},
-                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"}},
+                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".pic", ".pnm", ".svg"}},
             {{AssetType::Model, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".gltf", ".glb", ".obj", ".fbx"}},
             {{AssetType::Audio, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".wav", ".ogg", ".mp3", ".flac"}},
             {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf"}},

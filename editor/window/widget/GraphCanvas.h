@@ -8,6 +8,8 @@
 //   box edges (a pair in both directions drawn side by side, a multiplicity mark when several
 //   share a direction), click / Shift / Ctrl selection, box select, node dragging with grid
 //   snap, a "link" mode (drag a new arrow from a node to another), and a context-menu request.
+//   Esc while the mouse is down cancels a node drag or a box select: positions and selection as
+//   they were before the press, no move reported (docs/undo.md, Drags).
 // - Immediate mode: the caller passes its nodes and links every frame and reads one Result back;
 //   the canvas keeps only its view (pan, zoom) and the gesture in progress.
 // - Thread-safety: main thread (ImGui).
@@ -53,6 +55,7 @@ namespace jasperengine::editor{
             bool clickedBackground = false;
             bool selectionChanged = false;
             std::vector<uint64_t> selectedNodes;    // after this frame (selectionChanged)
+            bool cancelled = false;                 // Esc ended a drag or a box: the selection is back
             // the nodes a drag moved, with their new positions (when the drag ends)
             std::vector<std::pair<uint64_t, ImVec2>> moved;
             // link mode finished on a node
@@ -91,8 +94,11 @@ namespace jasperengine::editor{
         uint64_t linkSource = 0;
         // gestures
         bool draggingNodes = false;
+        bool dragMoved = false;         // past ImGui's drag threshold: before it a press is a click
+        uint64_t collapseTo = 0;        // a plain press on a selected node: the only one if no drag follows
         ImVec2 dragStartMouse;
         std::vector<std::pair<uint64_t, ImVec2>> dragStart;
+        std::vector<uint64_t> selectionAtPress;     // what Esc gives back
         bool boxSelecting = false;
         ImVec2 boxStart;
         bool framed = false;

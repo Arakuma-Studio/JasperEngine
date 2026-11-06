@@ -77,20 +77,20 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | review |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
-| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
+| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | specced |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
-| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
+| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
@@ -158,3 +158,31 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 - 2026-11-06: a second stop (the session account's login was revoked, about 17 hours lost). The slot queue kept
   running the agents' detached jobs meanwhile. Merged 187 more upstream commits (the sound layer S35-S40) into
   `main` and pushed; all 16 agents revived to read their job results, merge `main` once more, finish and report.
+- 2026-11-06 18:3x: owner's top priority: mesh-memory, sprite-batching, unicode-text, platform-lifecycle (in that
+  order), and permission to rent Hetzner VMs. `slot` now runs only priority order while a priority-1 job waits.
+  Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
+  (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
+  (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
+- 2026-11-06 18:4x: owner: time efficiency is the priority. Six more Hetzner cpx51 boxes (eight in total, about
+  $3.55/h, 48 h limit), assigned per feature in [BOXES.md](BOXES.md), each with one shared ccache per box.
+  The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
+  controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
+  local slots only finish the jobs already running.
+- 2026-11-06 21:xx: **unicode-text merged** (`052c14c4b`). Landing check on the merged tree (box C): WERROR editor,
+  filtered unit suites, HTML UI input, its MCP files with protocol/stubs/docs, generated docs and tool budget, lints:
+  all green. rbox fixed: `build/.cache` on the boxes was a link the containers could not follow (uv and MCP steps
+  failed); now only `build/.cache/ccache` is a link.
+- 2026-11-06 21:xx: **mesh-memory merged** (`3618eab04`) after an independent review (7 findings fixed: bounded Lua
+  submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
+  batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
+  merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.
+- 2026-11-06 22:xx: **build-toolchain merged** after an independent review (editor C++ scripts get the physics
+  macros, CMAKE_GENERATOR respected, node lookup order, vswhere only when needed and UTF-8, /WHOLEARCHIVE only for
+  MSVC-style drivers). Round on box H with main merged: WERROR editor, unit 41/41, MCP 35 + 2, physics link check,
+  jasperengine.py 11/11, lints; red controls failed as they should. MSVC, MinGW, clang-cl and macOS paths by
+  reading only. rbox now has `auto` (any idle box); the brief says so.
+- 2026-11-06 23:xx: **ssr-probes merged** after an independent review (saturated pixels keep their colour, coverage
+  clipped to the near plane, two-probe test with authored gradients, stats cleared per frame, spec tolerances).
+  Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
+  controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
+  Shader cache v49 is now taken: later landings bump it.

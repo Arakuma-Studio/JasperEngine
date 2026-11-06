@@ -17,6 +17,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::graph {
@@ -59,6 +60,10 @@ namespace jasperengine::graph {
         int kindVersion = 1;
         std::vector<Migration> migrations;   // ascending toVersion
         bool acyclic = false;
+        // Unknown parameters and node types and out-of-range values are errors, so edit_graph
+        // refuses them. Off, they stay S23's forward compatibility: what a newer build wrote is
+        // kept and at most warned about. Either way load() never refuses a file for them.
+        bool strictParams = false;
         std::vector<NodeTypeDesc> nodeTypes;
         std::vector<PortTypeDesc> portTypes;
         // kind-specific issues, after the generic ones
@@ -76,6 +81,8 @@ namespace jasperengine::graph {
 
         std::shared_ptr<const GraphKindDesc> kind(const std::string& id) const;
         std::shared_ptr<const GraphKindDesc> kindForExtension(const std::string& extension) const;
+        // The kind whose extension ends this path, whatever its letter case; null for none
+        std::shared_ptr<const GraphKindDesc> kindForFile(std::string_view path) const;
         std::vector<std::string> kindIds() const;
 
         static const NodeTypeDesc* nodeType(const GraphKindDesc& kind, const std::string& typeId);

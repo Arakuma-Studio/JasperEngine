@@ -284,7 +284,7 @@ TEST(ConvexDecomposition, LShapeSplitsAroundItsConcavity) {
     for (const Vector3& v : mesh.positions)
         EXPECT_TRUE(insideAny(planes, v, 0.03)) << v.toString();
     // the notch stays empty
-    EXPECT_FALSE(insideAny(planes, Vector3(1.6f, 0.5f, 1.6f), 0.0));
+    EXPECT_FALSE(insideAny(planes, Vector3(1.25f, 0.5f, 1.25f), 0.0));
 }
 
 TEST(ConvexDecomposition, TorusLeavesItsHoleOpen) {

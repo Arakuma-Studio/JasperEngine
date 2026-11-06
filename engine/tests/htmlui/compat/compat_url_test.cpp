@@ -119,7 +119,7 @@ TEST(CompatUrl, RelativeAndRootRelative){
     EXPECT_EQ(windows.assetPath, "ui/img/a.png");
 
     // above the assets directory
-    ResolvedUrl outside = resolver.resolve("../../secret.png", "ui/menu.html", "image");
+    ResolvedUrl outside = resolver.resolve("../../ui/img/a.png", "ui/menu.html", "image");
     EXPECT_TRUE(outside.outsideAssets);
     EXPECT_FALSE(outside.exists);
 }

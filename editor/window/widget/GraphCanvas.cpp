@@ -175,6 +175,8 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
     // input
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.KeyAlt){
         Node* node = nodeAt(mouse);
+        selectionAtPress.clear();
+        for (const Node& n : nodes) if (n.selected) selectionAtPress.push_back(n.id);
         if (linkSource != 0){
             if (node){
                 result.linkFrom = linkSource;
@@ -191,9 +193,12 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (Node& n : nodes) n.selected = false;
                 for (Link& l : links) l.selected = false;
                 node->selected = true;
+            }else{
+                collapseTo = node->id;
             }
             result.selectionChanged = true;
             draggingNodes = true;
+            dragMoved = false;
             dragStartMouse = mouse;
             dragStart.clear();
             for (const Node& n : nodes) if (n.selected) dragStart.push_back({n.id, n.position});
@@ -217,11 +222,26 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)){
         if (Node* node = nodeAt(mouse)) result.doubleClickedNode = node->id;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && linkSource != 0) linkSource = 0;
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+        linkSource = 0;
+        if (draggingNodes || boxSelecting){
+            for (Node& n : nodes){
+                for (const auto& start : dragStart) if (draggingNodes && n.id == start.first) n.position = start.second;
+                n.selected = std::find(selectionAtPress.begin(), selectionAtPress.end(), n.id) != selectionAtPress.end();
+            }
+            draggingNodes = false;
+            boxSelecting = false;
+            collapseTo = 0;
+            result.cancelled = true;
+            result.selectionChanged = true;
+        }
+    }
 
     if (draggingNodes){
+        dragMoved = dragMoved || length(sub(mouse, dragStartMouse)) >= io.MouseDragThreshold;
         const ImVec2 delta = mul(sub(mouse, dragStartMouse), 1.0f / zoom);
-        for (const auto& start : dragStart){
+        // (a snap would move an off-grid node on the press itself)
+        if (dragMoved) for (const auto& start : dragStart){
             for (Node& n : nodes){
                 if (n.id != start.first) continue;
                 ImVec2 p = add(start.second, delta);
@@ -244,7 +264,11 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (const auto& start : dragStart){
                     for (const Node& n : nodes) if (n.id == start.first) result.moved.push_back({n.id, n.position});
                 }
+            }else if (collapseTo != 0 && dragStart.size() > 1){
+                for (Node& n : nodes) n.selected = n.id == collapseTo;
+                result.selectionChanged = true;
             }
+            collapseTo = 0;
         }
     }
     if (boxSelecting){

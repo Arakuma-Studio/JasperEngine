@@ -241,3 +241,58 @@ result changes S91's first milestone.
    is intended.
 
 ## Deviations
+
+- **F25, the check first (from reading the build and context code, 2026-11-04): no export target
+  builds for GL 3.3, so the fix stands.** The glcore backend compiles GLSL 410 only
+  (`ShaderVariantCompiler.cpp`: `args.version = 410`; `ShaderPool.cpp` includes `glsl410.h` and
+  `glsl300es.h` only), and nothing in `engine/`, `editor/` or `tools/` selects GLSL 330. Every
+  desktop context asks for 4.1 core: games on Linux (`JasperEngineLinux.cpp`), Windows
+  (`JasperEngineWin.cpp`) and macOS (`MacViewGL.mm`, `NSOpenGLProfileVersion4_1Core`), the editor's
+  `BackendLinux.cpp` and `BackendWin.cpp`, and the tests' `HeadlessContext.cpp`. Web and Android use
+  GLES3 (`glsl300es`), iOS uses Metal. The one version 3 context attribute is the Linux GLES3 3.2
+  test context. The text now says 4.1 in `AGENTS.md` and `docs/specs/README.md`; after the merge of
+  `integ/mats-fx`, `.claude/rules/rendering.md` names no version. **Left as they are, outside those files:** the runtime label
+  `"OpenGL 3.3 core"` (`SokolSystem.cpp:836`), pinned by `tools/ci/test_player_cli.py:157` and
+  repeated in `docs/profiling.md:109` and a comment in `SystemRender.h:140`, still names the wrong
+  version and should change together as a small follow-up. The `GL 3.3` mentions about RGB565
+  (`engine/libs/sokol/PATCHES.md`, `TextureFallback.cpp:121`, `TextureFallbackTest.cpp:244`),
+  `docs/textures.md:177` and `TestRenderHalfFloatTargets.cpp:176`, and the requirements in S20 and
+  S21, were not re-checked or edited. No test: docs only.
+- **F17's red is an MCP test, not `AnimatorWindowTest`.** The unit binary has no `App`, whose frame
+  has the double call, and a count in `AnimatorWindowTest` would only count that test's own calls.
+  `test_animator_selection.py` reads `begins` from the UI probe, which reports top-level windows
+  begun more than once a frame (ImGui's `BeginCount`). The red run reported `{'Animator': 2}`.
+- **Section 4's guide row is measured, not the estimate above:** 6,241 of 8,192 bytes, 1,951 left with
+  1,500 of headroom required, so 451 bytes free rather than about 110 (`tool_budget.py --check`).
+- **F21 adds more than the two windows named.** The comparison with the catalog also found Pose
+  Animation, Vertex Animation Baker, Color Picker, Recorder, Navigation, Texture Synthesis, Sprite
+  Normal Map and Physics Placement missing; they are added too. The named exclusions are the
+  layouts' actions, Detachable Windows and the version control windows.
+- **F18 goes a little further in the canvas and the menus.** A plain click on one of several selected
+  nodes now leaves that one, or a multi-selection could not be narrowed by clicking. A right click on a
+  link selects it, or the link menu's Delete would remove the selected states. A right click on a
+  selected node makes it the Inspector's and the menu's node. Copy still copies that one node.
+- **F19 also restores the selection,** as `docs/undo.md` says Esc does, not only the positions.
+- **F23's premise did not hold: the Inspector had no `.material` view** ("our Inspector already can").
+  Owner's ruling: it must be editable, with undo, reusing `InspectorMaterialPbr`. It is: the Inspector
+  draws the rows of a submesh's material (moved into `drawSubmeshMaterialRows`, so Advanced Surface,
+  Surface, Extra pass and presets are the same rows) on a mesh in a scene of its own that no scene list
+  holds. An edit reaches the linked submeshes as it is made and the file when the gesture ends, as one
+  project undo step through `update_material`'s write path (`Project::materialFileText`). The rows'
+  own commands go to that scene's history (`CommandHandle::Redirect`), so they never enter the open
+  scene's undo. Open as Text was prefab-only at the cited line, so `.material` and `.particles` get
+  the context menu item.
+- **F11 (section B, bf23-agent).** `write_file` also checks what it takes, as it does for clips and
+  masks: an invalid `.particles` or a file that is not a graph is refused, and warnings or issues come
+  back in its result. Without it `write_file` could have broken every Particle System reading the file.
+- **F13 (section B, bf23-agent).** Reporting was not enough. An `edit_particle_effect {seed}` on a
+  running system went through the parameter-only rebind and kept the old seed, so a reported seed
+  could not be pinned to reproduce a run. A changed pinned seed now starts the run over. The golden
+  `tools/mcp/tests/golden/particles/capture_t2.png` was rewritten for it: its test patches `seed: 11`,
+  which never took effect before this fix.
+- **F16 (section B, bf23-agent).** The give-up path cannot be reached from a project on demand. A texture
+  that fails to load is not pending (`Texture::empty()`, `MaterialRender::isPending`), so its material
+  already gets a truthful thumbnail, checked with a material naming a missing file. The audit's example
+  of a texture that never loads is really a load slower than 600 frames, or a variant that never builds.
+  The MCP test holds that state with `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK`, and its red run was that
+  seam with the give-up branch disabled.

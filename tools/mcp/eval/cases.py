@@ -7,8 +7,6 @@ result dump_surface.py recorded from a built editor; hand-written ones copy the 
 
 import json
 
-KINDS = ("bad", "guard", "control")
-
 PLAYER_LUA = """---@class player : ScriptInstance
 local player = {
     properties = {
@@ -1427,6 +1425,58 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_ssr_reflection_source",
+        "kind": "guard",
+        "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
+                         "Reflection Source (ssr_debug_mode 7), which the guide's Other areas and the setting's help name.",
+        "text_at_issue": "Guide 'Other areas': 'reflections (SSR replaces probe reflections; check with ssr_debug_mode 7)'; "
+                         "set_scene_settings ssr_debug_mode help '... 7 reflection source, 8 occlusion'",
+        "source": "doriax catch-up ssr-probes (spec 2026-11-04); no failure on record",
+        "prompt": "SSR is on in the current scene and the marble floor inside the Reflection Probe looks too shiny. Show me in "
+                  "the Game view what reflection SSR swaps on that floor.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nssr_enabled = true\nssr_intensity = 1.0\nssr_debug_mode = 0",
+                {"scene_id": 1, "settings": {"ssr_enabled": True, "ssr_intensity": 1.0, "ssr_debug_mode": 0},
+                 "schema": {"ssr_debug_mode": {"type": "int", "default": 0, "help":
+                     "SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo, 6 environment "
+                     "specular, 7 reflection source, 8 occlusion"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ssr_debug_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (Game view): 41 draws, 9 passes, CPU 1.20 ms, SSR: 1/1 probes with slots",
+                {"ssr": {"probe_slots": 4, "probes_in_view": 1, "probes_without_slot": 0, "meshes_drawn": 6,
+                         "probes": [{"entity": 22, "name": "Reflection Probe", "slot": 0, "coverage": 0.41}]}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ssr_debug_mode": 7}}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_typing_utf16_units",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "A character beyond U+FFFF typed on Windows or Android reaches the game as two UTF-16 halves; "
+                         "reproducing a typing bug from there on another platform takes send_input's per_unit, which the "
+                         "plain text event (a paste) never exercises.",
+        "text_at_issue": "send_input description: 'text: text, per_unit (one event per UTF-16 unit, as Windows/Android type)'",
+        "source": "unicode-text spec (docs/superpowers/specs/2026-11-04-unicode-text-design.md, M1)",
+        "prompt": "Players on Windows say an emoji typed into the name field of the game turns into two boxes. The game is "
+                  "playing and the name field already has focus. Type \U0001F600 into it the way Windows delivers typed "
+                  "characters, then tell me what the field's text is now.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}, "result": ok(
+                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged. "
+                                                   "Script coroutines: 0, timers: 0.", {"state": "playing"})},
+            {"tool": "eval_lua", "result": ok("\"\U0001F600\"", {"result": "\U0001F600"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
@@ -1466,6 +1516,54 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_focus_animator",
+        "kind": "guard",
+        "what_happened": "focus_window handled \"animator\" and its enum left it out, so the schema told agents the window "
+                         "could not be named (BF23 F14); guards the enum when core is trimmed.",
+        "text_at_issue": "focus_window's window enum: 'animator'",
+        "source": "audit (BF23 F14); no failure on record",
+        "prompt": "Bring the Animator window to the front in the editor, I want to look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "animator"}, "result": ok("Focused the Animator window.", {"window": "animator"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_patch_did_you_mean",
+        "kind": "guard",
+        "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "
+                         "the field meant, and the agent should send that name instead of inspecting the effect's format.",
+        "text_at_issue": "edit_particle_effect's refusal: 'did you mean'",
+        "source": "audit (BF23 F10); no failure on record",
+        "prompt": "In assets/fx/fire.particles set the emission rate over time to 20. Use field rateOverTim.",
+        "mocks": [
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTim": "*"}}}}, "result": err(
+                "The patch was refused (emission.rateOverTim: unknown field of Emission (did you mean 'rateOverTime'?)); nothing changed.")},
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}}],
+                   "max_calls": {"edit_particle_effect": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_graph_new_ids",
+        "kind": "guard",
+        "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "
+                         "the result's added names the new node, and the next call should use it.",
+        "text_at_issue": "edit_graph's result: added [{op_index, id}]",
+        "source": "audit (BF23 F6); no failure on record",
+        "prompt": "In graphs/Blend.testgraph add a speed node, then connect its value output to input a of node n2.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"ops": [{"op": "addNode"}]}, "result": ok(
+                "Add Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "n4"}], "issues": []})},
+            {"tool": "edit_graph", "result": ok("Connect Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "e5"}], "issues": []})},
+        ],
+        "checks": {"calls": ["edit_graph"], "max_calls": {"edit_graph": 3}, "must_not_call": ["write_file"]},
+        "max_turns": 8,
     },
     {
         "id": "bad_footsteps_built_in_lua",

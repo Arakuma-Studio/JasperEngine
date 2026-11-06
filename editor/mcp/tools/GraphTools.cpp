@@ -70,6 +70,13 @@ void registerTestKind() {
     blend.params = {{"weight", "float", 0.5, 0.0, 1.0, {}}};
     kind.nodeTypes = {speed, label, blend};
     GraphRegistry::get().registerKind(kind);
+
+    // the same graph as a kind that opted in to strict parameters
+    kind.id = "test_strict";
+    kind.displayName = "Strict Test Graph";
+    kind.fileExtension = ".strictgraph";
+    kind.strictParams = true;
+    GraphRegistry::get().registerKind(kind);
 }
 
 // the graph model's ordered JSON as the MCP replies' JSON
@@ -110,8 +117,16 @@ Json reportJson(const graph::LoadReport& report) {
     return out;
 }
 
+// A strict kind's parameter errors by their message: a second misspelled name or another bad value
+// on a node is new. Any other error stays the same one while its message changes: a cycle that
+// shrinks lists fewer nodes, and the edit added nothing.
 std::string errorKey(const graph::Issue& issue) {
-    return issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId;
+    const std::string key = issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId;
+    return issue.code == "unknown-param" || issue.code == "param-range" ? key + "|" + issue.message : key;
+}
+
+std::string issueText(const graph::Issue& issue) {
+    return issue.suggestion.empty() ? issue.message : issue.message + " (" + issue.suggestion + ")";
 }
 
 void listGraphKindsTool(const CallPtr& call) {
@@ -154,7 +169,7 @@ void validateGraphTool(const CallPtr& call) {
     if (!readGraph(call, file, text, g, report)) return;
     const std::vector<graph::Issue> issues = graph::validate(g);
     std::string summary = std::to_string(issues.size()) + " issue(s).";
-    for (const graph::Issue& issue : issues) summary += "\n" + std::string(graph::severityName(issue.severity)) + " " + issue.code + ": " + issue.message;
+    for (const graph::Issue& issue : issues) summary += "\n" + std::string(graph::severityName(issue.severity)) + " " + issue.code + ": " + issueText(issue);
     Json data = {{"issues", issuesJson(issues)}};
     const Json loaded = reportJson(report);
     if (!loaded.empty()) data["load"] = loaded;
@@ -173,6 +188,12 @@ void editGraphTool(const CallPtr& call) {
     Graph g;
     graph::LoadReport report;
     if (!readGraph(call, file, before, g, report)) return;
+    // rewriting it would lose what the file holds, or skip what its extension's kind checks
+    const std::string problem = graph::fileProblem(args.value("path", std::string()), g, report);
+    if (!problem.empty()) {
+        call->fail(args.value("path", std::string()) + " is not a graph of its kind: " + problem + "; nothing was written. Fix the file first (read_file shows it).");
+        return;
+    }
     const bool dryRun = args.value("dry_run", false);
     const bool allowInvalid = args.value("allow_invalid", false);
 
@@ -182,12 +203,17 @@ void editGraphTool(const CallPtr& call) {
     }
     // the ops in order; a bad one stops the batch with nothing written
     std::vector<std::string> names;
+    Json addedIds = Json::array();
     size_t index = 0;
     try {
         for (const Json& item : args["ops"]) {
             const GraphOp op = graph::opFromJson(item);
             names.push_back(graph::describe(g, op));
-            graph::apply(g, op);
+            // what undoes a new node, edge or group names its id, supplied or allocated
+            const GraphOp inverse = graph::apply(g, op);
+            if (inverse.op == "removeNode" || inverse.op == "disconnect" || inverse.op == "ungroup") {
+                addedIds.push_back({{"op_index", index}, {"id", inverse.args.value("id", std::string())}});
+            }
             index++;
         }
     } catch (const std::exception& e) {
@@ -195,19 +221,23 @@ void editGraphTool(const CallPtr& call) {
         return;
     }
     const std::vector<graph::Issue> issues = graph::validate(g);
-    Json added = Json::array();
+    Json newErrors = Json::array();
+    std::string firstNewError;
     for (const graph::Issue& issue : issues) {
-        if (issue.severity == graph::Severity::Error && !errorsBefore.count(errorKey(issue))) added.push_back(toMcp(graph::toJson(issue)));
+        if (issue.severity != graph::Severity::Error || errorsBefore.count(errorKey(issue))) continue;
+        if (newErrors.empty()) firstNewError = issueText(issue);
+        newErrors.push_back(toMcp(graph::toJson(issue)));
     }
     const std::string undoName = names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)";
     Json data = {{"issues", issuesJson(issues)}, {"applied", names.size()}, {"undo_name", undoName}, {"dry_run", dryRun}};
-    if (!added.empty() && !allowInvalid) {
+    if (!newErrors.empty() && !allowInvalid) {
         data["applied"] = 0;
-        data["new_errors"] = added;
-        call->fail("The edit would add " + std::to_string(added.size()) + " error(s) (first: " + added[0].value("message", std::string()) +
+        data["new_errors"] = newErrors;
+        call->fail("The edit would add " + std::to_string(newErrors.size()) + " error(s) (first: " + firstNewError +
                    "); nothing was written. allow_invalid: true writes it anyway.", data);
         return;
     }
+    data["added"] = addedIds;
     if (dryRun) {
         data["graph"] = toMcp(graph::toJson(g));
         call->ok("Dry run: " + std::to_string(names.size()) + " op(s) apply, " + std::to_string(issues.size()) + " issue(s); nothing was written.", data);
@@ -215,8 +245,14 @@ void editGraphTool(const CallPtr& call) {
     }
     const std::string after = graph::save(g);
     // one step of the project history (file edits are project-wide)
-    Project* project = call->ctx().project();
-    project->getProjectCommandHistory()->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName));
+    CommandHistory* history = call->ctx().project()->getProjectCommandHistory();
+    if (after != before && !history->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName))) {
+        const std::string busy = history->lastBusyRefusal();
+        data["applied"] = 0;
+        data.erase("added");
+        call->fail("Could not write " + args.value("path", std::string()) + " (" + (busy.empty() ? "see read_console" : busy) + "); nothing was changed.", data);
+        return;
+    }
     call->ok(undoName + ": " + std::to_string(names.size()) + " op(s), " + std::to_string(issues.size()) + " issue(s).", data);
 }
 
@@ -261,9 +297,9 @@ void registerGraphTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "validate_graph";
         tool.title = "Validate Graph";
-        tool.description = "A graph file's issues [{severity, code, node, port, edge, message}]: dangling-edge, duplicate-id, "
+        tool.description = "A graph file's issues: dangling-edge, duplicate-id, "
                            "direction, type-mismatch, multiplicity, cycle, unknown-node-type, missing-required-input, param-range, "
-                           "and the kind's own.";
+                           "unknown-param, and the kind's own.";
         tool.inputSchema = object({{"path", assetPath("A graph file.")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.handler = validateGraphTool;

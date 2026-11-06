@@ -167,9 +167,9 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | in review |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
@@ -219,6 +219,27 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-06: S41 review: 1 blocker (shader cache not bumped, so stale library shaders read a
+  zero post colour) and 7 should-fix issues (shadow maps snapped, uniform size, input mapping in
+  Integer Expand, test gaps, Vulkan/GLES3 not run, HiDPI, UI toggles). They were sent back to the
+  implementer.
+  - Shader bit rule: S41 keeps BLIT/uber bit 18 (`Psb`), and S43 renumbers `UBER_PALETTE`
+    (`Pal`) to the next free bit at its final merge.
+  - The S43 review (1 blocker: palette bindings missing from the cooked-scene runtime fields, so
+    the prebuilt player loses Palette Swap; 5 should-fix) was also sent back to its implementer.
+- 2026-11-06: S41 implementation reported at `47fdcec4d`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; 3,172 unit tests through `check-changed`; 8 `PixelPerfectGpu` tests
+    on glcore; the web gate at device pixel ratio 2; android; 62 named MCP tests; lints.
+  - Shader bits taken: `Pxs` = MESH 42 and DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Pixel-snapped draws are not auto-instanced, and batchers must keep `pixelSnapDraw` and use
+    `pixelSnapApply`. The Doriax lead was told, for `dc/sprite-batching`.
+  - An independent review is running.
+- 2026-11-06: S43 implementation reported at `b481a0454`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; filtered unit tests (core 248, editor 377); 12 MCP files; web and
+    android builds; lints and generators; the smoke test.
+  - Gaps it reported: AC7/AC12 verified only on glcore; AC11 waits for S52; AC14's GPU budgets
+    need a GPU; AC19 has no goldens; Aseprite palettes wait for S44's codec. An independent review
+    is running.
 - 2026-11-06: The implementers stopped on a revoked auth token, after merging the S53–S73 `main`
   (S41 `5bb89cc5a`, S43 `872e0330e`, S44 `c17d9dd31`). `main` fast-forwarded again to `4f5899c00`
   (187 commits) and all three were revived. To avoid repeated large merges, each merges `main`

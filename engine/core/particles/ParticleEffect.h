@@ -591,6 +591,7 @@ namespace jasperengine { namespace particles {
         Severity severity = Severity::Error;
         std::string path;      // "modules[2].bursts[0].probability", "$" for the document
         std::string message;
+        bool unknownKey = false;   // a key the format does not have: read past in a file, refused in a patch
     };
 
     // A .particles JSON text into a document, for code that cannot include the JSON library

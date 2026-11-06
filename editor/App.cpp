@@ -2151,7 +2151,6 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
-    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -2190,7 +2189,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
     stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
     stampPanelDockOrder(AnimatorWindow::WINDOW_NAME, 7);
-    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 8);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2527,6 +2526,13 @@ void editor::App::setup() {
     configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
+    // the system's CJK and emoji fonts, merged into these when a background search (started
+    // with the job system, engineInit) has found them (applySystemFonts): CJK names and text
+    // show as glyphs, and the start is not slower
+    systemFontTargets = {{font1, uiFontSize, config1.RasterizerMultiply},
+                         {boldFont, uiFontSize, configBold.RasterizerMultiply},
+                         {codeFont, 16.0f, config3.RasterizerMultiply}};
+
     io.FontDefault = font1;
 
     io.ConfigDragClickToInputText = true;
@@ -2802,10 +2808,8 @@ void editor::App::show(){
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
-                (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
-            lastFocusedWindow = LastFocusedWindow::Resources;
-        } else if (animatorWindow->isFocused()) {
-            // the Animator window's edits are project steps (its controller file)
+                (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
+                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2905,7 +2909,6 @@ void editor::App::show(){
     avatarWindow->show();
     HumanoidConvertDialog::draw(&project);
     poseAnimationWindow->show();
-    animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
@@ -3170,6 +3173,8 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
+    SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 
     Engine::pauseGameEvents(true);
 
@@ -3857,6 +3862,10 @@ bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
         return true;
     }
     return false;
+}
+
+void editor::App::applySystemFonts(){
+    SystemFonts::applyPending(systemFontTargets);
 }
 
 void editor::App::engineRender(){
@@ -5036,6 +5045,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    inspectorWindow->resetMaterialAsset();
     // the Project Hub's picture of the project closing (S27 R21)
     writeHubThumbnail();
     // the project's working layout, before another project's replaces it (S25 R19)
@@ -5146,6 +5156,11 @@ void editor::App::resetLastActivatedScene(){
 
 bool editor::App::shouldSyncEngineApi() const {
     return true;
+}
+
+bool editor::App::recordsRecentProjects() const {
+    const mcp::McpLaunchOptions& options = mcp::mcpLaunchOptions();
+    return !options.stdio && !options.headless && !benchmarkEnabled;
 }
 
 void editor::App::updateResourcesPath(){
@@ -5549,7 +5564,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
+    // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
+    //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
+    //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5752,7 +5770,8 @@ namespace {
                       editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
-                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator) {
+                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
+                      editor::AudioMixerWindow* audioMixer) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5775,6 +5794,7 @@ namespace {
         visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
+        visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
     }
 
 }
@@ -5792,7 +5812,8 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow);
     return panels;
 }
 
@@ -5804,7 +5825,8 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5817,6 +5839,7 @@ void editor::App::applyDefaultLayout(){
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
+    audioMixerWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);

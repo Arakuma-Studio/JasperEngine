@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace jasperengine::editor
+namespace jasperengine
 {
 
 // Distance beyond which two names are not plausibly the same typo'd word.
@@ -83,4 +83,4 @@ std::string NearestNameSuffix(std::string_view target, const Range& candidates,
     return best.empty() ? std::string() : (" (did you mean '" + best + "'?)");
 }
 
-} // namespace jasperengine::editor
+} // namespace jasperengine

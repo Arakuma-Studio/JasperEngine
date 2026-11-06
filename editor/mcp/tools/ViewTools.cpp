@@ -98,6 +98,32 @@ namespace fs = std::filesystem;
 
 namespace jasperengine::editor::mcp {
 
+bool w3::isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
+    // what dithering and a resize leave on a blank render, in levels of 255. The whole image's
+    // range counts: a slow gradient is close between neighbours and far from end to end.
+    constexpr int FLAT_TOLERANCE = 2;
+    int w = 0, h = 0, n = 0;
+    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
+    if (!pixels) return false;
+    int low[3] = {255, 255, 255};
+    int high[3] = {0, 0, 0};
+    bool flat = true;
+    for (int i = 0; i < w * h && flat; i++) {
+        for (int c = 0; c < 3; c++) {
+            low[c] = std::min<int>(low[c], pixels[i * 3 + c]);
+            high[c] = std::max<int>(high[c], pixels[i * 3 + c]);
+            if (high[c] - low[c] > FLAT_TOLERANCE) flat = false;
+        }
+    }
+    if (flat && w * h > 0) {
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
+        colour = buffer;
+    }
+    stbi_image_free(pixels);
+    return flat;
+}
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
@@ -313,24 +339,6 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
-// True when every pixel of the PNG is the same colour (a blank render)
-bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
-    int w = 0, h = 0, n = 0;
-    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
-    if (!pixels) return false;
-    bool flat = true;
-    for (int i = 1; i < w * h && flat; i++) {
-        if (pixels[i * 3] != pixels[0] || pixels[i * 3 + 1] != pixels[1] || pixels[i * 3 + 2] != pixels[2]) flat = false;
-    }
-    if (flat && w * h > 0) {
-        char buffer[16];
-        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
-        colour = buffer;
-    }
-    stbi_image_free(pixels);
-    return flat;
-}
-
 // Fills image + common info, writes save_path, and finishes the job
 void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width, int height, int sourceWidth,
                    int sourceHeight, Json info) {
@@ -344,7 +352,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     info["bytes"] = png.size();
 
     std::string colour;
-    if (isFlatPng(png, colour)) {
+    if (w3::isFlatPng(png, colour)) {
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
@@ -1576,7 +1584,7 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals.");
         return;
@@ -2052,7 +2060,7 @@ void registerViewTools(McpRegistry& registry) {
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
             "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},

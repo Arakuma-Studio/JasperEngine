@@ -23,7 +23,7 @@ Before editing these paths, read the rule file:
 
 ## Invariants
 
-- Every runtime feature works on all five graphics backends through sokol-gfx: GL 3.3 core,
+- Every runtime feature works on all five graphics backends through sokol-gfx: GL 4.1 core,
   GLES3/WebGL2, Metal, D3D11, Vulkan.
 - Every runtime feature works on all export targets: Windows, Linux, macOS, Android, iOS, HTML5.
 - No feature requires compute shaders, SSBOs, bindless, indirect draws or 64-bit atomics.
@@ -144,6 +144,7 @@ Run the generator and commit its output:
 - There is no CI: nothing checks a push except what you ran.
 - Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
+  - `tools/check_text_encoding.py`: code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere.
   - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
 - After renaming a path or build target these docs name: `python3 tools/check_agent_docs.py`.
 - Unit tests: `tools/build.sh unit-tests`.

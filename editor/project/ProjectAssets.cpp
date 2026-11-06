@@ -10,6 +10,7 @@
 
 #include "Out.h"
 #include "DocumentFile.h"
+#include "util/FileUtils.h"
 #include "Stream.h"
 #include "PrefabStage.h"
 #include "asset/AssetFileWrite.h"
@@ -184,7 +185,8 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
         if (!ref.guid.isNull() || site.kind == DepEdgeKind::MeshMaterialFile) {
             return;
         }
-        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, ref.path);
+        // a path picked on Windows holds '\': a separator, as on every platform (Stream::portablePath)
+        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, Stream::portablePath(ref.path));
         AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         std::error_code ec;
         if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
@@ -195,7 +197,10 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
             found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         }
         if (found.found()) {
+            // the GUID, and the path in the database's form, as the scene resolver writes it
+            // (resolveAssetRefs): the file opens anywhere, not only where it was picked
             ref.guid = found.guid;
+            ref.path = AssetIndex::fromProjectRelative(roots, site.base, found.path);
         }
     });
 }
@@ -283,6 +288,27 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     }
     root = ordered;
     return guid;
+}
+
+std::string editor::Project::materialFileText(const fs::path& file, const Material& material) {
+    Material bound = material;
+    bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
+    // a file the database has not scanned yet (copied in from outside) keeps the GUID it came with
+    AssetDatabase::AssetInfo known;
+    if (!assetDatabase.getInfo(normalizeToProjectRelative(file), known)) {
+        std::error_code ec;
+        if (fs::exists(file, ec)) {
+            try {
+                const YAML::Node existing = DocumentFiles::read(file, DocumentKind::Material).root;
+                if (existing["guid"]) root["guid"] = existing["guid"];
+            } catch (const std::exception&) {
+                // unreadable: a new identity, as a new file gets
+            }
+        }
+    }
+    prepareDocumentIdentity(root, file);
+    return FileUtils::withLineEndings(file, DocumentFiles::materialText(root, file) + "\n");
 }
 
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,

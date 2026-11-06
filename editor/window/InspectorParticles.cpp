@@ -33,6 +33,7 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
 #include "reflect/Enums.h"
+#include "util/UIProbe.h"
 #include "util/EntityPayload.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/Util.h"
@@ -1052,8 +1053,10 @@ bool editor::InspectorWindow::updateInspectedParticleAsset(SceneProject* scenePr
 // The asset's effect: a live preview, then its modules (edits write the asset, every user updates)
 void editor::InspectorWindow::drawParticleAssetInspector() {
     const std::string& path = inspectedParticleAsset;
+    particleAssetFrame = ImGui::GetFrameCount();
     ImGui::AlignTextToFramePadding();
     ImGui::Text(ICON_FA_FIRE " %s", std::filesystem::path(path).filename().string().c_str());
+    UIProbe::item("asset.particles.header");
     ImGui::TextDisabled("%s", path.c_str());
 
     const float size = std::min(ImGui::GetContentRegionAvail().x, Theme::dpi(256.0f));

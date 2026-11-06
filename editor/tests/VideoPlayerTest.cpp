@@ -31,7 +31,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <unordered_map>
@@ -80,7 +79,8 @@ namespace {
             return error;
         }
         void setLoop(bool value) override{ loop = value; }
-        FrameResult acquireFrame(int iteration, double seconds, bool, int64_t shown, VideoFrame& frame) override{
+        FrameResult acquireFrame(int iteration, double seconds, bool wait, int64_t shown, VideoFrame& frame) override{
+            if (waitRequested) *waitRequested = *waitRequested || wait;
             const int64_t sequence = sequenceFor(iteration, seconds);
             if (sequence == shown)
                 return FrameResult::SAME;
@@ -111,6 +111,7 @@ namespace {
         bool failing = false;
         bool loop = false;
         int acquired = 0;
+        bool* waitRequested = nullptr;
         VideoInfo info;
     };
 
@@ -121,6 +122,7 @@ namespace {
         std::vector<std::string> events;
         int openPumps = 2;
         bool failing = false;
+        bool waitRequested = false;
         std::vector<std::string> opened;
 
         void SetUp() override{
@@ -130,6 +132,7 @@ namespace {
                 opened.push_back(path);
                 auto source = std::make_unique<FakeSource>(openPumps);
                 source->failing = failing;
+                source->waitRequested = &waitRequested;
                 return source;
             });
         }
@@ -657,10 +660,16 @@ TEST_F(VideoPlayerSystemTest, PrepareAfterAnErrorTriesAgain){
 }
 
 TEST_F(VideoPlayerSystemTest, SkipOnDropOffNeverBlocks){
+    const double previousFixed = Engine::getFixedDeltatime();
+    Engine::setFixedDeltatime(0.0);
     const Entity entity = makePlayer();
     scene.getComponent<VideoPlayerComponent>(entity).skipOnDrop = false;
+    VideoPlayer player(&scene, entity);
     run(4, 0.05);
-    const auto start = std::chrono::steady_clock::now();
     run(10, 0.05);
-    EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 1.0);
+    Engine::setFixedDeltatime(previousFixed);
+    // IVideoSource's wait flag asks the decoder to block; real-time playback never sets it.
+    EXPECT_FALSE(waitRequested);
+    EXPECT_TRUE(player.isPlaying());
+    EXPECT_GT(player.getFrame(), 0) << "the player actually consumed frames";
 }

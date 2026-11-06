@@ -507,7 +507,7 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
 
 ## Scene depth and colour
 
-A mesh or points shader can read the opaque scene behind it: soft particles, depth-fade
+A mesh, points or particles shader can read the opaque scene behind it: soft particles, depth-fade
 water and fog cards, intersection glows, projected decals (depth); glass, refraction, heat
 haze (colour).
 

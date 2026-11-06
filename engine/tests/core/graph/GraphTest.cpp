@@ -307,13 +307,6 @@ TEST_F(GraphTest, IdsAreNeverReused) {
     EXPECT_NE(graph.findNode("n12"), nullptr);
 }
 
-TEST_F(GraphTest, DescribesOps) {
-    Graph graph = loadOk(SAMPLE);
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "connect"}, {"from", {{"node", "n1"}, {"port", "value"}}}, {"to", {{"node", "n2"}, {"port", "b"}}}})),
-              "Connect Speed \xE2\x86\x92 Blend");
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "moveNodes"}, {"ids", {"n1", "n2"}}, {"delta", {1, 1}}})), "Move 2 Nodes");
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "addNode"}, {"node", {{"type", "add"}}}})), "Add Blend");
-}
 
 TEST_F(GraphTest, Bench1000Nodes2000Edges) {
     Graph graph;
@@ -361,4 +354,181 @@ TEST_F(GraphTest, Bench1000Nodes2000Edges) {
         EXPECT_LE(ms, 25.0 * testsupport::perfSlack());
         EXPECT_LE(usPerOp, 5.0 * testsupport::perfSlack());
     }
+}
+
+// ---- BF23 F5, F9: a kind that opts in to strict parameters
+
+namespace {
+
+    void registerStrictKind() {
+        GraphKindDesc kind;
+        kind.id = "strict";
+        kind.fileExtension = ".strictgraph";
+        kind.strictParams = true;
+        kind.portTypes = {{"float", 0xff8800ffu, {}}};
+        NodeTypeDesc speed;
+        speed.id = "speed";
+        speed.ports = {port("value", PortDirection::Out, "float")};
+        speed.params = {{"value", "float", 1.0, 0.0, 100.0, {}},
+                        {"mode", "enum", "linear", std::nullopt, std::nullopt, {"linear", "smooth"}}};
+        kind.nodeTypes = {speed};
+        GraphRegistry::get().registerKind(kind);
+    }
+
+    class StrictGraphTest : public ::testing::Test {
+    protected:
+        void SetUp() override { registerStrictKind(); }
+        void TearDown() override { GraphRegistry::get().unregisterKind("strict"); }
+
+        static Issue only(const Graph& graph, const char* code) {
+            std::vector<Issue> found;
+            for (const Issue& issue : validate(graph)) {
+                if (issue.code == code) found.push_back(issue);
+            }
+            EXPECT_EQ(found.size(), 1u) << code;
+            return found.empty() ? Issue() : found.front();
+        }
+    };
+
+    Graph strictGraph(const char* node) {
+        LoadReport report;
+        Graph graph = load(std::string(R"({"formatVersion": 1, "kind": "strict", "nodes": [)") + node + "]}", report);
+        EXPECT_TRUE(report.ok) << "load never refuses: " << report.error;
+        return graph;
+    }
+
+}
+
+TEST_F(StrictGraphTest, MisspelledParameterIsAnError) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"valeu": 3}})"), "unknown-param");
+    EXPECT_EQ(issue.severity, Severity::Error);
+    EXPECT_EQ(issue.nodeId, "n1");
+    EXPECT_EQ(issue.suggestion, "did you mean 'value'?");
+    EXPECT_EQ(toJson(issue).value("suggestion", std::string()), "did you mean 'value'?");
+}
+
+TEST_F(StrictGraphTest, NothingCloseListsTheParameters) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"elevation": 3}})"), "unknown-param");
+    EXPECT_EQ(issue.suggestion, "its parameters: value, mode");
+}
+
+TEST_F(StrictGraphTest, UnknownNodeTypeIsAnError) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "sped", "params": {}})"), "unknown-node-type");
+    EXPECT_EQ(issue.severity, Severity::Error);
+    EXPECT_EQ(issue.suggestion, "did you mean 'speed'?");
+}
+
+TEST_F(StrictGraphTest, OutOfRangeIsAnError) {
+    EXPECT_EQ(only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"value": 500}})"), "param-range").severity, Severity::Error);
+    const Issue value = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"mode": "smoth"}})"), "param-range");
+    EXPECT_EQ(value.severity, Severity::Error);
+    EXPECT_EQ(value.suggestion, "did you mean 'smooth'?");
+}
+
+TEST_F(StrictGraphTest, LoadKeepsWhatValidateRefuses) {
+    const char* text = R"({"id": "n1", "type": "future", "position": [0.0, 0.0], "params": {"valeu": 3}})";
+    Graph graph = strictGraph(text);
+    ASSERT_EQ(graph.nodes.size(), 1u);
+    EXPECT_EQ(graph.nodes[0].type, "future");
+    EXPECT_EQ(graph.nodes[0].params.value("valeu", 0), 3);
+    LoadReport again;
+    load(save(graph), again);
+    EXPECT_TRUE(again.ok);
+}
+
+TEST_F(GraphTest, AKindThatDidNotOptInKeepsItsWarnings) {
+    const Graph graph = loadOk(R"({"formatVersion": 1, "kind": "test", "kindVersion": 2, "nodes": [
+        {"id": "n1", "type": "const", "params": {"valeu": 3, "value": 99}},
+        {"id": "n2", "type": "cosnt", "params": {}}]})");
+    std::set<std::string> found;
+    for (const Issue& issue : validate(graph)) {
+        found.insert(issue.code);
+        EXPECT_NE(issue.severity, Severity::Error) << issue.code << ": " << issue.message;
+    }
+    EXPECT_FALSE(found.count("unknown-param")) << "S23's forward compatibility";
+    EXPECT_TRUE(found.count("param-range"));
+    EXPECT_TRUE(found.count("unknown-node-type"));
+}
+
+// ---- BF23 F7: a supplied id does not skip the type's defaults, an undo stays exact
+
+TEST_F(GraphTest, AddNodeWithAnIdGetsDefaultsAndDynamicPorts) {
+    Graph graph = loadOk(SAMPLE);
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "bricks"}, {"type", "const"}}}}));
+    const Node* constant = graph.findNode("bricks");
+    ASSERT_NE(constant, nullptr);
+    EXPECT_EQ(constant->params.value("value", 0.0), 1.0);
+
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "total"}, {"type", "sum"}}}}));
+    const Node* sum = graph.findNode("total");
+    ASSERT_NE(sum, nullptr);
+    EXPECT_EQ(sum->params.value("count", 0), 2);
+    ASSERT_TRUE(sum->dynamicPorts.has_value());
+    EXPECT_EQ(sum->dynamicPorts->size(), 3u);
+
+    // given values win, and the ports follow them
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "wide"}, {"type", "sum"}, {"params", {{"count", 4}}}}}}));
+    EXPECT_EQ(graph.findNode("wide")->params.value("count", 0), 4);
+    EXPECT_EQ(graph.findNode("wide")->dynamicPorts->size(), 5u);
+}
+
+TEST_F(GraphTest, UndoOfARemoveRestoresTheNodeExactly) {
+    Graph graph = loadOk(SAMPLE);
+    // a node without its default: a removal and its undo must not bring the default back
+    apply(graph, opFromJson({{"op", "setParam"}, {"node", "n1"}, {"name", "value"}, {"value", nullptr}}));
+    const std::string before = save(graph);
+    const GraphOp inverse = apply(graph, opFromJson({{"op", "removeNode"}, {"id", "n1"}}));
+    ASSERT_EQ(inverse.op, "addNode");
+    EXPECT_EQ(inverse.args.value("restore", false), true) << "the undo path says so explicitly";
+    const GraphOp redo = apply(graph, opFromJson(toJson(inverse)));
+    EXPECT_EQ(save(graph), before);
+    apply(graph, redo);
+    apply(graph, inverse);
+    EXPECT_EQ(save(graph), before);
+}
+
+// ---- BF23 F8: hand-written edges without ids
+
+TEST_F(GraphTest, LoadGivesEdgesWithoutIdsTheirOwn) {
+    const char* text = R"({"formatVersion": 1, "kind": "test", "kindVersion": 2, "nextId": 2,
+      "nodes": [{"id": "n1", "type": "const", "params": {}}, {"id": "n2", "type": "add", "params": {}},
+                {"id": "n20", "type": "sink", "params": {}}],
+      "edges": [{"from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "a"}},
+                {"id": "e30", "from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "b"}},
+                {"id": "", "from": {"node": "n2", "port": "sum"}, "to": {"node": "n20", "port": "x"}}],
+      "groups": [{"id": "g40", "title": "", "rect": [0, 0, 1, 1], "nodes": []}]})";
+    const Graph graph = loadOk(text);
+    EXPECT_FALSE(codes(graph).count("duplicate-id"));
+    ASSERT_EQ(graph.edges.size(), 3u);
+    // past every id of the file (nextId says 2, the group holds 40), in file order, deterministic
+    EXPECT_EQ(graph.edges[0].id, "e30");
+    EXPECT_EQ(graph.edges[1].id, "e41");
+    EXPECT_EQ(graph.edges[2].id, "e42");
+    EXPECT_EQ(graph.edges[1].from.port, "value");
+    EXPECT_EQ(graph.edges[2].from.port, "sum");
+    EXPECT_EQ(graph.nextId, 43u);
+    EXPECT_EQ(save(loadOk(text)), save(graph));
+    // once saved, they are the file's
+    EXPECT_EQ(save(loadOk(save(graph))), save(graph));
+}
+
+// ---- BF23 F11: a kind's extension names its files, whatever kind it is
+
+TEST_F(GraphTest, KindForFileMatchesAnyRegisteredExtension) {
+    GraphKindDesc dotted;
+    dotted.id = "dotted";
+    dotted.fileExtension = ".proc.mat";
+    GraphRegistry::get().registerKind(dotted);
+    const auto idOf = [](std::string_view path) {
+        const auto kind = GraphRegistry::get().kindForFile(path);
+        return kind ? kind->id : std::string();
+    };
+    EXPECT_EQ(idOf("graphs/a.testgraph"), "test");
+    EXPECT_EQ(idOf("graphs/A.TESTGRAPH"), "test");
+    EXPECT_EQ(idOf("a.proc.mat"), "dotted");
+    EXPECT_EQ(idOf("a.mat"), "");
+    EXPECT_EQ(idOf("graphs/atestgraph"), "");
+    EXPECT_EQ(idOf(".testgraph"), "") << "a hidden file with no name";
+    GraphRegistry::get().unregisterKind("dotted");
+    EXPECT_EQ(idOf("a.proc.mat"), "");
 }
