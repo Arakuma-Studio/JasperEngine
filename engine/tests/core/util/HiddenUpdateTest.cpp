@@ -48,10 +48,11 @@ TEST(FrameLimiter, HiddenClockMakesUpALateUpdate){
     FrameLimiter clock;
     const double period = 1.0 / 60.0;
     ASSERT_TRUE(clock.isDueAt(0.0, 60.0, 0.0));
-    // woken 1.5 periods later: this update and the next one are due at once
+    // woken half a period late: the late update runs, and the next one keeps the schedule (due at
+    // 2 periods, not 2.5)
     EXPECT_TRUE(clock.isDueAt(1.5 * period, 60.0, 0.0));
-    EXPECT_TRUE(clock.isDueAt(1.5 * period, 60.0, 0.0));
-    EXPECT_FALSE(clock.isDueAt(1.5 * period, 60.0, 0.0));
+    EXPECT_FALSE(clock.isDueAt(1.9 * period, 60.0, 0.0));
+    EXPECT_TRUE(clock.isDueAt(2.0 * period, 60.0, 0.0));
 }
 
 TEST(FrameLimiter, HiddenClockRestartsAfterAStall){
