@@ -111,6 +111,7 @@ bool pixelart::setPaletteTarget(Material& material, int row, const std::string& 
         targets.push_back(padding);
     }
     targets[row - 1] = PaletteTarget::parse(palette);
+    if (palette.rfind("runtime:", 0) == 0) targets[row - 1].runtime = PaletteLibrary::get(targets[row - 1].palette.path);
     binding.targets = std::move(targets);
     binding.useVariants = false;
     return true;

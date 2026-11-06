@@ -9,7 +9,7 @@ ones materials and Lua use (relative to the assets directory).
 - in edit mode both draw row 0, the source's own colours (sample_view_color);
 - in Play a script sets hero.palette = "Team Blue": the hero's pixels are the variant's colours; a wrong name raises
   the Lua error listing the rows (logged, read_console); villain:setPaletteTarget(2, Palette.new(...)) and
-  paletteRow = 2 draw the runtime palette's colours; Palette.load / getHex / variants / nearest answer;
+  paletteRow = 2 draw the runtime palette's colours, after the script let go of it and collected garbage; Palette.load / getHex / variants / nearest answer;
 - scene.postProcessing.paletteEnabled = true (after set_scene_settings named post_processing.palette) puts the
   background, a colour outside the palette, onto PICO-8;
 - the scene keeps the binding through save and reopen, and renaming the palette with move_asset keeps the reference.
@@ -57,6 +57,10 @@ function PaletteProbe:init()
     villain:setPaletteTarget(2, runtime)
     villain.paletteRow = 2
     paletteProbeRuntimeCount = runtime.count
+    -- the script lets go of it before the first draw: the material's row keeps it
+    runtime = nil
+    collectgarbage()
+    collectgarbage()
 
     local loaded = Palette.load("Palettes/hero.palette")
     paletteProbeHex = loaded:getHex(1)

@@ -7,8 +7,10 @@
 // what is not a source colour.
 
 #include "pixelart/Palette.h"
+#include "pixelart/PaletteMaterial.h"
 #include "pixelart/PaletteSwap.h"
 #include "shader/ShaderManifest.h"
+#include "texture/Material.h"
 
 #include "json.hpp"
 
@@ -214,6 +216,50 @@ TEST(PaletteSwapCache, RuntimePalettesLiveWhileHeld) {
     ASSERT_NE(PaletteLibrary::get(key), nullptr);
     palette.reset();
     EXPECT_EQ(PaletteLibrary::get(key), nullptr);
+}
+
+// a runtime palette given to a row (Lua: sprite:setPaletteTarget(2, Palette.new{...}), the
+// script keeping no reference) lives as long as the material's binding names it
+TEST(PaletteSwapCache, RuntimeTargetLivesWithTheMaterial) {
+    PaletteLibrary::set("tests/held-source.palette", paletteOf({{10, 10, 10}, {20, 20, 20}}));
+    Material material;
+    PaletteBinding binding;
+    binding.source = "tests/held-source.palette";
+    material.shaderPalettes = ShaderPalettes{{"u_palette", binding}};
+    auto palette = std::make_shared<Palette>(paletteOf({{200, 0, 0}, {0, 200, 0}}));
+    const std::string key = PaletteLibrary::addRuntime(palette);
+    std::string error;
+    ASSERT_TRUE(setPaletteTarget(material, 1, key, &error)) << error;
+    palette.reset();   // the script's last reference: a collectgarbage() before the first draw
+    ASSERT_NE(PaletteLibrary::get(key), nullptr) << "the material's binding holds the runtime palette";
+    std::vector<Diagnostic> diagnostics;
+    const PaletteBinding* held = findPaletteBinding(material);
+    ASSERT_NE(held, nullptr);
+    const std::vector<PaletteSwapRow> rows = resolvePaletteRows(paletteOf({{10, 10, 10}, {20, 20, 20}}), *held, diagnostics);
+    ASSERT_EQ(rows.size(), 1u);   // the rows after row 0: the target alone
+    EXPECT_EQ(rows[0].colors, (std::vector<Rgba8>{{200, 0, 0}, {0, 200, 0}}));
+    EXPECT_EQ(findKind(diagnostics, "palette_target_missing"), nullptr);
+    // a copy of the material (Play's copy of the scene) keeps it too; the last one lets it go
+    {
+        Material copy = material;
+        material = Material();
+        EXPECT_NE(PaletteLibrary::get(key), nullptr);
+    }
+    EXPECT_EQ(PaletteLibrary::get(key), nullptr);
+}
+
+// a runtime palette made (Palette.new every frame) changes no binding: nothing redraws
+TEST(PaletteSwapCache, MakingRuntimePalettesChangesNoGeneration) {
+    const uint32_t before = PaletteLibrary::generation();
+    std::vector<std::shared_ptr<Palette>> held;
+    for (int i = 0; i < 10; i++) {
+        held.push_back(std::make_shared<Palette>(paletteOf({{(uint8_t)i, 1, 2}})));
+        PaletteLibrary::addRuntime(held.back());
+    }
+    EXPECT_EQ(PaletteLibrary::generation(), before);
+    // nor does a first read: no binding has seen the file before
+    PaletteLibrary::get("tests/never-read-before.palette");
+    EXPECT_EQ(PaletteLibrary::generation(), before);
 }
 
 TEST(PaletteSwapManifest, ParsesThePaletteDirective) {

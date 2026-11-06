@@ -102,6 +102,8 @@ namespace jasperengine::pixelart {
         static void sweep(double nowSeconds);
         static void clear();
         static size_t size();   // entries alive, the identity included
+        // the swap data built so far (tests: a draw that only rebinds builds nothing)
+        static size_t builds();
     };
 
 }

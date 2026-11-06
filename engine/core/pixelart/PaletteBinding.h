@@ -10,11 +10,14 @@
 
 #include "asset/AssetRef.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace jasperengine::pixelart {
+
+    struct Palette;
 
     // One extra row of a binding: a palette's colours by index, or one of its variants. The text
     // form, "<palette>" or "<palette>#<variant>", is what Lua, MCP and the inspector show;
@@ -22,6 +25,9 @@ namespace jasperengine::pixelart {
     struct PaletteTarget {
         AssetRef palette;
         std::string variant;
+        // the runtime palette (Palette.new) a "runtime:<n>" row names, held while the binding lives:
+        // a script that keeps no reference does not lose it before the first draw (never saved)
+        std::shared_ptr<const Palette> runtime;
 
         std::string text() const { return variant.empty() ? palette.path : palette.path + "#" + variant; }
         static PaletteTarget parse(const std::string& text) {

@@ -41,11 +41,12 @@ namespace {
     }
 
     // with the library locked
-    void readInto(Library& lib, const std::string& path, LibraryEntry& entry) {
+    // changed: a reload of what a binding may have read (a first read changes nothing anyone saw)
+    void readInto(Library& lib, const std::string& path, LibraryEntry& entry, bool changed) {
         entry.palette.reset();
         entry.diagnostics.clear();
         entry.version = lib.nextVersion++;
-        lib.generation++;
+        if (changed) lib.generation++;
         Data data;
         if (data.open(path.c_str()) != FileErrors::FILEDATA_OK) {
             entry.diagnostics.push_back({Diagnostic::Severity::Error, "not_found", "", "cannot read the palette " + path,
@@ -212,7 +213,7 @@ std::shared_ptr<const Palette> PaletteLibrary::get(const std::string& path, std:
     }
     if (it == lib.entries.end()) {
         it = lib.entries.emplace(path, LibraryEntry{}).first;
-        readInto(lib, path, it->second);
+        readInto(lib, path, it->second, false);
     }
     if (diagnostics) *diagnostics = it->second.diagnostics;
     return it->second.palette;
@@ -233,7 +234,7 @@ std::string PaletteLibrary::addRuntime(std::shared_ptr<const Palette> palette) {
     LibraryEntry& entry = lib.entries[key];
     entry.runtime = palette;
     entry.version = lib.nextVersion++;
-    lib.generation++;
+    // a new key no binding names yet: nothing to redraw (Palette.new every frame stays cheap)
     return key;
 }
 
@@ -241,7 +242,7 @@ void PaletteLibrary::reload(const std::string& path) {
     if (isRuntimeKey(path)) return;
     Library& lib = library();
     std::lock_guard<std::mutex> lock(lib.mutex);
-    readInto(lib, path, lib.entries[path]);
+    readInto(lib, path, lib.entries[path], true);
 }
 
 void PaletteLibrary::set(const std::string& path, const Palette& palette) {

@@ -75,8 +75,27 @@ namespace {
 
     struct SwapCache {
         std::map<uint64_t, CacheEntry> entries;
+        // a binding and the versions of its palettes -> the content hash its rows built: a
+        // binding whose palettes did not change rebinds without building (R29)
+        std::map<std::string, uint64_t> byBinding;
         std::shared_ptr<PaletteSwapTextures> identity;
+        size_t builds = 0;
     };
+
+    std::string bindingKey(const PaletteBinding& binding) {
+        std::string key = binding.source.path + "@" + std::to_string(PaletteLibrary::version(binding.source.path)) +
+                          (binding.useVariants ? "|v" : "|-");
+        for (const PaletteTarget& target : binding.targets)
+            key += "|" + target.text() + "@" + std::to_string(PaletteLibrary::version(target.palette.path));
+        return key;
+    }
+
+    void holdPalettes(PaletteSwapTextures& textures, const std::vector<std::shared_ptr<const Palette>>& keepAlive) {
+        for (const std::shared_ptr<const Palette>& palette : keepAlive) {
+            if (std::find(textures.palettes.begin(), textures.palettes.end(), palette) == textures.palettes.end())
+                textures.palettes.push_back(palette);
+        }
+    }
 
     SwapCache& swapCache() {
         static SwapCache* instance = new SwapCache();
@@ -330,17 +349,27 @@ std::shared_ptr<PaletteSwapTextures> PaletteSwapCache::acquire(const PaletteBind
     std::vector<std::shared_ptr<const Palette>> keepAlive;
     if (binding.source.rfind("runtime:", 0) == 0) keepAlive.push_back(source);
     const std::vector<PaletteSwapRow> rows = resolvePaletteRows(*source, binding, diagnostics, &keepAlive);
-    PaletteSwapData data;
-    if (!buildPaletteSwapData(*source, rows, data, diagnostics)) return identity();
-
     SwapCache& cache = swapCache();
+    const std::string key = bindingKey(binding);
+    auto known = cache.byBinding.find(key);
+    if (known != cache.byBinding.end()) {
+        auto it = cache.entries.find(known->second);
+        if (it != cache.entries.end()) {
+            it->second.idleSince = -1.0;
+            holdPalettes(*it->second.textures, keepAlive);
+            return it->second.textures;
+        }
+        cache.byBinding.erase(known);
+    }
+    PaletteSwapData data;
+    cache.builds++;
+    if (!buildPaletteSwapData(*source, rows, data, diagnostics)) return identity();
+    cache.byBinding[key] = data.hash;
+
     auto it = cache.entries.find(data.hash);
     if (it != cache.entries.end()) {
         it->second.idleSince = -1.0;
-        for (const std::shared_ptr<const Palette>& palette : keepAlive) {
-            if (std::find(it->second.textures->palettes.begin(), it->second.textures->palettes.end(), palette) == it->second.textures->palettes.end())
-                it->second.textures->palettes.push_back(palette);
-        }
+        holdPalettes(*it->second.textures, keepAlive);
         return it->second.textures;
     }
     auto textures = std::make_shared<PaletteSwapTextures>();
@@ -368,12 +397,21 @@ void PaletteSwapCache::sweep(double nowSeconds) {
         }
         ++it;
     }
+    for (auto it = cache.byBinding.begin(); it != cache.byBinding.end();) {
+        if (cache.entries.count(it->second) == 0) it = cache.byBinding.erase(it);
+        else ++it;
+    }
 }
 
 void PaletteSwapCache::clear() {
     SwapCache& cache = swapCache();
     cache.entries.clear();
+    cache.byBinding.clear();
     cache.identity.reset();
+}
+
+size_t PaletteSwapCache::builds() {
+    return swapCache().builds;
 }
 
 size_t PaletteSwapCache::size() {
