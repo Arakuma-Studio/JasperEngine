@@ -87,7 +87,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
-| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
+| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
@@ -172,3 +172,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   filtered unit suites, HTML UI input, its MCP files with protocol/stubs/docs, generated docs and tool budget, lints:
   all green. rbox fixed: `build/.cache` on the boxes was a link the containers could not follow (uv and MCP steps
   failed); now only `build/.cache/ccache` is a link.
+- 2026-11-06 21:xx: **mesh-memory merged** (`3618eab04`) after an independent review (7 findings fixed: bounded Lua
+  submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
+  batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
+  merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.
