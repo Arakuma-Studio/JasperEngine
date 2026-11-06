@@ -46,7 +46,9 @@ namespace {
             if (image && w > 0 && h > 0) aspect = (double)w / (double)h;
             else kind = 0;
         }
-        const TitleVec2 anchor = p.string("align") == "canvas" ? ctx.documentToTarget.apply(TitleVec2{0.0, 0.0}) : ctx.layerOrigin;
+        const bool canvasAligned = p.string("align") == "canvas";
+        if (canvasAligned) ctx.usesCanvasPosition = true;
+        const TitleVec2 anchor = canvasAligned ? ctx.documentToTarget.apply(TitleVec2{0.0, 0.0}) : ctx.layerOrigin;
         const TitleAffine m = motifMap(anchor, ctx.pxScale, p.number("scale"), p.number("angle"), aspect);
         TitlePass pass = fx::makePass(ctx, TitleProgram::PatternOverlay, "pattern_overlay", output);
         pass.textures[0].target = &input;

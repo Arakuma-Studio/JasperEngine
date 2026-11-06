@@ -16,6 +16,12 @@
 //   and Repeat Edge Pixels clamps there.
 // - Determinism: everything an effect draws is a function of its input, its params and these
 //   values (`seed` is the document's: element seeds add to it, R17).
+// - Canvas positions: a definition whose pixels depend on where the layer lies on the canvas,
+//   not only on its input (it anchors to `documentToTarget` or `frame`: a canvas-aligned
+//   pattern, a canvas-wide fill) sets `usesCanvasPosition`; the renderer then keys the node's
+//   cached pixels by its position instead of moving them with the layer (R14).
+// - Followed layers (generators, §6.4 "Layer sources"): a generator with FollowMode Optional or
+//   Required gets the layer its `follow` member names, rendered alone, in `follow`.
 // - Thread-safety: main thread, for the duration of one apply or render call.
 
 #pragma once
@@ -84,6 +90,8 @@ namespace jasperengine::titleart {
         // an image asset's texture and size (a custom pattern); null (or no resolver) when it is
         // missing: the effect draws without it
         std::function<const TextureRender*(const TitleAssetRef& ref, int& width, int& height)> image;
+        // set by apply: what it drew depends on the layer's place on the canvas (above)
+        bool usesCanvasPosition = false;
 
         EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };
@@ -101,6 +109,14 @@ namespace jasperengine::titleart {
         uint32_t seed = 1;
         double lightAngle = 120.0, lightAltitude = 30.0;
         std::string layerId;
+        // the layer `follow` names, rendered alone (its effects and masks, its ancestors'
+        // transforms), premultiplied, with the target's key; null when the generator follows
+        // nothing, the layer is missing, or following it would be a cycle (`follow_cycle`: the
+        // generator then draws as it does following nothing)
+        const TargetRef* follow = nullptr;
+        // set by render: what it drew depends on the layer's place on the canvas (above). A
+        // generator that fills the canvas from canvas coordinates sets it
+        bool usesCanvasPosition = false;
 
         GeneratorContext(TitlePassRunner& passes) : runner(passes) {}
     };

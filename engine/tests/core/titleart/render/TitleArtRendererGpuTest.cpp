@@ -5,7 +5,8 @@
 // R18a, R42-R44, R49; AC14, AC15, AC18-AC20, AC32, AC42): a job's members, time slicing equal to
 // a one-shot render, determinism across fresh ids, the cache cascade's pass counts with every
 // cached result equal to a fresh one, regions of interest and peak target memory, device loss,
-// render variants (overrides, kept splits, glyph cells) and an idle renderer holding nothing.
+// render variants (overrides, kept splits, glyph cells), an idle renderer holding nothing, what
+// may move a cached node and a following generator's layer.
 // The layers' text and geometry come from the tests' analytic provider (TitleRenderTestSupport.h).
 
 #include "TitleRenderTestEffects.h"
@@ -427,4 +428,82 @@ TEST_F(TitleArtRendererGpu, SixteenBitOutput) {
     EXPECT_NEAR(centre[2], 0.0f, 1e-3f);
     EXPECT_NEAR(centre[3], 1.0f, 1e-3f);
     EXPECT_EQ(p.at(0, 0)[3], 0.0f);
+}
+
+TEST_F(TitleArtRendererGpu, CanvasPositionsKeyTheNode) {
+    // R14 with "what may move a cached node": a whole-pixel move re-places a layer whose effects
+    // read only its own pixels, and re-renders one whose effect says it anchored to the canvas
+    // (EffectContext::usesCanvasPosition, Pattern Overlay's `align: canvas`)
+    auto docWith = [](const char* align, Json position) {
+        Json layer = shapeLayer("00000001", "rect", 48, solidFace("#ffffff"),
+                                Json{{"transform", {{"position", position}}},
+                                     {"effects", Json::array({effect("00000021", "pattern_overlay",
+                                                                     {{"pattern", "stripes"}, {"scale", 7}, {"angle", 30}, {"align", align}})})}});
+        return makeDoc({{"canvas", canvas(256, 128)}, {"layers", Json::array({layer})}});
+    };
+    for (const char* align : {"layer", "canvas"}) {
+        SCOPED_TRACE(align);
+        auto renderer = makeRenderer();
+        render(*renderer, requestOf(docWith(align, Json::array({0, 0}))));
+        auto moved = docWith(align, Json::array({5, -3}));
+        Pixels move;
+        const uint64_t passes = passesOf(*renderer, requestOf(moved), &move);
+        auto fresh = makeRenderer();
+        EXPECT_TRUE(identical(move, render(*fresh, requestOf(moved)))) << "the moved layer differs from a fresh render";
+        if (std::string(align) == "layer") EXPECT_LE(passes, 2u) << "a layer-anchored pattern moves with its cached node";
+        else EXPECT_GT(passes, 2u) << "a canvas-anchored pattern must render again where it moved";
+    }
+}
+
+TEST_F(TitleArtRendererGpu, GeneratorGetsItsFollowedLayer) {
+    // a following generator (FollowMode Optional) is handed the layer `follow` names, rendered
+    // alone, with its own target's key: this one draws its silhouette in green over it
+    GeneratorDef d;
+    d.type = "test_follow";
+    d.label = "Test Follow";
+    d.category = "Test";
+    d.follow = FollowMode::Optional;
+    d.followReach = [](const ParamValues&) { return 0.0f; };
+    d.render = [](GeneratorContext& ctx, TargetRef& target, const ParamValues&) {
+        ctx.runner.clear(target);
+        if (!ctx.follow) return;
+        EXPECT_EQ(ctx.follow->key(), target.key());
+        EffectContext e(ctx.runner);
+        e.width = ctx.width;
+        e.height = ctx.height;
+        e.pxScale = ctx.pxScale;
+        e.frame = ctx.frame;
+        e.documentToTarget = ctx.documentToTarget;
+        const Json overlay{{"color", "#00ff00"}, {"opacity", 1.0}, {"mode", "normal"}};
+        findEffect("color_overlay")->apply(e, *ctx.follow, target, ParamValues(overlay));
+    };
+    ASSERT_TRUE(TitleEffectRegistry::get().add(d));
+    auto docFollowing = [](const char* followed) {
+        Json gen{{"id", "00000002"}, {"type", "generator"}, {"name", "Follow"}, {"follow", followed},
+                 {"generator", {{"type", "test_follow"}, {"params", Json::object()}}}};
+        return makeDoc({{"canvas", canvas(256, 128)},
+                        {"layers", Json::array({shapeLayer("00000001", "rect", 48, solidFace("#ff0000")), gen})}});
+    };
+    auto renderer = makeRenderer();
+    std::unique_ptr<TitleRenderJob> job;
+    Pixels followed = render(*renderer, requestOf(docFollowing("00000001")), &job);
+    Pixels alone = render(*renderer, requestOf(docFollowing("")));
+    Pixels itself = render(*renderer, requestOf(docFollowing("00000002")), &job);
+    TitleEffectRegistry::get().removeGenerator("test_follow");
+    ASSERT_FALSE(followed.bytes.empty());
+    // the rect's centre: green where the generator follows it, the rect's red where it follows nothing
+    const uint8_t* g = &followed.bytes[((size_t)64 * 256 + 128) * 4];
+    EXPECT_EQ(g[0], 0);
+    EXPECT_EQ(g[1], 255);
+    EXPECT_EQ(g[3], 255);
+    const uint8_t* r = &alone.bytes[((size_t)64 * 256 + 128) * 4];
+    EXPECT_EQ(r[0], 255);
+    EXPECT_EQ(r[1], 0);
+    // outside the rect the generator draws nothing
+    EXPECT_EQ(followed.bytes[((size_t)8 * 256 + 8) * 4 + 3], 0);
+    // a generator following itself is a cycle: reported, drawn as following nothing
+    EXPECT_TRUE(identical(itself, alone));
+    bool cycle = false;
+    for (const TitleProblem& p : job->problems()) cycle = cycle || p.code == "follow_cycle";
+    EXPECT_TRUE(cycle) << "follow_cycle is reported";
 }

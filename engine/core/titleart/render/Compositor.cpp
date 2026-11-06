@@ -117,34 +117,6 @@ namespace {
         return it != pe->end() && it->is_array() ? *it : emptyArray();
     }
 
-    bool anchoredToCanvas(const Json& effects) {
-        for (const Json& e : effects) {
-            if (!e.value("enabled", true)) continue;
-            auto params = e.find("params");
-            if (params == e.end() || !params->is_object()) continue;
-            for (const auto& item : params->items()) {
-                if (item.value().is_string() && item.value().get<std::string>() == "canvas") return true;
-            }
-        }
-        return false;
-    }
-
-    // pixels that depend on where the layer lies on the canvas, not only on its own shape: a
-    // generator (canvas-wide fills) and effects anchored to the canvas (`align: canvas`). The
-    // effect context has no flag for it (TitleEffectContext.h), so this reads the params
-    bool readsCanvasPosition(const Json& layer) {
-        auto gen = layer.find("generator");
-        if (gen != layer.end() && gen->is_object()) return true;
-        if (anchoredToCanvas(effectsOf(layer))) return true;
-        auto pe = layer.find("part_effects");
-        if (pe != layer.end() && pe->is_object()) {
-            for (const auto& item : pe->items()) {
-                if (item.value().is_array() && anchoredToCanvas(item.value())) return true;
-            }
-        }
-        return false;
-    }
-
     bool anyEnabled(const Json& effects) {
         for (const Json& e : effects) {
             if (e.value("enabled", true)) return true;
@@ -716,6 +688,15 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     }
     const bool contentInk = (wantInk || tracesInk) && contentLight(node);
     const bool keepSplit = std::find(req.keepSplits.begin(), req.keepSplits.end(), node.layerId) != req.keepSplits.end();
+    // what this node's definitions report about canvas positions (nested nodes keep their own)
+    std::shared_ptr<bool> reads = std::make_shared<bool>(false);
+    std::shared_ptr<bool> outerReads = canvasReads;
+    canvasReads = reads;
+    struct RestoreReads {
+        std::shared_ptr<bool>& slot;
+        std::shared_ptr<bool> outer;
+        ~RestoreReads() { slot = outer; }
+    } restoreReads{canvasReads, outerReads};
 
     // node pixels from the cache (R14): keyed by the layer's content (its own position left
     // out), px_scale, the formats, the output content and where it lands inside a whole pixel
@@ -766,7 +747,7 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     const bool maskIsPx = content.mask.slot == content.px.slot;
     Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer);
     Unit out;
-    bool positionFree = leaf2D && !clip && !readsCanvasPosition(layer);
+    bool positionFree = leaf2D && !clip;
     if (!clip) {
         out.px = applyMasks(node, post.px);
         if (post.ink.valid()) out.ink = applyMasks(node, post.ink);
@@ -791,8 +772,13 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         entry->key = key;
         entry->rect = leaf2D && !clip ? TitleRectI{rect.x - ax, rect.y - ay, rect.width, rect.height} : rect;
         // a node the region's edge cut is not whole at another offset
-        entry->positionFree = positionFree && rect.x > outRegion.x && rect.y > outRegion.y &&
-                              rect.x + rect.width < outRegion.x + outRegion.width && rect.y + rect.height < outRegion.y + outRegion.height;
+        const bool whole = positionFree && rect.x > outRegion.x && rect.y > outRegion.y &&
+                           rect.x + rect.width < outRegion.x + outRegion.width && rect.y + rect.height < outRegion.y + outRegion.height;
+        // and one whose definitions read canvas positions is known only once they ran
+        cpu("position free", node.layerId, 1, [entry, whole, reads](TitleJobState&, std::string&) {
+            entry->positionFree = whole && !*reads;
+            return true;
+        });
         store(entry, out.px.slot);
     }
     if (keepSplit && out.px.valid()) sources["split:" + node.layerId] = copyOf(out.px, node.layerId);
@@ -1015,6 +1001,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
         const TitleRectI rect = src.rect;
         const PassPlace place = passPlace(rect, layer);
         auto image = imageLookup(passImages(def->params, r.params, layerId.empty() ? id : layerId));
+        std::shared_ptr<bool> reads = canvasReads;
         kernel(std::string(def->type), stackId, rect, passes, 1.0f, [=](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
             std::string why;
             if (!state.target(outSlot, why) || !state.target(srcSlot, why)) {
@@ -1043,6 +1030,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             ctx.image = image;
             TitleJobState::Slot& outRef = state.slots[(size_t)outSlot];
             def->apply(ctx, *refOf(srcSlot), outRef.ref, paramsOf(*def, effect, *doc));
+            if (reads && ctx.usesCanvasPosition) *reads = true;
             if (!runner.error().empty()) {
                 error = std::string(def->type) + ": " + runner.error();
                 return false;

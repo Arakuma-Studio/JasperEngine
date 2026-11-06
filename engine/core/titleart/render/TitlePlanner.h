@@ -230,6 +230,9 @@ namespace jasperengine::titleart {
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;
         std::vector<std::unique_ptr<std::vector<DrawNode>>> trees;
+        // the node being planned: set when one of its effects or its generator says it read canvas
+        // positions (TitleEffectContext.h), so its cached pixels are not moved with the layer
+        std::shared_ptr<bool> canvasReads;
 
         // where an effect's or generator's target lies (the fields of TitleEffectContext.h's contexts)
         struct PassPlace {

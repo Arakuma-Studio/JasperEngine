@@ -277,9 +277,21 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
     const int outSlot = out.slot;
     const double s = scale;
     const PassPlace place = passPlace(rect, node.layer);
+    // the followed layer alone (§6.4 "Layer sources"), cut to this target's rect
+    int followSlot = -1;
+    const std::string followed = layer.value("follow", std::string());
+    if (def->follow != FollowMode::None && !followed.empty()) {
+        const TitlePx source = layerSource(followed, "follow_cycle", id);
+        if (source.valid()) {
+            TitlePx cut = clearedLike(rect, id);
+            blendOnto(cut, source, 1.0f, (int)TitleBlend::Normal, nullptr, id);
+            followSlot = cut.slot;
+        }
+    }
+    std::shared_ptr<bool> reads = canvasReads;
     kernel(type, id, rect, passes, 1.0f, [=](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
         std::string why;
-        if (!state.target(outSlot, why)) {
+        if (!state.target(outSlot, why) || (followSlot >= 0 && !state.target(followSlot, why))) {
             error = why;
             return false;
         }
@@ -297,14 +309,17 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         ctx.lightAngle = light.value("angle", 120.0);
         ctx.lightAltitude = light.value("altitude", 30.0);
         ctx.layerId = id;
+        if (followSlot >= 0) ctx.follow = &state.slots[(size_t)followSlot].ref;
         def->render(ctx, state.slots[(size_t)outSlot].ref,
                     ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, ctx.lightAngle, ctx.lightAltitude));
+        if (reads && ctx.usesCanvasPosition) *reads = true;
         if (!runner.error().empty()) {
             error = std::string(def->type) + ": " + runner.error();
             return false;
         }
         return true;
     });
+    release(followSlot);
     return out;
 }
 

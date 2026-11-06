@@ -29,6 +29,8 @@ namespace {
         if (kind != 0) {
             ramp = ctx.runner.lut(fx::gradientLut(p.gradient("gradient")));
             if (!ramp) return;
+            // a gradient spans the canvas, wherever the layer lies
+            ctx.usesCanvasPosition = true;
         }
         // target px -> canvas px from its bottom-left, +y up (the space FILL_GLSL works in)
         TitleAffine toCanvas = ctx.documentToTarget.inverse();
