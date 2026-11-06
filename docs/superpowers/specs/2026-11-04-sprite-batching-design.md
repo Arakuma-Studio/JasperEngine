@@ -733,10 +733,32 @@ S52 lands after this branch and builds on two hooks:
 - **The built-in Lit's High Lit Quality** (S57's `builtin:lit#USE_LIT_QUALITY`, a custom shader id of
   its own) batches as the plain built-in shader: its only define is the scene's quality, no
   per-object input. Any other Lit define (a PBR lobe, hex tiling) stays `ineligible_custom_shader`.
+- **Lazy MVP** is also off with several cameras (`hasMultipleCameras`, decided after the mirrors are
+  counted), and is lazy in the camera pre-pass too (`submitMeshDepth` makes the MVP of a draw alone). A
+  record dropped while its MVP is stale leaves the entity in `batchStaleMVPs`: its next draw alone makes
+  it (`ensureBatchMVP` in `drawMesh`), the one path for every draw alone.
+- **Geometry writes** are seen through `Buffer::noteWrite` / `getWriteCount`, bumped where a
+  `needUpdateBuffer` is uploaded (`updateMeshBuffers`, `uploadUIBuffers`): a record compares the counts
+  it baked with, so a write another pass uploaded first (the SSR G-buffer, a probe capture, a billboard
+  shadow, a FLATTEN Canvas Group layer) bakes it again. The count is not the content hash cache of 6.8;
+  the content key still hashes on each acquire.
+- **The Scene view's LOD Level and Overdraw Draw Modes** draw meshes alone (`disabled`): their tint
+  replaces the material colour, which a batch's vertex colours carry.
+- **Scissor**: a rect covering the pass's whole target is the pass's own scissor (`SokolSystem`), so the
+  UI pass's reset to the whole view after a clipped element does not split runs.
+- **Stream chunks** past the largest chunk are all kept (appended through a per-frame cursor) instead
+  of merged; a demand one chunk holds merges into one as before.
 - **STRICT mode** keeps one open run (opening another draws the one before at once).
 - **MCP**: `batching` also has `single_draws` and `drawn_alone`; `batch_breaks` entries have `pass`.
   Agent guidance went into `docs/mcp/guide/profiling.md` (`jasper://docs/profiling`), with no line in
   the agent guide (lean MCP rules; agent-authoring owns the guide).
+- **Test names**: T2 is `MatchesUnbatchedUnlit2D` (Unlit, MirroredScale, MirroredFrame, TextureRect),
+  `MatchesUnbatchedLight2D`, `MatchesUnbatchedShadow2D`, `LitSpritesBatchWhenTheirLightsAreTheSame`
+  (LitPunctual), `MatchesUnbatchedVertexLights`, `ShadowCastersDrawInGroups` (LitShadows: the cards
+  receive the sun's shadows), `MatchesUnbatchedNormalMap`, `MatchesUnbatchedAlphaModes` (AlphaMask,
+  AlphaOpaque), `MatchesUnbatchedFog` and `MatchesUnbatchedPostColor`; T5 `LitRunsSplitByObjectLights`
+  (Per Object light mode: Tiled lights have no object lists); T9 `SettledSpritesShowDirectWrites`; T10
+  `LazyMVPWhenTurningIneligible`; T12 `UIImagesBatch` and `UIElementsInACanvasGroupBatch`.
 - **Tests** as section 10 with these differences: T14 (Vulkan stream refusal) and T22 (benchmark)
   are not written (the Vulkan budget path is the one every STREAM upload takes; no benchmark server
   here); T15 counts GPU buffers of 1,500 sprites against the 2 x 1,500 of main instead of shrinking

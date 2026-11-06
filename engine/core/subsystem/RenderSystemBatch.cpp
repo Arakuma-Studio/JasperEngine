@@ -20,6 +20,7 @@
 #include "profiler/Profile.h"
 #include "render/UIDrawColor.h"
 #include "shader/ShaderBuildTypes.h"
+#include "sokol/SokolObject.h"
 #include "sokol/SokolPassRecorder.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/RenderSystemShared.h"
@@ -190,17 +191,9 @@ void RenderSystem::dropBatchRecord(Entity entity){
     if (slot == 0)
         return;
     const size_t index = slot - 1;
-    // its draws alone read the MVP update() left
-    if (batchRecords[index].mvpStale){
-        if (Transform* transform = scene->findComponent<Transform>(entity)){
-            batchRecords[index].mvpStale = false;
-            const Entity cameraEntity = scene->getCamera();
-            CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
-            Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
-            if (camera && cameraTransform)
-                updateMVP(0, *transform, *camera, *cameraTransform);
-        }
-    }
+    // its draws alone make the MVP update() left (ensureBatchMVP)
+    if (batchRecords[index].mvpStale)
+        batchStaleMVPs.insert(entity);
     slot = 0;
     if (index + 1 != batchRecords.size()){
         batchRecords[index] = std::move(batchRecords.back());
@@ -220,9 +213,13 @@ void RenderSystem::dropBatchRecords(){
 
 void RenderSystem::ensureBatchMVP(Entity entity, Transform& transform){
     BatchRecord* record = findBatchRecord(entity);
-    if (!record || !record->mvpStale)
+    if (record && record->mvpStale)
+        record->mvpStale = false;
+    else if (batchStaleMVPs.empty() || batchStaleMVPs.erase(entity) == 0)
         return;
-    record->mvpStale = false;
+    // each camera's pass makes its own MVPs (perCameraMVP): the main camera's would replace them
+    if (hasMultipleCameras || hasReflectionProbes)
+        return;
     const Entity cameraEntity = scene->getCamera();
     CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
     Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
@@ -235,6 +232,12 @@ void RenderSystem::ensureBatchMVP(Entity entity, Transform& transform){
 BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass){
     if (!Engine::isDynamicBatching())
         return BatchBreak::DISABLED;
+#ifdef JASPERENGINE_EDITOR
+    // the Scene view's LOD Level and Overdraw Draw Modes tint each object's material colour, which
+    // a batch's vertex colours already carry (each drawn alone takes the tint)
+    if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW) && !isEditorOverlay(entity))
+        return BatchBreak::DISABLED;
+#endif
     if (signature.test(scene->getComponentId<InstancedMeshComponent>()))
         return BatchBreak::INELIGIBLE_INSTANCED;
     if (signature.test(scene->getComponentId<TerrainComponent>()) || signature.test(scene->getComponentId<TilemapComponent>()))
@@ -420,6 +423,8 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
             return false;
     }
 
+    record.sourceWrites = mesh.buffer.getWriteCount();
+    record.indexWrites = mesh.indices.getWriteCount();
     record.placed = record.local;
     record.localValid = true;
     record.placedValid = false;
@@ -471,6 +476,8 @@ bool RenderSystem::bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vect
             return false;
     }
 
+    record.sourceWrites = ui.buffer.getWriteCount();
+    record.indexWrites = ui.indices.getWriteCount();
     record.placed = record.local;
     record.localValid = true;
     record.placedValid = false;
@@ -718,14 +725,14 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
         record = &addBatchRecord(entity);
 
     // geometry written since its last draw (MeshSystem, scripts): uploaded, baked again
-    if (mesh.needUpdateBuffer){
+    if (mesh.needUpdateBuffer)
         updateMeshBuffers(entity, mesh);
-        record->localValid = false;
-    }
     Submesh& submesh = mesh.submeshes[0];
     const bool bakesNormals = (submesh.shaderProperties & shaderPropertyBit(6)) != 0;
     Rect currentRect = submesh.textureRect;
+    // (a write another pass uploaded first: the buffers' write counts)
     if (!record->localValid || record->ui || record->source != mesh.buffer.getData() || record->sourceSize != mesh.buffer.getSize() ||
+            record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
             (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals){
@@ -781,8 +788,19 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
 bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const vs_depth_t& params,
                                    InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType,
                                    int instanceView, const LodView* lodView){
-    if (!batchPassActive || !(passSubmeshMask & 1u) || passLodFade == LodFadePass::FADE)
+    // drawn alone: the camera pre-pass's params carry the colour draw's MVP (the same gl_Position),
+    // which a batched mesh's lazy MVP may still have to be made for (ensureBatchMVP)
+    auto drawAlone = [&]() -> bool{
+        if (batchPassActive && batchPass.pass == BatchPass::DEPTH_PREPASS){
+            ensureBatchMVP(entity, transform);
+            vs_depth_t own = params;
+            own.mvpMatrix = objectMVP(transform);
+            return drawMeshDepth(entity, mesh, transform, cameraFar, frustumPlanes, own, instmesh, terrain, tilemap, forSSAO, pipelineType, instanceView, lodView);
+        }
         return drawMeshDepth(entity, mesh, transform, cameraFar, frustumPlanes, params, instmesh, terrain, tilemap, forSSAO, pipelineType, instanceView, lodView);
+    };
+    if (!batchPassActive || !(passSubmeshMask & 1u) || passLodFade == LodFadePass::FADE)
+        return drawAlone();
 
     const Signature signature = scene->getSignature(entity);
     // the camera pre-pass draws in batch form exactly what the colour pass does, so both compute
@@ -793,7 +811,7 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
         : meshBatchForm(entity, signature, mesh, transform, pipelineType, true);
     if (form != BatchBreak::NONE){
         batcher.noteAlone(batchPass.pass, entity, form);
-        return drawMeshDepth(entity, mesh, transform, cameraFar, frustumPlanes, params, instmesh, terrain, tilemap, forSSAO, pipelineType, instanceView, lodView);
+        return drawAlone();
     }
     if (!mesh.castShadows && !forSSAO)
         return true;
@@ -809,13 +827,13 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
     BatchRecord* record = findBatchRecord(entity);
     if (!record)
         record = &addBatchRecord(entity);
-    if (mesh.needUpdateBuffer){
+    if (mesh.needUpdateBuffer)
         updateMeshBuffers(entity, mesh);
-        record->localValid = false;
-    }
     const bool bakesNormals = (submesh.shaderProperties & shaderPropertyBit(6)) != 0;
     Rect currentRect = submesh.textureRect;
+    // (a write another pass uploaded first: the buffers' write counts)
     if (!record->localValid || record->ui || record->source != mesh.buffer.getData() || record->sourceSize != mesh.buffer.getSize() ||
+            record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
             (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals){
@@ -888,15 +906,15 @@ bool RenderSystem::submitUI(Entity entity, UIComponent& ui, Transform& transform
     BatchRecord* record = findBatchRecord(entity);
     if (!record)
         record = &addBatchRecord(entity);
-    if (ui.needUpdateBuffer){
+    if (ui.needUpdateBuffer)
         uploadUIBuffers(ui);
-        record->localValid = false;
-    }
 
     const uint64_t vertexColorBit = ShaderPool::getUIProperties(false, false, false, true, false);
     const bool vertexColor = (ui.shaderProperties & vertexColorBit) != 0;
     const Vector4 drawColor = uiElementColor(ui, false);
+    // (a write a Canvas Group layer uploaded first: the buffers' write counts)
     if (!record->localValid || !record->ui || record->source != ui.buffer.getData() || record->sourceSize != ui.buffer.getSize() ||
+            record->sourceWrites != ui.buffer.getWriteCount() || record->indexWrites != ui.indices.getWriteCount() ||
             record->vertexCount != ui.buffer.getCount() || record->indexCount != ui.indices.getCount() ||
             (record->bakesColor && record->color != drawColor) || record->bakesColor != (vertexColor && batchFloatAttribute(ui.buffer, AttributeType::COLOR, 4) >= 0)){
         if (!bakeUIRecord(*record, ui, drawColor, vertexColor)){
@@ -984,6 +1002,9 @@ void RenderSystem::drawBatchRun(BatchRun& run){
     geometry.objectBlock[1] = Matrix4();
     geometry.objectBlock[2] = mvp;
 
+    // what the instancing batch holds draws first (its draw is older), so the annotation below is
+    // this run's draw's
+    SokolDrawBatch::flush();
     SokolSystem::applyBatchScissor(run.key.scissor);
     if (SokolPassRecorder::isDrawListEnabled())
         SokolPassRecorder::annotateNextDraw((uint16_t)std::min<uint32_t>(run.items, UINT16_MAX), (uint8_t)run.openedBy);
@@ -1034,9 +1055,13 @@ bool RenderSystem::uploadBatch(const void* data, size_t size, bool index, Buffer
     if (size == 0)
         return false;
     std::vector<BatchChunk>& chunks = index ? batchIndexChunks : batchVertexChunks;
+    // the chunk this frame appends to (the ones before it are full)
+    size_t& cursor = index ? batchIndexCursor : batchVertexCursor;
     (index ? batchIndexDemand : batchVertexDemand) += batchRoundUp4(size);
 
-    if (chunks.empty() || chunks.back().used + batchRoundUp4(size) > chunks.back().capacity){
+    while (cursor < chunks.size() && chunks[cursor].used + batchRoundUp4(size) > chunks[cursor].capacity)
+        cursor++;
+    if (cursor == chunks.size()){
         const size_t last = chunks.empty() ? (index ? BATCH_INDEX_CHUNK : BATCH_VERTEX_CHUNK) / 2 : chunks.back().capacity;
         const size_t capacity = std::min(std::max(last * 2, batchRoundUp4(size)), std::max(BATCH_CHUNK_MAX, batchRoundUp4(size)));
         chunks.emplace_back();
@@ -1048,7 +1073,7 @@ bool RenderSystem::uploadBatch(const void* data, size_t size, bool index, Buffer
         }
         chunks.back().capacity = capacity;
     }
-    BatchChunk& chunk = chunks.back();
+    BatchChunk& chunk = chunks[cursor];
     const int appended = chunk.buffer.appendBuffer((unsigned int)size, data);
     if (appended < 0)
         return false; // the Vulkan stream budget refused it (SokolSystem logs the frame)
@@ -1065,15 +1090,17 @@ void RenderSystem::prepareBatchChunks(){
         return;
     batchChunkCommit = commits;
 
-    // the chunks of last frame as one, sized for what it needed; kept while the demand fits a
-    // quarter of it no longer than BATCH_SHRINK_FRAMES frames
-    auto settle = [&](std::vector<BatchChunk>& chunks, size_t& demand, bool index){
+    // the chunks of last frame as one, sized for what it needed, when one chunk holds it; past
+    // the largest chunk they are all needed and kept (made again each frame they would cost an
+    // allocation each). Kept while the demand fits a quarter of them no longer than
+    // BATCH_SHRINK_FRAMES frames
+    auto settle = [&](std::vector<BatchChunk>& chunks, size_t& demand, uint32_t& smallFrames, bool index){
         size_t capacity = 0;
         for (const BatchChunk& chunk : chunks)
             capacity += chunk.capacity;
-        const bool several = chunks.size() > 1;
+        const bool merge = chunks.size() > 1 && demand <= BATCH_CHUNK_MAX;
         const bool small = demand * 4 < capacity;
-        if (several || (small && ++batchSmallFrames > BATCH_SHRINK_FRAMES)){
+        if (merge || (small && ++smallFrames > BATCH_SHRINK_FRAMES)){
             for (BatchChunk& chunk : chunks)
                 chunk.buffer.destroyBuffer();
             chunks.clear();
@@ -1088,16 +1115,18 @@ void RenderSystem::prepareBatchChunks(){
                     chunks.pop_back();
             }
             if (small)
-                batchSmallFrames = 0;
+                smallFrames = 0;
         }else if (!small){
-            batchSmallFrames = 0;
+            smallFrames = 0;
         }
         for (BatchChunk& chunk : chunks)
             chunk.used = 0;
         demand = 0;
     };
-    settle(batchVertexChunks, batchVertexDemand, false);
-    settle(batchIndexChunks, batchIndexDemand, true);
+    batchVertexCursor = 0;
+    batchIndexCursor = 0;
+    settle(batchVertexChunks, batchVertexDemand, batchSmallVertexFrames, false);
+    settle(batchIndexChunks, batchIndexDemand, batchSmallIndexFrames, true);
 }
 
 void RenderSystem::destroyBatchChunks(){
@@ -1107,6 +1136,8 @@ void RenderSystem::destroyBatchChunks(){
         chunk.buffer.destroyBuffer();
     batchVertexChunks.clear();
     batchIndexChunks.clear();
+    batchVertexCursor = 0;
+    batchIndexCursor = 0;
     batchVertexDemand = 0;
     batchIndexDemand = 0;
     batchQuadIndices.destroyBuffer();
@@ -1181,6 +1212,9 @@ void RenderSystem::refreshUITexture(UIComponent& ui){
 void RenderSystem::uploadUIBuffers(UIComponent& ui){
     if (!ui.needUpdateBuffer)
         return;
+    // (a batch record baked before sees it, also when a Canvas Group layer uploads it: noteWrite)
+    ui.buffer.noteWrite();
+    ui.indices.noteWrite();
     ui.buffer.getRender()->updateBuffer(ui.buffer.getSize(), ui.buffer.getData());
 
     if (ui.indices.getCount() > 0){

@@ -439,6 +439,32 @@ namespace{
     bool inDeferredFlush = false;
     SokolSystem::ScissorRect requestedScissor;
     SokolSystem::ScissorRect appliedScissor;
+    // the open pass's render area: a rect covering it is the pass's own scissor (wholePass), so a
+    // reset to the whole target keeps a batch's runs together with the draws before any scissor
+    int passWidth = 0;
+    int passHeight = 0;
+
+    SokolSystem::ScissorRect wholePass(){
+        SokolSystem::ScissorRect rect;
+        rect.width = passWidth;
+        rect.height = passHeight;
+        rect.set = passWidth > 0 && passHeight > 0;
+        return rect;
+    }
+
+    void measurePass(const sg_pass& pass){
+        const sg_view view = pass.attachments.colors[0].id != SG_INVALID_ID ? pass.attachments.colors[0] : pass.attachments.depth_stencil;
+        if (view.id != SG_INVALID_ID){
+            const sg_view_desc desc = sg_query_view_desc(view);
+            const int mip = pass.attachments.colors[0].id != SG_INVALID_ID ? desc.color_attachment.mip_level : desc.depth_stencil_attachment.mip_level;
+            const sg_image image = sg_query_view_image(view);
+            passWidth = std::max(1, sg_query_image_width(image) >> mip);
+            passHeight = std::max(1, sg_query_image_height(image) >> mip);
+        }else{
+            passWidth = pass.swapchain.width;
+            passHeight = pass.swapchain.height;
+        }
+    }
 
     void applyScissorRect(const SokolSystem::ScissorRect& rect){
         // what the instancing batch holds was for the rect before
@@ -544,6 +570,8 @@ void SokolSystem::applyScissor(int x, int y, int width, int height, bool originT
     rect.height = height;
     rect.originTopLeft = originTopLeft;
     rect.set = true;
+    if (passWidth > 0 && x <= 0 && y <= 0 && x + width >= passWidth && y + height >= passHeight)
+        rect = wholePass();
     requestedScissor = rect;
     if (!deferredFlush)
         applyScissorRect(rect);
@@ -567,8 +595,9 @@ void SokolSystem::beginPass(const sg_pass& pass){
     sg_begin_pass(pass);
     passOpen = true;
     // sokol starts every pass with its whole target as the scissor
-    requestedScissor = ScissorRect();
-    appliedScissor = ScissorRect();
+    measurePass(pass);
+    requestedScissor = wholePass();
+    appliedScissor = requestedScissor;
     // a new pass has no pipeline applied (the dynamic path's "applied last") nor uniforms
     SokolPipelineCache::invalidateApplied();
 }

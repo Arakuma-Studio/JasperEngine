@@ -2593,6 +2593,9 @@ namespace jasperengine{
 			// what the bake read (a difference bakes again)
 			const unsigned char* source = nullptr;
 			size_t sourceSize = 0;
+			// the vertex and index buffers' write counts (Buffer::noteWrite)
+			uint64_t sourceWrites = 0;
+			uint64_t indexWrites = 0;
 			Rect rect;
 			bool hasRect = false;
 			Vector4 color;
@@ -2665,13 +2668,17 @@ namespace jasperengine{
 		std::vector<BatchChunk> batchIndexChunks;
 		size_t batchVertexDemand = 0;
 		size_t batchIndexDemand = 0;
-		uint32_t batchSmallFrames = 0;
+		size_t batchVertexCursor = 0;
+		size_t batchIndexCursor = 0;
+		// frames the chunks were mostly unused, each kind its own
+		uint32_t batchSmallVertexFrames = 0;
+		uint32_t batchSmallIndexFrames = 0;
 		uint64_t batchChunkCommit = 0;
 		BufferRender batchQuadIndices;
-		// main camera of the last update: what a stale MVP is made with (ensureBatchMVP)
-		CameraComponent* batchMVPCamera = nullptr;
-		Transform* batchMVPCameraTransform = nullptr;
 		bool batchLazyMVP = false;
+		// objects whose record went while their MVP was stale: made by their next draw alone
+		// (ensureBatchMVP), as a record's is
+		std::unordered_set<Entity> batchStaleMVPs;
 		bool batchingSeen = true;
 
 		BatchRecord* findBatchRecord(Entity entity);

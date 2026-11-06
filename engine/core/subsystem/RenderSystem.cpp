@@ -942,6 +942,7 @@ void RenderSystem::destroy(){
     // Dynamic Batching's records (their objects are destroyed with the scene) and buffers
     endBatchPass();
     dropBatchRecords();
+    batchStaleMVPs.clear();
     destroyBatchChunks();
     batchFrames.clear();
     // S57's passes, targets and lists, before the views go
@@ -9615,6 +9616,9 @@ void RenderSystem::updateMeshBuffers(Entity entity, MeshComponent& mesh){
 
     // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
     mesh.pickGeometryHash = 0;
+    // (a batch record baked before sees it, whichever pass uploads it: noteWrite)
+    mesh.buffer.noteWrite();
+    mesh.indices.noteWrite();
 
     // an immutable buffer shared by content whose bytes changed: the shared buffer of its new
     // bytes, or a private dynamic one once it changes often
@@ -15765,21 +15769,6 @@ void RenderSystem::update(double dt){
     }else{
         batchingSeen = true;
     }
-    // the MVP of batched meshes waits for a draw alone only while every pass draws with the main
-    // camera's (a probe or another camera makes its own per pass)
-    {
-        const bool lazy = Engine::isDynamicBatching() && !hasReflectionProbes;
-        if (!lazy && batchLazyMVP){
-            for (BatchRecord& record : batchRecords){
-                if (record.mvpStale){
-                    if (Transform* transform = scene->findComponent<Transform>(record.entity))
-                        ensureBatchMVP(record.entity, *transform);
-                }
-            }
-        }
-        batchLazyMVP = lazy;
-    }
-
     if (paused) {
         return;
     }
@@ -16003,6 +15992,35 @@ void RenderSystem::update(double dt){
     // create reflection camera entities (reallocating the camera/transform arrays),
     // so fetch mainCamera/mainCameraTransform references AFTER it returns.
     updateMirrors(mainCameraEntity);
+
+    // the MVP of batched meshes waits for a draw alone only while every pass draws with the main
+    // camera's (a probe or another camera makes its own per pass): decided once the cameras of
+    // this update are counted (a mirror's too)
+    {
+        const bool lazy = Engine::isDynamicBatching() && !hasReflectionProbes && !hasMultipleCameras;
+        if (!lazy && batchLazyMVP){
+            // the stale ones made now with the main camera (ensureBatchMVP would leave them to
+            // the per-camera passes)
+            const Entity cameraEntity = scene->getCamera();
+            CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+            Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
+            auto refresh = [&](Entity entity){
+                Transform* transform = scene->findComponent<Transform>(entity);
+                if (transform && camera && cameraTransform)
+                    updateMVP(0, *transform, *camera, *cameraTransform);
+            };
+            for (BatchRecord& record : batchRecords){
+                if (record.mvpStale){
+                    record.mvpStale = false;
+                    refresh(record.entity);
+                }
+            }
+            for (Entity entity : batchStaleMVPs)
+                refresh(entity);
+            batchStaleMVPs.clear();
+        }
+        batchLazyMVP = lazy;
+    }
 
     // the rest of the frame is built from the main camera view
     CameraComponent* mainCameraPtr = scene->findComponent<CameraComponent>(mainCameraEntity);
@@ -17674,7 +17692,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // the fading draws are drawn by the colour pass alone
             if (opaque.mesh->skipsDepthPrepass || opaque.lodPass == LodFadePass::FADE)
                 continue;
-            ensureBatchMVP(opaque.entity, *opaque.transform);
+            // a batched mesh's MVP may wait: submitMeshDepth makes it for a draw alone (batching
+            // off, no batch pass: made here)
+            if (!Engine::isDynamicBatching())
+                ensureBatchMVP(opaque.entity, *opaque.transform);
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             passSubmeshMask = opaque.submeshMask;

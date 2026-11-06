@@ -139,7 +139,9 @@ namespace jasperengine{
             int width = 0;
             int height = 0;
             bool originTopLeft = false;
-            bool set = false; // false: the pass's own (its whole target, as the pass began)
+            // false: none known (no pass open). A rect covering the pass's whole target is that
+            // pass's own, whatever its origin (applyScissor normalises it)
+            bool set = false;
 
             bool operator==(const ScissorRect& rhs) const;
             bool operator!=(const ScissorRect& rhs) const { return !(*this == rhs); }
