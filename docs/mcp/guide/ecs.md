@@ -36,6 +36,9 @@ lists them (they can be called by name without it).
   one without (`after=Skybox`) is refused; use `parent` (and `index`, counted among the
   GameObjects with a Transform) or a sibling with a Transform.
 - A scene has up to 256 component types; `get_ecs_stats` shows how many are registered.
+- Memory per type: `bytes` (the pages), `element_bytes` (one component) and `heap_bytes` (the arrays
+  its components hold outside the pages: a mesh's submeshes and bones, a sprite's frames, a
+  tilemap's tiles). Arrays have no fixed capacity: a sprite's mesh is a few KiB, each submesh more.
 
 ## The change tick
 

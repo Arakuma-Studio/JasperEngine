@@ -8699,9 +8699,10 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         propertyHeader("Frames", -1, false, false);
         ImGui::Text("%d", activeFrameCount);
         float spriteFramesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth,
+                sprite.framesRect.validIndex((int)sprite.numFramesRect), "A Sprite holds at most 65,536 frames")) {
             int freeSlot = (int)sprite.numFramesRect;
-            if (freeSlot < (int)sprite.framesRect.size()) {
+            if (sprite.framesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "framesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9605,9 +9606,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tile Rects", -1, false, false);
         ImGui::Text("%d", activeTileRectCount);
         float tileRectsArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth,
+                tilemap.tilesRect.validIndex((int)tilemap.numTilesRect), "A Tilemap holds at most 65,536 tile rects")) {
             int freeSlot = (int)tilemap.numTilesRect;
-            if (freeSlot < (int)tilemap.tilesRect.size()) {
+            if (tilemap.tilesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "tilesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9705,9 +9707,15 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
                     ImVec2 centerPad((arrowButtonSize.x - iconSize.x) * 0.5f, (arrowButtonSize.y - iconSize.y) * 0.5f);
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, centerPad);
                     }
-                    if (ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect")) {
+                    ImGui::BeginDisabled(tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES);
+                    const bool addTile = ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect");
+                    ImGui::EndDisabled();
+                    if (tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("A Tilemap draws at most %d tiles", MAX_TILEMAP_RENDERED_TILES);
+                    }
+                    if (addTile) {
                         int freeSlot = (int)tilemap.numTiles;
-                        if (freeSlot < (int)tilemap.tiles.size()) {
+                        if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                             editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                             std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                             multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9833,9 +9841,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tiles", -1, false, false);
         ImGui::Text("%d", activeTileCount);
         float tilesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth,
+                tilemap.numTiles < MAX_TILEMAP_RENDERED_TILES, "A Tilemap draws at most 16,383 tiles")) {
             int freeSlot = (int)tilemap.numTiles;
-            if (freeSlot < (int)tilemap.tiles.size()) {
+            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                 float defaultWidth = 100.0f;
                 float defaultHeight = 100.0f;
                 if (tilemap.numTilesRect > 0 && tilemap.tilesRect[0].rect.getWidth() > 0.0f && tilemap.tilesRect[0].rect.getHeight() > 0.0f) {

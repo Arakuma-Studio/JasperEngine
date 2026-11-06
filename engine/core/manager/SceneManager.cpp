@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
+#include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -766,6 +767,8 @@ void SceneManager::updateLoading() {
 
     // the new scenes hold their own files now
     cancelPreload(currentId);
+    // what the replaced scenes and the decoders freed goes back to the system
+    memory::requestHeapTrim();
 }
 
 bool SceneManager::addChildScene(uint32_t id) {

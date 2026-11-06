@@ -2397,7 +2397,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     const bool restoreHierarchy = model->mergeStaticMeshes;
                     std::string mergeReason;
                     bool canChangeMerge = restoreHierarchy ||
-                        scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, *mesh, &mergeReason);
+                        scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, &mergeReason);
                     bool canEditHierarchy = ProjectUtils::hasCustomMeshParenting(scene, node.id) &&
                         scene->getSystem<MeshSystem>()->canEditModelHierarchy(*model);
                     if (!restoreHierarchy && canEditHierarchy) {
