@@ -24,7 +24,7 @@ change it while it runs with `Engine.dynamicBatching` (Lua) or `Engine::setDynam
 
 Two objects join one draw when they come one after the other in the pass's order (the hierarchy
 order in 2D, the sorted queues in 3D) and share: the shader variant and render state, every
-texture and sampler, the clip rect, the 4,096-unit origin cell of their positions, and the values
+texture and sampler, the clip rect, the 4,096-unit origin cell of their positions (centred on the world origin), and the values
 the draw does not take from their vertices (below).
 
 What a draw takes from each object's vertices, so it never breaks a batch:

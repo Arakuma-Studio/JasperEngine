@@ -170,17 +170,41 @@ namespace {
             return batchFrame ? batchFrame->stats : none;
         }
 
+        // the last frame's counters and first breaks, for a failure's message
+        std::string describe(){
+            const BatchStats& s = stats();
+            std::string text = "batches " + std::to_string(s.batches) + ", batched " + std::to_string(s.batchedObjects) +
+                ", single " + std::to_string(s.singleDraws) + ", alone " + std::to_string(s.aloneDraws) +
+                ", culled " + std::to_string(s.culled) + ", settled " + std::to_string(s.settled) + "; breaks:";
+            for (size_t r = 1; r < (size_t)BatchBreak::COUNT; r++){
+                if (s.breaks[r])
+                    text += std::string(" ") + getBatchBreakName((BatchBreak)r) + "=" + std::to_string(s.breaks[r]);
+            }
+            const RenderSystem::BatchFrame* batchFrame = scene.getSystem<RenderSystem>()->getBatchFrame(SystemRender::FRAME_STATS_FRAME);
+            if (batchFrame){
+                size_t shown = 0;
+                for (const BatchBreakEvent& event : batchFrame->breaks){
+                    if (shown++ == 8)
+                        break;
+                    text += std::string("; ") + getBatchBreakName(event.reason) + " pass " + std::to_string((int)event.pass) +
+                        " entity " + std::to_string(event.entity);
+                }
+            }
+            return text;
+        }
+
         // batching on and off draw the same image (max channel difference 1, at most `tolerated`
         // pixels more: edges of rotated quads), the on frame with `expectedDraws` draws or fewer
         void expectSameImage(size_t tolerated, uint32_t expectedOnDraws, uint32_t* offDrawsOut = nullptr){
             uint32_t onDraws = 0, offDraws = 0;
             const std::vector<uint8_t> on = frame(true, &onDraws);
+            const std::string batched = describe();
             const std::vector<uint8_t> off = frame(false, &offDraws);
             const BatchDifference d = batchCompare(off, on);
             EXPECT_GT(d.lit, 200u) << "the scene should draw something";
             EXPECT_LE(d.over1, tolerated) << "max channel difference " << d.maxDiff;
-            EXPECT_LE(onDraws, expectedOnDraws);
-            EXPECT_LT(onDraws, offDraws);
+            EXPECT_LE(onDraws, expectedOnDraws) << batched;
+            EXPECT_LT(onDraws, offDraws) << batched;
             if (offDrawsOut)
                 *offDrawsOut = offDraws;
         }

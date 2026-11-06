@@ -23,6 +23,7 @@
 #include "sokol/SokolPassRecorder.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/RenderSystemShared.h"
+#include "texture/MaterialPbr.h"
 
 #include <algorithm>
 #include <array>
@@ -246,7 +247,12 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     Submesh& submesh = mesh.submeshes[0];
     if (submesh.vertexCount == 0 || !submesh.shader)
         return BatchBreak::INELIGIBLE_NOT_READY;
-    if (submesh.manifest || submesh.customShaderId != 0 || submesh.customDepthShaderId != 0 ||
+    // the built-in Lit with only the scene's High Lit Quality (a "builtin:lit" reference of its
+    // own, the same per-object inputs) batches as the plain built-in shader does
+    static const uint32_t litQualityBit = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE);
+    const bool builtinLit = submesh.customShaderId == 0 ||
+        (submesh.litDefineBits == litQualityBit && submesh.material.shader.empty() && scene->getDefaultCustomShader(ShaderType::MESH).empty());
+    if (submesh.manifest || !builtinLit || submesh.customDepthShaderId != 0 ||
             !mesh.customShader.empty() || !mesh.customDepthShader.empty())
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
     if (submesh.extraPass)
@@ -473,9 +479,10 @@ bool RenderSystem::bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vect
 
 void RenderSystem::placeBatchRecord(BatchRecord& record, const Matrix4& model, const Matrix4* normalMatrix){
     // the origin cell of its translation: positions are relative to it, so a draw far from the
-    // world origin keeps the precision of its own model matrix
+    // world origin keeps the precision of its own model matrix. Cells are centred on multiples of
+    // the size, the world origin a cell's centre: a scene around it is one cell, not eight
     for (int a = 0; a < 3; a++){
-        const double cell = std::floor((double)model[3][a] / BATCH_CELL_SIZE);
+        const double cell = std::floor((double)model[3][a] / BATCH_CELL_SIZE + 0.5);
         record.cell[a] = (int32_t)std::clamp(cell, -2.0e9, 2.0e9);
     }
     const double cellOrigin[3] = {(double)record.cell[0] * BATCH_CELL_SIZE, (double)record.cell[1] * BATCH_CELL_SIZE,

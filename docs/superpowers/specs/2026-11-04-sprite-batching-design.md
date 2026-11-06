@@ -728,6 +728,11 @@ S52 lands after this branch and builds on two hooks:
   transparent queue). Billboards and UI elements keep their MVP.
 - **Stream chunks**: at most 16 MB per chunk on every platform (more chunks when a frame needs more);
   the quad index buffer is per RenderSystem (per scene), not per process.
+- **Origin cells are centred** on multiples of 4,096 (`floor(x / 4096 + 0.5)`): the world origin is a
+  cell's centre, so a 3D scene around it is one cell instead of breaking at 0 on each axis.
+- **The built-in Lit's High Lit Quality** (S57's `builtin:lit#USE_LIT_QUALITY`, a custom shader id of
+  its own) batches as the plain built-in shader: its only define is the scene's quality, no
+  per-object input. Any other Lit define (a PBR lobe, hex tiling) stays `ineligible_custom_shader`.
 - **STRICT mode** keeps one open run (opening another draws the one before at once).
 - **MCP**: `batching` also has `single_draws` and `drawn_alone`; `batch_breaks` entries have `pass`.
   Agent guidance went into `docs/mcp/guide/profiling.md` (`jasper://docs/profiling`), with no line in
