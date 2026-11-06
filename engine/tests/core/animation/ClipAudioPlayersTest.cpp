@@ -266,6 +266,8 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
                 without, with, with - without);
 #if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
     const double slack = testsupport::perfSlack();
-    if (slack > 0.0) EXPECT_LT(with - without, 0.3 * slack);
+    if (slack > 0.0){
+        EXPECT_LT(with - without, 0.3 * slack);
+    }
 #endif
 }
