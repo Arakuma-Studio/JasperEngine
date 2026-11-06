@@ -77,7 +77,8 @@ namespace jasperengine{
         // defines of the shader above (library reference or fork)
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
-        // AUTO keeps the built-in state (alpha blend, depth write on)
+        // AUTO keeps the built-in state: alpha blend, depth written when opaque and not when
+        // transparent (RenderSystem::resolvePointsRenderState)
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
         // phase 2: stencil test/write and colour channels (AUTO = manifest, else none / all)
@@ -106,6 +107,10 @@ namespace jasperengine{
         // set at load with autoTransparency: the texture has alpha. Runtime only, never saved, so
         // a scene saves the same whether or not it has loaded yet
         bool derivedTransparent = false;
+        // set at load: whether Depth Write follows the queue (Auto, and the shader's zwrite= Auto)
+        // and the transparency the pipelines were made with (runtime)
+        bool depthFollowsQueue = true;
+        bool loadedTransparent = false;
         // drawn in the transparent queue
         bool isTransparent() const { return transparent || (autoTransparency && derivedTransparent); }
 

@@ -5163,6 +5163,11 @@ bool editor::App::shouldSyncEngineApi() const {
     return true;
 }
 
+bool editor::App::recordsRecentProjects() const {
+    const mcp::McpLaunchOptions& options = mcp::mcpLaunchOptions();
+    return !options.stdio && !options.headless && !benchmarkEnabled;
+}
+
 void editor::App::updateResourcesPath(){
     std::filesystem::path currentProjectPath = project.getProjectPath().lexically_normal();
     bool projectPathChanged = lastResourcesProjectPath != currentProjectPath;
@@ -5564,7 +5569,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
+    // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
+    //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
+    //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
+    // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
+    //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
 }
 
 void editor::App::pushTabNotificationStyle(){

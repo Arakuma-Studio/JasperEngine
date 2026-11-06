@@ -162,26 +162,16 @@ const char* hostPlatformName() {
 #endif
 }
 
-// Graphics APIs a Desktop player of this host can use (ExportWindow desktopGraphicBackends)
-std::vector<ShaderBackend> desktopBackends() {
-#if defined(_WIN32)
-    return {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
-#elif defined(__APPLE__)
-    return {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
-#else
-    return {ShaderBackend::GLCore, ShaderBackend::Vulkan};
-#endif
+// Graphics APIs a Desktop player of this host can use (the Build Settings window's)
+const std::vector<ShaderBackend>& desktopBackends() {
+    return hostDesktopBackends();
 }
 
-// Source Code presets per target platform (ExportWindow::platformBackends)
+// Source Code presets per target platform (the Build Settings window's)
 bool platformBackends(const std::string& platform, std::set<ShaderBackend>& out) {
-    if (platform == "windows") out = {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
-    else if (platform == "macos") out = {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
-    else if (platform == "linux") out = {ShaderBackend::GLCore, ShaderBackend::Vulkan};
-    else if (platform == "android") out = {ShaderBackend::GLES3, ShaderBackend::Vulkan};
-    else if (platform == "ios") out = {ShaderBackend::MetalIOS};
-    else if (platform == "web") out = {ShaderBackend::GLES3};
-    else return false;
+    BuildPlatform target;
+    if (!parseBuildPlatform(platform, target)) return false;
+    out = sourceExportBackends(target);
     return true;
 }
 

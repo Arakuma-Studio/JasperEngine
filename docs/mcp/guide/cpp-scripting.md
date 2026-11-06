@@ -256,6 +256,11 @@ or keep the handles in a `TimerGroup` member. Logging with a category and the ca
   `Rigidbody::setPosition/setRotation` or `Rigidbody2D::setPosition/setAngle`, never by
   writing the GameObject's transform from `onFixedUpdate`. See `jasper://docs/physics`.
 - `Rigidbody::setMass` only writes the live Jolt body and is lost on reload: author density.
+- Box2D and Jolt directly, where the engine's classes stop: `#include "box2d/box2d.h"`, and
+  `<Jolt/Jolt.h>` before any other Jolt header. The handles: `Rigidbody2D::getBox2DBody()`,
+  `getBox2DShape(i)`, the scene's `PhysicsSystem::getWorld2D()`, `Rigidbody::getJoltBody()`. Every
+  public Box2D and Jolt function links, in Play and in builds (the editor's engine library
+  exports all of both); the generated `CMakeLists.txt` passes the macros Jolt's headers need.
 
 ## Where sources go and how they build
 
@@ -269,7 +274,10 @@ or keep the handles in a `TimerGroup` member. Logging with a category and the ca
   and directories named `build`.
 - The editor runs a C++ build only when a C++ script (enabled or not) is attached to some
   GameObject: in a Lua-only project helper sources are first compiled by an export.
-- **Never edit the generated `CMakeLists.txt`** (regenerated every build). Custom settings go
+- **Never edit the generated `CMakeLists.txt`** (regenerated every build). It can also build the
+  project as a standalone executable against the editor's engine library (`cmake -S <project>`;
+  `-DJASPERENGINE_LIB_DIR=<the editor's folder>` names another editor's): it always compiles with
+  that library's layouts and stops when the folder holds a static engine build. Custom settings go
   in `ProjectBuild.cmake` at the project root, attached to `${JASPERENGINE_TARGET}` with paths
   from `${JASPERENGINE_SCRIPTS_DIR}`:
   ```cmake

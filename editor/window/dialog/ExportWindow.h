@@ -217,6 +217,8 @@ namespace jasperengine::editor {
         static const char* platformIcon(BuildPlatform platform);
         bool platformCanBuildPlayer(BuildPlatform platform) const;
         std::set<ShaderBackend> platformBackends(BuildPlatform platform) const;
+        // the union of the presets of the platforms ticked on the Source Code page
+        std::set<ShaderBackend> selectedSourcePlatformBackends() const;
         void selectPlatform(BuildPlatform platform, bool buildPlayer);
         void setStartScene(uint32_t sceneId);
         void drawScenesInBuild(float height);

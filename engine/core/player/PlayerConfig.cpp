@@ -80,6 +80,7 @@ json PlayerConfig::toJson() const {
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
@@ -184,6 +185,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         }
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
+        }
+        if (const auto foliage = in.find("foliageDistanceScale"); foliage != in.end() && foliage->is_array()) {
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++){
+                if ((*foliage)[i].is_number()) config.foliageDistanceScale[i] = (*foliage)[i].get<float>();
+            }
         }
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);

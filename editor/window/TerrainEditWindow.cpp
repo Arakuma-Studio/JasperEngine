@@ -3467,9 +3467,16 @@ void editor::TerrainEditWindow::show(){
             if (ImGui::SliderFloat("##foliage_align", &alignment, 0.0f, 100.0f, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)){
                 setFoliageLayerProperty("alignToNormal", alignment / 100.0f);
             }
-            terrainPropertyRow("Draw distance", "Detail visibility distance in world units. Ignored while editing terrain; restored when editing ends or play starts.");
-            if (ImGui::DragFloat("##foliage_distance", &layer.drawDistance, 1.0f, 1.0f, 500.0f, "%.0f")){
-                setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
+            terrainPropertyRow("Draw range", "Instances show between these distances, in world units, fading in after Min and out before Max. "
+                               "A copy of the layer with a cheaper mesh whose Min equals this layer's Max takes over with a cross-fade. "
+                               "Scaled by Project Settings > Quality > Foliage Distance. Ignored while editing terrain; restored when editing ends or play starts.");
+            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 500.0f, "Min %.0f", "Max %.0f")){
+                if (layer.minDrawDistance != currentLayer.minDrawDistance){
+                    setFoliageLayerProperty("minDrawDistance", std::clamp(layer.minDrawDistance, 0.0f, std::max(1.0f, layer.drawDistance)));
+                }
+                if (layer.drawDistance != currentLayer.drawDistance){
+                    setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
+                }
             }
             terrainPropertyRow("Cast shadows", "Turn off for grass-scale scatter so it skips the shadow cascades.");
             if (ImGui::Checkbox("##foliage_cast_shadows", &layer.castShadows)){
