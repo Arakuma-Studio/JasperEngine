@@ -5570,7 +5570,10 @@ namespace {
             return;
         }
         const bool update = desc.decodeApply == reflect::DecodeApply::UpdateFlags;
-        const uint64_t flags = update ? Catalog::getChangedUpdateFlags(desc.type, existing, value.get()) : 0;
+        uint64_t flags = update ? Catalog::getChangedUpdateFlags(desc.type, existing, value.get()) : 0;
+        // a mesh once held all its submesh slots, whose materials always count as changed, so every
+        // decode over a live mesh reloaded it; a mesh of no submeshes yet still does
+        if (update && desc.type == ComponentType::MeshComponent) flags |= editor::UpdateFlags_Mesh_Reload | editor::UpdateFlags_Mesh_Texture;
         if (isTransform) {
             registry->addEntityChild(parent, entity, false);
         }
