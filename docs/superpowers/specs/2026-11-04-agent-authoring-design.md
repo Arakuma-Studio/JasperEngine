@@ -774,4 +774,7 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
 5. **The Terrain window reloads by generation, not only on a project switch.** `Project::setTerrainEditorSettings`
    bumps a generation (workspace load, project close); the window reads the settings when the generation changed and
    writes back only over the generation it read, so a frame drawn before the workspace loads cannot overwrite it.
-6. **The authoring rules in the generated `AGENTS.md` are one paragraph** (its 5,000-byte cap, `test_generators.py`).
+6. **The generated `AGENTS.md` gets no authoring text.** Its cap is 5,000 bytes (`test_generators.py`), and after the
+   2026-11-06 merge `main`'s own text measures about 5,150 bytes (estimated from the literals; the first gate run
+   measured 5,160 with one authoring paragraph). The guide, `jasper://docs/authoring` and the results' `next` hints
+   carry the rules instead.

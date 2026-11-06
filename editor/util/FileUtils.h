@@ -130,6 +130,27 @@ public:
         return exeDir / "engine";
     }
 
+    // The starter library (editor/resources/sound-library/library), staged next to the editor binary
+    // (macOS: Contents/Resources/sound-library); JASPERENGINE_SOUND_LIBRARY_DIR overrides. Nothing
+    // stores this path: imports copy bytes and ids are the references.
+    static std::filesystem::path getSoundLibraryDir() {
+        namespace fs = std::filesystem;
+
+        const char* overridden = std::getenv("JASPERENGINE_SOUND_LIBRARY_DIR");
+        if (overridden && *overridden) {
+            return fs::path(overridden);
+        }
+        const fs::path exeDir = getExecutableDir();
+#if defined(__APPLE__)
+        std::error_code ec;
+        const fs::path bundled = exeDir.parent_path() / "Resources" / "sound-library";
+        if (fs::exists(bundled, ec)) {
+            return bundled;
+        }
+#endif
+        return exeDir / "sound-library";
+    }
+
     // An AppImage mounts at a fresh path every launch, so anything written into
     // a file the project keeps must omit it or that file churns on every start.
     static bool isEngineDirEphemeral() {

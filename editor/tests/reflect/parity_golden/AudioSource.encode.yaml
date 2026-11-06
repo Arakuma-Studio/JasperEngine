@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest da7a0ff91e45a73c
+digest 3fffe48f17dd3b7f
 --- 0
 enabled: false
 state: playing
@@ -19,6 +19,12 @@ outputGroup: textures/a.png
 outputGroupName: "multi\nline"
 priority: 0
 maxVoices: 18
+event: textures/a.png
+playOn: [ui_click, ui_press, collision_2d, sensor_3d]
+minImpactSpeed: 2038.1403
+fullVolumeImpactSpeed: -36
+pitchRandomSemitones: 23
+volumeRandomDb: -0.6666374
 --- 1
 enabled: false
 state: stopped
@@ -43,6 +49,12 @@ loadType: streaming
 priority: -9
 maxVoices: 10
 ignoreListenerPause: true
+event: sounds/hit.wav
+playOn: [sensor_3d]
+minImpactSpeed: 0.3208969
+fullVolumeImpactSpeed: 1e-45
+pitchRandomSemitones: 4254.0303
+volumeRandomDb: 3e+38
 --- 2
 enabled: false
 state: playing
@@ -66,6 +78,12 @@ loadType: streaming
 priority: 3
 maxVoices: 12
 ignoreListenerPause: true
+event: ui/menu.html
+playOn: [ui_click, ui_hover]
+minImpactSpeed: 135.85715
+fullVolumeImpactSpeed: 6000.262
+pitchRandomSemitones: -0.98643166
+volumeRandomDb: 1950.9412
 --- 3
 enabled: false
 state: playing
@@ -87,6 +105,12 @@ outputGroupName: a/b/c.html
 loadType: streaming
 priority: -15
 maxVoices: -17
+event: a b/c.png
+playOn: [ui_click, ui_hover, collision_2d, sensor_2d, sensor_3d]
+minImpactSpeed: 57.42857
+fullVolumeImpactSpeed: 1e-45
+pitchRandomSemitones: 1617.6865
+volumeRandomDb: 8901.831
 --- 4
 enabled: true
 state: paused
@@ -109,6 +133,12 @@ loadType: decompress_on_load
 priority: 7
 maxVoices: -11
 ignoreListenerPause: true
+event: a b/c.png
+playOn: [ui_click, collision_2d, collision_3d, sensor_2d]
+minImpactSpeed: -0.80343544
+fullVolumeImpactSpeed: -31
+pitchRandomSemitones: 1e-45
+volumeRandomDb: 9209.078
 --- 5
 enabled: false
 state: stopped
@@ -131,6 +161,11 @@ loadType: compressed_in_memory
 priority: 15
 maxVoices: -7
 ignoreListenerPause: true
+event: sounds/hit.wav
+playOn: [ui_click, ui_press, sensor_2d, sensor_3d]
+minImpactSpeed: 0.31747603
+pitchRandomSemitones: -0.36481053
+volumeRandomDb: 131
 --- 6
 enabled: true
 state: stopped
@@ -154,6 +189,11 @@ outputGroupName: 123
 loadType: compressed_in_memory
 priority: 15
 maxVoices: 72125
+event: a b/c.png
+playOn: [collision_3d]
+minImpactSpeed: -31
+fullVolumeImpactSpeed: -40
+volumeRandomDb: -59.142857
 --- 7
 enabled: false
 state: stopped
@@ -177,3 +217,8 @@ loadType: compressed_in_memory
 priority: -3
 maxVoices: 5
 ignoreListenerPause: true
+event: ui/menu.html
+playOn: [collision_2d, collision_3d]
+minImpactSpeed: -29
+pitchRandomSemitones: 6329.4004
+volumeRandomDb: 0.8403636

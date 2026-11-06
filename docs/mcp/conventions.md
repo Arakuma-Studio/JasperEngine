@@ -31,7 +31,7 @@ and updates this page and the gates together.
 - Tool names: snake_case `verb_noun`, globally unique (`create_entity`, `list_shaders`,
   `edit_colliders`). The names registered before this rule keep their names
   (`PREDATING_NAMES` in `test_tool_conventions.py`), and so do upstream's absorbed tools
-  (`UPSTREAM_NAMES`: `audio_mixer`, `native_plugins`, `user_settings`); every new name starts with a verb of its
+  (`UPSTREAM_NAMES`: `audio_mixer` and its sibling `audio_session`, `native_plugins`, `user_settings`); every new name starts with a verb of its
   `VERBS` list. Add a verb there only when none of the listed ones fits.
 - Parameter keys: snake_case at every level (`job_id`, `undo_group`, `max_width`,
   `min_frame_ms`, `capture_id`). No camelCase, ever, including keys of nested objects.

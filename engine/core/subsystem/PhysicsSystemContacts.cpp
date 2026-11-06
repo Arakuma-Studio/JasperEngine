@@ -7,6 +7,8 @@
 // them; Physics.ignoreCollision.
 
 #include "PhysicsSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "audio/AudioMarkers.h"
 #include "component/CharacterControllerComponent.h"
 #include "Scene.h"
 #include "Log.h"
@@ -260,6 +262,8 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
 }
 
 void PhysicsSystem::processContacts2D(){
+    // Audio calls of its callbacks defer to the frame's audio update (S37 R13)
+    const AudioSystem::PhysicsCallbackScope audioDefers;
     if (!b2World_IsValid(world2D)){
         return;
     }
@@ -319,6 +323,33 @@ void PhysicsSystem::processContacts2D(){
     auto authoredPair = [this](b2ShapeId a, b2ShapeId b){
         return authoredContactEvents(collider2DOf(scene, shapeColliderKey(a)), a) || authoredContactEvents(collider2DOf(scene, shapeColliderKey(b)), b);
     };
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()){
+        auto samePair = [](b2ShapeId a1, b2ShapeId b1, b2ShapeId a2, b2ShapeId b2){
+            return (B2_ID_EQUALS(a1, a2) && B2_ID_EQUALS(b1, b2)) || (B2_ID_EQUALS(a1, b2) && B2_ID_EQUALS(b1, a2));
+        };
+        // a begin with its hit is one moment: the hit has the approach speed
+        for (const b2ContactBeginTouchEvent& event : begins){
+            if (!b2Shape_IsValid(event.shapeIdA) || !b2Shape_IsValid(event.shapeIdB)) continue;
+            float speed = -1.0f;
+            for (const b2ContactHitEvent& hit : hits){
+                if (samePair(event.shapeIdA, event.shapeIdB, hit.shapeIdA, hit.shapeIdB)) speed = hit.approachSpeed;
+            }
+            AudioMarkers::collision(scene, "collision_2d", bodyEntity2D(b2Shape_GetBody(event.shapeIdA)), bodyEntity2D(b2Shape_GetBody(event.shapeIdB)), speed);
+        }
+        for (const b2ContactHitEvent& hit : hits){
+            if (!b2Shape_IsValid(hit.shapeIdA) || !b2Shape_IsValid(hit.shapeIdB)) continue;
+            const bool began = std::any_of(begins.begin(), begins.end(), [&](const b2ContactBeginTouchEvent& event){
+                return samePair(event.shapeIdA, event.shapeIdB, hit.shapeIdA, hit.shapeIdB);
+            });
+            if (!began) AudioMarkers::collision(scene, "collision_2d", bodyEntity2D(b2Shape_GetBody(hit.shapeIdA)), bodyEntity2D(b2Shape_GetBody(hit.shapeIdB)), hit.approachSpeed);
+        }
+        for (const b2SensorBeginTouchEvent& event : sensorBegins){
+            if (!b2Shape_IsValid(event.sensorShapeId) || !b2Shape_IsValid(event.visitorShapeId)) continue;
+            AudioMarkers::sensor(scene, "sensor_2d", bodyEntity2D(b2Shape_GetBody(event.sensorShapeId)), bodyEntity2D(b2Shape_GetBody(event.visitorShapeId)));
+        }
+    }
+#endif
     if (beginContact2D.hasSubscribers()){
         for (const b2ContactBeginTouchEvent& event : begins){
             if (b2Shape_IsValid(event.shapeIdA) && b2Shape_IsValid(event.shapeIdB) && authoredPair(event.shapeIdA, event.shapeIdB)){
@@ -870,9 +901,23 @@ void PhysicsSystem::dispatchContactRemoved3D(const JPH::BodyID& body1, const JPH
 }
 
 void PhysicsSystem::processContacts3D(){
+    const AudioSystem::PhysicsCallbackScope audioDefers;
     std::vector<RawContact3D>& raws = *rawContacts3D;
     contactRecorder3D->collect(raws);
     contactTracker3D.setRecordedCount(raws.size());
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()){
+        // the records are sorted: one marker per body pair per step, from its first manifold
+        const RawContact3D* previous = nullptr;
+        for (const RawContact3D& raw : raws){
+            if (raw.kind != RawContact3D::Added) continue;
+            if (previous && previous->body1 == raw.body1 && previous->body2 == raw.body2) continue;
+            previous = &raw;
+            if (raw.sensor) AudioMarkers::sensor(scene, "sensor_3d", raw.entity1, raw.entity2);
+            else AudioMarkers::collision(scene, "collision_3d", raw.entity1, raw.entity2, std::max(0.0f, (raw.velocity1 - raw.velocity2).dotProduct(raw.normal)));
+        }
+    }
+#endif
 
     // 1. the global events of the step (legacy names and arguments, now here; a synchronous
     // step called the contact ones inside it). Activations first, then contacts added,
