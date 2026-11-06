@@ -129,14 +129,22 @@ async def test_earlier_export_inside_project_is_left_out(ed: Editor):
     # and an engine source, which would make a player build compile
     (old / "core" / "EngineThing.cpp").write_text("int engineThing() { return 0; }\n")
     await ed.call("sync_files")
+    # a script root at the project's top would take the earlier export's engine sources: a player
+    # build would compile them (Exporter::chooseBuildMethod)
+    await ed.call("set_project_settings", values={"scripting.script_dirs": ["."]})
+    info = await ed.call("get_build_info")
+    await ed.call("set_project_settings", values={"scripting.script_dirs": []})
+    reasons = [r for platform in info.get("platforms", {}).values() for r in platform.get("compile_reasons", [])]
+    ed.check(not any("OldBuild" in r or "EngineThing" in r for r in reasons), f"no build compiles the earlier export: {reasons}")
     out = ed.scratch.root / "export-skip"
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")
     shipped = [p.relative_to(out / "project").as_posix() for p in (out / "project").rglob("*") if "OldBuild" in p.as_posix()]
-    ed.check_eq(shipped, [], "nothing of the earlier export ships, cooked textures and models included")
-    info = await ed.call("get_build_info")
-    reasons = [r for platform in info.get("platforms", {}).values() for r in platform.get("compile_reasons", [])]
-    ed.check(not any("OldBuild" in r or "EngineThing" in r for r in reasons), f"no build compiles the earlier export: {reasons}")
+    ed.check_eq(shipped, [], "nothing of the earlier export ships")
+    # the cooks name their files by content hash: their manifests say which assets they took
+    cooked = [p.relative_to(out / "project").as_posix() for p in (out / "project" / "assets").rglob("*.json")
+              if "je-cooked" in p.as_posix() and "OldBuild" in p.read_text(errors="replace")]
+    ed.check_eq(cooked, [], "no texture or model of the earlier export is cooked")
     ed.check_in("W-EXPORT-FOLDER-SKIPPED", warning_codes(job))
     ed.check(any("OldBuild" in w.get("message", "") for w in job["result"]["warnings"] if isinstance(w, dict)),
              f"the warning names the folder: {job['result']['warnings']}")
