@@ -227,7 +227,21 @@ bool mirrorTree(const fs::path& src, const fs::path& dst, bool keepIdeOutput, st
             if (keepIdeOutput && isIdeOutput(entry.path())) return true;
             const fs::path target = dstAdj / rel;
             std::error_code status;
-            if (fs::is_regular_file(target, status) && sameContents(entry.path(), target)) return true;
+            if (fs::is_regular_file(target, status) && sameContents(entry.path(), target)) {
+#if !defined(_WIN32)
+                // an older export made by an editor that lost the execute bits keeps the
+                // file's time for the incremental build but must still run as ./gradlew
+                const fs::perms wanted = entry.status(status).permissions() & fs::perms::mask;
+                if (!status && (fs::status(target, status).permissions() & fs::perms::mask) != wanted) {
+                    fs::permissions(target, wanted, fs::perm_options::replace, status);
+                    if (status) {
+                        copyError = "Failed to set the permissions of " + text(dst / rel) + ": " + status.message();
+                        return false;
+                    }
+                }
+#endif
+                return true;
+            }
             if (fs::exists(fs::symlink_status(target, status)) && !fs::is_regular_file(fs::symlink_status(target, status))) {
                 if (!removeNoFollow(target, copyError)) return false;
             }

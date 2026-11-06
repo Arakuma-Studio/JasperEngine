@@ -441,6 +441,12 @@ void main() {
 
         // Apply light sources: the object's pixel lights
         #ifdef USE_PUNCTUAL
+            #ifdef USE_SHADOWS
+                // the receiver plane's derivatives in uniform control flow: the shadow lookup
+                // below runs in a per-fragment branch, where they are undefined
+                vec3 shadowDpdx = dFdx(v_position);
+                vec3 shadowDpdy = dFdy(v_position);
+            #endif
             for (int i = 0; i < LIGHT_CAPACITY; ++i){
                 if (i >= pixelLightCount()) break;
 
@@ -463,7 +469,7 @@ void main() {
                         // on a double-sided back face) only needs it for foliage transmission:
                         // its direct terms below are scaled by NdotL = 0
                         if (NdotL > 0.0 || pbrParams.foliageTransmission > 0.0){
-                            shadow = lightShadow(i, v_position, n);
+                            shadow = lightShadowD(i, v_position, n, shadowDpdx, shadowDpdy);
                         }
                     #endif
 

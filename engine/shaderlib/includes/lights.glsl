@@ -49,7 +49,8 @@
 // (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps and their blocks are
 // declared here (includes/shadow_data.glsl) and lightShadow samples them
 // (includes/shadow_sampling.glsl). Call lightShadow in uniform control flow (as the loop above
-// does): it takes the derivatives of the position for the receiver-plane bias. Vertex lights
+// does): it takes the derivatives of the position for the receiver-plane bias. Inside a
+// per-fragment branch, take dFdx/dFdy(v_position) before it and call lightShadowD. Vertex lights
 // are diffuse only: no specular, no shadows and no mask (the cone still applies).
 
 #ifndef LIGHT_CAPACITY
@@ -318,16 +319,10 @@ vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
 #endif
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-#ifdef LIGHT_OCCLUSION
-    // the shadow map's term, which lightShadow below multiplies by the light's occlusion
-    #define lightShadow lightShadowMap
-#endif
-// 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit
-float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
-    // the receiver plane's derivatives, before any branch on the fragment
-    vec3 dpdx = dFdx(worldPosition);
-    vec3 dpdy = dFdy(worldPosition);
-
+// the shadow map's term: 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit.
+// dpdx and dpdy are the receiver plane's derivatives (dFdx/dFdy of worldPosition), taken in
+// uniform control flow
+float lightShadowMapD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
     Light light = getLightData(index);
     if (!light.shadows){
         return 1.0;
@@ -342,14 +337,23 @@ float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
     return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
 }
 
-#ifdef LIGHT_OCCLUSION
-    #undef lightShadow
-// with the capsule and contact shadows of the light (includes/light_occlusion.glsl)
-float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
-    float shadowMap = lightShadowMap(index, worldPosition, worldNormal);
-    return shadowMap * lightOcclusion(index, worldPosition, worldNormal);
+// the light's shadow, with the capsule and contact shadows of the light
+// (includes/light_occlusion.glsl) under LIGHT_OCCLUSION; a caller inside a per-fragment branch
+// takes the derivatives before it
+float lightShadowD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
+    float shadow = lightShadowMapD(index, worldPosition, worldNormal, dpdx, dpdy);
+    #ifdef LIGHT_OCCLUSION
+        shadow *= lightOcclusion(index, worldPosition, worldNormal);
+    #endif
+    return shadow;
 }
-#endif
+
+// the same, taking the derivatives here: call it in uniform control flow (the light loop)
+float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
+    vec3 dpdx = dFdx(worldPosition);
+    vec3 dpdy = dFdy(worldPosition);
+    return lightShadowD(index, worldPosition, worldNormal, dpdx, dpdy);
+}
 
 // The shadow debug views of the Scene view (shadowData.header.w): a colour replacing the
 // shaded one, alpha 1 when a view is on. 1 cascades (tinted, the blend band hatched), 2 the

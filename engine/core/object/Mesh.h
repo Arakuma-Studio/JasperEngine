@@ -184,6 +184,13 @@ namespace jasperengine{
         float getFadeStart() const;
         void setFadeEnd(float fadeEnd);
         float getFadeEnd() const;
+        // instances grow from nothing at nearFadeStart to full size at nearFadeEnd (a far level of
+        // detail's inner edge; needs distanceFade); an empty range turns it off
+        void setNearFadeRange(float nearFadeStart, float nearFadeEnd);
+        void setNearFadeStart(float nearFadeStart);
+        float getNearFadeStart() const;
+        void setNearFadeEnd(float nearFadeEnd);
+        float getNearFadeEnd() const;
 
         void setCullInstances(bool cullInstances);
         bool isCullInstances() const;

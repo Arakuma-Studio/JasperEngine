@@ -123,6 +123,9 @@ namespace jasperengine::editor {
         static std::string vsInstallationPath();
         static bool hasVSWithCppTools();
         static std::string findVcvarsall();
+        // The ninja.exe of an installed Visual Studio's C++ CMake tools (which Visual Studio keeps
+        // off PATH), empty when none: a Web build's generator when PATH has no Ninja
+        static fs::path findVisualStudioNinja();
 #endif
 
     private:

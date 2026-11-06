@@ -408,6 +408,9 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static float foliageDistanceScaleDefaults[3];
+        static bool foliageDistanceScaleOverridden;
+        static float foliageDistanceScaleOverride;
         static bool gpuInstancingEnabled;
 
         static Semaphore drawSemaphore;
@@ -621,6 +624,18 @@ namespace jasperengine {
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
 
+        // Foliage Distance (Unity's QualitySettings.terrainDetailDistanceFactor): multiplies every
+        // terrain foliage layer's Draw Distance and Min Draw Distance. The project's scale per
+        // platform group (Project Settings > Quality, 1 by default), which a game may override at
+        // runtime (0 draws no foliage; clamped to [0, 10], non-finite values ignored).
+        // getFoliageDistanceScale is the scale in effect: the override, else this platform's default.
+        static void setFoliageDistanceScaleDefaults(float desktop, float mobile, float web);
+        static float getFoliageDistanceScaleDefault(Platform platform);
+        static float getFoliageDistanceScaleDefault();
+        static void setFoliageDistanceScale(float scale);
+        static float getFoliageDistanceScale();
+        // back to the platform default (the editor calls it when Play stops)
+        static void resetFoliageDistanceScale();
         // GPU Instancing (Project Settings > Graphics, spec S55): MeshComponent draws of one mesh,
         // material and pipeline become instanced draws, and constant state is applied once. On by
         // default; off submits every draw as before S55
