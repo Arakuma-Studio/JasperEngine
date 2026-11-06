@@ -12,6 +12,9 @@
 #include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+
+#include "audio/SoundDrop.h"
+#include "window/SoundBrowserWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -93,6 +96,7 @@
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "component/ActionComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -120,6 +124,7 @@
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "audio/AudioCapture.h"
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
@@ -9016,7 +9021,66 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     }
 }
 
+void editor::InspectorWindow::drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // a Mixer Snapshot action of an Animation (S40 R18, R22): the snapshot picked from the mixer
+    Scene* scene = sceneProject->scene;
+    beginTable(cpType, getLabelSize("Revert Transition"));
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Snapshot");
+    ImGui::SetItemTooltip("The mixer's snapshot the action moves to when it starts");
+    ImGui::TableSetColumnIndex(1);
+    std::string current;
+    bool mixed = false;
+    for (size_t i = 0; i < entities.size(); i++){
+        const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entities[i]);
+        const std::string name = snapshot ? snapshot->snapshot : std::string();
+        if (i == 0) current = name;
+        else if (name != current) mixed = true;
+    }
+    const std::vector<std::string> snapshots = AudioMixer::getSnapshotNames();
+    const bool known = current.empty() || std::find(snapshots.begin(), snapshots.end(), current) != snapshots.end();
+    const std::string preview = mixed ? std::string("-") : current.empty() ? std::string("(none)") : known ? current : current + " (missing)";
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##audiosnapshot_snapshot", preview.c_str())){
+        std::vector<std::string> choices = snapshots;
+        choices.insert(choices.begin(), std::string());
+        for (const std::string& name : choices){
+            if (ImGui::Selectable(name.empty() ? "(none)" : name.c_str(), !mixed && name == current)){
+                for (const Entity& entity : entities){
+                    cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "snapshot", name);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                if (cmd) cmd->setNoMerge();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    RowSettings seconds;
+    seconds.help = "The transition time, in seconds";
+    propertyRow(RowPropertyType::FloatPositive, cpType, "seconds", "Transition", sceneProject, entities, seconds);
+    propertyRow(RowPropertyType::Bool, cpType, "unscaled", "Unscaled Time", sceneProject, entities);
+    RowSettings revert;
+    revert.help = "On stop, back to the snapshot shown before it started, if the mixer still shows this one";
+    propertyRow(RowPropertyType::Bool, cpType, "revert", "Revert On Stop", sceneProject, entities, revert);
+    RowSettings revertSeconds;
+    revertSeconds.help = "-1: the same as Transition";
+    propertyRow(RowPropertyType::Float, cpType, "revertSeconds", "Revert Transition", sceneProject, entities, revertSeconds);
+    endTable();
+    if (!known && !mixed){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " The mixer has no snapshot '%s'", current.c_str());
+    }
+    if (!scene->findComponent<ActionComponent>(entities.front())){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " Plays as an Action: add an Action and put it on an Animation's track");
+    }
+}
+
 void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // an Animation's audio action (S40 R22)
+    if (sceneProject->scene->findComponent<ActionComponent>(entities.front())){
+        ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_FILM " Timeline audio: plays when its action starts");
+    }
     RowSettings compactSettings;
     compactSettings.secondColSize = 7 * ImGui::GetFontSize();
 
@@ -9028,7 +9092,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, getLabelSize("Audio Clip"));
 
-    if (entities.size() == 1) {
+    if (!sceneProject->scene->getComponent<AudioSourceComponent>(entities.front()).event.empty()) {
+        // the event plays: its clip is ignored (S37 R9)
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Audio Clip");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("(played by the event)");
+    } else if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
@@ -9116,6 +9187,13 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                         }
                     }
                 }
+                // a built-in clip from the Sound Browser: imported first
+                if (const ImGuiPayload* builtin = ImGui::AcceptDragDropPayload(SoundBrowserWindow::BUILTIN_PAYLOAD)) {
+                    std::vector<std::string> sounds;
+                    std::string dropError;
+                    if (SoundDrop::resolve(project, builtin, sounds, dropError) && !sounds.empty()) setAudioFilename(sounds.front());
+                    if (!dropError.empty()) Out::warning("Sound drop: %s", dropError.c_str());
+                }
                 ImGui::EndDragDropTarget();
             }
         }
@@ -9142,14 +9220,18 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     endTable();
 
+    drawAudioEventRows(cpType, sceneProject, entities);
+
     if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
         SoundPreviewRuntime& ap = soundPreviewRuntime;
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
+        // a capture's mix is the Play's alone
+        const bool capturing = AudioCapture::isActive();
 
-        if (ap.active && (!isThisPreview || !sceneIsStopped || ap.filename != audio.filename)) {
+        if (ap.active && (!isThisPreview || !sceneIsStopped || capturing || ap.filename != audio.filename)) {
             stopSoundPreview(!isThisPreview || ap.filename != audio.filename);
             isThisPreview = false;
         }
@@ -9160,7 +9242,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty());
+        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty() || capturing);
 
         if (isThisPreview && ap.playing) {
             if (ImGui::Button(ICON_FA_PAUSE "##audio_pause")) {
@@ -9173,6 +9255,9 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                 } else {
                     isThisPreview = true;
                 }
+            }
+            if (capturing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Audio preview is off while Play captures audio");
             }
         }
         ImGui::SameLine();
