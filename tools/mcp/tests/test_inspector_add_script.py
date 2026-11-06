@@ -30,7 +30,8 @@ async def test_add_script_picks_a_lua_script(ed: Editor):
     ui = ui_input.for_editor(ed)
     ui.focus()
     await ed.call("create_script", kind="lua", name="Enemy", content=ENEMY, directory="ai")
-    await ed.call("create_entity", name="Grunt", type="box")
+    # an empty GameObject: the Script component is drawn near the Inspector's top
+    await ed.call("create_entity", name="Grunt", type="empty")
     await ed.call("add_component", entity="Grunt", component="script")
     await ed.call("select_entities", entities=["Grunt"])
     await ed.call("focus_window", window="inspector")

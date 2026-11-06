@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "window/widget/CustomTextEditor.h"
+#include "window/widget/SemanticSuggestions.h"
 
 #include <cstring>
 #include <string>

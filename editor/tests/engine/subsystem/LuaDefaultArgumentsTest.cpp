@@ -15,6 +15,7 @@
 #include "component/Transform.h"
 #include "object/Model.h"
 #include "script/LuaBinding.h"
+#include "subsystem/MeshSystem.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"

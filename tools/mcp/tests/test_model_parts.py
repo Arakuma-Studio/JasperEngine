@@ -41,7 +41,7 @@ async def test_model_parts(ed: Editor):
     root = model.get("id", model.get("entity_id")) if isinstance(model, dict) else model
     ed.check(root is not None and not loaded["loading"], loaded)
 
-    out = await ed.call("set_properties", entity=root, values={"mesh": {"cast_shadows": False}})
+    out = await ed.call("set_properties", entity=root, values={"mesh": {"castShadows": False}})
     warnings = out.get("warnings", [])
     ed.check(any("Body" in w and "Eyes" in w for w in warnings), f"the warning names the parts: {warnings}")
 

@@ -115,12 +115,12 @@ async def test_search_engine_api_marks_lua_only(ed: Editor):
     """A Lua property C++ reaches through an accessor (Engine.deltatime: Engine::getDeltatime()) is
     marked cpp_callable false with the accessor (scripting catch-up, Doriax 755972f92)"""
     r = await ed.call("search_engine_api", query="deltatime", parent="Engine")
-    hit = next((x for x in r["results"] if x["name"] == "deltatime"), None)
+    hit = next((x for x in r["results"] if x.get("name") == "deltatime"), None)
     ed.check(hit, f"Engine.deltatime found: {r['results'][:4]!r}")
     ed.check_eq(hit.get("cpp_callable"), False, f"{hit!r}")
     ed.check("Engine::getDeltatime()" in hit.get("cpp_note", ""), f"{hit!r}")
     zero = await ed.call("search_engine_api", query="ZERO", parent="Vector3")
-    hit = next((x for x in zero["results"] if x["name"] == "ZERO"), None)
+    hit = next((x for x in zero["results"] if x.get("name") == "ZERO"), None)
     ed.check(hit and "cpp_callable" not in hit, f"Vector3::ZERO exists in C++: {hit!r}")
 
 
