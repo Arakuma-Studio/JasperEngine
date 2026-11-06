@@ -2027,6 +2027,8 @@ TEST(PropertyRegistryCatalog, EveryRowIsACatalogPropertyOfACompatibleType){
     scene.addComponent<ProgressbarComponent>(e, {});
     MeshComponent mesh;
     mesh.numSubmeshes = 1;
+    // the submesh itself: a read of one the mesh does not hold names nothing (mesh-memory)
+    mesh.submeshes.resize(1);
     scene.addComponent<MeshComponent>(e, mesh);
     scene.addComponent<SpriteComponent>(e, {});
     scene.addComponent<LightComponent>(e, {});

@@ -31,8 +31,9 @@ namespace {
 
     // the vertex codec version KHR_meshopt_compression allows (EXT_ allows 0 only)
     constexpr int kVertexCodecVersion = 1;
-    // what a prebuilt player holds per mesh (MAX_EXTERNAL_BUFFERS): the cook interleaves a mesh's
-    // streams rather than split it into more buffers than that, or than the source had
+    // the buffers a mesh is cooked into at most (players held 30 per mesh before components grew
+    // their arrays; kept, as fewer buffers bind faster): the cook interleaves a mesh's streams
+    // rather than split it into more buffers than that, or than the source had
     constexpr size_t kPlayerMeshBuffers = 30;
     // the extensions on a primitive whose data the cook knows how to keep
     const char* const KEPT_PRIMITIVE_EXTENSIONS[] = {"KHR_materials_variants", "JE_mesh_lods"};

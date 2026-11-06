@@ -208,12 +208,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND JASPERENGINE_APP_DEFINITIONS JASPERENGINE_WINDOW_ICON)
     endif()
 
-    # Per-project HybridArray capacities (SceneMaxValues) are injected here by the
-    # editor Exporter, replacing the marker below. When building manually (without
-    # the editor), the marker is left untouched and the engine defaults declared in
-    # core/Engine.h apply.
-    # @JASPERENGINE_SCENE_MAX_VALUES@
-
     if(NOT GRAPHIC_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
             set(GRAPHIC_BACKEND "gles3")
@@ -1836,6 +1830,7 @@ set(JASPERENGINE_SRCS
     core/profiler/GpuMemory.cpp
     core/profiler/Profiler.cpp
     core/memory/Arena.cpp
+    core/memory/HeapTrim.cpp
     core/memory/MemoryStats.cpp
     core/memory/ObjectPool.cpp
     core/memory/RangeAllocator.cpp

@@ -1278,7 +1278,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    # library with editor-specific data layouts. The plugin must match both:\n";
     cmakeContent += "    #  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
     cmakeContent += "    #    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
-    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps HybridArray (and other editor-only layouts)\n";
+    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps the editor-only layouts\n";
     cmakeContent += "    #    ABI-compatible across the DLL boundary.\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
@@ -3136,10 +3136,10 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
 #ifdef _WIN32
     // --- MSVC ---
     {
-        std::string vswhere = CommandRunner::findVswherePath();
+        const bool hasVswhere = CommandRunner::hasVswhere();
         std::string vsName;
-        if (!vswhere.empty()) {
-            vsName = runCmd({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
+        if (hasVswhere) {
+            vsName = CommandRunner::vswhere({"-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
         }
         // cl.exe on PATH (e.g. a Developer Command Prompt) also signals MSVC is
         // available even if vswhere cannot be located.
@@ -3156,9 +3156,9 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 generators.emplace(std::stoi((*it)[1].str()), it->str());
             }
             for (const auto& entry : generators) {
-                if (!vswhere.empty()) {
+                if (hasVswhere) {
                     const std::string versionRange = "[" + std::to_string(entry.first) + "," + std::to_string(entry.first + 1) + ")";
-                    const std::string name = runCmd({vswhere, "-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
+                    const std::string name = CommandRunner::vswhere({"-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
                     if (name.empty()) continue;
                     kit.displayName = name;
                 } else {

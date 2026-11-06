@@ -131,8 +131,8 @@ namespace jasperengine{
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
-        // false as well when the view has no buffer to add; capacityReached: the mesh has no room for it
-        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached);
+        // false as well when the view has no buffer to add
+        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
@@ -201,6 +201,9 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // How many joints the skinned vertices name: their largest bone id plus one (0 without
+        // skinned vertices). A palette shorter than that is read past its end
+        static size_t skinJointCount(MeshComponent& mesh);
         static void prepareMeshPolygonMesh(MeshComponent& mesh);
         static void prepareTilemapMesh(MeshComponent& mesh);
         // Both terrain submeshes (full and half resolution) draw with this layout
@@ -242,7 +245,7 @@ namespace jasperengine{
         void createCylinder(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createCapsule(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createTorus(MeshComponent& mesh, float radius=1, float ringRadius=0.5, unsigned int sides=36, unsigned int rings=16);
-        bool canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh, std::string* reason = nullptr) const;
+        bool canMergeStaticModel(const ModelComponent& model, std::string* reason = nullptr) const;
         bool canEditModelHierarchy(const ModelComponent& model, std::string* reason = nullptr) const;
         // Whether a part or local group can move without breaking the model's animation.
         bool canEditModelPart(const ModelComponent& model, Entity part, std::string* reason = nullptr) const;

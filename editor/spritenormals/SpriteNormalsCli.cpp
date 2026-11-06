@@ -920,7 +920,7 @@ namespace jasperengine::editor::spritenormals {
                 Scene* scene = sp.scene;
                 MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
                 const bool tilemap = scene->findComponent<TilemapComponent>(entity) != nullptr;
-                const unsigned count = tilemap && mesh ? std::min<unsigned>(mesh->numSubmeshes, MAX_SUBMESHES) : 1;
+                const unsigned count = tilemap && mesh ? mesh->numSubmeshes : 1;
                 std::vector<Item> items;
                 std::set<fs::path> textures;
                 std::string why;
