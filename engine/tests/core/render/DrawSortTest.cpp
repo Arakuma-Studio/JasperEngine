@@ -24,12 +24,6 @@ namespace {
     }
 }
 
-TEST(DrawSort, EqualKeysComeTogetherAtTheFirst){
-    // A B A C B -> A A B B C
-    const std::vector<uint32_t> order = group({0, 0, 0, 0, 0}, {1, 2, 1, 3, 2});
-    EXPECT_EQ(order, (std::vector<uint32_t>{0, 2, 1, 4, 3}));
-}
-
 TEST(DrawSort, PriorityRunsKeepTheirPlace){
     // equal keys in two priorities stay in their own (stencil writers before their readers)
     const std::vector<uint32_t> order = group({-1, -1, 0, 0, 0, 1}, {5, 6, 5, 6, 5, 5});

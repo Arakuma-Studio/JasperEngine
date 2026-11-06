@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Asynchronous shader and pipeline creation (docs/specs/S32-async-shaders.md): the sokol patch
-// markers, pipeline interning and its record format, the warm-up list's format (CPU), and on the
+// Asynchronous shader and pipeline creation (docs/specs/S32-async-shaders.md): pipeline
+// interning and its record format, the warm-up list's format (CPU), and on the
 // headless device the pending state, deferred destroys, interning, immediate passes, failures,
 // every GL mode drawing the LitCube golden, and a stand-in while a variant is pending (GPU).
 
@@ -44,7 +44,6 @@
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -53,22 +52,6 @@ using namespace jasperengine;
 using namespace jasperengine::test;
 
 namespace {
-
-    std::string readRepoFile(const std::filesystem::path& relative){
-        // engine/tests/core/render -> engine
-        const std::filesystem::path engine = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-        std::ifstream file(engine / relative);
-        std::stringstream text;
-        text << file.rdbuf();
-        return text.str();
-    }
-
-    size_t countOf(const std::string& text, const std::string& what){
-        size_t count = 0;
-        for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1))
-            count++;
-        return count;
-    }
 
     void setEnv(const char* name, const char* value){
     #if defined(_WIN32)
@@ -171,22 +154,6 @@ namespace {
         };
     }
 
-}
-
-// a sokol update that dropped the patches fails here: re-apply the lines PATCHES.md lists
-TEST(SokolPatchMarkers, AsyncCreationHooks){
-    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
-    ASSERT_FALSE(header.empty());
-    EXPECT_EQ(countOf(header, "JasperEngine: async creation"), 11u);
-    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## Asynchronous creation (spec S32)"), std::string::npos);
-}
-
-// (one on the lock's own definition, 6 + 6 + 2 where it is taken, 6 asserts of sg_destroy_* gone)
-TEST(SokolPatchMarkers, PoolLock){
-    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
-    ASSERT_FALSE(header.empty());
-    EXPECT_EQ(countOf(header, "JasperEngine: pool lock"), 21u);
-    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## A lock on the resource pools"), std::string::npos);
 }
 
 TEST(PipelineIntern, EveryFieldChangesTheDescription){

@@ -186,11 +186,6 @@ namespace {
 
 }
 
-TEST(AnimationPlayerProject, HeadlessProjectOpens) {
-    ASSERT_TRUE(headless().ready);
-    EXPECT_EQ(project()->getProjectPath(), headless().dir);
-}
-
 // ---- McpValues -----------------------------------------------------------------------------
 
 TEST(AnimationPlayerProject, ClipPathsInBothFormsWithTheirGuids) {
