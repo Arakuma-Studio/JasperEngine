@@ -117,8 +117,9 @@ TEST(LineDiff, Unified) {
     EXPECT_TRUE(LineDiff::unified(base, base, {}, "s.lua", "s.lua").empty());
 
     // a deletion at the start: the empty side names the line before it
+    const Lines longer = {"1", "2", "3"};
     const Lines shorter = {"2", "3"};
-    EXPECT_EQ(LineDiff::unified({"1", "2", "3"}, shorter, LineDiff::compute(Lines{"1", "2", "3"}, shorter), "x", "x"),
+    EXPECT_EQ(LineDiff::unified(longer, shorter, LineDiff::compute(longer, shorter), "x", "x"),
               "--- a/x\n+++ b/x\n@@ -1,3 +1,2 @@\n-1\n 2\n 3\n");
 }
 

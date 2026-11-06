@@ -36,7 +36,6 @@ async def test_scene_default_values(ed: Editor):
     async with project_scene(ed, "test_scene_default_values", with_texture=False) as path:
         inheriting = await make_box(ed, "Inheriting")
         own = await make_box(ed, "OwnShader")
-        await ed.call("set_properties", entity=own, values={"mesh": {"customShader": UNLIT}})
 
         # before a default shader: kept, with a note
         early = await ed.call_raw("set_shader_uniform", {"shader_type": "mesh", "name": "baseColor", "value": RED})
@@ -45,8 +44,13 @@ async def test_scene_default_values(ed: Editor):
 
         await ed.call("set_scene_settings", settings={"default_mesh_shader": UNLIT})
         set_ = await ed.call("set_shader_uniform", shader_type="mesh", name="baseColor", value="#FF0000")
-        ed.check_eq(set_.get("used_by"), 1, f"one object draws with the default: {set_}")
         ed.check_eq(set_.get("property"), "default_mesh_shader_uniforms", f"{set_}")
+        users = set_.get("used_by")
+        ed.check(isinstance(users, int) and users >= 2, f"both boxes draw with the default: {set_}")
+        # a shader of its own: that box no longer draws with the default
+        await ed.call("set_properties", entity=own, values={"mesh": {"customShader": UNLIT}})
+        tree = await ed.call("get_scene_tree")
+        ed.check_eq((await ed.call("get_shader_uniforms", shader_type="mesh")).get("used_by"), users - 1, f"{tree}")
 
         got = await ed.call("get_shader_uniforms", entity=inheriting)
         entry = parameter(got, "baseColor")
@@ -58,7 +62,7 @@ async def test_scene_default_values(ed: Editor):
         scene_default = await ed.call("get_shader_uniforms", shader_type="mesh")
         ed.check_eq(scene_default.get("default_shader"), UNLIT, f"{scene_default}")
         ed.check_eq(scene_default.get("values"), {"baseColor": RED}, f"{scene_default}")
-        ed.check_eq(scene_default.get("used_by"), 1, f"{scene_default}")
+        ed.check_eq(scene_default.get("used_by"), users - 1, f"{scene_default}")
         settings = (await ed.call("get_scene_settings", names=["default_mesh_shader_uniforms"]))["settings"]
         ed.check_eq(settings.get("default_mesh_shader_uniforms"), {"baseColor": RED}, f"{settings}")
 

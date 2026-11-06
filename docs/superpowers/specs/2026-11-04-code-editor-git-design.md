@@ -680,8 +680,9 @@ Recorded during the implementation (branch `dc/code-editor-git`).
    diff as an unversioned file). Found by the test above; fixed: an empty diff of a versioned file is empty, an
    unversioned file (svn refuses to diff it) is still all added. Same test.
 3. **Prebuilt players**: the spec missed the cooked scene format (`engine/core/serialization/SceneSettingsCodec.cpp`).
-   The five value sets end the scene settings record; `FORMAT_MINOR` goes to 1 (content format 1.1). A 1.0 reader skips
-   them (the record is length-prefixed), a 1.1 reader of a 1.0 file stops at the record's end. Test
+   The five value sets end the scene settings record, after S57's (1.1) and S54's (1.2) fields: `FORMAT_MINOR` goes to
+   3 (content format 1.3). An older reader skips them (the record is length-prefixed), a 1.3 reader of an older file
+   stops at the record's end. Test
    `SceneDefaultShaderUniforms.CookedRoundTrip`.
 4. **Keyboard shortcuts doc**: `docs/editor/keyboard-shortcuts.md` is generated from the editor's command catalog,
    which does not list the code editor's own keys (Ctrl+F, Alt+F5 are the widget's). Alt+F5 / Shift+Alt+F5 are
