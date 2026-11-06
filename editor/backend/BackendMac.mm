@@ -8,6 +8,7 @@
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "window/PlayInput.h"
 #include "Platform.h"
 #include "util/FrameLimiter.h"
 #include "WindowMac.h"

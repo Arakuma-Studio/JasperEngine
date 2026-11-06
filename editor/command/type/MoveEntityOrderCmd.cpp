@@ -4,6 +4,7 @@
 #include "MoveEntityOrderCmd.h"
 
 #include "Out.h"
+#include "component/Transform.h"
 #include "animation/PreviewOwner.h"
 #include "pose/PoseEditSession.h"
 #include "subsystem/RenderSystem.h"

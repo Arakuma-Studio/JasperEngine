@@ -406,6 +406,7 @@ namespace{
     struct ClipOrigins{
         std::vector<TrackOrigin> tracks;
         std::vector<size_t> events;     // file index of each event
+        std::vector<size_t> audio;      // file index of each audio cue
     };
 
     void warn(std::vector<ClipWarning>* warnings, const std::string& path, const std::string& message){
@@ -870,6 +871,10 @@ namespace{
             origins.events.clear();
             for (size_t i = 0; i < data.events.size(); i++) origins.events.push_back(i);
         }
+        if (origins.audio.size() != data.audio.size()){
+            origins.audio.clear();
+            for (size_t i = 0; i < data.audio.size(); i++) origins.audio.push_back(i);
+        }
 
         // settings
         if (!std::isfinite(data.frameRate)){
@@ -1079,6 +1084,71 @@ namespace{
             origins.events.push_back(eventOrigins[i]);
         }
         origins.tracks = std::move(trackOrigins);
+
+        // audio cues (S40 R2): an unplayable cue is dropped, a value out of range clamped
+        std::vector<ClipAudioCue> cues;
+        std::vector<size_t> cueOrigins;
+        for (size_t i = 0; i < data.audio.size(); i++){
+            ClipAudioCue cue = data.audio[i];
+            const std::string path = "audio[" + std::to_string(origins.audio[i]) + "]";
+            if (!std::isfinite(cue.time)){
+                warn(warnings, member(path, "time"), "not a number, cue dropped");
+                continue;
+            }
+            const std::string problem = anim::validateCue(cue);
+            if (!problem.empty()){
+                warn(warnings, path, problem + ", cue dropped");
+                continue;
+            }
+            if (cue.time < 0.0f){
+                warn(warnings, member(path, "time"), "negative time " + shortNumber(cue.time) + ", using 0");
+                cue.time = 0.0f;
+            }
+            cue.time = quantizeTime(cue.time);
+            auto clampValue = [&](float& value, float low, float high, const char* key){
+                const float clamped = std::isfinite(value) ? std::min(std::max(value, low), high) : 0.0f;
+                if (clamped != value){
+                    warn(warnings, member(path, key), shortNumber(value) + " is outside " + shortNumber(low) + ".." + shortNumber(high) +
+                                                      ", using " + shortNumber(clamped));
+                }
+                value = quantizeValue(clamped);
+            };
+            clampValue(cue.volumeDb, anim::CUE_MIN_VOLUME_DB, anim::CUE_MAX_VOLUME_DB, "volume_db");
+            clampValue(cue.pitchSemitones, -anim::CUE_MAX_PITCH_SEMITONES, anim::CUE_MAX_PITCH_SEMITONES, "pitch_semitones");
+            clampValue(cue.seconds, 0.0f, FLT_MAX, "seconds");
+            // the fields another kind uses mean nothing here: dropped, so the file says one thing
+            if (cue.kind != ClipCueKind::Sound){
+                cue.sound.clear();
+                cue.group.clear();
+                cue.spatial = false;
+                cue.volumeDb = 0.0f;
+                cue.pitchSemitones = 0.0f;
+            }
+            if (cue.kind == ClipCueKind::Snapshot){
+                cue.path.clear();
+                cue.followSpeed = false;
+                cue.stop = ClipCueStop::None;
+            }else{
+                cue.snapshot.clear();
+                cue.seconds = 0.0f;
+                cue.unscaled.reset();
+            }
+            if (cue.kind == ClipCueKind::Sound && !cue.spatial) cue.path.clear();
+            cues.push_back(std::move(cue));
+            cueOrigins.push_back(origins.audio[i]);
+        }
+        std::vector<size_t> cueOrder(cues.size());
+        for (size_t i = 0; i < cueOrder.size(); i++) cueOrder[i] = i;
+        std::stable_sort(cueOrder.begin(), cueOrder.end(), [&](size_t a, size_t b){
+            if (cues[a].time != cues[b].time) return cues[a].time < cues[b].time;
+            return (int)cues[a].kind < (int)cues[b].kind;
+        });
+        data.audio.clear();
+        origins.audio.clear();
+        for (size_t i : cueOrder){
+            data.audio.push_back(std::move(cues[i]));
+            origins.audio.push_back(cueOrigins[i]);
+        }
 
         if (!std::isfinite(data.humanoid.humanScale) || data.humanoid.humanScale < 0.0f){
             warn(warnings, "humanoid.human_scale", "expected a positive number: dropped");
@@ -1605,6 +1675,104 @@ namespace{
         return true;
     }
 
+    // One audio cue (S40 R1): exactly one of sound, source and snapshot
+    bool readCue(const OJson& json, size_t index, ClipAudioCue& cue, std::vector<ClipWarning>& warnings){
+        const std::string path = "audio[" + std::to_string(index) + "]";
+        if (!json.is_object()){
+            warn(&warnings, path, "expected {\"time\", and one of \"sound\", \"source\", \"snapshot\"}, cue dropped");
+            return false;
+        }
+        auto time = json.find("time");
+        if (time == json.end() || !toFloat(*time, cue.time)){
+            warn(&warnings, member(path, "time"), "expected a time in seconds, cue dropped");
+            return false;
+        }
+        const bool hasSound = json.contains("sound");
+        const bool hasSource = json.contains("source");
+        const bool hasSnapshot = json.contains("snapshot");
+        if ((int)hasSound + (int)hasSource + (int)hasSnapshot != 1){
+            warn(&warnings, path, "expected exactly one of \"sound\", \"source\" and \"snapshot\", cue dropped");
+            return false;
+        }
+        auto text = [&](const char* key, std::string& out){
+            auto it = json.find(key);
+            if (it == json.end()) return true;
+            if (!it->is_string()){
+                warn(&warnings, member(path, key), "expected a string, ignored");
+                return false;
+            }
+            out = it->get<std::string>();
+            return true;
+        };
+        auto flag = [&](const char* key, bool& out){
+            auto it = json.find(key);
+            if (it == json.end()) return;
+            if (!it->is_boolean()) warn(&warnings, member(path, key), "expected true or false, ignored");
+            else out = it->get<bool>();
+        };
+        auto numberField = [&](const char* key, float& out){
+            auto it = json.find(key);
+            if (it == json.end()) return;
+            if (!toFloat(*it, out)) warn(&warnings, member(path, key), "expected a number, ignored");
+        };
+        if (hasSound){
+            cue.kind = ClipCueKind::Sound;
+            const OJson& sound = json["sound"];
+            if (sound.is_string()){
+                cue.sound = sound.get<std::string>();
+            }else if (sound.is_object()){
+                auto refPath = sound.find("path");
+                if (refPath != sound.end() && refPath->is_string()) cue.sound.path = refPath->get<std::string>();
+                auto guid = sound.find("guid");
+                if (guid != sound.end() && guid->is_string()) cue.sound.guid = Guid::parse(guid->get<std::string>());
+            }else{
+                warn(&warnings, member(path, "sound"), "expected {\"guid\", \"path\"} or a path, cue dropped");
+                return false;
+            }
+        }else if (hasSource){
+            cue.kind = ClipCueKind::Source;
+            if (!text("source", cue.path)){
+                warn(&warnings, member(path, "source"), "expected the path of a GameObject with an AudioSource, cue dropped");
+                return false;
+            }
+        }else{
+            cue.kind = ClipCueKind::Snapshot;
+            if (!text("snapshot", cue.snapshot)){
+                warn(&warnings, member(path, "snapshot"), "expected a snapshot name, cue dropped");
+                return false;
+            }
+        }
+        if (cue.kind == ClipCueKind::Sound) text("path", cue.path);
+        text("group", cue.group);
+        text("name", cue.name);
+        flag("spatial", cue.spatial);
+        flag("follow_speed", cue.followSpeed);
+        if (json.contains("unscaled")){
+            bool unscaled = false;
+            if (json["unscaled"].is_boolean()){
+                unscaled = json["unscaled"].get<bool>();
+                cue.unscaled = unscaled;
+            }else{
+                warn(&warnings, member(path, "unscaled"), "expected true or false, ignored");
+            }
+        }
+        numberField("volume_db", cue.volumeDb);
+        numberField("pitch_semitones", cue.pitchSemitones);
+        numberField("seconds", cue.seconds);
+        std::string stop;
+        if (text("stop", stop) && !stop.empty() && !anim::cueStopFromName(stop, cue.stop)){
+            warn(&warnings, member(path, "stop"), "expected none or state_exit, using none");
+        }
+        static const char* const known[] = {"time", "sound", "source", "snapshot", "path", "spatial", "volume_db", "pitch_semitones",
+                                            "group", "stop", "follow_speed", "name", "seconds", "unscaled"};
+        for (auto it = json.begin(); it != json.end(); ++it){
+            bool isKnown = false;
+            for (const char* key : known) isKnown = isKnown || it.key() == key;
+            if (!isKnown) warn(&warnings, member(path, it.key().c_str()), "unknown key ignored");
+        }
+        return true;
+    }
+
     // A segment between two keys written as Euler that turns more than 180 degrees on an axis
     // can't be kept by quaternions: warned on the later key, in time order
     void checkEulerSegments(const ClipData& data, const ClipOrigins& origins, const EulerKeys& eulerKeys,
@@ -1751,8 +1919,37 @@ namespace{
         return text + "}";
     }
 
+    // {"time", "sound": {"guid", "path"}, "path"?, "spatial"?, ...}: the keys whose value is not the default, in R1's order
+    std::string cueText(const ClipAudioCue& cue){
+        std::string text = "    {\"time\": " + timeNumber(cue.time);
+        switch (cue.kind){
+            case ClipCueKind::Sound: {
+                text += ", \"sound\": {";
+                if (!cue.sound.guid.isNull()) text += "\"guid\": " + quote(cue.sound.guid.str()) + ", ";
+                text += "\"path\": " + quote(cue.sound.path) + "}";
+                if (cue.spatial) text += ", \"path\": " + quote(cue.path) + ", \"spatial\": true";
+                if (cue.volumeDb != 0.0f) text += ", \"volume_db\": " + number(cue.volumeDb);
+                if (cue.pitchSemitones != 0.0f) text += ", \"pitch_semitones\": " + number(cue.pitchSemitones);
+                if (!cue.group.empty()) text += ", \"group\": " + quote(cue.group);
+                break;
+            }
+            case ClipCueKind::Source:
+                text += ", \"source\": " + quote(cue.path);
+                break;
+            case ClipCueKind::Snapshot:
+                text += ", \"snapshot\": " + quote(cue.snapshot);
+                if (cue.seconds != 0.0f) text += ", \"seconds\": " + number(cue.seconds);
+                if (cue.unscaled) text += std::string(", \"unscaled\": ") + (*cue.unscaled ? "true" : "false");
+                break;
+        }
+        if (cue.stop != ClipCueStop::None) text += std::string(", \"stop\": ") + quote(anim::cueStopName(cue.stop));
+        if (cue.followSpeed) text += ", \"follow_speed\": true";
+        if (!cue.name.empty()) text += ", \"name\": " + quote(cue.name);
+        return text + "}";
+    }
+
     const char* const knownTopLevelKeys[] = {"format", "version", "guid", "frame_rate", "wrap", "length", "additive_reference",
-                                             "humanoid", "tracks", "events", "preview", "source"};
+                                             "humanoid", "tracks", "events", "audio", "preview", "source"};
 
     bool isKnownTopLevelKey(const std::string& name){
         for (const char* known : knownTopLevelKeys){
@@ -1906,6 +2103,18 @@ static anim::ClipParseResult parseClipText(const std::string& text){
                     origins.events.push_back(i);
                 }
             }
+        }else if (name == "audio"){
+            if (!value.is_array()){
+                warn(&warnings, "audio", "expected an array of audio cues, ignored");
+                continue;
+            }
+            for (size_t i = 0; i < value.size(); i++){
+                ClipAudioCue cue;
+                if (readCue(value[i], i, cue, warnings)){
+                    data.audio.push_back(std::move(cue));
+                    origins.audio.push_back(i);
+                }
+            }
         }else if (name == "preview"){
             if (!value.is_object()){
                 warn(&warnings, "preview", "expected {\"model\": \"<model or prefab path>\"}, ignored");
@@ -1953,6 +2162,9 @@ static anim::ClipParseResult parseClipText(const std::string& text){
     if (version->get<double>() < 2.0 && data.isHumanoid()){
         warn(&warnings, "version", "humanoid tracks in a version 1 file: the clip is saved as version 2");
     }
+    if (version->get<double>() < 3.0 && !data.audio.empty()){
+        warn(&warnings, "version", "audio cues in a version " + shortNumber(version->get<double>()) + " file: the clip is saved as version 3");
+    }
     result.data = std::move(data);
     return result;
 }
@@ -1992,8 +2204,9 @@ std::string anim::writeClip(const ClipData& input){
 
     std::string text = "{\n";
     text += std::string("  \"format\": ") + quote(ANIM_FORMAT) + ",\n";
-    // version 1 files stay byte-identical: 2 only for humanoid clips (anim-retarget 6.1)
-    text += "  \"version\": " + std::to_string(data.isHumanoid() ? ANIM_VERSION : 1) + ",\n";
+    // version 1 files stay byte-identical: 2 only for humanoid clips (anim-retarget 6.1), 3 only
+    // for clips with audio cues (S40 R2: an older engine refuses them instead of dropping sounds)
+    text += "  \"version\": " + std::to_string(!data.audio.empty() ? 3 : data.isHumanoid() ? 2 : 1) + ",\n";
     if (!data.guid.empty()) text += "  \"guid\": " + quote(data.guid) + ",\n";
     text += "  \"frame_rate\": " + number(data.frameRate) + ",\n";
     text += std::string("  \"wrap\": ") + quote(wrapName(data.wrap)) + ",\n";
@@ -2023,6 +2236,14 @@ std::string anim::writeClip(const ClipData& input){
         for (size_t i = 0; i < data.events.size(); i++){
             text += eventText(data.events[i]);
             text += (i + 1 < data.events.size()) ? ",\n" : "\n";
+        }
+        text += "  ],\n";
+    }
+    if (!data.audio.empty()){
+        text += "  \"audio\": [\n";
+        for (size_t i = 0; i < data.audio.size(); i++){
+            text += cueText(data.audio[i]);
+            text += (i + 1 < data.audio.size()) ? ",\n" : "\n";
         }
         text += "  ],\n";
     }

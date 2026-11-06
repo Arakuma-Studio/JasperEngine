@@ -354,14 +354,17 @@ TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
     EXPECT_EQ(old.postWrapMode, CurveWrapMode::Clamp);
 }
 
-// S57: the scene's capsule shadows survive a cook, and a 1.0 settings record (without them)
-// leaves their defaults
+// S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
+// them (1.2); a 1.0 record (without either) and a 1.1 record (without the cross-fade) leave what
+// they lack at its defaults
 TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setCapsuleShadowsEnabled(true);
     scene->setCapsuleShadowIntensity(0.6f);
     scene->setCapsuleShadowSoftness(1.25f);
+    scene->setMeshLodCrossFade(false);
+    scene->setMeshLodCrossFadeDuration(1.5f);
 
     jasperengine::cook::StringTable strings;
     jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -376,21 +379,41 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     EXPECT_TRUE(loaded.scene->scene->isCapsuleShadowsEnabled());
     EXPECT_FLOAT_EQ(loaded.scene->scene->getCapsuleShadowIntensity(), 0.6f);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getCapsuleShadowSoftness(), 1.25f);
+    EXPECT_FALSE(loaded.scene->scene->isMeshLodCrossFade());
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getMeshLodCrossFadeDuration(), 1.5f);
 
-    // the 1.0 record: the same bytes without the three appended values
+    // the sizes of each format's appended values: a bool and two floats (1.1), a bool and a float (1.2)
     jasperengine::cook::StringTable none;
-    jasperengine::cook::Writer appended(none, [](Entity e) { return static_cast<uint32_t>(e); });
-    appended.boolean(true);
-    appended.f32(0.0f);
-    appended.f32(0.0f);
-    ASSERT_GT(bytes.size(), appended.data().size());
+    jasperengine::cook::Writer v11(none, [](Entity e) { return static_cast<uint32_t>(e); });
+    v11.boolean(true);
+    v11.f32(0.0f);
+    v11.f32(0.0f);
+    jasperengine::cook::Writer v12(none, [](Entity e) { return static_cast<uint32_t>(e); });
+    v12.boolean(true);
+    v12.f32(0.0f);
+    ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size());
+
+    // the 1.1 record: the same bytes without the cross-fade
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r11(std::span<const uint8_t>(bytes.data(), bytes.size() - v12.data().size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r11, *older.scene->scene);
+    ASSERT_FALSE(r11.failed()) << r11.error();
+    EXPECT_TRUE(older.scene->scene->isCapsuleShadowsEnabled());
+    EXPECT_FLOAT_EQ(older.scene->scene->getCapsuleShadowSoftness(), 1.25f);
+    EXPECT_TRUE(older.scene->scene->isMeshLodCrossFade());
+    EXPECT_FLOAT_EQ(older.scene->scene->getMeshLodCrossFadeDuration(), 0.5f);
+
+    // the 1.0 record: without either
     DecodedScene old = emptyScene();
-    jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - appended.data().size()), strings.strings(), entityOf);
+    jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - v11.data().size() - v12.data().size()),
+                                   strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r10, *old.scene->scene);
     ASSERT_FALSE(r10.failed()) << r10.error();
     EXPECT_FALSE(old.scene->scene->isCapsuleShadowsEnabled());
     EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowIntensity(), 1.0f);
     EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowSoftness(), 0.25f);
+    EXPECT_TRUE(old.scene->scene->isMeshLodCrossFade());
+    EXPECT_FLOAT_EQ(old.scene->scene->getMeshLodCrossFadeDuration(), 0.5f);
 }
 
 TEST(RuntimeFields, Generated) {

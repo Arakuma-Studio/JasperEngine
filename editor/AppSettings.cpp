@@ -159,6 +159,8 @@ bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
+bool AppSettings::soundBrowserAutoplay = false;
+bool AppSettings::soundBrowserMatchLoudness = true;
 std::filesystem::path AppSettings::hubLastLocation;
 float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
@@ -448,6 +450,8 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (editorNode["project_hub_at_startup"] && editorNode["project_hub_at_startup"].IsScalar()) {
                 projectHubAlways = editorNode["project_hub_at_startup"].as<std::string>() == "always";
             }
+            if (editorNode["sound_browser_autoplay"]) soundBrowserAutoplay = editorNode["sound_browser_autoplay"].as<bool>();
+            if (editorNode["sound_browser_match_loudness"]) soundBrowserMatchLoudness = editorNode["sound_browser_match_loudness"].as<bool>();
             if (editorNode["hub_last_location"] && editorNode["hub_last_location"].IsScalar()) {
                 hubLastLocation = FileUtils::pathFromUtf8(editorNode["hub_last_location"].as<std::string>());
             }
@@ -471,6 +475,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
+                if (panelsNode["soundBrowser"]) panelVisibility.soundBrowser = panelsNode["soundBrowser"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
@@ -765,6 +770,8 @@ bool AppSettings::saveSettings() {
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
+        if (soundBrowserAutoplay) editorNode["sound_browser_autoplay"] = true;
+        if (!soundBrowserMatchLoudness) editorNode["sound_browser_match_loudness"] = false;
         if (!hubLastLocation.empty()) editorNode["hub_last_location"] = FileUtils::pathToGenericUtf8(hubLastLocation);
         YAML::Node autosaveNode;
         autosaveNode["enabled"] = autosaveEnabled;
@@ -782,6 +789,7 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["audioMixer"] = panelVisibility.audioMixer;
+        panelsNode["soundBrowser"] = panelVisibility.soundBrowser;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
@@ -1396,6 +1404,22 @@ bool AppSettings::getEditorVSyncEnabled() {
 
 void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
+}
+
+bool AppSettings::getSoundBrowserAutoplay() {
+    return soundBrowserAutoplay;
+}
+
+void AppSettings::setSoundBrowserAutoplay(bool autoplay) {
+    soundBrowserAutoplay = autoplay;
+}
+
+bool AppSettings::getSoundBrowserMatchLoudness() {
+    return soundBrowserMatchLoudness;
+}
+
+void AppSettings::setSoundBrowserMatchLoudness(bool matched) {
+    soundBrowserMatchLoudness = matched;
 }
 
 bool AppSettings::getProjectHubAlways() {

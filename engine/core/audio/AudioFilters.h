@@ -82,6 +82,11 @@ namespace jasperengine {
         float getPeak() const;
         void reset();
 
+        // A capture's view of each group's blocks (samples of `channels` planes, `stride` apart).
+        // Set only on the deterministic driver: its mix is on the main thread, so it needs no lock.
+        using CaptureHook = void (*)(const MeterFilter& meter, const float* planar, unsigned int samples, unsigned int stride, unsigned int channels);
+        static CaptureHook captureHook;
+
         SoLoud::FilterInstance* createInstance() override;
     };
 

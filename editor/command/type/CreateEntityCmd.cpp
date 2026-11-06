@@ -5,6 +5,8 @@
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CanvasGroupComponent.h"
@@ -685,6 +687,23 @@ bool editor::CreateEntityCmd::execute(){
 
         scene->addComponent<ActionComponent>(entity, {});
         scene->addComponent<AnimationComponent>(entity, {});
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
+    }else if (type == EntityCreationType::AUDIO_ACTION || type == EntityCreationType::SOUND_EVENT_ACTION){
+
+        // no Transform: a 3D audio action plays at its target (S40 R17)
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
+    }else if (type == EntityCreationType::MIXER_SNAPSHOT_ACTION){
+
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<AudioSnapshotComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }

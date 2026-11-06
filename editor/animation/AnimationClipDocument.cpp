@@ -410,12 +410,15 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
     const fs::path newAbsolute = (newPath.is_absolute() ? newPath : root / newPath).lexically_normal();
 
     // only what a hint can name: models and prefabs (preview), scenes and pose animations
-    // (source), clips and masks (an Animator controller's or montage's), or a directory holding some
+    // (source), clips and masks (an Animator controller's or montage's), sounds (an audio cue's),
+    // or a directory holding some
     std::error_code ec;
     auto hintable = [](const fs::path& path){
         const std::string p = path.string();
         return Util::isModelFile(p) || Util::isPrefabFile(p) || Util::isSceneFile(p) || Util::isPoseAnimationFile(p) ||
-               Util::isAnimationClipFile(p) || Util::isAvatarMaskFile(p);
+               Util::isAnimationClipFile(p) || Util::isAvatarMaskFile(p) ||
+               // the sounds of audio cues (S40 R3)
+               Util::isAudioFile(p) || Util::isSoundEventFile(p);
     };
     // (the Animator's controllers and montages naming a moved clip, model or mask are rewritten
     // below: their path hints follow, their GUIDs stay)
@@ -465,6 +468,10 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
         ClipData data = *parsed.data;
         bool changed = remap(data.previewModel);
         changed |= remap(data.source.path);
+        // an audio cue's sound follows its file; its GUID stays (S40 R3)
+        for (ClipAudioCue& cue : data.audio){
+            if (cue.kind == ClipCueKind::Sound) changed |= remap(cue.sound.path);
+        }
         if (!changed) continue;
         const std::string newText = anim::writeClip(data);
         if (newText == text) continue;

@@ -4,6 +4,7 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "component/CameraComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"

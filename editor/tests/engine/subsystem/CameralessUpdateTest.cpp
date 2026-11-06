@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/TilemapComponent.h"

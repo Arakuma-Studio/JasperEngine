@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "Backend.h"
 #include "Engine.h"
+#include "window/PlayInput.h"
 #include "Log.h"
 #include "Platform.h"
 
