@@ -3,6 +3,7 @@
 
 // CommandRunner.cpp
 #include "CommandRunner.h"
+#include "FileUtils.h"
 #include "TextEncoding.h"
 #include "editor/Out.h"
 
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <sstream>
 
 #ifdef _WIN32
     #include <io.h>
@@ -155,6 +157,19 @@ std::string editor::CommandRunner::findVcvarsall() {
     std::error_code ec;
     if (fs::exists(vcvars, ec)) return vcvars.string();
     return "";
+}
+
+fs::path editor::CommandRunner::findVisualStudioNinja() {
+    // every install (Build Tools included), newest first; vswhere writes UTF-8 (-utf8)
+    std::istringstream installs(vswhere({"-products", "*", "-sort", "-property", "installationPath"}));
+    for (std::string install; std::getline(installs, install);) {
+        while (!install.empty() && (install.back() == '\r' || install.back() == ' ')) install.pop_back();
+        if (install.empty()) continue;
+        const fs::path ninja = FileUtils::pathFromUtf8(install) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja" / "ninja.exe";
+        std::error_code ec;
+        if (fs::is_regular_file(ninja, ec)) return ninja;
+    }
+    return fs::path();
 }
 #endif
 

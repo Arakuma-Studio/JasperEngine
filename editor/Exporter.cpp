@@ -18,6 +18,7 @@
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
+#include "util/CMakeText.h"
 #include "util/EditorScripts.h"
 #include "util/ExportFeatureScan.h"
 #include "yaml-cpp/yaml.h"
@@ -1544,6 +1545,9 @@ bool editor::Exporter::configureBuild() {
         if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
         if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
         if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
+        // the same cap as the build step's --parallel: cl's /MP under Visual Studio generators
+        // (jasperengine_msvc_parallel_compile)
+        argv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(effectiveBuildJobs()));
     }
     argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
     if (config.developmentBuild) argv.push_back("-DJASPERENGINE_DEVELOPMENT_BUILD=ON");
@@ -1597,6 +1601,11 @@ bool editor::Exporter::configureBuild() {
     return true;
 }
 
+unsigned int editor::Exporter::effectiveBuildJobs() const {
+    const unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
+    return std::min(jobs, Generator::getMaxParallelBuildJobs());
+}
+
 bool editor::Exporter::runBuild() {
     setProgressRaw("Compiling project...", BUILD_PROGRESS_START);
 
@@ -1604,8 +1613,7 @@ bool editor::Exporter::runBuild() {
 
     const fs::path buildDir = config.targetDir / buildDirName;
 
-    unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
-    jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
+    const unsigned int jobs = effectiveBuildJobs();
 
     // the CMake that configured the tree (Web too: no emcmake picking its own any more)
     const std::string cmakeCmd = Generator::cmakeProgram();
@@ -3601,6 +3609,14 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
                 if (fs::exists(target)
                     && fs::file_size(target) == entry.file_size()
                     && filesEqual(entry.path(), target)) {
+#ifndef _WIN32
+                    // an older export (or one from an editor that lost the modes) gets the
+                    // source's: an executable script stays executable
+                    const fs::perms sourcePerms = entry.status().permissions();
+                    if (fs::status(target).permissions() != sourcePerms) {
+                        fs::permissions(target, sourcePerms, fs::perm_options::replace);
+                    }
+#endif
                     continue;
                 }
                 fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing);
@@ -3623,6 +3639,23 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
     } catch (const fs::filesystem_error& e) {
         ec = e.code();
     }
+}
+
+bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {
+    error.clear();
+#ifdef _WIN32
+    (void)files;
+#else
+    for (const fs::path& file : files) {
+        std::error_code ec;
+        fs::permissions(file, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, ec);
+        if (ec) {
+            error = "Could not make " + FileUtils::pathToGenericUtf8(file) + " executable: " + ec.message();
+            return false;
+        }
+    }
+#endif
+    return true;
 }
 
 bool editor::Exporter::copyEngine() {
@@ -3682,6 +3715,13 @@ bool editor::Exporter::copyEngine() {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
         if (ec) {
             setError("Failed to copy jasperengine.py: " + ec.message());
+            return false;
+        }
+        // run from a terminal as ./jasperengine.py and ./gradlew (docs/shipping.md)
+        std::string executableError;
+        if (!ensureExecutable({config.targetDir / "jasperengine.py", config.targetDir / "workspaces" / "androidstudio" / "gradlew"},
+                              executableError)) {
+            setError(executableError);
             return false;
         }
         if (!writeAndroidProjectSettings()) return false;
@@ -3794,20 +3834,10 @@ bool editor::Exporter::copyEngine() {
     if (projectSettingsPos != std::string::npos) {
         const WindowSettings window = project->getWindowSettings();
 
-        // The title crosses two quoting layers: the CMake string literal here and
-        // the C string literal it becomes through add_definitions. Escape for the
-        // C level first, then for the CMake level ($ stops variable expansion).
+        // The title becomes a C string literal through the engine's compile definitions: carried
+        // as escaped bytes (util/CMakeText.h), so any character in any language builds.
         // Control characters are sanitized upstream in Project::getWindowSettings().
-        std::string title;
-        for (char c : window.title) {
-            if (c == '\\' || c == '"') title += '\\';
-            title += c;
-        }
-        std::string cmakeTitle;
-        for (char c : title) {
-            if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-            cmakeTitle += c;
-        }
+        const std::string cmakeTitle = cmaketext::cStringDefinitionValue(window.title);
 
         // First line reuses the marker's existing indentation; subsequent lines
         // match the surrounding standalone setup block (4 spaces).
@@ -4227,13 +4257,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         normalizeNewlines(out);
         return true;
     };
-
-    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
-    {
-        std::error_code permissionError;
-        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
-                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
-    }
 
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";
@@ -6326,8 +6349,10 @@ namespace {
     // A folder holding Emscripten itself: its CMake toolchain file and emcc
     bool isEmscriptenDir(const fs::path& dir) {
         std::error_code ec;
+        // (Emscripten 6 on Windows has emcc.exe launchers where earlier versions had emcc.bat)
         return fs::is_regular_file(dir / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", ec) &&
-               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.bat", ec) || fs::exists(dir / "emcc.py", ec));
+               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.exe", ec) || fs::exists(dir / "emcc.bat", ec) ||
+                fs::exists(dir / "emcc.py", ec));
     }
 
     bool isEmsdkRoot(const fs::path& dir) {
@@ -6483,7 +6508,7 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
 }
 
 std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                          std::string& error) {
+                                                                          std::string& error, const fs::path& visualStudioNinja) {
     error.clear();
     // emcmake.py: only when neither -G nor CMAKE_GENERATOR picks one (CMake reads that itself)
     if (generatorGiven || !CommandRunner::variable(env, "CMAKE_GENERATOR").empty()) return {};
@@ -6501,8 +6526,10 @@ std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const 
     fs::path found;
     if (CommandRunner::resolveWindowsProgram("mingw32-make", dirs, found).empty()) return {"-G", "MinGW Makefiles"};
     if (CommandRunner::resolveWindowsProgram("ninja", dirs, found).empty()) return {"-G", "Ninja"};
+    // Visual Studio's own Ninja, which it keeps off PATH
+    if (!visualStudioNinja.empty()) return {"-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=" + visualStudioNinja.generic_string()};
     error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH, "
-            "or set CMAKE_GENERATOR";
+            "install Visual Studio's C++ CMake tools, or set CMAKE_GENERATOR";
     return {};
 }
 
@@ -6518,8 +6545,11 @@ std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& 
     args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
     if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
 #ifdef _WIN32
-    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
-    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error)) args.push_back(arg);
+    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH);
+    // Visual Studio's own Ninja (a vswhere run) only when that finds no generator
+    std::vector<std::string> generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error);
+    if (!error.empty()) generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error, CommandRunner::findVisualStudioNinja());
+    for (const std::string& arg : generatorArgs) args.push_back(arg);
 #else
     (void)generatorGiven;
     (void)env;

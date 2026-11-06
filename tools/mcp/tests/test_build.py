@@ -218,8 +218,10 @@ async def test_source_export(ed: Editor):
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
     await check_xcode_workspace(ed, out)
-    # S67: the Android project builds from a shell: the installed editor's copy has no exec bit to pass on
-    ed.check(os.access(out / "workspaces" / "androidstudio" / "gradlew", os.X_OK), "gradlew is executable")
+    # built from a terminal as the docs say (./jasperengine.py, ./gradlew): the installed editor's
+    # engine copy and the export keep them executable
+    for script in ("jasperengine.py", "workspaces/androidstudio/gradlew"):
+        ed.check(os.access(out / script, os.X_OK), f"{script} is executable: {oct((out / script).stat().st_mode)}")
     # web saves are prefixed per game: the default identifier is shared, so the project name
     # (bytes other than letters, digits, . and - escaped for the define)
     ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
@@ -252,6 +254,16 @@ async def test_source_export(ed: Editor):
     ed.check(Path(info["source"]["output_dir"]).resolve() != out.resolve(), f"not remembered: {info['source']['output_dir']}")
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
+
+    # Android builds have OpenGL ES 3 only: its preset compiles no Vulkan shaders (the SPIR-V
+    # header stays the SDK's empty stub)
+    android = ed.scratch.root / "export-android"
+    r = await ed.call("build_project", mode="source", output_dir=str(android), platform="android", timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    shaders = android / "shaders"
+    ed.check((shaders / "glsl300es.h").stat().st_size > 4096, "the GLES3 shaders are compiled")
+    ed.check(not (shaders / "spirv10.h").exists() or (shaders / "spirv10.h").stat().st_size < 1024,
+             f"no Vulkan shaders for Android: spirv10.h has {(shaders / 'spirv10.h').stat().st_size} bytes")
 
 
 async def test_no_admob(ed: Editor):
