@@ -265,7 +265,7 @@ namespace {
     }
 
     // the table's property, or no ref when the table names nothing at that path
-    PropertyData tableProperty(const ComponentDesc& desc, void* comp, std::string_view path) {
+    PropertyData tableProperty(const ComponentDesc& desc, void* comp, std::string_view path, bool append) {
         const StructDesc* current = &desc.body;
         void* owner = comp;
         const void* defaults = desc.body.defaults ? desc.body.defaults() : nullptr;
@@ -286,10 +286,11 @@ namespace {
                 if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return PropertyData();
                 pos++;
                 if (field->kind != Kind::Array || !field->arrayOps) return PropertyData();
-                // one past the last element appends to an array that grows by index (as reflect::resolve)
+                // one past the last element appends to an array that grows by index, for a write
+                // (as reflect::resolve)
                 const size_t count = field->arrayOps->size(ref);
-                const bool append = field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
-                if (index >= count && !append) return PropertyData();
+                const bool appends = append && field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+                if (index >= count && !appends) return PropertyData();
                 def = elementDefault(*field, def);
                 ref = field->arrayOps->at(ref, index);
                 ops = field->elementOps;
@@ -315,9 +316,9 @@ size_t reflect::elementCount(const FieldDesc& field, const void* owner, const vo
     return count < size ? count : size;
 }
 
-PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::string_view path) {
+PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::string_view path, bool append) {
     if (!comp || path.empty()) return PropertyData();
-    PropertyData data = tableProperty(desc, comp, path);
+    PropertyData data = tableProperty(desc, comp, path, append);
     if (data.ref) return data;
     if (desc.extraProperty) return desc.extraProperty(comp, std::string(path));
     return PropertyData();

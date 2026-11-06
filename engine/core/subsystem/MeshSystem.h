@@ -201,6 +201,9 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // How many joints the skinned vertices name: their largest bone id plus one (0 without
+        // skinned vertices). A palette shorter than that is read past its end
+        static size_t skinJointCount(MeshComponent& mesh);
         static void prepareMeshPolygonMesh(MeshComponent& mesh);
         static void prepareTilemapMesh(MeshComponent& mesh);
         // Both terrain submeshes (full and half resolution) draw with this layout

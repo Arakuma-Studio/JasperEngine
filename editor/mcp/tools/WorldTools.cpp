@@ -359,7 +359,8 @@ bool addCatalogProperties(Project* project, SceneProject* scene, Entity entity, 
         return false;
     }
     for (auto it = props.begin(); it != props.end(); ++it) {
-        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key());
+        // (a write follows: "frames[N]" one past the last appends it)
+        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key(), true);
         if (!property.ref) {
             std::vector<std::string> names;
             for (const auto& item : Catalog::findEntityProperties(scene->scene, entity, component)) {
@@ -419,7 +420,8 @@ std::string meshTexturePath(Scene* scene, Entity entity, int submesh) {
 // Sets MeshComponent submeshes[N].material.baseColorTexture from a project-relative path
 bool addMeshTexture(const Target& target, Entity entity, int submesh, const Json& path, MultiPropertyCmd& multi, std::string& error) {
     const std::string name = "submeshes[" + std::to_string(submesh) + "].material.baseColorTexture";
-    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name);
+    // (a write follows: a sprite just made holds no submesh until its first, appended here)
+    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name, true);
     if (!property.ref) {
         error = "The GameObject has no mesh submesh " + std::to_string(submesh) + " to hold a texture.";
         return false;

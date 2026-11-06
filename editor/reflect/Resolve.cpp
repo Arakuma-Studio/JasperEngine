@@ -108,7 +108,7 @@ namespace {
 
 }
 
-FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error) {
+FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error, bool append) {
     if (error) *error = PathError::None;
     if (!owner || path.empty()) return fail(error, PathError::Syntax);
     const StructDesc* current = &desc;
@@ -132,11 +132,12 @@ FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view 
             if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return fail(error, PathError::Syntax);
             pos++;
             if (element || field->kind != Kind::Array || !field->arrayOps) return fail(error, PathError::NotIndexable);
-            // one past the last element appends to an array that grows by index (the Inspector's
-            // Add buttons, an agent adding a frame); never further, nor past ARRAY_INDEX_LIMIT
+            // one past the last element appends to an array that grows by index when the caller
+            // writes (the Inspector's Add buttons, an agent adding a frame); never further, nor
+            // past ARRAY_INDEX_LIMIT
             const size_t count = field->arrayOps->size(ref);
-            const bool append = field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
-            if (index >= count && !append) return fail(error, PathError::IndexOutOfRange);
+            const bool appends = append && field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+            if (index >= count && !appends) return fail(error, PathError::IndexOutOfRange);
             ref = field->arrayOps->at(ref, index);
             ops = field->elementOps;
             element = true;
@@ -161,8 +162,8 @@ FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view 
     }
 }
 
-FieldRef reflect::resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error) {
-    return resolve(desc.body, comp, path, error);
+FieldRef reflect::resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error, bool append) {
+    return resolve(desc.body, comp, path, error, append);
 }
 
 std::string reflect::canonicalPath(const ComponentDesc& desc, void* comp, std::string_view path) {

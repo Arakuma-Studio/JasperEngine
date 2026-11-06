@@ -64,3 +64,14 @@ TEST(ProjectUtilsTile, DuplicateTilePastTheOldCapacity){
     duplicate->undo();
     EXPECT_EQ(fixture.tilemap().numTiles, 2048u);
 }
+
+// up to the tiles a Tilemap draws (MAX_TILEMAP_RENDERED_TILES): one more would not draw
+TEST(ProjectUtilsTile, DuplicateTileRefusedAtTheDrawLimit){
+    TilemapProject fixture(MAX_TILEMAP_RENDERED_TILES);
+    EXPECT_EQ(ProjectUtils::buildDuplicateTileCmd(&fixture.project, 1, fixture.entity, 5), nullptr);
+    TilemapProject below(MAX_TILEMAP_RENDERED_TILES - 1);
+    std::unique_ptr<Command> duplicate(ProjectUtils::buildDuplicateTileCmd(&below.project, 1, below.entity, 5));
+    ASSERT_NE(duplicate, nullptr);
+    ASSERT_TRUE(duplicate->execute());
+    EXPECT_EQ(below.tilemap().numTiles, (unsigned int)MAX_TILEMAP_RENDERED_TILES);
+}

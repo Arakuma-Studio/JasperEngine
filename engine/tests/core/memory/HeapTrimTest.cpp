@@ -8,6 +8,7 @@
 
 #include "jobs/JobSystem.h"
 #include "memory/HeapTrim.h"
+#include "support/JobsTestUtil.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,17 @@
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <unistd.h>
+#endif
+#if defined(__ANDROID__)
+#include <android/api-level.h>
+#include <malloc.h>
+#endif
+
+// where the allocator gives freed heap back (memory/HeapTrim.cpp: Android from 9, with M_PURGE)
+#if (defined(__linux__) && defined(__GLIBC__)) || defined(__APPLE__) || (defined(__ANDROID__) && defined(M_PURGE))
+#define HEAP_TRIM_TEST_SUPPORTED 1
+#else
+#define HEAP_TRIM_TEST_SUPPORTED 0
 #endif
 
 using namespace jasperengine;
@@ -66,9 +78,27 @@ TEST(HeapTrim, ReturnsFreedPagesOnGlibc) {
 
     EXPECT_TRUE(memory::releaseFreeHeap());
     const size_t after = residentBytes();
+    // a sanitizer's allocator holds freed memory in its own quarantine, which malloc_trim does
+    // not reach: the resident bytes mean nothing there
+#if !JE_TEST_SANITIZED
     EXPECT_GE(before - std::min(before, after), size_t(32u << 20))
         << "resident before " << (before >> 20) << " MiB, after " << (after >> 20) << " MiB";
+#else
+    (void)before;
+    (void)after;
+#endif
     std::free(above);
+}
+#elif defined(__ANDROID__)
+TEST(HeapTrim, PurgesFromAndroid9) {
+    const bool purged = memory::releaseFreeHeap();
+#if defined(M_PURGE)
+    // mallopt(M_PURGE) is understood from Android 9 (API 28); before, it answers it did nothing
+    if (android_get_device_api_level() >= 28) EXPECT_TRUE(purged);
+    else EXPECT_FALSE(purged);
+#else
+    EXPECT_FALSE(purged);
+#endif
 }
 #else
 TEST(HeapTrim, NothingWhereTheAllocatorCannot) {
@@ -81,7 +111,7 @@ TEST(HeapTrim, NothingWhereTheAllocatorCannot) {
 #endif
 
 TEST(HeapTrim, RequestsMerge) {
-#if (defined(__linux__) && defined(__GLIBC__)) || defined(__APPLE__)
+#if HEAP_TRIM_TEST_SUPPORTED
     const uint64_t before = memory::heapTrimCount();
     for (int i = 0; i < 10; i++) memory::requestHeapTrim();
     ASSERT_TRUE(waitForTrims(before + 1));

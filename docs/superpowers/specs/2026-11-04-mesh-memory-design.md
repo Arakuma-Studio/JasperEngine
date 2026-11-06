@@ -591,6 +591,8 @@ Core (`jasperengine-core-tests`, non-editor containers):
   - `SkinPaletteGpu.PaletteSizedToTheSkin`: a skinned glTF the test writes with 70 joints gets
     `bonesMatrix.stored() == 70` and draws posed like `MeshPose.MatchesGpuSkinning` expects; a box has an empty
     palette and no palette texture or buffer.
+  - `SkinPaletteGpu.SkinOverTheDeviceTextureHeightFailsWithAnError`: a palette one row over the device's texture
+    height fails the load on the texture path with an error naming the joints and the limit.
   - `SkinPaletteGpu.SkinOverTheOldLimitLoads`: the same with 200 joints loads and draws. **Red:** "more bones than the
     maximum allowed (128)", load fails.
 - `engine/tests/core/memory/HeapTrimTest.cpp`:
@@ -613,7 +615,7 @@ Editor (`jasperengine-editor-tests`):
   - `StreamNoCapacity.IndexLimitDropsAndLogs`: 65,537 frames keep 65,536 and log one error.
 - `editor/tests/util/ProjectUtilsTileTest.cpp` (new; no test calls `buildDuplicateTileCmd` today):
   `ProjectUtilsTile.DuplicateTilePastTheOldCapacity`: a tilemap with 2,048 tiles gets a non-null duplicate command that
-  executes and undoes. `...RefusedAtTheDrawLimit`: at 16,383 tiles it returns null. **Red:** null at 2,048.
+  executes and undoes. `...DuplicateTileRefusedAtTheDrawLimit`: at 16,383 tiles it returns null. **Red:** null at 2,048.
 - `editor/tests/reflect/ResolveAppendTest.cpp`: `ReflectResolve.IndexAtTheCountAppendsToAGrowArray` (a sprite with
   128 frames: `framesRect[128].name` resolves and grows), `...PastTheCountIsOutOfRange` (`framesRect[130]`).
   **Red:** `framesRect[128]` is out of range on main.
@@ -759,8 +761,10 @@ Recorded during the implementation (branch `dc/mesh-memory`).
     `test_mesh_component_memory` lives in `test_jobs_memory.py` (a created project) beside
     `test_pipeline_desc_record`, which compares 64 equal sprites with one instead of a fixed count (the editor's
     own objects hold descriptions too).
-11. **Both path walkers append.** `reflect::resolve` and the property lookup the commands use
-    (`editor/reflect/Properties.cpp`) both accept the index one past the end of a growing array.
+11. **Both path walkers append, on writes only.** `reflect::resolve` and the property lookup the commands use
+    (`editor/reflect/Properties.cpp`, `Catalog::findProperty`) accept the index one past the end of a growing
+    array when the caller passes `append` (a property command's execute, a reflected set, MCP's sets); a read, an
+    undo or a revert names nothing there and grows nothing (`ReflectResolve.AReadAtTheCountGrowsNothing`).
 12. **Templates** were regenerated with `tools/templates/make_project_templates.py` (generated files), so their
     scenes have no `maxValues`; the generator gives them new scene ids and GUIDs, as every run does.
 13. **Measured sizes** (Linux, libstdc++, `MeshMemory.SizeofCeilings`): `SokolObject` 752 B (2,528 before),
@@ -779,3 +783,14 @@ Recorded during the implementation (branch `dc/mesh-memory`).
     always held 16 slots; it now compares the submeshes a mesh holds, as S71 defines it (its tests pin that), and
     the decode over a live mesh adds the reload itself, so a mesh of no submeshes yet still reloads as before. S53's model cooker keeps its 30-buffer
     interleaving rule (fewer buffers bind faster); only its comment no longer names a player capacity.
+16. **After the review.** Interned pipeline bases keep the label of the description that first made them
+    (`descEqual` ignores it): it is only a debug name, so a pipeline made from a shared base may show another
+    object's label in a GPU debugger. Every `Mesh` method taking a submesh index refuses one past
+    `max(numSubmeshes, 1)` with an error and grows nothing; getters return the default
+    (`MeshMemory.SubmeshIndexPastTheMeshGrowsNothing`). A palette an older editor saved without its trailing
+    identities (`bonesMatrix: []` for a bind pose) is decoded as long as the largest bone id its vertices name plus
+    one (`MeshSystem::skinJointCount`, `StreamNoCapacity.TrimmedPaletteReachesEveryJointTheVerticesName`), not a
+    padded 128. A clone resets S55's batch variants with its other render objects
+    (`InstancingGoldenGpu.CloneOfAnInstancedMeshLeavesTheOriginalsBatches`). `HeapTrim.ReturnsFreedPagesOnGlibc`
+    checks the resident bytes only without a sanitizer, and Android has its own case. The `MeshMemory` ceilings grow
+    by half under MSVC's checked iterators.

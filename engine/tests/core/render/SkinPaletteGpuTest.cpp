@@ -12,6 +12,7 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 
 #include "GpuEnvironment.h"
@@ -149,4 +150,33 @@ TEST(SkinPaletteGpu, SkinOverTheOldLimitLoads){
     ASSERT_NE(mesh, nullptr);
     EXPECT_EQ(mesh->bonesMatrix.stored(), 200u);
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
+}
+
+// A palette taller than the device's textures (2,048 rows at least on GLES3/WebGL2) fails the
+// mesh's load on the texture path with an error naming the joints and the device's limit (spec
+// 6.4); a storage buffer has no such limit
+TEST(SkinPaletteGpu, SkinOverTheDeviceTextureHeightFailsWithAnError){
+    JASPER_REQUIRE_GPU();
+    TempDir dir;
+    SkinnedScene skinned(writeSkinnedPlate(dir, "skin4", 4));
+    ASSERT_TRUE(skinned.loaded);
+    MeshComponent* mesh = const_cast<MeshComponent*>(drawnMesh(skinned.scene));
+    ASSERT_NE(mesh, nullptr);
+    const bool texturePath = mesh->bonesTexture.isCreated();
+    const int limit = SystemRender::getFeatures().maxTextureSize2D;
+    ASSERT_GT(limit, 0);
+
+    const LogCapture log;
+    mesh->bonesMatrix.resize(static_cast<size_t>(limit) + 1);
+    mesh->needUpdateBones = true;
+    GpuEnvironment::drawFrames(3);
+    if (texturePath){
+        EXPECT_FALSE(mesh->loaded);
+        // (once per load the mesh tries)
+        EXPECT_GE(log.count(D_LOG_ERROR, std::to_string(limit + 1) + " joints"), 1u) << log.describeErrors();
+        EXPECT_GE(log.count(D_LOG_ERROR, "at most " + std::to_string(limit)), 1u) << log.describeErrors();
+    }else{
+        EXPECT_TRUE(mesh->loaded);
+        EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
+    }
 }

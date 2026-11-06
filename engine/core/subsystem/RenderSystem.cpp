@@ -168,6 +168,13 @@ namespace {
             const auto textureSlot = shader.getTextureIndex(TextureShaderType::BONES);
             if (textureSlot.first == -1)
                 return false;
+            // a row per joint: a skin taller than the device's textures cannot load on this path
+            const int maxRows = SystemRender::getFeatures().maxTextureSize2D;
+            if (maxRows > 0 && rows > static_cast<uint32_t>(maxRows)){
+                Log::error("Cannot load a skin of %u joints: its bone palette is a texture of %u rows, and this device's textures hold at most %d",
+                           rows, rows, maxRows);
+                return false;
+            }
             if (!mesh.bonesTexture.isCreated() &&
                     !mesh.bonesTexture.createDynamicTexture("mesh-bones", 4, static_cast<int>(rows))){
                 Log::error("Cannot make the bone palette of a skin of %u joints (a texture of 4 x %u)", rows, rows);

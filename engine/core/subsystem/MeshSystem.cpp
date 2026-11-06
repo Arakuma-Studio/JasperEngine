@@ -3360,6 +3360,38 @@ static bool readAttributeElement(Buffer* buffer, const Attribute& attribute, uns
     return true;
 }
 
+size_t MeshSystem::skinJointCount(MeshComponent& mesh){
+    size_t joints = 0;
+    const auto scan = [&joints](Buffer* buffer, const Attribute& ids){
+        for (unsigned int v = 0; v < ids.getCount(); v++){
+            for (unsigned int e = 0; e < ids.getElements(); e++){
+                float id = 0;
+                if (readAttributeElement(buffer, ids, v, e, id) && id >= 0.0f)
+                    joints = std::max(joints, static_cast<size_t>(id) + 1);
+            }
+        }
+    };
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    for (unsigned int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    // the ids a buffer lays out itself, and those a submesh names in a buffer
+    for (const auto& buffer : buffers){
+        if (const Attribute* ids = buffer.second->getAttribute(AttributeType::BONEIDS))
+            scan(buffer.second, *ids);
+    }
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const auto attribute = mesh.submeshes[s].attributes.find(AttributeType::BONEIDS);
+        if (attribute == mesh.submeshes[s].attributes.end())
+            continue;
+        const auto buffer = buffers.find(attribute->second.getBufferName());
+        if (buffer != buffers.end())
+            scan(buffer->second, attribute->second);
+    }
+    return joints;
+}
+
 void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     std::map<std::string, Buffer*> buffers;
 

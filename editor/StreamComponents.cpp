@@ -222,6 +222,11 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
             mesh.bonesMatrix[i] = decodeMatrix4(bonesNode[i]);
         // an empty list is a trimmed one (all identity), which still counts as written
         mesh.needUpdateBones = true;
+        // older editors left out the trailing identities of the 128 every mesh had (all of them
+        // for a bind pose): the palette reaches every joint the skinned vertices name
+        const size_t joints = std::min(MeshSystem::skinJointCount(mesh), ARRAY_INDEX_LIMIT);
+        if (mesh.bonesMatrix.stored() < joints)
+            mesh.bonesMatrix.resize(joints);
     }
 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);

@@ -241,6 +241,16 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
+        // the batch variants too (spec S55): the clone's load destroys what they hold, which
+        // were the original's pipelines
+        submesh.batchRender = ObjectRender();
+        submesh.batchDepthRender = ObjectRender();
+        submesh.batchShader.reset();
+        submesh.batchDepthShader.reset();
+        submesh.batchShaderProperties = 0;
+        submesh.batchDepthShaderProperties = 0;
+        submesh.batchShaderId = 0;
+        submesh.batchDepthShaderId = 0;
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();

@@ -105,3 +105,47 @@ TEST(StreamNoCapacity, IndexLimitDropsTheRest){
     EXPECT_EQ(animation.framesSize, ARRAY_INDEX_LIMIT);
     EXPECT_EQ(animation.frames.stored(), ARRAY_INDEX_LIMIT);
 }
+
+// A skinned mesh saved by an older editor: its palette listed without the trailing identities of
+// the 128 every mesh had, none at all for a bind pose ("bonesMatrix: []"). It reads back as long
+// as the joints its vertices name, or those joints would be read past its end
+TEST(StreamNoCapacity, TrimmedPaletteReachesEveryJointTheVerticesName){
+    MeshComponent mesh;
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::BONEIDS, 4);
+    mesh.buffer.addAttribute(AttributeType::BONEWEIGHTS, 4);
+    const Vector4 ids[3] = {Vector4(0, 1, 0, 0), Vector4(5, 0, 0, 0), Vector4(2, 3, 0, 0)};
+    for (const Vector4& id : ids){
+        mesh.buffer.addVector3(AttributeType::POSITION, Vector3(id.x, id.y, 0.0f));
+        mesh.buffer.addVector4(AttributeType::BONEIDS, id);
+        mesh.buffer.addVector4(AttributeType::BONEWEIGHTS, Vector4(0.5f, 0.5f, 0.0f, 0.0f));
+    }
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].hasSkinning = true;
+    const YAML::Node encoded = Stream::encodeMeshComponent(mesh, true, false, true);
+
+    // a bind pose: every matrix an identity, so none listed
+    YAML::Node bindPose = YAML::Clone(encoded);
+    bindPose["bonesMatrix"] = YAML::Node(YAML::NodeType::Sequence);
+    const MeshComponent posed = Stream::decodeMeshComponent(throughText(bindPose));
+    ASSERT_EQ(posed.bonesMatrix.stored(), 6u) << "joint 5 is named";
+    EXPECT_EQ(posed.bonesMatrix[5], Matrix4());
+
+    // two posed joints listed, the identities after them left out
+    const Matrix4 moved = Matrix4::translateMatrix(1.0f, 2.0f, 3.0f);
+    YAML::Node twoListed = YAML::Clone(encoded);
+    twoListed["bonesMatrix"] = YAML::Node(YAML::NodeType::Sequence);
+    twoListed["bonesMatrix"].push_back(Stream::encodeMatrix4(moved));
+    twoListed["bonesMatrix"].push_back(Stream::encodeMatrix4(moved));
+    const MeshComponent partly = Stream::decodeMeshComponent(throughText(twoListed));
+    ASSERT_EQ(partly.bonesMatrix.stored(), 6u);
+    EXPECT_EQ(partly.bonesMatrix[1], moved);
+    EXPECT_EQ(partly.bonesMatrix[2], Matrix4());
+
+    // a rigid mesh keeps no palette
+    MeshComponent rigid;
+    rigid.numSubmeshes = 1;
+    YAML::Node rigidNode = Stream::encodeMeshComponent(rigid, true, false, true);
+    rigidNode["bonesMatrix"] = YAML::Node(YAML::NodeType::Sequence);
+    EXPECT_EQ(Stream::decodeMeshComponent(throughText(rigidNode)).bonesMatrix.stored(), 0u);
+}
