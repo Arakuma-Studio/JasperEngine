@@ -114,3 +114,60 @@ async def test_clip_view_detect_and_use(ed: Editor):
     ed.check_eq(meta.read_text(), before, "one undo step restores the .meta")
     # the command runs on the inspected clip (run_command refuses an unknown or disabled one)
     await ed.call("run_command", id="audioClip.detectTempo")
+
+
+def middle(ui: Ui, rect) -> tuple[int, int]:
+    return ui.at(rect, ((rect[2] - rect[0]) / 2, (rect[3] - rect[1]) / 2))
+
+
+async def probe(ed: Editor, ui: Ui, name: str, frames: int = 600):
+    for _ in range(frames // 3):
+        rect = ed.ui_items().get(name)
+        if rect:
+            return rect
+        await ui.frames(3)
+    ed.fail(f"{name} is not drawn")
+
+
+async def edit_mode_music(ed: Editor) -> str:
+    result = await ed.call("eval_lua", code="return Audio.getMusic()")
+    values = result.get("results", result.get("result"))
+    return values[0] if isinstance(values, list) else values
+
+
+async def test_event_view_loops_and_play_as_music(ed: Editor):
+    ui = Ui(ed)
+    for i in range(2):
+        ar.write_tone(ed.project / f"music/part{i}.wav", seconds=1.0, frequency=440.0 + 110.0 * i, rate=RATE)
+    await ed.call("sync_files")
+    await ed.call("tool_groups", enable=["audio"])
+    event = "music/theme.soundevent"
+    await ed.call("edit_sound_event", path=event, create=True, values={
+        "mode": "sequence", "type": "music", "loop": True,
+        "clips": [{"clip": "music/part0.wav", "loops": 2}, "music/part1.wav"]})
+    ui.focus()
+    await ed.call("run_command", id="window.soundBrowser")
+    await ui.click(middle(ui, await probe(ed, ui, "soundBrowser.card.theme")))
+    # the Loops column of a music event, one per clip
+    await probe(ed, ui, "soundEvent.loops.0")
+    await probe(ed, ui, "soundEvent.loops.1")
+    await editor_shot(ed, "event-view-loops")
+
+    await ui.click(middle(ui, await probe(ed, ui, "soundEvent.playAsMusic")))
+    playing = ""
+    for _ in range(60):
+        playing = await edit_mode_music(ed)
+        if playing:
+            break
+        await ui.frames(3)
+    ed.check_eq(playing, "music/theme.soundevent", "Play as Music plays the event through the music system")
+    await ui.frames(30)
+    await editor_shot(ed, "event-view-playing-as-music")
+    await ui.click(middle(ui, await probe(ed, ui, "soundEvent.playAsMusic")))
+    await ui.frames(3)
+    ed.check_eq(await edit_mode_music(ed), "", "the button stops it")
+    # the command too, on the inspected event
+    await ed.call("run_command", id="soundEvent.playAsMusic")
+    await ui.frames(3)
+    ed.check_eq(await edit_mode_music(ed), "music/theme.soundevent", "soundEvent.playAsMusic")
+    await ed.call("run_command", id="soundEvent.playAsMusic")
