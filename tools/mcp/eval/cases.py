@@ -1123,7 +1123,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "New text (code-editor-git): a look shared by every object on the scene's default shader is one "
                          "scene-level value (set_shader_uniform shader_type), not the same value set on each object.",
-        "text_at_issue": "set_shader_uniform: 'shader_type: the scene's default shader, inherited by objects without their own'",
+        "text_at_issue": "set_shader_uniform: '... pass_index or shader_type (the scene's default shader)'",
         "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; Doriax e3243c29b",
         "prompt": "Every mesh in the Main scene is drawn with the scene's default mesh shader (library:toon). Make their rim "
                   "colour orange, all of them at once.",

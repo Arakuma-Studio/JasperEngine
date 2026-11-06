@@ -391,11 +391,15 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     jasperengine::cook::Writer v12(none, [](Entity e) { return static_cast<uint32_t>(e); });
     v12.boolean(true);
     v12.f32(0.0f);
-    ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size());
+    // (1.3) the five default shaders' property values, none set here
+    jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
+    for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
+    ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size());
 
     // the 1.1 record: the same bytes without the cross-fade
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r11(std::span<const uint8_t>(bytes.data(), bytes.size() - v12.data().size()), strings.strings(), entityOf);
+    jasperengine::cook::Reader r11(std::span<const uint8_t>(bytes.data(), bytes.size() - v12.data().size() - v13.data().size()),
+                                   strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r11, *older.scene->scene);
     ASSERT_FALSE(r11.failed()) << r11.error();
     EXPECT_TRUE(older.scene->scene->isCapsuleShadowsEnabled());
@@ -405,7 +409,7 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
 
     // the 1.0 record: without either
     DecodedScene old = emptyScene();
-    jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - v11.data().size() - v12.data().size()),
+    jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - v11.data().size() - v12.data().size() - v13.data().size()),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r10, *old.scene->scene);
     ASSERT_FALSE(r10.failed()) << r10.error();

@@ -676,9 +676,11 @@ Recorded during the implementation (branch `dc/code-editor-git`).
    text diff viewer, `diff_file`) and in `SceneDiffTracker`'s baseline reads (the Scene Diff, the Hierarchy and
    Inspector markers, `diff_scene`, `revert_to_baseline`). A revision number still reads that revision. Red control:
    `TextBaselines.SvnBaselineIsBase` (an unmodified file of a working copy behind the server diffs empty).
-2. **`SvnProvider::textDiff` of an unchanged versioned file** returned the whole file as added (it treated svn's empty
-   diff as an unversioned file). Found by the test above; fixed: an empty diff of a versioned file is empty, an
-   unversioned file (svn refuses to diff it) is still all added. Same test.
+2. **`SvnProvider::textDiff` never diffed**: it passed the peg-escaped path (`a.lua@`), which `svn diff` takes
+   literally for a working copy (1.14: "node 'a.lua@' was not found"), and its fallback then showed the whole file as
+   added; it also took svn's empty diff of an unchanged file for an unversioned one. Found by the test above; fixed:
+   the plain path, an empty diff of a versioned file is empty, an unversioned file (svn refuses to diff it) is still all
+   added. Same test (its red run reverts both fixes).
 3. **Prebuilt players**: the spec missed the cooked scene format (`engine/core/serialization/SceneSettingsCodec.cpp`).
    The five value sets end the scene settings record, after S57's (1.1) and S54's (1.2) fields: `FORMAT_MINOR` goes to
    3 (content format 1.3). An older reader skips them (the record is length-prefixed), a 1.3 reader of an older file

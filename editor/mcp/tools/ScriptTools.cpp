@@ -1859,9 +1859,8 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "code_editor";
         tool.title = "Code Editor";
         tool.description =
-            "The editor's code editor (for the human): open at line/column, status (with each buffer's VCS changes), "
-            "save, reload (drop buffer edits), close, revert_change (the VCS change at line, unsaved). An unsaved "
-            "buffer means the human is editing it: don't overwrite that file.";
+            "The human's code editor: open at line/column, status (buffers, VCS changes), save, reload, close, "
+            "revert_change (the VCS change at line). An unsaved buffer is the human's work: don't overwrite its file.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close", "revert_change"}), "status")},
             {"path", assetPath("All actions but status.")},

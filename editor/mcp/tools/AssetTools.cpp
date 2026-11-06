@@ -4230,17 +4230,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_shader_uniforms";
         tool.title = "Get Shader Uniforms";
         tool.description =
-            "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
-            "engine-written (time, resolution), value; library shaders add label, kind, default; globals read "
-            "(u_vs/u_fs_globals) and global_bindings; effective value and its source. entity (+ component, + submesh), "
-            "pass_index, or shader_type (the scene's default shader); known once compiled.";
+            "A custom or library shader's parameters, each with the value it renders with and that value's source. "
+            "Of entity (+ component, + submesh), pass_index, or shader_type (the scene's default shader). Known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
-            {"pass_index", integer("A post-process pass instead.")},
-            {"shader_type", stringEnum("Without entity: the scene's default shader.", {"mesh", "ui", "sky", "points", "lines"})}
+            {"pass_index", integer("")},
+            {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4253,16 +4251,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader by member (entity (+ component, + submesh for "
-            "a material), pass_index, or shader_type: the scene's default shader, inherited by objects without their "
-            "own). Undeclared names are stored but unused (the result says so).";
+            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh for a material), "
+            "pass_index or shader_type (the scene's default shader). Undeclared names are stored but unused.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
-            {"pass_index", integer("A post-process pass instead.")},
-            {"shader_type", stringEnum("Without entity: the scene's default shader.", {"mesh", "ui", "sky", "points", "lines"})},
+            {"pass_index", integer("")},
+            {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
                        {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},

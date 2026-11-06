@@ -388,7 +388,8 @@ VcsResult SvnProvider::textDiff(const RepoPath& path, std::string_view rev, std:
         args.push_back(std::string(rev));
     }
     args.push_back("--");
-    args.push_back(pegged(path));
+    // svn diff takes a working copy path as it is: a peg escape ("a.lua@") names no file there
+    args.push_back(path);
     const ProcessResult result = svn(std::move(args));
     // a versioned file: its diff, empty when it has no changes
     if (result.ok()) {
