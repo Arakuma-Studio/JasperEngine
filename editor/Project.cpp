@@ -2557,10 +2557,9 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
         }
     };
 
-    // ---- the references, and what holds them
+    // ---- the references: scenes, prefabs, materials
     std::vector<fs::path> assetSources;
     std::vector<fs::path> luaSources;
-    std::vector<fs::path> holders;
     const std::function<bool(std::string&)> assetCollect = [&](std::string& stored) {
         if (!stored.empty()) assetSources.push_back(resolveAgainstRoot(oldAssetsRoot, fs::path(stored)));
         return false;
@@ -2571,23 +2570,16 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
     };
     for (auto& sceneProject : scenes){
         if (!sceneProject.scene) continue;
-        const size_t before = assetSources.size() + luaSources.size();
         if (assetsChanged) visitAssetPathsInRegistry(sceneProject.scene, assetCollect);
         if (luaChanged) visitLuaPathsInRegistry(sceneProject.scene, luaCollect);
-        if (assetSources.size() + luaSources.size() == before || sceneProject.filepath.empty()) continue;
-        holders.push_back(sceneProject.filepath.is_relative() ? projectPath / sceneProject.filepath : sceneProject.filepath);
-        if (sceneProject.isModified && std::find(temporarilyLoaded.begin(), temporarilyLoaded.end(), sceneProject.id) == temporarilyLoaded.end()){
-            result.savedScenesWithEdits.push_back(holders.back());
-        }
     }
     for (auto& [prefabPath, prefab] : prefabAssets){
         if (!prefab.registry) continue;
-        const size_t before = assetSources.size() + luaSources.size();
         if (assetsChanged) visitAssetPathsInRegistry(prefab.registry.get(), assetCollect);
         if (luaChanged) visitLuaPathsInRegistry(prefab.registry.get(), luaCollect);
-        if (assetSources.size() + luaSources.size() != before){
-            holders.push_back(prefabPath.is_relative() ? projectPath / prefabPath : prefabPath);
-        }
+    }
+    if (assetsChanged){
+        visitAssetPathsInMaterialFiles(assetCollect, nullptr, nullptr, true);
     }
 
     // ---- the plan: files outside the new root move into it, keeping their layout relative to
@@ -2652,6 +2644,65 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
     };
     for (const fs::path& source : assetSources) plan(source, oldAssetsRoot, newAssetsRoot);
     for (const fs::path& source : luaSources) plan(source, oldLuaRoot, newLuaRoot);
+
+    // the stored path a reference takes under the new roots (after the planned moves)
+    auto rebase = [&](std::string& stored, const fs::path& oldRoot, const fs::path& newRoot) {
+        if (stored.empty()){
+            return false;
+        }
+        const fs::path source = resolveAgainstRoot(oldRoot, fs::path(stored));
+        const auto relocated = relocations.find(source);
+        const fs::path absolutePath = relocated != relocations.end() ? relocated->second : source;
+        // A file left outside the new root keeps its stored path: re-basing it would
+        // only turn it into a "../" reference the runtime cannot resolve
+        if (!inside(absolutePath, newRoot)){
+            return false;
+        }
+        const fs::path updated = absolutePath.lexically_normal().lexically_relative(newRoot.lexically_normal());
+        if (updated.empty()){
+            return false;
+        }
+        const std::string updatedPath = updated.lexically_normal().generic_string();
+        if (updatedPath == stored){
+            return false;
+        }
+        stored = updatedPath;
+        return true;
+    };
+    const std::function<bool(std::string&)> assetTransform = [&](std::string& stored) { return rebase(stored, oldAssetsRoot, newAssetsRoot); };
+    const std::function<bool(std::string&)> luaTransform = [&](std::string& stored) { return rebase(stored, oldLuaRoot, newLuaRoot); };
+
+    // what holds a reference that changes: the files the rewrite writes
+    std::vector<fs::path> holders;
+    bool holds = false;
+    const std::function<bool(std::string&)> assetCheck = [&](std::string& stored) {
+        std::string copy = stored;
+        if (rebase(copy, oldAssetsRoot, newAssetsRoot)) holds = true;
+        return false;
+    };
+    const std::function<bool(std::string&)> luaCheck = [&](std::string& stored) {
+        std::string copy = stored;
+        if (rebase(copy, oldLuaRoot, newLuaRoot)) holds = true;
+        return false;
+    };
+    for (auto& sceneProject : scenes){
+        if (!sceneProject.scene || sceneProject.filepath.empty()) continue;
+        holds = false;
+        if (assetsChanged) visitAssetPathsInRegistry(sceneProject.scene, assetCheck);
+        if (luaChanged) visitLuaPathsInRegistry(sceneProject.scene, luaCheck);
+        if (!holds) continue;
+        holders.push_back(sceneProject.filepath.is_relative() ? projectPath / sceneProject.filepath : sceneProject.filepath);
+        if (sceneProject.isModified && std::find(temporarilyLoaded.begin(), temporarilyLoaded.end(), sceneProject.id) == temporarilyLoaded.end()){
+            result.savedScenesWithEdits.push_back(holders.back());
+        }
+    }
+    for (auto& [prefabPath, prefab] : prefabAssets){
+        if (!prefab.registry) continue;
+        holds = false;
+        if (assetsChanged) visitAssetPathsInRegistry(prefab.registry.get(), assetCheck);
+        if (luaChanged) visitLuaPathsInRegistry(prefab.registry.get(), luaCheck);
+        if (holds) holders.push_back(prefabPath.is_relative() ? projectPath / prefabPath : prefabPath);
+    }
 
     // Generated maps follow the assets root
     const fs::path oldTerrainMaps = oldAssetsRoot / "terrain_maps";
@@ -2723,11 +2774,8 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
 
     // what the rewrite writes, all writable (a file that can't be saved would keep the old paths)
     std::vector<fs::path> materials;
-    const std::function<bool(std::string&)> wouldRebase = [&](std::string& stored) {
-        return !stored.empty();
-    };
     if (assetsChanged){
-        visitAssetPathsInMaterialFiles(wouldRebase, &materials, nullptr, true);
+        visitAssetPathsInMaterialFiles(assetTransform, &materials, nullptr, true);
     }
     result.rewritten = holders;
     result.rewritten.insert(result.rewritten.end(), materials.begin(), materials.end());
@@ -2797,6 +2845,8 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
             return false;
         }
 
+        // what goes with the file (its meta, a model's .humanoid), known while the file is there
+        const std::vector<std::pair<fs::path, fs::path>> companions = AssetOps::withCompanions(source, destination);
         FileUtils::createDirectories(destination.parent_path(), moveEc);
         // beneath an MCP call's write scope the scoped rename; otherwise with the Windows retries
         if (FileUtils::scopedOps()) FileUtils::renamePath(source, destination, moveEc);
@@ -2820,8 +2870,7 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
         }
 
         completedMoves.emplace_back(source, destination);
-        // what goes with the file: its meta (it keeps its GUID, S04), a model's .humanoid
-        const std::vector<std::pair<fs::path, fs::path>> companions = AssetOps::withCompanions(source, destination);
+        // the companions: the meta keeps the GUID (S04), the .humanoid its model's mapping
         for (size_t i = 1; i < companions.size(); i++){
             const auto& [companion, companionDestination] = companions[i];
             if (!fs::is_regular_file(companion, moveEc) || fs::exists(companionDestination, moveEc)) continue;
@@ -2896,31 +2945,6 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
     refreshTrustedRoots();
     result.changed = true;
 
-    auto rebase = [&](std::string& stored, const fs::path& oldRoot, const fs::path& newRoot) {
-        if (stored.empty()){
-            return false;
-        }
-        const fs::path source = resolveAgainstRoot(oldRoot, fs::path(stored));
-        const auto relocated = relocations.find(source);
-        const fs::path absolutePath = relocated != relocations.end() ? relocated->second : source;
-        // A file left outside the new root keeps its stored path: re-basing it would
-        // only turn it into a "../" reference the runtime cannot resolve
-        if (!inside(absolutePath, newRoot)){
-            return false;
-        }
-        const fs::path updated = absolutePath.lexically_normal().lexically_relative(newRoot.lexically_normal());
-        if (updated.empty()){
-            return false;
-        }
-        const std::string updatedPath = updated.lexically_normal().generic_string();
-        if (updatedPath == stored){
-            return false;
-        }
-        stored = updatedPath;
-        return true;
-    };
-    const std::function<bool(std::string&)> assetTransform = [&](std::string& stored) { return rebase(stored, oldAssetsRoot, newAssetsRoot); };
-    const std::function<bool(std::string&)> luaTransform = [&](std::string& stored) { return rebase(stored, oldLuaRoot, newLuaRoot); };
 
     // every reference rewritten; what could not be saved is listed (and stays loaded)
     result.rewritten.clear();

@@ -33,7 +33,7 @@ async def test_dry_run_changes_nothing(ed: Editor):
     plan = await ed.call("set_project_settings", values={"editor.assets_dir": "content2"}, dry_run=True)
     moved = {(m["from"], m["to"]) for m in plan["relocation"]["moved"]}
     ed.check(("assets/textures/ao.png", "content2/textures/ao.png") in moved, f"the plan: {moved}")
-    ed.check_in("Main.scene", plan["relocation"]["rewritten"])
+    ed.check_in("project.yaml", plan["relocation"]["rewritten"])
     ed.check(not (ed.project / "content2").exists(), "a dry run makes no folder")
     ed.check_eq(await assets_dir(ed), "assets")
 

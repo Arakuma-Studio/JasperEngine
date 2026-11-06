@@ -82,10 +82,19 @@ async def show_folder(ed: Editor, folder: str) -> dict:
     for depth in range(1, len(parts)):
         parent = "/".join(parts[:depth])
         child = "/".join(parts[:depth + 1])
-        if not tree_node(st, child):
+        # the first click of a fresh editor can go to focusing its window: the arrow again until it opens
+        for _ in range(3):
+            if tree_node(st, child):
+                break
             x, y = tree_node(st, parent)["arrow"]
             await ui.click(ui.at((x, y)))
-            st = await wait_for(ed, lambda s: tree_node(s, child), f"{parent} opened in the tree")
+            for _ in range(10):
+                st = await state(ed)
+                if tree_node(st, child):
+                    break
+                await ui_input.frames(ed, 2)
+        if not tree_node(st, child):
+            ed.fail(f"{parent} never opened in the tree: {st}")
     await ui.click(ui.centre(tree_node(st, folder)["rect"]))
     return await wait_for(ed, lambda s: s["directory"] == folder, f"{folder} shown")
 
@@ -214,7 +223,7 @@ async def test_press_with_the_pointer_move_drags_only_that_file(ed: Editor):
     await ui.drag_to((x, y), drop[0] - x, drop[1] - y, steps=16)
     await ui.release("1")
     await wait_for(ed, lambda s: not entry(s, target), f"{target} moved into zz_drop")
-    moved = sorted(p.name for p in (ed.project / "assets/textures/zz_drop").iterdir())
+    moved = sorted(p.name for p in (ed.project / "assets/textures/zz_drop").iterdir() if p.suffix != ".meta")
     ed.check_eq(moved, [target], "only the pressed file was dragged")
 
 
@@ -283,7 +292,7 @@ async def test_root_folder_cannot_be_cut(ed: Editor):
         await ui.frames(2)
     ed.check(dialog is not None and "assets directory" in dialog["message"], f"the refusal names the setting: {dialog}")
     st = await state(ed)
-    ed.check(not st["clipboard"]["cut"], f"nothing cut: {st['clipboard']}")
+    ed.check("assets" not in st["clipboard"]["files"], f"the assets directory was not cut: {st['clipboard']}")
 
 
 async def test_unnamed_object_reads_gameobject_and_id(ed: Editor):

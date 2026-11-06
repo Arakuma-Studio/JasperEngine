@@ -85,7 +85,9 @@ TEST_F(AssetRootChangeTest, UnwritableSceneRefusesBeforeAnyMove) {
 }
 
 TEST_F(AssetRootChangeTest, FailedSaveKeepsTheSceneLoadedAndListsIt) {
-    // the probe passes, then the scene's path becomes a folder: its save fails
+    // the project folder as the assets directory: nothing moves, every reference is rewritten
+    // ("textures/ao.png" -> "assets/textures/ao.png"). The probe passes, then the scene's path
+    // becomes a folder: its save fails
     const fs::path scene = abs("Main.scene");
     project->setAssetRootWriteProbe([scene](const fs::path& file) {
         if (file.lexically_normal() == scene.lexically_normal()) {
@@ -94,9 +96,10 @@ TEST_F(AssetRootChangeTest, FailedSaveKeepsTheSceneLoadedAndListsIt) {
         }
         return true;
     });
-    const AssetRootChange change = project->changeAssetRoots("content", project->getLuaDir(), true);
+    const AssetRootChange change = project->changeAssetRoots(".", project->getLuaDir(), true);
     ASSERT_TRUE(change.ok()) << change.refusal();
     EXPECT_TRUE(change.changed);
+    EXPECT_TRUE(change.moves.empty()) << "everything is inside the project folder already";
     EXPECT_TRUE(listed(change.failedSaves, scene)) << "the scene keeps the new paths in memory only";
     bool loaded = false;
     for (const SceneProject& candidate : project->getScenes()) {
@@ -136,8 +139,16 @@ TEST_F(AssetRootChangeTest, DryRunChangesNothing) {
         if (move.from == abs("assets/textures/ao.png") && move.to == abs("content/textures/ao.png")) movesAo = true;
     }
     EXPECT_TRUE(movesAo);
-    EXPECT_TRUE(listed(plan.rewritten, abs("Main.scene")));
-    EXPECT_TRUE(listed(plan.rewritten, abs("materials/Rock.material")));
+    // the layout under the root is kept: "textures/ao.png" stays the stored path, nothing but
+    // project.yaml is rewritten
+    EXPECT_FALSE(listed(plan.rewritten, abs("Main.scene")));
+    EXPECT_TRUE(listed(plan.rewritten, abs("project.yaml")));
+    // the project folder as the root: nothing moves, the references are rewritten
+    const AssetRootChange up = project->planAssetRootChange(".", project->getLuaDir(), true);
+    ASSERT_TRUE(up.ok()) << up.refusal();
+    EXPECT_TRUE(up.moves.empty());
+    EXPECT_TRUE(listed(up.rewritten, abs("Main.scene")));
+    EXPECT_TRUE(listed(up.rewritten, abs("materials/Rock.material")));
 
     const AssetRootChange done = project->changeAssetRoots("content", project->getLuaDir(), true);
     ASSERT_TRUE(done.ok()) << done.refusal();

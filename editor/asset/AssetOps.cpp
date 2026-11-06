@@ -100,12 +100,16 @@ namespace {
         if (!fs::is_directory(from, ec)) {
             return false;
         }
-        if (safewrite::isAtOrBelow(to.lexically_normal(), from.lexically_normal())) {
+        // strictly below: the folder's own place is a duplicate beside it (a free name), not into it
+        auto below = [](const fs::path& path, const fs::path& dir) {
+            return safewrite::isAtOrBelow(path, dir) && !safewrite::isAtOrBelow(dir, path);
+        };
+        if (below(to.lexically_normal(), from.lexically_normal())) {
             return true;
         }
         const fs::path fromReal = safewrite::resolvedPath(from);
         const fs::path toReal = safewrite::resolvedPath(to);
-        return !fromReal.empty() && !toReal.empty() && safewrite::isAtOrBelow(toReal, fromReal);
+        return !fromReal.empty() && !toReal.empty() && below(toReal, fromReal);
     }
 
     std::string movedName(const fs::path& path) {
