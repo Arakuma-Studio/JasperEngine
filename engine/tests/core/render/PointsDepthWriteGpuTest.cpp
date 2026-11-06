@@ -4,9 +4,8 @@
 // Points with Depth Write Auto write depth only when opaque (Doriax 0141520ca;
 // docs/superpowers/specs/2026-11-04-render-correctness-design.md 6.3). A transparent Points
 // quad wrote depth over its whole quad, its transparent texels too, so points and transparent
-// objects drawn after it were cut out where its quads were. On and Off stay as set. A texture
-// gaining alpha moves the component to the transparent queue and gives it pipelines without
-// depth write. glcore and Vulkan.
+// objects drawn after it were cut out where its quads were. On and Off stay as set. Points that
+// turn transparent after their load get pipelines without depth write. glcore and Vulkan.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -112,11 +111,11 @@ namespace {
 
 TEST_F(PointsDepthWriteGpu, TransparentPointsDoNotHideWhatIsDrawnAfter){
     JASPER_REQUIRE_GPU();
-    // its centre is transparent: there B shows
+    // transparent, its image's centre clear: there B shows
     registerPointsImage("rc-points-clear", 0);
     useTexture("rc-points-clear");
+    front.setTransparent(true);
     const std::array<int, 3> center = settledCenter();
-    ASSERT_TRUE(frontComponent().isTransparent()) << "Auto Transparency did not find the texture's alpha";
     EXPECT_GT(center[1], 128) << "the transparent quad in front wrote depth and cut out the points behind it";
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -125,23 +124,25 @@ TEST_F(PointsDepthWriteGpu, DepthWriteOnKeepsWriting){
     JASPER_REQUIRE_GPU();
     registerPointsImage("rc-points-clear-on", 0);
     useTexture("rc-points-clear-on");
+    front.setTransparent(true);
     frontComponent().depthWrite = MaterialDepthWrite::ENABLED;
     const std::array<int, 3> center = settledCenter();
     EXPECT_LT(center[1], 64) << "Depth Write On no longer writes depth";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-TEST_F(PointsDepthWriteGpu, ATextureGainingAlphaMovesThePointsToTheTransparentQueue){
+// loaded opaque (writing depth), then made transparent: its pipelines are made again without it
+TEST_F(PointsDepthWriteGpu, TurningTransparentOnStopsTheDepthWrite){
     JASPER_REQUIRE_GPU();
-    registerPointsImage("rc-points-opaque", 255);
-    registerPointsImage("rc-points-clear-later", 0);
-    useTexture("rc-points-opaque");
-    settledCenter();
+    registerPointsImage("rc-points-later", 0);
+    useTexture("rc-points-later");
+    frontComponent().autoTransparency = false;
+    const std::array<int, 3> opaque = settledCenter();
     ASSERT_FALSE(frontComponent().isTransparent());
+    EXPECT_LT(opaque[1], 64) << "the opaque points do not write depth";
 
-    useTexture("rc-points-clear-later");
+    front.setTransparent(true);
     const std::array<int, 3> center = settledCenter();
-    EXPECT_TRUE(frontComponent().isTransparent()) << "the new texture's alpha did not reach the queue";
-    EXPECT_GT(center[1], 128) << "the points kept the depth write of their opaque texture";
+    EXPECT_GT(center[1], 128) << "the points kept the depth write they were loaded with";
     EXPECT_NO_ENGINE_ERRORS();
 }
