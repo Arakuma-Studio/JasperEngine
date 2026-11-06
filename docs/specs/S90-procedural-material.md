@@ -518,3 +518,50 @@ then `procmat-sweep compile`, `interpret`, `crosstier` and `bench` (`EGL_PLATFOR
 - **Inferred, not tested:** `compile_to_spirv` is not reachable from the editor today, because the
   engine links `shadercompiler` privately (`engine/CMakeLists.txt:2205`). M3 or M5 needs an engine
   entry point for it.
+
+### M3 (s90-core)
+
+What M3 decided and where it differs from the text above. Measured on llvmpipe (glcore) in the Linux
+image, through `slot`; the evaluator's GPU tests and the per-node image test are in
+`engine/tests/core/procmat/`, the rest in `editor/tests/procmat/`.
+
+- **R1.** `AssetType::ProceduralMaterial` is 29: 24-27 are pixel art's and 28 is SoundEvent. The GUID is the
+  file's top-level `guid` (an unknown key to S23's model, kept), written by `AssetDatabase` through
+  `graph::save`, so the file stays in the graph model's canonical form.
+- **R2.** A node's `typeVersion` is stored in the node (S23 keeps it as an unknown key). A version other than
+  its descriptor's `type_version` is an error at validation and refused by the planner; no descriptor has a
+  second version yet, so there is no migration to select.
+- **R3, file names.** A file stores an enum by name (`"blend_type": "multiply"`, from the value's label);
+  an index is accepted too. Flags accept 0 and 1, because the library's own presets store them so. Ramps
+  hold at most 32 keys. The validator reports wrong types as errors (`param-type`); out-of-range numbers
+  stay S23's warnings, and the planner refuses them.
+- **R5.** `editor/procmat/ProcMatExpander.*` writes byte-identical shaders and uniforms to
+  `tools/procmat/expand_nodes.py` for all 1,410 shaders of the library sweep (`ProcMatExpander.
+  AgreesWithThePythonReferenceOnTheLibrary`, against `editor/tests/procmat/ExpanderReference.txt`, which
+  `test_import_mm_nodes.py` checks is current). Python stays the reference for the sweep.
+- **R6.** The planner cuts at the first of: an output expanded at 4 or more coordinates, an input called
+  from a loop, then textures, uniforms and text over M0's limits, at the input whose source holds nearest
+  half of what is over. It only cuts colour-typed ports (`f`, `rgb`, `rgba`): a Buffer cannot hold a
+  signed distance or a 3D value. An input read as `.texture` or `.size` gets a Buffer with box-filtered
+  mips. An inserted Buffer takes the plan's size.
+- **R7.** Which edit is a uniform edit is decided by generating the plan and comparing its text and sizes,
+  never by a list of parameter kinds. A graph's seed reaches every shader, including those inside library
+  graphs, as a uniform.
+- **R12.** Buffers are RGBA16F; outputs go through a clamping quantize pass into RGBA8 and are read back after
+  the frame that drew them is committed. A preview plan (`readBack = false`) leaves its image on the device.
+- **Import fix.** A library graph's parameter linked to a Buffer's flag (its "32 Bits") was typed `size`;
+  it is `boolean` now (`import_mm_nodes.py`, regenerated: 8 descriptors).
+- **R20, the per-node image test.** `ProcMatNodeImageGpuSlow` plans and evaluates every variant of every node
+  for real (Buffers feed passes, Iterate Buffers iterate, half rounding on both sides), at 128² with Buffers
+  capped at 64, on the device and on `SpirvInterpreter`. 250 nodes, 1,179 outputs. Of M0's six shaders over
+  AC8, `fill_to_uv2` and `classic_kuwahara` now pass. Four nodes fail and are left out of the catalog
+  (`NodeLibrary::leftOutNodes`, and `EveryLeftOutNodeStillFails` says when one passes again):
+  - `auto_tones`: its loop pass, wired, 4.3 mean, 47 at p99. Cause not traced.
+  - `bricks`: `pattern=1`, output Direction, 27 mean, 128 at p99: `sign()` of a near tie. `bricks3` replaces it.
+  - `height_to_angle`: unconnected, `atan(0, 0)`, 191 apart.
+  - `morphology3`: three variants at 2.4 mean, 12 at p99 once its Buffers feed each other; M0's sweep, with one
+    probe image for every texture, could not show it. Cause not traced.
+
+  A library graph that holds one of them inside (`graph_pattern_fibers`) still ships: its own image passed.
+- **Not run.** Vulkan (lavapipe) and any hardware GPU: the GPU tests ran on glcore only. Tier selection,
+  the CPU tier's evaluator, MCP tools and the window are later milestones.
