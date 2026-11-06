@@ -1793,6 +1793,8 @@ void AnimationWindowClip::bindCommands(CommandCatalog& catalog, std::function<An
             // the entity mode first while it has the keys: a clip opened before stays the controller's
             // document behind it, and its cue must not move
             if (shared && clip->entityKeys && clip->entityCommands) clip->entityCommands(id, true);
+            // the entity mode has the context's keys: no clip command runs on a clip behind it
+            else if (clip->entityKeys) return;
             else if (clip->document() != nullptr) clip->runKeyCommand(id);
             else if (shared && clip->entityCommands) clip->entityCommands(id, true);
         };
@@ -1800,6 +1802,7 @@ void AnimationWindowClip::bindCommands(CommandCatalog& catalog, std::function<An
             AnimationWindowClip* clip = target();
             if (!clip) return false;
             if (shared && clip->entityKeys && clip->entityCommands) return clip->entityCommands(id, false);
+            if (clip->entityKeys) return false;
             if (clip->document() != nullptr) return true;
             return shared && clip->entityCommands && clip->entityCommands(id, false);
         };

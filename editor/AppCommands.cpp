@@ -439,7 +439,10 @@ void editor::App::registerPanelClaims(){
 }
 
 bool editor::App::clipWindowTakesKeys() const{
-    return animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
+    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return true;
+    // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an audio block)
+    const AnimationWindowClip* clip = animationWindow ? animationWindow->getClipMode() : nullptr;
+    return clip && clip->entityKeys;
 }
 
 bool editor::App::poseKeysFromSceneView() const{
