@@ -288,6 +288,7 @@ async def test_privacy_manifest_export(ed: Editor):
     the engine's required-reason APIs, the project's apple.privacy_* additions (undoable) and the
     static plugins' manifests of that platform."""
     import plistlib
+    await ed.call("save_project", untitled_scene_dir="scenes")
     msg = await ed.call("set_project_settings", values={"apple.privacy_accessed_apis": [{"type": "FileTimestamp", "reasons": ["CA92.1"]}]},
                         expect_error=True)
     ed.check_in("C617.1", msg, "a wrong reason lists the valid ones")

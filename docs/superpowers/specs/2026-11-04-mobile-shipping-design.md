@@ -834,3 +834,8 @@ Recorded during implementation (branch `dc/mobile-shipping`).
 11. **No CI step for `tools/check_apple_privacy.py`**: `main` removed the GitHub workflows while
     this was implemented. `tools/check-changed` runs the check for every change to engine C/C++
     or to the engine's manifest.
+12. **S67 (packaging tests, merged from main) adapted**: `tools/players/ios_player.sh` no longer passes
+    the removed `JASPERENGINE_ADMOB` option, `IosBuild.ThePlayerTemplateLinksWhatTheEngineNeeds`
+    checks that the option is gone and that the template ships `PrivacyInfo.xcprivacy`,
+    `IosBuild.WithoutAMacTheXcodeProjectIsTheResult` stages before it builds (the split of
+    deviation 1), and `tools/ci/ios_packaging.sh` checks the manifest in the simulator and device apps.
