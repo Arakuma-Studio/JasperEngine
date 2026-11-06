@@ -39,6 +39,21 @@ TEST(FunctionSubscribeCompatTest, AddSameTagReplaces) {
     EXPECT_EQ(event.size(), 1u);
 }
 
+TEST(FunctionSubscribeCompatTest, RemoveAndSubstring) {
+    FunctionSubscribe<void()> event;
+    int calls = 0;
+    event.add("Script_123_onUpdate", [&]() { calls++; });
+    event.add("Script_123_onDraw", [&]() { calls++; });
+    event.add("Other_456_onUpdate", [&]() { calls += 10; });
+    EXPECT_TRUE(event.remove("Script_123_onDraw"));
+    EXPECT_FALSE(event.remove("missing"));
+    EXPECT_EQ(event.removeByTagSubstring("_123_"), 1u);
+    event();
+    EXPECT_EQ(calls, 10);
+    event.clear();
+    EXPECT_FALSE(event.hasSubscribers());
+}
+
 TEST(FunctionSubscribeCompatTest, MemberAndFreeFunctions) {
     FunctionSubscribe<void(int)> event;
     Listener listener;
@@ -91,6 +106,39 @@ TEST(FunctionSubscribeCompatTest, CopyCopiesSubscribers) {
     EXPECT_EQ(calls, 3);
 }
 
+TEST(FunctionSubscribeCompatTest, RemoveSelfDuringCall) {
+    FunctionSubscribe<void()> event;
+    std::vector<int> order;
+    event.add("first", [&]() { order.push_back(1); event.remove("first"); });
+    event.add("second", [&]() { order.push_back(2); });
+    event.call();
+    event.call();
+    EXPECT_EQ(order, (std::vector<int>{1, 2, 2})) << "removing itself no longer skips the next subscriber";
+}
+
+TEST(FunctionSubscribeCompatTest, RemoveNextDuringCallSkipsIt) {
+    FunctionSubscribe<void()> event;
+    std::vector<int> order;
+    event.add("first", [&]() { order.push_back(1); event.remove("second"); });
+    event.add("second", [&]() { order.push_back(2); });
+    event.add("third", [&]() { order.push_back(3); });
+    event.call();
+    EXPECT_EQ(order, (std::vector<int>{1, 3}));
+}
+
+TEST(FunctionSubscribeCompatTest, AddDuringCallWaitsForTheNextCall) {
+    FunctionSubscribe<void()> event;
+    int late = 0;
+    event.add("adder", [&]() {
+        for (int i = 0; i < 64; i++) event.add("late" + std::to_string(i), [&late]() { late++; });
+    });
+    event.call();
+    EXPECT_EQ(late, 0);
+    event.remove("adder");
+    event.call();
+    EXPECT_EQ(late, 64);
+}
+
 TEST(FunctionSubscribeCompatTest, ClearDuringCall) {
     FunctionSubscribe<void()> event;
     int calls = 0;
@@ -99,6 +147,17 @@ TEST(FunctionSubscribeCompatTest, ClearDuringCall) {
     event.call();
     EXPECT_EQ(calls, 1);
     EXPECT_FALSE(event.hasSubscribers());
+}
+
+TEST(FunctionSubscribeCompatTest, NestedCall) {
+    FunctionSubscribe<void(int)> event;
+    std::vector<int> seen;
+    event.add("a", [&](int depth) {
+        seen.push_back(depth);
+        if (depth < 2) event.call(depth + 1);
+    });
+    event.call(1);
+    EXPECT_EQ(seen, (std::vector<int>{1, 2}));
 }
 
 TEST(FunctionSubscribeCompatTest, SubscribeAndOwners) {

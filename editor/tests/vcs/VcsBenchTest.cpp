@@ -167,41 +167,53 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
     budget("scene diff, 2,000 GameObjects (parse both + diff)", best, 150.0);
 }
 
-TEST(VcsBench, NoProcessOnTheMainThreadInASixtySecondSession) {
+TEST(VcsBench, NoProcessOnTheMainThreadDuringACompletedSession) {
     VcsSandbox box;
     const fs::path repo = box.gitRepo("repo", {{"a.txt", "a\n"}, {"b.txt", "b\n"}});
-    VcsSettings settings = box.settings();
-    settings.pollMilliseconds = 1000;
     VcsService service;
     const uint64_t mainBefore = spawnCount(true);
     const uint64_t otherBefore = spawnCount(false);
-    service.open(repo, repo / ".jasperengine", settings, false);
-    // a scripted session: edits, refreshes, logs, diffs, commits, for 60 s
-    const Clock::time_point end = Clock::now() + std::chrono::seconds(60);
-    int step = 0;
-    bool waiting = false;
-    while (Clock::now() < end) {
-        service.update();
-        if (service.active() && !waiting) {
-            waiting = true;
-            const int kind = step++ % 4;
-            auto done = [&waiting](const VcsResult&) { waiting = false; };
-            if (kind == 0) {
-                writeFile(repo / "a.txt", "a " + std::to_string(step) + "\n");
-                service.refresh(true, done);
-            } else if (kind == 1) {
-                service.log(std::nullopt, 10, 0, [&waiting](const VcsResult&, std::vector<VcsLogEntry>) { waiting = false; });
-            } else if (kind == 2) {
-                service.textDiff("a.txt", "HEAD", [&waiting](const VcsResult&, std::string) { waiting = false; });
-            } else {
-                service.commit({"a.txt"}, "step " + std::to_string(step), false, [&waiting](const VcsResult&, const std::string&) { waiting = false; });
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    }
+    service.open(repo, repo / ".jasperengine", box.settings(), false);
+    ASSERT_TRUE(pumpUntil(service, [&]() { return service.state() != VcsState::Detecting; }));
+    ASSERT_TRUE(service.active()) << service.stateMessage();
+
+    // Finish each operation through its receipt: elapsed time says nothing about which ran.
+    writeFile(repo / "a.txt", "changed\n");
+    const SnapshotPtr snapshot = refreshed(service, true);
+    ASSERT_TRUE(snapshot);
+    EXPECT_NE(snapshot->find("a.txt"), nullptr);
+    std::vector<VcsLogEntry> entries;
+    VcsResult result = await(service, [&](VcsService::Done done) {
+        service.log(std::nullopt, 10, 0, [&, done](const VcsResult& r, std::vector<VcsLogEntry> log) {
+            entries = std::move(log);
+            done(r);
+        });
+    });
+    ASSERT_TRUE(result.ok) << result.message;
+    ASSERT_EQ(entries.size(), 1u);
+    EXPECT_EQ(entries[0].message, "initial");
+    std::string diff;
+    result = await(service, [&](VcsService::Done done) {
+        service.textDiff("a.txt", "HEAD", [&, done](const VcsResult& r, std::string text) {
+            diff = std::move(text);
+            done(r);
+        });
+    });
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_NE(diff.find("+changed"), std::string::npos);
+    std::string revision;
+    result = await(service, [&](VcsService::Done done) {
+        service.commit({"a.txt"}, "edited", false, [&, done](const VcsResult& r, const std::string& rev) {
+            revision = rev;
+            done(r);
+        });
+    });
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_FALSE(revision.empty());
+    const SnapshotPtr committed = refreshed(service);
+    ASSERT_TRUE(committed);
+    EXPECT_EQ(committed->find("a.txt"), nullptr);
     service.close();
     EXPECT_EQ(spawnCount(true), mainBefore);
-    EXPECT_GT(spawnCount(false), otherBefore + 40);
-    std::printf("[ VcsBench ] 60 s session: %llu processes, %llu on the main thread\n",
-                static_cast<unsigned long long>(spawnCount(false) - otherBefore), static_cast<unsigned long long>(spawnCount(true) - mainBefore));
+    EXPECT_GT(spawnCount(false), otherBefore);
 }

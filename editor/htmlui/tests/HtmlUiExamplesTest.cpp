@@ -178,8 +178,9 @@ TEST(HtmlUiExamples, InstantiatedTemplatesCompileClean){
             const bool inScreens = path.compare(0, 15, "assets/screens/") == 0;
             const bool inLua = path == instance.luaPath;
             EXPECT_TRUE(inScreens || inLua) << path;
-            if (inScreens && path != html && path.find("_assets/") != std::string::npos)
+            if (inScreens && path != html && path.find("_assets/") != std::string::npos){
                 EXPECT_EQ(path.compare(0, 15 + 3 + name.size() + 8, "assets/screens/my " + name + "_assets/"), 0) << path;
+            }
         }
     }
 }

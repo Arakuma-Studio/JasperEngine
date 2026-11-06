@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -297,7 +298,12 @@ TEST(SchemaValidate, EveryRegisteredToolSchema) {
             EXPECT_EQ(spec.flag.find('_'), std::string::npos) << tool.name;
             EXPECT_FALSE(describeType(spec.schema).empty()) << tool.name << " " << spec.key;
         }
-        for (const std::string& error : validate(listed, Json::object(), true)) {
+        const std::vector<std::string> errors = validate(listed, Json::object(), true);
+        for (const Json& key : listed.value("required", Json::array())) {
+            EXPECT_TRUE(std::find(errors.begin(), errors.end(), key.get<std::string>() + ": required") != errors.end())
+                << tool.name << " " << key;
+        }
+        for (const std::string& error : errors) {
             EXPECT_NE(error.find(": required"), std::string::npos) << tool.name << ": " << error;
         }
     }

@@ -330,6 +330,13 @@ TEST_F(AssetDatabaseTest, ADuplicatedGuidStaysWithTheFileTheCacheKnows){
     EXPECT_NE(database.getGuid("a.prefab"), guidA);
 }
 
+TEST_F(AssetDatabaseTest, OpenWritesTheCache){
+    project.write("a.prefab", prefab(guidA));
+    open();
+    EXPECT_TRUE(project.exists(".jasperengine/assetdb/index.json"));
+    EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(guidA), std::string::npos);
+}
+
 #if defined(__linux__)
 // A file name in another encoding (Latin-1 'é' on Linux, where names are bytes) can't go in the
 // JSON cache: its entry is left out, the others are cached, and the open does not throw (it

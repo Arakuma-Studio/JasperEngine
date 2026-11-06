@@ -6,6 +6,7 @@
 // mode switches, removal) and pointer events reaching a document through a mesh.
 
 #include "TestGoldenCommon.h"
+#include "component/CameraComponent.h"
 
 #include "HtmlUIClock.h"
 #include "HtmlUIContext.h"

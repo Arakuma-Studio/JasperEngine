@@ -31,6 +31,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/RmlLogTranslator.h"
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/compat/ua/UserAgentStyle.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "render/SystemRender.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -198,6 +199,7 @@ TEST_F(CompatPlayStopTest, StopReleasesWhatTheCompatPathHolds){
 
 TEST_F(CompatPlayStopTest, CyclesLeakNothing){
     const int kCycles = 12;
+    (void)hc::UserAgentStyle::get(hc::ForkFeatures::present());
     const size_t registrationsBefore = hc::RmlLogTranslator::registrationCount();
     createScene();
     ASSERT_TRUE(fixture->waitUntilLoaded());

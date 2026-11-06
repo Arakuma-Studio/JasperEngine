@@ -14,6 +14,7 @@ hole later, a Tilemap with two tileset textures):
 - one project undo of a write restores the previous file, paint included;
 - `check --normals` reports normals-paint-unreadable for a hand-corrupted chunk and normals-paint-size for a paint
   layer of another size;
+- the tool description's paint sentence.
 """
 
 from __future__ import annotations
@@ -361,3 +362,10 @@ async def test_check_reports_unreadable_and_mismatched_paint(ed: Editor):
 
 
 # ---------------------------------------------------------------------------- the definition
+
+async def test_description_names_paint(ed: Editor):
+    tool = ed.tool("generate_sprite_normals")
+    check("paint: fix spots (angle/flatten/smooth/erase by rect, pixels, colors or frame); kept on regenerate (paint_mode)." in tool.description,
+          f"description: {tool.description}")
+    props = tool.input_schema["properties"]
+    check(props["paint"] == {"type": "array"} and props["paint_mode"] == {"type": "string"}, f"schema: {props.get('paint')} {props.get('paint_mode')}")

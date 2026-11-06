@@ -182,6 +182,14 @@ TEST(ChangeTrackingTest, RemovedLogIsTrimmed){
     EXPECT_TRUE(meshes->getRemoved().empty());
 }
 
+TEST(ChangeTrackingTest, SampledTickIsNeverReused){
+    EntityRegistry registry;
+    const Entity entity = makeEntity(registry);
+    const Tick sample = registry.changeTick();
+    registry.markChanged<Transform>(entity);
+    EXPECT_GT(registry.getComponentArray<Transform>()->getChangedTickOf(entity), sample);
+}
+
 TEST(ChangeTrackingTest, TickColumnRebases){
     ComponentArray<int> array;
     array.insert(1, 1);

@@ -176,15 +176,12 @@ async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
     await ed.batch([("set_properties", {"scene": scene, "entity": eid,
                                         "values": {"mesh": {"submeshes[0].material.baseColorTexture": path}}})
                     for eid, path in zip(ids, paths)])
-    storm, running, shot = [], [], False
+    storm, running = [], []
     deadline = time.monotonic() + 300
     while time.monotonic() < deadline:
         rate, background, queued = (await ed.call("eval_lua", code=probe, allow_edit_mode=True))["values"][0]
         running.append(background)
         storm.append(1000.0 / rate if rate > 0 else 0.0)
-        if not shot and background >= heavy_max - 1:
-            await ed.screenshot("editor", path=str(out / "ac23-5-storm.png"))
-            shot = True
         if queued == 0 and len(running) > 5:
             break
     # the gate's own high-water mark over the storm (sampled each frame), also in the panel

@@ -72,6 +72,13 @@ TEST(RmlFileTest, MissingFileReturnsZero){
     EXPECT_FALSE(files.LoadFile("", data));
 }
 
+TEST(RmlFileTest, LoadFile){
+    RmlFile files;
+    Rml::String data;
+    ASSERT_TRUE(files.LoadFile("common/rmlfile.txt", data));
+    EXPECT_EQ(data, fixtureContent);
+}
+
 TEST(RmlFileTest, AssetScheme){
     RmlFile files;
     Rml::FileHandle handle = files.Open("asset://common/rmlfile.txt");

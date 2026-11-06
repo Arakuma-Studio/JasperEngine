@@ -107,8 +107,9 @@ TEST(EffectLifecycleTest, HundredLoadUnloadCycles){
         EXPECT_EQ(runtime.elementStateCount(), statesBefore) << "cycle " << cycle << ": element states outlive their document";
         if (cycle == 0)
             baseline = countersOf(r);
-        else if (cycle == 99)
+        else if (cycle == 99){
             EXPECT_EQ(countersOf(r), baseline) << "the GPU objects grew over 100 cycles";
+        }
     }
     hc::VirtualFiles::remove(path);
     EXPECT_EQ(runtime.liveInstanceCount(), 0u);
@@ -211,8 +212,9 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
             EXPECT_EQ(countersOf(r), baseline) << "the GPU objects grew over 100 cycles";
             // the pool keeps at most 64 MB: a document with more state than that makes the excess
             // again each cycle (every stateful effect at once has more)
-            if (documentBytes <= EffectStatePool::kMaxPooledBytes)
+            if (documentBytes <= EffectStatePool::kMaxPooledBytes){
                 EXPECT_EQ(pool.createdImages(), created) << "the pool made images after the first cycle";
+            }
             std::printf("[ effects  ] every stateful effect: %.1f MB of state images; the pool made %llu images in the first cycle, %llu "
                         "in the 99 others\n", (double)documentBytes / (1024.0 * 1024.0), (unsigned long long)created,
                         (unsigned long long)(pool.createdImages() - created));
