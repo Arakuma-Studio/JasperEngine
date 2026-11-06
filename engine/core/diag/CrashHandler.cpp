@@ -98,9 +98,14 @@ namespace je_crash_common {
         return *instance;
     }
 
+    // UTF-8 on every platform, which the Windows handler widens with CP_UTF8: path.string() is
+    // the ANSI code page there before Windows 10 1903 (a user folder named "José" would get no
+    // report). Cut between characters.
     void copyPath(char* out, size_t capacity, const fs::path& path) {
-        const std::string text = path.string();
-        const size_t n = std::min(text.size(), capacity - 1);
+        const std::u8string utf8 = path.u8string();
+        const std::string text(utf8.begin(), utf8.end());
+        size_t n = std::min(text.size(), capacity - 1);
+        while (n > 0 && n < text.size() && (static_cast<unsigned char>(text[n]) & 0xC0) == 0x80) n--;
         std::memcpy(out, text.data(), n);
         out[n] = '\0';
     }

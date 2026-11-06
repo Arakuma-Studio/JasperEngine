@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 6fb91de16ffdce0c18aeb12de3bc79bd
-id: 2577792747
+guid: 9d9749fbac47661553577b56eefa2c92
+id: 4187307485
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -34,18 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 3075

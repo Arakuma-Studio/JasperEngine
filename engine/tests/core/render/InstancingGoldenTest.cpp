@@ -19,6 +19,7 @@
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "render/shadow/ShadowTypes.h"
+#include "registry/EntityCloner.h"
 #include "component/MeshComponent.h"
 
 #include "GpuEnvironment.h"
@@ -249,6 +250,36 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
         writePng(getOutputDirectory() + "/instancing_on.png", batched, width, height);
     }
     EXPECT_EQ(different, 0u) << "pixels that differ with GPU Instancing on";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A runtime clone of an instanced mesh holds none of the original's batch variants (their
+// pipelines and shaders, which the clone's load and destroy let go of): it loads its own, and
+// once it is destroyed the original still draws instanced
+TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
+    JASPER_REQUIRE_GPU();
+    buildScene();
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const Entity original = models[0]->getEntity();
+    ASSERT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
+
+    const std::vector<Entity> copies = EntityCloner::clone(&scene, EntityCloner::collectHierarchy(&scene, original), &scene);
+    ASSERT_FALSE(copies.empty());
+    const Submesh& copied = scene.getComponent<MeshComponent>(copies[0]).submeshes[0];
+    EXPECT_FALSE(copied.batchRender.isBatchVariant()) << "the clone holds the original's batch variant";
+    EXPECT_FALSE(copied.batchDepthRender.isBatchVariant());
+    EXPECT_FALSE(copied.batchShader);
+    EXPECT_FALSE(copied.batchDepthShader);
+
+    ASSERT_TRUE(render()) << "the clone never finished loading";
+    EXPECT_TRUE(scene.getComponent<MeshComponent>(copies[0]).submeshes[0].batchRender.isBatchVariant());
+    for (auto copy = copies.rbegin(); copy != copies.rend(); ++copy)
+        scene.destroyEntity(*copy);
+    ASSERT_TRUE(render());
+    GpuEnvironment::drawFrames(2);
+
+    EXPECT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
+    EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

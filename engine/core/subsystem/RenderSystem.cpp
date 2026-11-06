@@ -144,8 +144,20 @@ namespace {
 
     bool bindSkinningResource(ObjectRender& render, ShaderData& shader, MeshComponent& mesh){
         JE_GPU_ALLOC_SCOPE(Meshes, "Skinning");
-        const size_t boneCount = mesh.bonesMatrix.size();
-        const unsigned int size = static_cast<unsigned int>(boneCount * sizeof(Matrix4));
+        // the palette is the skin's (MeshSystem sizes it at the model load); a skinned mesh whose
+        // model has not given it one yet draws with one identity row, never past its resource
+        if (mesh.bonesMatrix.stored() == 0)
+            mesh.bonesMatrix.resize(1);
+        const uint32_t rows = static_cast<uint32_t>(mesh.bonesMatrix.stored());
+        // a resource of another palette (the model reloaded with another skin) is made again
+        if (mesh.bonesUploadRows != rows){
+            if (mesh.bonesBuffer.isCreated())
+                mesh.bonesBuffer.destroyBuffer();
+            if (mesh.bonesTexture.isCreated())
+                mesh.bonesTexture.destroyTexture();
+            mesh.bonesUploadRows = 0;
+        }
+        const unsigned int size = static_cast<unsigned int>(rows * sizeof(Matrix4));
         const int storageSlot = shader.getStorageBufferIndex(StorageBufferType::VS_SKINNING);
         if (storageSlot != -1){
             if (!mesh.bonesBuffer.isCreated() &&
@@ -154,12 +166,23 @@ namespace {
             render.addStorageBuffer(storageSlot, ShaderStageType::VERTEX, &mesh.bonesBuffer);
         }else{
             const auto textureSlot = shader.getTextureIndex(TextureShaderType::BONES);
-            if (textureSlot.first == -1 || (!mesh.bonesTexture.isCreated() &&
-                    !mesh.bonesTexture.createDynamicTexture("mesh-bones", 4,
-                        static_cast<int>(boneCount))))
+            if (textureSlot.first == -1)
                 return false;
+            // a row per joint: a skin taller than the device's textures cannot load on this path
+            const int maxRows = SystemRender::getFeatures().maxTextureSize2D;
+            if (maxRows > 0 && rows > static_cast<uint32_t>(maxRows)){
+                Log::error("Cannot load a skin of %u joints: its bone palette is a texture of %u rows, and this device's textures hold at most %d",
+                           rows, rows, maxRows);
+                return false;
+            }
+            if (!mesh.bonesTexture.isCreated() &&
+                    !mesh.bonesTexture.createDynamicTexture("mesh-bones", 4, static_cast<int>(rows))){
+                Log::error("Cannot make the bone palette of a skin of %u joints (a texture of 4 x %u)", rows, rows);
+                return false;
+            }
             render.addTexture(textureSlot, ShaderStageType::VERTEX, &mesh.bonesTexture);
         }
+        mesh.bonesUploadRows = rows;
         mesh.needUpdateBones = true;
         return true;
     }
@@ -9634,9 +9657,13 @@ void RenderSystem::drawSubmeshFade(ObjectRender& render, Entity entity, MeshComp
 // ranges would slice the previous upload with the new offsets. Sokol allows a single
 // update per buffer per frame, which the flag already guarantees.
 void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
-    if (mesh.needUpdateBones){
+    if (mesh.needUpdateBones && mesh.bonesUploadRows != mesh.bonesMatrix.stored() && mesh.bonesUploadRows != 0){
+        // the palette changed size since its resource was made (a scene or cooked read): the
+        // reload makes the resource again, which uploads then
+        mesh.needReload = true;
+    }else if (mesh.needUpdateBones){
         const unsigned int size = static_cast<unsigned int>(
-            mesh.bonesMatrix.size() * sizeof(Matrix4));
+            mesh.bonesMatrix.stored() * sizeof(Matrix4));
         bool uploaded = true;
         if (mesh.bonesBuffer.isCreated())
             uploaded = mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data()) && uploaded;
@@ -12263,7 +12290,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
     if (!mesh.loaded)
         return;
 
-    for (int i = 0; i < mesh.numSubmeshes; i++){
+    // every submesh held, also past numSubmeshes: one a smaller reload left keeps no GPU object
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++){
 
         Submesh& submesh = mesh.submeshes[i];
         if (!preserveAssets){
@@ -12433,9 +12461,10 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
     releaseSmoothNormals(mesh, preserveAssets);
     mesh.bonesBuffer.destroyBuffer();
     mesh.bonesTexture.destroyTexture();
+    mesh.bonesUploadRows = 0;
     // made again (and its texels uploaded) by a load with the lattice variant
     mesh.lattice.texture.destroyTexture();
-    for (int i = 0; i < mesh.numExternalBuffers; i++){
+    for (size_t i = 0; i < mesh.eBuffers.stored(); i++){
         if (!preserveAssets){
             mesh.eBuffers[i].clearAll();
         }
@@ -16563,7 +16592,7 @@ void RenderSystem::update(double dt){
                 // draws the same box.
                 mesh.skinnedAABB.setNull();
                 if (!instmesh){
-                    const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.size());
+                    const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.stored());
                     for (size_t b = 0; b < boneBounds; b++){
                         if (!mesh.bonesAABB[b].isNull()){
                             mesh.skinnedAABB.merge(mesh.bonesMatrix[b] * mesh.bonesAABB[b]);
@@ -16572,7 +16601,7 @@ void RenderSystem::update(double dt){
 
                     if (mesh.skinnedAABB.isNull()){ // no per-bone bounds to pose
                         const Matrix4 identityMatrix;
-                        for (size_t b = 0; b < mesh.bonesMatrix.size(); b++){
+                        for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++){
                             const Matrix4& bone = mesh.bonesMatrix[b];
                             if (bone != identityMatrix){
                                 mesh.skinnedAABB.merge(bone * mesh.aabb);

@@ -16,9 +16,14 @@ macOS, Android, iOS or the web. It picks one of two methods:
   the game, as before. It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
-  - capacities above the player's (Project Settings > Scene Limits: `MAX_BONES` above 128, ...),
   - Google Mobile Ads (AdMob),
   - or when Build Settings > Build Method says Compile.
+
+  Content size is never a reason: meshes, sprites and tilemaps hold as many submeshes, bones,
+  frames and tiles as they are given, in a prebuilt player as in the editor (there are no
+  `MAX_SUBMESHES`-style capacities). A player runtime packaged before that change (only usable
+  with the player-mismatch option) is refused with the reason "holds fixed array capacities".
+  Compile builds drop the old capacity definitions, so each compile cache builds once more.
 
   Compiling makes builds for this computer's platform and for the web; other platforms are
   built from the exported source project (Export source, then Android Studio, Xcode or CMake).
@@ -166,6 +171,10 @@ startup and every export use the same list.
   Threading > Web: Multithreaded decides whether the pthreads player ships at all. Serve the
   folder over HTTP (`python3 tools/web/serve.py --root <folder>`): `file://` does not load
   WebAssembly.
+- **Windows**: the editor and `jasperengine-editor` (CLI exports included) need Windows 10
+  version 1903 or later, which runs them in the UTF-8 code page so file names in any language
+  work; on older Windows (Server 2019 too) they stop with a message. Windows games run on older
+  Windows as well. See [editor/text-and-languages.md](editor/text-and-languages.md).
 
 ## Running a player from scripts and CI
 

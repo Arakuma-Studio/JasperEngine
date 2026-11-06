@@ -48,6 +48,7 @@
 #include "util/VideoTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
+#include "util/FileUtils.h"
 #include "util/LightPhotometry.h"
 #include "texture/TexturePack.h"
 #include "ecs/EntityManager.h"
@@ -1331,8 +1332,16 @@ Matrix4 editor::Stream::decodeMatrix4(const YAML::Node& node) {
     return mat;
 }
 
+std::string editor::Stream::portablePath(std::string path) {
+    return FileUtils::portablePath(std::move(path));
+}
+
+std::string editor::Stream::portablePath(const std::filesystem::path& path) {
+    return portablePath(FileUtils::pathToGenericUtf8(path));
+}
+
 void editor::Stream::encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref) {
-    node[key] = ref.path;
+    node[key] = portablePath(ref.path);
     if (!ref.guid.isNull()) {
         node[key + "Guid"] = ref.guid.str();
     }
@@ -1342,7 +1351,7 @@ AssetRef editor::Stream::decodeAssetRef(const YAML::Node& node, const std::strin
     AssetRef ref;
     const YAML::Node value = node[key];
     if (value && !value.IsNull()) {
-        ref.path = value.as<std::string>();
+        ref.path = portablePath(value.as<std::string>());
     }
     const YAML::Node guid = node[key + "Guid"];
     if (guid && guid.IsScalar()) {
@@ -1365,7 +1374,7 @@ void editor::Stream::parseShaderRefGuids(const std::string& text, ShaderRef& ref
 }
 
 void editor::Stream::encodeShaderRef(YAML::Node& node, const std::string& key, const ShaderRef& ref) {
-    node[key] = ref.path;
+    node[key] = portablePath(ref.path);
     const std::string guids = shaderRefGuids(ref);
     if (!guids.empty()) {
         node[key + "Guid"] = guids;
@@ -1376,7 +1385,7 @@ ShaderRef editor::Stream::decodeShaderRef(const YAML::Node& node, const std::str
     ShaderRef ref;
     const YAML::Node value = node[key];
     if (value && !value.IsNull()) {
-        ref.path = value.as<std::string>();
+        ref.path = portablePath(value.as<std::string>());
     }
     const YAML::Node guids = node[key + "Guid"];
     if (guids && guids.IsScalar()) {
@@ -1425,7 +1434,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         const std::string path = texture.getPath(0);
         if (!path.empty()) {
             node["source"] = "path";
-            node["path"] = path;
+            node["path"] = portablePath(path);
             if (!texture.getPathGuid(0).isNull()) node["guid"] = texture.getPathGuid(0).str();
         } else {
             TextureData* embeddedData = nullptr;
@@ -1455,7 +1464,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         if (singleFileCube) {
             node["cubeMode"] = "single";
             node["source"] = "path";
-            node["path"] = texture.getPath(0);
+            node["path"] = portablePath(texture.getPath(0));
             if (!texture.getPathGuid(0).isNull()) node["guid"] = texture.getPathGuid(0).str();
         } else {
             node["cubeMode"] = "faces";
@@ -1463,7 +1472,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
             YAML::Node pathsNode;
             pathsNode.SetStyle(YAML::EmitterStyle::Flow);
             for (int f = 0; f < 6; f++) {
-                pathsNode.push_back(texture.getPath((size_t)f));
+                pathsNode.push_back(portablePath(texture.getPath((size_t)f)));
             }
             node["paths"] = pathsNode;
             bool hasGuids = false;
@@ -1507,14 +1516,14 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
             const std::string cubeMode = node["cubeMode"] ? node["cubeMode"].as<std::string>() : std::string();
             if (cubeMode == "single") {
                 if (node["path"]) {
-                    texture.setCubeMap(node["path"].as<std::string>());
+                    texture.setCubeMap(portablePath(node["path"].as<std::string>()));
                     if (node["guid"]) texture.setPathGuid(0, Guid::parse(node["guid"].as<std::string>()));
                 }
             } else {
                 if (node["paths"] && node["paths"].IsSequence() && node["paths"].size() == 6) {
                     std::array<std::string, 6> paths;
                     for (size_t f = 0; f < 6; f++) {
-                        paths[f] = node["paths"][f].as<std::string>();
+                        paths[f] = portablePath(node["paths"][f].as<std::string>());
                     }
 
                     // Set per-face paths individually (supports incomplete cubemaps).
@@ -1532,7 +1541,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
         } else if (textureType == "2D") {
             if (source == "path") {
                 if (node["path"]) {
-                    texture.setPath(node["path"].as<std::string>());
+                    texture.setPath(portablePath(node["path"].as<std::string>()));
                     if (node["guid"]) texture.setPathGuid(0, Guid::parse(node["guid"].as<std::string>()));
                 }
             } else if (source == "data") {
@@ -2572,19 +2581,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["windowTitle"] = project->getWindowTitle();
     }
     if (!project->getWindowIcon().empty()) {
-        root["windowIcon"] = project->getWindowIcon().string();
+        root["windowIcon"] = portablePath(project->getWindowIcon());
     }
 
     if (!project->getAssetsDir().empty() && project->getAssetsDir() != ".") {
-        root["assetsDir"] = project->getAssetsDir().string();
+        root["assetsDir"] = portablePath(project->getAssetsDir());
     }
     if (!project->getLuaDir().empty()) {
-        root["luaDir"] = project->getLuaDir().string();
+        root["luaDir"] = portablePath(project->getLuaDir());
     }
     if (!project->getScriptDirs().empty()) {
         YAML::Node scriptDirsNode;
         for (const fs::path& scriptDir : project->getScriptDirs()) {
-            scriptDirsNode.push_back(scriptDir.generic_string());
+            scriptDirsNode.push_back(portablePath(scriptDir));
         }
         root["scriptDirs"] = scriptDirsNode;
     }
@@ -2856,13 +2865,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.versionCode != defaults.versionCode) androidNode["versionCode"] = android.versionCode;
         if (!android.versionName.empty()) androidNode["versionName"] = android.versionName;
         if (!android.launcherIcon.empty()) {
-            androidNode["launcherIcon"] = android.launcherIcon.string();
+            androidNode["launcherIcon"] = portablePath(android.launcherIcon);
         }
         if (!android.adaptiveIconForeground.empty()) {
-            androidNode["adaptiveIconForeground"] = android.adaptiveIconForeground.string();
+            androidNode["adaptiveIconForeground"] = portablePath(android.adaptiveIconForeground);
         }
         if (!android.adaptiveIconBackground.empty()) {
-            androidNode["adaptiveIconBackground"] = android.adaptiveIconBackground.string();
+            androidNode["adaptiveIconBackground"] = portablePath(android.adaptiveIconBackground);
         }
         if (android.minSdk != defaults.minSdk) androidNode["minSdk"] = android.minSdk;
         if (android.targetSdk != defaults.targetSdk) androidNode["targetSdk"] = android.targetSdk;
@@ -2890,7 +2899,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.packageFormat != defaults.packageFormat) androidNode["packageFormat"] = android.packageFormat;
         if (!android.keystorePath.empty() || !android.keystoreAlias.empty()) {
             YAML::Node keystoreNode;
-            keystoreNode["path"] = android.keystorePath.generic_string();
+            keystoreNode["path"] = portablePath(android.keystorePath);
             keystoreNode["alias"] = android.keystoreAlias;
             androidNode["keystore"] = keystoreNode;
         }
@@ -3274,21 +3283,21 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["windowIcon"]) {
-        project->setWindowIcon(std::filesystem::path(node["windowIcon"].as<std::string>()));
+        project->setWindowIcon(FileUtils::pathFromUtf8(portablePath(node["windowIcon"].as<std::string>())));
     }
 
     if (node["assetsDir"]) {
-        project->setAssetsDir(node["assetsDir"].as<std::string>());
+        project->setAssetsDir(FileUtils::pathFromUtf8(portablePath(node["assetsDir"].as<std::string>())));
     }
 
     if (node["luaDir"]) {
-        project->setLuaDir(node["luaDir"].as<std::string>());
+        project->setLuaDir(FileUtils::pathFromUtf8(portablePath(node["luaDir"].as<std::string>())));
     }
 
     if (node["scriptDirs"]) {
         std::vector<fs::path> scriptDirs;
         for (const auto& dirNode : node["scriptDirs"]) {
-            scriptDirs.push_back(dirNode.as<std::string>());
+            scriptDirs.push_back(FileUtils::pathFromUtf8(portablePath(dirNode.as<std::string>())));
         }
         project->setScriptDirs(std::move(scriptDirs));
     }
@@ -3632,9 +3641,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["packageName"]) android.packageName = androidNode["packageName"].as<std::string>();
         if (androidNode["versionCode"]) android.versionCode = YamlNumbers::as<unsigned int>(androidNode["versionCode"]);
         if (androidNode["versionName"]) android.versionName = androidNode["versionName"].as<std::string>();
-        if (androidNode["launcherIcon"]) android.launcherIcon = androidNode["launcherIcon"].as<std::string>();
-        if (androidNode["adaptiveIconForeground"]) android.adaptiveIconForeground = androidNode["adaptiveIconForeground"].as<std::string>();
-        if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
+        if (androidNode["launcherIcon"]) android.launcherIcon = FileUtils::pathFromUtf8(portablePath(androidNode["launcherIcon"].as<std::string>()));
+        if (androidNode["adaptiveIconForeground"]) android.adaptiveIconForeground = FileUtils::pathFromUtf8(portablePath(androidNode["adaptiveIconForeground"].as<std::string>()));
+        if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = FileUtils::pathFromUtf8(portablePath(androidNode["adaptiveIconBackground"].as<std::string>()));
         if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
         if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
         // the Android-only orientation of older projects becomes the shared one (Player >
@@ -3676,7 +3685,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             android.packageFormat = androidFormatName(format);
         }
         if (androidNode["keystore"] && androidNode["keystore"].IsMap()) {
-            if (androidNode["keystore"]["path"]) android.keystorePath = androidNode["keystore"]["path"].as<std::string>();
+            if (androidNode["keystore"]["path"]) android.keystorePath = FileUtils::pathFromUtf8(portablePath(androidNode["keystore"]["path"].as<std::string>()));
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
         }
         android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
@@ -3936,20 +3945,11 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     root["sceneType"] = sceneTypeToString(sceneProject->sceneType);
     root["mainCamera"] = sceneProject->mainCamera;
 
-    YAML::Node maxValuesNode;
-    maxValuesNode["maxSubmeshes"] = sceneProject->maxValues.maxSubmeshes;
-    maxValuesNode["maxTilemapTilesRect"] = sceneProject->maxValues.maxTilemapTilesRect;
-    maxValuesNode["maxTilemapTiles"] = sceneProject->maxValues.maxTilemapTiles;
-    maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
-    maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
-    maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
-    // read from an older scene: written back unchanged (no churn in users' files)
-    if (sceneProject->maxValues.legacyMaxColliders2D) maxValuesNode["maxColliders2D"] = *sceneProject->maxValues.legacyMaxColliders2D;
-    if (sceneProject->maxValues.legacyMaxColliderPoints2D) maxValuesNode["maxColliderPoints2D"] = *sceneProject->maxValues.legacyMaxColliderPoints2D;
-    if (sceneProject->maxValues.legacyMaxColliders3D) maxValuesNode["maxColliders3D"] = *sceneProject->maxValues.legacyMaxColliders3D;
-    if (sceneProject->maxValues.legacyMaxColliderVertices3D) maxValuesNode["maxColliderVertices3D"] = *sceneProject->maxValues.legacyMaxColliderVertices3D;
-    if (sceneProject->maxValues.legacyMaxColliderIndices3D) maxValuesNode["maxColliderIndices3D"] = *sceneProject->maxValues.legacyMaxColliderIndices3D;
-    root["maxValues"] = maxValuesNode;
+    // an older editor's capacities and collider caps, as read (nothing reads them; a scene saved
+    // since has none)
+    if (sceneProject->legacyMaxValues.IsDefined() && !sceneProject->legacyMaxValues.IsNull()) {
+        root["maxValues"] = YAML::Clone(sceneProject->legacyMaxValues);
+    }
 
     YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
     if (shaderKeysNode.size()) {
@@ -4206,23 +4206,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     if (node["sceneType"]) sceneProject->sceneType = decodeEnum(node, "sceneType", StreamSchema::sceneType());
     if (node["mainCamera"]) sceneProject->mainCamera = YamlNumbers::as<Entity>(node["mainCamera"]);
 
-    sceneProject->maxValues = {};
-    if (node["maxValues"]) {
-        const YAML::Node& maxValuesNode = node["maxValues"];
-        if (maxValuesNode["maxSubmeshes"]) sceneProject->maxValues.maxSubmeshes = YamlNumbers::as<unsigned int>(maxValuesNode["maxSubmeshes"]);
-        if (maxValuesNode["maxTilemapTilesRect"]) sceneProject->maxValues.maxTilemapTilesRect = YamlNumbers::as<unsigned int>(maxValuesNode["maxTilemapTilesRect"]);
-        if (maxValuesNode["maxTilemapTiles"]) sceneProject->maxValues.maxTilemapTiles = YamlNumbers::as<unsigned int>(maxValuesNode["maxTilemapTiles"]);
-        if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
-        if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
-        if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
-        // the collider caps of older editors: colliders have no caps any more; kept only to
-        // write them back as they were
-        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.legacyMaxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
-        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.legacyMaxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
-        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.legacyMaxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
-        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.legacyMaxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
-        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.legacyMaxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
-    }
+    sceneProject->legacyMaxValues = node["maxValues"] ? YAML::Clone(node["maxValues"]) : YAML::Node();
 
     sceneProject->shaderKeys.clear();
     for (ShaderKey key : Stream::decodeShaderKeys(node["shaderKeys"])) {
@@ -5595,7 +5579,10 @@ namespace {
             return;
         }
         const bool update = desc.decodeApply == reflect::DecodeApply::UpdateFlags;
-        const uint64_t flags = update ? Catalog::getChangedUpdateFlags(desc.type, existing, value.get()) : 0;
+        uint64_t flags = update ? Catalog::getChangedUpdateFlags(desc.type, existing, value.get()) : 0;
+        // a mesh once held all its submesh slots, whose materials always count as changed, so every
+        // decode over a live mesh reloaded it; a mesh of no submeshes yet still does
+        if (update && desc.type == ComponentType::MeshComponent) flags |= editor::UpdateFlags_Mesh_Reload | editor::UpdateFlags_Mesh_Texture;
         if (isTransform) {
             registry->addEntityChild(parent, entity, false);
         }
