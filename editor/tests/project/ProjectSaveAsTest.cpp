@@ -30,7 +30,6 @@ namespace {
     protected:
         void prepare() override {
             dir.write("assets/hero.png", "hero");
-            dir.write(".trash/old.png", "deleted before");
         }
     };
 
@@ -66,6 +65,8 @@ TEST_F(ProjectSaveAsTest, SaveAsDropsTheOldProjectsUndoSteps) {
 }
 
 TEST_F(ProjectSaveAsTest, SaveAsLeavesTheTrashBehind) {
+    // written once the project is open: opening a project empties its trash
+    dir.write(".trash/old.png", "deleted before");
     jasperengine::test::TempDir other;
     ASSERT_TRUE(project->saveProjectToPath(other.path() / "Copy"));
     EXPECT_FALSE(fs::exists(other.path() / "Copy" / ".trash")) << "deleted files stay with the original";

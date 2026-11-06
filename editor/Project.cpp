@@ -2750,7 +2750,9 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
             const bool moves = !fs::exists(fs::symlink_status(relocation.sourceDestination, planEc));
             for (size_t i = 1; i < companions.size(); i++){
                 // the file moves, its meta or .humanoid could not follow: refused before anything moves
-                if (moves && fs::exists(fs::symlink_status(companions[i].second, planEc))){
+                // (an orphan sidecar file there, whose own file is not, gives way to the moving one's)
+                const fs::file_status taken = fs::symlink_status(companions[i].second, planEc);
+                if (moves && fs::exists(taken) && !fs::is_regular_file(taken)){
                     result.blocker = describe(companions[i].second) + " is in the way of " + describe(relocation.source) +
                                      "'s " + FileUtils::pathToUtf8(companions[i].second.extension()) + " file; move or remove it first";
                     break;
@@ -2886,6 +2888,11 @@ editor::AssetRootChange editor::Project::runAssetRootChange(const fs::path& newA
             const auto& [companion, companionDestination] = companions[i];
             if (!fs::is_regular_file(fs::symlink_status(companion, moveEc))) continue;
             std::string companionError = companionDestination.string() + " is in the way";
+            // an orphan sidecar there (its file is not): the moving file's own replaces it
+            if (fs::is_regular_file(fs::symlink_status(companionDestination, moveEc))){
+                std::error_code orphanEc;
+                FileUtils::removePath(companionDestination, orphanEc);
+            }
             if (!fs::exists(fs::symlink_status(companionDestination, moveEc))){
                 if (assetio::renameFile(companion, companionDestination, &companionError)){
                     completedMoves.emplace_back(companion, companionDestination);

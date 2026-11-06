@@ -830,8 +830,9 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
 14. **Review fixes**: Save Project As drops the project undo history (its steps name the old folder's files) and
     re-keys the Code Editor's tabs to the copy (`CodeEditor::retargetProject`); a failed Save As keeps the old folder's
     lock; the copy leaves `.trash` behind; relocation treats junctions as links (`watch::isLink`, S68 D6); a `.meta` or
-    `.humanoid` that cannot follow its file, even by copy across volumes, undoes the whole change, and one in the way
-    is a preflight blocker; Unity numbering continues (`hero 1` duplicates to `hero 2`); one `set_project_settings`
+    `.humanoid` that cannot follow its file, even by copy across volumes, undoes the whole change; a folder in the
+    way is a preflight blocker, an orphan sidecar file (its own file is not there) is replaced, as Unity drops orphan
+    metas; Unity numbering continues (`hero 1` duplicates to `hero 2`); one `set_project_settings`
     call moving both roots reports both relocations; refusals name their fix. Test of the tabs' re-keying: none (no
     unit test builds a Code Editor; inferred from the code: relative keys follow the project path, absolute ones are
     re-keyed).

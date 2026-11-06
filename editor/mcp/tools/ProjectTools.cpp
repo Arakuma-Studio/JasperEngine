@@ -1536,7 +1536,7 @@ void registerProjectTools(McpRegistry& registry) {
             "by index. Example: {\"values\": {\"player.window_width\": 800}}.";
         tool.inputSchema = object({
             {"values", anyObject("")},
-            {"dry_run", withDefault(boolean("Report only, change nothing."), false)}
+            {"dry_run", withDefault(boolean("Only report."), false)}
         }, {"values"});
         tool.annotations.destructive = true;
         tool.annotations.idempotent = true;
