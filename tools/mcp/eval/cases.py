@@ -1123,7 +1123,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Copies of a looping entity Animation moved in lockstep; edit_animation's random_start (an "
                          "Action's Random Start) desyncs them without a script.",
-        "text_at_issue": "edit_animation schema: random_start, start_offset 'Seconds each new run starts in (Play).'",
+        "text_at_issue": "edit_animation schema: start_offset, random_start (bare parameters)",
         "source": "runtime-core spec 6.7 (Doriax 45966b13a: action start offset / random start)",
         "prompt": "The 40 coins are copies of the Coin prefab and its CoinSpin animation makes them all spin in sync. "
                   "Make each coin start its spin at a different point so they look natural.",

@@ -5848,7 +5848,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"loop", boolean("")},
             {"duration", number("")},
             {"speed", number("")},
-            {"start_offset", number("Seconds each new run starts in (Play).")},
+            {"start_offset", number("")},
             {"random_start", boolean("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
