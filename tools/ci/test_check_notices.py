@@ -107,6 +107,20 @@ class CheckNoticesTest(unittest.TestCase):
         names = [name for _, name in check_notices.player_manifest(self.repo, ["physics3d"])]
         self.assertEqual(names, ["beta-LICENSE", "beta-NOTICE", "delta-LICENSE"])
 
+    # S80 R40: ThorVG ships with the HTML UI or with Title Art, a list of player features
+    def test_when_list_ships_with_any_of_its_features(self):
+        (self.repo / "engine/libs/delta").mkdir()
+        (self.repo / "engine/libs/delta/LICENSE").write_text("MIT")
+        self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
+                                 "delta": {"dir": "engine/libs/delta", "when": ["htmlui", "titleart"]}})
+        self.assertEqual(check_notices.check_game_notices(self.repo), [])
+        self.assertEqual(check_notices.player_libraries(self.repo, []), ["beta"])
+        self.assertEqual(check_notices.player_libraries(self.repo, ["titleart"]), ["beta", "delta"])
+        self.assertEqual(check_notices.player_libraries(self.repo, ["htmlui"]), ["beta", "delta"])
+        self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
+                                 "delta": {"dir": "engine/libs/delta", "when": ["htmlui", "sometimes"]}})
+        self.assertTrue(any("delta: when must be one of" in p for p in check_notices.check_game_notices(self.repo)))
+
     def test_third_party_notices_text(self):
         text = check_notices.third_party_notices(self.repo, [])
         self.assertIn("beta: beta, version 2, zlib (licenses/beta-LICENSE). Used for: b", text)

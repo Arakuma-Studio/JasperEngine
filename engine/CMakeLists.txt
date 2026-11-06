@@ -1212,8 +1212,20 @@ if(JASPERENGINE_TRACY)
 endif()
 # SVG images (texture/TextureData, and the HTML UI's)
 add_subdirectory(libs/lunasvg)
-if(JASPERENGINE_HTMLUI)
+# ThorVG: the HTML UI's Lottie and Title Art's coverage masks; Clipper2: Title Art's outline
+# offsets (docs/specs/S80-title-art-core.md §6.15)
+if(JASPERENGINE_HTMLUI OR JASPERENGINE_TITLE_ART)
     add_subdirectory(libs/thorvg)
+endif()
+set(JASPERENGINE_TITLE_ART_LIBS "")
+if(JASPERENGINE_TITLE_ART)
+    add_subdirectory(libs/clipper2)
+    set(JASPERENGINE_TITLE_ART_LIBS clipper2)
+    if(NOT JASPERENGINE_HTMLUI)
+        list(APPEND JASPERENGINE_TITLE_ART_LIBS thorvg)
+    endif()
+endif()
+if(JASPERENGINE_HTMLUI)
     add_subdirectory(libs/rmlui)
     # the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
     add_subdirectory(libs/lexbor)
@@ -1267,7 +1279,7 @@ if(JASPERENGINE_VIDEO)
 endif()
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS}
+    harfbuzz sheenbidi meshoptimizer lunasvg ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_TITLE_ART_LIBS}
     ${jasperengineQuietVideoLibs} ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -1311,7 +1323,7 @@ if(JASPERENGINE_VIDEO)
 endif()
 jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
-    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
+    lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
 endif()
@@ -2223,6 +2235,9 @@ target_link_libraries(
     ${JASPERENGINE_HTMLUI_LIBS} ${JASPERENGINE_VIDEO_LIBS} zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+if(JASPERENGINE_TITLE_ART_LIBS)
+    target_link_libraries(jasperengine PRIVATE ${JASPERENGINE_TITLE_ART_LIBS})
+endif()
 if(JASPERENGINE_NAVIGATION)
     target_link_libraries(jasperengine PRIVATE recastnavigation)
 endif()
@@ -2347,6 +2362,8 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
         # the vector libraries (hidden visibility too): LunaSVG/plutovg for SVG, ThorVG for Lottie
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
+        # Title Art's outline offsets (hidden visibility too: Clipper2Lib::)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libclipper2.a")
         # the HTML parser of the compat layer (hidden visibility too; C, so lxb_*/lexbor_* symbols)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
         # the <video> decoders (hidden visibility too: dav1d_*, opus_*, mkvparser::)

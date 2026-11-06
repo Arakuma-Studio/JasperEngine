@@ -49,6 +49,12 @@ Vector graphics of the HTML/CSS UI (all MIT):
 | [LunaSVG](https://github.com/sammycage/lunasvg) | 3.5.0 (`cf3594d5232e`) | `engine/libs/lunasvg/` (`LICENSE`) | SVG (RmlUi's SVG plugin, `.svg` textures) |
 | [plutovg](https://github.com/sammycage/plutovg) | 1.3.3 (bundled with LunaSVG) | `engine/libs/lunasvg/plutovg/` (`LICENSE`; its rasteriser derives from FreeType's, `source/FTL.TXT`) | LunaSVG's rasteriser |
 
+Geometry of Title Art (`engine/core/titleart`, `JASPERENGINE_TITLE_ART`; ThorVG above also rasterizes its coverage masks):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [Clipper2](https://github.com/AngusJohnson/Clipper2) (Angus Johnson) | 2.0.1 (`Clipper2_2.0.1`), the C++ library `CPP/Clipper2Lib` only | `engine/libs/clipper2/` (`LICENSE`, `README.jasper.md`) | BSL-1.0 | polygon offsets and unions of title outlines: face weight, plate closing, stroke outlines |
+
 HTML parsing of the HTML/CSS UI's compatibility layer:
 
 | Library | Version | Location | Used for |
@@ -234,6 +240,9 @@ The renderer's 2D title shading hashes its procedural textures with Dave Hoskins
 | `src/engine/adjustments.ts` (the fourteen adjustments, tone lookups) | `engine/core/titleart/effects/TitleAdjust.cpp`, `engine/shaderlib/titleart/adjust.glsl` | the Adjust effect and adjustment layers (S80) |
 | `src/engine/patterns.ts` (`PATTERN_GLSL`, the motif map), `src/generators/pattern.ts` (`patternFill`), `src/engine/layer2d/shaders.ts` (`FILL_GLSL`) | `engine/shaderlib/titleart/patterns.glsl`, `engine/core/titleart/effects/TextureEffects.cpp`, `engine/core/titleart/generators/FillGenerators.cpp` | Pattern Overlay, Fill and Pattern Fill (S80) |
 | `tests/golden/refs/effect/*.png`, `refs/generator/patternFill-*.png` (reference images, unchanged) | `engine/tests/core/golden/titleart/pachislop/` | the parity tests (S80 AC12; never shipped) |
+| `src/text/layout.ts` (proportional spacing, vertical cells, tate-chu-yoko, line and column pitch, per-character transforms, the frame; shaping by HarfBuzz instead of one glyph per code point) | `engine/core/titleart/text/TitleTextLayout.cpp` | text layout (S80) |
+| `src/text/warp.ts` (Photoshop Warp Text; its mesh constructions are [Patchy](https://github.com/shabanmohd/patchy)'s, MIT, Copyright (c) 2026 Seth A. Robinson, notice kept in the file), `remap.ts`, `distort.ts` | `engine/core/titleart/geometry/Warp.cpp`, `Remap.cpp`, `Distort.cpp`; the reference transcription `tools/titleart/gen_warp_refs.py` | warp, free distort and curve refit of outlines (S80) |
+| `src/text/offset.ts`, `plate.ts`, `shapes.ts`, `trace.ts`, `ink.ts`, `src/engine/layer2d/outline2d.ts` (fill groups, SVG fitting, image hulls), `Title2DRenderer.ts` (element specs, the mask recipe, the counter flood) | `engine/core/titleart/geometry/Offset.cpp`, `Plate.cpp`, `Shapes.cpp`, `Trace.cpp`, `TitleGeometry.cpp`, `MaskRaster.cpp` | weight, plates, the eleven shapes, image traces, elements and coverage masks (S80) |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 
@@ -248,6 +257,15 @@ Test assets (never shipped: `engine/tests/` stays out of the editor install and 
 | SpecularTest | `engine/tests/render/assets/khronos/SpecularTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
 | EmissiveStrengthTest | `engine/tests/render/assets/khronos/EmissiveStrengthTest/` | CC-BY-4.0 | Ed Mackey, © 2022 AGI |
 | SheenTestGrid, AnisotropyStrengthTest, IridescenceDielectricSpheres, IridescenceMetallicSpheres, TransmissionTest, IORTestGrid, MetalRoughSpheresNoTextures | `engine/tests/render/assets/khronos/` | CC0-1.0 | Eric Chadwick, Ed Mackey, Khronos, UX3D, Adobe, Krill Gavrilov (their `metadata.json`) |
+
+Test fonts of Title Art (`engine/tests/core/titleart/fonts/`, each with its licence file beside it; never shipped), downloaded from their original sources, none copied out of the Pachislop repository:
+
+| Font | Source | License | Credit |
+|---|---|---|---|
+| Dela Gothic One Regular (`DelaGothicOne-Regular.ttf`) | [google/fonts](https://github.com/google/fonts) `ofl/delagothicone` (`c78f24ab5a95`) | OFL-1.1 (`DelaGothicOne-OFL.txt`) | The Dela Gothic Project Authors |
+| Stick Regular (`Stick-Regular.ttf`) | google/fonts `ofl/stick` (`74eda7af4dd3`) | OFL-1.1 (`Stick-OFL.txt`) | The Stick Project Authors |
+| Oswald, variable `wght` (`Oswald-wght.ttf`, upstream `Oswald[wght].ttf`) | google/fonts `ofl/oswald` (`b6f0fe174057`) | OFL-1.1 (`Oswald-OFL.txt`) | The Oswald Project Authors |
+| Source Sans 3 Regular (CFF) and Source Sans 3 VF Upright (CFF2) (`SourceSans3-Regular.otf`, `SourceSans3VF-Upright.otf`) | [adobe-fonts/source-sans](https://github.com/adobe-fonts/source-sans) release `3.052R` | OFL-1.1 (`SourceSans3-LICENSE.md`) | Adobe, with Reserved Font Name 'Source' |
 
 The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
 OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),

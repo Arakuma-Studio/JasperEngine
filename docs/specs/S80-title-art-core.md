@@ -2092,3 +2092,56 @@ rest of S82 lands in 6B.
     definition reads canvas positions, so a node is bound to its position when the layer is a
     generator or one of its effects has a param set to `canvas` (Pattern Overlay's `align`). A
     generator's `follow` layer is not given to the generator (the context has no member for it).
+13. **Implementation (text and geometry): the geometry interface carries what pixel layers and
+    SVG strokes need.** `geometry/TitleGeometry.h` gains `StrokeCap`, `StrokedPath` (SVG strokes
+    stay strokes: `TitleElement::strokes`, widened by 2 x grow in rim masks), `ElementSource`
+    (`TitleElement::source`: an Image layer's decoded texture or an `artwork` SVG with the rect it
+    is drawn over) and `TitleElement::close` (a pixel layer's contour-rim closing),
+    `GlyphSpan` / `LayerElements::spans` (the boxes of the `line` / `char` span map, after the
+    outline operations), `elementBounds()` (§6.7's frame rule per element, without the 3 px
+    margin), `rasterizeSource()` (the `fill.kind: source` colour of a pixel layer at a mask frame)
+    and `TitleGeometry::clear()`. `rasterizeElement` applies the element's offset and, for a
+    `fill_counters` rim, the flood itself (`fillCounters()` is idempotent, so calling it again is
+    harmless); for a pixel layer it returns the picture's alpha and the renderer grows contour
+    rims by `grow` through the alpha's distance field, hull and box plates being outlines.
+    `TitleTextLayout.h`'s `LaidOutGlyph` gains `transform` (font units to layer space) and
+    `outline` (layer space, before warp, distort and weight); `subFont()` serves the faces of
+    the object's own layouts only (a sub-font is cached by its face). The "sub-font" of a
+    (face, `variations`) pair is `hb_font_create` on the face's shared `hb_face_t` with the
+    variations set, not `hb_font_create_sub_font`: a HarfBuzz sub-font's default functions
+    forward advances and outlines to the parent at the parent's coordinates, so its variations
+    would change shaping but neither advances nor outlines (measured: Oswald `wght` 300 and 700
+    gave equal advances that way).
+14. **Implementation: a laid-out cluster is a HarfBuzz cluster.** `LaidOutCluster` is one shaped
+    cluster: a grapheme cluster, or the code points a ligature covers; its CharAdjust is the one
+    keyed by its first code point (the others of a ligature have none). A tate-chu-yoko run is one
+    cluster holding its glyphs side by side. Vertical glyph forms come from top-to-bottom shaping
+    while the cells are Pachislop's one-em cells (the font's vertical metrics only choose forms).
+15. **Implementation: proportional spacing by difference.** With `palt` / `vpal` in the font, a
+    line is shaped with and without the feature and the difference, times `proportional`, is
+    applied to the characters 詰め applies to (kana, CJK punctuation, full-width symbols), which
+    is Pachislop's partial palt; turning the feature on would move every glyph it lists (often
+    kanji too) by the full amount. Without them, advances fit the ink plus 5 % of the em a side.
+16. **Implementation: rims are elements when enabled with a width** (Pachislop's
+    `elementSpecs`): a 0-width rim adds no element and no band, and `rimBands()` lists the same
+    rims as `elements()`. A shape's burst / shout jitter seed is its `seed` plus the document's
+    `seed` (§6.1: "added to every element seed").
+17. **Implementation: Vector layers.** `shape` mode fits the ink bounds (stroke widths included)
+    to `size` as Pachislop does; warp and distort map the fills and the strokes' centre lines,
+    weight offsets the fills and widens strokes by 2 x the offset. `artwork` mode fits the SVG's
+    own viewport (LunaSVG's document size), so the picture is placed as the file was drawn;
+    its hull and `outlines()` (S86) come from a raster of it. What shape mode cannot draw is
+    `svg_feature_ignored` with `detail.features`; an unreadable SVG or image is `asset_missing`
+    with the reason.
+18. **Implementation: bounds.** `reachBounds` grows the content by the effects' reach in canvas
+    px (Px params scale with `px_scale`, so a reach is the same in document space at any scale),
+    1.5 x the masks' feather and one output pixel (1 / `pxScale`) of antialiasing; a group's
+    content bounds are the union of its drawn children's reach bounds; content bounds of a 2D
+    title include its rims by `elementBounds()`.
+19. **Implementation: missing glyphs and fonts.** `fonts_with_it` lists the project fonts that
+    cover at least one missing code point, those covering most first, then by path. R48 is
+    measured with the fonts already loaded by the resolver (it loads each file once for its
+    lifetime); the budget covers shaping, sub-fonts, outlines and layout. Besides Dela Gothic One
+    the text tests use Stick (palt / vpal), Oswald (variable glyf) and Source Sans 3 (CFF and
+    CFF2), all OFL from their original sources (`NOTICE.md`); `.ttc` members are tested on a
+    collection the test assembles from two of them, so no collection file is committed.

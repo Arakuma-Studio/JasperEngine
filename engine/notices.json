@@ -2,7 +2,8 @@
     "_doc": [
         "The third-party libraries of engine/libs and which shipped games link them (docs/specs/S30-shipping.md R27).",
         "when: always, or the player feature that links it (player-info.json features[]: htmlui, video, physics2d, physics3d,",
-        "navigation, runtimeshaders, tracy), or editor (never in a game). A build stages licenses/<library>-LICENSE (and its other",
+        "navigation, runtimeshaders, tracy, titleart) or a list of them, or editor (never in a game). A build stages",
+        "licenses/<library>-LICENSE (and its other",
         "licence and NOTICE files, named as tools/ci/check-notices.py --install-manifest names them) for every library it",
         "ships, and THIRD-PARTY-NOTICES.txt from their NOTICE.md rows. check-notices.py fails when an engine/libs",
         "directory has no entry here."
@@ -14,6 +15,7 @@
         "bc7enc_rdo": {"dir": "engine/libs/bc7enc_rdo", "when": "editor"},
         "bcdec": {"dir": "engine/libs/bcdec", "when": "always"},
         "box2d": {"dir": "engine/libs/box2d", "when": "physics2d"},
+        "clipper2": {"dir": "engine/libs/clipper2", "when": "titleart"},
         "dav1d": {"dir": "engine/libs/dav1d", "when": "video"},
         "ffmpeg-headers": {"dir": "engine/libs/ffmpeg-headers", "when": "video"},
         "glslang": {"dir": "engine/libs/shadercompiler/libs/glslang", "when": "runtimeshaders"},
@@ -36,7 +38,7 @@
         "soloud": {"dir": "engine/libs/soloud", "when": "always"},
         "spirv-cross": {"dir": "engine/libs/shadercompiler/libs/spirv-cross", "when": "runtimeshaders"},
         "stb": {"dir": "engine/libs/stb", "when": "always"},
-        "thorvg": {"dir": "engine/libs/thorvg", "when": "htmlui"},
+        "thorvg": {"dir": "engine/libs/thorvg", "when": ["htmlui", "titleart"]},
         "tinygltf": {"dir": "engine/libs/tinygltf", "when": "always"},
         "tinyobjloader": {"dir": "engine/libs/tinyobjloader", "when": "always"},
         "tinyxml2": {"dir": "engine/libs/tinyxml2", "when": "always"},
