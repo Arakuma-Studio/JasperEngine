@@ -65,12 +65,20 @@ namespace {
     protected:
         Scene* scene = nullptr;
         bool wasAsync = false;
+        bool wasEventsPaused = false;
         std::vector<AudioVoiceLine> lines;
 
         void SetUp() override {
             ScriptDataTest::SetUp();
             wasAsync = Engine::isAsyncLoading();
             Engine::setAsyncLoading(false);
+            // the music holds while the game's events are paused or the listener is: what other
+            // suites leave must not hold it here
+            wasEventsPaused = Engine::areGameEventsPaused();
+            Engine::pauseGameEvents(false);
+            AudioSystem::setListenerPaused(false);
+            AudioMixer::setMasterPaused(false);
+            AudioMixer::setPlatformPaused(false);
             AudioSystem::close();
             AudioSystem::setBackend(AudioBackend::Deterministic);
             AudioSystem::configure(AudioConfig());
@@ -108,6 +116,7 @@ namespace {
             SoundEventLibrary::clear();
             AudioSystem::resetSoundEventRuntime();
             Engine::setAsyncLoading(wasAsync);
+            Engine::pauseGameEvents(wasEventsPaused);
             ScriptDataTest::TearDown();
         }
 
