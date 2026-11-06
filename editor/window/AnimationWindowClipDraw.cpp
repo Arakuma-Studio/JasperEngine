@@ -122,6 +122,7 @@ void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
         drawBanners(sceneProject);
         drawSheet(sceneProject, focused);
         drawEventEditor(sceneProject);
+        drawCueEditor();
         drawAddPropertyPopup();
         drawRebindPopup();
         // the catalog's animation.* commands frame the keys over the sheet's width (S25)
@@ -906,7 +907,9 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float labelW = std::clamp(scaledLabelWidth(), 160.0f * m.s, std::max(160.0f * m.s, avail.x - 120.0f * m.s));
     const float bottomHeight = std::max(ImGui::GetStyle().ScrollbarSize, ImGui::GetFrameHeight());
-    const float headerHeight = m.rulerHeight + m.eventsHeight;
+    // the Audio lane under the events lane (S40 R9): a row per cue kind in use
+    const float audioHeight = audioLaneHeight(data);
+    const float headerHeight = m.rulerHeight + m.eventsHeight + audioHeight;
     // at least the header and four rows
     const float sheetHeight = std::max(headerHeight + 4.0f * m.rowHeight, avail.y - bottomHeight - ImGui::GetStyle().ItemSpacing.y);
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -932,6 +935,10 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     const bool rulerHovered = ImGui::IsItemHovered();
     drawEventsLane(drawList, ImVec2(keyAreaX, origin.y + m.rulerHeight), keyAreaWidth, m.eventsHeight, timeX);
     const bool eventsHovered = ImGui::IsItemHovered();
+    if (audioHeight > 0.0f){
+        drawAudioLaneLabels(drawList, ImVec2(origin.x, origin.y + m.rulerHeight + m.eventsHeight), labelW);
+        drawAudioLane(drawList, ImVec2(keyAreaX, origin.y + m.rulerHeight + m.eventsHeight), keyAreaWidth, audioHeight, timeX);
+    }
     ImGui::SetCursorScreenPos(ImVec2(origin.x + 4.0f * m.s, origin.y + (m.rulerHeight - ImGui::GetFrameHeight()) * 0.5f + 1.0f * m.s));
     ImGui::BeginDisabled(readOnly);
     if (ImGui::SmallButton(ICON_FA_PLUS " Add Property")) openAddProperty = true;
@@ -1537,6 +1544,9 @@ void AnimationWindowClip::drawAddPropertyPopup(){
         }
     };
     ImGui::BeginChild("##tree", ImVec2(Theme::dpi(380.0f), Theme::dpi(320.0f)), ImGuiChildFlags_None);
+    // audio cues first (S40 R10): Audio Cue, Snapshot Cue; a GameObject's Source Cue under it
+    if (drawAddCueItems(needle)) done = true;
+    addPropertyCueKind = -1;
     // the bound root's hierarchy, depth first in child order; unaddressable names warn (R39)
     std::function<void(Entity, const std::string&, bool)> visit = [&](Entity entity, const std::string& path, bool addressable){
         if (done) return;
@@ -1551,6 +1561,7 @@ void AnimationWindowClip::drawAddPropertyPopup(){
             if (matches){
                 if (ok){
                     if (ImGui::TreeNodeEx("##match", ImGuiTreeNodeFlags_DefaultOpen, "%s", path.empty() ? name.c_str() : path.c_str())){
+                        if (drawSourceCueItem(entity, path)) done = true;
                         addChannels(entity, path);
                         ImGui::TreePop();
                     }
@@ -1570,6 +1581,7 @@ void AnimationWindowClip::drawAddPropertyPopup(){
         }else{
             const std::string label = entity == root ? name + " (root)" : name;
             if (ImGui::TreeNodeEx("##node", entity == root ? ImGuiTreeNodeFlags_DefaultOpen : 0, "%s", label.c_str())){
+                if (drawSourceCueItem(entity, path)) done = true;
                 addChannels(entity, path);
                 for (Entity child : children){
                     std::string childPath;
@@ -1735,8 +1747,20 @@ void AnimationWindowClip::runKeyCommand(std::string_view id){
     else if (id == "animation.previousKey") stepKey(-1);
     else if (id == "animation.nextKey") stepKey(1);
     else if (id == "animation.delete"){
+        resolveSelectedCue();
         if (!selectedRefs.empty()) report(deleteSelected(&error));
         else if (selectedEvent >= 0) report(deleteEvent(selectedEvent, &error));
+        else if (selectedCue >= 0) report(deleteCue(selectedCue, &error));
+    }
+    // the audio cues (S40 R10): the selected cue to the playhead, Add Property's cue sections
+    else if (id == "animation.alignCueStart" || id == "animation.alignCuePeak" || id == "animation.alignCueEnd"){
+        resolveSelectedCue();
+        const CueAlign align = id == "animation.alignCueStart" ? CueAlign::Start : id == "animation.alignCuePeak" ? CueAlign::Peak : CueAlign::End;
+        report(alignCue(selectedCue, align, &error));
+    }
+    else if (id == "animation.addAudioCue" || id == "animation.addSourceCue" || id == "animation.addSnapshotCue"){
+        addPropertyCueKind = (int)(id == "animation.addAudioCue" ? ClipCueKind::Sound : id == "animation.addSourceCue" ? ClipCueKind::Source : ClipCueKind::Snapshot);
+        openAddProperty = true;
     }
     else if (id == "animation.copy") copySelected();
     else if (id == "animation.paste") report(paste(snapToFrame(c.getTime()), &error));
@@ -1759,17 +1783,33 @@ void AnimationWindowClip::bindCommands(CommandCatalog& catalog, std::function<An
         if (existing.id.rfind("animation.", 0) != 0) continue;
         CommandDef def = existing;
         const std::string id = def.id;
-        def.run = [target, id](const CommandArgs&){
-            if (AnimationWindowClip* clip = target()) clip->runKeyCommand(id);
-        };
-        def.enabled = [target](){
+        // what the entity mode runs too (S40 R22): the Align commands on a selected audio block,
+        // the Add ... action commands; in clip mode the clip window runs them
+        const bool shared = id.rfind("animation.alignCue", 0) == 0 || id == "animation.addAudioAction" ||
+                            id == "animation.addSoundEventAction" || id == "animation.addSnapshotAction";
+        def.run = [target, id, shared](const CommandArgs&){
             AnimationWindowClip* clip = target();
-            return clip && clip->document() != nullptr;
+            if (!clip) return;
+            // the entity mode first while it has the keys: a clip opened before stays the controller's
+            // document behind it, and its cue must not move
+            if (shared && clip->entityKeys && clip->entityCommands) clip->entityCommands(id, true);
+            // the entity mode has the context's keys: no clip command runs on a clip behind it
+            else if (clip->entityKeys) return;
+            else if (clip->document() != nullptr) clip->runKeyCommand(id);
+            else if (shared && clip->entityCommands) clip->entityCommands(id, true);
         };
-        // while the window has focus (the controller's takesKeys), not while typing in it
-        def.keyGate = [target](){
+        def.enabled = [target, id, shared](){
             AnimationWindowClip* clip = target();
-            return clip && clip->controller().takesKeys() && !ImGui::GetIO().WantTextInput;
+            if (!clip) return false;
+            if (shared && clip->entityKeys && clip->entityCommands) return clip->entityCommands(id, false);
+            if (clip->entityKeys) return false;
+            if (clip->document() != nullptr) return true;
+            return shared && clip->entityCommands && clip->entityCommands(id, false);
+        };
+        // while the window has focus (the controller's takesKeys, or the entity mode's), not while typing in it
+        def.keyGate = [target, shared](){
+            AnimationWindowClip* clip = target();
+            return clip && (clip->controller().takesKeys() || (shared && clip->entityKeys)) && !ImGui::GetIO().WantTextInput;
         };
         catalog.add(std::move(def));
     }

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include <array>
 #include <functional>
@@ -183,6 +184,14 @@ namespace jasperengine::editor {
         int maxVoices = 256;
         int sampleRate = 0;             // 0 = the device's
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+        std::string musicGroup;         // the group music plays through when nothing names one ("" = Master)
+        int seed = 1;                   // the Sound Event generator's seed in a deterministic run
+        // Play's audio captures (docs/specs/S35-agent-audio.md): editor only, not exported
+        int captureMaxSeconds = 120;
+        int captureKeep = 3;
+        bool captureStems = false;
+        AudioQaSettings qa;
+        bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
         // Measurement only: what the Mixer window, get_play_state and the checks read against
         float loudnessTargetLufs = -18.0f;
         float loudnessToleranceLu = 2.0f;
@@ -192,10 +201,11 @@ namespace jasperengine::editor {
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup &&
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && musicGroup == other.musicGroup &&
                    loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
                    truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
-                   iosSessionCategory == other.iosSessionCategory;
+                   iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile &&
+                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };

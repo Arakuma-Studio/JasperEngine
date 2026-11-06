@@ -133,7 +133,7 @@ def match(path: str, patterns) -> bool:
 
 
 def git(*args: str, cwd: Path = ROOT, check: bool = True) -> str:
-    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
+    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, errors="replace")
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout
@@ -159,7 +159,7 @@ class Changes:
 def find_base(explicit: str | None, cwd: Path = ROOT) -> tuple[str, str]:
     candidates = [explicit] if explicit else ["oe-port", "main", "origin/main"]
     for ref in candidates:
-        r = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=str(cwd), capture_output=True, text=True)
+        r = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=str(cwd), capture_output=True, text=True, errors="replace")
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip(), f"merge base of HEAD and {ref}"
     raise LookupError(f"no merge base of HEAD and {' / '.join(candidates)}")
@@ -822,7 +822,7 @@ def commits_since(root: Path):
     def count(commit: str):
         if not commit:
             return None
-        r = subprocess.run(["git", "rev-list", "--count", f"{commit}..HEAD"], cwd=str(root), capture_output=True, text=True)
+        r = subprocess.run(["git", "rev-list", "--count", f"{commit}..HEAD"], cwd=str(root), capture_output=True, text=True, errors="replace")
         return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
     return count
 

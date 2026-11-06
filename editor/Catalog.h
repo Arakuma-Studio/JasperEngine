@@ -223,12 +223,14 @@ namespace jasperengine::editor{
         // drives a RectTransform to Screen.safeArea
         SafeAreaComponent,
         // soft capsule shadows of a character from its bones (S57 R2)
-        CapsuleShadowCasterComponent
+        CapsuleShadowCasterComponent,
+        // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+        AudioSnapshotComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::CapsuleShadowCasterComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

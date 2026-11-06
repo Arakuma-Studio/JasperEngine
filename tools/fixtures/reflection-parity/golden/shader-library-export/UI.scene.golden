@@ -53,6 +53,8 @@ shaderKeys:
   - type: ui
     properties: 9
   - type: blit
+  - type: blit
+    properties: 4096
   - type: ui
     properties: 2
     customShader: library:ui_fx#BLEND_ADDITIVE,TINT_OVERLAY

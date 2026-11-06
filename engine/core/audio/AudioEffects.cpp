@@ -484,6 +484,7 @@ namespace {
             }
             const unsigned int slot = parent->next.fetch_add(1, std::memory_order_relaxed) % MeterFilter::blockCount;
             parent->blocks[slot].store(peak, std::memory_order_relaxed);
+            if (MeterFilter::captureHook) MeterFilter::captureHook(*parent, buffer, samples, bufferSize, channels);
             if (LoudnessTapRing* tap = parent->tap.load(std::memory_order_acquire)) {
                 tap->push(buffer, samples, bufferSize, channels);
             }
@@ -581,6 +582,8 @@ void LoudnessTapRing::clear() {
 }
 
 // ---------------------------------------------------------------- MeterFilter
+
+MeterFilter::CaptureHook MeterFilter::captureHook = nullptr;
 
 MeterFilter::MeterFilter() {
     reset();
