@@ -232,7 +232,9 @@ TEST(TitleShapesTest, ElevenShapesWindClockwiseAndFitTheirBox) {
             EXPECT_NEAR(b.height, 100, 1.0);
             EXPECT_NEAR(b.x + b.width / 2, 0, 1.0) << "centred";
         }
-        if (std::string(name) == "rect" || std::string(name) == "ellipse" || std::string(name) == "polygon") EXPECT_NEAR(b.width, 200, 1.0);
+        if (std::string(name) == "rect" || std::string(name) == "ellipse" || std::string(name) == "polygon") {
+            EXPECT_NEAR(b.width, 200, 1.0);
+        }
     }
     // rounded corners are circular arcs clamped to half an edge: a full corner is a capsule
     ShapeParams capsule;

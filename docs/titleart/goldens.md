@@ -12,36 +12,36 @@ comparison of the old golden against the new image (before) and after the update
 
 | Golden | Reason |
 |---|---|
-| `effects/outer_glow` | Outer Glow at defaults (softer, behind) |
-| `effects/inner_glow` | Inner Glow at defaults (softer, screen, from the edge) |
-| `effects/drop_shadow` | Drop Shadow at defaults (global light 120: falls down-right) |
-| `effects/inner_shadow` | Inner Shadow at defaults |
-| `effects/outline` | Outline at defaults (1.5 px keyline, follows the layer) |
-| `effects/color_overlay` | Color Overlay at defaults (red, normal) |
-| `effects/gradient_overlay` | Gradient Overlay at defaults (gold bands, linear, top to bottom) |
-| `effects/adjust` | Adjust at defaults (Hue/Saturation +25 saturation) |
-| `effects/pattern_overlay` | Pattern Overlay at defaults (stripes, layer-aligned) |
-| `effects/gaussian_blur` | Gaussian Blur at defaults (radius 8, repeat edges) |
-| `effects/outer_glow-precise` | Precise technique: the exact edge distance (bounded jump flood) |
-| `effects/outer_glow-add-gradient` | Added as light with a gradient across the layer's box (the bounds reduction) |
-| `effects/inner_glow-precise-center` | Precise technique glowing out from the centre |
-| `effects/inner_glow-distance` | Gradient from the edge (the distance field), added as light |
-| `effects/drop_shadow-colored` | Own angle (global light off), longer distance, coloured |
-| `effects/drop_shadow-hard` | Small blur with a high spread: a hard shadow |
-| `effects/inner_shadow-choke` | Own angle, choke 0.4 |
-| `effects/inner_shadow-blue` | A large, opaque coloured inner shadow |
-| `effects/outline-wide` | A 6 px white outline |
-| `effects/outline-soft-stack` | A soft outline that follows the stack |
-| `effects/color_overlay-multiply` | Multiply at 70 % |
-| `effects/color_overlay-color` | The Color blend mode (non-separable) |
-| `effects/gradient_overlay-radial-mirror` | Radial style, mirrored wrap |
-| `effects/gradient_overlay-sweep-light` | A sweep band added as light |
-| `effects/pattern_overlay-zebra` | Zebra, turned 30 degrees |
-| `effects/pattern_overlay-checker-canvas` | Checker with a secondary colour, canvas-aligned, multiply |
-| `effects/gaussian_blur-large` | Radius 30: the downsampled pyramid |
-| `effects/gaussian_blur-horizontal-edges` | Horizontal only, edges fading at the canvas (Repeat Edge Pixels off) |
-| `effects/adjust-levels` | Levels (input white 180, gamma 1.4): the tone lookup |
-| `effects/adjust-gradient_map` | Gradient Map: the ramp lookup |
+| `effects/outer_glow` | Outer Glow at defaults (softer, behind), on the standard title |
+| `effects/inner_glow` | Inner Glow at defaults (softer, screen, from the edge), on the standard title |
+| `effects/drop_shadow` | Drop Shadow at defaults (global light 120: falls down-right), on the standard title |
+| `effects/inner_shadow` | Inner Shadow at defaults, on the standard title |
+| `effects/outline` | Outline at defaults (1.5 px keyline, follows the layer), on the standard title |
+| `effects/color_overlay` | Color Overlay at defaults (red, normal), on the standard title |
+| `effects/gradient_overlay` | Gradient Overlay at defaults (gold bands, linear, top to bottom), on the standard title |
+| `effects/adjust` | Adjust at defaults (Hue/Saturation +25 saturation), on the standard title |
+| `effects/pattern_overlay` | Pattern Overlay at defaults (stripes, layer-aligned), on the standard title |
+| `effects/gaussian_blur` | Gaussian Blur at defaults (radius 8, repeat edges), on the standard title |
+| `effects/outer_glow-precise` | Precise technique: the exact edge distance (bounded jump flood), on the standard title |
+| `effects/outer_glow-add-gradient` | Added as light with a gradient across the layer's box (the bounds reduction), on the standard title |
+| `effects/inner_glow-precise-center` | Precise technique glowing out from the centre, on the standard title |
+| `effects/inner_glow-distance` | Gradient from the edge (the distance field), added as light, on the standard title |
+| `effects/drop_shadow-colored` | Own angle (global light off), longer distance, coloured, on the standard title |
+| `effects/drop_shadow-hard` | Small blur with a high spread: a hard shadow, on the standard title |
+| `effects/inner_shadow-choke` | Own angle, choke 0.4, on the standard title |
+| `effects/inner_shadow-blue` | A large, opaque coloured inner shadow, on the standard title |
+| `effects/outline-wide` | A 6 px white outline, on the standard title |
+| `effects/outline-soft-stack` | A soft outline that follows the stack, on the standard title |
+| `effects/color_overlay-multiply` | Multiply at 70 %, on the standard title |
+| `effects/color_overlay-color` | The Color blend mode (non-separable), on the standard title |
+| `effects/gradient_overlay-radial-mirror` | Radial style, mirrored wrap, on the standard title |
+| `effects/gradient_overlay-sweep-light` | A sweep band added as light, on the standard title |
+| `effects/pattern_overlay-zebra` | Zebra, turned 30 degrees, on the standard title |
+| `effects/pattern_overlay-checker-canvas` | Checker with a secondary colour, canvas-aligned, multiply, on the standard title |
+| `effects/gaussian_blur-large` | Radius 30: the downsampled pyramid, on the standard title |
+| `effects/gaussian_blur-horizontal-edges` | Horizontal only, edges fading at the canvas (Repeat Edge Pixels off), on the standard title |
+| `effects/adjust-levels` | Levels (input white 180, gamma 1.4): the tone lookup, on the standard title |
+| `effects/adjust-gradient_map` | Gradient Map: the ramp lookup, on the standard title |
 | `effects/fill` | Fill at defaults (solid #202020) |
 | `effects/pattern_fill` | Pattern Fill at defaults (zebra) |
 | `effects/fill-linear` | A linear gradient at 45 degrees |
@@ -65,8 +65,16 @@ comparison of the old golden against the new image (before) and after the update
 | `pachislop/generator/patternFill-shippo` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-shippo.png` (parity reference, AC12) |
 | `pachislop/generator/patternFill-tiger` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-tiger.png` (parity reference, AC12) |
 | `pachislop/generator/patternFill-zebra` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-zebra.png` (parity reference, AC12) |
+| `text/vertical` | 縦書き with a tate-chu-yoko run in Dela Gothic One through the renderer's text and geometry (AC21) |
+| `text/variable_400` | Source Sans 3 VF (CFF2) at wght 400 (AC21) |
+| `text/variable_800` | Source Sans 3 VF (CFF2) at wght 800: heavier outlines and advances (AC21) |
+| `text/standard` | The standard title (確定, Dela Gothic One, the classic style) on a 640 x 360 canvas (§7) |
+| `text/rim_miter` | A star with a mitred rim (AC22) |
+| `text/rim_round` | The same star with a round rim (AC22) |
 
 ## Updated goldens
 
 | Golden | Before (max / mean / % over 8) | After | Reason |
 |---|---|---|---|
+| `../titleart_compositor_part_effects_2d` | 3 / 0.001 / 0 (one pixel over the strict threshold 2) | 0 / 0 / 0 | The renderer tests' stand-in shadow and glow tint through the shared Adjust implementation (S80 Deviation 51) |
+| `../titleart_compositor_adjustment_in_group` | ≤ 2 / < 0.05 / 0 (within the strict limits) | 0 / 0 / 0 | Adjustment layers run the Adjust effect's implementation (S80 Deviation 51) |

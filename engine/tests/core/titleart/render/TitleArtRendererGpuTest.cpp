@@ -439,7 +439,8 @@ TEST_F(TitleArtRendererGpu, CanvasPositionsKeyTheNode) {
                                 Json{{"transform", {{"position", position}}},
                                      {"effects", Json::array({effect("00000021", "pattern_overlay",
                                                                      {{"pattern", "stripes"}, {"scale", 7}, {"angle", 30}, {"align", align}})})}});
-        return makeDoc({{"canvas", canvas(256, 128)}, {"layers", Json::array({layer})}});
+        // a node that touches the canvas edge is never moved; this one stays clear of it
+        return makeDoc({{"canvas", canvas(512, 384)}, {"layers", Json::array({layer})}});
     };
     for (const char* align : {"layer", "canvas"}) {
         SCOPED_TRACE(align);
@@ -450,8 +451,11 @@ TEST_F(TitleArtRendererGpu, CanvasPositionsKeyTheNode) {
         const uint64_t passes = passesOf(*renderer, requestOf(moved), &move);
         auto fresh = makeRenderer();
         EXPECT_TRUE(identical(move, render(*fresh, requestOf(moved)))) << "the moved layer differs from a fresh render";
-        if (std::string(align) == "layer") EXPECT_LE(passes, 2u) << "a layer-anchored pattern moves with its cached node";
-        else EXPECT_GT(passes, 2u) << "a canvas-anchored pattern must render again where it moved";
+        if (std::string(align) == "layer") {
+            EXPECT_LE(passes, 2u) << "a layer-anchored pattern moves with its cached node";
+        } else {
+            EXPECT_GT(passes, 2u) << "a canvas-anchored pattern must render again where it moved";
+        }
     }
 }
 

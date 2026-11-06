@@ -179,9 +179,15 @@ TEST_F(TitleTextLayoutTest, LinesAlignAndLineHeight) {
         const double left0 = first.pen.x, left1 = second.pen.x;
         const double right0 = t.clusters[t.lines[0].firstCluster + 3].pen.x + t.clusters[t.lines[0].firstCluster + 3].advance;
         const double right1 = left1 + second.advance;
-        if (std::string(align) == "start") EXPECT_NEAR(left0, left1, 1e-9);
-        if (std::string(align) == "center") EXPECT_NEAR((left0 + right0) / 2, (left1 + right1) / 2, 1e-9);
-        if (std::string(align) == "end") EXPECT_NEAR(right0, right1, 1e-9);
+        if (std::string(align) == "start") {
+            EXPECT_NEAR(left0, left1, 1e-9);
+        }
+        if (std::string(align) == "center") {
+            EXPECT_NEAR((left0 + right0) / 2, (left1 + right1) / 2, 1e-9);
+        }
+        if (std::string(align) == "end") {
+            EXPECT_NEAR(right0, right1, 1e-9);
+        }
         // uniform lines step by line_height x size
         EXPECT_NEAR(first.pen.y - second.pen.y, 1.1 * 200, 1e-9);
         EXPECT_GT(t.lines[0].box.y, t.lines[1].box.y);

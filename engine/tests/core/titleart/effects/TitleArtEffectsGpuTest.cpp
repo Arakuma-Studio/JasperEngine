@@ -5,15 +5,17 @@
 // R12, R17, R38, §6.5, AC12, AC17, AC18, AC24). Each definition runs as the renderer runs it, one
 // stack entry at a time: its `apply` (or `render`) with a constructed EffectContext around a
 // TitlePassKit, on an input uploaded into a pooled target.
-// - TitleArtEffectsGpu.Goldens: every effect at defaults and with two settings, every generator,
-//   on the synthetic fixture, against golden/titleart/effects/ (written on glcore, Vulkan
-//   matches), premultiplied with the golden limits of §6.12.
+// - TitleArtEffectsGpu.Goldens: every effect at defaults and with two settings on the standard
+//   title (§7: 確定, Dela Gothic One, the classic style, rendered by the renderer with the module's
+//   text and geometry), every generator alone, against golden/titleart/effects/ (written on
+//   glcore, Vulkan matches), premultiplied with the golden limits of §6.12.
 // - TitleArtParityGpu: the effects with a Pachislop reference (tests/golden/refs/effect, copied to
-//   golden/titleart/pachislop/) at defaults on Pachislop's own standard title, rebuilt from two of
-//   its references (Drop Shadow keeps the title's premultiplied colour, Inner Shadow its alpha),
-//   and the Pattern Fill presets against theirs, with AC12's block and histogram metric.
-// - TitleArtEffectsGpu.ScaleInvariance: px_scale 0.5 equals px_scale 1 box-filtered down, and an
-//   effect that ignores px_scale fails the same check (red control).
+//   golden/titleart/pachislop/) at defaults on the standard title, each on the title layer
+//   through the renderer at scale 0.25 and trimmed (Pachislop's GOLDEN_STILL), and the Pattern
+//   Fill presets against theirs, with AC12's block and histogram metric.
+// - TitleArtEffectsGpu.ScaleInvariance: px_scale 0.5 equals px_scale 1 box-filtered down on an
+//   analytic fixture (an "F", a ring and a disc drawn exactly at both scales), and an effect that
+//   ignores px_scale fails the same check (red control).
 // - TitleArtEffectsGpu.Deterministic: two renders are byte-identical.
 // - TitleArtFallbackGpu: the RGBA8 path (TITLE_ART_TEST_NO_FLOAT_TARGETS) agrees with the float
 //   path within each definition's declared class (F0: §6.3's tolerance; F1: S83 §6.5's).
@@ -29,8 +31,12 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/effects/TitleFx.h"
 #include "titleart/render/TitleArtCaps.h"
+#include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleEffectContext.h"
 #include "titleart/render/TitlePassKit.h"
+#include "shader/RuntimeShaderCompiler.h"
+
+#include "../support/TitleStandardTitle.h"
 
 #include "GpuEnvironment.h"
 #include "HeadlessContext.h"
@@ -39,6 +45,7 @@
 #include "TestPaths.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -48,6 +55,7 @@
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::test;
+namespace standard = jasperengine::titleart::test;
 
 namespace {
 
@@ -83,19 +91,6 @@ namespace {
                 out.rgba[i + c] = toByte(linearToSrgb(std::min(1.0f, std::max(0.0f, straight))));
             }
             out.rgba[i + 3] = toByte(a);
-        }
-        return out;
-    }
-
-    LinearImage toLinear(const Rgba8Image& image) {
-        LinearImage out;
-        out.width = image.width;
-        out.height = image.height;
-        out.rgba.resize(image.rgba.size());
-        for (size_t i = 0; i < image.rgba.size(); i += 4) {
-            const float a = image.rgba[i + 3] / 255.0f;
-            for (int c = 0; c < 3; c++) out.rgba[i + c] = srgbToLinear(image.rgba[i + c] / 255.0f) * a;
-            out.rgba[i + 3] = a;
         }
         return out;
     }
@@ -261,6 +256,7 @@ namespace {
     }
 
     // ---- the synthetic fixture ----
+    // (ScaleInvariance: analytic, so the half-scale input is drawn exactly, not filtered down)
 
     constexpr int FIXTURE_WIDTH = 400, FIXTURE_HEIGHT = 220;
 
@@ -321,6 +317,123 @@ namespace {
         }
         return image;
     }
+
+    // ---- the standard title ----
+
+    // a job run to the end, frame by frame (its programs compile on the way)
+    bool runJob(TitleRenderJob& job, std::string& error) {
+        const auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::minutes(3)) {
+            SystemRender::updateGpuCreation();
+            RuntimeShaderCompiler::beginFrame();
+            const bool done = job.step(StepBudget{});
+            SystemRender::commit();
+            if (done) return true;
+            if (job.failed()) {
+                error = "the render failed: " + job.error();
+                return false;
+            }
+        }
+        error = "the render did not finish";
+        return false;
+    }
+
+    // a document rendered whole at `scale` with the module's own text and geometry and the test
+    // fonts: `format` Linear gives linear premultiplied floats, Srgb8 straight sRGB bytes
+    bool renderDocument(const TitleArtDoc& doc, float scale, TitleOutputFormat format, LinearImage* linear, Rgba8Image* srgb,
+                        std::string& error) {
+        static standard::TestAssetResolver assets;
+        TitleArtRenderer renderer;
+        RenderRequest request;
+        request.doc = std::make_shared<const TitleArtDoc>(doc);
+        request.pxScale = scale;
+        request.output = format;
+        request.assets = &assets;
+        std::unique_ptr<TitleRenderJob> job = renderer.begin(request);
+        if (!job || !runJob(*job, error)) return false;
+        for (const TitleProblem& p : job->problems()) {
+            if (p.code == "glyph_missing" || p.code == "asset_missing" || p.code == "geometry_unavailable") {
+                error = p.code + ": " + p.message;
+                return false;
+            }
+        }
+        const TitleImage& image = job->image();
+        TextureRender* texture = image.target.get() ? image.target.get()->colorTexture() : nullptr;
+        if (!texture) {
+            error = "the render has no image";
+            return false;
+        }
+        std::vector<uint8_t> bytes;
+        if (linear) {
+            if (!readTextureRaw(*texture, image.width, image.height, image.format, bytes)) {
+                error = "readback failed";
+                return false;
+            }
+            linear->width = image.width;
+            linear->height = image.height;
+            linear->rgba.resize((size_t)image.width * image.height * 4);
+            if (image.format == ColorFormat::RGBA16F) {
+                const uint16_t* halves = reinterpret_cast<const uint16_t*>(bytes.data());
+                for (size_t i = 0; i < linear->rgba.size(); i++) linear->rgba[i] = halfToFloat(halves[i]);
+            } else {
+                // the RGBA8 path's SRGB8A8 accumulator: sRGB-encoded premultiplied colour
+                for (size_t i = 0; i < linear->rgba.size(); i++) linear->rgba[i] = (i % 4 == 3) ? bytes[i] / 255.0f : srgbToLinear(bytes[i] / 255.0f);
+            }
+        }
+        if (srgb) {
+            if (!readTexture(*texture, image.width, image.height, bytes)) {
+                error = "readback failed";
+                return false;
+            }
+            srgb->width = image.width;
+            srgb->height = image.height;
+            srgb->rgba = std::move(bytes);
+        }
+        return true;
+    }
+
+    // the standard title at `scale`: the canvas cut to the title's pixels grown by `margin`, its
+    // left and top edges on even pixels and its size even (a 2 x box filter halves it exactly)
+    bool standardTitle(float scale, int margin, LinearImage& out, std::string& error) {
+        LinearImage canvas;
+        if (!renderDocument(standard::standardTitleDocument(), scale, TitleOutputFormat::Linear, &canvas, nullptr, error)) return false;
+        int x0 = canvas.width, y0 = canvas.height, x1 = -1, y1 = -1;
+        for (int y = 0; y < canvas.height; y++) {
+            for (int x = 0; x < canvas.width; x++) {
+                if (canvas.at(x, y)[3] <= 0.0f) continue;
+                x0 = std::min(x0, x);
+                y0 = std::min(y0, y);
+                x1 = std::max(x1, x);
+                y1 = std::max(y1, y);
+            }
+        }
+        if (x1 < 0) {
+            error = "the standard title drew nothing";
+            return false;
+        }
+        x0 = std::max(0, (x0 - margin) & ~1);
+        y0 = std::max(0, (y0 - margin) & ~1);
+        x1 = std::min(canvas.width, x1 + 1 + margin);
+        y1 = std::min(canvas.height, y1 + 1 + margin);
+        out.width = (x1 - x0) & ~1;
+        out.height = (y1 - y0) & ~1;
+        out.rgba.resize((size_t)out.width * out.height * 4);
+        for (int y = 0; y < out.height; y++) std::copy_n(canvas.at(x0, y0 + y), (size_t)out.width * 4, out.at(0, y));
+        return true;
+    }
+
+    // the effects' input: the standard title at scale 1, rendered once per run
+    bool titleInput(LinearImage& out, std::string& error) {
+        static LinearImage title;
+        static std::string failure;
+        static const bool made = standardTitle(1.0f, 0, title, failure);
+        out = title;
+        error = failure;
+        return made;
+    }
+
+    // the generators' canvas (the golden size they were drawn at)
+    constexpr int GENERATOR_WIDTH = FIXTURE_WIDTH, GENERATOR_HEIGHT = FIXTURE_HEIGHT;
 
     // ---- running definitions ----
 
@@ -599,7 +712,10 @@ namespace {
 }
 
 TEST_F(TitleArtEffectsGpu, Goldens) {
-    const Padded input = padded(fixture(1.0f), 32);
+    LinearImage title;
+    std::string titleError;
+    ASSERT_TRUE(titleInput(title, titleError)) << titleError;
+    const Padded input = padded(title, 32);
     for (const Case& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage out;
@@ -623,14 +739,17 @@ TEST_F(TitleArtEffectsGpu, Goldens) {
         SCOPED_TRACE(c.name);
         LinearImage out;
         std::string error;
-        ASSERT_TRUE(rig->runGenerator(c.type, c.params, FIXTURE_WIDTH, FIXTURE_HEIGHT, 1.0f, out, error)) << error;
+        ASSERT_TRUE(rig->runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, out, error)) << error;
         expectGolden(c.name, toRgba8(out));
     }
 }
 
 // a changed setting moves the image well past the golden limits (the goldens' red control)
 TEST_F(TitleArtEffectsGpu, GoldensSeeASettingChange) {
-    const Padded input = padded(fixture(1.0f), 32);
+    LinearImage title;
+    std::string titleError;
+    ASSERT_TRUE(titleInput(title, titleError)) << titleError;
+    const Padded input = padded(title, 32);
     LinearImage base, moved;
     std::string error;
     ASSERT_TRUE(rig->runEffect("drop_shadow", Json::object(), input.image, 1.0f, base, error, input.canvas)) << error;
@@ -641,7 +760,10 @@ TEST_F(TitleArtEffectsGpu, GoldensSeeASettingChange) {
 
 // R17: two renders of one effect are byte-identical
 TEST_F(TitleArtEffectsGpu, Deterministic) {
-    const LinearImage input = fixture(0.5f);
+    LinearImage title;
+    std::string titleError;
+    ASSERT_TRUE(titleInput(title, titleError)) << titleError;
+    const LinearImage input = downsample(title, 2);
     for (const Case& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage a, b;
@@ -653,7 +775,7 @@ TEST_F(TitleArtEffectsGpu, Deterministic) {
 }
 
 // decision 5: effect pixel params scale with px_scale, so a render at 0.5 is the render at 1
-// filtered down
+// filtered down (on the analytic fixture, drawn exactly at both scales)
 TEST_F(TitleArtEffectsGpu, ScaleInvariance) {
     const Padded full = padded(fixture(1.0f), 32);
     const Padded half = padded(fixture(0.5f), 16);
@@ -686,7 +808,10 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
     ASSERT_EQ(fallback.kit().caps().format(TitleBuffer::Seeds).encoding, TitleEncoding::Fixed12_4);
     ASSERT_EQ(fallback.kit().caps().format(TitleBuffer::Distance).encoding, TitleEncoding::Fixed16);
     ASSERT_TRUE(fallback.warmUp()) << fallback.kit().error();
-    const Padded input = padded(fixture(1.0f), 32);
+    LinearImage title;
+    std::string titleError;
+    ASSERT_TRUE(titleInput(title, titleError)) << titleError;
+    const Padded input = padded(title, 32);
     for (const Case& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage f, e;
@@ -707,8 +832,8 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
         SCOPED_TRACE(c.name);
         LinearImage f, e;
         std::string error;
-        ASSERT_TRUE(rig->runGenerator(c.type, c.params, FIXTURE_WIDTH, FIXTURE_HEIGHT, 1.0f, f, error)) << error;
-        ASSERT_TRUE(fallback.runGenerator(c.type, c.params, FIXTURE_WIDTH, FIXTURE_HEIGHT, 1.0f, e, error)) << error;
+        ASSERT_TRUE(rig->runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, f, error)) << error;
+        ASSERT_TRUE(fallback.runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, e, error)) << error;
         const PixelStats stats = compareImages(toRgba8(f), toRgba8(e));
         EXPECT_LE(stats.mean, 1.0) << stats.text();
         EXPECT_LE(stats.max, 48) << stats.text();
@@ -718,7 +843,10 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
 
 // R27: a bounded distance field shades exactly as the unbounded one within the reach
 TEST_F(TitleArtEffectsGpu, BoundedDistanceFieldMatchesTheUnbounded) {
-    const Padded input = padded(fixture(1.0f), 32);
+    LinearImage title;
+    std::string titleError;
+    ASSERT_TRUE(titleInput(title, titleError)) << titleError;
+    const Padded input = padded(title, 32);
     LinearImage bounded, unbounded;
     std::string error;
     ASSERT_TRUE(rig->runEffect("outline", Json{{"width", 6}}, input.image, 1.0f, bounded, error, input.canvas)) << error;
@@ -751,53 +879,6 @@ TEST_F(TitleArtEffectsGpu, BoundedDistanceFieldMatchesTheUnbounded) {
 
 namespace {
 
-    // Pachislop's standard title (確定, Dela Gothic One, the classic style) at 0.25, rebuilt from
-    // two of its references: Drop Shadow's shadow is black, so its premultiplied colour is the
-    // title's; Inner Shadow keeps the title's alpha. The two are registered on the interior
-    // pixels Inner Shadow leaves untouched.
-    bool standardTitle(LinearImage& out, std::string& error) {
-        Rgba8Image drop, inner;
-        if (!readImage(goldenPath("titleart/pachislop/effect/dropShadow.png"), drop) ||
-            !readImage(goldenPath("titleart/pachislop/effect/innerShadow.png"), inner)) {
-            error = "the Pachislop references are missing";
-            return false;
-        }
-        double best = 1e30;
-        int bx = 0, by = 0;
-        for (int oy = 0; oy <= drop.height - inner.height; oy++) {
-            for (int ox = 0; ox <= drop.width - inner.width; ox++) {
-                double sum = 0;
-                for (int y = 0; y < inner.height; y++) {
-                    for (int x = 0; x < inner.width; x++) {
-                        const size_t i = ((size_t)y * inner.width + x) * 4;
-                        if (inner.rgba[i + 3] != 255) continue;
-                        const size_t j = ((size_t)(y + oy) * drop.width + x + ox) * 4;
-                        for (int c = 0; c < 3; c++) sum += std::fabs((double)inner.rgba[i + c] - drop.rgba[j + c]);
-                    }
-                }
-                if (sum < best) {
-                    best = sum;
-                    bx = ox;
-                    by = oy;
-                }
-            }
-        }
-        const LinearImage dropLinear = toLinear(drop);
-        out.width = inner.width;
-        out.height = inner.height;
-        out.rgba.assign((size_t)out.width * out.height * 4, 0.0f);
-        for (int y = 0; y < inner.height; y++) {
-            for (int x = 0; x < inner.width; x++) {
-                float* o = out.at(x, y);
-                const float* d = dropLinear.at(x + bx, y + by);
-                const float a = inner.rgba[((size_t)y * inner.width + x) * 4 + 3] / 255.0f;
-                for (int c = 0; c < 3; c++) o[c] = std::min(d[c], a);
-                o[3] = a;
-            }
-        }
-        return true;
-    }
-
     void expectParity(const char* reference, const Rgba8Image& rendered) {
         Rgba8Image ref;
         ASSERT_TRUE(readImage(goldenPath(std::string("titleart/pachislop/") + reference + ".png"), ref)) << reference;
@@ -819,28 +900,29 @@ namespace {
 }
 
 TEST_F(TitleArtParityGpu, Effects) {
-    LinearImage title;
-    std::string error;
-    ASSERT_TRUE(standardTitle(title, error)) << error;
-    // the effects' reach at 0.25 stays inside a 32 px border; the canvas is far larger than the
-    // title in Pachislop's render, so the whole target is inside the render
-    const Padded input = padded(title, 32);
+    // each effect at its defaults on the standard title layer, the whole document through the
+    // renderer at 0.25 (Pachislop's harness: the standard title, one effect, GOLDEN_STILL)
     const std::map<std::string, const char*> references = {
         {"outer_glow", "effect/outerGlow"}, {"inner_glow", "effect/innerGlow"}, {"drop_shadow", "effect/dropShadow"},
         {"inner_shadow", "effect/innerShadow"}, {"outline", "effect/keyline"}, {"gradient_overlay", "effect/gradientOverlay"},
         {"gaussian_blur", "effect/gaussianBlur"}, {"adjust", "effect/adjust"}};
+    std::string error;
     for (const auto& [type, reference] : references) {
         SCOPED_TRACE(type);
-        LinearImage out;
-        ASSERT_TRUE(rig->runEffect(type, Json::object(), input.image, 0.25f, out, error)) << error;
-        expectParity(reference, toRgba8(out));
+        Rgba8Image out;
+        ASSERT_TRUE(renderDocument(standard::standardTitleDocument({standard::standardEffect("00000201", type.c_str())}), 0.25f, TitleOutputFormat::Srgb8, nullptr,
+                                   &out, error))
+            << error;
+        expectParity(reference, out);
     }
     // red control: the metric tells effects apart (Outer Glow is not Drop Shadow's reference)
-    LinearImage glow;
-    ASSERT_TRUE(rig->runEffect("outer_glow", Json::object(), input.image, 0.25f, glow, error)) << error;
+    Rgba8Image glow;
+    ASSERT_TRUE(renderDocument(standard::standardTitleDocument({standard::standardEffect("00000201", "outer_glow")}), 0.25f, TitleOutputFormat::Srgb8, nullptr, &glow,
+                               error))
+        << error;
     Rgba8Image dropRef;
     ASSERT_TRUE(readImage(goldenPath("titleart/pachislop/effect/dropShadow.png"), dropRef));
-    const BlockStats wrong = compareBlocks(dropRef, centred(trim(toRgba8(glow), 8), dropRef.width, dropRef.height));
+    const BlockStats wrong = compareBlocks(dropRef, centred(trim(glow, 8), dropRef.width, dropRef.height));
     EXPECT_TRUE(wrong.fractionOver > 0.03 || wrong.histogramDistance > 6.0) << "the parity metric passes the wrong effect: " << wrong.text();
 }
 
