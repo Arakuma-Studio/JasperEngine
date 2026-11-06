@@ -614,7 +614,9 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1)
     const fs_shadow_data_t& shadowData = rs->ps().fs_shadow_data;
     const bool shafts = fog->lightShafts && rs->hasShadows && shadowData.header.x >= -0.5f;
-    block.depthInfo = Vector4(camera.farClip, camera.nearClip, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
+    // the depth is linearised with the near and far the projection was built with
+    const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
+    block.depthInfo = Vector4(nearFar.y, nearFar.x, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
 
     // the volumes: in view, within the volumetric distance, the nearest first, capped by the tier
     std::vector<int> selected;
@@ -775,7 +777,7 @@ void AtmosphereRenderer::fillClouds(clouds_t& block, const CameraComponent& came
     block.sunDir_steps = Vector4(sunDirection, (float)std::clamp(tier.cloudSteps, 1, ATMOSPHERE_MAX_CLOUD_STEPS));
     block.sunColor_lightSteps = Vector4(sunColor, (float)std::clamp(tier.cloudLightSteps, 1, ATMOSPHERE_MAX_CLOUD_LIGHT_STEPS));
     const Vector3 ambient = Vector3(frame.ambient.x, frame.ambient.y, frame.ambient.z) * std::max(clouds->ambientLightDimmer, 0.0f);
-    block.ambientBottom_near = Vector4(ambient * 0.5f, camera.nearClip);
+    block.ambientBottom_near = Vector4(ambient * 0.5f, RenderSystem::getCameraNearFar(camera).x);
     block.ambientTop_fade = Vector4(ambient, cloudsFade() * altitudeFade);
     block.target = Vector4(0.0f, 0.0f, skyMap ? 1.0f : 0.0f, useFloatTargets() ? 0.0f : 1.0f);
     // aerial perspective by the height fog (the editor's Fog toggle leaves passFog clear)

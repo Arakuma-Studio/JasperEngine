@@ -133,6 +133,9 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # an engine shader: the shader lint and its tests
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
         # an MCP test file (a new one too): classified for the CI suite, before anything is built
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])

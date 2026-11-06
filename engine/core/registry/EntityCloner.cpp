@@ -354,6 +354,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
     points.uiGroupAlpha = 1.0f;
+    points.loadedTransparent = false;
 }
 
 template<>
@@ -435,6 +436,8 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
         view = InstanceViewRange();
     }
     instmesh.lastFadeCullEnd = -1;
+    instmesh.lastFadeCullNear = 0;
+    instmesh.lastCullSlack = 0;
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 }

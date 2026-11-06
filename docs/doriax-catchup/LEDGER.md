@@ -86,7 +86,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
@@ -186,3 +186,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
   controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
   Shader cache v49 is now taken: later landings bump it.
+- 2026-11-07 00:xx: **render-correctness merged** after an independent review (flat normals turned toward the eye on
+  every backend, catalog snapshot regenerated, foliage refills on a distance-scale change, scaled cylindrical
+  billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
+  rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
+  red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.

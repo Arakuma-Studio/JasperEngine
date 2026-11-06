@@ -2247,6 +2247,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
+        .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)

@@ -137,6 +137,9 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
+bool Engine::foliageDistanceScaleOverridden = false;
+float Engine::foliageDistanceScaleOverride = 1.0f;
 bool Engine::gpuInstancingEnabled = true;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
@@ -902,6 +905,53 @@ void Engine::resetAtmosphereQuality(){
 
 bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
+}
+
+namespace {
+    // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
+    float clampFoliageDistanceScale(float scale){
+        return std::clamp(scale, 0.0f, 10.0f);
+    }
+}
+
+void Engine::setFoliageDistanceScaleDefaults(float desktop, float mobile, float web){
+    const float scales[3] = {desktop, mobile, web};
+    for (int i = 0; i < 3; i++){
+        foliageDistanceScaleDefaults[i] = std::isfinite(scales[i]) ? clampFoliageDistanceScale(scales[i]) : 1.0f;
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return foliageDistanceScaleDefaults[1];
+        case Platform::Web:
+            return foliageDistanceScaleDefaults[2];
+        default:
+            return foliageDistanceScaleDefaults[0];
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(){
+    return getFoliageDistanceScaleDefault(getPlatform());
+}
+
+void Engine::setFoliageDistanceScale(float scale){
+    if (!std::isfinite(scale)){
+        Log::warn("Engine::setFoliageDistanceScale: non-finite value ignored");
+        return;
+    }
+    foliageDistanceScaleOverride = clampFoliageDistanceScale(scale);
+    foliageDistanceScaleOverridden = true;
+}
+
+float Engine::getFoliageDistanceScale(){
+    return foliageDistanceScaleOverridden ? foliageDistanceScaleOverride : getFoliageDistanceScaleDefault();
+}
+
+void Engine::resetFoliageDistanceScale(){
+    foliageDistanceScaleOverridden = false;
 }
 
 GraphicBackend Engine::getGraphicBackend(){

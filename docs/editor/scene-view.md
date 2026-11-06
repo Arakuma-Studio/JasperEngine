@@ -10,6 +10,11 @@ window of a mesh or the walls of a room around the camera (their faces point awa
 reach what is behind. Icons (lights, cameras, audio sources, probes) are drawn over everything and
 are picked first.
 
+A camera shows a compact frustum gizmo: 2 units deep in perspective, as deep as half its view's
+larger side in orthographic. Select it and the gizmo becomes its whole frustum, near to far, as in
+Unity. A perspective camera always renders with 0 < Near < Far: a Near of 0 or less draws with
+0.001 (the component keeps what was typed).
+
 - The first click on a prefab instance or a model selects its root (the outermost one for nested
   prefabs). A GameObject below a collapsed Hierarchy row selects that row. In Prefab Mode the
   prefab being edited is never the root.

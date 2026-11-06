@@ -481,7 +481,7 @@ void RenderSystem::ensureCasterLayers(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         if ((terrain && !mesh.staticShadowCaster) || unbounded){
@@ -608,7 +608,7 @@ void RenderSystem::updateShadowCasters(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         // a static terrain draws a cut of its own in each slot (shadowTerrainCut): the camera
@@ -687,7 +687,7 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
         input.aspect = (projection[0][0] != 0.0f) ? projection[1][1] / projection[0][0] : 1.0f;
         input.orthoHalfWidth = (projection[0][0] != 0.0f) ? 1.0f / std::abs(projection[0][0]) : 1.0f;
         input.orthoHalfHeight = (projection[1][1] != 0.0f) ? 1.0f / std::abs(projection[1][1]) : 1.0f;
-        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : camera.nearClip;
+        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : getCameraNearFar(camera).x;
         input.shadowDistance = lightShadowDistance(light, camera);
         input.lightDir = light.worldDirection;
         input.cascades = std::max(numCascades, 1u);

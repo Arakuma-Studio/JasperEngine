@@ -1684,6 +1684,16 @@ const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() 
     return atmosphereQuality;
 }
 
+void editor::Project::setFoliageDistanceScale(const std::array<float, 3>& scale){
+    for (size_t i = 0; i < scale.size(); i++)
+        foliageDistanceScale[i] = std::isfinite(scale[i]) ? std::clamp(scale[i], 0.0f, 10.0f) : defaultFoliageDistanceScale[i];
+    Engine::setFoliageDistanceScaleDefaults(foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]);
+}
+
+const std::array<float, 3>& editor::Project::getFoliageDistanceScale() const{
+    return foliageDistanceScale;
+}
+
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -5688,8 +5698,9 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
-    // a game (or the MCP server) may have changed the game clock
+    // a game (or the MCP server) may have changed the game clock and the foliage distance
     Engine::setTimeScale(1.0f);
+    Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
     Engine::setSimulationHeld(false);
     // a game may have turned it off
@@ -5757,6 +5768,7 @@ void editor::Project::resetConfigs() {
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
+    setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
@@ -7546,6 +7558,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
@@ -9692,6 +9705,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));

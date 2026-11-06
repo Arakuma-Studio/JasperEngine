@@ -180,6 +180,10 @@ namespace jasperengine{
         // Vulkan, by whoever makes the VkDevice, before setup: whether it enabled hostQueryReset
         // (the GPU timer needs it; without it the timer reports device_unsupported)
         static void setVulkanHostQueryReset(bool enabled);
+        // Vulkan, by whoever makes the VkDevice: whether it enabled robustBufferAccess (the editor
+        // does where it is safe, VulkanRobustness.h); -1 unknown (another backend, or not said)
+        static void setVulkanRobustBufferAccess(bool enabled);
+        static int getVulkanRobustBufferAccess();
 
         // the Frame Debugger's preview of one attachment of a pass (one-shot: the next frame's
         // matching pass is copied into the preview texture, or refused with a reason)

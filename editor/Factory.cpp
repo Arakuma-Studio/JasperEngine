@@ -1762,6 +1762,8 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".minHeight = " << formatFloat(layer.minHeight) << ";\n";
         code << ind << var << ".maxHeight = " << formatFloat(layer.maxHeight) << ";\n";
         code << ind << var << ".drawDistance = " << formatFloat(layer.drawDistance) << ";\n";
+        if (layer.minDrawDistance != 0.0f)
+            code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
@@ -3667,6 +3669,10 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
     code << ind << "instmesh.cullDistance = " << formatFloat(p.cullDistance) << ";\n";
     code << ind << "instmesh.fadeStart = " << formatFloat(p.fadeStart) << ";\n";
     code << ind << "instmesh.fadeEnd = " << formatFloat(p.fadeEnd) << ";\n";
+    if (p.nearFadeStart != 0.0f || p.nearFadeEnd != 0.0f) {
+        code << ind << "instmesh.nearFadeStart = " << formatFloat(p.nearFadeStart) << ";\n";
+        code << ind << "instmesh.nearFadeEnd = " << formatFloat(p.nearFadeEnd) << ";\n";
+    }
     code << ind << "instmesh.instancedBillboard = " << formatBool(p.instancedBillboard) << ";\n";
     code << ind << "instmesh.instancedCylindricalBillboard = " << formatBool(p.instancedCylindricalBillboard) << ";\n";
 

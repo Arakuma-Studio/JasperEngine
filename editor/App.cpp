@@ -5647,7 +5647,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
     //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
     //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
+    // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
+    //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -1042,7 +1042,7 @@ void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transfo
     so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
-void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera) {
+void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fullFrustum, bool isMainCamera) {
     CameraObjects& co = cameraObjects[entity];
 
     co.lines->setPosition(transform.worldPosition);
@@ -1052,7 +1052,7 @@ void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& 
     rotation.fromRotationMatrix(cameraComponent.viewMatrix.inverse());
     co.lines->setRotation(rotation);
 
-    updateCameraFrustum(co, cameraComponent, isMainCamera, fixedSizeFrustum);
+    updateCameraFrustum(co, cameraComponent, isMainCamera, fullFrustum);
 }
 
 
@@ -1571,7 +1571,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
                 currentIconCameras.insert(entity);
                 bool newCamera = instanciateCameraObject(entity);
                 createOrUpdateCameraIcon(entity, transform, newCamera);
-                createCameraFrustum(entity, transform, cameraComp, true, mainCamera == entity);
+                // a selected camera shows its whole frustum, near to far (Unity)
+                const bool cameraSelected = selectedEntities.find(entity) != selectedEntities.end();
+                createCameraFrustum(entity, transform, cameraComp, cameraSelected, mainCamera == entity);
 
                 if (displaySettings.hideCameraView) {
                     cameraObjects[entity].icon->setVisible(false);
