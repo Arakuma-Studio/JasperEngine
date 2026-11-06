@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import audio_refs as ar  # noqa: E402
 
 CI = True
-EDITOR = {"xvfb": "harness", "create": True, "name": "Music Editor"}
+EDITOR = {"xvfb": "harness", "create": True, "name": "Music Editor", "ui_probe": True}
 TIMEOUT = 600
 RATE = 48000
 # InspectorAudioClip.cpp's beat grid
