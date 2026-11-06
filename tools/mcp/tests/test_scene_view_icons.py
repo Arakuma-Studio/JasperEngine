@@ -26,15 +26,20 @@ async def test_icons_of_inactive_game_objects_are_hidden(ed: Editor):
     scene = made["scene"]["id"]
     parent = find_key(await ed.call("create_entity", scene=scene, type="empty", name="Holder"), "entity_id", "id")
     light = find_key(await ed.call("create_entity", scene=scene, type="point_light", name="Bulb", parent=parent), "entity_id", "id")
-    await ed.call("frame_entity", scene=scene, entity=light)
+    # a still camera looking at the light (framing animates the camera), no grid
+    await ed.call("set_scene_camera", scene=scene, position=[0, 0, 6], target=[0, 0, 0], display={"show_grid_3d": False})
     await ed.call("select_entities", entities=[])
     await ed.call("wait", frames=4)
 
     shown = await shot(ed)
+    settled = await shot(ed)
     await ed.call("set_entity_state", scene=scene, entity=parent, active=False)
     hidden = await shot(ed)
     await ed.call("set_entity_state", scene=scene, entity=parent, active=True)
     again = await shot(ed)
 
-    ed.check(image_difference(shown, hidden, step=1) > 0.05, "the inactive light's icon is gone")
-    ed.check(image_difference(shown, again, step=1) < 0.02, "active again, its icon is back")
+    noise = image_difference(shown, settled, step=1)
+    gone = image_difference(shown, hidden, step=1)
+    back = image_difference(shown, again, step=1)
+    ed.check(gone > noise + 0.05, f"the inactive light's icon is gone (difference {gone:.3f}, noise {noise:.3f})")
+    ed.check(back <= noise + 0.02, f"active again, its icon is back (difference {back:.3f}, noise {noise:.3f})")

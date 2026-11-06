@@ -171,8 +171,11 @@ TEST(ActionStartOffset, TweenStartsAtItsOffset) {
     step(scene, 0.0, 1);
     EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.25f);
     EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 2.5f);
+    // an update applies the value at the time it starts from, then advances
     step(scene, 0.25, 1);
-    EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 5.0f) << "it plays on from there";
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.5f) << "it plays on from there";
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 5.0f);
 }
 
 TEST(ActionStartOffset, LoopingTweenWrapsAnOffsetPastItsPeriod) {
