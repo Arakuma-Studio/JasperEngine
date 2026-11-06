@@ -1347,6 +1347,8 @@ CASES = [
                                                      "audio": [{"index": 0, "time": 0.3, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25},
                                                                {"index": 1, "time": 0.8, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25}]})},
             {"tool": "get_asset_info", "result": ok("assets/sounds/steps.soundevent: Sound Event, shuffle, 3 clips.", {"path": "assets/sounds/steps.soundevent", "exists": True})},
+            {"tool": "list_scripts", "result": ok("No Lua scripts.", {"scripts": []})},
+            {"tool": "save_project", "result": ok("Saved the project.", {"saved": True})},
         ],
         "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
                    "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
