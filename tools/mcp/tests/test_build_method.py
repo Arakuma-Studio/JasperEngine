@@ -193,6 +193,8 @@ def fake_runtime(path: Path, version: str, runtime: str, platform: str, arch: st
     }
     with zipfile.ZipFile(path, "w") as zipped:
         zipped.writestr("player-info.json", json.dumps(info))
+        zipped.writestr("licenses/lua-LICENSE", "MIT\n")
+        zipped.writestr("THIRD-PARTY-NOTICES.txt", "Lua (MIT)\n")
         for name, data in files.items():
             zipped.writestr(name, data)
     return path

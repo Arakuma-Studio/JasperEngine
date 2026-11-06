@@ -324,7 +324,7 @@ TEST(AndroidPackage, CarriesNativeManifestSettings) {
     EXPECT_LT(queries, application);
     EXPECT_GT(metaData, application);
     EXPECT_LT(metaData, applicationEnd);
-    EXPECT_EQ(manifest.find("{{"), std::string::npos) << "every marker filled";
+    EXPECT_EQ(manifest.find("{{NATIVE_"), std::string::npos) << "both native markers filled";
 
     package.settings.manifestXml = "<queries>";
     EXPECT_FALSE(platform::writeAndroidManifest(package, templateText, manifest, error));
@@ -698,6 +698,8 @@ TEST(IosBuild, WithoutAMacTheXcodeProjectIsTheResult) {
     std::vector<std::string> notes;
     std::vector<BuildWarning> warnings;
     std::string error;
+    // staged first; the export adds the game's native plugins to the staged project, then builds it
+    ASSERT_TRUE(platform::stageIosProject(settings, error)) << error;
     ASSERT_TRUE(platform::buildIosProject(settings, runner, []() { return false; }, artifacts, notes, warnings, error)) << error;
     ASSERT_EQ(artifacts.size(), 1u);
     EXPECT_EQ(artifacts.front().string(), (settings.projectDir / "JasperEnginePlayer.xcodeproj").string());

@@ -679,7 +679,7 @@ namespace {
     void writeNativePlistEntries(std::string& plist, const std::map<std::string, editor::NativePlistValue>& entries, const std::string& rawXml) {
         for (const auto& [key, value] : entries) setPlistValue(plist, key, plistValueXml(value));
         if (rawXml.find_first_not_of(" \t\r\n") == std::string::npos) return;
-        // the fragment's keys replace the export's (one SKAdNetworkItems)
+        // the fragment's keys replace the export's (one dictionary of each key)
         for (const std::string& key : plistFragmentKeys(rawXml)) removePlistKey(plist, key);
         const size_t dictEnd = plist.rfind("</dict>");
         if (dictEnd == std::string::npos) return;

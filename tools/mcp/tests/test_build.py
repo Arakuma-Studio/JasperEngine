@@ -293,8 +293,8 @@ async def test_privacy_manifest_export(ed: Editor):
     ed.check_in("C617.1", msg, "a wrong reason lists the valid ones")
     await ed.call("set_project_settings", values={
         "apple.privacy_tracking": True, "apple.privacy_tracking_domains": ["ads.example.com"],
-        "apple.privacy_collected_data": [{"type": "DeviceID", "linked": True, "tracking": True, "purposes": ["ThirdPartyAdvertising"]}],
-        "apple.privacy_accessed_apis": [{"type": "DiskSpace", "reasons": ["E174.1"]}]})
+        "apple.privacy_collected_data": [{"type": "DeviceID", "linked": True, "tracking": True, "purposes": ["ThirdPartyAdvertising"]}]})
+    await ed.call("set_project_settings", values={"apple.privacy_accessed_apis": [{"type": "DiskSpace", "reasons": ["E174.1"]}]})
     plugin = ed.project / "plugins" / "native" / "ios" / "Ads" / "PrivacyInfo.xcprivacy"
     plugin.parent.mkdir(parents=True, exist_ok=True)
     plugin.write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [{"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryActiveKeyboards",
@@ -321,7 +321,7 @@ async def test_privacy_manifest_export(ed: Editor):
             resources = [objects[objects[b]["fileRef"]].get("path") for phase in pbxproj.target(root, target_name)["buildPhases"]
                          if objects[phase]["isa"] == "PBXResourcesBuildPhase" for b in objects[phase]["files"]]
             ed.check_in(path, resources, target_name)
-        # one undo of the project history takes the last change back
+        # one undo of the project history takes the last call's change back
         await ed.call("undo", scope="project")
         back = (await ed.call("get_project_settings", keys=["apple.privacy_accessed_apis", "apple.privacy_tracking"]))["settings"]
         ed.check_eq(back["apple.privacy_accessed_apis"], [], "undone")
