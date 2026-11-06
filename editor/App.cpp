@@ -2723,7 +2723,7 @@ void editor::App::show(){
         // the Animator window edits project assets (its selection in the Inspector too)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
-                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsMaterialAsset()))) {
+                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -4867,6 +4867,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    inspectorWindow->resetMaterialAsset();
     // the Project Hub's picture of the project closing (S27 R21)
     writeHubThumbnail();
     // the project's working layout, before another project's replaces it (S25 R19)

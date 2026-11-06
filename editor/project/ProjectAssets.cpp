@@ -9,6 +9,7 @@
 
 #include "Out.h"
 #include "DocumentFile.h"
+#include "util/FileUtils.h"
 #include "Stream.h"
 #include "PrefabStage.h"
 #include "asset/AssetFileWrite.h"
@@ -288,8 +289,21 @@ std::string editor::Project::materialFileText(const fs::path& file, const Materi
     Material bound = material;
     bindMaterialAssetRefs(bound);
     YAML::Node root = Stream::encodeMaterial(bound);
+    // a file the database has not scanned yet (copied in from outside) keeps the GUID it came with
+    AssetDatabase::AssetInfo known;
+    if (!assetDatabase.getInfo(normalizeToProjectRelative(file), known)) {
+        std::error_code ec;
+        if (fs::exists(file, ec)) {
+            try {
+                const YAML::Node existing = DocumentFiles::read(file, DocumentKind::Material).root;
+                if (existing["guid"]) root["guid"] = existing["guid"];
+            } catch (const std::exception&) {
+                // unreadable: a new identity, as a new file gets
+            }
+        }
+    }
     prepareDocumentIdentity(root, file);
-    return DocumentFiles::materialText(root, file) + "\n";
+    return FileUtils::withLineEndings(file, DocumentFiles::materialText(root, file) + "\n");
 }
 
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,

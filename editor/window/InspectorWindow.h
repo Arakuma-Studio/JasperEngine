@@ -221,11 +221,14 @@ namespace jasperengine::editor{
             std::string error;
             Material inFile;        // as the file holds it
             Material inLinked;      // as the linked submeshes hold it
+            // each scene's unsaved mark before the edit reached the linked submeshes
+            std::map<uint32_t, bool> scenesModified;
             Project* project = nullptr;
             ~MaterialAssetView();
         };
         std::unique_ptr<MaterialAssetView> materialAsset;
         int materialAssetFrame = -10;
+        int particleAssetFrame = -10;
         std::map<std::string, DirectionRender> directionRenders;
 
         MeshPreviewRender shapePreviewRender;
@@ -442,6 +445,8 @@ namespace jasperengine::editor{
         void drawMaterialAsset(const std::filesystem::path& asset);
         void readMaterialAsset(const std::filesystem::path& asset);
         void writeMaterialAsset();
+        // the view stops: an edit still held goes to the file, nothing is held for later
+        void leaveMaterialAsset();
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
         bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
                                 SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
@@ -991,8 +996,14 @@ namespace jasperengine::editor{
         void focusNameInput();
         // opened if closed, and focused on its next draw
         void requestFocus();
-        // the Inspector drew a .material this frame or the last (its undo is the project's)
-        bool showsMaterialAsset() const;
+        // the Inspector drew a .material or a .particles this frame or the last: the edit keys
+        // and undo are the project's, not the selected GameObject's
+        bool showsProjectAsset() const;
+        // the Project window opened the .particles it has selected: the Inspector takes it again
+        // even if the same file was picked before
+        void showPickedParticleAgain() { lastProjectParticleFile.clear(); }
+        // the project closes: the .material view and its scene go, what it held written first
+        void resetMaterialAsset();
         // Component > Add... (main menu): opens the Add Component dialog for the selection
         void requestAddComponent();
         // Add Component's own path (the Search palette's components): one undo step per

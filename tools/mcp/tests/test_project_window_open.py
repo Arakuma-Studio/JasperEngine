@@ -10,8 +10,10 @@ the rows. A file that did not read completely is not written without the lossy-s
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
+import pngdiff
 from harness import Editor
 from ui_input import Ui
 
@@ -21,6 +23,7 @@ TIMEOUT = 300
 
 MATERIAL = "assets/mats/Shiny.material"
 EFFECT = "assets/mats/Smoke.particles"
+STATE: dict = {}
 
 
 def centre(ui: Ui, rect: list[float]) -> tuple[int, int]:
@@ -75,6 +78,23 @@ async def test_setup(ed: Editor):
     await ed.call("tool_groups", enable=["particles"])
     await ed.call("create_particle_effect", path=EFFECT, preset="smoke")
     await ed.call("sync_files")
+    STATE["material"] = (ed.project / MATERIAL).read_bytes()
+
+
+async def ball_exists(ed: Editor) -> bool:
+    return not (await ed.call_raw("get_entity", {"entity": "Ball"})).is_error
+
+
+async def fresh(ed: Editor) -> None:
+    """The file and the linked Ball as test_setup left them: a failed test leaves neither broken for the next"""
+    file = ed.project / MATERIAL
+    if file.read_bytes() != STATE["material"]:
+        file.write_bytes(STATE["material"])
+        await ed.call("sync_files")
+    if not await ball_exists(ed):
+        await ed.call("create_entity", name="Ball", type="box")
+        await ed.call("link_material", entity="Ball", material=MATERIAL)
+    await ed.call("code_editor", action="close", path=MATERIAL, discard_unsaved=True) if Path(MATERIAL).name in await buffers(ed) else None
 
 
 async def test_double_click_material_shows_it_in_the_inspector(ed: Editor):
@@ -91,6 +111,9 @@ async def test_double_click_material_shows_it_in_the_inspector(ed: Editor):
 
 async def test_double_click_particles_behaves_like_a_material(ed: Editor):
     ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await ed.call("select_entities", entities=["Ball"])
     rect = await project_file(ui, "Smoke.particles")
     await ui.click(centre(ui, rect))
     # Assets > Open runs what a double-click runs: the Inspector's particle preview makes frames on this
@@ -99,10 +122,32 @@ async def test_double_click_particles_behaves_like_a_material(ed: Editor):
     await ui.frames(6)
     ed.check_eq(await focused(ed), "Inspector", "the Inspector takes the focus")
     ed.check_eq(await buffers(ed), [], "no text buffer opens")
+    # the effect is what the Inspector shows, so Delete is not the selected GameObject's
+    ui.focus()
+    await ui.key("Delete")
+    await ui.frames(4)
+    ed.check(await ball_exists(ed), "Delete with the effect in the Inspector leaves the GameObject")
+    await probe_item(ui, "asset.particles.header")
+    # the Inspector goes back to the GameObject, with the Project window's selection unchanged: open it again
+    await ed.call("select_entities", entities=[])
+    await ui.frames(2)
+    await ed.call("select_entities", entities=["Ball"])
+    await ui.frames(6)
+    ed.check("asset.particles.header" not in ed.ui_items(), "the GameObject has the Inspector")
+    await ed.call("run_command", id="assets.open")
+    await ui.frames(6)
+    await probe_item(ui, "asset.particles.header")
+    ed.check_eq(await focused(ed), "Inspector", "the Inspector takes the focus again")
+    ui.focus()
+    await ui.key("Delete")
+    await ui.frames(4)
+    ed.check(await ball_exists(ed), "and Delete still leaves the GameObject")
 
 
 async def test_open_as_text_stays_in_the_context_menu(ed: Editor):
     ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
     rect = await project_file(ui, "Shiny.material")
     await ui.click(centre(ui, rect), button="3")
     menu = await probe_item(ui, "project.menu.open_as_text")
@@ -132,6 +177,8 @@ async def show_material(ed: Editor, ui: Ui) -> None:
 
 async def test_inspector_edits_the_file_as_one_project_step(ed: Editor):
     ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
     await show_material(ed, ui)
     file = ed.project / MATERIAL
     before = file.read_text()
@@ -183,6 +230,8 @@ async def test_inspector_edits_the_file_as_one_project_step(ed: Editor):
 
 async def test_an_agent_edit_reaches_the_rows(ed: Editor):
     ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
     await show_material(ed, ui)
     await ed.call("update_material", path=MATERIAL, values={"metallicFactor": 0.125})
     await ui.frames(6)
@@ -198,6 +247,8 @@ async def test_an_agent_edit_reaches_the_rows(ed: Editor):
 
 async def test_a_file_that_did_not_read_completely_is_not_written(ed: Editor):
     ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
     file = ed.project / MATERIAL
     original = file.read_text()
     # (an unknown root key is kept through a write; a bad value below a block is what a write would lose)
@@ -214,3 +265,182 @@ async def test_a_file_that_did_not_read_completely_is_not_written(ed: Editor):
     ed.check_eq(await linked_clearcoat(ed), False, "and the linked submesh goes back to what the file has")
     file.write_text(original)
     await ed.call("sync_files")
+
+
+async def roughness_drag(ed: Editor, ui: Ui) -> tuple[int, int]:
+    """Starts a drag on the Roughness row; the mouse stays down"""
+    item = await ui.reveal("##input_float_submeshes[0].material.roughnessFactor", "Inspector")
+    start = ui.centre(item["rect"])
+    await ui.drag(start, (start[0] - 60, start[1]), release=False)
+    return start
+
+
+async def test_ctrl_z_during_a_drag_only_puts_the_drag_back(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await show_material(ed, ui)
+    file = ed.project / MATERIAL
+    await ed.call("update_material", path=MATERIAL, values={"metallicFactor": 0.375})
+    await ui.frames(6)
+    before = file.read_text()
+    steps = await undo_steps(ed, "project")
+    await roughness_drag(ed, ui)
+    await ui.key("ctrl+z")
+    await ui.frames(2)
+    await ui.release()
+    await ui.frames(6)
+    ed.check_eq(file.read_text(), before, "the older step is not undone and nothing is written")
+    ed.check_eq(await undo_steps(ed, "project"), steps, "no step is taken or added")
+    await ed.call("undo", scope="project")
+    await ui.frames(6)
+
+
+async def test_color_window_session_is_one_step_and_esc_reverts_it(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await show_material(ed, ui)
+    file = ed.project / MATERIAL
+    before = file.read_text()
+    steps = await undo_steps(ed, "project")
+    swatch = await probe_item(ui, "inspector.color.submeshes[0].material.baseColorFactor")
+    await ui.click(centre(ui, swatch))
+    await ui.frames(6)
+    picker = {}
+    for _ in range(20):
+        picker = (await ed.call("editor_status"))["ui"]["color_picker"]
+        if picker.get("focused"):
+            break
+        await ui.frames(2)
+    ed.check(picker.get("focused"), f"the Color window has the focus: {picker}")
+    inner = await ui.find("##sliderMode", "Color")
+    ed.check(inner, "a control of the Color window is drawn")
+    area = inner["window_rect"]
+
+    async def pick(fx: float, fy: float):
+        await ui.click(ui.at([area["x"] + area["width"] * fx, area["y"] + area["height"] * fy]))
+        await ui.frames(4)
+
+    await pick(0.30, 0.30)
+    await pick(0.45, 0.35)
+    ed.check_eq(file.read_text(), before, "a session is written when it ends, not at each release")
+    await ui.key("Escape")
+    await ui.frames(6)
+    ed.check_eq(file.read_text(), before, "Esc reverts the session")
+    ed.check_eq(await undo_steps(ed, "project"), steps, "and adds no step")
+
+
+async def test_a_change_during_a_drag_is_not_overwritten(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await show_material(ed, ui)
+    file = ed.project / MATERIAL
+    await roughness_drag(ed, ui)
+    await ed.call("update_material", path=MATERIAL, values={"metallicFactor": 0.625})
+    await ui.frames(2)
+    await ui.release()
+    await ui.frames(6)
+    text = file.read_text()
+    ed.check("metallicFactor: 0.625" in text, f"the agent's edit stays in the file: {text}")
+    ed.check("roughnessFactor: 1" in text, f"the drag on the older values is not written: {text}")
+    await ed.call("undo", scope="project")
+    await ui.frames(6)
+
+
+async def test_an_edit_left_when_the_view_goes_does_not_come_back_later(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await ed.call("create_material", path="assets/mats/Other.material", values={"metallicFactor": 0.5}, overwrite=True)
+    await show_material(ed, ui)
+    file = ed.project / MATERIAL
+    await roughness_drag(ed, ui)
+    # the file goes while the mouse is down, and the view with it
+    file.unlink()
+    await ed.call("sync_files")
+    await ui.frames(4)
+    await ui.release()
+    await ui.frames(6)
+    ed.check("asset.material.preview" not in ed.ui_items(), "the Inspector no longer shows it")
+    rect = await project_file(ui, "Other.material")
+    await ui.click(centre(ui, rect))
+    await ui.frames(6)
+    await probe_item(ui, "asset.material.preview")
+    ed.check(not file.exists(), "showing another material does not bring the deleted one back")
+    file.write_bytes(STATE["material"])
+    await ed.call("sync_files")
+    await ed.call("link_material", entity="Ball", material=MATERIAL)
+    await ui.frames(6)
+
+
+async def scene_is_unsaved(ed: Editor) -> bool:
+    status = await ed.call("editor_status")
+    return status["project"]["selected_scene_id"] in status["unsaved"]["scene_ids"]
+
+
+async def test_esc_leaves_the_linked_scene_saved(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await ed.call("save_scene")
+    await show_material(ed, ui)
+    ed.check(not await scene_is_unsaved(ed), "the scene is saved")
+    await roughness_drag(ed, ui)
+    await ui.key("Escape")
+    await ui.frames(2)
+    await ui.release()
+    await ui.frames(6)
+    ed.check(not await scene_is_unsaved(ed), "Esc puts the unsaved mark back too (docs/undo.md, Drags)")
+
+
+async def test_an_edit_in_play_stays_on_the_linked_mesh_after_stop(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    await show_material(ed, ui)
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", game_seconds=0.2)
+        await show_material(ed, ui)
+        await ui.click(ui.centre((await ui.reveal("Clear Coat", "Inspector"))["rect"]))
+        await ui.frames(6)
+        ed.check("clearcoat" in (ed.project / MATERIAL).read_text(), "the file has the edit")
+    finally:
+        await ed.call("play", action="stop")
+    await ui.frames(6)
+    ed.check_eq(await linked_clearcoat(ed), True, "after Stop the linked submesh agrees with the file")
+    await ed.call("undo", scope="project")
+    await ui.frames(6)
+
+
+async def test_a_write_keeps_guid_references_unknown_keys_and_line_endings(ed: Editor):
+    ui = Ui(ed)
+    await ui.release_all()
+    await fresh(ed)
+    file = ed.project / MATERIAL
+    original = file.read_bytes()
+    texture = ed.project / "assets/mats/albedo.png"
+    texture.write_bytes(pngdiff.encode(4, 4, bytes([200, 90, 40, 255]) * 16))
+    await ed.call("sync_files")
+    await ed.call("update_material", path=MATERIAL, values={"baseColorTexture": "assets/mats/albedo.png"})
+    with_texture = file.read_text()
+    guid = next(line for line in with_texture.splitlines() if line.startswith("guid: "))
+    reference = re.search(r"baseColorTexture:.*?\n(?:\s+.*\n)*", with_texture).group(0)
+    ed.check("Guid" in reference or "guid" in reference, f"the reference holds its GUID: {reference}")
+    file.write_bytes((with_texture.rstrip() + "\nnotAMaterialField: 1\n").replace("\n", "\r\n").encode())
+    await ed.call("sync_files")
+    await show_material(ed, ui)
+    await ui.click(ui.centre((await ui.reveal("Clear Coat", "Inspector"))["rect"]))
+    await ui.frames(6)
+    raw = file.read_bytes()
+    text = raw.decode().replace("\r\n", "\n")
+    ed.check(b"clearcoat" in raw, f"the edit is written: {text}")
+    ed.check(raw.count(b"\n") == raw.count(b"\r\n"), f"every line keeps its CRLF: {raw[:200]!r}")
+    ed.check(guid in text, f"its own GUID stays: {text}")
+    ed.check("notAMaterialField: 1" in text, f"an unknown root key stays: {text}")
+    ed.check(reference in text, f"the texture and its GUID stay: {text}")
+    file.write_bytes(original)
+    await ed.call("sync_files")
+    await ui.frames(6)

@@ -984,6 +984,16 @@ std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
     return std::vector<std::string>(files.begin(), files.end());
 }
 
+void editor::Project::reapplyLinkedMaterialFiles() {
+    for (const std::string& linked : getLinkedMaterialFiles()) {
+        try {
+            applyLinkedMaterialFile(linked, Stream::decodeMaterial(DocumentFiles::read(projectPath / linked, DocumentKind::Material).root));
+        } catch (const std::exception& e) {
+            Out::warning("Could not read material %s: %s", linked.c_str(), e.what());
+        }
+    }
+}
+
 void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, const Material& fileMaterial) {
     const std::string filePath = fs::path(relativePath).lexically_normal().generic_string();
     Material updatedMaterial = fileMaterial;
@@ -6248,6 +6258,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        reapplyLinkedMaterialFiles();
         // the restored scene's own Canvas Scaler (a script may have changed it while playing)
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame

@@ -4730,6 +4730,7 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         lastSelectedFile = file.name;
         project->setInspectedAsset(filePath.lexically_normal());
         if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->showPickedParticleAgain();
             inspector->requestFocus();
         }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {

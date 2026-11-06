@@ -4250,6 +4250,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         colorOptions.label = label.c_str();
         colorOptions.mixed = dif;
         const ui::EditPhase colorPhase = ui::colorField((label+"##color_"+id).c_str(), newValue, colorOptions);
+        UIProbe::item("inspector.color." + id);
         if (colorPhase == ui::EditPhase::Begin){
             ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
         }else if (colorPhase == ui::EditPhase::Changing){
@@ -12319,6 +12320,9 @@ void editor::InspectorWindow::runDeferredCommands(){
 
 void editor::InspectorWindow::show(){
     runDeferredCommands();
+    if (materialAsset && !materialAsset->path.empty() && ImGui::GetFrameCount() > materialAssetFrame + 1) {
+        leaveMaterialAsset();
+    }
 
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);

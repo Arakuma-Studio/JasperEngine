@@ -2008,6 +2008,9 @@ namespace jasperengine::editor{
         // The .material files submeshes are linked to (project-relative). Their changes on
         // disk reach the links through the hot reload (editor/reload, S05).
         std::vector<std::string> getLinkedMaterialFiles() const;
+        // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
+        // before an edit made while playing)
+        void reapplyLinkedMaterialFiles();
         // `relativePath` was read again: every submesh linked to it takes `material`
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
