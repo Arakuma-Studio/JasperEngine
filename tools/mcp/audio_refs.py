@@ -242,6 +242,24 @@ def click_train(times, seconds: float, rate: int, amplitude: float = 1.0) -> lis
     return out
 
 
+def click_track(bpm: float, first_beat_s: float, beats_per_bar: int, seconds: float, rate: int = 48000) -> list:
+    """S39's tempo oracle (sound-layer P6 §3.9): a 2 ms 3 kHz click at 0.5 on every beat from first_beat_s,
+    and a 40 ms 60 Hz thump at 0.5 added on each downbeat (the beat at first_beat_s is one)."""
+    out = [0.0] * int(seconds * rate)
+    click, thump = int(0.002 * rate), int(0.040 * rate)
+    k = 0
+    while True:
+        start = int(round((first_beat_s + k * 60.0 / bpm) * rate))
+        if start >= len(out):
+            return out
+        for i in range(min(click, len(out) - start)):
+            out[start + i] += 0.5 * math.sin(2.0 * math.pi * 3000.0 * i / rate)
+        if k % beats_per_bar == 0:
+            for i in range(min(thump, len(out) - start)):
+                out[start + i] += 0.5 * math.sin(2.0 * math.pi * 60.0 * i / rate)
+        k += 1
+
+
 def white_noise(seconds: float, rate: int, seed: int = 1, dbfs: float = -12.0) -> list:
     """Seeded uniform white noise of peak level dbfs (random.Random, so the same on every host)."""
     rng = random.Random(seed)

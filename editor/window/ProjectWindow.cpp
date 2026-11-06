@@ -2086,6 +2086,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event from Clips")) {
                         assetsCreateSoundEventFromClips();
                     }
+                    // the clip's Inspector shows the grid: inspect it, then detect
+                    if (ImGui::MenuItem(ICON_FA_DRUM " Detect Tempo")) {
+                        selectedFiles.clear();
+                        selectedFiles.insert(file.name);
+                        updateInspectedAsset(file.name);
+                        const CommandDef* detect = CommandCatalog::editor().find("audioClip.detectTempo");
+                        if (detect && detect->run && (!detect->enabled || detect->enabled())) detect->run(CommandArgs{});
+                    }
                     ImGui::Separator();
                 }
                 if (file.type == FileType::SCENE){

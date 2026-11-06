@@ -1081,6 +1081,28 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_music_tempo_key",
+        "groups_enabled": ["audio"],
+        "files": {"assets/music/theme.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S39: a clip's tempo is the `music` block of its import settings; agents told a loop's tempo guessed "
+                         "top-level keys (bpm, tempo) or wrote the .meta by hand, so stingers stayed off the beat.",
+        "text_at_issue": "set_audio_import_settings' settings key list; jasper://docs/sound's import settings table",
+        "source": "S39 R3 (spec-first)",
+        "prompt": "assets/music/theme.wav is 128 BPM in 4/4 and its first downbeat is 40 ms into the file. Set that on the clip "
+                  "so stingers land on its beats.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/music/theme.wav: -20.1 LUFS, 8.000 s",
+                {"items": [{"n": 1, "path": "assets/music/theme.wav",
+                            "settings": {"music": {"bpm": 128, "beats_per_bar": 4, "first_beat_ms": 40}},
+                            "resolved": {"bpm": 128, "beats_per_bar": 4, "first_beat_frame": 1920, "sample_rate": 48000}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_placeholder_coin_finds_the_group",
         "kind": "guard",
         "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
