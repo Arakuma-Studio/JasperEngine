@@ -192,8 +192,9 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
                     continue;
                 const std::string saved = encodeSceneText(decoded);
                 for (const char* key : s41Keys){
-                    if (source.find(key) == std::string::npos)
+                    if (source.find(key) == std::string::npos){
                         EXPECT_EQ(saved.find(key), std::string::npos) << key << " written into a scene that had none";
+                    }
                 }
                 DecodedScene again = decodeSceneText(saved, path.filename().string());
                 EXPECT_EQ(encodeSceneText(again), saved) << "a second save differs";
@@ -211,8 +212,9 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
                 Project project;
                 Stream::decodeProject(&project, node, Workspace());
                 const std::string saved = YAML::Dump(Stream::encodeProject(&project));
-                if (source.find("pixelsPerUnit") == std::string::npos)
+                if (source.find("pixelsPerUnit") == std::string::npos){
                     EXPECT_EQ(saved.find("pixelsPerUnit"), std::string::npos) << "graphics.pixelsPerUnit written into a project that had none";
+                }
                 Project reloaded;
                 Stream::decodeProject(&reloaded, YAML::Load(saved), Workspace());
                 EXPECT_EQ(YAML::Dump(Stream::encodeProject(&reloaded)), saved) << "a second save differs";

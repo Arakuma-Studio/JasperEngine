@@ -31,7 +31,8 @@
 # passes (e.g. DOCKER_CPUS=4 on a shared host). KEEP_GOING=1 lets Ninja build on past a failure.
 # DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
-# runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
+# runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests; GRAPHIC_BACKEND=gles3 runs them
+# in an OpenGL ES 3.2 context (llvmpipe, in the linux-backends image) for unit-tests (UNIT_SUITE=core).
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
@@ -194,8 +195,17 @@ LINUX_BACKEND="${GRAPHIC_BACKEND:-glcore}"
 if [[ "$TARGET" == htmlui-tests && "$HTMLUI_BACKEND" != glcore && "$HTMLUI_BACKEND" != vulkan ]]; then
     echo "HTMLUI_BACKEND must be glcore or vulkan" >&2; exit 1
 fi
-if [[ ( "$TARGET" == linux || "$TARGET" == unit-tests ) && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan ]]; then
+if [[ "$TARGET" == linux && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan ]]; then
     echo "GRAPHIC_BACKEND must be glcore or vulkan for $TARGET" >&2; exit 1
+fi
+if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan && "$LINUX_BACKEND" != gles3 ]]; then
+    echo "GRAPHIC_BACKEND must be glcore, vulkan or gles3 for $TARGET" >&2; exit 1
+fi
+# GRAPHIC_BACKEND=gles3 unit-tests: the core GPU suites in an OpenGL ES context, which needs the GLES
+# headers and library of docker/linux-backends.Dockerfile (built on this image, as
+# tools/smoke-test.sh does)
+if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" == gles3 && $IN_IMAGE == 0 && -z "${JASPER_DOCKER_IMAGE:-}" ]]; then
+    IMAGE_ID="$(docker build -q -t jasperengine/linux-backends -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
 fi
 
 # SANITIZE=address,undefined | thread: the CMake list, and the suffix of the build directories
@@ -577,6 +587,10 @@ unit-tests)
         CORE_DIR="$OUT/core-tests-vulkan$VARIANT"
         CORE_RESULT="core-vulkan$VARIANT"
         VK_ENV="VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+    elif [[ "$LINUX_BACKEND" == gles3 ]]; then
+        [[ -z "$SANITIZE_LIST" ]] && CORE_PRESET=engine-linux-tests-gles3
+        CORE_DIR="$OUT/core-tests-gles3$VARIANT"
+        CORE_RESULT="core-gles3$VARIANT"
     fi
     EDITOR_DIR="$OUT/editor-tests$VARIANT"
     EDITOR_RESULT="editor$VARIANT"

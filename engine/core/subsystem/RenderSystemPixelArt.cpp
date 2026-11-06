@@ -244,6 +244,17 @@ void RenderSystem::updatePixelPerfect(Entity mainCameraEntity){
             pixelPerfectDrives.push_back(drive);
         }
     }
+    // a camera whose drive went (the component disabled or removed, the camera made
+    // perspective): its matrices drop the policy and the snap
+    for (const PixelPerfectDrive& old : previous){
+        bool kept = false;
+        for (const PixelPerfectDrive& drive : pixelPerfectDrives)
+            kept = kept || drive.cameraEntity == old.cameraEntity;
+        if (!kept){
+            if (CameraComponent* camera = scene->findComponent<CameraComponent>(old.cameraEntity))
+                camera->needUpdate = true;
+        }
+    }
 
     // the objects' variants follow (a scene that starts or stops snapping reloads them once;
     // the particles' render key holds it)

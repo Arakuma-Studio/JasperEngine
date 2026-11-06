@@ -47,6 +47,7 @@ tools/build.sh unit-tests                                   # both binaries
 UNIT_SUITE=core tools/build.sh unit-tests                   # one of them (core or editor)
 UNIT_TEST_ARGS='--gtest_filter=Matrix4.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests   # GPU suites on lavapipe
+GRAPHIC_BACKEND=gles3 UNIT_SUITE=core tools/build.sh unit-tests    # GPU suites in an OpenGL ES 3.2 context (llvmpipe, linux-backends image)
 WERROR=1 tools/build.sh unit-tests
 RUN=0 tools/build.sh unit-tests                             # build only
 ```
