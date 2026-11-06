@@ -255,6 +255,7 @@ async def test_no_admob(ed: Editor):
     """Built-in AdMob is gone (owner decision 2026-11-04; ads go through the native bridge): a
     source export carries no Google Mobile Ads SDK, wrapper, adapter, App ID or ad-network list,
     the settings are unknown keys, and the Lua API has no AdMob calls."""
+    await ed.call("save_project", untitled_scene_dir="scenes")
     out = ed.scratch.root / "export-no-admob"
     r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
