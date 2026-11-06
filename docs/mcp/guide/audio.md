@@ -221,9 +221,10 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
   (DontDestroyOnLoad) keep their sources, voices, one-shots and fades across loads.
 - No audio device (CI, a server, xvfb): the engine mixes without output (log: "No audio output
   available ... mixing without output"); `AudioSystem.isOutputAvailable()` is false and everything
-  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces it. A player run
-  with `--headless` or `--silent-audio` mixes on the null backend, by the frames' game time: its
-  sounds play, end and fire their events as in a normal run.
+  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null|deterministic` forces it. A
+  player run with `--headless` or `--silent-audio` mixes on the deterministic driver, by the frames'
+  game time: its sounds play, end and fire their events as in a normal run, the same on every run
+  with the same `--fixed-fps`.
 - The Web needs a user gesture before sound starts (browsers): the first key press, click or touch
   starts it (a key the browser does not count, Escape, waits for the next); mixing and meters run before it.
 

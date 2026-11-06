@@ -98,7 +98,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1088);
     scene->recreateEntity(1089);
     scene->recreateEntity(1090);
-    scene->setLastEntity(1090);
+    scene->recreateEntity(1091);
+    scene->recreateEntity(1092);
+    scene->setLastEntity(1092);
 
     {
         // Entity 1001 (Transform)
@@ -3033,6 +3035,57 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         safearea.bottom = false;
         safearea.includeExtraInsets = false;
         scene->addComponent<SafeAreaComponent>(1090, safearea);
+    }
+
+    {
+        // Entity 1091 (CapsuleShadowCasterComponent)
+        scene->setEntityName(1091, "CapsuleShadowCasterComponent");
+
+        // Entity components initialization
+        CapsuleShadowCasterComponent capsuleshadowcaster;
+        capsuleshadowcaster.enabled = false;
+        capsuleshadowcaster.castShadows = CapsuleCastShadows::CAPSULES_ONLY;
+        capsuleshadowcaster.capsules.push_back({"Spine", 0.200000f, 0.650000f, Vector3(0.000000f, 0.100000f, 0.050000f), CapsuleDirection::X_AXIS});
+        capsuleshadowcaster.capsules.push_back({"", 0.100000f, 0.500000f, Vector3(0.000000f, 0.000000f, 0.000000f), CapsuleDirection::Y_AXIS});
+        scene->addComponent<CapsuleShadowCasterComponent>(1091, capsuleshadowcaster);
+
+        Transform transform;
+        transform.position = Vector3(90.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1091, transform);
+    }
+
+    {
+        // Entity 1092 (AudioSnapshotComponent)
+        scene->setEntityName(1092, "AudioSnapshotComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(91.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1092, transform);
+
+        AudioSnapshotComponent audiosnapshot;
+        audiosnapshot.snapshot = "Snap7";
+        audiosnapshot.seconds = 2.500000f;
+        audiosnapshot.unscaled = true;
+        audiosnapshot.revert = false;
+        audiosnapshot.revertSeconds = 0.750000f;
+        scene->addComponent<AudioSnapshotComponent>(1092, audiosnapshot);
     }
 
     // Default Camera 1

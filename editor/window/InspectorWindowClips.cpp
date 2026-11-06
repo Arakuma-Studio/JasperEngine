@@ -1552,11 +1552,25 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawShakePresetAsset(asset);
         return true;
     }
+    // a .soundevent: its editor (InspectorSoundEvent.cpp)
+    if (Util::isSoundEventFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawSoundEventAsset(asset);
+        return true;
+    }
     // a .mixer: its summary (audio-mixer spec 9)
     if (asset.extension() == AudioMixerIO::EXTENSION){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawAudioMixerAsset(asset);
+        return true;
+    }
+    // an audio file: measurements, import settings, provenance, audition (InspectorAudioClip.cpp)
+    if (Util::isAudioFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawAudioClipAsset(asset);
         return true;
     }
     // a video (.mp4, .m4v, .mov, .webm, .mkv): probe, platform matrix, preview (InspectorVideo.cpp)

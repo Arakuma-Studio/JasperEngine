@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImporterFields.h"
+#include "EditorModal.h"
 
 #include "imgui_internal.h"
 
@@ -234,7 +235,7 @@ void ImporterPrompt::draw(){
     if (!s.open)
         return;
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal("Unapplied Import Settings##importer_prompt", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (!EditorModal::begin("Unapplied Import Settings##importer_prompt", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
         s.open = false;
         return;
     }

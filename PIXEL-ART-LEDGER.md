@@ -219,6 +219,11 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-06: The implementers stopped on a revoked auth token, after merging the S53–S73 `main`
+  (S41 `5bb89cc5a`, S43 `872e0330e`, S44 `c17d9dd31`). `main` fast-forwarded again to `4f5899c00`
+  (187 commits) and all three were revived. To avoid repeated large merges, each merges `main`
+  once more only right before its final gate. `dc/sprite-batching` is still in progress (S52 keeps
+  waiting).
 - 2026-11-05: Owner: skip full suites entirely, even at the end. Work is verified with lighter
   runs only: `check-changed`, filtered unit tests, named MCP files, and the `WERROR` builds.
 - 2026-11-05: The S41 implementer stopped on an API weekly rate limit, and the session

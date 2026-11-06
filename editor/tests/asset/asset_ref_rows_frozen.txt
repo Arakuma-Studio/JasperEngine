@@ -54,6 +54,7 @@ component	TrailRendererComponent	customShader	shader	shader	project	scene_compon
 component	TrailRendererComponent	shaderTextures{}	texture	texture	assets	scene_component
 component	ModelComponent	filename	asset	model	assets	scene_component
 component	AudioSourceComponent	filename	asset	audio	assets	scene_component
+component	AudioSourceComponent	event	asset	sound_event	assets	scene_component
 component	UIDocumentComponent	filename	asset	ui_document	assets	scene_component
 component	PoseAnimatorComponent	animation	asset	pose_animation	assets	scene_component
 component	AnimationPlayerComponent	clips[]	clip_entry	animation_clip	assets	scene_component
