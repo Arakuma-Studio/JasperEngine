@@ -66,7 +66,10 @@ file keeps growing.
   warning follows.
 - **Backtraces:** errors from C++ record up to 32 return addresses (editor and debug builds; games
   by project setting), at most ten a second; Lua errors carry their Lua traceback instead.
-- Texts over 64 KB are cut, with `…[truncated N bytes]`.
+- Texts over 64 KB are cut, with `…[truncated N bytes]`, between two characters.
+- **UTF-8:** every sink gets valid UTF-8. A text that is not (a tool writing another code page, a
+  cut string) is repaired before it is queued: one U+FFFD per bad byte, or on Windows the text read
+  in the system's ANSI code page (a game on Windows before 10 1903). Valid text costs one scan.
 
 ### Crashes and exit
 
@@ -87,6 +90,25 @@ still gets 500 ms. A `Fatal` record goes to every sink synchronously.
   The first item without `=` sets every category.
 - **MCP:** `set_log_level {level, category?, sink?}`, `get_log_config`, `read_console` filters
   `levels`, `categories`, `has_source`, `wait_for_log`, `logging/setLevel`.
+
+## Text encoding
+
+Every `std::string` in the engine and the editor that holds text or a path is UTF-8, on every
+platform (`docs/editor/text-and-languages.md` for users):
+
+- Windows executables run in the UTF-8 code page (`engine/platform/win/jasperengine.manifest`);
+  the engine runtime still converts its paths explicitly (`CP_UTF8`, the `-W` functions), since
+  games also run on Windows before 10 1903.
+- A typed character is a `char32_t` code point: `Engine::systemCharInput` takes one UTF-16 unit or
+  one code point and joins halves, so `onCharInput`, `UISystem::eventOnCharInput` and documents get
+  whole characters. `StringUtils::toUTF8(char32_t)`, `isValidUtf8`, `repairUtf8` and
+  `legacyToUtf8` are the helpers.
+- Paths stored in project files use `/`: `Stream::portablePath` writes them so and reads `\` as a
+  separator.
+- Text from outside: `TextEncoding::consoleToUtf8` (child output), vswhere through
+  `CommandRunner::vswhere` (`-utf8`), Apple paths through `UTF8String`.
+- `tools/check_text_encoding.py` (a lint to run when you change these areas; `--self-test` is its red control) fails on `CP_ACP`, ANSI Win32 calls that take
+  text or paths, `cStringUsingEncoding:` other than UTF-8, and vswhere run outside its helper.
 
 ## Events
 

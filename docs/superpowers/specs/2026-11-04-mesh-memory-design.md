@@ -591,6 +591,8 @@ Core (`jasperengine-core-tests`, non-editor containers):
   - `SkinPaletteGpu.PaletteSizedToTheSkin`: a skinned glTF the test writes with 70 joints gets
     `bonesMatrix.stored() == 70` and draws posed like `MeshPose.MatchesGpuSkinning` expects; a box has an empty
     palette and no palette texture or buffer.
+  - `SkinPaletteGpu.SkinOverTheDeviceTextureHeightFailsWithAnError`: a palette one row over the device's texture
+    height fails the load on the texture path with an error naming the joints and the limit.
   - `SkinPaletteGpu.SkinOverTheOldLimitLoads`: the same with 200 joints loads and draws. **Red:** "more bones than the
     maximum allowed (128)", load fails.
 - `engine/tests/core/memory/HeapTrimTest.cpp`:
@@ -613,7 +615,7 @@ Editor (`jasperengine-editor-tests`):
   - `StreamNoCapacity.IndexLimitDropsAndLogs`: 65,537 frames keep 65,536 and log one error.
 - `editor/tests/util/ProjectUtilsTileTest.cpp` (new; no test calls `buildDuplicateTileCmd` today):
   `ProjectUtilsTile.DuplicateTilePastTheOldCapacity`: a tilemap with 2,048 tiles gets a non-null duplicate command that
-  executes and undoes. `...RefusedAtTheDrawLimit`: at 16,383 tiles it returns null. **Red:** null at 2,048.
+  executes and undoes. `...DuplicateTileRefusedAtTheDrawLimit`: at 16,383 tiles it returns null. **Red:** null at 2,048.
 - `editor/tests/reflect/ResolveAppendTest.cpp`: `ReflectResolve.IndexAtTheCountAppendsToAGrowArray` (a sprite with
   128 frames: `framesRect[128].name` resolves and grows), `...PastTheCountIsOutOfRange` (`framesRect[130]`).
   **Red:** `framesRect[128]` is out of range on main.
@@ -717,3 +719,78 @@ Hot files for merge planning: `SokolObject.{h,cpp}`, `RenderSystem.cpp`, `MeshSy
 - `agent-authoring`: may edit `WorldTools.cpp`; the tilemap and sprite refusals here are small hunks.
 - No dependency on the water, UI, platform, unicode, build-toolchain, project-window, ssr-probes or code-editor-git
   features.
+
+## Deviations
+
+Recorded during the implementation (branch `dc/mesh-memory`).
+
+1. **Palette writers may grow it (6.4).** `AnimatorSystem`, the skin bindings and the legacy BoneComponent path
+   keep their `validIndex` (the 65,536 limit) instead of stopping at `stored()`: a write past the palette grows it,
+   and `updateMeshBuffers` then reloads the mesh, which makes its GPU palette again with the new rows. This heals a
+   palette that was shorter than its skin (a scene or cooked read) instead of dropping the joint. The model load
+   sizes the palette on both of its paths (the flatten path takes its largest skin's), so in practice writers
+   stay inside it.
+2. **Palette length is kept by every writer.** The YAML encoder writes the whole palette (it no longer trims
+   trailing identities: with no 128 fixed entries nothing needs trimming, and the length is how many joints the
+   skinned vertices may name); the cooked writer and the generated scene code always write the last entry. A
+   mesh without a skin writes `bonesMatrix: []` as before, and old files' trimmed lists read back as they are.
+3. **No automatic shrink after a smaller reload (6.3).** `RenderSystem::destroyMesh` releases the GPU objects of
+   every stored submesh and buffer (also past the counts), but `MeshSystem` does not `resize` the storage after a
+   reload with fewer primitives: a Tilemap writes a submesh's material before it raises `numSubmeshes`
+   (`Tilemap::addRect`), so trimming at a reload could drop authored data. The few kilobytes stay until the
+   component goes. Decoders do size frames, tiles and tile rects to their counts.
+4. **`arrayHeapBytes()` members instead of a `ComponentHeapBytes<T>` trait header (6.10).** `ComponentArray<T>`
+   detects a `size_t arrayHeapBytes() const` member with a `requires` expression; Mesh, Sprite, Points, Sprite
+   Animation and Tilemap components have one. Same report, no extra header.
+5. **Lean MCP rules (AGENT-BRIEF).** `get_ecs_stats` keeps its description; the new numbers are fields of its
+   structured result (`element_bytes`, `heap_bytes`, `bytes.heap`) and one clause of its text. The property-path
+   error keeps its text (there is no per-error text to extend; the append rule itself is in the resolver).
+6. **Tests placed by fixture.** `GrowArray` and `StableArray` share `engine/tests/core/util/GrowArrayTest.cpp`; the
+   scene-load trim is `PersistenceTest.ASceneLoadRequestsAHeapTrim` (its SceneManager fixture);
+   `HeapTrim.RequestsMerge` replaces the coalescing part of the spec's list.
+7. **`test_save_determinism.py`** no longer checks `maxValues` (there is none to count) nor the scene-dump CLI's
+   count of a model's buffers (the purpose of that step, sizing `MAX_EXTERNAL_BUFFERS` without a model load, is
+   gone); the byte-for-byte checks stay. `test_reflection.py` compares a golden's `maxValues` with what the resave
+   wrote (the block as read, or none).
+8. **Inspector limits.** The Add buttons are disabled with a tooltip at the limits (D7), the tile-from-rect button
+   included.
+9. **Pixel-art S45** plans `std::vector` for `SpriteComponent::framesRect` and keeps `MAX_SPRITE_FRAMES` for
+   Sprite Animation and Points. With this branch both are already growable (`GrowArray` has `resize`, which S45's
+   generated code calls) and the macro is gone: S45 can keep `GrowArray` as it is.
+10. **MCP test homes.** `test_ecs.py` runs on the default fixture project, which CI has no copy of, so
+    `test_mesh_component_memory` lives in `test_jobs_memory.py` (a created project) beside
+    `test_pipeline_desc_record`, which compares 64 equal sprites with one instead of a fixed count (the editor's
+    own objects hold descriptions too).
+11. **Both path walkers append, on writes only.** `reflect::resolve` and the property lookup the commands use
+    (`editor/reflect/Properties.cpp`, `Catalog::findProperty`) accept the index one past the end of a growing
+    array when the caller passes `append` (a property command's execute, a reflected set, MCP's sets); a read, an
+    undo or a revert names nothing there and grows nothing (`ReflectResolve.AReadAtTheCountGrowsNothing`).
+12. **Templates** were regenerated with `tools/templates/make_project_templates.py` (generated files), so their
+    scenes have no `maxValues`; the generator gives them new scene ids and GUIDs, as every run does.
+13. **Measured sizes** (Linux, libstdc++, `MeshMemory.SizeofCeilings`): `SokolObject` 752 B (2,528 before),
+    `ObjectRender` 768 (2,544), `Submesh` 6,448 (11,776), `MeshComponent` 1,672 (204,928), `SpriteComponent` 72
+    (6,192), `TilemapComponent` 152 (125,992); a sprite's mesh with its arrays 8,128 B, 25x less.
+14. **AC10 and AC11 not measured on a running editor.** The host's two build slots were the bottleneck and the
+    lead stopped further long runs on branches; the frame-time comparison of a 5,000-sprite scene (AC11) and the
+    editor's resident size after Play (AC10) were not taken. `HeapTrim.ReturnsFreedPagesOnGlibc` checks the trim
+    itself; no per-frame code path gained work beyond a predictable branch (6.1) and the full MCP suite showed no
+    timing regression of its own.
+15. **After main's S55 and S71.** S55 (automatic GPU instancing) gives every Submesh two more render objects,
+    `batchRender` and `batchDepthRender`, inline: a Submesh is 8,528 B and a sprite's mesh with its arrays 10,280 B
+    (about 20x less than 204,928). They are loaded only while GPU Instancing is on; allocating them on demand, as
+    this spec does for the warm tables, would save 1.6 KB per submesh when it is off (a follow-up for S55's
+    owner). S71's flag diff counted a submesh's Custom properties as changed on every decode because the editor's array
+    always held 16 slots; it now compares the submeshes a mesh holds, as S71 defines it (its tests pin that), and
+    the decode over a live mesh adds the reload itself, so a mesh of no submeshes yet still reloads as before. S53's model cooker keeps its 30-buffer
+    interleaving rule (fewer buffers bind faster); only its comment no longer names a player capacity.
+16. **After the review.** Interned pipeline bases keep the label of the description that first made them
+    (`descEqual` ignores it): it is only a debug name, so a pipeline made from a shared base may show another
+    object's label in a GPU debugger. Every `Mesh` method taking a submesh index refuses one past
+    `max(numSubmeshes, 1)` with an error and grows nothing; getters return the default
+    (`MeshMemory.SubmeshIndexPastTheMeshGrowsNothing`). A palette an older editor saved without its trailing
+    identities (`bonesMatrix: []` for a bind pose) is decoded as long as the largest bone id its vertices name plus
+    one (`MeshSystem::skinJointCount`, `StreamNoCapacity.TrimmedPaletteReachesEveryJointTheVerticesName`), not a
+    padded 128. A clone resets S55's batch variants with its other render objects
+    (`InstancingGoldenGpu.CloneOfAnInstancedMeshLeavesTheOriginalsBatches`). `HeapTrim.ReturnsFreedPagesOnGlibc`
+    checks the resident bytes only without a sanitizer, and Android has its own case. The `MeshMemory` ceilings grow
+    by half under MSVC's checked iterators.

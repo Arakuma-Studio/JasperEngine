@@ -445,6 +445,24 @@ TEST(DynamicResolutionController, EmergencyDropBypassesDwellButNotRateLimit)
     EXPECT_LE(spikeStart - c.getScale(),
               cfg.maxDropPerSecond * (30.0f * DT) + cfg.quantizeStep + 1e-4f)
         << "emergency must bypass dwell, never the slew limit";
+
+
+    // Establish a new accepted position with an unspent, narrower slew budget.
+    DynamicResolutionConfig limitedCfg = cfg;
+    limitedCfg.maxDropPerSecond = 0.1f;
+    DynamicResolutionController limited;
+    limited.configure(limitedCfg);
+    limited.reset(limitedCfg.maxScale);
+    const float limitedStart = driveUntilFirstChange(limited, 12.0f);
+    ASSERT_LT(limitedStart, limitedCfg.maxScale);
+    const float emergencyAllowance = limitedCfg.maxDropPerSecond * (30.0f * DT)
+        + limitedCfg.quantizeStep + 1e-4f;
+    ASSERT_GT(limitedStart - limitedCfg.minScale, emergencyAllowance);
+    for (int i = 0; i < 30; ++i)
+        limited.update(makeSample(40.0f), DT);
+    EXPECT_LT(limited.getScale(), limitedStart);
+    EXPECT_LE(limitedStart - limited.getScale(), emergencyAllowance)
+        << "an emergency must preserve the narrower per-second slew limit";
 }
 
 TEST(DynamicResolutionController, EmergencyNeverBypassesDwellUpward)
@@ -661,7 +679,11 @@ TEST(DynamicResolutionController, FillBoundContentStillDropsWhenTargetUnreachabl
     c.configure(cfg);
     c.reset(cfg.maxScale);
 
-    runClosedLoop(c, fillBound, 1200);
+    for (int i = 0; i < 1200; ++i){
+        c.update(makeSample(fillBound.cost(c.getScale())), DT);
+        EXPECT_FALSE(c.getStats().scalingIneffective)
+            << "useful fill-bound content must not be misclassified (frame " << i << ")";
+    }
     EXPECT_FALSE(c.getStats().scalingIneffective)
         << "a 15 ms full-range saving is not 'ineffective'";
     EXPECT_FLOAT_EQ(c.getScale(), cfg.minScale);

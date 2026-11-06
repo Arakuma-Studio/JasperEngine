@@ -155,7 +155,7 @@ namespace {
     }
 
     void setGhostMaterial(MeshComponent& mesh, const Vector4& tint){
-        for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++){
+        for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
             Material& material = mesh.submeshes[i].material;
             material.shader = "library:hologram";
             material.shaderFeatures = {"BLEND_MODE_ALPHA"};
@@ -891,7 +891,7 @@ void editor::PoseViewport::colorGhost(Ghost& ghost, const Vector4& color){
             if (!ghost.colorSet){
                 setGhostMaterial(*mesh, color);
             }else{
-                for (unsigned int i = 0; i < mesh->numSubmeshes && i < mesh->submeshes.size(); i++){
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++){
                     ShaderUniforms::set(mesh->submeshes[i].material.shaderParams, "tint", color);
                 }
                 mesh->needUpdateShaderUniforms = true;

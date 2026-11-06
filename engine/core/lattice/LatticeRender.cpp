@@ -216,7 +216,7 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
             skinned = mesh.submeshes[s].hasSkinning;
         float boneScale = 0.0f;
         if (skinned){
-            for (size_t b = 0; b < mesh.bonesMatrix.size(); b++)
+            for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++)
                 boneScale = std::max(boneScale, linearScale(transform.modelMatrix * mesh.bonesMatrix[b]));
         }
 

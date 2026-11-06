@@ -102,8 +102,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1927,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); +4 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
+            "limit": 1990,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
         },
         "create_particles": {
             "limit": 1888,

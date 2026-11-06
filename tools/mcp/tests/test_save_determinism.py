@@ -2,8 +2,9 @@
 
 - A Text's UI texture is the font atlas the UISystem builds when it first draws: a file holds only
   its authored sampler settings, never the atlas id of a run;
-- a scene's maxValues count its own GameObjects, not the icons the Scene view makes in its
-  registry when it draws a light, a camera or an Audio Source;
+- a scene saves the same whether or not the Scene view made its icons (Sprites in its registry when
+  it draws a light, a camera or an Audio Source), and holds no maxValues (components have no
+  capacities since mesh-memory);
 - a Mesh's (or Points') transparent under Auto Transparency is what a load starts from, not the
   value the renderer derives once it drew a blended submesh;
 - a save before a model of the scene finished loading writes what a save after it writes (the
@@ -20,14 +21,13 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 import tempfile
 import time
 from pathlib import Path
 
 import yaml
 
-from harness import Editor, editor_command
+from harness import Editor
 from scene_history import FIXTURES, SCENE_INPUTS, History, first_difference, two_level_prefab
 
 TIMEOUT = 1800
@@ -48,8 +48,8 @@ def components_of(scene: dict, name: str) -> dict:
     raise AssertionError(f"no {name} in the scene file")
 
 
-def max_values(data: bytes) -> dict:
-    return yaml.safe_load(data)["maxValues"]
+def has_max_values(data: bytes) -> bool:
+    return "maxValues" in yaml.safe_load(data)
 
 
 async def modified(ed: Editor, sid) -> bool:
@@ -177,11 +177,11 @@ async def test_text_atlas_is_not_saved(ed: Editor):
 # -- the Scene view's icons and derived transparency ----------------------------------------------------------
 
 
-async def test_scene_max_values_do_not_count_the_editor_icons(ed: Editor):
+async def test_scene_saves_the_same_with_or_without_the_editor_icons(ed: Editor):
     """A 3D scene with a Directional Light, a Camera and an Audio Source and no Mesh, drawn once and
     saved, then reopened and saved in one batch (no frame: the Scene view has not made its icons,
     Sprites of one submesh, in the scene's registry), then drawn and saved again: the same bytes each
-    time, with maxSubmeshes 0, and drawing does not modify it; a Mesh of the scene's own still counts"""
+    time, without a maxValues block, and drawing does not modify it"""
     rel = "Icons.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Icons", type="3D", path=rel))["scene"]["id"]
@@ -200,14 +200,10 @@ async def test_scene_max_values_do_not_count_the_editor_icons(ed: Editor):
     ed.check(not await modified(ed, sid), "drawing does not modify the scene")
     await ed.call("save_scene", scene=sid)
     drawn = path.read_bytes()
-    got = [max_values(data)["maxSubmeshes"] for data in (first, undrawn, drawn)]
-    ed.check_eq(got, [0, 0, 0], "no Mesh of the scene's: maxSubmeshes 0 in every save (drawn, undrawn, drawn)")
+    got = [has_max_values(data) for data in (first, undrawn, drawn)]
+    ed.check_eq(got, [False, False, False], "a new scene holds no maxValues (drawn, undrawn, drawn)")
     ed.check(undrawn == first and drawn == first,
              f"the scene saves the same whether or not the Scene view drew it: {first_difference(first, undrawn)}\n{first_difference(first, drawn)}")
-    await ed.call("create_entity", scene=sid, type="cube", name="Box", select=False)
-    await draw(ed, sid)
-    await ed.call("save_scene", scene=sid)
-    ed.check_eq(max_values(path.read_bytes())["maxSubmeshes"], 1, "a cube of the scene's counts")
 
 
 async def test_derived_transparency_is_saved_as_a_load_starts_it(ed: Editor):
@@ -248,11 +244,11 @@ class delayed_loads:
 
 
 async def test_a_save_before_the_model_loads_writes_what_one_after_it_writes():
-    """A scene of a box model, drawn and saved: maxExternalBuffers 5. Closed, then opened and saved in
+    """A scene of a box model, drawn and saved. Closed, then opened and saved in
     one batch, so no frame has run its load: the same bytes. Then drawn and saved: the same. In an
     editor whose model parses are held on their worker for 4 s (JASPER_TEST_MODEL_LOAD_DELAY_MS),
     opened, a few frames, saved while the load still runs (the save waits for it): the same bytes,
-    and the scene keeps drawing. And the scene-dump CLI's save (no frame at all): the same maxValues"""
+    and the scene keeps drawing"""
     problems = []
 
     def expect(ok: bool, message: str) -> None:
@@ -272,8 +268,6 @@ async def test_a_save_before_the_model_loads_writes_what_one_after_it_writes():
             await draw(ed, sid)
             await ed.call("save_scene", scene=sid)
             first = path.read_bytes()
-            print(f"[model-load] drawn: {max_values(first)}")
-            ed.check(max_values(first)["maxExternalBuffers"] > 0, f"the box model's buffers are counted: {max_values(first)}")
             await ed.call("save_project")
             await ed.call("close_scene", scene=sid)
 
@@ -281,7 +275,6 @@ async def test_a_save_before_the_model_loads_writes_what_one_after_it_writes():
                                               {"tool": "save_scene", "arguments": {"scene": rel}}])
             ed.check_eq(r.get("failed"), 0, f"batch: {[x for x in r['results'] if not x.get('ok')]}")
             unloaded = path.read_bytes()
-            print(f"[model-load] opened and saved in one batch: {max_values(unloaded)}")
             expect(unloaded == first, f"a save before the load equals one after it:\n{first_difference(first, unloaded)}")
             await draw(ed, sid)
             await ed.call("save_scene", scene=sid)
@@ -303,23 +296,12 @@ async def test_a_save_before_the_model_loads_writes_what_one_after_it_writes():
             await ed.call("save_scene", scene=sid)
             took = time.monotonic() - t0
             pending = path.read_bytes()
-            print(f"[model-load] saved with the load held back: {max_values(pending)} in {took:.2f} s")
+            print(f"[model-load] saved with the load held back in {took:.2f} s")
             expect(pending == first, f"a save while the load runs equals one after it:\n{first_difference(first, pending)}")
             await draw(ed, sid)
             await ed.call("save_scene", scene=sid)
             expect(path.read_bytes() == first, f"after the load: the same bytes:\n{first_difference(first, path.read_bytes())}")
 
-        cli_copy = work / "cli"
-        shutil.copytree(project_copy, cli_copy, ignore=shutil.ignore_patterns("editor.lock"))
-        ops = work / "ops.yaml"
-        ops.write_text(yaml.safe_dump([{"op": "save"}]))
-        res = subprocess.run(editor_command() + ["scene-dump", "--project", str(cli_copy), "--ops", str(ops),
-                                                 "--out", str(work / "dump.txt")],
-                             capture_output=True, text=True, timeout=900)
-        assert res.returncode == 0, f"scene-dump ran: {res.stdout[-800:]}\n{res.stderr[-800:]}"
-        cli = (cli_copy / rel).read_bytes()
-        print(f"[model-load] scene-dump save: {max_values(cli)}")
-        expect(max_values(cli) == max_values(first), f"the CLI's save counts the model: {max_values(cli)} against {max_values(first)}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     assert not problems, "\n".join(problems)

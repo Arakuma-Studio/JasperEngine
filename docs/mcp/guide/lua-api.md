@@ -257,7 +257,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onLowMemory` | none | the system is short of memory (Android, iOS); `Device.onLowMemory` follows at the next frame, after the engine cleared its caches |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
-| `onCharInput` | `codepoint` | text char typed |
+| `onCharInput` | `char` | a character was typed: a one-character UTF-8 string, one call per character (an emoji is one call on every platform) |
 | `onMouseDown`, `onMouseUp` | `button, x, y, mods` | mouse button (`Input.MOUSE_BUTTON_*`) |
 | `onMouseMove` | `x, y, mods` | mouse moved |
 | `onMouseScroll` | `xoffset, yoffset, mods` | wheel |
