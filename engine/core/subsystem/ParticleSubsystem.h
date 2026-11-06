@@ -102,8 +102,8 @@ namespace jasperengine{
         // the system's runtime (bound to its effect), null when it has none or cannot load it
         particles::ParticleSystemState* getState(Entity entity);
         ParticleSystemStats getStats(Entity entity);
-        // A hash of the simulation's state, children included: two runs agree exactly when it does.
-        // Reads every particle, so it is not part of getStats.
+        // A hash of the run: its seed, tick and particles, children included. Equal is the same state
+        // of the same run. Reads every particle, so it is not part of getStats.
         uint64_t getStateHash(Entity entity);
         const particles::WorldStats& getWorldStats() const { return world.stats(); }
         particles::ParticleWorld& getWorld() { return world; }

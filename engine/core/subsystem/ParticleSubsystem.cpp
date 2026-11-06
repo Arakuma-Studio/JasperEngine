@@ -449,7 +449,12 @@ ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
 
 uint64_t ParticleSubsystem::getStateHash(Entity entity){
     ParticleSystemState* state = getState(entity);
-    return state ? state->runtime.stateHash() : 0;
+    if (!state)
+        return 0;
+    // the particles alone say nothing while none is alive: the seed and the tick name the run
+    uint64_t h = state->runtime.stateHash();
+    h = (h * 1099511628211ull) ^ state->seed;
+    return (h * 1099511628211ull) ^ state->runtime.tickCount();
 }
 
 void ParticleSubsystem::markVisible(Entity entity){

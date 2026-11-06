@@ -77,7 +77,7 @@ for a given seed and frame-rate independent.
 - A GameObject with an asset edits the **asset**: every system playing it changes. Make it
   inline first (`set_particle_effect effect: "inline"`) to change one GameObject only.
 - An edit that changes values only keeps the live particles (the system rebinds); one that
-  changes the structure (modules, capacity, trails) restarts it.
+  changes the structure (modules, capacity, trails) or the seed restarts it.
 
 ## Playing and checking
 
@@ -90,10 +90,6 @@ for a given seed and frame-rate independent.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
   put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
   same hash, which is how to tell that two runs are the same one.
-- `edit_particle_effect` and `add_particle_module` refuse a field the effect does not have, naming the
-  nearest one, and write nothing. A `.particles` file takes `read_file` and `write_file` too; a field
-  it does not know only warns when it is read, and another program's edit reports it in
-  `external_changes.problems`.
 - `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
 

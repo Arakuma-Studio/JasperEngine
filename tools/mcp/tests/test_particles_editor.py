@@ -247,3 +247,23 @@ async def test_reports_reproduce_a_run(ed: Editor):
     ed.check_eq(pinned["seed"], drawn["seed"], "the pinned seed")
     ed.check_eq(pinned["state_hash"], drawn["state_hash"], "pinning the reported seed reproduces the run")
     await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})
+
+
+async def test_state_hash_tells_empty_runs_apart(ed: Editor):
+    """Fix round 1 of BF23: with nothing alive yet, two seeds still report different runs, and the same
+    state at a later tick is not the same run."""
+    s = await setup(ed)
+    async def capture(time_s: float) -> dict:
+        r = await ed.call_raw("capture_particles", {"scene": s["scene"], "entity": s["system"], "time": time_s, "max_width": 64})
+        ed.check(not r.is_error, f"capture: {r.text[:300]}")
+        return r.value["stats"]
+
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})
+    first = await capture(0)
+    again = await capture(0)
+    ed.check_eq(again["state_hash"], first["state_hash"], "the same seed and time")
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 4})
+    other = await capture(0)
+    ed.check_eq(other["particle_count"], first["particle_count"], "both as empty")
+    ed.check(other["state_hash"] != first["state_hash"], f"another seed, another run: {first} {other}")
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})
