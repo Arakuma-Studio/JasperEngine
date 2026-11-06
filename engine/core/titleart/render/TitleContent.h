@@ -8,10 +8,11 @@
 //   stroke, fill_counters), the layer's own pixels at a frame (image layers, `artwork` vectors),
 //   the glyph boxes of `line` / `char` gradient spans, and a shape mask's outline.
 // - The renderer holds one provider (TitleArtRenderer::setContentProvider, or the process
-//   default of setDefaultTitleContentProvider); geometry::TitleGeometry and TitleTextLayout are
-//   what the module's own provider wraps. A layer of those types with no provider draws nothing
-//   and reports `geometry_unavailable`. Tests install providers that hand out fixed elements and
-//   masks, so the passes are tested on exact inputs.
+//   default): the module's own (makeGeometryTitleContentProvider: geometry::TitleGeometry over
+//   TitleTextLayout) unless setDefaultTitleContentProvider names another. A layer of those types
+//   with no provider (a factory that makes none) draws nothing and reports `geometry_unavailable`.
+//   Tests install providers that hand out fixed elements and masks, so the passes are tested on
+//   exact inputs.
 // - Coordinates: layer space (document units, y up, the layer's position at the origin) for
 //   elements and boxes; a MaskFrame maps it to mask pixels, rows top first (CoverageMask and
 //   pictures), which the renderer reverses into its y-up element frames on upload.
@@ -66,9 +67,12 @@ namespace jasperengine::titleart {
     };
 
     using TitleContentFactory = std::function<std::shared_ptr<TitleContentProvider>()>;
-    // the provider every renderer made after this call starts with (none until set)
+    // the provider every renderer made after this call starts with; an empty factory restores the
+    // module's own
     JASPERENGINE_API void setDefaultTitleContentProvider(TitleContentFactory factory);
     JASPERENGINE_API std::shared_ptr<TitleContentProvider> makeDefaultTitleContentProvider();
+    // the module's provider: text layout and geometry (TitleGeometryContent.cpp), one per renderer
+    JASPERENGINE_API std::shared_ptr<TitleContentProvider> makeGeometryTitleContentProvider();
 
     // An image's straight pixels resampled onto a mask frame (bilinear, rows top first), the
     // way an image layer's picture and coverage are drawn: `bounds` is where the image lies in

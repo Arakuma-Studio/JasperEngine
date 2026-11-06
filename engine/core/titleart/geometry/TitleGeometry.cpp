@@ -222,6 +222,33 @@ namespace {
         uint64_t key = 0;                   // the geometry key's hash (the plate cache names it)
     };
 
+    // one cluster's part of a layer (a glyph cell): its glyphs and span boxes (lines keep their
+    // whole box, so a `line` gradient shades the cell as it shades the whole title); a shape's,
+    // an SVG's or a picture's only cluster is 0. The plate cache tells it apart by its key
+    std::shared_ptr<const Built> onlyCluster(const std::shared_ptr<const Built>& whole, uint32_t cluster) {
+        auto b = std::make_shared<Built>(*whole);
+        b->glyphs.clear();
+        b->charIndex.clear();
+        b->spans.clear();
+        for (size_t i = 0; i < whole->glyphs.size(); i++) {
+            if (whole->glyphs[i].cluster != cluster) continue;
+            b->glyphs.push_back(whole->glyphs[i]);
+            if (i < whole->charIndex.size()) b->charIndex.push_back(whole->charIndex[i]);
+        }
+        for (const GlyphSpan& span : whole->spans) {
+            if (span.cluster == cluster) b->spans.push_back(span);
+        }
+        if (cluster != 0) {
+            b->strokes.clear();
+            b->source = {};
+            b->hull = {};
+            b->image.reset();
+            b->fromAlpha = false;
+        }
+        b->key = hashCombine(whole->key, (uint64_t)cluster + 1);
+        return b;
+    }
+
     Path allGlyphs(const Built& b) {
         Path all;
         for (const GlyphOutline& g : b.glyphs) all.append(g.path);
@@ -534,11 +561,12 @@ void TitleGeometry::clear() {
     impl->text.clear();
 }
 
-LayerElements TitleGeometry::elements(const Json& layer, const TitleArtDoc& doc) {
+LayerElements TitleGeometry::elements(const Json& layer, const TitleArtDoc& doc, int cluster) {
     LayerElements out;
     const LayerType type = layerTypeOf(layer);
     if (type != LayerType::Text && type != LayerType::Shape && type != LayerType::Vector && type != LayerType::Image) return out;
-    const std::shared_ptr<const Built> b = impl->build(layer, doc);
+    std::shared_ptr<const Built> b = impl->build(layer, doc);
+    if (cluster >= 0) b = onlyCluster(b, (uint32_t)cluster);
     out.problems = b->problems;
     out.unit = b->size / 100;
     out.fromAlpha = b->fromAlpha;

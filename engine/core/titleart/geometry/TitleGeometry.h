@@ -126,8 +126,10 @@ namespace jasperengine::titleart::geometry {
         TitleGeometry(const TitleGeometry&) = delete;
         TitleGeometry& operator=(const TitleGeometry&) = delete;
 
-        // the elements of a Text, Shape, Vector or Image layer (the renderer's pass 1)
-        LayerElements elements(const Json& layer, const TitleArtDoc& doc);
+        // the elements of a Text, Shape, Vector or Image layer (the renderer's pass 1); `cluster`
+        // >= 0 keeps that LaidOutText cluster's outlines only (a glyph cell: its face, its rims
+        // and plates grown from it alone; shapes, SVGs and pictures are cluster 0)
+        LayerElements elements(const Json& layer, const TitleArtDoc& doc, int cluster = -1);
         // final outlines per glyph, layer space
         std::vector<GlyphOutline> outlines(const Json& layer, const TitleArtDoc& doc);
         // the cumulative grow of each enabled rim (enabled with width > 0: the rims that are

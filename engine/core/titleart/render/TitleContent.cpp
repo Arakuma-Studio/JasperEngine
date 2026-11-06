@@ -35,7 +35,7 @@ void titleart::setDefaultTitleContentProvider(TitleContentFactory f) {
 
 std::shared_ptr<TitleContentProvider> titleart::makeDefaultTitleContentProvider() {
     std::lock_guard<std::mutex> lock(factoryMutex());
-    return factory() ? factory()() : nullptr;
+    return factory() ? factory()() : makeGeometryTitleContentProvider();
 }
 
 void titleart::drawImageToFrame(const TitleImageData& image, const TitleRect& bounds, const geometry::MaskFrame& frame, TitleImageData& out) {
