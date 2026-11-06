@@ -9,7 +9,7 @@ from __future__ import annotations
 from harness import Editor
 import ui_input
 
-EDITOR = {"create": True, "name": "Inspector Add Script", "xvfb": "harness"}
+EDITOR = {"create": True, "name": "Inspector Add Script", "xvfb": "harness", "ui_probe": True}
 TIMEOUT = 600
 CI = True
 
@@ -26,6 +26,30 @@ async def scripts_of(ed: Editor, entity: str) -> list:
     return (await ed.call("list_scripts", entity=entity))["scripts"]
 
 
+def centre(rect) -> tuple[int, int]:
+    """the middle of a UI probe rectangle [x0, y0, x1, y1] (editor window pixels; ui.at makes it a screen point)"""
+    return int((rect[0] + rect[2]) / 2), int((rect[1] + rect[3]) / 2)
+
+
+async def reveal(ed: Editor, ui, name: str) -> list:
+    """A probed Inspector widget's rectangle, scrolling the Inspector from its top until it is drawn whole."""
+    await ui.frames()
+    rect = ed.ui_items().get(name)
+    if rect:
+        return rect
+    panel = await ed.ui_rect("inspector")
+    ed.check(panel, "the inspector is drawn")
+    at = ui.at(list(centre(panel)))
+    await ui.wheel(at, -60)
+    for _ in range(80):
+        await ui.frames()
+        rect = ed.ui_items().get(name)
+        if rect:
+            return rect
+        await ui.wheel(at, 2)
+    ed.fail(f"{name} is never drawn in the inspector: {sorted(ed.ui_items())}")
+
+
 async def test_add_script_picks_a_lua_script(ed: Editor):
     ui = ui_input.for_editor(ed)
     ui.focus()
@@ -37,11 +61,13 @@ async def test_add_script_picks_a_lua_script(ed: Editor):
     await ed.call("focus_window", window="inspector")
     await ui.frames(6)
 
-    await ui.click_revealed("Add Script", window="Inspector")
+    await ui.click(ui.at(list(centre(await reveal(ed, ui, "inspector.addScript")))))
     await ui.frames(4)
     await ui.type("ene")
     await ui.frames(4)
-    await ui.click_item("Enemy  [Lua]")
+    row = await ed.ui_rect("inspector.addScript.row.Enemy")
+    ed.check(row, f"the picker lists Enemy: {sorted(ed.ui_items())}")
+    await ui.click(ui.at(list(centre(row))))
     await ui.frames(6)
 
     scripts = await scripts_of(ed, "Grunt")

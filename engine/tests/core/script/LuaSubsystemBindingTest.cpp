@@ -81,8 +81,8 @@ TEST(LuaSubsystems, PhysicsSubscriptionsByTag){
     luabridge::setGlobal(L, &scene, "subScene");
     EXPECT_EQ(runLua(L, R"(
         local physics = subScene:getPhysicsSystem()
-        physics.beginContact2D("mine", function() end)
-        physics.endContact2D("theirs", function() end)
+        physics.beginContact2D:add("mine", function() end)
+        physics.endContact2D:add("theirs", function() end)
         physics:removeSubscriptionsByTag("mine")
     )"), "");
     PhysicsSystem* physics = scene.getSystem<PhysicsSystem>().get();
