@@ -112,7 +112,7 @@ async def test_entity_mode_audio_actions(ed: Editor):
     kinds = [made["actions"][a["index"]]["kind"] for a in audio]
     ed.check_eq(kinds, ["audio", "sound_event", "mixer_snapshot"], f"the action kinds: {made['actions']}")
     ed.check(abs(audio[0]["effective_duration"] - 0.3) < 0.01, f"an automatic frame lasts its sound: {audio[0]}")
-    ed.check_eq(audio[1]["duration"], 0.2, "an explicit duration")
+    ed.check(abs(audio[1]["duration"] - 0.2) < 1e-6, f"an explicit duration: {audio[1]}")
     ed.check_eq(audio[1]["lane"], 3, "its lane")
     ed.check_eq(audio[2]["snapshot"], "Build", "the snapshot action")
     ed.check(abs(audio[2]["effective_duration"] - 0.25) < 1e-4, f"a snapshot action lasts its transition: {audio[2]}")
