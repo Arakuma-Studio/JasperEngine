@@ -147,6 +147,7 @@ TEST(StreamScene, SnapshotDecodesAMeshWithKeysItDoesNotEncode){
     played.restore(true);
     EXPECT_TRUE(played.scene.getComponent<MeshComponent>(played.entity).needReload);
     EXPECT_TRUE(Stream::encodeEntity(played.entity, &played.scene)["components"]["mesh"]["fromALaterEditor"]);
+    EXPECT_EQ(Stream::encodeEntity(played.entity, &played.scene)["components"]["mesh"]["fromALaterEditor"].as<int>(), 1);
 }
 
 // undo, prefab propagation and every other decode over a live Mesh: as ever

@@ -67,16 +67,14 @@ CLIP_LENGTH_LUA = """local clipLength = {}
 
 function clipLength:init()
     RegisterEngineEvent(self, "onUpdate")
-    self.done = false
 end
 
 function clipLength:onUpdate()
-    if self.done then return end
     local source = AudioSource(self.scene, self.entity)
     local length = source:getLength()
     if length > 0 then
         print(string.format("CLIPLEN %.3f", length))
-        self.done = true
+        Engine.quit(0)
     end
 end
 

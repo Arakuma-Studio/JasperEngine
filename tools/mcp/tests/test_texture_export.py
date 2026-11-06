@@ -1,7 +1,8 @@
 """Exports of cooked textures (docs/specs/S14-texture-compression.md R9, AC12): a source export of
 tools/fixtures/textures ships assets/je-cooked/<family>/ for every family a platform of it loads,
 with an index.json whose files exist, leaves out the sources its cooks replace (but ships those a
-reference reads from the file; a glTF's external images load cooked), reserves je-cooked, and its
+reference reads from the file; a glTF's external images load cooked, and the glTF ships as its
+cook in je-cooked/models, S53 R12), reserves je-cooked, and its
 packaging keeps one family per platform (CMake copies, the web's --preload-file, Gradle's synced
 assets, the Xcode run script) with the Android manifest asking for ASTC.
 """
@@ -51,7 +52,11 @@ async def test_source_export_ships_cooked_families(ed: Editor):
     ed.check(not (assets / "textures" / "photo.png").exists(), "photo.png ships cooked only")
     ed.check(not (assets / "textures" / "ao.png").exists(), "ao.png ships cooked only")
     ed.check(not (assets / "textures" / "normal.png").exists(), "the glTF's normal map ships cooked only")
-    ed.check((assets / "models" / "panel.gltf").exists(), "the model ships")
+    models = json.loads((cooked / "models" / "index.json").read_text())["models"]
+    ed.check("models/panel.gltf" in models, f"the model ships cooked: {sorted(models)}")
+    for family, entry in models.get("models/panel.gltf", {}).items():
+        ed.check((cooked / "models" / entry["file"]).is_file(), f"its {family} cook {entry['file']} ships")
+    ed.check(not (assets / "models" / "panel.gltf").exists(), "the model's source ships cooked only")
     ed.check(not any(p.suffix == ".meta" for p in assets.rglob("*")), "no metas in the export")
 
     # the web's .data packs the assets less the other families (--exclude-file): >= 60% smaller

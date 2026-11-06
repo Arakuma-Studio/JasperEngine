@@ -171,6 +171,10 @@ startup and every export use the same list.
   Threading > Web: Multithreaded decides whether the pthreads player ships at all. Serve the
   folder over HTTP (`python3 tools/web/serve.py --root <folder>`): `file://` does not load
   WebAssembly.
+- **Windows**: the editor and `jasperengine-editor` (CLI exports included) need Windows 10
+  version 1903 or later, which runs them in the UTF-8 code page so file names in any language
+  work; on older Windows (Server 2019 too) they stop with a message. Windows games run on older
+  Windows as well. See [editor/text-and-languages.md](editor/text-and-languages.md).
 
 ## Running a player from scripts and CI
 

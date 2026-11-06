@@ -31,12 +31,9 @@ return ContactWatch
 """
 
 
-async def test_setup(ed: Editor):
+async def test_ui_click_one_voice_per_click(ed: Editor):
     write_tone(ed.project / "sounds/hit.wav", seconds=0.1)
     await ed.call("sync_files")
-
-
-async def test_ui_click_one_voice_per_click(ed: Editor):
     await ed.call("set_project_settings", values={"graphics.canvas_width": 1280, "graphics.canvas_height": 720,
                                                   "graphics.scaling_mode": "letterbox"})
     scene = (await ed.call("create_scene", name="Menu", type="UI", path="scenes/Menu.scene"))["scene"]["id"]

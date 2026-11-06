@@ -583,10 +583,4 @@ namespace jasperengine::editor::reflect {
     // String<->AssetPath convert; anything else (and an added field) takes its default
     RemapResult remapByName(const FieldSet& from, const ValueSet& values, const FieldSet& to);
 
-    // ---- checks (ReflectRegistry.SelfCheck) ---------------------------------------------
-
-    // Every problem of the tables: duplicate names/keys/aliases, enum round trips, codecs,
-    // proxies. Empty when they are sound.
-    std::vector<std::string> selfCheck();
-
 }

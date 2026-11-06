@@ -2,8 +2,8 @@
 loads as a glTF while the scene keeps its .fbx path. import_files converts what it copies,
 get_asset_info summarizes the conversion, set_model loads it (mesh, two bones, an animation,
 a blend shape), a saved scene records which import its model parts came from, an edit of the
-FBX reloads the scene's model, and an export ships each FBX as <name>.fbx.glb next to where the
-.fbx was (the .fbx itself stays behind).
+FBX reloads the scene's model, and an export ships each FBX as its cook in je-cooked/models, under
+its .fbx path (S53 R12: the .fbx and its .fbx.glb import stay behind).
 
 The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's handwritten ASCII FBX.
 """
@@ -198,11 +198,14 @@ async def test_source_export_ships_the_imports(ed: Editor):
     if not assets.is_dir():
         assets = next(p for p in out.rglob("assets") if p.is_dir())
     shipped = assets / "models"
-    for name in ("rigged_cube.fbx.glb", "unused.fbx.glb"):
-        ed.check((shipped / name).is_file(), f"{name} exported to {shipped}")
-        ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
-    ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
-    ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
+    cooked = assets / "je-cooked" / "models"
+    models = json.loads((cooked / "index.json").read_text())["models"]
+    for fbx in ("models/rigged_cube.fbx", "models/unused.fbx"):
+        ed.check(fbx in models, f"{fbx} ships cooked: {sorted(models)}")
+        for family, entry in models.get(fbx, {}).items():
+            ed.check((cooked / entry["file"]).read_bytes()[:4] == b"glTF", f"{fbx}: its {family} cook is a binary glTF")
+    for name in ("rigged_cube.fbx", "unused.fbx", "rigged_cube.fbx.glb", "unused.fbx.glb"):
+        ed.check(not (shipped / name).exists(), f"{name} is not shipped: the cook takes its place")
     # its linked texture ships cooked (S14 R9: a glTF's external image loads its cook; a Linux
     # export ships the desktop family, the source stays out)
     index = json.loads((assets / "je-cooked" / "desktop" / "index.json").read_text())["textures"]

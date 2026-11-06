@@ -20,6 +20,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -597,11 +599,15 @@ namespace {
 
     struct PickerHost {
         std::atomic<bool> openedCalled{false};
+        std::function<void()> onOpened;
 
         explicit PickerHost(EditorFilePicker::Route route, const std::string& base = std::string()) {
             EditorFilePicker::Host host;
             host.route = [route]() { return route; };
-            host.opened = [this]() { openedCalled = true; };
+            host.opened = [this]() {
+                openedCalled = true;
+                if (onOpened) onOpened();
+            };
             host.baseDirectory = [base]() { return base; };
             EditorFilePicker::setHost(std::move(host));
         }
@@ -618,11 +624,37 @@ namespace {
         return folder;
     }
 
-    // ask() on another thread, as the main thread is in the editor; true once it reports open
-    bool waitOpen() {
-        for (int i = 0; i < 2000 && !EditorFilePicker::isOpen(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        return EditorFilePicker::isOpen();
-    }
+    // The host signals an open picker; a return before that is a failed precondition.
+    struct ModalTestPickerAsk {
+        PickerHost& host;
+        std::optional<std::vector<std::string>> result = std::vector<std::string>{"unset"};
+        std::promise<bool> ready;
+        std::shared_future<bool> opened = ready.get_future().share();
+        std::atomic<bool> signalled{false};
+        std::thread editor;
+
+        ModalTestPickerAsk(PickerHost& host, const EditorFilePicker::Request& request) : host(host) {
+            host.onOpened = [this]() { signal(true); };
+            editor = std::thread([this, request]() {
+                result = EditorFilePicker::ask(request);
+                signal(false);
+            });
+        }
+
+        ~ModalTestPickerAsk() {
+            if (editor.joinable()) {
+                if (opened.get()) EditorFilePicker::abandon();
+                editor.join();
+            }
+            host.onOpened = {};
+        }
+
+        void signal(bool isOpen) {
+            if (!signalled.exchange(true)) ready.set_value(isOpen);
+        }
+        bool waitOpen() { return opened.get(); }
+        void join() { editor.join(); }
+    };
 
 }
 
@@ -652,9 +684,8 @@ TEST(EditorFilePickerTest, AnAgentAnswersWithAPathItChecks) {
     EditorFilePicker::Request request;
     request.mode = EditorFilePicker::Mode::OpenFile;
     request.extensions = {"png", "jpg"};
-    std::vector<std::string> result;
-    std::thread editor([&]() { result = EditorFilePicker::ask(request).value_or(std::vector<std::string>{"NATIVE"}); });
-    ASSERT_TRUE(waitOpen());
+    ModalTestPickerAsk editor(host, request);
+    ASSERT_TRUE(editor.waitOpen());
     EXPECT_TRUE(host.openedCalled);
 
     EditorDialogInfo info;
@@ -674,13 +705,14 @@ TEST(EditorFilePickerTest, AnAgentAnswersWithAPathItChecks) {
     EXPECT_FALSE(EditorFilePicker::answer({"b.txt"}, error));
     EXPECT_NE(error.find("png, jpg"), std::string::npos) << error;
     EXPECT_FALSE(EditorFilePicker::answer({"a.png", "a.png"}, error));
-    EXPECT_TRUE(EditorFilePicker::isOpen()) << "a refused answer leaves it open";
+    EXPECT_TRUE(EditorFilePicker::info(info)) << "a refused answer leaves it open";
 
     ASSERT_TRUE(EditorFilePicker::answer({"a.png"}, error)) << error;
     editor.join();
-    ASSERT_EQ(result.size(), 1u);
-    EXPECT_EQ(std::filesystem::path(result[0]), (folder / "a.png").lexically_normal()) << "relative to the project";
-    EXPECT_FALSE(EditorFilePicker::isOpen());
+    ASSERT_TRUE(editor.result.has_value());
+    ASSERT_EQ(editor.result->size(), 1u);
+    EXPECT_EQ(std::filesystem::path((*editor.result)[0]), (folder / "a.png").lexically_normal()) << "relative to the project";
+    EXPECT_FALSE(EditorFilePicker::info(info));
     std::filesystem::remove_all(folder);
 }
 
@@ -691,25 +723,25 @@ TEST(EditorFilePickerTest, FolderAndSaveModes) {
     {
         EditorFilePicker::Request request;
         request.mode = EditorFilePicker::Mode::OpenFolder;
-        std::vector<std::string> result;
-        std::thread editor([&]() { result = *EditorFilePicker::ask(request); });
-        ASSERT_TRUE(waitOpen());
+        ModalTestPickerAsk editor(host, request);
+        ASSERT_TRUE(editor.waitOpen());
         EXPECT_FALSE(EditorFilePicker::answer({"no-such-folder"}, error));
         ASSERT_TRUE(EditorFilePicker::answer({folder.string()}, error)) << error;
         editor.join();
-        ASSERT_EQ(result.size(), 1u);
+        ASSERT_TRUE(editor.result.has_value());
+        ASSERT_EQ(editor.result->size(), 1u);
     }
     {
         EditorFilePicker::Request request;
         request.mode = EditorFilePicker::Mode::SaveFile;
-        std::vector<std::string> result;
-        std::thread editor([&]() { result = *EditorFilePicker::ask(request); });
-        ASSERT_TRUE(waitOpen());
+        ModalTestPickerAsk editor(host, request);
+        ASSERT_TRUE(editor.waitOpen());
         EXPECT_FALSE(EditorFilePicker::answer({"no-such-folder/new.anim"}, error));
         EXPECT_NE(error.find("does not exist"), std::string::npos) << error;
         ASSERT_TRUE(EditorFilePicker::answer({"new.anim"}, error)) << error;
         editor.join();
-        ASSERT_EQ(result.size(), 1u);
+        ASSERT_TRUE(editor.result.has_value());
+        ASSERT_EQ(editor.result->size(), 1u);
     }
     std::filesystem::remove_all(folder);
 }
@@ -718,9 +750,8 @@ TEST(EditorFilePickerTest, CancelAndAbandonReturnNothing) {
     PickerHost host(EditorFilePicker::Route::Agent);
     EditorFilePicker::Request request;
     for (const bool abandon : {false, true}) {
-        std::vector<std::string> result = {"unset"};
-        std::thread editor([&]() { result = *EditorFilePicker::ask(request); });
-        ASSERT_TRUE(waitOpen());
+        ModalTestPickerAsk editor(host, request);
+        ASSERT_TRUE(editor.waitOpen());
         std::string error;
         if (abandon) {
             EditorFilePicker::abandon();
@@ -728,16 +759,17 @@ TEST(EditorFilePickerTest, CancelAndAbandonReturnNothing) {
             ASSERT_TRUE(EditorFilePicker::cancel(error)) << error;
         }
         editor.join();
-        EXPECT_TRUE(result.empty());
+        ASSERT_TRUE(editor.result.has_value());
+        EXPECT_TRUE(editor.result->empty());
     }
 }
 
 TEST(EditorFilePickerTest, ANativePickerIsReportedButNotAnswerable) {
     EditorFilePicker::Request request;
     request.mode = EditorFilePicker::Mode::SaveFile;
+    EditorDialogInfo info;
     {
         EditorFilePicker::NativeScope native(request);
-        EditorDialogInfo info;
         ASSERT_TRUE(EditorFilePicker::info(info));
         EXPECT_EQ(info.kind, "file_picker");
         EXPECT_TRUE(info.choices.empty()) << "only a human can close it";
@@ -747,5 +779,5 @@ TEST(EditorFilePickerTest, ANativePickerIsReportedButNotAnswerable) {
         EXPECT_NE(error.find("human"), std::string::npos) << error;
         EXPECT_FALSE(EditorFilePicker::cancel(error));
     }
-    EXPECT_FALSE(EditorFilePicker::isOpen());
+    EXPECT_FALSE(EditorFilePicker::info(info));
 }

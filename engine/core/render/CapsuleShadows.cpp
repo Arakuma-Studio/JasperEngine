@@ -24,13 +24,6 @@ namespace {
         return std::max(std::abs(scale.x), std::max(std::abs(scale.y), std::abs(scale.z)));
     }
 
-    float capsuleSmoothstep(float edge0, float edge1, float x){
-        if (edge1 <= edge0)
-            return x < edge0 ? 0.0f : 1.0f;
-        const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-        return t * t * (3.0f - 2.0f * t);
-    }
-
     // the penumbra's half width at the receiver's start (a hard capsule still blends one tenth
     // of its radius) and the shadows' reach when there is no softness
     constexpr float CAPSULE_PENUMBRA_BASE = 0.1f;
@@ -219,35 +212,4 @@ bool CapsuleShadows::reaches(const World& capsule, const Vector3& towardsLight, 
     swept.setExtents(Vector3(std::min(center.x, farCenter.x), std::min(center.y, farCenter.y), std::min(center.z, farCenter.z)) - extent,
                      Vector3(std::max(center.x, farCenter.x), std::max(center.y, farCenter.y), std::max(center.z, farCenter.z)) + extent);
     return swept.intersects(receiver);
-}
-
-float CapsuleShadows::occlusion(const World& capsule, const Vector3& point, const Vector3& towardsLight, float softness){
-    const Vector3 d = capsule.b - capsule.a;
-    const Vector3 w = point - capsule.a;
-    const float dd = d.dotProduct(d);
-    const float ld = towardsLight.dotProduct(d);
-    const float lw = towardsLight.dotProduct(w);
-    const float dw = d.dotProduct(w);
-
-    // the closest approach of the ray point + t * towardsLight (t >= 0) and the segment
-    // a + s * d (0 <= s <= 1): the lines' closest points, s clamped, then t for that s
-    const float denominator = dd - ld * ld;
-    float s = denominator > 1e-8f ? std::clamp((dw - lw * ld) / denominator, 0.0f, 1.0f) : 0.0f;
-    const float along = s * ld - lw;
-    // a capsule behind the point (the ray leaves it): no shadow, so a surface facing the
-    // light never shadows itself
-    if (along <= 0.0f)
-        return 1.0f;
-    s = dd > 1e-8f ? std::clamp((dw + along * ld) / dd, 0.0f, 1.0f) : 0.0f;
-    const float t = std::max(s * ld - lw, 0.0f);
-    const float distance = (w + towardsLight * t - d * s).length();
-
-    const float r = capsule.radius;
-    const float penumbra = CAPSULE_PENUMBRA_BASE * r + std::max(softness, 0.0f) * t;
-    // the share of the light the capsule can hide at that distance: all of it while the
-    // penumbra is narrower than the capsule, then the capsule's share of the light's disc
-    const float hidden = std::min(1.0f, (r * r) / std::max(penumbra * penumbra, 1e-12f));
-    const float occluded = hidden * (1.0f - capsuleSmoothstep(std::max(r - penumbra, 0.0f), r + penumbra, distance)) *
-                           capsuleSmoothstep(0.0f, r, along);
-    return 1.0f - occluded;
 }

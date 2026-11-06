@@ -48,9 +48,6 @@ namespace jasperengine {
         // pixel alone, the last `fade` fade out, the ones between average in four groups
         static void sampleGroups(int samples, int& hard, int& fade);
 
-        // the surface thickness the shader tests in, as Bend's (a share of the depth left
-        // between a surface and the far plane), for a world thickness at a view depth
-        static float thicknessShare(const Matrix4& projection, float viewDepth, float thickness);
     };
 
 }

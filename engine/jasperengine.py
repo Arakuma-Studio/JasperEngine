@@ -52,7 +52,7 @@ def pbx_string(value):
 ##
 def add_folder_reference(project, folder_path, target):
 
-    with open(project) as f:
+    with open(project, encoding="utf-8") as f:
         project_data = f.read()
 
     folder = os.path.basename(folder_path)
@@ -102,7 +102,7 @@ def add_folder_reference(project, folder_path, target):
         '{0}\n\t\t\t\t{1} /* {2} in Resources */,'.format(pbxbuildphase_section, id1, folder)
     )
 
-    with open(project, "w") as f:
+    with open(project, "w", encoding="utf-8") as f:
         f.write(project_data)
 
 def build():
@@ -211,5 +211,14 @@ def build():
         run(cmake_build_command)
 
 
+def print_utf8():
+    # Piped output (the editor's Build window, a CI log) is in the ANSI code page on Windows,
+    # which cannot print every path; a terminal keeps Python's own console handling
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and not stream.isatty():
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 if __name__ == '__main__':
+    print_utf8()
     build()
