@@ -68,6 +68,8 @@ TEST(WebKeyMap, LocationPicksRightModifiers){
     EXPECT_EQ(web::keyFromKeyCode(18, LOCATION_RIGHT), D_KEY_RIGHT_ALT);
     EXPECT_EQ(web::keyFromKeyCode(91, LOCATION_RIGHT), D_KEY_RIGHT_SUPER);
     EXPECT_EQ(web::keyFromKeyCode(224, LOCATION_RIGHT), D_KEY_RIGHT_SUPER);
+    // Chrome and Safari on macOS: the right Command key is keyCode 93 on the right
+    EXPECT_EQ(web::keyFromKeyCode(93, LOCATION_RIGHT), D_KEY_RIGHT_SUPER);
     EXPECT_EQ(web::keyFromKeyCode(13, LOCATION_STANDARD), D_KEY_ENTER);
     EXPECT_EQ(web::keyFromKeyCode(13, LOCATION_NUMPAD), D_KEY_KP_ENTER);
 }

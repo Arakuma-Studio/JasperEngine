@@ -886,8 +886,10 @@ and kept compiling by reading the surrounding code; the implementer states it in
    tests of `test_hidden_window.py` run without a player runtime. The core visibility and lifecycle
    tests are in `engine/tests/core/platform/EngineLifecycleTest.cpp`, the hidden rate and clock in
    `engine/tests/core/util/HiddenUpdateTest.cpp`.
-7. **Lean MCP rules** (after this spec): no agent guide text; the `send_input` description gains
-   `hide|show`, with the eval case `bad_app_hide` (`tools/mcp/eval/cases.py`).
+7. **Lean MCP rules** (after this spec): no agent text in the guide or in
+   `docs/mcp/guide/platform-services.md` beyond the new `get_play_state` fields; the `send_input`
+   description gains `hide|show`, with the eval case `bad_app_hide` (`tools/mcp/eval/cases.py`), and the
+   `screenshot` refusal on a hidden editor says what to do in its own error text.
 8. **`WindowLinux::isMaximized`** keeps its own property read (one round trip for both atoms) rather than
    two `X11Visibility::hasNetWmState` calls.
 9. **Web visibility at project start.** A page hidden while the project waited for its saved files reports
@@ -896,3 +898,8 @@ and kept compiling by reading the surrounding code; the implementer states it in
     deprecation check runs where Gradle runs, in `tools/build.sh android` and
     `tools/players/android_player.sh` (both fail on a deprecation in our Gradle files), with its own test
     `tools/ci/test_check_gradle_warnings.py`; no CI job runs it.
+11. **The hidden player test runs glcore only.** `test_hidden_player.py` uses the `glcore-release` runtime;
+    a `vulkan-release` run is left out: it needs a second prebuilt runtime build (about as long as the
+    first) for a loop the two backends share line for line (`JasperEngineLinux.cpp`: the hidden branch never
+    reaches `beginFrame`, where only the Vulkan acquire differs).
+

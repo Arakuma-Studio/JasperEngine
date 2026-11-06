@@ -4299,16 +4299,16 @@ bool editor::App::activateRunningGame(SceneProject& sceneProject) {
     return true;
 }
 
-editor::SceneProject* editor::App::runningGameScene() {
+const editor::SceneProject* editor::App::runningGameScene() const {
     if (projectLoading || Engine::isSimulationHeld())
         return nullptr;
-    SceneProject* sceneProject = project.getScene(project.getPlaySessionSceneId());
+    const SceneProject* sceneProject = project.getScene(project.getPlaySessionSceneId());
     if (!sceneProject || sceneProject->playState != ScenePlayState::PLAYING || !sceneProject->scene || !sceneProject->sceneRender)
         return nullptr;
     return sceneProject;
 }
 
-bool editor::App::isHiddenGameRunning() {
+bool editor::App::isHiddenGameRunning() const {
     return (!windowVisible || Platform::isGameHiddenSimulated()) && runningGameScene();
 }
 
@@ -4316,11 +4316,12 @@ bool editor::App::isHiddenGameRunning() {
 // does Play while the editor window can't be seen or the game is hidden by send_input. Only the
 // game's own frame: no Scene view, no Step, no Recorder capture, no view size change.
 bool editor::App::runHiddenGameFrame() {
-    SceneProject* sceneProject = runningGameScene();
-    if (!sceneProject) {
+    const SceneProject* running = runningGameScene();
+    if (!running) {
         hiddenGameClock.reset();
         return false;
     }
+    SceneProject* sceneProject = project.getScene(running->id);
     // a wake-up a millisecond early counts (the loop sleeps until this deadline)
     if (!hiddenGameClock.isDue(Engine::getHiddenUpdateFps(), 0.001))
         return false;
@@ -4933,8 +4934,8 @@ bool editor::App::hasPendingMainThreadTasks() {
 double editor::App::idleWaitSeconds(double maxSeconds) const {
     const double next = scheduler().nextDueRealTime();
     double wait = next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
-    // a hidden game's next update (runHiddenGameFrame)
-    if ((!windowVisible || Platform::isGameHiddenSimulated()) && project.getPlaySessionSceneId() != NULL_PROJECT_SCENE)
+    // a hidden game's next update (runHiddenGameFrame); a paused or held one keeps the idle sleep
+    if (isHiddenGameRunning())
         wait = std::min(wait, hiddenGameClock.secondsUntilDue());
     return wait;
 }

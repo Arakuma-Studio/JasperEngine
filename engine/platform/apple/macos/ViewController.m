@@ -15,6 +15,8 @@
 
     // the window can't be seen: the view is paused and this timer updates the game without drawing
     NSTimer *_updateTimer;
+    // the rate _updateTimer runs at (Engine::getHiddenUpdateFps when it started)
+    double _updateTimerFps;
     BOOL _hidden;
 }
 
@@ -136,12 +138,26 @@
 
     [_updateTimer invalidate];
     _updateTimer = nil;
-    if (hidden) {
-        _updateTimer = [NSTimer timerWithTimeInterval:1.0 / [Renderer hiddenUpdateFps]
-                                              repeats:YES
-                                                block:^(NSTimer *timer) { (void)timer; [Renderer updateGame]; }];
-        [[NSRunLoop currentRunLoop] addTimer:_updateTimer forMode:NSRunLoopCommonModes];
-    }
+    if (hidden) [self startUpdateTimer];
+}
+
+// invalidated when the window shows again and in destroyView, which ends the timer's hold on self
+- (void)startUpdateTimer
+{
+    [_updateTimer invalidate];
+    _updateTimerFps = [Renderer hiddenUpdateFps];
+    _updateTimer = [NSTimer timerWithTimeInterval:1.0 / _updateTimerFps
+                                          repeats:YES
+                                            block:^(NSTimer *timer) { (void)timer; [self hiddenUpdate]; }];
+    [[NSRunLoop currentRunLoop] addTimer:_updateTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)hiddenUpdate
+{
+    [Renderer updateGame];
+    // a script changed Engine.targetFrameRate or vSyncCount meanwhile (as the AppKit loop does)
+    if (_hidden && _updateTimer && [Renderer hiddenUpdateFps] != _updateTimerFps)
+        [self startUpdateTimer];
 }
 
 // MTKView's default of 60 runs a 75 Hz display at 37.5: the screen's rate, or what

@@ -491,7 +491,7 @@ namespace jasperengine::editor{
         // put in place of the played one); true when it was not already: the view changed
         bool activateRunningGame(SceneProject& sceneProject);
         // the play session's scene while it runs (PLAYING, the simulation not held), else nullptr
-        SceneProject* runningGameScene();
+        const SceneProject* runningGameScene() const;
         void pollExternalChanges();
         // main-thread time for the file watcher's batches per loop iteration (S05 R22)
         static constexpr double PUMP_BUDGET_MS = 1.0;
@@ -631,7 +631,7 @@ namespace jasperengine::editor{
         bool runHiddenGameFrame();
         // a running game updates without drawing now (the window hidden or the game hidden by
         // send_input)
-        bool isHiddenGameRunning();
+        bool isHiddenGameRunning() const;
         // seconds until the hidden game's next update (0: due)
         double hiddenGameSecondsUntilDue() const { return hiddenGameClock.secondsUntilDue(); }
         bool hasPendingMainThreadTasks();

@@ -154,7 +154,6 @@ namespace jasperengine::web {
         return 0;
     }
 
-    // the legacy which/keyCode, for events without a code; location: KeyboardEvent.location
     // the legacy which/keyCode, for events without a code (Android soft keyboards, old browsers);
     // location: KeyboardEvent.location (2 the right-hand key, 3 the numeric keypad)
     inline int keyFromKeyCode(int keyCode, int location){
@@ -193,7 +192,9 @@ namespace jasperengine::web {
             case 91: return right ? D_KEY_RIGHT_SUPER : D_KEY_LEFT_SUPER;
             case 92: return D_KEY_RIGHT_SUPER;
             case 224: return right ? D_KEY_RIGHT_SUPER : D_KEY_LEFT_SUPER;
-            case 93: return D_KEY_MENU;
+            // the context-menu key; on the right (location 2) it is the right Command key of Chrome
+            // and Safari on macOS
+            case 93: return right ? D_KEY_RIGHT_SUPER : D_KEY_MENU;
             case 106: return D_KEY_KP_MULTIPLY;
             case 107: return D_KEY_KP_ADD;
             case 109: return D_KEY_KP_SUBTRACT;

@@ -1028,6 +1028,9 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
             XNFocusWindow, result->handle,
             nullptr);
     }
+    // a window manager may hold the state from the start (a session restoring it minimized); later
+    // changes come as PropertyNotify (handleEvent)
+    result->wmHidden = X11Visibility::hasNetWmState(backend->display, result->handle, backend->netWmStateHidden);
     backend->windows[result->handle] = result;
     return result;
 }

@@ -200,11 +200,6 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
   {type: "wait", ms: 500}, {type: "app", action: "resume"}]}`: the lifecycle as a device reports it
   (`focus_gained`, `low_memory` too). While "paused" the game does not update, as on a device;
   the input steps (a `resume` after a `wait`) keep going.
-- `{type: "app", action: "hide"}` / `"show"`: the window hidden as when it is minimized, with the
-  editor visible: the game updates without drawing (`Engine.onVisibilityChanged`), its Game view
-  keeps the last frame, and `screenshot view=game` fails until `show`. Ends with the Play.
-- A minimized or hidden editor window: `editor_status.window.visible` is false and `screenshot`
-  fails at once (nothing is drawn); a playing game keeps updating.
 - `{type: "app", action: "orientation", orientation: "landscape_left"}` turns the simulated device
   (needs `configure_game_view {device}`; refused when the game allows another orientation only).
 - `configure_game_view {device: "iphone_15_pro", orientation: "portrait", language: "es-MX"}`;

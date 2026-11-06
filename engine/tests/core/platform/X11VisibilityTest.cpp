@@ -113,7 +113,18 @@ TEST_F(X11VisibilityTest, OtherPropertiesChangeNothing){
     waitUntil([]() { return false; }, &changes);
     EXPECT_EQ(changes, 0);
     EXPECT_FALSE(visibility.isHidden());
-    EXPECT_TRUE(X11Visibility::hasNetWmState(display, window, maximized[0]));
+}
+
+// the one property read WindowLinux's maximize state shares
+TEST_F(X11VisibilityTest, HasNetWmStateReadsMaximized){
+    const Atom vertical = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    const Atom horizontal = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    EXPECT_FALSE(X11Visibility::hasNetWmState(display, window, vertical));
+    const Atom maximized[] = {vertical, horizontal};
+    setStates(maximized, 2);
+    XSync(display, False);
+    EXPECT_TRUE(X11Visibility::hasNetWmState(display, window, vertical));
+    EXPECT_TRUE(X11Visibility::hasNetWmState(display, window, horizontal));
     EXPECT_FALSE(X11Visibility::hasNetWmState(display, window, netWmStateHidden));
 }
 
