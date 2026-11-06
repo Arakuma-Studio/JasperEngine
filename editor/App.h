@@ -577,6 +577,7 @@ namespace jasperengine::editor{
 
         void resetLastActivatedScene() override;
         bool shouldSyncEngineApi() const override;
+        bool recordsRecentProjects() const override;
         void updateResourcesPath() override;
         void updateWindowTitle(const std::string& projectName) override;
         void stopTransientPreviews() override;

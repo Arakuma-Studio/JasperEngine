@@ -305,6 +305,8 @@ namespace jasperengine::editor {
         bool checkTargetDir();
         bool prepareCacheTarget();
         bool configureBuild();
+        // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
+        unsigned int effectiveBuildJobs() const;
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
@@ -424,9 +426,15 @@ namespace jasperengine::editor {
         std::string buildScriptDirIncludes() const;
 
         static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // dst mirrors src: changed files copied, files src no longer has removed, unchanged files
+        // left untouched (their mtime, for incremental builds) but given src's permissions
+        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
+        // Adds the execute bits (owner, group, others) to each file, as a terminal needs them for
+        // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
+        // no-op on Windows. False with error naming the file when one can't be changed.
+        static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
         // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
@@ -483,9 +491,11 @@ namespace jasperengine::editor {
                                                             const CommandRunner::Environment& env, std::string& error);
         // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
         // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
-        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is, else Ninja
+        // with CMAKE_MAKE_PROGRAM when visualStudioNinja (CommandRunner::findVisualStudioNinja)
+        // is given; else error.
         static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                       std::string& error);
+                                                                       std::string& error, const fs::path& visualStudioNinja = {});
         // Windows Web builds: the first file or folder below `roots` (what the build copies or
         // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
         // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is

@@ -23,6 +23,7 @@
 #include <algorithm>
 #include "util/CommandRunner.h"
 #include "util/FileUtils.h"
+#include "ShippingTypes.h"
 
 #include <cstdlib>
 #include <iterator>
@@ -36,24 +37,8 @@ namespace fx = ::jasperengine::htmlui;
 namespace {
     // Desktop exports build for the current host, so only expose backends
     // supported by that host's standalone CMake configuration.
-    #if defined(_WIN32)
-    constexpr ShaderBackend desktopGraphicBackends[] = {
-        ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11
-    };
-    #elif defined(__APPLE__)
-    // Vulkan is left out: MoltenVK has no VK_EXT_descriptor_buffer, which the
-    // renderer binds through, so an export would build and then fail at startup
-    constexpr ShaderBackend desktopGraphicBackends[] = {
-        ShaderBackend::MetalMacOS, ShaderBackend::GLCore
-    };
-    #else
-    constexpr ShaderBackend desktopGraphicBackends[] = {
-        ShaderBackend::GLCore, ShaderBackend::Vulkan
-    };
-    #endif
-
-    constexpr int desktopGraphicBackendCount =
-        static_cast<int>(sizeof(desktopGraphicBackends) / sizeof(desktopGraphicBackends[0]));
+    const std::vector<ShaderBackend>& desktopGraphicBackends = hostDesktopBackends();
+    const int desktopGraphicBackendCount = static_cast<int>(desktopGraphicBackends.size());
 
     float textButtonWidth(const char* label) {
         return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -250,15 +235,10 @@ void ExportWindow::loadSettingsFromProject() {
             m_sourcePlatformLinux = true;
             #endif
         }
-        auto addPresetBackends = [&](std::initializer_list<ShaderBackend> backends) {
+        auto addPresetBackends = [&](const std::set<ShaderBackend>& backends) {
             m_sourcePresetBackends.insert(backends.begin(), backends.end());
         };
-        if (m_sourcePlatformWindows) addPresetBackends({ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11});
-        if (m_sourcePlatformLinux) addPresetBackends({ShaderBackend::GLCore, ShaderBackend::Vulkan});
-        if (m_sourcePlatformMacOS) addPresetBackends({ShaderBackend::MetalMacOS, ShaderBackend::GLCore});
-        if (m_sourcePlatformIOS) addPresetBackends({ShaderBackend::MetalIOS});
-        if (m_sourcePlatformAndroid) addPresetBackends({ShaderBackend::GLES3, ShaderBackend::Vulkan});
-        if (m_sourcePlatformWeb) addPresetBackends({ShaderBackend::GLES3});
+        addPresetBackends(selectedSourcePlatformBackends());
         if (settings.graphicBackendsConfigured) {
             for (auto& entry : m_backendEntries) {
                 entry.selected = settings.graphicBackends.count(entry.backend) > 0;
@@ -458,15 +438,31 @@ bool ExportWindow::platformCanBuildPlayer(BuildPlatform platform) const {
 
 std::set<ShaderBackend> ExportWindow::platformBackends(BuildPlatform platform) const {
     // Same presets as the Custom Graphics APIs page
+    using Target = jasperengine::editor::BuildPlatform;
     switch (platform) {
-        case BuildPlatform::Windows: return {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
-        case BuildPlatform::MacOS: return {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
-        case BuildPlatform::Linux: return {ShaderBackend::GLCore, ShaderBackend::Vulkan};
-        case BuildPlatform::Android: return {ShaderBackend::GLES3, ShaderBackend::Vulkan};
-        case BuildPlatform::IOS: return {ShaderBackend::MetalIOS};
-        case BuildPlatform::Web: return {ShaderBackend::GLES3};
+        case BuildPlatform::Windows: return sourceExportBackends(Target::Windows);
+        case BuildPlatform::MacOS: return sourceExportBackends(Target::MacOS);
+        case BuildPlatform::Linux: return sourceExportBackends(Target::Linux);
+        case BuildPlatform::Android: return sourceExportBackends(Target::Android);
+        case BuildPlatform::IOS: return sourceExportBackends(Target::IOS);
+        case BuildPlatform::Web: return sourceExportBackends(Target::Web);
         default: return {};
     }
+}
+
+std::set<ShaderBackend> ExportWindow::selectedSourcePlatformBackends() const {
+    std::set<ShaderBackend> backends;
+    auto add = [&](BuildPlatform platform) {
+        const std::set<ShaderBackend> preset = platformBackends(platform);
+        backends.insert(preset.begin(), preset.end());
+    };
+    if (m_sourcePlatformWindows) add(BuildPlatform::Windows);
+    if (m_sourcePlatformLinux) add(BuildPlatform::Linux);
+    if (m_sourcePlatformMacOS) add(BuildPlatform::MacOS);
+    if (m_sourcePlatformIOS) add(BuildPlatform::IOS);
+    if (m_sourcePlatformAndroid) add(BuildPlatform::Android);
+    if (m_sourcePlatformWeb) add(BuildPlatform::Web);
+    return backends;
 }
 
 void ExportWindow::selectPlatform(BuildPlatform platform, bool buildPlayer) {
@@ -894,16 +890,7 @@ void ExportWindow::drawShaderSection() {
 }
 
 void ExportWindow::applySourcePlatformPresets() {
-    std::set<ShaderBackend> required;
-    auto add = [&](std::initializer_list<ShaderBackend> backends) {
-        required.insert(backends.begin(), backends.end());
-    };
-    if (m_sourcePlatformWindows) add({ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11});
-    if (m_sourcePlatformLinux) add({ShaderBackend::GLCore, ShaderBackend::Vulkan});
-    if (m_sourcePlatformMacOS) add({ShaderBackend::MetalMacOS, ShaderBackend::GLCore});
-    if (m_sourcePlatformIOS) add({ShaderBackend::MetalIOS});
-    if (m_sourcePlatformAndroid) add({ShaderBackend::GLES3, ShaderBackend::Vulkan});
-    if (m_sourcePlatformWeb) add({ShaderBackend::GLES3});
+    const std::set<ShaderBackend> required = selectedSourcePlatformBackends();
 
     for (auto& entry : m_backendEntries) {
         if (required.count(entry.backend) > 0) {

@@ -5161,6 +5161,11 @@ bool editor::App::shouldSyncEngineApi() const {
     return true;
 }
 
+bool editor::App::recordsRecentProjects() const {
+    const mcp::McpLaunchOptions& options = mcp::mcpLaunchOptions();
+    return !options.stdio && !options.headless && !benchmarkEnabled;
+}
+
 void editor::App::updateResourcesPath(){
     std::filesystem::path currentProjectPath = project.getProjectPath().lexically_normal();
     bool projectPathChanged = lastResourcesProjectPath != currentProjectPath;
