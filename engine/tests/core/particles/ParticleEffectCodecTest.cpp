@@ -258,3 +258,27 @@ TEST(ParticleEffectCodec, AnEmptyPatchPassesEveryModule){
     std::vector<Diagnostic> diagnostics;
     ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::object(), diagnostics)) << ParticleEffectCodec::format(diagnostics);
 }
+
+TEST(ParticleEffectCodec, MergePatchTakesTheOtherGradientForm){
+    // the keyed form writes colorKeys and alphaKeys; {colors, alphas} is the other form of a gradient, replacing them
+    ParticleEffectDocument doc;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"mode": "gradient", "gradient": {"colorKeys": [[0, 1, 1, 1], [1, 0, 0, 0]], "alphaKeys": [[0, 1], [1, 1]]}}}}})"), diagnostics))
+        << ParticleEffectCodec::format(diagnostics);
+    ASSERT_EQ(doc.colorOverLifetime.color.gradient.colorKeys.size(), 2u);
+
+    diagnostics.clear();
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"gradient": {"colors": [[0, "#ff0000"], [0.5, "#00ff00"], [1, "#0000ff"]], "alphas": [[0, 1], [1, 0]]}}}}})"), diagnostics))
+        << ParticleEffectCodec::format(diagnostics);
+    EXPECT_EQ(doc.colorOverLifetime.color.gradient.colorKeys.size(), 3u);
+    EXPECT_EQ(doc.colorOverLifetime.color.gradient.alphaKeys.back().alpha, 0.0f);
+
+    // a misspelled key of that form is still the patch's
+    const std::string before = ParticleEffectCodec::write(doc);
+    diagnostics.clear();
+    EXPECT_FALSE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"gradient": {"colors": [[0, "#ff0000"], [1, "#0000ff"]], "alphsa": [[0, 1]]}}}}})"), diagnostics));
+    EXPECT_EQ(ParticleEffectCodec::write(doc), before);
+}

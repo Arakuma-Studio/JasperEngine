@@ -996,6 +996,13 @@ namespace {
         }
         if (!target.is_object())
             target = Json::object();
+        // a gradient has two object forms and the keyed form holds {colorKeys, alphaKeys}: a patch
+        // in the other form replaces them, or the reader would meet them as unknown keys
+        if ((patch.contains("colors") || patch.contains("alphas")) && (target.contains("colorKeys") || target.contains("alphaKeys"))){
+            target.erase("colorKeys");
+            target.erase("alphaKeys");
+            target.erase("linear");
+        }
         for (auto it = patch.begin(); it != patch.end(); ++it){
             if (it->is_null()){
                 target.erase(it.key());
