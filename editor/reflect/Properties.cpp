@@ -195,6 +195,10 @@ namespace {
             } else if (isArray) {
                 const bool structs = field.structDesc != nullptr;
                 if (structs) flagField.members = buildFlagStruct(*field.structDesc, built);
+                // a component array that grows by index (a mesh's submeshes) counts its elements'
+                // Custom ones always, as when it held its capacity's elements at all times: a decode
+                // over a mesh of no submeshes yet still reloads it
+                if (structs && field.arrayOps->appendsByIndex) flagStruct.always |= flagField.members->always;
                 flagField.elements = field.updateFlags && (structs ? (field.flags & ListEachElement) != 0 : (field.flags & ListElements) != 0);
                 if (flagField.elements) flagField.elementType = field.elementOps->propertyType;
                 flagField.array = structs || flagField.elements;

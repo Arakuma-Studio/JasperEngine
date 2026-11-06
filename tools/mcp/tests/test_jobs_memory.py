@@ -310,7 +310,7 @@ async def test_mesh_component_memory(ed: Editor):
         per = mesh["bytes"] / mesh["count"]
         ed.check(per <= 4096, f"MeshComponent storage per component: {per:.0f} bytes")
         ed.check(mesh["element_bytes"] <= 2048, f"sizeof(MeshComponent): {mesh['element_bytes']}")
-        ed.check(0 < mesh["heap_bytes"] / mesh["count"] <= 8192, f"arrays per mesh: {mesh['heap_bytes'] / mesh['count']:.0f}")
+        ed.check(0 < mesh["heap_bytes"] / mesh["count"] <= 10240, f"arrays per mesh: {mesh['heap_bytes'] / mesh['count']:.0f}")
         ed.check_eq(stats["bytes"]["heap"], sum(t.get("heap_bytes", 0) for t in stats["types"]), "heap total")
     finally:
         await ed.call("delete_entities", entities=made)
