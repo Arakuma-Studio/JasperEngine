@@ -38,6 +38,7 @@
 #include "util/Color.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 using namespace jasperengine;
@@ -828,15 +829,17 @@ static ShaderUniformValues* defaultShaderUniformsField(SceneSettings& settings, 
     }
 }
 
-static ShaderUniformValues* writableDefaultShaderUniforms(SceneSettings& settings, ShaderType type){
+// `logged`: the caller's own flag, so a script calling it every frame says so once per call site
+static ShaderUniformValues* writableDefaultShaderUniforms(SceneSettings& settings, ShaderType type, std::atomic<bool>& logged){
     ShaderUniformValues* field = defaultShaderUniformsField(settings, type);
-    if (!field)
+    if (!field && !logged.exchange(true))
         Log::error("Shader type %i has no scene default shader: only mesh, UI, sky, points and lines do", (int)type);
     return field;
 }
 
 void Scene::setDefaultShaderUniforms(ShaderType type, const ShaderUniformValues& values){
-    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type);
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
     if (!field || *field == values)
         return;
     *field = values;
@@ -850,7 +853,8 @@ const ShaderUniformValues& Scene::getDefaultShaderUniforms(ShaderType type) cons
 }
 
 void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector4& value){
-    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type);
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
     if (!field)
         return;
     if (ShaderUniforms::has(*field, name) && ShaderUniforms::get(*field, name) == value)
@@ -880,7 +884,8 @@ bool Scene::hasDefaultShaderUniform(ShaderType type, const std::string& name) co
 }
 
 bool Scene::removeDefaultShaderUniform(ShaderType type, const std::string& name){
-    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type);
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
     if (!field || !ShaderUniforms::remove(*field, name))
         return false;
     getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);

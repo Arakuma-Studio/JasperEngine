@@ -259,6 +259,9 @@ TEST(GitProvider, StageUnstageRevertAndBaseContent) {
     std::string base;
     ASSERT_TRUE(offMain([&]() { return provider.baseContent("a.txt", "HEAD", base); }).ok);
     EXPECT_EQ(base, "base\n");
+    // over the limit: only enough of it to see so (TextBaselines' 4 MiB check)
+    ASSERT_TRUE(offMain([&]() { return provider.baseContent("a.txt", "HEAD", base, 2); }).ok);
+    EXPECT_EQ(base, "bas");
     ASSERT_TRUE(offMain([&]() { return provider.stage(a); }).ok);
     ASSERT_TRUE(offMain([&]() { return provider.revert(a); }).ok);
     EXPECT_EQ(readFile(repo / "a.txt"), "base\n");
@@ -374,6 +377,29 @@ TEST(GitProvider, DetachedAndOperations) {
     box.gitOk(repo, {"rebase", "--abort"});
     EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::None);
 }
+
+#ifndef _WIN32
+// A git dir read that failed once (a timeout, a lock) is asked again: a cached failure would hide
+// every merge or rebase state for the editor's whole session
+TEST(GitProvider, GitDirFailureIsNotCached) {
+    VcsSandbox box;
+    const fs::path repo = box.gitRepo("repo", {{"a.txt", "base\n"}});
+    const fs::path flag = box.path("rev-parse-failed");
+    const fs::path wrapper = box.path("git-fails-rev-parse-once.sh");
+    writeFile(wrapper, "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = rev-parse ] && [ ! -e '" + flag.string() +
+                           "' ]; then\n    : > '" + flag.string() + "'\n    exit 1\n  fi\ndone\nexec '" + box.git.string() +
+                           "' \"$@\"\n");
+    fs::permissions(wrapper, fs::perms::owner_all, fs::perm_options::replace);
+    ProviderConfig cfg = box.config(repo, repo);
+    cfg.executable = wrapper;
+    GitProvider provider(cfg);
+    VcsSnapshot snapshot = statusOf(provider);
+    writeFile(repo / ".git" / "MERGE_HEAD", snapshot.branch.headOid + "\n");
+    EXPECT_EQ(snapshot.branch.operation, VcsOperation::None);
+    ASSERT_TRUE(fs::exists(flag)) << "the first read failed";
+    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::Merge);
+}
+#endif
 
 TEST(GitProvider, HeadLabels) {
     VcsBranchInfo branch;

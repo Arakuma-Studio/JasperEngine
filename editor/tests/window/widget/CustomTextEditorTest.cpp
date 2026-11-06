@@ -347,6 +347,15 @@ TEST(CustomTextEditorDiff, RevertIsOneUndoStep) {
     editor.Redo();
     EXPECT_EQ(editor.GetText(), "a\nb\nc\ndx");
 
+    // typed right after the revert (under 300 ms): its own step, the revert stays whole
+    editor.SetCursorPosition(0, 1);
+    editor.InsertText("y", false);
+    ASSERT_EQ(editor.GetText(), "ay\nb\nc\ndx");
+    editor.Undo();
+    EXPECT_EQ(editor.GetText(), "a\nb\nc\ndx");
+    editor.Undo();
+    EXPECT_EQ(editor.GetText(), "a\nB\nc\ndx");
+
     // a removed line comes back, a caret inside an added block goes to its first line
     Editor removed(SyntaxLanguage::Lua, "a\nnew\nnewer\nc");
     removed.SetDiffBase(baseOf({"a", "c"}), "HEAD");

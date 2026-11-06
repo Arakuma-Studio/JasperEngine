@@ -14,6 +14,8 @@
 
 #include "jobs/Primitives.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <span>
@@ -64,8 +66,10 @@ namespace jasperengine::editor::vcs {
         // The project's state; depth says what else to read (StatusDepth flags)
         virtual VcsResult status(VcsSnapshot& out, uint32_t depth, const jobs::CancelToken* cancel = nullptr) = 0;
         virtual VcsResult branchInfo(VcsBranchInfo& out) = 0;
-        // The file as `rev` has it (git: HEAD, an oid, HEAD~n; svn: BASE, HEAD, a number)
-        virtual VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out) = 0;
+        // The file as `rev` has it (git: HEAD, an oid, HEAD~n; svn: BASE, HEAD, a number). One over
+        // maxBytes is not kept: `out` holds its first maxBytes + 1 bytes, so a size check sees it.
+        virtual VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out,
+                                      size_t maxBytes = SIZE_MAX) = 0;
         // A unified diff of the working file against `rev`
         virtual VcsResult textDiff(const RepoPath& path, std::string_view rev, std::string& out) = 0;
         // The tag the (detached) HEAD is at; a failure when it is at none

@@ -120,7 +120,8 @@ void TextBaselines::update(VcsService& service, std::span<const std::filesystem:
                 std::shared_ptr<Read> read = entry.read;
                 jobs::system().processChannel().submit([provider, source, revision, read, wake]() {
                     std::string text;
-                    const VcsResult result = provider->baseContent(source, revision, text);
+                    // a blob over the limit is not kept whole (only enough of it to see it is over)
+                    const VcsResult result = provider->baseContent(source, revision, text, kMaxBytes);
                     BaselineState state = result.ok ? classify(text) : BaselineState::Failed;
                     std::shared_ptr<const std::vector<std::string>> lines;
                     if (state == BaselineState::Ready) {

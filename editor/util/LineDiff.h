@@ -44,10 +44,11 @@ namespace jasperengine::editor {
         // Lines compare byte for byte: callers drop '\r' first
         static std::vector<LineChange> compute(std::span<const std::string> original, std::span<const std::string> modified);
 
-        // A unified diff ("--- a/<old>", "+++ b/<new>", "@@ -a,b +c,d @@", 3 lines of context);
-        // empty when there are no changes
-        static std::string unified(std::span<const std::string> original, std::span<const std::string> modified,
-                                   const std::vector<LineChange>& changes, std::string_view oldName, std::string_view newName);
+        // A unified diff of two texts as git prints it ("--- a/<old>", "+++ b/<new>", "@@ -a,b +c,d @@",
+        // 3 lines of context): lines compared byte for byte ('\r' kept), "\ No newline at end of file"
+        // after a last line without one; empty when the texts are equal
+        static std::string unified(std::string_view original, std::string_view modified, std::string_view oldName,
+                                   std::string_view newName);
 
         // Text split at '\n' with '\r' dropped, as the code editor holds it
         static std::vector<std::string> splitLines(std::string_view text);

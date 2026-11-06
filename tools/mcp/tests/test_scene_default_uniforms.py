@@ -39,7 +39,9 @@ async def test_scene_default_values(ed: Editor):
 
         # before a default shader: kept, with a note
         early = await ed.call_raw("set_shader_uniform", {"shader_type": "mesh", "name": "baseColor", "value": RED})
-        ed.check(not early.is_error and "no default mesh shader" in early.text, f"{early.text}")
+        ed.check(not early.is_error and "no default mesh shader" in (early.structured or {}).get("next", ""), f"{early}")
+        before = await ed.call("get_shader_uniforms", shader_type="mesh")
+        ed.check("no default mesh shader" in before.get("next", ""), f"{before}")
         await ed.call("set_shader_uniform", shader_type="mesh", name="baseColor", remove=True)
 
         await ed.call("set_scene_settings", settings={"default_mesh_shader": UNLIT})

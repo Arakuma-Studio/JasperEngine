@@ -2836,6 +2836,12 @@ const char* sceneDefaultTypeName(ShaderType type) {
     }
 }
 
+// the values of a type without a default shader are kept, unused until one is set
+std::string noSceneDefaultShaderNext(ShaderType type) {
+    return std::string("The scene has no default ") + sceneDefaultTypeName(type) +
+           " shader: its values apply once one is set (fork_shader target scene_default).";
+}
+
 // shader_type of get/set_shader_uniform: the scene's default shader of that type
 bool sceneDefaultShaderType(const CallPtr& call, ShaderType& type) {
     const std::string name = call->args().value("shader_type", std::string());
@@ -3066,6 +3072,7 @@ void getShaderUniformsTool(const CallPtr& call) {
                                                 std::to_string(data["used_by"].get<int>()) + " object(s), " + std::to_string(members.size()) +
                                                 " member(s)";
         text += ", " + std::to_string(data["values"].size()) + " value(s) set.";
+        if (shader.empty()) data["next"] = noSceneDefaultShaderNext(type);
         call->ok(text, data);
         return;
     }
@@ -3240,16 +3247,15 @@ void setShaderUniformTool(const CallPtr& call) {
         Json members = Json::array();
         Json data = sceneDefaultUniformsJson(scene, type, members);
         std::string note;
-        if (shader.empty()) {
-            note = std::string(" Note: the scene has no default ") + sceneDefaultTypeName(type) +
-                   " shader; the value is kept and applies once one is set (fork_shader target scene_default).";
-        } else if (!remove && !declaredProperty) {
-            note = uniformSetNote(members, name, declared);
-        }
+        if (!shader.empty() && !remove && !declaredProperty) note = uniformSetNote(members, name, declared);
         declared = declared || declaredProperty != nullptr;
         Json result = {{"shader_type", sceneDefaultTypeName(type)}, {"property", property}, {"name", name}, {"declared", declared},
                        {"used_by", data["used_by"]}};
         if (!remove) result["value"] = vec4Array(value);
+        if (shader.empty()) {
+            result["next"] = noSceneDefaultShaderNext(type);
+            note = " " + result["next"].get<std::string>();
+        }
         call->ok((remove ? "Removed " : "Set ") + name + " on the scene's default " + sceneDefaultTypeName(type) + " shader (inherited by " +
                  std::to_string(data["used_by"].get<int>()) + " object(s))." + note, result);
         return;
@@ -4237,7 +4243,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
-            {"pass_index", integer("")},
+            {"pass_index", integer("A post-process pass instead.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})}
         });
         tool.annotations.readOnly = true;
@@ -4258,7 +4264,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
             {"submesh", integer("Submesh (default 0 if its material has a shader).")},
-            {"pass_index", integer("")},
+            {"pass_index", integer("A post-process pass instead.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},

@@ -10,6 +10,8 @@
 
 #include "vcs/TextBaselines.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -111,6 +113,43 @@ TEST(TextBaselines, GitStates) {
     baselines.update(service, files);
     EXPECT_EQ(baselines.get(files[0]).state, BaselineState::None);
 }
+
+#ifndef _WIN32
+// The baseline reads, counted through a git that logs each blob read: one per file and HEAD
+// however often the code editor asks, none once version control is off (spec AC7)
+TEST(TextBaselines, ProviderCallsCounted) {
+    VcsSandbox box;
+    const fs::path repo = box.gitRepo("repo", {{"a.lua", "a\n"}, {"b.lua", "b\n"}});
+    const fs::path reads = box.path("blob-reads");
+    const fs::path wrapper = box.path("git-counting.sh");
+    writeFile(wrapper, "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = cat-file ]; then echo read >> '" + reads.string() +
+                           "'; fi\ndone\nexec '" + box.git.string() + "' \"$@\"\n");
+    fs::permissions(wrapper, fs::perms::owner_all, fs::perm_options::replace);
+    auto blobReads = [&]() {
+        const std::string text = fs::exists(reads) ? readFile(reads) : std::string();
+        return std::count(text.begin(), text.end(), '\n');
+    };
+    VcsSettings settings = box.settings();
+    settings.gitPath = wrapper;
+    VcsService service;
+    service.open(repo, repo / ".jasperengine", settings, false);
+    ASSERT_TRUE(pumpUntil(service, [&]() { return service.snapshot() != nullptr; })) << service.stateMessage();
+
+    TextBaselines baselines;
+    const std::vector<fs::path> files = {repo / "a.lua", repo / "b.lua"};
+    ASSERT_EQ(settle(service, baselines, files, files[0]).state, BaselineState::Ready);
+    ASSERT_EQ(settle(service, baselines, files, files[1]).state, BaselineState::Ready);
+    EXPECT_EQ(blobReads(), 2);
+    ASSERT_TRUE(refreshed(service));
+    pumpUntil(service, [&]() { baselines.update(service, files); return false; }, std::chrono::milliseconds(300));
+    EXPECT_EQ(blobReads(), 2);
+
+    service.close();
+    for (int i = 0; i < 10; i++) baselines.update(service, files);
+    EXPECT_EQ(blobReads(), 2);
+    EXPECT_EQ(baselines.get(files[0]).state, BaselineState::None);
+}
+#endif
 
 TEST(TextBaselines, Classify) {
     EXPECT_EQ(TextBaselines::classify("text\n"), BaselineState::Ready);

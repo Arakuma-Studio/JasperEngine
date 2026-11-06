@@ -318,11 +318,33 @@ std::vector<LineChange> editor::LineDiff::compute(std::span<const std::string> o
     return changes;
 }
 
-std::string editor::LineDiff::unified(std::span<const std::string> original, std::span<const std::string> modified,
-                                      const std::vector<LineChange>& changes, std::string_view oldName, std::string_view newName) {
+std::string editor::LineDiff::unified(std::string_view original, std::string_view modified, std::string_view oldName,
+                                      std::string_view newName) {
+    // lines as git compares them: byte for byte with their '\n' ('\r' kept), so a last line
+    // without one differs from the same text with one
+    auto keyed = [](std::string_view text) {
+        std::vector<std::string> lines;
+        size_t start = 0;
+        while (start < text.size()) {
+            const size_t end = text.find('\n', start);
+            const size_t next = end == std::string_view::npos ? text.size() : end + 1;
+            lines.emplace_back(text.substr(start, next - start));
+            start = next;
+        }
+        return lines;
+    };
+    const std::vector<std::string> a = keyed(original);
+    const std::vector<std::string> b = keyed(modified);
+    const std::vector<LineChange> changes = compute(a, b);
     if (changes.empty()) return {};
+
     constexpr int CONTEXT = 3;
     std::string out = "--- a/" + std::string(oldName) + "\n+++ b/" + std::string(newName) + "\n";
+    auto line = [&out](char sign, const std::string& text) {
+        out += sign;
+        out += text;
+        if (text.empty() || text.back() != '\n') out += "\n\\ No newline at end of file\n";
+    };
 
     size_t i = 0;
     while (i < changes.size()) {
@@ -332,20 +354,20 @@ std::string editor::LineDiff::unified(std::span<const std::string> original, std
 
         const int originalStart = std::max(0, changes[i].originalStart - CONTEXT);
         const int modifiedStart = std::max(0, changes[i].modifiedStart - CONTEXT);
-        const int originalEnd = std::min(static_cast<int>(original.size()), changes[last].originalEnd + CONTEXT);
-        const int modifiedEnd = std::min(static_cast<int>(modified.size()), changes[last].modifiedEnd + CONTEXT);
+        const int originalEnd = std::min(static_cast<int>(a.size()), changes[last].originalEnd + CONTEXT);
+        const int modifiedEnd = std::min(static_cast<int>(b.size()), changes[last].modifiedEnd + CONTEXT);
         out += "@@ -" + linediff::hunkRange(originalStart, originalEnd - originalStart) + " +" +
                linediff::hunkRange(modifiedStart, modifiedEnd - modifiedStart) + " @@\n";
 
         int o = originalStart;
         for (size_t c = i; c <= last; c++) {
             const LineChange& change = changes[c];
-            for (; o < change.originalStart; o++) out += " " + original[o] + "\n";
-            for (int r = change.originalStart; r < change.originalEnd; r++) out += "-" + original[r] + "\n";
-            for (int a = change.modifiedStart; a < change.modifiedEnd; a++) out += "+" + modified[a] + "\n";
+            for (; o < change.originalStart; o++) line(' ', a[o]);
+            for (int r = change.originalStart; r < change.originalEnd; r++) line('-', a[r]);
+            for (int m = change.modifiedStart; m < change.modifiedEnd; m++) line('+', b[m]);
             o = change.originalEnd;
         }
-        for (; o < originalEnd; o++) out += " " + original[o] + "\n";
+        for (; o < originalEnd; o++) line(' ', a[o]);
         i = last + 1;
     }
     return out;

@@ -298,11 +298,22 @@ void diffFileTool(const CallPtr& call) {
     call->detach();
     if (buffer) {
         const RepoPath key = keys[0];
-        service->baseContent(key, rev, [reply, key, text = std::move(*buffer)](const VcsResult& result, std::string base) {
-            // a file the revision has not got (new): every line is added
-            const std::vector<std::string> original = result.ok ? LineDiff::splitLines(base) : std::vector<std::string>();
-            const std::vector<std::string> modified = LineDiff::splitLines(text);
-            reply(LineDiff::unified(original, modified, LineDiff::compute(original, modified), key, key), "editor", true);
+        // what a save would write (the file's line endings), against the file the revision has:
+        // a staged rename's source, none for a file HEAD has not got
+        std::string text = FileUtils::withLineEndings(absolute[0], *buffer);
+        const vcs::SnapshotPtr& snapshot = service->snapshot();
+        const vcs::VcsChange* change = snapshot ? snapshot->find(key) : nullptr;
+        if (rev == "HEAD" && change && (change->index == vcs::FileState::Untracked || change->newFile())) {
+            reply(LineDiff::unified({}, text, key, key), "editor", true);
+            return;
+        }
+        const RepoPath source = change && !change->oldPath.empty() ? change->oldPath : key;
+        service->baseContent(source, rev, [call, path, rev, reply, source, key, text = std::move(text)](const VcsResult& result, std::string base) {
+            if (!result.ok) {
+                call->fail("diff_file " + path + ": " + source + " at " + rev + " did not read: " + result.message);
+                return;
+            }
+            reply(LineDiff::unified(base, text, source, key), "editor", true);
         });
         return;
     }

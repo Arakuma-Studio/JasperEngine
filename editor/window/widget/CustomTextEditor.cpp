@@ -1323,6 +1323,8 @@ void CustomTextEditor::addUndoRecord(bool mergeable) {
     record.beforeText = GetText();
     record.beforeCursors = cursors;
     record.timestamp = std::chrono::steady_clock::now();
+    // a step that never merges (Revert Change) takes nothing typed after it either
+    record.isMerged = !mergeable;
 
     // Try to merge with previous record if it's recent
     if (!undoBuffer.empty()) {

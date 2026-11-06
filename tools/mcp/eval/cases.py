@@ -1178,6 +1178,85 @@ CASES = [
                    "reply_must": [r"(?i)speed|\b9\b"]},
         "max_turns": 10,
     },
+    {
+        "id": "guard_code_editor_reload_drops_edits",
+        "kind": "guard",
+        "what_happened": "code_editor reload throws away the human's unsaved buffer edits; an agent asked to pick up a change on "
+                         "disk must say so before reloading a buffer with unsaved edits.",
+        "text_at_issue": "code_editor: '... save, reload (drops unsaved edits), close ...'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; lead review of the trimmed text",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I just ran git checkout on scripts/player.lua. Refresh it in the editor's code editor so it shows the "
+                  "checked-out version.",
+        "mocks": [
+            {"tool": "code_editor", "args": {"action": "status"}, "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12}]})},
+            {"tool": "code_editor", "args": {"action": "reload"}, "result": ok(
+                "Reloaded scripts/player.lua from disk.", {"buffers": [{"path": "scripts/player.lua", "unsaved": False}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n-    self.speed = 5\n+    self.speed = 9\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"must_not_call": [{"tool": "code_editor", "args": {"action": "reload"}},
+                                     {"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)unsaved"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniforms_read",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameters are read with get_shader_uniforms pass_index; the scene settings "
+                         "list the pass but not its shader's parameters.",
+        "text_at_issue": "get_shader_uniforms pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "The Main scene has a vignette post-process pass. Which parameters does its shader take, and what are they set "
+                  "to now? Don't change anything.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "args": {"pass_index": 0}, "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0], "effective": [0.4, 0, 0, 0],
+                              "source": "pass"},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0], "effective": [0.75, 0, 0, 0],
+                              "source": "pass"}]})},
+        ],
+        "checks": {"calls": [{"tool": "get_shader_uniforms", "args": {"pass_index": 0}}],
+                   "must_not_call": ["set_shader_uniform", "set_scene_settings"],
+                   "reply_must": [r"(?i)strength", r"(?i)radius"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniform_set",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameter is set with set_shader_uniform pass_index, not by forking the shader or "
+                         "rewriting the pass list.",
+        "text_at_issue": "set_shader_uniform pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "In the Main scene, make the vignette post-process pass stronger: set its strength to 0.8.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0]},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0]}]})},
+            {"tool": "set_shader_uniform", "args": {"pass_index": 0}, "result": ok(
+                "Set strength on post-process pass 0.", {"pass_index": 0, "name": "strength", "declared": True})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"pass_index": 0, "name": "strength"}}],
+                   "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
+        "max_turns": 10,
+    },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {
         "id": "dialog_fills_a_name_prompt",

@@ -110,7 +110,7 @@ namespace {
 
     ProcessResult runGit(const fs::path& git, const fs::path& cwd, const std::vector<std::pair<std::string, std::string>>& env,
                          std::vector<std::string> args, int timeoutMs, std::string stdinData = {},
-                         const jobs::CancelToken* cancel = nullptr, bool literal = true) {
+                         const jobs::CancelToken* cancel = nullptr, bool literal = true, size_t maxOutputBytes = 0) {
         ProcessSpec spec;
         spec.exe = git;
         spec.cwd = cwd;
@@ -124,6 +124,7 @@ namespace {
         spec.stdinData = std::move(stdinData);
         spec.timeoutMs = timeoutMs;
         spec.cancel = cancel;
+        if (maxOutputBytes > 0) spec.maxOutputBytes = maxOutputBytes;
         return runProcess(spec);
     }
 
@@ -327,7 +328,9 @@ fs::path GitProvider::gitDir() const {
     std::lock_guard<std::mutex> lock(gitDirMutex);
     if (!gitDirPath) {
         const ProcessResult result = git({"rev-parse", "--absolute-git-dir"});
-        gitDirPath = result.ok() ? pathFromUtf8(trimmed(result.out)) : fs::path();
+        // a failure (a timeout, a repository not there yet) is asked again next time
+        if (!result.ok()) return fs::path();
+        gitDirPath = pathFromUtf8(trimmed(result.out));
     }
     return *gitDirPath;
 }
@@ -499,11 +502,13 @@ bool GitProvider::validRevision(std::string_view rev) const {
     return !digits.empty() && digits.size() <= 4 && std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
 
-VcsResult GitProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out) {
+VcsResult GitProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out, size_t maxBytes) {
     if (!validRevision(rev)) return VcsResult::failure("not a revision: " + std::string(rev));
-    const ProcessResult result = git({"cat-file", "blob", std::string(rev) + ":" + path});
+    ProcessResult result = runGit(cfg.executable, cfg.repoRoot, env, {"cat-file", "blob", std::string(rev) + ":" + path},
+                                  cfg.localTimeoutMs, {}, nullptr, true, keptOutputBytes(maxBytes));
     if (!result.ok()) return resultOf(result);
-    out = result.out;
+    out = std::move(result.out);
+    if (maxBytes != SIZE_MAX && out.size() > maxBytes) out.resize(maxBytes + 1);
     return VcsResult::success();
 }
 

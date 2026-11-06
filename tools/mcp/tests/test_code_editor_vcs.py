@@ -145,3 +145,38 @@ async def test_untracked_and_preference(ed: Editor):
     finally:
         await ed.call("set_project_settings", values={"editor.vcs.code_editor_changes": True})
     await ed.call("code_editor", action="close", path=SCRIPT)
+
+
+async def test_buffer_diff_applies_to_a_renamed_file(ed: Editor):
+    await setup(ed)
+    old, new = "scripts/Old.lua", "scripts/New.lua"
+    (ed.project / old).write_text("x\ny\nz")
+    git(ed, "add", old)
+    git(ed, "commit", "-q", "-m", "old")
+    git(ed, "mv", old, new)
+    (ed.project / new).write_text("x\nY\nz\n")
+    await ed.call("get_vcs_status", refresh=True)
+    try:
+        # the staged rename compares with the file it came from
+        await ed.call("code_editor", action="open", path=new)
+        item = await buffer_when(ed, new, lambda b: len(changes(b)) == 2, "the rename's two changes")
+        ed.check_eq(changes(item)[0], {"kind": "modified", "lines": [2, 2], "base_lines": [2, 2]}, f"{item}")
+        await ed.call("code_editor", action="revert_change", path=new, line=2)
+
+        # the buffer ("x\ny\nz\n") against HEAD's file without a final newline: git's patch
+        buffered = await ed.call("diff_file", path=new)
+        diff = buffered["diff"]
+        ed.check(diff.startswith(f"--- a/{old}\n+++ b/{new}\n"), f"{buffered}")
+        ed.check("-z\n\\ No newline at end of file\n+z\n" in diff, f"{buffered}")
+        patch = ed.scratch.home / "buffer.patch"
+        patch.write_text(diff.replace(f"--- a/{old}", f"--- a/{new}"))
+        git(ed, "apply", "--cached", str(patch))
+        ed.check_eq(git(ed, "show", f":{new}"), "x\ny\nz\n", "the patch on the index gives the buffer")
+
+        # a revision the file cannot be read at is an error, never an empty file
+        await ed.check_error("diff_file", path=new, rev="HEAD~5", contains="did not read")
+    finally:
+        await ed.call("code_editor", action="reload", path=new)
+        await ed.call("code_editor", action="close", path=new)
+        git(ed, "reset", "-q", "--hard")
+        await ed.call("get_vcs_status", refresh=True)

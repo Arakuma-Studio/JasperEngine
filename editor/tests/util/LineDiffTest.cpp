@@ -107,20 +107,33 @@ TEST(LineDiff, EditCap) {
 }
 
 TEST(LineDiff, Unified) {
-    const Lines base = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"};
-    const Lines edited = {"1", "two", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"};
-    const std::string text = LineDiff::unified(base, edited, LineDiff::compute(base, edited), "s.lua", "s.lua");
-    EXPECT_EQ(text,
+    const std::string base = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n";
+    const std::string edited = "1\ntwo\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n";
+    EXPECT_EQ(LineDiff::unified(base, edited, "s.lua", "s.lua"),
               "--- a/s.lua\n+++ b/s.lua\n"
               "@@ -1,5 +1,5 @@\n 1\n-2\n+two\n 3\n 4\n 5\n"
               "@@ -10,3 +10,4 @@\n 10\n 11\n 12\n+13\n");
-    EXPECT_TRUE(LineDiff::unified(base, base, {}, "s.lua", "s.lua").empty());
+    EXPECT_TRUE(LineDiff::unified(base, base, "s.lua", "s.lua").empty());
 
     // a deletion at the start: the empty side names the line before it
-    const Lines longer = {"1", "2", "3"};
-    const Lines shorter = {"2", "3"};
-    EXPECT_EQ(LineDiff::unified(longer, shorter, LineDiff::compute(longer, shorter), "x", "x"),
-              "--- a/x\n+++ b/x\n@@ -1,3 +1,2 @@\n-1\n 2\n 3\n");
+    EXPECT_EQ(LineDiff::unified("1\n2\n3\n", "2\n3\n", "x", "x"), "--- a/x\n+++ b/x\n@@ -1,3 +1,2 @@\n-1\n 2\n 3\n");
+    // a new file; a rename names both sides
+    EXPECT_EQ(LineDiff::unified("", "a\n", "x", "x"), "--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+a\n");
+    EXPECT_EQ(LineDiff::unified("a\n", "b\n", "old", "new"), "--- a/old\n+++ b/new\n@@ -1 +1 @@\n-a\n+b\n");
+}
+
+// What git prints, so `git apply` takes it: the counts have no phantom last line, a last line
+// without a newline is marked, '\r' is part of a line
+TEST(LineDiff, UnifiedMatchesGit) {
+    EXPECT_EQ(LineDiff::unified("a\nb", "a\nb\n", "x", "x"),
+              "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+b\n");
+    EXPECT_EQ(LineDiff::unified("a\nb\n", "a\nB", "x", "x"),
+              "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\n-b\n+B\n\\ No newline at end of file\n");
+    EXPECT_EQ(LineDiff::unified("a\nb", "a\nb\nc", "x", "x"),
+              "--- a/x\n+++ b/x\n@@ -1,2 +1,3 @@\n a\n-b\n\\ No newline at end of file\n+b\n+c\n\\ No newline at end of file\n");
+    EXPECT_EQ(LineDiff::unified("a\r\nb\r\n", "a\r\nB\r\n", "x", "x"),
+              "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\r\n-b\r\n+B\r\n");
+    EXPECT_EQ(LineDiff::unified("a\nb\n", "a\r\nb\n", "x", "x"), "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-a\n+a\r\n b\n");
 }
 
 TEST(LineDiff, SplitLinesDropsCarriageReturns) {

@@ -447,7 +447,8 @@ namespace jasperengine::editor {
         void moveSelectedText(const TextPosition& destPos);
         std::string getRange(const TextPosition& start, const TextPosition& end) const;
 
-        // mergeable: may join the previous record when it is recent (typing); a revert never does
+        // mergeable: may join the previous record when it is recent (typing); a revert never does,
+        // and nothing typed right after it joins the revert's
         void addUndoRecord(bool mergeable = true);
         void finalizeUndoRecord();
 

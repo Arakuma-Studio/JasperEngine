@@ -5,6 +5,7 @@
 // 2026-11-04-code-editor-git-design.md 6.6): who inherits them, and a change flags exactly the
 // components drawing with the default (no GPU: the flags the render system rewrites blocks from).
 
+#include "LogCapture.h"
 #include "Scene.h"
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
@@ -53,8 +54,14 @@ TEST(SceneDefaultUniforms, InheritedOnlyWithTheDefault) {
     EXPECT_FALSE(scene.removeDefaultShaderUniform(ShaderType::MESH, "tint"));
     EXPECT_EQ(scene.getInheritedShaderUniforms(ShaderType::MESH, ""), nullptr);
 
-    // a type without a scene default refuses
-    scene.setDefaultShaderUniform(ShaderType::DEPTH, "tint", 1.0f);
+    // a type without a scene default refuses, and says so once per call site (an earlier test
+    // may have had that once already)
+    const test::LogCapture log;
+    for (int i = 0; i < 3; i++) {
+        scene.setDefaultShaderUniform(ShaderType::DEPTH, "tint", 1.0f);
+        scene.removeDefaultShaderUniform(ShaderType::DEPTH, "tint");
+    }
+    EXPECT_LE(log.count(D_LOG_ERROR, "no scene default shader"), 2u);
     EXPECT_FALSE(scene.hasDefaultShaderUniform(ShaderType::DEPTH, "tint"));
     EXPECT_TRUE(scene.getDefaultShaderUniforms(ShaderType::DEPTH).empty());
     // the reserved members are the engine's

@@ -72,7 +72,7 @@ namespace {
 
     ProcessResult runSvn(const fs::path& svn, const fs::path& cwd, const std::vector<std::pair<std::string, std::string>>& env,
                          std::vector<std::string> args, int timeoutMs, const jobs::CancelToken* cancel = nullptr,
-                         const std::vector<std::string>& globalArgs = {}) {
+                         const std::vector<std::string>& globalArgs = {}, size_t maxOutputBytes = 0) {
         ProcessSpec spec;
         spec.exe = svn;
         spec.cwd = cwd;
@@ -84,6 +84,7 @@ namespace {
         for (std::string& arg : args) spec.args.push_back(std::move(arg));
         spec.timeoutMs = timeoutMs;
         spec.cancel = cancel;
+        if (maxOutputBytes > 0) spec.maxOutputBytes = maxOutputBytes;
         return runProcess(spec);
     }
 
@@ -372,11 +373,13 @@ VcsResult SvnProvider::branchInfo(VcsBranchInfo& out) {
     return VcsResult::success();
 }
 
-VcsResult SvnProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out) {
+VcsResult SvnProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out, size_t maxBytes) {
     if (!validRevision(rev)) return VcsResult::failure("not a revision: " + std::string(rev));
-    const ProcessResult result = svn({"cat", "-r", std::string(rev), "--", pegged(path)});
+    ProcessResult result = runSvn(cfg.executable, cfg.repoRoot, env, {"cat", "-r", std::string(rev), "--", pegged(path)},
+                                  cfg.localTimeoutMs, nullptr, cfg.svnGlobalArgs, keptOutputBytes(maxBytes));
     if (!result.ok()) return resultOf(result);
-    out = result.out;
+    out = std::move(result.out);
+    if (maxBytes != SIZE_MAX && out.size() > maxBytes) out.resize(maxBytes + 1);
     return VcsResult::success();
 }
 
@@ -388,8 +391,9 @@ VcsResult SvnProvider::textDiff(const RepoPath& path, std::string_view rev, std:
         args.push_back(std::string(rev));
     }
     args.push_back("--");
-    // svn diff takes a working copy path as it is: a peg escape ("a.lua@") names no file there
-    args.push_back(path);
+    // svn 1.14 diff reads a peg revision only with -r: against BASE "a.lua@" names no file,
+    // against a revision "icon@2x.lua" is a peg revision "2x.lua"
+    args.push_back(rev != "BASE" ? pegged(path) : std::string(path));
     const ProcessResult result = svn(std::move(args));
     // a versioned file: its diff, empty when it has no changes
     if (result.ok()) {

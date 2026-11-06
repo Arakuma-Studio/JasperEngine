@@ -676,11 +676,13 @@ Recorded during the implementation (branch `dc/code-editor-git`).
    text diff viewer, `diff_file`) and in `SceneDiffTracker`'s baseline reads (the Scene Diff, the Hierarchy and
    Inspector markers, `diff_scene`, `revert_to_baseline`). A revision number still reads that revision. Red control:
    `TextBaselines.SvnBaselineIsBase` (an unmodified file of a working copy behind the server diffs empty).
-2. **`SvnProvider::textDiff` never diffed**: it passed the peg-escaped path (`a.lua@`), which `svn diff` takes
-   literally for a working copy (1.14: "node 'a.lua@' was not found"), and its fallback then showed the whole file as
-   added; it also took svn's empty diff of an unchanged file for an unversioned one. Found by the test above; fixed:
-   the plain path, an empty diff of a versioned file is empty, an unversioned file (svn refuses to diff it) is still all
-   added. Same test (its red run reverts both fixes).
+2. **`SvnProvider::textDiff` never diffed**: it passed the peg-escaped path (`a.lua@`), which `svn diff` without `-r`
+   takes literally (1.14.1: "node 'a.lua@' was not found"), and its fallback then showed the whole file as added; it
+   also took svn's empty diff of an unchanged file for an unversioned one. svn 1.14.1's rule, checked in the build
+   image: `diff` against BASE (no `-r`) takes the path as it is, `diff -r N` reads a peg revision ("icon@2x.lua" is
+   "icon" at "2x.lua") and needs the escape. Fixed: the plain path against BASE, the escaped one with `-r`; an empty
+   diff of a versioned file is empty; an unversioned file (svn refuses to diff it) is still all added. Tests
+   `TextBaselines.SvnBaselineIsBase` and `SvnProvider.EndToEnd` (an `icon@2x.lua` diffed against BASE and r1).
 3. **Prebuilt players**: the spec missed the cooked scene format (`engine/core/serialization/SceneSettingsCodec.cpp`).
    The five value sets end the scene settings record, after S57's (1.1) and S54's (1.2) fields: `FORMAT_MINOR` goes to
    3 (content format 1.3). An older reader skips them (the record is length-prefixed), a 1.3 reader of an older file
@@ -701,3 +703,7 @@ Recorded during the implementation (branch `dc/code-editor-git`).
 8. **Shared helpers**: `ProjectChecks::shaderTypeForComponent` maps components to shader types (no second mapping);
    `Catalog::getShaderUniformChain` and `Catalog::getDefaultShaderUse` are the one place the Inspector and MCP build
    the value chain and the default shader's users from.
+9. **A player of an older content minor** (1.2) reads a 1.3 scene and skips the scene's default shader values (the
+   record is length-prefixed), without a warning of its own. Not changed: a prebuilt export takes only a player of the
+   editor's own version (`PlayerRuntimes::find`), so its minor is the editor's; `--allow-player-mismatch` already
+   warns (W-PLAYER-MISMATCH) and publish verify refuses that build.
