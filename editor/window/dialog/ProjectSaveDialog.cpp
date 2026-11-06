@@ -3,6 +3,8 @@
 
 #include "ProjectSaveDialog.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
+#include "util/ShellEnv.h"
 #include "Backend.h"
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
@@ -59,13 +61,9 @@ void ProjectSaveDialog::show() {
 
         ImGui::SameLine();
         if (ImGui::Button("Browse")) {
-            std::string homeDirPath;
-            #ifdef _WIN32
-            homeDirPath = std::filesystem::path(getenv("USERPROFILE")).string();
-            #else
-            homeDirPath = std::filesystem::path(getenv("HOME")).string();
-            #endif
-            
+            // the user's home folder (none when the system has none to give)
+            const std::string homeDirPath = FileUtils::pathToUtf8(ShellEnv::homeDirectory());
+
             std::string selectedPath = FileDialogs::openFileDialog(homeDirPath, 0, true);
             
             if (!selectedPath.empty()) {

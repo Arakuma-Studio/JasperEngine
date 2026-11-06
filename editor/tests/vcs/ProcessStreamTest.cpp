@@ -123,6 +123,6 @@ TEST(ProcessExec, StreamArgumentsAndKill) {
     EXPECT_FALSE(process.writeStdin("x", 1));
     // and a relative executable never spawns
     ProcessStream relative;
-    spec.exe = "je_vcs_process_helper";
+    spec.exe = fs::relative(helper(), fs::current_path());
     EXPECT_FALSE(relative.start(spec, {}, error));
 }

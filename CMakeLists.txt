@@ -315,7 +315,9 @@ elseif(API_BACKEND STREQUAL "mac")
 
     list(APPEND BACKEND_LIBS
         "-framework AppKit"
+        "-framework CoreFoundation"
         "-framework CoreGraphics"
+        "-framework CoreText"
         "-framework GameController"
         "-framework Metal"
         "-framework MetalKit"
@@ -355,6 +357,9 @@ add_definitions("-DJASPERENGINE_EDITOR")
 # ImGui reports the items it draws through its test-engine hooks (editor/util/UiItemLocator.cpp,
 # MCP find_ui_item); they run only while a lookup records
 add_definitions("-DIMGUI_ENABLE_TEST_ENGINE")
+# 32-bit characters: a character beyond U+FFFF (emoji, rare CJK) typed or pasted into an editor
+# field stays itself instead of becoming U+FFFD (docs/editor/text-and-languages.md)
+add_definitions("-DIMGUI_USE_WCHAR32")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
@@ -989,6 +994,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
+    ${EDITOR_DIR}/util/TextEncoding.cpp
+    ${EDITOR_DIR}/util/SystemFonts.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
     ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
@@ -1431,6 +1438,9 @@ list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(pi
 jasperengine_skip_unity_build(
     REASON "the Scene view picking and tools (S26): per-file helpers (PI, now, project to view)"
     SOURCES ${JASPERENGINE_EDITOR_SCENEVIEW_SOURCES})
+jasperengine_skip_unity_build(
+    REASON "its own static copy of ImGui's stb_truetype, which another unit's stb_truetype.h would clash with"
+    SOURCES ${EDITOR_DIR}/util/SystemFonts.cpp)
 
 # Unity build: these sources keep file-local helpers or types (Registry, fail, lower, TempDir, ...)
 # whose names another editor or editor test source defines too (docs/specs/S33-build-speed.md M8)

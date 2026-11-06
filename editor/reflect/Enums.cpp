@@ -661,7 +661,7 @@ namespace {
         {v(ShadowUpdateMode::ON_DEMAND), "onDemand", "On Demand", "ShadowUpdateMode::ON_DEMAND", "on_demand"},
     };
 
-    // S57's: the tokens are the engine's names (OrderIndependentTransparency::getModeName)
+    // S57's: the tokens are the engine's transparency names
     constexpr EnumItem kTransparencyModeItems[] = {
         {v(TransparencyMode::SORTED), "sorted", "Sorted", "TransparencyMode::SORTED"},
         {v(TransparencyMode::ORDER_INDEPENDENT), "order_independent", "Order Independent", "TransparencyMode::ORDER_INDEPENDENT"},

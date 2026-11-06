@@ -9,7 +9,6 @@
 #include <array>
 #include <cmath>
 #include <cstring>
-#include <fstream>
 #include <random>
 
 using namespace jasperengine;
@@ -78,13 +77,6 @@ std::vector<uint8_t> GltfBuild::glb() const{
     nlohmann::ordered_json out = json;
     out["buffers"] = nlohmann::ordered_json::array({{{"byteLength", bin.size()}}});
     return GltfDocument::writeGlb(out, bin);
-}
-
-void GltfBuild::write(const std::filesystem::path& file) const{
-    std::filesystem::create_directories(file.parent_path());
-    const std::vector<uint8_t> bytes = glb();
-    std::ofstream out(file, std::ios::binary);
-    out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
 }
 
 nlohmann::ordered_json test::addGridPrimitive(GltfBuild& build, const GridOptions& options){

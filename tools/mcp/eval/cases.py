@@ -7,8 +7,6 @@ result dump_surface.py recorded from a built editor; hand-written ones copy the 
 
 import json
 
-KINDS = ("bad", "guard", "control")
-
 PLAYER_LUA = """---@class player : ScriptInstance
 local player = {
     properties = {
@@ -1431,8 +1429,8 @@ CASES = [
         "kind": "bad",
         "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
                          "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
-        "text_at_issue": "fork_shader: 'Copy a built-in shader, or a library one (source), ... material (the submeshes "
-                         "drawing source, or submesh)'; source: 'keeps its manifest and @role'",
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader ... material (submeshes drawing "
+                         "source)'; source: 'keeps its manifest and @role'",
         "source": "water-reflections spec F10 (Doriax d62f09407)",
         "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "
                   "The boats must keep floating on it. Set up an editable copy of the shader for me.",
@@ -1474,6 +1472,29 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "set_properties"}],
                    "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_typing_utf16_units",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "A character beyond U+FFFF typed on Windows or Android reaches the game as two UTF-16 halves; "
+                         "reproducing a typing bug from there on another platform takes send_input's per_unit, which the "
+                         "plain text event (a paste) never exercises.",
+        "text_at_issue": "send_input description: 'text: text, per_unit (one event per UTF-16 unit, as Windows/Android type)'",
+        "source": "unicode-text spec (docs/superpowers/specs/2026-11-04-unicode-text-design.md, M1)",
+        "prompt": "Players on Windows say an emoji typed into the name field of the game turns into two boxes. The game is "
+                  "playing and the name field already has focus. Type \U0001F600 into it the way Windows delivers typed "
+                  "characters, then tell me what the field's text is now.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}, "result": ok(
+                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged. "
+                                                   "Script coroutines: 0, timers: 0.", {"state": "playing"})},
+            {"tool": "eval_lua", "result": ok("\"\U0001F600\"", {"result": "\U0001F600"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "text", "per_unit": True}]}}]},
         "max_turns": 12,
     },
     {

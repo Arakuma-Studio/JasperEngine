@@ -155,3 +155,16 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   and more). Owner's rule: no full suites anywhere; the brief's gate is now the WERROR editor build, the feature's
   own tests and red controls, filtered affected suites, compile-only web/Android when relevant, and lints. Agents
   revived in batches, closest to landing first.
+- 2026-11-06: a second stop (the session account's login was revoked, about 17 hours lost). The slot queue kept
+  running the agents' detached jobs meanwhile. Merged 187 more upstream commits (the sound layer S35-S40) into
+  `main` and pushed; all 16 agents revived to read their job results, merge `main` once more, finish and report.
+- 2026-11-06 18:3x: owner's top priority: mesh-memory, sprite-batching, unicode-text, platform-lifecycle (in that
+  order), and permission to rent Hetzner VMs. `slot` now runs only priority order while a priority-1 job waits.
+  Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
+  (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
+  (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
+- 2026-11-06 18:4x: owner: time efficiency is the priority. Six more Hetzner cpx51 boxes (eight in total, about
+  $3.55/h, 48 h limit), assigned per feature in [BOXES.md](BOXES.md), each with one shared ccache per box.
+  The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
+  controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
+  local slots only finish the jobs already running.

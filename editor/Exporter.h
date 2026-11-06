@@ -335,6 +335,9 @@ namespace jasperengine::editor {
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
         bool cookModels();
+        // False, with the error set, when an asset sits where the engine loads an FBX's import
+        // from (<relPath>.glb, relative to the assets)
+        bool checkFbxImportPathFree(const fs::path& relPath);
         // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);

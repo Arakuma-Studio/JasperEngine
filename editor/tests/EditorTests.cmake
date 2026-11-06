@@ -42,7 +42,9 @@ if(WIN32 OR APPLE)
     list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
 endif()
 
-# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
+# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods).
+# Like je_log_crash_helper, it has no UTF-8 manifest: it stands for the programs the editor
+# runs, which write in the system's code page.
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
 set_target_properties(je_vcs_process_helper PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
