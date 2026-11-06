@@ -1107,7 +1107,9 @@ async def test_guide_names_exist(ed: Editor):
               "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",
               "local_rotation", "set_humanoid", "animation_type", "extra_mapped", "human_scale", "extra_bones",
               "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
-              "left_foot", "right_foot"}
+              "left_foot", "right_foot",
+              # audio cues (S40): the .anim audio item's keys, which edit_animation takes (its lean schema leaves them out)
+              "follow_speed", "pitch_semitones", "state_exit", "volume_db"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

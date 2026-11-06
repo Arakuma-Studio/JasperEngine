@@ -408,7 +408,9 @@ async def test_r4_audio_analyze():
                  "the licence an import writes")
         other = (await mcp(["assets/sounds/bed.ogg"]))[0]
         check_eq(other["import"]["fade_in_frames"], 96, "analyze_audio plays the meta's 2 ms at 48 kHz")
-        compare([item], [other], "the library loop against its imported file")
+        # (analyze_audio's tempo grid, `music` (S39 R17), comes from the project's cache and the clip's .meta:
+        # the CLI reads no project, its contract says)
+        compare([item], [other], "the library loop against its imported file", drop=("n", "path", "differences_vs_1", "import", "music"))
         check(item["defects"]["region"]["fade_in_frames"] == 96, f"the played region's defects: {item['defects'].get('region')}")
         raw = cli("audio-analyze", "--json", "--type", "ambience", lib.path(LOOP), library=lib.root).json["items"][0]
         check("edge_click" in [n["id"] for n in raw["notes"]], f"the file as it is clicks at its start: {raw['notes']}")
