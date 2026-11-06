@@ -30,6 +30,10 @@
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "component/CameraComponent.h"
+#include "render/LightingTiers.h"
+#include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -80,6 +84,11 @@ namespace {
         FACT_HEIGHT_FOG      = 1u << 9, // a Fog of type Height (the sky composite)
         FACT_VOLUMETRIC_FOG  = 1u << 10, // its volumetric fog (every mesh gets a depth program)
         FACT_CLOUDS          = 1u << 11, // Volumetric Clouds (every mesh gets a depth program)
+        // S57 (RenderSystem::updateLightingFeatures)
+        FACT_LOCAL_LIGHTS    = 1u << 12, // a point or spot Light (Light Mode Tiled lists them per tile)
+        FACT_CONTACT_LIGHT   = 1u << 13, // a shadowed directional or spot light with contact shadows
+        FACT_CAPSULE_CASTERS = 1u << 14, // Capsule Shadow Casters
+        FACT_OIT_CAMERA      = 1u << 15, // a camera drawing Order Independent
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -138,6 +147,19 @@ namespace {
                 if (light->shadows){
                     facts |= FACT_SHADOW_LIGHTS;
                 }
+                if (light->type != LightType::DIRECTIONAL){
+                    facts |= FACT_LOCAL_LIGHTS;
+                }
+                if (light->shadows && light->contactShadows && light->type != LightType::POINT){
+                    facts |= FACT_CONTACT_LIGHT;
+                }
+            }
+            if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
+                facts |= FACT_CAPSULE_CASTERS;
+            }
+            if (const CameraComponent* camera = registry->findComponent<CameraComponent>(entity)){
+                if (camera->transparencyMode == TransparencyMode::ORDER_INDEPENDENT)
+                    facts |= FACT_OIT_CAMERA;
             }
             if (const FogComponent* fog = registry->findComponent<FogComponent>(entity)){
                 facts |= FACT_FOG;
@@ -200,17 +222,19 @@ namespace {
         // RenderSystem::checkLightsAndShadow
         const LightState lightState = scene->getLightState();
         environment.lights = lightState == LightState::ON || (lightState == LightState::AUTO && (facts & FACT_LIGHTS));
-        environment.lightCapacity = RenderSystem::getLightCapacity(scene->getMaxLightsPerObject());
+        // the device tier in effect while collecting (QualityResolver, as RenderSystem reads them)
+        environment.lightCapacity = RenderSystem::getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
         environment.shadows = (facts & FACT_SHADOW_LIGHTS) != 0;
         environment.ibl = (facts & FACT_SKY_IBL) != 0;
         environment.reflectionProbes = (facts & FACT_PROBES) != 0;
         environment.fog = (facts & FACT_FOG) != 0;
         // RenderSystem::update: the height fog variants, the atmosphere's depth programs
-        environment.atmosphereDepth = (facts & (FACT_VOLUMETRIC_FOG | FACT_CLOUDS)) != 0;
+        environment.atmosphereDepth = (facts & (FACT_VOLUMETRIC_FOG | FACT_CLOUDS)) != 0 &&
+                                      QualityResolver::volumetrics(AtmosphereQuality::HIGH) != AtmosphereQuality::OFF;
         environment.lights2D = (facts & FACT_LIGHTS_2D) != 0;
         // RenderSystem::loadLights2D: a shadow-casting 2D light with an occluder to cast
         environment.shadows2D = (facts & FACT_SHADOW_LIGHTS_2D) && (facts & FACT_OCCLUDERS_2D);
-        environment.ssao = scene->isSSAOEnabled();
+        environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
         // a scene default shader reading the scene depth with its default features is drawn by
@@ -221,7 +245,14 @@ namespace {
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
             postProcessReadsDepth(scene);
-        environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
+        environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
+        // S57: capsule shadows of a scene enabling them; Tiled and contact shadows follow the
+        // device's tier as well (lightingStates adds their other state); OIT a camera asking
+        environment.capsuleShadows = environment.lights && environment.shadows && scene->isCapsuleShadowsEnabled() &&
+                                     (facts & FACT_CAPSULE_CASTERS);
+        environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
+        environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+        environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         return environment;
     }
 
@@ -230,7 +261,9 @@ namespace {
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
-            (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u);
+            (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
+            (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
+            (e.oit ? (1u << 29) : 0u);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -238,6 +271,9 @@ namespace {
     // tier, which an export filters per backend: ShadowTiers::cooksHighFilters) and when a
     // script sets the quality
     std::vector<bool> shadowHQStates(Scene* scene, bool scriptsSetShadowQuality){
+        // a device tier capping the shadows below High has no High filters
+        if (!ShadowTiers::usesHighFilters(QualityResolver::shadowTier(ShadowTier::ULTRA)))
+            return {false};
         if (scriptsSetShadowQuality)
             return {false, true};
         switch (scene->getShadowQuality()){
@@ -321,6 +357,26 @@ namespace {
                 MeshShaderEnvironment other = environments[e];
                 other.litQualityHigh = !other.litQualityHigh;
                 if (distinct.insert(environmentBits(other)).second){
+                    environments.push_back(other);
+                }
+            }
+        }
+        // S57: the device tier decides Light Mode Automatic (Per Object on Low) and contact shadows
+        // (off on Low) at run time, so both states of each ship
+        {
+            const size_t tiered = environments.size();
+            for (size_t e = 0; e < tiered; e++){
+                MeshShaderEnvironment other = environments[e];
+                bool changed = false;
+                if (other.tiledLights && LightingTiers::getLightMode() == LightMode::AUTOMATIC){
+                    other.tiledLights = false;
+                    changed = true;
+                }
+                if (other.contactShadows){
+                    other.contactShadows = false;
+                    changed = true;
+                }
+                if (changed && distinct.insert(environmentBits(other)).second){
                     environments.push_back(other);
                 }
             }
@@ -577,6 +633,9 @@ namespace {
     private:
         Scene* scene;
         bool lentBaseColor = false;     // the mesh being collected shows a fluid's output
+        // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
+        // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
+        bool meshHasLevels = false;
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -624,7 +683,8 @@ namespace {
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
+            const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
+            const uint16_t depthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);
             const bool hasPass = RenderSystem::hasExtraPass(submesh, terrain != nullptr);
             const uint16_t passShaderId = hasPass ? ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh)) : 0;
             // (a terrain is never deformed)
@@ -653,11 +713,29 @@ namespace {
                 for (const MeshShaderEnvironment& environment : environments){
                     const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
                     // the reference takes the variant's built-in Lit defines (lobes, Lit Quality)
-                    const uint16_t meshShaderId = ShaderPool::registerCustomShader(
-                        RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines));
+                    const std::string meshShader = RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines);
+                    const uint16_t meshShaderId = ShaderPool::registerCustomShader(meshShader);
                     insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
+                    // its LOD cross-fade variant (spec S54 R10): only for a mesh that can fade,
+                    // so with Cross Fade or Mesh LOD off a build ships none
+                    if (meshMayFade(mesh, submesh, meshShader, depthShaderId))
+                        insertKeys(ShaderType::MESH, variant.properties | ShaderPool::getLodFadeProperty(), meshShaderId);
+                    // the OIT render of an alpha-blended submesh (RenderSystem::loadSubmeshOit): its
+                    // material's blend decides at load, so any that may blend
+                    if (environment.oit && !hasPass && !terrain &&
+                            (submesh.material.blendMode == MaterialBlendMode::ALPHA || submesh.material.blendMode == MaterialBlendMode::AUTO)){
+                        insertKeys(ShaderType::MESH, variant.properties | ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT), meshShaderId);
+                    }
                     if (variant.depth){
                         insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
+                    }
+                    // its GPU Instancing variants (with the project's setting, RenderSystem::loadMesh)
+                    const SubmeshBatchVariant batch = RenderSystem::getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShader, depthShaderSrc);
+                    if (batch.properties){
+                        insertKeys(ShaderType::MESH, batch.properties, meshShaderId);
+                    }
+                    if (batch.depthProperties){
+                        insertKeys(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
                     }
                     if (variant.gbuffer){
                         keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
@@ -686,6 +764,7 @@ namespace {
             const bool sprite = registry->findComponent<SpriteComponent>(entity) != nullptr;
             const bool tilemap = registry->findComponent<TilemapComponent>(entity) != nullptr;
             const bool polygon = registry->findComponent<MeshPolygonComponent>(entity) != nullptr;
+            meshHasLevels = !(terrain || sprite || tilemap || polygon);
             if (terrain || sprite || tilemap || polygon){
                 // A terrain without a height map is never built, see MeshSystem::createOrUpdateTerrain
                 if (terrain && terrain->heightMap.empty()){
@@ -726,6 +805,14 @@ namespace {
             }
         }
 
+        // RenderSystem's rules (updateMeshLods, loadMesh's lodFadeCapable): levels and a fade
+        // for a triangle mesh of the built-in shaders, with the scene's and its own settings on
+        bool meshMayFade(const MeshComponent& mesh, const Submesh& submesh, const std::string& meshShader, uint16_t depthShaderId) const{
+            return meshHasLevels && scene->isMeshLodEnabled() && scene->isMeshLodCrossFade() && mesh.lodEnabled &&
+                   mesh.lodFadeMode == LodFadeMode::CROSS_FADE && submesh.primitiveType == PrimitiveType::TRIANGLES &&
+                   (meshShader.empty() || ShaderReference::isBuiltin(meshShader)) && depthShaderId == 0;
+        }
+
         // the submesh as it draws with a texture lent to its base colour
         static Submesh lent(Submesh submesh){
             static Framebuffer lentOutput;   // never made: it only makes the texture non-empty
@@ -738,6 +825,7 @@ namespace {
         // and the renderer settings of the mesh they load into
         void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed,
                                    bool vatMesh = false){
+            meshHasLevels = true;
             const InstancedMeshComponent* instmesh = registry ? registry->findComponent<InstancedMeshComponent>(entity) : nullptr;
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);
@@ -1181,6 +1269,51 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (!scene || !sceneContent.registry){
         return;
     }
+    // Every Device Tier a player can apply, and the thermal steps that move between them (spec
+    // S56): its render scale (the uber pass's upscale), post effects it turns off, Lit Quality,
+    // shadow tier, light count and volumetrics change the variants the game draws with. The
+    // project's settings decide which states exist; each distinct one is collected once.
+    QualityResolver::pushState();
+    std::set<std::string> resolved;
+    auto collectUnderTier = [&](){
+        const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(scene->getPostProcessing());
+        const std::string signature = std::to_string(tiers.uberFeatures) + (tiers.uber ? "u" : "") + (tiers.tailColor ? "t" : "") +
+            (QualityResolver::ssao(true) ? "s" : "") + (QualityResolver::bloom(true) ? "b" : "") +
+            std::to_string((int)QualityResolver::litQuality(LitQuality::HIGH)) +
+            std::to_string((int)QualityResolver::shadowTier(ShadowTier::ULTRA)) +
+            std::to_string(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject())) +
+            (QualityResolver::volumetrics(AtmosphereQuality::HIGH) == AtmosphereQuality::OFF ? "v" : "");
+        if (!resolved.insert(signature).second)
+            return;
+        collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier);
+    };
+    QualityResolver::setTier(std::nullopt);
+    QualityResolver::forceThermalResponse(ThermalState::Nominal);
+    collectUnderTier();
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
+        QualityResolver::setPlatformGroup((DevicePlatformGroup)g);
+        const bool thermal = QualityResolver::getSettings().thermalResponse[g];
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++){
+            QualityResolver::setTier((DeviceTier)t);
+            for (ThermalState state : {ThermalState::Nominal, ThermalState::Serious, ThermalState::Critical}){
+                if (state != ThermalState::Nominal && !thermal)
+                    continue;
+                QualityResolver::forceThermalResponse(state);
+                collectUnderTier();
+            }
+        }
+    }
+    QualityResolver::popState();
+}
+
+void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,
+                                                           const std::vector<ShaderVariantContent>& prefabContents,
+                                                           std::set<ShaderKey>& keys, const fs::path& projectRoot,
+                                                           bool scriptsSetPostProcessing,
+                                                           const std::vector<std::string>& scriptPostProcessingFields,
+                                                           bool allLightCapacities, bool scriptsSetShadowQuality,
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
@@ -1213,6 +1346,13 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (scene->isSSAOEnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSAO, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSAO_BLUR, 0));
+    }
+    // S57's passes: the contact shadows' mask, the OIT resolve
+    if (allFacts & FACT_CONTACT_LIGHT){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 0));
+    }
+    if (allFacts & FACT_OIT_CAMERA){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 1));
     }
     if (scene->isSSREnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));

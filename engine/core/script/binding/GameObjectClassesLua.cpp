@@ -6,6 +6,7 @@
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/PanelComponent.h"
@@ -35,6 +36,7 @@
 #include "Light.h"
 #include "Light2D.h"
 #include "ShadowCaster2D.h"
+#include "CapsuleShadowCaster.h"
 #include "Mesh.h"
 #include "Primitive.h"
 #include "Mirror.h"
@@ -519,6 +521,7 @@ int luaDestroyImmediate(lua_State* L){
 
 namespace {
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
         material = PhysicsMaterial();
@@ -536,6 +539,7 @@ namespace {
         }
         return false;
     }
+#endif
 
     std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
         if (!material.valid()){
@@ -1262,6 +1266,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalMatrix", &GameObject::getNormalMatrix)
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
+        // the Mixer Snapshot action's component (S40 R24), nil without one
+        .addFunction("getAudioSnapshotComponent", [] (GameObject* self) -> AudioSnapshotComponent* {
+            return self->getScene()->findComponent<AudioSnapshotComponent>(self->getEntity());
+        })
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
         .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
@@ -1523,6 +1531,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFramebufferSize", &Camera::setFramebufferSize)
         .addFunction("setFramebufferFilter", &Camera::setFramebufferFilter)
         .addProperty("transparentSort", &Camera::isTransparentSort, &Camera::setTransparentSort)
+        .addProperty("transparencyMode", &Camera::getTransparencyMode, &Camera::setTransparencyMode)
+        .addProperty("oitWeightScale", &Camera::getOitWeightScale, &Camera::setOitWeightScale)
         .addProperty("depthTest", &Camera::isDepthTest, &Camera::setDepthTest)
         .addProperty("cullingMask", &getLuaCullingMask<Camera>, &setLuaCullingMask<Camera>)
         .addFunction("screenToRay", &Camera::screenToRay)
@@ -1588,6 +1598,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSourceRadius", &Light::getShadowSourceRadius, &Light::setShadowSourceRadius)
         .addProperty("shadowUpdateMode", &Light::getShadowUpdateMode, &Light::setShadowUpdateMode)
         .addFunction("requestShadowUpdate", &Light::requestShadowUpdate)
+        .addProperty("contactShadows", &Light::isContactShadows, &Light::setContactShadows)
+        .addProperty("contactShadowLength", &Light::getContactShadowLength, &Light::setContactShadowLength)
+        .addProperty("contactShadowThickness", &Light::getContactShadowThickness, &Light::setContactShadowThickness)
+        .addProperty("contactShadowSampleCount", &Light::getContactShadowSampleCount, &Light::setContactShadowSampleCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1616,6 +1630,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("AUTO_QUAD", ShadowCaster2DShape::AUTO_QUAD)
         .addVariable("POLYGON", ShadowCaster2DShape::POLYGON)
         .endNamespace();
+
+    // S57's capsule shadows
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CapsuleShadowCaster, GameObject>("CapsuleShadowCaster")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CapsuleShadowCaster::isEnabled, &CapsuleShadowCaster::setEnabled)
+        .addProperty("castShadows", &CapsuleShadowCaster::getCastShadows, &CapsuleShadowCaster::setCastShadows)
+        .addProperty("capsuleCount", &CapsuleShadowCaster::getCapsuleCount)
+        .addFunction("addCapsule", &CapsuleShadowCaster::addCapsule)
+        .addFunction("removeCapsule", &CapsuleShadowCaster::removeCapsule)
+        .addFunction("clearCapsules", &CapsuleShadowCaster::clearCapsules)
+        .addFunction("getCapsuleBone", &CapsuleShadowCaster::getCapsuleBone)
+        .addFunction("setCapsuleBone", &CapsuleShadowCaster::setCapsuleBone)
+        .addFunction("getCapsuleRadius", &CapsuleShadowCaster::getCapsuleRadius)
+        .addFunction("setCapsuleRadius", &CapsuleShadowCaster::setCapsuleRadius)
+        .addFunction("getCapsuleLength", &CapsuleShadowCaster::getCapsuleLength)
+        .addFunction("setCapsuleLength", &CapsuleShadowCaster::setCapsuleLength)
+        .addFunction("getCapsuleOffset", &CapsuleShadowCaster::getCapsuleOffset)
+        .addFunction("setCapsuleOffset", &CapsuleShadowCaster::setCapsuleOffset)
+        .addFunction("getCapsuleDirection", &CapsuleShadowCaster::getCapsuleDirection)
+        .addFunction("setCapsuleDirection", &CapsuleShadowCaster::setCapsuleDirection)
+        .addFunction("fitToSkeleton", &CapsuleShadowCaster::fitToSkeleton)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ShadowCaster2D, GameObject>("ShadowCaster2D")
@@ -1849,6 +1886,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)
+        .addProperty("allowGpuInstancing", &Mesh::isAllowGpuInstancing, &Mesh::setAllowGpuInstancing)
+        .addProperty("fadeMode", &Mesh::getLodFadeMode, &Mesh::setLodFadeMode)
+        .addProperty("animateCrossFade", &Mesh::isLodAnimateCrossFading, &Mesh::setLodAnimateCrossFading)
+        .addProperty("fadeTransitionWidth", &Mesh::getLodFadeTransitionWidth, &Mesh::setLodFadeTransitionWidth)
+        .addProperty("cullBelow", &Mesh::getLodCullBelow, &Mesh::setLodCullBelow)
+        .addFunction("forceLod", &Mesh::forceLod)
+        .addProperty("forcedLod", &Mesh::getForcedLod)
+        .addProperty("currentLod", &Mesh::getCurrentLod)
         .addProperty("renderInReflectionProbes", &Mesh::isRenderInReflectionProbes, &Mesh::setRenderInReflectionProbes)
         .addProperty("shadowsBillboard", &Mesh::isShadowsBillboard, &Mesh::setShadowsBillboard)
         .addProperty("transparent", &Mesh::isTransparent, &Mesh::setTransparent)
@@ -4212,6 +4257,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
         .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
         .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+#if JASPERENGINE_SOUND_LAYER
+        .addProperty("event", &AudioSource::getEvent, &AudioSource::setEvent)
+        .addProperty("playOn", &AudioSource::getPlayOn, &AudioSource::setPlayOn)
+        .addProperty("minImpactSpeed", &AudioSource::getMinImpactSpeed, &AudioSource::setMinImpactSpeed)
+        .addProperty("fullVolumeImpactSpeed", &AudioSource::getFullVolumeImpactSpeed, &AudioSource::setFullVolumeImpactSpeed)
+        .addProperty("pitchRandomSemitones", &AudioSource::getPitchRandomSemitones, &AudioSource::setPitchRandomSemitones)
+        .addProperty("volumeRandomDb", &AudioSource::getVolumeRandomDb, &AudioSource::setVolumeRandomDb)
+#endif
         .addFunction("playOneShot", &luaAudioPlayOneShot)
         .addFunction("fadeIn", &luaAudioFadeIn)
         .addFunction("fadeOut", &luaAudioFadeOut)
@@ -5000,6 +5053,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .beginClass<Contact3D>("Contact3D")
         .addFunction("getBaseOffset", &Contact3D::getBaseOffset)
         .addFunction("getWorldSpaceNormal", &Contact3D::getWorldSpaceNormal)
+#if JASPERENGINE_SOUND_LAYER
+        .addFunction("getApproachSpeed", &Contact3D::getApproachSpeed)
+#endif
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
         .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
         .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)

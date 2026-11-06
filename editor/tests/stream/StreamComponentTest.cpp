@@ -62,6 +62,7 @@
 #include "Scene.h"
 #include "Catalog.h"
 #include "component/BuoyancyComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -124,7 +125,7 @@ namespace {
 STABLE(Transform, Transform,
     component.position = Vector3(1, 2, 3); component.scale = Vector3(2, 2, 2);
     component.rotation = Quaternion(30.0f, Vector3::UNIT_Y); component.visible = false)
-STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false)
+STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false; component.allowGpuInstancing = false)
 STABLE(UIComponent, UIComponent, component.color = Vector4(0.5f, 0.25f, 1.0f, 0.75f))
 STABLE(ButtonComponent, ButtonComponent, component.colorHovered = Vector4(0.2f, 0.3f, 0.4f, 1.0f))
 STABLE(ScrollbarComponent, ScrollbarComponent, component.type = ScrollbarType::HORIZONTAL)
@@ -142,15 +143,22 @@ STABLE(TerrainComponent, TerrainComponent, component.surfaceLayers.resize(1); co
     component.surfaceLayers[0].stochasticCellSize = 2.0f)
 STABLE(LightComponent, LightComponent,
     component.type = LightType::SPOT; component.color = Vector3(1, 0.5f, 0.25f); component.direction = Vector3(0, -1, 0);
-    component.intensityUnit = LightUnit::LUMEN; component.useColorTemperature = true; component.colorTemperature = 3200.0f)
+    component.intensityUnit = LightUnit::LUMEN; component.useColorTemperature = true; component.colorTemperature = 3200.0f;
+    component.shadows = true; component.contactShadows = true; component.contactShadowLength = 0.3f; component.contactShadowThickness = 0.1f;
+    component.contactShadowSampleCount = 16)
 STABLE(Light2DComponent, Light2DComponent, )
 STABLE(ShadowCaster2DComponent, ShadowCaster2DComponent, )
+STABLE(CapsuleShadowCasterComponent, CapsuleShadowCasterComponent,
+    component.castShadows = CapsuleCastShadows::CAPSULES_ONLY;
+    component.capsules.push_back({"Hips", 0.15f, 0.4f, Vector3(0, 0.1f, 0), CapsuleDirection::Y_AXIS});
+    component.capsules.push_back({"", 0.05f, 0.2f, Vector3(0, 0, 0), CapsuleDirection::Z_AXIS}))
 STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; component.density = 0.05f)
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
 STABLE(CameraComponent, CameraComponent,
-    component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u)
+    component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
+    component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)
 STABLE(AudioSourceComponent, AudioSourceComponent, component.filename = "sounds/hit.wav")
 STABLE(ScriptComponent, ScriptComponent, )
 STABLE(SkyboxComponent, SkyboxComponent, )

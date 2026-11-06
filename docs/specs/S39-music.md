@@ -348,4 +348,46 @@ whose scripts never name a music function and whose content has no music needs n
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The scene-less system.** The music system is an `AudioSystem` built with no scene (a private tag
+  constructor, created on first use). It is never in a scene's system list: `MusicPlayer::update` runs once a
+  frame from `Engine::runFrame`, after the scenes and before the deterministic mix, so a beat callback, a
+  snapshot and a switch point land in the frame whose mix holds them. Its voices are registered with no
+  owner scene, so `stopSceneSounds` never reaches them and `AudioSystem.stopAll` does.
+- **Stingers and `Audio.stopAll`.** A stinger's voice lines say `owner: "music"` (as the track's); `Audio.stopAll`
+  (free voices, triggers, one-shots) leaves the music and its stingers alone, `AudioSystem.stopAll` stops them.
+- **`playStinger`'s sync** is `now`, `beat` or `bar` (`section_end` is refused like an unknown name).
+- **A switch replaced before its switch point.** When a second `playMusic` (or a `stopMusic`) comes while the
+  incoming track still waits for its boundary, that track was never heard: it stops at once and the playing one
+  stays the track the new switch starts from. (Once the switch point passed, R10's rule applies.)
+- **Sequence playlists start at their first clip** and keep their own order, whatever the event's shared
+  sequence position is from plays as sound effects; `shuffle` and `random` use S37's picker.
+- **`onMusicSection`** is `FunctionSubscribe<void(int, const std::string&)>`, the signature the Lua bindings
+  already register (`FunctionSubscribe_V_IS`).
+- **Positions.** P is the voice's stream position less its start delay (SoLoud counts the delay in it). Before
+  a section's first beat `getMusicPosition` gives bar 0 and beat 0. `getMusicTime` is the track's own seconds
+  (not scaled by the event's pitch). The `stop` line also carries `sync` and `boundary_sample`.
+- **The music problems** (sections differing in rate or channels, a section under 100 ms) are in the editor's
+  `SoundEventDocument::problems`, which can read the clips; `SoundEventIO::validate` checks `loops`' range.
+- **Play as Music** plays the inspected event through the runtime `MusicPlayer` in a preview mode (edit mode
+  holds the game's events, the preview is not held); Play start resets it like any edit-mode music.
+- **R16 tempo autocorrelation (feat/s39-music-grid).** `A[τ]` is the autocorrelation of the onset
+  envelope *less its mean*: of the clamped envelope as P6 §2.4.8 writes it, white noise reads about
+  0.32 and would pass the 0.1 no-pulse floor. Measured: 12 s of white noise 0.05-0.06, 8 s of pink
+  noise 0.08-0.11 (close to the floor: the unit test uses 12 s of white noise).
+- **R16 the line through the beats.** A tracked beat more than 1/16 beat off the first line is left out
+  and the line refitted (twice): the tracker puts a spurious beat at the file's first frame, which
+  moved `bpm` by 0.08 and `first_beat_ms` by 6 ms. Beats are numbered by their gaps (a skipped beat
+  keeps the count). The attack envelope's rise is the 1 ms after a sample against the 1 ms before it,
+  the file zero-padded, so a beat on sample 0 is found.
+- **R16 downbeat accent.** The low band's value at a beat is its largest within ±1/8 beat of the line's
+  beat (the onset frame of an attack is not the beat's frame); `B = 3` wins only with a positive accent
+  20 % above four's.
+- **R17 `agrees`.** bpm within 0.1 (P6: 0.5, which drifts 66 ms over 8 bars at 120), the same beats per
+  bar, and beat 1 within 5 ms of a bar line of the detection (P6: 10 ms of its first beat; a block
+  whose beat 1 is a later bar is the same grid). `current` is null without a block (P6 showed zeros);
+  `agrees` is null for built-in items. `fix` is `{"music": {...}}`, passed as `settings` as the notes'
+  `fix` is. The text line reads "pulse 0.71, downbeat 0.62" (P6: "confidence").
+- **R18.** The second candidate's button reads "Use <bpm> BPM" (P6: "Use This Grid"), shown when not
+  confident; `SetAssetMetaCmd::setAction` names the step "Set Tempo from Detection (<file>)". The grid
+  over the waveform is the detection's; the typed tempo is not drawn.
+

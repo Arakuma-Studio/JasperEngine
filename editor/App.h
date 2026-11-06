@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "render/RenderStats.h"
 #include "imgui.h"
 #include "json.hpp"
 
@@ -15,10 +16,12 @@
 #include "shortcuts/ShortcutDispatcher.h"
 
 
+#include "window/EditorModal.h"
 #include "hub/ProjectHubWindow.h"
 #include "recorder/RecorderWindow.h"
 
 #include <array>
+#include <map>
 #include <future>
 
 #include "window/dialog/ProjectSaveDialog.h"
@@ -71,6 +74,8 @@ namespace jasperengine::editor{
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
+    class SoundBrowserWindow;
+    class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -84,6 +89,8 @@ namespace jasperengine::editor{
     class AssetReferencesWindow;
     class SpriteNormalsWatcher;
     class JobsMemoryWindow;
+    class MeshAuditWindow;
+    class BuildReportWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -93,15 +100,6 @@ namespace jasperengine::editor{
     class SearchPalette;
     class ShortcutsWindow;
     class BookmarksWindow;
-
-    // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
-    struct EditorDialogInfo {
-        std::string kind;                  // "alert", "save_dialog", "modal", or "progress" (the
-                                           // build progress, which closes by itself)
-        std::string title;
-        std::string message;
-        std::vector<std::string> choices;  // answers App::answerDialog takes; empty: a human must close it
-    };
 
     enum class AlertType {
         Info,
@@ -188,6 +186,7 @@ namespace jasperengine::editor{
         int benchmarkMeasureFrames = 180;
         // scene setting overrides: -1 keeps the scene's value
         int benchmarkMeshLod = -1;
+        int benchmarkGpuInstancing = -1;   // --gpu-instancing on|off (-1: the project's)
         int benchmarkDepthPrepass = -1;
         int benchmarkLitQuality = -1;   // --lit-quality: 0 standard, 1 high
         // --play: the scene is measured playing (scripts, animation, physics), not in edit mode
@@ -199,6 +198,10 @@ namespace jasperengine::editor{
         std::vector<uint32_t> benchmarkDraws;
         std::vector<uint32_t> benchmarkInstances;
         std::vector<uint64_t> benchmarkTris;
+        // the game frame's render counters (S55 R7, by kind of pass) and its draw-and-commit CPU
+        // time (Engine::getFrameDrawCpuTime), per measured frame
+        std::vector<RenderStats> benchmarkRenderStats;
+        std::vector<double> benchmarkRenderCpuMs;
         // --ui-stats (S16 R29): the scene's HTML UI statistics, summed over the measured frames
         bool benchmarkUiStats = false;
         std::vector<std::pair<std::string, double>> benchmarkUiTotals;
@@ -245,6 +248,8 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        SoundBrowserWindow* soundBrowserWindow;
+        AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
@@ -255,6 +260,8 @@ namespace jasperengine::editor{
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        MeshAuditWindow* meshAuditWindow;
+        BuildReportWindow* buildReportWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
@@ -673,6 +680,9 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openBuildReport(const std::filesystem::path& report) override;
+        void openMeshAudit() override;
+        void openConsole() override;
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
@@ -702,7 +712,7 @@ namespace jasperengine::editor{
         // MCP: the dialog a human would have to answer (alert, save dialog, other modal)
         bool getOpenDialog(EditorDialogInfo& out) const;
         // MCP: answers it like pressing the button (applied on the next frame)
-        bool answerDialog(const std::string& choice, std::string& error);
+        bool answerDialog(const std::string& choice, const std::map<std::string, EditorDialogValue>& values, std::string& error);
         uint64_t getAlertSerial() const { return alertSerial; }
         // MCP busy policy: an export started in the Build Settings window is running
         bool isExportRunning() const { return exportWindow.isExporting(); }

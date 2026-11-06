@@ -118,6 +118,8 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
     // a frame drawn while a texture loads shows a stand-in for it (the texture before, or none)
     if (TextureDataPool::getLoadingCount() > 0) return false;
+    // and while a queued upload waits for the upload budget (spec S56 R8), its object is not drawn
+    if (SystemRender::getDeferredUploadCount() > 0) return false;
     return true;
 }
 
@@ -125,6 +127,7 @@ bool sceneContentLoaded(SceneProject* sp) {
 // for one, and past the call's timeout it fails naming them
 bool assetsLoading(SceneProject* sp) {
     if (TextureDataPool::getLoadingCount() > 0) return true;
+    if (SystemRender::getDeferredUploadCount() > 0) return true;
     auto ms = sp && sp->scene ? sp->scene->getSystem<MeshSystem>() : nullptr;
     return ms && ms->hasPendingAsyncModelLoads();
 }
@@ -134,6 +137,8 @@ std::string describeLoading(SceneProject* sp) {
     std::string out;
     auto add = [&out](const std::string& part) { out += (out.empty() ? "" : "; ") + part; };
     if (!ShaderPool::isCreationIdle()) add("shaders or pipelines being made");
+    if (const size_t uploads = SystemRender::getDeferredUploadCount())
+        add(std::to_string(uploads) + " queued upload(s) waiting for the upload budget");
     if (const size_t textures = TextureDataPool::getLoadingCount()) {
         std::string list;
         for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
@@ -964,6 +969,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"show_stats", &SceneDisplaySettings::showStats},
     };
     return flags;
 }
@@ -1012,6 +1018,18 @@ void setSceneCameraTool(const CallPtr& call) {
         }
         for (auto it = args["display"].begin(); it != args["display"].end(); ++it) {
             if (it.key() == "grid_spacing_2d" || it.key() == "grid_spacing_3d") continue;
+            if (it.key() == "draw_mode") {
+                ViewDrawMode mode;
+                if (!it.value().is_string() || !drawModeFromKey(it.value().get<std::string>(), mode)) {
+                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level or overdraw.");
+                    return;
+                }
+                if (!is3D && mode != ViewDrawMode::SHADED) {
+                    call->fail("display.draw_mode is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
+                    return;
+                }
+                continue;
+            }
             if (!displayFlags().count(it.key()) || !it.value().is_boolean()) {
                 std::string valid;
                 for (const auto& [name, member] : displayFlags()) valid += " " + name;
@@ -1201,6 +1219,7 @@ void setSceneCameraTool(const CallPtr& call) {
             for (auto it = a["display"].begin(); it != a["display"].end(); ++it) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
                 else if (it.key() == "grid_spacing_3d" && it.value().is_number()) s->displaySettings.gridSpacing3D = it.value().get<float>();
+                else if (it.key() == "draw_mode") drawModeFromKey(it.value().get<std::string>(), s->displaySettings.drawMode);
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
@@ -1211,6 +1230,7 @@ void setSceneCameraTool(const CallPtr& call) {
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}, {"changed", changed}};
         Json displayJson = Json::object();
         for (const auto& [name, member] : displayFlags()) displayJson[name] = s->displaySettings.*member;
+        displayJson["draw_mode"] = drawModeKey(s->displaySettings.drawMode);
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
@@ -1986,7 +2006,7 @@ void registerViewTools(McpRegistry& registry) {
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
-            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, draw_mode: \"lod_level\"}; saved with the workspace.")},
             {"projection", stringEnum("", {"perspective", "orthographic"})},
             {"ortho_size", number("Half height.", 0.001, 100000)},
             {"view", stringEnum("", {"top", "bottom", "front", "back", "left", "right"})},

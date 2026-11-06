@@ -18,6 +18,8 @@ namespace SoLoud {
 
 namespace jasperengine {
 
+    class MeterFilter;
+
     // A mixer group for scripts (Lua AudioMixer.getGroup): a handle by id, valid while the group
     // is in the mixer. Values are the runtime ones; setting the volume is a script value (it
     // overrides snapshots, like setFloat).
@@ -74,6 +76,22 @@ namespace jasperengine {
     // updateMode is "unscaled" or the call asks for unscaled time. Main thread only.
     class JASPERENGINE_API AudioMixer {
     public:
+        // ---- a capture's view of the groups: their meters, and each one's fader as last applied
+        struct GroupMeter {
+            std::string id;
+            std::string name;
+            // its parent's name, "" for Master
+            std::string parent;
+            const MeterFilter* meter = nullptr;
+        };
+        static std::vector<GroupMeter> getGroupMeters();
+        // linear, a mute or a solo elsewhere included; 1 for no such group
+        static float getGroupFader(const std::string& id);
+        // the buses from a group to the output: 1 for Master (and for no such group)
+        static int getGroupDepth(const std::string& id);
+        // the lookahead frames of the limiters from a group to the output, its own among them ("": Master)
+        static unsigned int getOutputLatencyFrames(const std::string& id);
+
         // ---- the asset
 
         // Reads a .mixer (asset path) and makes it the project mixer: the runtime starts over from
@@ -114,10 +132,11 @@ namespace jasperengine {
 
         // ---- snapshots (Unity AudioMixerSnapshot.TransitionTo, AudioMixer.TransitionToSnapshots)
 
-        static bool transitionTo(const std::string& snapshot, float seconds, bool unscaled = false);
+        // cause: what asked for it, in the capture's line ("music": a music switch); null none
+        static bool transitionTo(const std::string& snapshot, float seconds, bool unscaled = false, const char* cause = nullptr);
         // the weighted blend of snapshots (weights >= 0, normalized)
         static bool transitionToSnapshots(const std::vector<std::string>& snapshots, const std::vector<float>& weights,
-                                          float seconds, bool unscaled = false);
+                                          float seconds, bool unscaled = false, const char* cause = nullptr);
         static std::vector<std::string> getSnapshotNames();
         // the last snapshot transitioned to (the start snapshot at first), "" for none or a blend
         static std::string getCurrentSnapshot();
@@ -158,6 +177,17 @@ namespace jasperengine {
         // of the last ~90 ms in dB, -80 when silent or unknown. Real levels without an audio device
         // (the nosound / null backends mix all the same).
         static float getMeterDb(const std::string& group);
+        // A limiter's largest gain reduction of the last 100 ms (dB, 0 or more; 0 when it is not
+        // running). The frames its lookahead delays a group's bus (0 when bypassed): a mixer's
+        // latency per group, which a capture adds for Master (S38 R6).
+        static float getEffectGainReductionDb(const std::string& effectId);
+        static unsigned int getGroupLatencyFrames(const std::string& group);
+        // The Master group's meter also passes its blocks on, up to 2 s of them, for a live loudness
+        // measurement (the editor's; off by default, a game never turns it on). The drain gives
+        // them post-fader, as getMeterDb reads, interleaved; 0 frames when there are none.
+        static void setLoudnessTap(bool on);
+        static bool isLoudnessTapOn();
+        static size_t drainLoudnessTap(float* interleaved, size_t maxFrames, unsigned int& channels, unsigned int& sampleRate);
 
         // ---- remembered parameters (exposed with remember: UserSettings "audio.mixer.<name>")
 

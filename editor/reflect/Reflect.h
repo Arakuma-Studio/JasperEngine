@@ -48,7 +48,19 @@ namespace jasperengine::editor::reflect {
 
     enum class AssetKind : uint8_t {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
-        PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask
+        PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask, SoundEvent, NavMesh, NavGrid, ParticleEffect,
+        ModelOrPrefab   // by the path's extension (a spline pool's entry)
+    };
+
+    // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the
+    // fields): a contributor adds the field, and gives this only for a shape the type does not tell
+    enum class AssetForm : uint8_t {
+        Deduced,        // Texture, ShaderRef, AssetRef, FontArray, ops::ShaderTextures and lists of them; or a
+                        // string with .asset and its GUID beside it (a string "<name>Guid" or "guid")
+        ClipEntry,      // an element's path string: an .anim by the "guid" beside it, or a "<model>#<clip>" sub-clip
+        PrefabRoot,     // the component's own map {path, guid}
+        ScriptEntries,  // a component's scripts: their paths and their Asset and Prefab properties
+        InlineEffect    // an inline .particles document: what its modules name
     };
 
     enum class Unit : uint8_t {
@@ -160,9 +172,6 @@ namespace jasperengine::editor::reflect {
         bool assignExisting = false;
         // the variables of the GameObjects an Entity field may name (Factory::formatEntity)
         const std::unordered_map<Entity, std::string>* entityVarNames = nullptr;
-        // fields left out of the exported code: values the game derives itself (a Default
-        // Camera's canvas size)
-        std::span<const char* const> omit = {};
     };
 
     // How a field's values are stored, compared, written and read. Deduced from the member type
@@ -254,6 +263,16 @@ namespace jasperengine::editor::reflect {
         size_t (*count)(const void* owner) = nullptr;
         // the value read without making it, for a field whose ref makes it (an out-of-line value)
         const void* (*peek)(const void* owner) = nullptr;
+        AssetForm assetForm = AssetForm::Deduced;
+        // after a moved file rewrote this reference's path, besides updateFlags: what the flags, made
+        // for an edit of the same file's value, leave out (null: nothing)
+        void (*assetMoved)(void* owner) = nullptr;
+        // the elements of an array that hold references, when the list lists them all (a mesh's
+        // submesh slots past numSubmeshes hold no reference); null: elementCount
+        size_t (*assetCount)(const void* owner) = nullptr;
+        // while true the engine recomputes this value: a document and the exported code leave it
+        // out, as NotWritten does for a value always computed
+        bool (*derivedIf)(const void* owner) = nullptr;
     };
 
     struct StructDesc {
@@ -325,6 +344,9 @@ namespace jasperengine::editor::reflect {
         void (*extraProperties)(void* comp, std::map<std::string, PropertyData>& out) = nullptr;
         // the update flags its extra properties can have: none, and changedUpdateFlags does not list them
         uint64_t extraUpdateFlags = ~uint64_t(0);
+        // keys only old files have that hold a texture ("textureLayers[]"): read for the dependency
+        // index, never written, no field
+        std::span<const char* const> legacyTextureKeys = {};
     };
 
     // ---- registry -----------------------------------------------------------------------
@@ -415,6 +437,17 @@ namespace jasperengine::editor::reflect {
         DocumentEncodeScope& operator=(const DocumentEncodeScope&) = delete;
         static bool active();
     };
+    // While one lives on a thread, a document holds what a frame computes that a file leaves out:
+    // the Play snapshot Stop restores (Stream::encodePlaySnapshot)
+    class PlaySnapshotEncodeScope {
+    public:
+        PlaySnapshotEncodeScope();
+        ~PlaySnapshotEncodeScope();
+        PlaySnapshotEncodeScope(const PlaySnapshotEncodeScope&) = delete;
+        PlaySnapshotEncodeScope& operator=(const PlaySnapshotEncodeScope&) = delete;
+    };
+    // Whether the encode on this thread holds what a frame computes: all but a scene or prefab file
+    bool encodesComputedValues();
     YAML::Node encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx);
     // Decodes over the base value already in `comp`: absent keys keep it (OmitIfDefault ones take
     // the default), aliases are read, a value that does not read keeps the base and adds a skip
@@ -500,6 +533,10 @@ namespace jasperengine::editor::reflect {
 
     // ---- asset references (S04) ---------------------------------------------------------
 
+    // Its ops hold an asset reference (a Texture, ShaderRef, AssetRef or FontArray)
+    bool holdsAsset(const TypeOps* ops);
+    // What a field with those ops declares: its .asset, else what the type says
+    AssetKind assetKindOf(const FieldDesc& field, const TypeOps* ops);
     using AssetVisitor = void (*)(void* user, const std::string& locator, AssetKind kind, void* ref, const FieldDesc& field);
     // Every asset field below the component (nested structs and arrays): its locator
     // "<componentKey>/<path>" ("mesh/submeshes[2].material.baseColorTexture")

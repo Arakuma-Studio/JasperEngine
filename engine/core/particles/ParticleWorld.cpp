@@ -4,6 +4,7 @@
 #include "ParticleWorld.h"
 
 #include "jobs/JobSystem.h"
+#include "device/QualityResolver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -80,7 +81,8 @@ double particles::cullingStep(CullingMode mode, bool looping, bool visible, doub
 void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
     // what each wants: its peak population with what its children will need (or what it holds
     // now); its budget covers its children, each emitter still held to its own Max Particles
-    const uint32_t total = budget();
+    // the device tier's Particle Budget caps the scene's (QualityResolver)
+    const uint32_t total = QualityResolver::particleBudget(budget());
     uint64_t want = 0;
     for (EmitterTask& t : tasks){
         const ParticleProgram* prog = t.runtime ? t.runtime->program() : nullptr;
@@ -140,7 +142,8 @@ void ParticleWorld::simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* j
     jobs::JobSystem& js = jobsArg ? *jobsArg : jobs::system();
     lastStats = WorldStats();
     lastStats.emitters = (uint32_t)tasks.size();
-    lastStats.budget = budget();
+    // the device tier's Particle Budget caps the scene's (QualityResolver)
+    lastStats.budget = QualityResolver::particleBudget(budget());
     if (tasks.empty()){
         lastStats.simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
         return;

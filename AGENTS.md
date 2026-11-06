@@ -220,9 +220,9 @@ Applies to names, descriptions, schemas, results, errors and the guide.
 - New tool text needs a case in `tools/mcp/eval/cases.py` that fails without it.
 - Cut text no case needs.
 - Put a rule where the agent reads it as it decides: the server enforces it, else the result says it
-  (`next` in `structuredContent`), else the description, a parameter, and last the guide.
-- A hint an agent must see goes in `structuredContent`: it is all a client like Claude Code shows
-  the model.
+  (`next` in `structuredContent`, on an error its text), else the description, a parameter, and last the guide.
+- A hint an agent must see goes in `structuredContent` (`next`) on a success, and in the error's text on an
+  error: a client like Claude Code shows the model only that part of each.
 - Names: area noun first, one word per concept.
 - Merge or extend before adding a near-duplicate tool.
 - Descriptions: what it does, its default or limit, the one misuse, the sibling tool.

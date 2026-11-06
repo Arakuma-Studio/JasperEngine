@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "audio/AudioCapture.h"
+#include "render/SystemRender.h"
+#include "util/UIProbe.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
 #include "Theme.h"
@@ -10,6 +13,8 @@
 
 #include "imgui_internal.h"
 #include "Engine.h"
+#include "device/Device.h"
+#include "device/QualityResolver.h"
 #include "Platform.h"
 #include "Screen.h"
 #include "util/PlatformRules.h"
@@ -23,6 +28,12 @@
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "render/SystemRender.h"
+#include "render/RenderStats.h"
+#include "render/SceneDrawModes.h"
+#include "render/RenderUtil.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -720,6 +731,9 @@ void editor::GameWindow::drawToolbar() {
         htmlUiDebuggerSceneId = NULL_PROJECT_SCENE;
     }
 
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    drawDeviceTierMenu();
+
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
@@ -833,16 +847,17 @@ void editor::GameWindow::drawCustomResolutionPopup() {
         std::snprintf(customName, sizeof(customName), "Custom %zu", project->getCustomResolutions().size() + 1);
         ImGui::OpenPopup("Add Game View Resolution");
     }
-    if (!ImGui::BeginPopupModal("Add Game View Resolution", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Add Game View Resolution", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    EditorModal::message("A custom resolution for the Game view.");
 
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputText("Name", customName, sizeof(customName));
+    EditorModal::inputText("Name", "name", customName, sizeof(customName));
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputInt("Width", &customWidth);
+    EditorModal::inputInt("Width", "width", &customWidth);
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputInt("Height", &customHeight);
+    EditorModal::inputInt("Height", "height", &customHeight);
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputFloat("DPI", &customDpi, 1.0f, 10.0f, "%.0f");
+    EditorModal::inputFloat("DPI", "dpi", &customDpi, 1.0f, 10.0f, "%.0f");
     ImGui::SetItemTooltip("Screen.dpi while this resolution is chosen (0: the computer's); Constant Physical Size uses it");
     customWidth = std::clamp(customWidth, 16, 16384);
     customHeight = std::clamp(customHeight, 16, 16384);
@@ -855,7 +870,7 @@ void editor::GameWindow::drawCustomResolutionPopup() {
     resolution.dpi = customDpi;
     std::string error;
     ImGui::BeginDisabled(resolution.name.empty());
-    if (ImGui::Button("Add")) {
+    if (EditorModal::button("Add", "ok")) {
         if (addCustomResolution(resolution, &error)) {
             setResolution(resolution.name);
             ImGui::CloseCurrentPopup();
@@ -863,13 +878,66 @@ void editor::GameWindow::drawCustomResolutionPopup() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
+    EditorModal::error(error);
     if (!error.empty()) ImGui::TextColored(Theme::Colors::WarningText, "%s", error.c_str());
     ImGui::EndPopup();
 }
 
 // Device simulation (Unity's Device Simulator): a phone or tablet, how it is turned and the
 // language the game sees. Editor only: builds never see any of it.
+DeviceSimulation editor::GameWindow::getDeviceSimulation() const {
+    DeviceSimulation simulation;
+    if (settings.deviceTier >= 0)
+        simulation.tier = (DeviceTier)std::clamp(settings.deviceTier, 0, DEVICE_TIER_COUNT - 1);
+    if (settings.devicePlatform >= 0)
+        simulation.group = (DevicePlatformGroup)std::clamp(settings.devicePlatform, 0, DEVICE_PLATFORM_GROUP_COUNT - 1);
+    else if (Platform::getSimulation().device)
+        simulation.group = DevicePlatformGroup::Mobile;
+    if (settings.deviceThermal >= 0)
+        simulation.thermal = (ThermalState)std::clamp(settings.deviceThermal, 0, THERMAL_STATE_COUNT - 1);
+    return simulation;
+}
+
+void editor::GameWindow::drawDeviceTierMenu() {
+    const DeviceSimulation simulation = getDeviceSimulation();
+    std::string label = std::string("Device: ") + (simulation.tier ? DeviceNames::tierLabel(*simulation.tier) : "Auto");
+    if (settings.devicePlatform >= 0)
+        label += std::string(" | ") + DeviceNames::groupLabel(*simulation.group);
+    if (simulation.thermal)
+        label += std::string(" | ") + DeviceNames::thermalLabel(*simulation.thermal);
+    label += "##GameDeviceTier";
+    ImGui::SetNextItemWidth(std::min(ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetFrameHeight() +
+                                     ImGui::GetStyle().FramePadding.x * 2.0f, Theme::dpi(260.0f)));
+    if (ImGui::BeginCombo("##GameDeviceTierCombo", label.c_str(), ImGuiComboFlags_HeightLarge)) {
+        auto item = [this](const char* name, int& field, int value) {
+            if (ImGui::Selectable(name, field == value)) {
+                field = value;
+                saveSettings();
+            }
+        };
+        ImGui::TextDisabled("Device Tier");
+        item("Auto##tier", settings.deviceTier, -1);
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            item((std::string(DeviceNames::tierLabel((DeviceTier)t)) + "##tier").c_str(), settings.deviceTier, t);
+        ImGui::Separator();
+        ImGui::TextDisabled("Platform");
+        item(Platform::getSimulation().device ? "Auto (Mobile)##platform" : "Auto (Desktop)##platform", settings.devicePlatform, -1);
+        for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++)
+            item((std::string(DeviceNames::groupLabel((DevicePlatformGroup)g)) + "##platform").c_str(), settings.devicePlatform, g);
+        ImGui::Separator();
+        ImGui::TextDisabled("Thermal State");
+        item("This Machine##thermal", settings.deviceThermal, -1);
+        for (int t = 0; t < THERMAL_STATE_COUNT; t++)
+            item((std::string(DeviceNames::thermalLabel((ThermalState)t)) + "##thermal").c_str(), settings.deviceThermal, t);
+        ImGui::EndCombo();
+    }
+    const DeviceDetection& detection = Device::getDetection();
+    ImGui::SetItemTooltip("Device simulation in Play: the Device Tier whose overrides apply (Project Settings > Quality > Device "
+                          "Tiers), the platform family whose table it reads and the thermal state the game sees. Auto applies no "
+                          "tier in the editor; this machine detects %s.", detection.detected ? detection.reason.c_str() : "nothing yet");
+}
+
 void editor::GameWindow::drawDeviceMenu() {
     const PlatformSimulation& simulation = Platform::getSimulation();
     const DeviceProfile* device = simulation.device;
@@ -1179,6 +1247,16 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->AddText(at, IM_COL32(255, 70, 70, 255), recording.c_str());
         }
 
+        // a capture mutes the device: say why the game is silent (S35 R31)
+        if (AudioCapture::isActive()) {
+            static const char* const capturing = "Capturing audio: output muted";
+            const ImVec2 at(areaMin.x + Theme::dpi(8.0f), areaMin.y + areaSize.y - ImGui::GetTextLineHeight() - Theme::dpi(8.0f));
+            const ImVec2 size = ImGui::CalcTextSize(capturing);
+            drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 160), 3.0f);
+            drawList->AddText(at, IM_COL32(255, 255, 255, 255), capturing);
+            UIProbe::rect("game.capturingAudio", at.x, at.y, at.x + size.x, at.y + size.y);
+        }
+
         // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes
         if (!running && sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
             std::shared_ptr<CameraControlSystem> cameras = sceneProject->scene->findSystem<CameraControlSystem>();
@@ -1223,8 +1301,15 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[11][112];
+    char lines[14][112];
     int lineCount = 5;
+    // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
+    const bool playing = project && project->isPlaySessionActive();
+    const RenderStats viewStats = SystemRender::getRenderStats(playing ? SystemRender::FRAME_STATS_FRAME : GAME_VIEW_ID);
+    RenderSystem* render = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<RenderSystem>().get() : nullptr;
+    const LodFrameStats lod = !render ? LodFrameStats() : (playing ? render->getLodStats() : render->getViewLodStats(GAME_VIEW_ID));
+    std::vector<std::string> meshLines;
+    appendMeshStatsLines(meshLines, playing ? frameStats.vertices : viewStats.vertices, lod, sceneProject && sceneProject->scene && sceneProject->scene->isMeshLodEnabled());
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
@@ -1236,6 +1321,16 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     } else {
         snprintf(lines[4], sizeof(lines[4]), "Target: default  VSync: %d", Engine::getVSyncCount());
     }
+    // the main view's and the shadow maps' share (S55 R7), and what GPU Instancing and the visible
+    // lists saved (Unity's "Saved by batching")
+    const RenderStats renderStats = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+    snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main: %u draws, %llu tris  Shadows: %u draws, %llu tris", renderStats.mainDraws,
+             (unsigned long long)renderStats.mainTriangles, renderStats.shadowDraws, (unsigned long long)renderStats.shadowTriangles);
+    lineCount++;
+    snprintf(lines[lineCount], sizeof(lines[lineCount]), "Instanced: %u draws (saved %u)  Visible: %u  Culled: %u", renderStats.instancedDraws,
+             renderStats.batchedInstances > renderStats.instancedDraws ? renderStats.batchedInstances - renderStats.instancedDraws : 0u,
+             renderStats.visible, renderStats.culled);
+    lineCount++;
     // the frame's CPU time, and its GPU time while something times the passes (the Profiler)
     const FrameTimeSample frameTime = FrameTimes::latest();
     if (frameTime.frame > 0) {
@@ -1257,6 +1352,15 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
         lineCount++;
     }
+    // the Device Tier in effect and the thermal response (S56)
+    {
+        const char* tier = Device::isTierApplied() ? DeviceNames::tierLabel(Device::getTier()) : "Auto (none applied)";
+        const ThermalState response = QualityResolver::getThermalResponse();
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device tier: %s (%s)  Thermal: %s%s", tier,
+                 DeviceNames::groupLabel(QualityResolver::getPlatformGroup()), DeviceNames::thermalLabel(Device::getThermalState()),
+                 response >= ThermalState::Serious ? ", responding" : "");
+        lineCount++;
+    }
     // Screen.safeArea, canvas units
     const Rect safe = Screen::getSafeArea();
     snprintf(lines[lineCount], sizeof(lines[lineCount]), "Safe area: %g,%g %gx%g", std::round(safe.getX()), std::round(safe.getY()),
@@ -1274,20 +1378,8 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         lineCount++;
     }
 
-    float boxWidth = 0.0f;
-    for (int i = 0; i < lineCount; i++) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(lines[i]).x);
-    const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
-    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * (float)lineCount + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
-
-    const float margin = Theme::dpi(8.0f);
-    ImVec2 boxMin(imageMax.x - boxSize.x - margin, imageMin.y + margin);
-    boxMin.x = std::max(boxMin.x, imageMin.x + margin);
-
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(boxMin, ImVec2(boxMin.x + boxSize.x, boxMin.y + boxSize.y), IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
-    for (int i = 0; i < lineCount; i++) {
-        const ImU32 color = i == 0 ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
-        drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * i), color, lines[i]);
-    }
+    std::vector<std::string> all(lines, lines + lineCount);
+    // after "Draw calls: ... Tris: ..."
+    all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
+    drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
 }
