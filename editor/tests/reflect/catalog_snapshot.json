@@ -29578,6 +29578,23 @@
       "bottom_right",
       "Bottom Right"
      ]
+    ],
+    "pixelRotation": [
+     [
+      0,
+      "camera",
+      "Camera"
+     ],
+     [
+      1,
+      "steps_90",
+      "90 Degree Steps"
+     ],
+     [
+      2,
+      "on_grid",
+      "Rotate On Grid"
+     ]
     ]
    },
    "has_enabled": true,
@@ -29590,6 +29607,8 @@
     "framesRect",
     "height",
     "pivotPreset",
+    "pixelRotation",
+    "pixelsPerUnit",
     "textureScaleFactor",
     "width"
    ],
@@ -29622,6 +29641,16 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "pixelRotation": [
+     13,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      1024,
      true
     ],
@@ -29664,6 +29693,16 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "pixelRotation": [
+     13,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      1024,
      true
     ],
@@ -30062,6 +30101,7 @@
     "enabled",
     "flipY",
     "height",
+    "pixelsPerUnit",
     "reserveTiles",
     "textureScaleFactor",
     "tiles",
@@ -30097,6 +30137,11 @@
     ],
     "numTilesRect": [
      9,
+     4194304,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      4194304,
      true
     ],
@@ -30144,6 +30189,11 @@
     ],
     "numTilesRect": [
      9,
+     4194304,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      4194304,
      true
     ],
@@ -40658,6 +40708,243 @@
    "type": 90,
    "type_of_key": 90,
    "type_of_name": 90
+  },
+  {
+   "display_name": "Pixel Perfect Camera",
+   "enum_options": {
+    "rotationMode": [
+     [
+      1,
+      "steps_90",
+      "90 Degree Steps"
+     ],
+     [
+      2,
+      "on_grid",
+      "Rotate On Grid"
+     ]
+    ],
+    "upscaleMode": [
+     [
+      0,
+      "integer",
+      "Integer (Letterbox)"
+     ],
+     [
+      1,
+      "integer_expand",
+      "Integer (Expand)"
+     ],
+     [
+      2,
+      "stretch_fill",
+      "Stretch Fill"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef808a",
+   "key": "pixelperfectcamera",
+   "known_keys": [
+    "enabled",
+    "letterboxColor",
+    "pixelSnapping",
+    "referenceHeight",
+    "referenceWidth",
+    "rotationMode",
+    "subpixelSmoothing",
+    "upscaleMode",
+    "upscaleRenderTexture"
+   ],
+   "name": "PixelPerfectCameraComponent",
+   "properties_of_default": {
+    "baseHeight": [
+     8,
+     0,
+     false
+    ],
+    "baseWidth": [
+     8,
+     0,
+     false
+    ],
+    "cropped": [
+     0,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "letterboxColor": [
+     6,
+     0,
+     true
+    ],
+    "pixelRatio": [
+     8,
+     0,
+     false
+    ],
+    "pixelSnapping": [
+     0,
+     0,
+     true
+    ],
+    "referenceHeight": [
+     9,
+     0,
+     true
+    ],
+    "referenceWidth": [
+     9,
+     0,
+     true
+    ],
+    "rotationMode": [
+     13,
+     0,
+     true
+    ],
+    "snappedPosition": [
+     5,
+     0,
+     false
+    ],
+    "subpixelOffset": [
+     4,
+     0,
+     false
+    ],
+    "subpixelSmoothing": [
+     0,
+     0,
+     true
+    ],
+    "targetHeight": [
+     8,
+     0,
+     false
+    ],
+    "targetWidth": [
+     8,
+     0,
+     false
+    ],
+    "upscaleMode": [
+     13,
+     0,
+     true
+    ],
+    "upscaleRenderTexture": [
+     0,
+     0,
+     true
+    ],
+    "viewport": [
+     6,
+     0,
+     false
+    ]
+   },
+   "properties_without_component": {
+    "baseHeight": [
+     8,
+     0,
+     false
+    ],
+    "baseWidth": [
+     8,
+     0,
+     false
+    ],
+    "cropped": [
+     0,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "letterboxColor": [
+     6,
+     0,
+     true
+    ],
+    "pixelRatio": [
+     8,
+     0,
+     false
+    ],
+    "pixelSnapping": [
+     0,
+     0,
+     true
+    ],
+    "referenceHeight": [
+     9,
+     0,
+     true
+    ],
+    "referenceWidth": [
+     9,
+     0,
+     true
+    ],
+    "rotationMode": [
+     13,
+     0,
+     true
+    ],
+    "snappedPosition": [
+     5,
+     0,
+     false
+    ],
+    "subpixelOffset": [
+     4,
+     0,
+     false
+    ],
+    "subpixelSmoothing": [
+     0,
+     0,
+     true
+    ],
+    "targetHeight": [
+     8,
+     0,
+     false
+    ],
+    "targetWidth": [
+     8,
+     0,
+     false
+    ],
+    "upscaleMode": [
+     13,
+     0,
+     true
+    ],
+    "upscaleRenderTexture": [
+     0,
+     0,
+     true
+    ],
+    "viewport": [
+     6,
+     0,
+     false
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 91,
+   "type_of_key": 91,
+   "type_of_name": 91
   }
  ],
  "ease_options": [
@@ -45453,6 +45740,98 @@
     true
    ]
   },
+  "PixelPerfectCameraComponent": {
+   "baseHeight": [
+    8,
+    0,
+    false
+   ],
+   "baseWidth": [
+    8,
+    0,
+    false
+   ],
+   "cropped": [
+    0,
+    0,
+    false
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "letterboxColor": [
+    6,
+    0,
+    true
+   ],
+   "pixelRatio": [
+    8,
+    0,
+    false
+   ],
+   "pixelSnapping": [
+    0,
+    0,
+    true
+   ],
+   "referenceHeight": [
+    9,
+    0,
+    true
+   ],
+   "referenceWidth": [
+    9,
+    0,
+    true
+   ],
+   "rotationMode": [
+    13,
+    0,
+    true
+   ],
+   "snappedPosition": [
+    5,
+    0,
+    false
+   ],
+   "subpixelOffset": [
+    4,
+    0,
+    false
+   ],
+   "subpixelSmoothing": [
+    0,
+    0,
+    true
+   ],
+   "targetHeight": [
+    8,
+    0,
+    false
+   ],
+   "targetWidth": [
+    8,
+    0,
+    false
+   ],
+   "upscaleMode": [
+    13,
+    0,
+    true
+   ],
+   "upscaleRenderTexture": [
+    0,
+    0,
+    true
+   ],
+   "viewport": [
+    6,
+    0,
+    false
+   ]
+  },
   "PointsComponent": {
    "autoTransparency": [
     0,
@@ -47014,6 +47393,16 @@
     1024,
     true
    ],
+   "pixelRotation": [
+    13,
+    0,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    1024,
+    true
+   ],
    "textureScaleFactor": [
     2,
     1024,
@@ -47434,6 +47823,11 @@
    ],
    "numTilesRect": [
     9,
+    4194304,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
     4194304,
     true
    ],
