@@ -870,6 +870,7 @@ namespace jasperengine::editor{
         bool dynamicBatching = true;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
+        std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
@@ -1512,6 +1513,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr bool defaultDynamicBatching = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
@@ -1626,6 +1628,12 @@ namespace jasperengine::editor{
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
+
+        // Quality > Foliage Distance of desktop, mobile and web games: scales every terrain foliage
+        // layer's draw distances (Engine::setFoliageDistanceScaleDefaults; the editor's views run
+        // the desktop one); clamped to [0, 10]
+        void setFoliageDistanceScale(const std::array<float, 3>& scale);
+        const std::array<float, 3>& getFoliageDistanceScale() const;
 
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);

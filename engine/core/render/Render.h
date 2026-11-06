@@ -359,7 +359,7 @@ namespace jasperengine{
         SCENECOLORTEXTURE,
         SSRTEXTURE,
         GBUFFERTEXTURE,      // view-space normal (rg, octahedral) + roughness (b) + metallic (a)
-        GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
+        GBUFFERALBEDOTEXTURE, // linear base color (rgb) + SSR reflection source code (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
         BONES,
@@ -444,7 +444,7 @@ namespace jasperengine{
         PIP_RTT         = 1 << 1,
         PIP_DEPTH       = 1 << 2,
         PIP_RTT_INVERT  = 1 << 3, // render-to-texture with reversed winding (planar reflection)
-        PIP_GBUFFER     = 1 << 4, // geometry pass with 3 color attachments
+        PIP_GBUFFER     = 1 << 4, // geometry pass with 4 color attachments
         PIP_SHADOW_DEPTH = 1 << 5, // depth-only projective shadow atlas
         PIP_DEFAULT_NODEPTH = 1 << 6, // no depth test or write, submission order
         PIP_RTT_NODEPTH = 1 << 7,

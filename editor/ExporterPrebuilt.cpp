@@ -598,6 +598,7 @@ bool editor::Exporter::writeGameConfig() {
     game.threading.ioThreads = threading.ioThreads;
     game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
     game.atmosphereQuality = project->getAtmosphereQuality();
+    game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;

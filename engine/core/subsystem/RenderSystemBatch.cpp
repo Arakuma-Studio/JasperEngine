@@ -1185,6 +1185,7 @@ void RenderSystem::refreshSubmeshTextures(Submesh& submesh, bool receiveLights, 
                 loadPbrExtTextures(submesh, shaderData, submesh.render) &&
                 bindShaderTextures(libraryBindings, submesh.render, submesh.material.shaderTextures)){
             submesh.needUpdateTexture = false;
+            submesh.needRebindTexture = false;
             noteTextureBinding(submesh, bindMark);
         }
     }
