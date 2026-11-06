@@ -71,6 +71,7 @@ namespace jasperengine{
     struct RotateTracksComponent;
     struct RotationTweenComponent;
     struct SafeAreaComponent;
+    struct AudioSnapshotComponent;
     struct ScaleTracksComponent;
     struct ScaleTweenComponent;
     struct ScriptComponent;

@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 62d1067707cd4d25
+digest 3fe2873a68d4aeba
 --- 0
 enabled: false
 type: directional
@@ -25,6 +25,9 @@ shadowDistance: 80.85714
 shadowAngularDiameter: 1635.8618
 shadowSourceRadius: -67.57143
 shadowUpdateMode: everyFrame
+contactShadowLength: -94
+contactShadowThickness: 1e-45
+contactShadowSampleCount: 7
 volumetricIntensity: -66
 intensityUnit: lumen
 colorTemperature: 1000
@@ -51,8 +54,12 @@ shadowStrength: -85
 shadowDistance: 1e-45
 shadowAngularDiameter: .inf
 shadowSourceRadius: 0.961856
+contactShadows: true
+contactShadowLength: 3041.068
+contactShadowSampleCount: -16
 volumetricIntensity: 33
 intensityUnit: lux
+colorTemperature: 8442.921
 --- 2
 enabled: false
 type: point
@@ -80,6 +87,10 @@ shadowDistance: -49
 shadowAngularDiameter: 3e+38
 shadowSourceRadius: -57
 shadowUpdateMode: everyFrame
+contactShadows: true
+contactShadowLength: 0.8192939
+contactShadowThickness: -92
+contactShadowSampleCount: 15
 volumetricIntensity: 1e-45
 intensityUnit: lumen
 useColorTemperature: true
@@ -116,7 +127,10 @@ cascadeSplits: [-11, 8072.277, -0.59445906]
 shadowDistance: 104.304535
 shadowAngularDiameter: 87
 shadowUpdateMode: onDemand
+contactShadowLength: -0.6123581
 volumetricIntensity: 2165.1846
+intensityUnit: candela
+colorTemperature: 1000
 --- 4
 enabled: false
 type: point
@@ -143,6 +157,9 @@ shadowDistance: -.inf
 shadowAngularDiameter: 54
 shadowSourceRadius: 97.28571
 shadowUpdateMode: onDemand
+contactShadowLength: -0
+contactShadowThickness: -54
+contactShadowSampleCount: -17
 volumetricIntensity: -0.3384584
 intensityUnit: lumen
 useColorTemperature: true
@@ -177,6 +194,9 @@ shadowDistance: -.inf
 shadowAngularDiameter: -0
 shadowSourceRadius: 83
 shadowUpdateMode: everyFrame
+contactShadowThickness: 4218.2173
+contactShadowSampleCount: -6
+volumetricIntensity: -0.85480165
 intensityUnit: lux
 useColorTemperature: true
 --- 6
@@ -214,6 +234,10 @@ shadowDistance: 0.5989027
 shadowAngularDiameter: -33
 shadowSourceRadius: -.inf
 shadowUpdateMode: onDemand
+contactShadows: true
+contactShadowLength: -32
+contactShadowThickness: -0
+contactShadowSampleCount: 0
 volumetricIntensity: 99
 useColorTemperature: true
 --- 7
@@ -248,5 +272,8 @@ shadowNormalBias: -1
 cascadeSplits: [-0.026467685, -0.9801853, -75.71429]
 shadowAngularDiameter: 0.9932679
 shadowSourceRadius: -0.19736949
+contactShadows: true
+contactShadowLength: -0.3120192
 volumetricIntensity: -80
 useColorTemperature: true
+colorTemperature: 1000

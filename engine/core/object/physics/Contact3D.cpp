@@ -83,7 +83,20 @@ Contact3DSnapshot Contact3D::takeSnapshot() const{
     copy.combinedFriction = getCombinedFriction();
     copy.combinedRestitution = getCombinedRestitution();
     copy.sensor = isSensor();
+    copy.approachSpeed = getApproachSpeed();
     return copy;
+}
+
+float Contact3D::getApproachSpeed() const{
+    if (snapshot) return snapshot->approachSpeed;
+    JPH::Vec3 centre = JPH::Vec3::sZero();
+    for (const JPH::Vec3& point : contactManifold->mRelativeContactPointsOn1) centre += point;
+    for (const JPH::Vec3& point : contactManifold->mRelativeContactPointsOn2) centre += point;
+    const size_t points = contactManifold->mRelativeContactPointsOn1.size() + contactManifold->mRelativeContactPointsOn2.size();
+    if (points > 0) centre /= (float)points;
+    const JPH::RVec3 world = contactManifold->mBaseOffset + centre;
+    const JPH::Vec3 relative = body1->GetPointVelocity(world) - body2->GetPointVelocity(world);
+    return std::max(0.0f, relative.Dot(contactManifold->mWorldSpaceNormal));
 }
 
 Contact3DSnapshot& Contact3D::editSnapshot(){
