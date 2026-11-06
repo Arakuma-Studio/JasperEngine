@@ -2232,7 +2232,7 @@ void MeshSystem::addSubmeshAttribute(Submesh& submesh, const std::string& buffer
     submesh.attributes[attribute] = attData;
 }
 
-bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached){
+bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers){
     if (!model.gltfModel || !isValidGLTFIndex(bufferViewIndex, model.gltfModel->bufferViews)) {
         Log::error("Invalid GLTF buffer view index %i", bufferViewIndex);
         return false;
@@ -2253,11 +2253,6 @@ bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelC
     const std::string name = getBufferName(bufferViewIndex, model);
 
     if (std::find(loadedBuffers.begin(), loadedBuffers.end(), name) == loadedBuffers.end() && bufferView.target != 0) {
-        if (!mesh.eBuffers.validIndex(static_cast<int>(mesh.numExternalBuffers))){
-            capacityReached = true;
-            return false;
-        }
-
         loadedBuffers.push_back(name);
 
         if (bufferView.target == 34962) { //GL_ARRAY_BUFFER
@@ -2833,8 +2828,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     return true;
 }
 
-bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh,
-                                     std::string* reason) const {
+bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* reason) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2865,9 +2859,6 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComp
     }
     if (primitiveCount == 0) {
         return reject("The model has no mesh primitives to merge");
-    }
-    if (!mesh.submeshes.validIndex(static_cast<int>(primitiveCount - 1))) {
-        return reject("The merged model would exceed the root mesh submesh limit");
     }
     if (!model.gltfModel->animations.empty()) {
         return reject("Animated models cannot be merged as static geometry");
@@ -3369,6 +3360,38 @@ static bool readAttributeElement(Buffer* buffer, const Attribute& attribute, uns
     return true;
 }
 
+size_t MeshSystem::skinJointCount(MeshComponent& mesh){
+    size_t joints = 0;
+    const auto scan = [&joints](Buffer* buffer, const Attribute& ids){
+        for (unsigned int v = 0; v < ids.getCount(); v++){
+            for (unsigned int e = 0; e < ids.getElements(); e++){
+                float id = 0;
+                if (readAttributeElement(buffer, ids, v, e, id) && id >= 0.0f)
+                    joints = std::max(joints, static_cast<size_t>(id) + 1);
+            }
+        }
+    };
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    for (unsigned int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    // the ids a buffer lays out itself, and those a submesh names in a buffer
+    for (const auto& buffer : buffers){
+        if (const Attribute* ids = buffer.second->getAttribute(AttributeType::BONEIDS))
+            scan(buffer.second, *ids);
+    }
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const auto attribute = mesh.submeshes[s].attributes.find(AttributeType::BONEIDS);
+        if (attribute == mesh.submeshes[s].attributes.end())
+            continue;
+        const auto buffer = buffers.find(attribute->second.getBufferName());
+        if (buffer != buffers.end())
+            scan(buffer->second, attribute->second);
+    }
+    return joints;
+}
+
 void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     std::map<std::string, Buffer*> buffers;
 
@@ -3423,7 +3446,7 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             influences = std::min(boneIdAttr.getElements(), boneWeightAttr.getElements());
         }
         if (influences > 0 && mesh.bonesAABB.empty())
-            mesh.bonesAABB.resize(mesh.bonesMatrix.size());
+            mesh.bonesAABB.resize(mesh.bonesMatrix.stored());
 
         int verticesize = int(vertexAttr.getCount());
         for (int v = 0; v < verticesize; v++){
@@ -5293,7 +5316,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.numExternalBuffers = 0;
     mesh.normAdjustJoint = 1.0f;
     mesh.normAdjustWeight = 1.0f;
-    mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+    mesh.bonesMatrix.clear();
     mesh.needUpdateBones = false;
     mesh.morphTargetNames.clear();
 
@@ -5417,7 +5440,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool mergeMeshNodes = model.mergeStaticMeshes && meshNodes.size() > 1;
     if (mergeMeshNodes) {
         std::string reason;
-        if (!canMergeStaticModel(model, mesh, &reason)) {
+        if (!canMergeStaticModel(model, &reason)) {
             Log::error("Cannot merge static GLTF model (%s): %s", filename.c_str(), reason.c_str());
             if (asyncLoad) {
                 ResourceProgress::failBuild(buildId);
@@ -5533,23 +5556,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     model.morphNameMapping.clear();
 
-    // What a mesh has no room for (a build without the editor: MAX_SUBMESHES, MAX_EXTERNAL_BUFFERS) is
-    // left out, by whole primitives. Off the main thread that is the bake of a model's nodes into one
-    // mesh, which the model does not have on the main thread (a mesh a node): the model loads fine,
-    // this is its preview, and not an error. Reported once a load.
-    bool capacityReported = false;
-    const auto reportOverCapacity = [&](const char* what, size_t capacity) {
-        if (capacityReported) {
-            return;
-        }
-        capacityReported = true;
-        if (Engine::isAsyncThread() && !mergeMeshNodes) {
-            Log::warn("Model %s bakes into one mesh off the main thread, with more %s than the maximum allowed (%zu): the primitives over it are left out", filename.c_str(), what, capacity);
-        } else {
-            Log::error("Model %s has more %s than the maximum allowed (%zu): the primitives over it are left out", filename.c_str(), what, capacity);
-        }
-    };
-
     if (useChildEntities) {
         // Each node becomes its own child mesh; the root mesh stays an empty container (loadMesh
         // skips it). numExternalBuffers was already zeroed at the top of loadGLTF.
@@ -5558,10 +5564,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         // Flatten path: every node's primitives accumulate into the single root MeshComponent, so its
         // submesh array is sized for the total up-front and the buffer dedup/reserve happens once.
         mesh.numSubmeshes = totalSubmeshes;
-        if (!mesh.submeshes.validIndex(static_cast<int>(totalSubmeshes) - 1)) {
-            reportOverCapacity("submeshes", mesh.submeshes.size());
-            mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
-        }
         loadedBuffers.clear();
         if (model.gltfModel) {
             // One synthetic view per primitive for byte-index expansion, one for a VEC3 COLOR_0, up to
@@ -5613,11 +5615,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     unsigned int submeshIndex = 0; // continuous across nodes for the flatten path
-    bool flatMeshFull = false;     // the flatten path's one mesh has no room for what comes next
     for (int nodeIdx : meshNodes) {
-        if (flatMeshFull) {
-            break;
-        }
         int gltfMeshIndex = model.gltfModel->nodes[nodeIdx].mesh;
         if (!isValidGLTFIndex(gltfMeshIndex, model.gltfModel->meshes)) {
             continue;
@@ -5715,16 +5713,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.numExternalBuffers = 0;
             mesh.normAdjustJoint = 1.0f;
             mesh.normAdjustWeight = 1.0f;
-            mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+            mesh.bonesMatrix.clear();
             mesh.needUpdateBones = false;
             mesh.morphTargetNames.clear();
             mesh.vatMesh = vatGltf;
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
-            if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
-                reportOverCapacity("submeshes", mesh.submeshes.size());
-                mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
-            }
 
             // Legacy skinned children stay at identity; hierarchy children use their node transform.
             double windingDet = nodeSkin && !useNodeHierarchy
@@ -5743,33 +5737,23 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
         }
 
-        if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
-            const int lastBone = static_cast<int>(nodeSkin->joints.size()) - 1;
-            if (!mesh.bonesMatrix.validIndex(lastBone)){
-                Log::error("Model %s has more bones than the maximum allowed (%zu)",
-                    filename.c_str(), mesh.bonesMatrix.size());
-                if (asyncLoad) {
-                    ResourceProgress::failBuild(buildId);
-                }
-                return false;
+        if (nodeSkin && !nodeSkin->joints.empty() && mesh.bonesMatrix.validIndex(static_cast<int>(nodeSkin->joints.size()) - 1)){
+            // one matrix per joint, the identity until a pose (the palette is the skin's; the
+            // flatten path's one mesh takes its largest skin's)
+            if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
+                mesh.bonesMatrix.resize(nodeSkin->joints.size());
+        }else if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+            Log::error("Model %s has a skin of %zu joints, more than %zu",
+                filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
+            if (asyncLoad) {
+                ResourceProgress::failBuild(buildId);
             }
-            mesh.bonesMatrix[lastBone].identity();
+            return false;
         }
 
         for (size_t p = 0; p < gltfmesh.primitives.size(); p++) {
-            if (submeshIndex >= mesh.numSubmeshes) {
-                flatMeshFull = !useChildEntities;
-                break;
-            }
-
             // Claim this slot now so any early-continue still advances the index correctly.
             const unsigned int i = submeshIndex++;
-
-            // what the primitive takes of the mesh's buffers, given back when not all of them fit
-            const unsigned int externalBuffersBefore = mesh.numExternalBuffers;
-            const size_t loadedBuffersBefore = loadedBuffers.size();
-            const auto vertexCountBefore = mesh.vertexCount;
-            bool bufferCapacityReached = false;
 
             if (asyncLoad) {
                 float submeshProgress = 0.4f + (0.4f * (float(i) / float(mesh.numSubmeshes)));
@@ -5915,7 +5899,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             mesh.submeshes[i].faceCulling = mat ? !mat->doubleSided : true;
 
-            loadGLTFBuffer(indexBufferView, mesh, model, indexStride, loadedBuffers, bufferCapacityReached);
+            loadGLTFBuffer(indexBufferView, mesh, model, indexStride, loadedBuffers);
             addSubmeshAttribute(mesh.submeshes[i], getBufferName(indexBufferView, model),
                 AttributeType::INDEX, 1, indexType, indexAccessor.count, indexByteOffset, false);
             // the detail levels the model cook baked (JE_mesh_lods, spec S54 contract C1)
@@ -5985,7 +5969,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
                 const std::string bufferName = getBufferName(attrBufferView, model);
 
-                loadGLTFBuffer(attrBufferView, mesh, model, byteStride, loadedBuffers, bufferCapacityReached);
+                loadGLTFBuffer(attrBufferView, mesh, model, byteStride, loadedBuffers);
 
                 int elements = (accessor.type != TINYGLTF_TYPE_SCALAR) ? accessor.type : 1;
 
@@ -6152,7 +6136,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
                     const std::string bufferName = getBufferName(accessor.bufferView, model);
 
-                    loadGLTFBuffer(accessor.bufferView, mesh, model, byteStride, loadedBuffers, bufferCapacityReached);
+                    loadGLTFBuffer(accessor.bufferView, mesh, model, byteStride, loadedBuffers);
 
                     int elements = (accessor.type != TINYGLTF_TYPE_SCALAR) ? accessor.type : 1;
 
@@ -6219,20 +6203,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 morphIndex++;
             }
 
-            // A primitive without all its buffers cannot draw (a hole in its pipeline's attributes):
-            // it goes whole, and what comes after it with it on the one mesh of the flatten path
-            if (bufferCapacityReached) {
-                reportOverCapacity("external buffers", mesh.eBuffers.size());
-                mesh.submeshes[i].attributes.clear();
-                mesh.submeshes[i].material = Material();
-                mesh.numExternalBuffers = externalBuffersBefore;
-                loadedBuffers.resize(loadedBuffersBefore);
-                mesh.vertexCount = vertexCountBefore;
-                submeshIndex = i;
-                flatMeshFull = !useChildEntities;
-                break;
-            }
-
             if (morphTargets) {
                 // the file's default weights only on a freshly loaded model, or when another model
                 // file is loaded: weights a scene or prefab saved (the editor's Blend Shapes rows, a
@@ -6275,7 +6245,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         // a continuous submeshIndex across nodes and finalizes the root mesh once after the loop.
         if (useChildEntities) {
             mesh.numSubmeshes = submeshIndex; // reserved-but-skipped slots (invalid data) dropped
-            std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+            mesh.submeshes.reverse(0, mesh.numSubmeshes);
             calculateMeshAABB(mesh);
             mesh.needReload = true;
             // EXT_mesh_gpu_instancing (S53 R3): the node's copies are the child mesh's instances
@@ -6632,7 +6602,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // MeshComponents may have reallocated the component array — so the `mesh` reference captured
     // before the loop must not be dereferenced here.
     if (!useChildEntities) {
-        std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+        mesh.submeshes.reverse(0, mesh.numSubmeshes);
 
         calculateMeshAABB(mesh);
 
@@ -6778,11 +6748,6 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     if (materials.size() > 0){
         mesh.numSubmeshes = materials.size();
 
-    }
-
-    if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)){
-        Log::error("Model %s has more submeshes than the maximum allowed (%zu)", filename.c_str(), mesh.submeshes.size());
-        mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
     }
 
     if (asyncLoad) {
@@ -6997,7 +6962,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     mesh.buffer.setShareSource(objSource, OBJ_SHARE_VERTICES);
     mesh.indices.setShareSource(objSource, OBJ_SHARE_INDICES);
 
-    std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+    mesh.submeshes.reverse(0, mesh.numSubmeshes);
 
     applySubmeshOverrides(submeshOverrides, entity, model);
 
