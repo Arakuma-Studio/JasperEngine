@@ -99,7 +99,7 @@ async def test_escape_releases_a_captured_cursor(ed: Editor):
         cursor = (await ed.call("get_play_state"))["input"]["cursor"]
         ed.check_eq(cursor["released_to_editor"], True, f"Escape released it: {cursor}")
         lock = (await ed.call("get_input_state", fields=["raw"]))["raw"]["pointer_lock"]
-        ed.check_eq(lock, "unlocked", "the game's pointer lock went with it")
+        ed.check_eq(lock, "pending", "the game's pointer lock is let go (still requested: a click gives it back)")
 
         await ui.click(ui.centre(game))
         await ui.frames(4)
