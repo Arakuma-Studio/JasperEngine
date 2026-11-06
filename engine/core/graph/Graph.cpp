@@ -435,6 +435,12 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
     }
 
     graph.nextId = json.value("nextId", static_cast<uint64_t>(1));
+    for (const char* key : {"nodes", "edges", "variables", "groups"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_array()) report.malformed.push_back(std::string("'") + key + "' is not a list");
+    }
+    for (const char* key : {"viewport", "metadata"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_object()) report.malformed.push_back(std::string("'") + key + "' is not an object");
+    }
     std::set<std::string> unknownTypes;
     if (auto it = json.find("nodes"); it != json.end() && it->is_array()) {
         for (const Json& item : *it) {
@@ -495,6 +501,20 @@ Graph jasperengine::graph::load(std::string_view text, LoadReport& report){
         return Graph();
     }
     return fromJson(json, report);
+}
+
+std::string jasperengine::graph::fileProblem(std::string_view path, const Graph& graph, const LoadReport& report){
+    if (!report.ok) return report.error;
+    if (!report.malformed.empty()) return report.malformed.front();
+    const std::shared_ptr<const GraphKindDesc> owner = GraphRegistry::get().kindForFile(path);
+    if (!owner || owner->id == graph.kind) return {};
+    const std::string expected = "these files have kind '" + owner->id + "'";
+    return graph.kind.empty() ? "it names no kind: " + expected : "its kind is '" + graph.kind + "': " + expected;
+}
+
+std::vector<std::string> jasperengine::graph::fileWarnings(const LoadReport& report){
+    // (fromJson adds those about unknown node types last, one each)
+    return {report.warnings.begin(), report.warnings.end() - static_cast<std::ptrdiff_t>(report.unknownNodeTypes.size())};
 }
 
 std::string jasperengine::graph::save(const Graph& graph){

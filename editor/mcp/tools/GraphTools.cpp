@@ -116,9 +116,12 @@ Json reportJson(const graph::LoadReport& report) {
     return out;
 }
 
-// with its message: a second misspelled parameter on a node is a new error, not the first again
+// A strict kind's parameter errors by their message: a second misspelled name or another bad value
+// on a node is new. Any other error stays the same one while its message changes: a cycle that
+// shrinks lists fewer nodes, and the edit added nothing.
 std::string errorKey(const graph::Issue& issue) {
-    return issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId + "|" + issue.message;
+    const std::string key = issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId;
+    return issue.code == "unknown-param" || issue.code == "param-range" ? key + "|" + issue.message : key;
 }
 
 std::string issueText(const graph::Issue& issue) {
@@ -184,6 +187,12 @@ void editGraphTool(const CallPtr& call) {
     Graph g;
     graph::LoadReport report;
     if (!readGraph(call, file, before, g, report)) return;
+    // rewriting it would lose what the file holds, or skip what its extension's kind checks
+    const std::string problem = graph::fileProblem(args.value("path", std::string()), g, report);
+    if (!problem.empty()) {
+        call->fail(args.value("path", std::string()) + " is not a graph of its kind: " + problem + "; nothing was written. Fix the file first (read_file shows it).");
+        return;
+    }
     const bool dryRun = args.value("dry_run", false);
     const bool allowInvalid = args.value("allow_invalid", false);
 
@@ -280,7 +289,7 @@ void registerGraphTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "validate_graph";
         tool.title = "Validate Graph";
-        tool.description = "A graph file's issues [{severity, code, node, port, edge, message}]: dangling-edge, duplicate-id, "
+        tool.description = "A graph file's issues: dangling-edge, duplicate-id, "
                            "direction, type-mismatch, multiplicity, cycle, unknown-node-type, missing-required-input, param-range, "
                            "unknown-param, and the kind's own.";
         tool.inputSchema = object({{"path", assetPath("A graph file.")}}, {"path"});

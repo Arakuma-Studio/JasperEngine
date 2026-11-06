@@ -226,7 +226,8 @@ async def test_graph_files_are_text_and_tracked():
     async with Editor(create=True, name="Graph Files CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
         await write_graph(ed)
         for path in (PATH, "graphs/Other.strictgraph"):
-            written = await ed.call_raw("write_file", {"path": path, "content": json.dumps(GRAPH, indent=2) + "\n"})
+            kind = "test_strict" if path.endswith(".strictgraph") else "test"
+            written = await ed.call_raw("write_file", {"path": path, "content": json.dumps({**GRAPH, "kind": kind}, indent=2) + "\n"})
             ed.check(not written.is_error, f"write_file {path}: {written.text[:300]}")
             read = await ed.call_raw("read_file", {"path": path})
             ed.check(not read.is_error and "formatVersion" in read.text, f"read_file {path}: {read.text[:300]}")
@@ -262,3 +263,68 @@ async def test_graph_files_are_text_and_tracked():
             found, ext = await problems()
             ed.check(PATH not in ext.get("changed", []), f"edit_graph's own write: {ext}")
             await asyncio.sleep(0.25)
+
+
+async def test_an_existing_error_that_changes_is_not_new():
+    """Fix round 1 of BF23: only a parameter's error is told apart by its message. An edit that shrinks a
+    cycle adds nothing, on a kind that did not opt in; a new bad value on a strict kind is still new."""
+    async with Editor(create=True, name="Graph Keys CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        graph = json.loads(json.dumps(GRAPH))
+        graph["nodes"] = [{"id": n, "type": "blend", "position": [0.0, 0.0], "params": {}} for n in ("n1", "n2", "n3")]
+        graph["edges"] = [{"id": "e4", "from": {"node": "n1", "port": "out"}, "to": {"node": "n2", "port": "a"}},
+                          {"id": "e5", "from": {"node": "n2", "port": "out"}, "to": {"node": "n1", "port": "a"}},
+                          {"id": "e6", "from": {"node": "n2", "port": "out"}, "to": {"node": "n3", "port": "a"}}]
+        graph["nextId"] = 7
+        await write_graph(ed, graph)
+        issues = await ed.call("validate_graph", path=PATH)
+        ed.check([i for i in issues["issues"] if i["code"] == "cycle" and "n3" in i["message"]], f"the cycle's message lists n3: {issues}")
+        shrink = await ed.call_raw("edit_graph", {"path": PATH, "ops": [{"op": "disconnect", "id": "e6"}]})
+        ed.check(not shrink.is_error, f"the edit adds no error: {shrink.text[:300]}")
+        ed.check_eq([e["id"] for e in json.loads((ed.project / PATH).read_text())["edges"]], ["e4", "e5"], "it was written")
+
+        target = ed.project / STRICT_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(STRICT_GRAPH, indent=2) + "\n")
+        far = [{"op": "setParam", "node": "n1", "name": "value", "value": 500}]
+        await ed.call("edit_graph", path=STRICT_PATH, ops=far, allow_invalid=True)
+        farther = await ed.call_raw("edit_graph", {"path": STRICT_PATH, "ops": [{"op": "setParam", "node": "n1", "name": "value", "value": 600}]})
+        ed.check(farther.is_error, f"another bad value is new: {farther.text[:300]}")
+
+
+async def test_a_graph_file_is_of_its_kind():
+    """Fix round 1 of BF23: a file whose kind is not its extension's, or whose lists are not lists, is not
+    that kind's file: write_file and edit_graph refuse it, another program's edit reports it."""
+    async with Editor(create=True, name="Graph Kind CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        path = "graphs/Other.strictgraph"
+        target = ed.project / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        good = json.dumps(STRICT_GRAPH, indent=2) + "\n"
+        await ed.call("write_file", path=path, content=good)
+        for content, fragment in (("{}", "names no kind"),
+                                  (json.dumps({**STRICT_GRAPH, "kind": "tes"}), "'test_strict'"),
+                                  (json.dumps({**STRICT_GRAPH, "kind": "test"}), "'test_strict'"),
+                                  (json.dumps({**STRICT_GRAPH, "nodes": "oops"}), "'nodes'")):
+            refused = await ed.call_raw("write_file", {"path": path, "content": content})
+            ed.check(refused.is_error and fragment in refused.text, f"{content[:40]}: {refused.text[:300]}")
+            ed.check_eq(target.read_text(), good, f"{content[:40]} wrote nothing")
+
+        async def report() -> dict:
+            r = await ed.call_raw("editor_status")
+            return (r.structured if isinstance(r.structured, dict) else {}).get("external_changes") or {}
+
+        for content, fragment in ((json.dumps({**STRICT_GRAPH, "kind": "test"}), "'test_strict'"),
+                                  (json.dumps({**STRICT_GRAPH, "kindVersion": 99}), "newer than this build")):
+            time.sleep(0.05)
+            target.write_text(content)
+            ext = await report()
+            found = [p for p in ext.get("problems", []) if p.get("path") == path and fragment in p.get("message", "")]
+            ed.check(found, f"{content[:60]}: {ext}")
+
+        # edit_graph does not rewrite such a file either: the strict check would be skipped, a value lost
+        for content in (json.dumps({**STRICT_GRAPH, "kind": "test"}), json.dumps({**STRICT_GRAPH, "groups": "oops"})):
+            time.sleep(0.05)
+            target.write_text(content)
+            refused = await ed.call_raw("edit_graph", {"path": path, "ops": [{"op": "moveNodes", "ids": ["n1"], "delta": [1, 1]}]})
+            ed.check(refused.is_error, f"edit_graph on {content[:40]}: {refused.text[:300]}")
+            ed.check_eq(target.read_text(), content, "nothing written")
+

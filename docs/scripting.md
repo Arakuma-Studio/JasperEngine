@@ -239,8 +239,10 @@ them; other kinds keep them for a newer build. Loading never refuses a file for 
 returns `added: [{op_index, id}]`, the id of each new node, edge and group, and an `addNode` with
 its own id still gets its type's defaults. A kind's `fileExtension` is enough for its files to be
 text for `read_file` and `write_file`, and tracked: another program's edit reports its problems in
-`external_changes`. An open window or a pool reacts to edits with
-`GraphEditCmd::addChangeListener`, called on execute and on undo.
+`external_changes`; `write_file` and `edit_graph` refuse a file whose `kind` is not its extension's.
+An open window or a pool reacts to `edit_graph` and undoable graph edits with
+`GraphEditCmd::addChangeListener`, called on execute and on undo, and to a file written any other way
+through `HotReloadService`, kind `graph`.
 
 ## The Lua API as data
 

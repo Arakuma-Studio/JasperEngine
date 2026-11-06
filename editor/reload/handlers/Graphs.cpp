@@ -23,9 +23,13 @@ void reload::addGraphFileProblems(Project& project, const fs::path& path, Json& 
     const std::string relative = reload::rel(project, path);
     graph::LoadReport report;
     const graph::Graph loaded = graph::load(text, report);
-    if (!report.ok) {
-        problems.push_back({{"path", relative}, {"severity", "error"}, {"message", "Not a graph file: " + report.error}});
+    const std::string problem = graph::fileProblem(relative, loaded, report);
+    if (!problem.empty()) {
+        problems.push_back({{"path", relative}, {"severity", "error"}, {"message", "Not a graph file: " + problem}});
         return;
+    }
+    for (const std::string& warning : graph::fileWarnings(report)) {
+        problems.push_back({{"path", relative}, {"severity", "warning"}, {"message", warning}});
     }
     for (const graph::Issue& issue : graph::validate(loaded)) {
         if (issue.severity == graph::Severity::Info) continue;

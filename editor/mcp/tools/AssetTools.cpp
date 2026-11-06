@@ -1359,16 +1359,19 @@ void writeFileTool(const CallPtr& call) {
         }
         for (const particles::Diagnostic& d : diagnostics) effectWarnings.push_back(d.path + ": " + d.message);
     }
-    // A graph kind's files must stay graph files; what they say wrong is the kind's to report
+    // A graph kind's files must stay graphs of that kind; what they say wrong is the kind's to report
     const bool graphFile = graph::GraphRegistry::get().kindForFile(rel) != nullptr;
     Json graphIssues = Json::array();
+    std::vector<std::string> graphWarnings;
     if (graphFile) {
         graph::LoadReport report;
         const graph::Graph loaded = graph::load(content, report);
-        if (!report.ok) {
-            call->fail("Not a valid graph: " + report.error + ". Prefer edit_graph.");
+        const std::string problem = graph::fileProblem(rel, loaded, report);
+        if (!problem.empty()) {
+            call->fail("Not a valid graph: " + problem + ". Prefer edit_graph.");
             return;
         }
+        graphWarnings = graph::fileWarnings(report);
         for (const graph::Issue& issue : graph::validate(loaded)) graphIssues.push_back(Json::parse(graph::toJson(issue).dump()));
     }
     std::string error;
@@ -1416,6 +1419,7 @@ void writeFileTool(const CallPtr& call) {
         for (size_t i = 0; i < effectWarnings.size() && i < 8; i++) text += "\n" + effectWarnings[i];
     } else if (graphFile) {
         data["issues"] = graphIssues;
+        data["warnings"] = graphWarnings;
         text += " Graph with " + std::to_string(graphIssues.size()) + " issue(s).";
     }
     if (Util::isShaderFile(rel)) {

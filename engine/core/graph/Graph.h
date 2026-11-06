@@ -131,12 +131,19 @@ namespace jasperengine::graph {
         std::vector<std::string> unknownNodeTypes;   // kept as opaque nodes
         bool unknownKind = false;
         int migratedFrom = 0;                    // the kindVersion migrated from, 0 when none ran
+        std::vector<std::string> malformed;      // known keys of the wrong type: their values are not read, a save loses them
     };
 
     // Reads a graph file. The kind's migrations (GraphRegistry) bring an older kindVersion up to
     // date; unknown keys, node types and kinds are kept; an edge without an id gets one.
     JASPERENGINE_API Graph load(std::string_view json, LoadReport& report);
     JASPERENGINE_API Graph fromJson(const Json& json, LoadReport& report);
+    // Why this read of the file at `path` is not a file of that path's kind: not a graph, a key
+    // of the wrong type, or another kind than the one its extension belongs to (the kind decides
+    // what is checked, so a file must not choose it); "" when it is
+    JASPERENGINE_API std::string fileProblem(std::string_view path, const Graph& graph, const LoadReport& report);
+    // The load's warnings a caller should pass on: validate() reports the unknown node types itself
+    JASPERENGINE_API std::vector<std::string> fileWarnings(const LoadReport& report);
     // Deterministic: known keys in a fixed order, then the unknown ones as read; nodes and edges
     // in id order; two-space indent, LF line endings, a final newline
     JASPERENGINE_API std::string save(const Graph& graph);
