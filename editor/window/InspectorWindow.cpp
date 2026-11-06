@@ -12044,6 +12044,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             if (ImGui::Button((ICON_FA_PEN_TO_SQUARE "##edit_name_" + std::to_string(scriptIdx)).c_str())) {
                 ImGui::OpenPopup(("Edit Script##" + std::to_string(scriptIdx)).c_str());
             }
+            UIProbe::item("inspector.editScript." + std::to_string(scriptIdx));
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(script.type == ScriptType::LUA ? "Edit script details: source file"
                                                                  : "Edit script details: class name, header and source files");

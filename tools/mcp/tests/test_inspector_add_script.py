@@ -75,8 +75,8 @@ async def test_add_script_picks_a_lua_script(ed: Editor):
     ed.check_eq([p["name"] for p in scripts[0]["properties"]], ["speed"], "its properties are read")
 
     # the edit popup of a Lua entry: the module name is the file name, not edited
-    await ui.click_revealed("##edit_name_0", window="Inspector")
-    await ui.frames(4)
+    await ui.click(ui.at(list(centre(await reveal(ed, ui, "inspector.editScript.0")))))
+    await ui.frames(6)
     ed.check(await ed.ui_rect("inspector.editScript.module"), f"the popup shows the read-only Module: {sorted(ed.ui_items())}")
     await ui.key("Escape")
     await ui.frames(4)

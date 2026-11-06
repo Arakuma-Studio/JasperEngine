@@ -216,9 +216,12 @@ TEST_F(ScriptingEditor, SceneOpenRefreshes) {
     scene->scene->addComponent<ScriptComponent>(entities[0], component);
     project()->updateScriptProperties(scene, entities[0], scene->scene->getComponent<ScriptComponent>(entities[0]).scripts);
     const fs::path path = project()->getProjectPath() / "Opened.scene";
-    ASSERT_TRUE(project()->saveSceneToPath(scene->id, path));
+    const uint32_t openedId = scene->id;
+    ASSERT_TRUE(project()->saveSceneToPath(openedId, path));
+    std::vector<Entity> none;
+    newScene("AfterOpened", none, 0);  // the last open scene can't close
     std::string error;
-    ASSERT_TRUE(project()->closeSceneNow(scene->id, UnsavedChoice::Discard, &error)) << error;
+    ASSERT_TRUE(project()->closeSceneNow(openedId, UnsavedChoice::Discard, &error)) << error;
 
     // changed while the scene was closed
     writeFile(lua("opened.lua"), kSpeedJumpScript);
