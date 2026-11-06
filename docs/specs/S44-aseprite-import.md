@@ -947,13 +947,15 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
   a playback unrolls at most 2^20 frames (fewer passes beyond that).
 - **Sprite Preview.** Compare at 1x draws both frames at the preview's integer zoom (S41's Game
   view scale is not on main).
-- **Budgets (AC15, AC20).** Measured on the shared 8-core build host under load (budgets printed,
-  enforced only by the benchmark run's `perfSlack()`), with `AsepriteBench` documents built in
-  code at R26's sizes (2.67 MB file, not 1.5 MB): read 238 ms (budget 40), one 256² 8-layer
-  composition 2.8 ms (1), write unchanged 3.4 ms (5), write with every cel changed 639 ms (120:
-  deflating 128 MB of cels at level 6 on one thread), import of a 64×64 24-frame file 2.4 ms (50);
-  a 2,000-frame sheet parse 9.8 ms (5). The read, composition and full-write budgets are missed
-  here; a quiet-machine benchmark run should confirm before tuning.
+- **Budgets (AC15, AC20).** Measured on the shared 8-core build host under load (load average
+  4.5-8; budgets printed, enforced only by the benchmark run's `perfSlack()`), with `AsepriteBench`
+  documents built in code at R26's sizes (2.67 MB file, not 1.5 MB). After parallel cel inflate and
+  deflate (up to 8 threads) and an RGBA composition fast path: compose one 256² 8-layer frame
+  0.64 ms (budget 1), write unchanged 3.9 ms (5), import of a 64×64 24-frame file 0.9 ms (50) are
+  met; read 104 ms (40, was 238) and write with every cel changed 197 ms (120, was 639) are bound
+  by zlib inflating and deflating 128 MB of cels; a 2,000-frame sheet parse is 15 ms (5) through
+  the JSON parser. A quiet-machine benchmark run should confirm the three misses before any
+  further work (a faster deflate library would be a new vendored dependency).
 - **`--data` names.** Aseprite's `--data` calls the four HSL modes `hsl_hue`, `hsl_saturation`,
   `hsl_color` and `hsl_luminosity`; `describe` keeps §6.3's `hue` ... (the parity test maps them),
   and omits a slice key's centre when the key has none (Aseprite's hidden keys).

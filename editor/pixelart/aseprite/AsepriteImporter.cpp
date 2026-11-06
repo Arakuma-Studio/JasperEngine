@@ -417,6 +417,11 @@ namespace jasperengine::editor::pixelart::aseprite {
         }
         SpriteSheetPool::invalidate(r.assetPath);
         AnimationClipPool::invalidateModel(r.assetPath);
+        // an idle Scene view updates its systems only when flagged: the sprites showing the file
+        // pick the new sheet up on the next frame (R22)
+        if (project) {
+            for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) sceneProject->needUpdateRender = true;
+        }
         if (!r.cacheHit || !first) {
             Out::info("[Aseprite] Imported %s: %d frames, %zu clips (%.0f ms)", r.assetPath.c_str(), r.frames, r.clips.size(), r.ms);
         }
