@@ -50,6 +50,7 @@ async def test_a_procmat_is_absent_from_an_export():
         ed.check_eq(info.get("type"), "procedural_material", f"the database tracks it: {info}")
         ed.check_eq(info.get("guid"), GRAPH_GUID, f"its GUID is the one in the file: {info}")
 
+        await ed.call("save_project")
         out = ed.scratch.root / "export"
         r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"], allow_missing_assets=True,
                           overwrite=True, timeout_seconds=900)
