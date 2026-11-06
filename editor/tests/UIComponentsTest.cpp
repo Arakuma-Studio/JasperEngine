@@ -240,7 +240,8 @@ TEST_F(UIComponentsTest, MaxTextSizeGrowthReloads) {
 
     scene->getComponent<TextComponent>(t).maxTextSize = 100;
     editor::Catalog::updateEntity(scene, t, editor::UpdateFlags_Text);
-    frame();
+    // the UI system alone: the render system would reload this hand-made "loaded" state for its own reasons
+    ui().update(0.0);
     EXPECT_TRUE(uic(t).needReload) << "the buffers of 10 characters cannot take 100";
 }
 
