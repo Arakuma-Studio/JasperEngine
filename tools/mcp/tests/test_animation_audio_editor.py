@@ -221,15 +221,16 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     pixels_per_second = (target[0] - tracks[0]) / after[-1]["start_time"]
     await ui.click((int(tracks[0] + pixels_per_second * 1.0), int(tracks[1] - 8)))
     await ui.frames(4)
-    index = len(before) - 1 if before else 0
-    await ui.click(middle(ui, await rect_of(ed, f"entity.frame.{index}")))
+    # the dropped block is the selected one: Align Peak acts on it
+    index = len(after) - 1
+    await ed.call("focus_window", window="animation")
     await ui.frames(4)
     # Align Peak is refused until the clip's analysis has its peak (a worker): pressed again until it moves
     for _ in range(20):
         await ui.key("shift+a")
         await ui.frames(10)
         aligned = await frames_of(ed, "Sequencer")
-        if aligned[index]["start_time"] != before[index]["start_time"] if before else aligned[index]["start_time"] != 0.0:
+        if aligned[index]["start_time"] != after[index]["start_time"]:
             break
     await keep_shot(ed, "entity-audio-aligned")
     # (the ruler click snaps to the frame grid: within a frame of 1.0 s)
