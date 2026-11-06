@@ -9,6 +9,9 @@
 #include "util/Prefab.h"
 #include "util/Util.h"
 #include "audio/AudioImportRegistry.h"
+#include "animation/AnimationClipIO.h"
+#include "component/ActionComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "util/LuaApiData.h"
 #include "player/PlayerModules.h"
@@ -273,6 +276,7 @@ namespace {
             if (scan.debugOverlayInBuilds) add("htmlui", "Project Settings", "Debug > Overlay (an HTML UI document)");
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
             if (scan.audioImportTable) add("soundlayer", "Audio clips", "import settings that change what a clip plays");
+            for (const std::string& clip : scan.cueClips) add("soundlayer", clip, "animation clip with audio cues");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
             for (const ModuleContent& content : scan.contents) scanContent(content);
@@ -330,7 +334,11 @@ namespace {
                     if (!audio->event.empty()) add("soundlayer", content.label, "Audio Source " + object + " plays a Sound Event");
                     if (audio->playOn != 0) add("soundlayer", content.label, "Audio Source " + object + " has Play On triggers");
                     if (audio->pitchRandomSemitones != 0.0f || audio->volumeRandomDb != 0.0f) add("soundlayer", content.label, "Audio Source " + object + " has random ranges");
+                    // the legacy timeline's audio actions start through the timeline audio path (S40 §6.6)
+                    if (registry->findComponent<ActionComponent>(entity)) add("soundlayer", content.label, "audio action " + object);
                 }
+                if (registry->findComponent<AudioSnapshotComponent>(entity) && registry->findComponent<ActionComponent>(entity))
+                    add("soundlayer", content.label, "Mixer Snapshot action " + object);
                 if (has(registry->findComponent<UIDocumentComponent>(entity))) add("htmlui", content.label, "UI Document on " + object);
                 if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
@@ -611,5 +619,12 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
              return ext == ".html" || ext == ".htm" || ext == ".rml" || ext == ".xhtml";
          }))
         scan.documents.push_back({path.generic_string(), read(path)});
+    // clips with audio cues: a cheap text test first, the parser decides (S40 §6.6)
+    for (const fs::path& path : project->findProjectFiles([](const std::string& p) { return lower(fs::path(p).extension().string()) == ".anim"; })) {
+        const std::string text = read(path);
+        if (text.find("\"audio\"") == std::string::npos) continue;
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        if (parsed.ok() && !parsed.data->audio.empty()) scan.cueClips.push_back(path.generic_string());
+    }
     return scan;
 }

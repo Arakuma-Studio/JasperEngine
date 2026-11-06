@@ -1325,4 +1325,33 @@ CASES = [
         "checks": {"calls": [{"tool": "set_audio_import_settings"}], "must_not_call": [{"tool": "set_project_settings"}]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_footsteps_by_events_and_lua",
+        "kind": "bad",
+        "what_happened": "Asked for footstep sounds on an animation clip's contact frames, an agent added clip events and a Lua "
+                         "method calling Audio.play: frame-quantized, and a script for what is data. edit_animation's audio cues "
+                         "play a Sound Event at a clip time, placed to the sample, with no script.",
+        "text_at_issue": "WorldTools.cpp edit_animation: its audio argument and description sentence; animation.md Audio cues",
+        "source": "docs/specs/S40-timeline-audio.md R12",
+        "files": {"assets/sounds/steps.soundevent": "{\"format\": \"jasperengine.soundevent\", \"version\": 1, \"mode\": \"shuffle\", \"clips\": []}\n",
+                  "assets/anim/walk.anim": "{\"format\": \"jasperengine.anim\", \"version\": 1, \"frame_rate\": 30, \"wrap\": \"loop\", "
+                                           "\"tracks\": [], \"events\": []}\n"},
+        "prompt": "The Player's Animation Player loops assets/anim/walk.anim. Make assets/sounds/steps.soundevent play when each foot "
+                  "lands: the left foot at 0.3 s and the right foot at 0.8 s of the clip, from the feet (Body/LeftFoot, Body/RightFoot).",
+        "mocks": [
+            {"tool": "get_animation", "result": ok("assets/anim/walk.anim: 1.00 s, loop, 0 tracks, 0 events, 1 user (Main: Player).",
+                                                   {"clip": "assets/anim/walk.anim", "length": 1.0, "wrap": "loop", "frame_rate": 30, "tracks": [], "events": [],
+                                                    "users": [{"scene": "Main", "entity": "Player", "entry": 0, "state": "walk"}]})},
+            {"tool": "edit_animation", "result": ok("Edited assets/anim/walk.anim: audio: 2 cue(s) (replaced 0). One project undo step.",
+                                                    {"clip": "assets/anim/walk.anim", "changes": ["audio: 2 cue(s) (replaced 0)"],
+                                                     "audio": [{"index": 0, "time": 0.3, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25},
+                                                               {"index": 1, "time": 0.8, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25}]})},
+            {"tool": "get_asset_info", "result": ok("assets/sounds/steps.soundevent: Sound Event, shuffle, 3 clips.", {"path": "assets/sounds/steps.soundevent", "exists": True})},
+            {"tool": "list_scripts", "result": ok("No Lua scripts.", {"scripts": []})},
+            {"tool": "save_project", "result": ok("Saved the project.", {"saved": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
+                   "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
 ]
