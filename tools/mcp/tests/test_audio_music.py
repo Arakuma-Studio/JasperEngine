@@ -89,7 +89,7 @@ async def test_setup(ed: Editor):
     write_tone(music / "sting.wav", seconds=0.25, frequency=1500.0, amplitude=0.25, rate=RATE)
     write_tone(music / "sfx.wav", seconds=1.0, frequency=2000.0, amplitude=0.25, rate=RATE)
     # the playlist's sections: triangles exact in float32, loop regions of whole periods
-    for name, period, frames in (("s0", 64, 9600), ("s1", 32, 4800), ("s2", 128, 12800)):
+    for name, period, frames in (("s0", 64, 9600), ("s1", 32, 9600), ("s2", 128, 12800)):
         write_wav(music / f"{name}.wav", [ref.triangle(period, frames)], RATE, encoding=ref.FLOAT32)
     write_import(music / "menu.wav", f"music: {{bpm: 120, first_beat_ms: {FIRST_BEAT_MS}}}")
     write_import(music / "game.wav", "music: {bpm: 120}")
@@ -129,18 +129,18 @@ async def test_playlist_samples_match_the_oracle(ed: Editor):
     ed.check_eq(len(starts), 1, f"one voice for the track: {starts}")
     sections = music_lines(session, "section")
     ed.check_eq([(s["section"], s["clip"]) for s in sections], [(1, "music/s0.wav"), (2, "music/s1.wav"), (3, "music/s2.wav")], f"{sections}")
-    ed.check_eq([s["starts_at_sample"] - sections[0]["starts_at_sample"] for s in sections], [0, 16000, 20320], "each at the frame after the last")
+    ed.check_eq([s["starts_at_sample"] - sections[0]["starts_at_sample"] for s in sections], [0, 16000, 25120], "each at the frame after the last")
     # advanced at frame 40: in the third section's pass that holds that sample
     advance = music_lines(session, "advance")[0]["sample"] - sections[2]["starts_at_sample"]
     passes = 1 if advance < 6400 else 2 + (advance - 6400) // 5120
-    files = {n: [ref.triangle(p, f)] for n, p, f in (("s0", 64, 9600), ("s1", 32, 4800), ("s2", 128, 12800))}
+    files = {n: [ref.triangle(p, f)] for n, p, f in (("s0", 64, 9600), ("s1", 32, 9600), ("s2", 128, 12800))}
     expected = ref.music_sequence([ref.MusicSection(files["s0"], 0, 9600, 1600, 8000, 2),
-                                   ref.MusicSection(files["s1"], 320, 4640, 320, 4640, 1),
+                                   ref.MusicSection(files["s1"], 320, 9440, 320, 9440, 1),
                                    ref.MusicSection(files["s2"], 0, 12800, 1280, 6400, passes)])[0]
     # a linear output: master.wav is the track times the mixer's constant gain, sample for sample
     _, channels, samples = read_float_wav(session / "master.wav")
     first = next(i for i in range(len(samples) // channels) if samples[i * channels] != 0.0)
-    ed.check(0 <= first - starts[0]["sample"] <= 4, f"the voice's first sample a few frames after its stamp: {first} {starts[0]}")
+    ed.check_eq(first - starts[0]["sample"], starts[0]["latency_samples"], f"the voice's first sample is its latency after its stamp: {starts[0]}")
     got = window(samples, first, first + len(expected))
     gain = got[0] / expected[0]
     mismatched = [i for i, (a, b) in enumerate(zip(got, expected)) if abs(a - gain * b) > 1e-6]
@@ -159,7 +159,7 @@ async def test_a_layer_event_is_refused(ed: Editor):
     await ed.call("play", action="start", scene=STATE["other"], fixed_fps=60)
     try:
         result = await ed.call("eval_lua", code='return Audio.playMusic("music/layer.soundevent"), Audio.playMusic("music/layer.soundevent")')
-        ed.check_eq(result["results"] if "results" in result else result.get("result"), [False, False], f"{result}")
+        ed.check_eq(result["values"], [False, False], f"{result}")
     finally:
         await ed.call("play", action="stop")
     warned = [e for e in await ed.console_since() if "layer event cannot play as music" in e["message"]]
@@ -169,7 +169,7 @@ async def test_a_layer_event_is_refused(ed: Editor):
 # AC2 (R4, R6): survives a scene load, stops at Play stop (reason scene); edit mode leaves no voice in a capture;
 # routed to audio.music_group and ducked there; held by the app's pause and the listener's
 async def test_survives_a_scene_load_and_stops_with_play(ed: Editor):
-    await ed.call("eval_lua", code='Audio.playMusic("music/free.wav")')
+    await ed.call("eval_lua", code='Audio.playMusic("music/free.wav")', allow_edit_mode=True)
     scene = await scene_with(ed, "Load", """    if f == 1 then Audio.playMusic("music/menu.wav") end
     if f == 50 then Audio.playStinger("music/sting.wav", "now") end
     if f == 51 then SceneManager.loadScene("MusicOther") end""")
@@ -242,7 +242,7 @@ async def test_bar_switch_with_a_snapshot_and_a_third_switch(ed: Editor):
     voices = music_voices(session)
     bar = plays[1]
     incoming = next(v for v in voices if v["clip"] == "music/game.wav")
-    ed.check_eq(bar["boundary_sample"], incoming["sample"] + incoming.get("delay_frames", 0), f"on the bar's sample: {bar} {incoming}")
+    ed.check_eq(bar["boundary_sample"], incoming["sample"] + incoming.get("delay_samples", 0), f"on the bar's sample: {bar} {incoming}")
     section = music_lines(session, "section")[0]
     position = bar["sample"] - section["starts_at_sample"]
     first = FIRST_BEAT_MS * RATE / 1000.0
@@ -253,7 +253,7 @@ async def test_bar_switch_with_a_snapshot_and_a_third_switch(ed: Editor):
     m = transitions[0]["sample"]
     ed.check(m <= bar["boundary_sample"] < m + FRAME, f"in the frame whose mix holds the switch: {m} {bar['boundary_sample']}")
     # never three music voices at once
-    events = sorted([(v["sample"] + v.get("delay_frames", 0), 1) for v in voices if v["owner"] == "music"] +
+    events = sorted([(v["sample"] + v.get("delay_samples", 0), 1) for v in voices if v["owner"] == "music"] +
                     [(s["sample"], -1) for s in lines_of(session, "voice_stop") if s["voice"] in {v["voice"] for v in voices}])
     alive = peak = 0
     for _, step in events:
@@ -278,11 +278,11 @@ async def test_stinger(ed: Editor):
     ed.check_eq([s["sync"] for s in stingers], ["beat", "bar", "now", "now"], f"{stingers}")
     first = round(FIRST_BEAT_MS * RATE / 1000.0)
     for line, voice in zip(stingers[:2], voices[:2]):
-        ed.check_eq(line["boundary_sample"], voice["sample"] + voice.get("delay_frames", 0), f"{line} {voice}")
+        ed.check_eq(line["boundary_sample"], voice["sample"] + voice.get("delay_samples", 0), f"{line} {voice}")
         position = line["sample"] - section["starts_at_sample"]
         expected = ref.music_boundary(position, line["sync"], 120.0, 4, first, RATE)
         ed.check(abs(line["boundary_sample"] - section["starts_at_sample"] - expected) <= 1, f"{line['sync']}: {line} {expected}")
-    ed.check_eq([v.get("delay_frames", 0) for v in voices[2:]], [0, 0], "without tempo it plays now")
+    ed.check_eq([v.get("delay_samples", 0) for v in voices[2:]], [0, 0], "without tempo it plays now")
     warned = [e for e in await ed.console_since() if "the music has no tempo" in e["message"]]
     ed.check_eq(len(warned), 1, f"one warning: {warned}")
 
@@ -309,7 +309,8 @@ async def test_callbacks(ed: Editor):
     section = music_lines(session, "section")[0]
     marks = [l for l in lines_of(session, "marker")]
     beats = [m for m in marks if m["label"].startswith("beat ")]
-    ed.check_eq([m["label"] for m in beats], [f"beat {k // 4 + 1} {k % 4 + 1}" for k in range(16)], "16 beats in order")
+    ed.check_eq([m["label"] for m in beats[:16]], [f"beat {k // 4 + 1} {k % 4 + 1}" for k in range(16)], "16 beats in order over the 8 s")
+    ed.check(len(beats) == 16 or beats[16]["label"] == "beat 5 1", f"the grid goes on across the loop: {beats[16:]}")
     grid = ref.beat_frames(120.0, 0, 0, RATE, 8 * RATE)
     for mark, frame in zip(beats, grid):
         sample = section["starts_at_sample"] + frame
