@@ -175,7 +175,10 @@ async def test_animator_fires_the_leader_and_montages_their_clip(ed: Editor):
 
     _, lines = await capture(ed, scene, 30, during=montage)
     names = [l["name"] for l in lines if l["kind"] == "cue"]
-    ed.check("A" in names and "B" not in names, f"the 1D tree fires only its leader's cue (S21 R9): {names}")
+    if "A" not in names:
+        state = await ed.call("get_animator", entity="Walker", scene=scene)
+        ed.fail(f"the 1D tree fires its leader's cue (S21 R9): {names}; {json.dumps(state)[:2500]}")
+    ed.check("B" not in names, f"the 1D tree fires only its leader's cue (S21 R9): {names}")
     ed.check("W" in names, f"the montage fires its clip's cue: {names}")
     montage_cue = next(l for l in lines if l["kind"] == "cue" and l["name"] == "W")
     ed.check(montage_cue["state"].endswith("wave.montage"), f"named by its montage: {montage_cue}")

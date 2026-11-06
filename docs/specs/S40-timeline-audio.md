@@ -465,6 +465,10 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
 - **Loop-end tolerance:** R20's 1e-5 s applies to every frame's end test and the duration test, so a
   legacy Animation whose frames end exactly at the loop length wraps on that frame, one frame earlier
   than before when the float sum is exact (the cycle is now its length, not length + a frame).
+- **Auto-length audio frames end by themselves:** R20's stop at `T ≥ E` applies to a frame with an
+  explicit duration (it cuts the sound); an auto-length frame's sound plays to its end, because a Sound
+  Event's random pitch below 0 plays longer than its length at speed 1 (the clip cue path plays it out
+  too, so both timelines stay sample-equal, AC10). Every audio frame still stops before a loop wrap.
 - **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
   when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
 - **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is

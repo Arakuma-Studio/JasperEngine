@@ -212,7 +212,7 @@ namespace jasperengine{
 		void stopTimelineAudio(Entity entity);
 		// the audio and snapshot frames of a running Animation (R20): each starts once per pass,
 		// placed inside the frame, and stops when its frame ends. T: the timecount at entry, advance: this update's
-		void animationAudioFrames(Entity entity, float advance, int& passed, float& actionsEnd, bool afterWrap);
+		void animationAudioFrames(Entity entity, double dt, float advance, int& passed, float& actionsEnd, bool afterWrap);
 		// an editor preview steps no systems: a running controller advances its particles itself
 		void previewParticleController(double dt, Entity entity, const ActionComponent& action);
 

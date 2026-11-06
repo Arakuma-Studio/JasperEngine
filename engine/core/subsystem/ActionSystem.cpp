@@ -315,7 +315,7 @@ void ActionSystem::stopTimelineAudio(Entity entity){
 #endif
 }
 
-void ActionSystem::animationAudioFrames(Entity entity, float advance, int& passed, float& actionsEnd, bool afterWrap){
+void ActionSystem::animationAudioFrames(Entity entity, double dt, float advance, int& passed, float& actionsEnd, bool afterWrap){
     ActionComponent* parent = scene->findComponent<ActionComponent>(entity);
     AnimationComponent* anim = scene->findComponent<AnimationComponent>(entity);
     if (!parent || !anim) return;
@@ -332,8 +332,9 @@ void ActionSystem::animationAudioFrames(Entity entity, float advance, int& passe
         if (T - startTime > end - startTime - kLoopEndTolerance) passed++;
 
         if (T + kLoopEndTolerance >= end){
-            // its frame ended: it stops (an explicit shorter duration cuts the sound)
-            if (iaction->state != ActionState::Stopped) actionStop(child);
+            // an explicit duration ended: it stops (a shorter one cuts the sound); an auto-length
+            // frame's sound ends by itself (a Sound Event's random pitch may make it longer)
+            if (anim->actions[i].duration > 0.0f && iaction->state != ActionState::Stopped) actionStop(child);
         }else if (anim->actions[i].audioPass != anim->pass && startTime < T + advance){
             // once per pass, placed where the animation's time reaches its start this frame (R21)
             anim->actions[i].audioPass = anim->pass;
@@ -343,7 +344,8 @@ void ActionSystem::animationAudioFrames(Entity entity, float advance, int& passe
             if (scene->isEntityCreated(child) && scene->findComponent<ActionComponent>(child)){
                 timelineStart.active = true;
 #if JASPERENGINE_SOUND_LAYER
-                timelineStart.delay = startTime > T ? TimelineAudio::delayFramesAt(startTime - T, advance) : 0;
+                // the fraction of this update before the animation reaches it, of the update's own span
+                timelineStart.delay = startTime > T && advance > 0.0f ? TimelineAudio::delayFrames((startTime - T) / advance, dt) : 0;
 #endif
                 timelineStart.speedScale = parent->speed;
                 timelineStart.animation = entity;
@@ -406,7 +408,7 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 
     // audio and snapshot frames start once per pass, placed inside the frame (S40 R20)
     const float advance = (float)(dt * parent->speed);
-    animationAudioFrames(entity, advance, totalActionsPassed, actionsEnd, false);
+    animationAudioFrames(entity, dt, advance, totalActionsPassed, actionsEnd, false);
     parent = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
     anim = parent ? scene->findComponent<AnimationComponent>(entity) : nullptr;
     if (!anim) return;
@@ -495,7 +497,7 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
             // the frames at the loop's start are placed in this update, as the clip cues of a loop are
             int ignoredPassed = 0;
             float ignoredEnd = 0.0f;
-            animationAudioFrames(entity, advance, ignoredPassed, ignoredEnd, true);
+            animationAudioFrames(entity, dt, advance, ignoredPassed, ignoredEnd, true);
         }
     }
 }

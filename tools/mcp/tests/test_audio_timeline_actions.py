@@ -151,7 +151,7 @@ async def test_an_auto_length_frame_lasts_its_sound(ed: Editor):
     s0 = mark(ed, lines, "start")["sample"]
     voices = [l for l in lines if l["kind"] == "voice_start"]
     ed.check_eq([placed(v) - s0 for v in voices][:3], [0, RATE // 4, RATE // 2], "the loop is the sound's 0.25 s")
-    got = await ed.call("get_animation", scene=scene, animation="Footsteps")
+    got = await ed.call("get_animation", scene=scene, entity="Footsteps")
     ed.check("0.25" in json.dumps(got), f"get_animation reports the frame's length: {json.dumps(got)[:800]}")
 
 
@@ -221,6 +221,6 @@ async def test_snapshot_action(ed: Editor):
     await ed.call("save_scene", scene=scene)
     ed.check_eq((ed.project / "scenes/Snap.scene").read_text(), text, "saving again changes nothing")
     old = (ed.project / "scenes/Footsteps.scene").read_text()
-    footsteps = (await ed.call("open_scene", path="scenes/Footsteps.scene"))["scene"]["id"]
+    footsteps = (await ed.call("open_scene", scene="scenes/Footsteps.scene"))["scene"]["id"]
     await ed.call("save_scene", scene=footsteps)
     ed.check_eq((ed.project / "scenes/Footsteps.scene").read_text(), old, "a scene without the component re-saves unchanged")
