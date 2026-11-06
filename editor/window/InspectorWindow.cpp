@@ -1162,7 +1162,7 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
             if (ec || relative.empty() || *relative.begin() == "..") {
                 ImGui::OpenPopup("File Import Error");
             }else{
-                setFontSlot(cpType, id, slot, relative.string(), sceneProject, entities, onValueChanged);
+                setFontSlot(cpType, id, slot, FileUtils::pathToGenericUtf8(relative), sceneProject, entities, onValueChanged);
             }
         }
     }
@@ -2363,12 +2363,12 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
                 entry.enabled = true;
 
                 if (type == ScriptType::CPP) {
-                    entry.headerPath = headerPath.string();
-                    entry.path = sourcePath.string();
+                    entry.headerPath = FileUtils::pathToGenericUtf8(headerPath);
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name;
                 } else if (type == ScriptType::LUA) {
                     entry.headerPath.clear();
-                    entry.path = sourcePath.string();
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name; // module (file base) name
                 }
 
@@ -4729,7 +4729,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("File Import Error");
                 }else{
-                    Texture texture(relative.string());
+                    Texture texture(FileUtils::pathToGenericUtf8(relative));
                     for (Entity& entity : entities){
                         cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                         submitRowCommand(sceneProject, cpType, id);
@@ -5010,7 +5010,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         ImGui::OpenPopup("File Import Error##cube");
                     }else{
                         Texture texture = newValue;
-                        texture.setCubeMap(relative.string());
+                        texture.setCubeMap(FileUtils::pathToGenericUtf8(relative));
                         for (Entity& entity : entities){
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                             submitRowCommand(sceneProject, cpType, id);
@@ -5126,7 +5126,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                             ImGui::OpenPopup("File Import Error##cube");
                         }else{
                             Texture texture = newValue;
-                            texture.setCubePath(faceIndex, relative.string());
+                            texture.setCubePath(faceIndex, FileUtils::pathToGenericUtf8(relative));
                             for (Entity& entity : entities){
                                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                                 submitRowCommand(sceneProject, cpType, id);
@@ -7841,7 +7841,7 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("Model Import Error");
                 }else{
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, relative.string()));
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, FileUtils::pathToGenericUtf8(relative)));
                 }
             }
         }
@@ -12100,8 +12100,8 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
                 if (changed) {
                     std::string newName = nameBuffer;
-                    std::string newSource = srcPath.string();
-                    std::string newHeader = hdrPath.string();
+                    std::string newSource = FileUtils::pathToGenericUtf8(srcPath);
+                    std::string newHeader = FileUtils::pathToGenericUtf8(hdrPath);
 
                     // Empty class name falls back to header (or source) filename stem
                     if (newName.empty()) {
