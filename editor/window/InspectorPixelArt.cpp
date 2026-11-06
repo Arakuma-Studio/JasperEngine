@@ -112,4 +112,8 @@ void editor::InspectorWindow::drawPixelPerfectCameraComponent(ComponentType cpTy
 
     for (const std::string& warning : pixelart::pixelPerfectWarnings(scene, entity, sceneProject->mainCamera))
         drawPixelArtWarning(warning);
+
+    // R5: a layer scene's camera (a HUD drawn over the main scene) takes the main scene's layout
+    if (pixelart::isLayerScene(*project, sceneProject->id))
+        ImGui::TextDisabled("Layer scene: takes the main scene's layout and draws on its grid directly (Upscale Render Texture is ignored).");
 }

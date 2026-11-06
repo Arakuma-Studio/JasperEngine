@@ -43,6 +43,13 @@ namespace jasperengine::editor::pixelart {
     // mainCamera is the scene's (its SceneProject's: in the editor the Scene holds the view's camera)
     std::vector<std::string> pixelPerfectWarnings(Scene* scene, Entity camera, Entity mainCamera);
 
+    // the scene is drawn as a layer of another (a child scene): its Pixel Perfect Camera takes the
+    // main scene's layout (R5)
+    bool isLayerScene(const Project& project, uint32_t sceneId);
+    // "Driven by Pixel Perfect Camera on <name>" when the scene's main camera drives its fixed
+    // resolution (R4), else empty
+    std::string fixedResolutionNote(const SceneProject* sceneProject);
+
     // ---- the Scene view's Pixel Zoom (R21)
 
     // the scene's main camera has an applicable Pixel Perfect Camera: Pixel Zoom, the grid, Snap

@@ -65,6 +65,23 @@ namespace jasperengine::editor::pixelart {
         return text;
     }
 
+    bool isLayerScene(const Project& project, uint32_t sceneId){
+        for (const SceneProject& other : project.getScenes()){
+            for (const ChildSceneRef& child : other.childScenes){
+                if (child.id == sceneId && other.id != sceneId)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    std::string fixedResolutionNote(const SceneProject* sceneProject){
+        if (!scenePixelPerfect(sceneProject))
+            return std::string();
+        return "Driven by Pixel Perfect Camera on " + sceneProject->scene->getEntityName(sceneProject->mainCamera) +
+               ": these settings are kept and unused.";
+    }
+
     bool scenePixelPerfect(const SceneProject* sceneProject){
         PixelPerfectViewRequest request;
         return sceneProject && sceneProject->scene &&

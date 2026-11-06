@@ -41,6 +41,8 @@ namespace {
 
 }
 
+float RenderSystem::pixelSnapBias = pixelart::kSnapBias;
+
 bool RenderSystem::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
     if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
         return false;
@@ -189,8 +191,9 @@ void RenderSystem::updatePixelPerfect(Entity mainCameraEntity){
         return;
     }
 
-    // last frame's drives, to see what changed (storage kept between calls: no allocation per frame)
-    static std::vector<PixelPerfectDrive> previous;
+    // last frame's drives, to see what changed (this system's storage, kept between calls: no
+    // allocation per frame)
+    std::vector<PixelPerfectDrive>& previous = previousPixelPerfectDrives;
     previous.assign(pixelPerfectDrives.begin(), pixelPerfectDrives.end());
     pixelPerfectDrives.clear();
     mainPixelPerfect = -1;
@@ -346,8 +349,10 @@ void RenderSystem::fillPassPixelSnap(frame_t& frame, const CameraComponent& came
     if (grid.flipY < 0.0f)
         viewProjection = Matrix4::scaleMatrix(Vector3(1.0f, -1.0f, 1.0f)) * viewProjection;
     const bool viewAligned = pixelart::isGridAligned(viewProjection, grid);
-    frame.pixelSnap = Vector4(grid.width, grid.height, grid.flipY, scale);
-    frame.pixelSnapOffset = Vector4(grid.offsetX, grid.offsetY, viewAligned ? 1.0f : 0.0f, 0.0f);
+    // the terms the vertex stage reads, as pixelart::toPixels computes them (includes/pixel_snap.glsl)
+    const pixelart::SnapTerms terms = pixelart::snapTerms(grid);
+    frame.pixelSnap = Vector4(terms.halfWidth, terms.halfHeight, grid.flipY, scale);
+    frame.pixelSnapOffset = Vector4(terms.centerX, terms.centerY, viewAligned ? 1.0f : 0.0f, pixelSnapBias);
 }
 
 float RenderSystem::pixelSnapDrawMode(const Matrix4& mvp) const{
@@ -356,7 +361,7 @@ float RenderSystem::pixelSnapDrawMode(const Matrix4& mvp) const{
     return pixelart::isGridAligned(mvp, passSnapGrid) ? 1.0f : 2.0f;
 }
 
-void RenderSystem::applyObjectBlock(ObjectRender& render, int slot, uint64_t meshProperties, const Matrix4* objectBlock){
+void RenderSystem::applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock){
     if (meshProperties & ShaderPool::getPixelSnapProperty(ShaderType::MESH)){
         float block[52];
         std::memcpy(block, objectBlock, sizeof(float) * 48);
@@ -364,9 +369,9 @@ void RenderSystem::applyObjectBlock(ObjectRender& render, int slot, uint64_t mes
         block[49] = 0.0f;
         block[50] = 0.0f;
         block[51] = 0.0f;
-        render.applyUniformBlock(slot, sizeof(block), block);
+        render.applyUniformBlock(slot, uniformUploadSize(sizeof(block), reflectedSize), block);
     }else{
-        render.applyUniformBlock(slot, sizeof(float) * 48, (void*)objectBlock);
+        render.applyUniformBlock(slot, uniformUploadSize(sizeof(float) * 48, reflectedSize), (void*)objectBlock);
     }
 }
 

@@ -3050,13 +3050,21 @@ bool Engine::transformCoordPos(float& x, float& y){
     x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
     y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
-    x = (float)Engine::getCanvasWidth() * x;
-    y = (float)Engine::getCanvasHeight() * y;
+    // a Pixel Perfect Camera's canvas is its base image over the Pixels Per Unit, which the
+    // integer canvas rounds (R6): the camera spans the exact one
+    float canvasWidth = (float)Engine::getCanvasWidth();
+    float canvasHeight = (float)Engine::getCanvasHeight();
+    if (pixelPerfectRequest.active && pixelPerfectLayout.canvasWidth > 0.0f && pixelPerfectLayout.canvasHeight > 0.0f){
+        canvasWidth = pixelPerfectLayout.canvasWidth;
+        canvasHeight = pixelPerfectLayout.canvasHeight;
+    }
+    x = canvasWidth * x;
+    y = canvasHeight * y;
     
     if (allowEventsOutCanvas || mouseMode == MouseMode::CAPTURED)
         return true;
     
-    return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
+    return ((x >= 0) && (x <= canvasWidth) && (y >= 0) && (y <= canvasHeight));
 }
 
 // ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,

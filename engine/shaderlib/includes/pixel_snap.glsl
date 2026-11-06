@@ -4,10 +4,13 @@
 // pixel-snapped variant (PIXEL_SNAP, the 'Pxs' bit) after the frame block (FRAME_VS,
 // includes/frame.glsl), whose members it reads:
 //
-//   frame.pixelSnap        xy T (the drawing target in base pixels), z flipY (-1 when the pass's
-//                          matrices flip Y, GL render targets), w k (screen pixels per base pixel)
-//   frame.pixelSnapOffset  xy the sub-pixel smoothing offset of a direct pass (base pixels),
-//                          z 1 when the pass's view is on the grid (no camera roll), w 0
+//   frame.pixelSnap        xy T / 2 (half the drawing target, base pixels), z flipY (-1 when the
+//                          pass's matrices flip Y, GL render targets), w k (screen pixels per
+//                          base pixel)
+//   frame.pixelSnapOffset  xy T / 2 minus the sub-pixel smoothing offset of a direct pass (where
+//                          NDC 0 lands, base pixels), z 1 when the pass's view is on the grid (no
+//                          camera roll), w the rounding bias 2^-7
+// (pixelart::snapTerms computes both on the CPU, which uses the same values.)
 //
 // Space: base pixels of the target, x right, y up from its bottom-left corner, whatever the
 // backend's flip. Order in a vertex stage: every displacement hook, the model, the MVP, then
@@ -21,32 +24,34 @@
 #define PIXEL_SNAP_GLSL
 
 vec2 pixelSnapToPixels(vec4 clip){
-    vec2 ndc = clip.xy / clip.w;
-    ndc.y *= frame.pixelSnap.z;
-    return (ndc * 0.5 + 0.5) * frame.pixelSnap.xy - frame.pixelSnapOffset.xy;
+    vec2 ndc = clip.xy / clip.w * vec2(1.0, frame.pixelSnap.z);
+    return ndc * frame.pixelSnap.xy + frame.pixelSnapOffset.xy;
 }
 
 vec4 pixelSnapFromPixels(vec2 p, vec4 clip){
-    vec2 ndc = (p + frame.pixelSnapOffset.xy) / frame.pixelSnap.xy * 2.0 - 1.0;
-    ndc.y *= frame.pixelSnap.z;
+    vec2 ndc = (p - frame.pixelSnapOffset.xy) / frame.pixelSnap.xy * vec2(1.0, frame.pixelSnap.z);
     return vec4(ndc * clip.w, clip.zw);
 }
 
-// floor(p + 0.5 + 2^-7): the bias keeps the half-pixel lattice away from rounding differences
+// floor(p + 0.5 + 2^-7) on both axes: the bias keeps the half-pixel lattice away from rounding
+// differences (frame.pixelSnapOffset.w; the engine uploads 2^-7)
+vec2 pixelSnapRound2(vec2 p){
+    return floor(p + 0.5 + frame.pixelSnapOffset.w);
+}
+
+// one coordinate (a caller rounding a single value, as S49's pixel box)
 float pixelSnapRound(float p){
-    return floor(p + 0.5 + 0.0078125);
+    return floor(p + 0.5 + frame.pixelSnapOffset.w);
 }
 
 // per vertex: the position on the nearest base pixel corner
 vec4 pixelSnapClip(vec4 clip){
-    vec2 p = pixelSnapToPixels(clip);
-    return pixelSnapFromPixels(vec2(pixelSnapRound(p.x), pixelSnapRound(p.y)), clip);
+    return pixelSnapFromPixels(pixelSnapRound2(pixelSnapToPixels(clip)), clip);
 }
 
 // the clip-space delta that puts a pivot on the grid (added to every vertex of the draw)
 vec4 pixelSnapCenterDelta(vec4 clipCenter){
-    vec2 p = pixelSnapToPixels(clipCenter);
-    return pixelSnapFromPixels(vec2(pixelSnapRound(p.x), pixelSnapRound(p.y)), clipCenter) - clipCenter;
+    return pixelSnapFromPixels(pixelSnapRound2(pixelSnapToPixels(clipCenter)), clipCenter) - clipCenter;
 }
 
 // the unit axis of the 90-degree step nearest the rotated x axis (pixelart::snapRotationStep):

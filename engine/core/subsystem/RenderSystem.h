@@ -127,12 +127,14 @@ namespace jasperengine{
 		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
 		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
 		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
-		// the pass's pixel-snap grid (S41, includes/pixel_snap.glsl; zero without one): xy T in base
-		// pixels, z flipY, w k; and xy the direct smoothing offset, z 1 when the view is on the grid
-		Vector4 pixelSnap;
-		Vector4 pixelSnapOffset;
 		// the fragment block of a variant with the post-processing colour (USE_POST_COLOR)
 		post_color_t postColor;
+		// the pass's pixel-snap grid (S41, includes/pixel_snap.glsl; zero without one): xy T in base
+		// pixels, z flipY, w k; and xy the direct smoothing offset, z 1 when the view is on the grid.
+		// Last, and declared by the 'Pxs' vertex stages only: every other program's block, and the
+		// bytes uploaded to it, stay what they were (R14)
+		Vector4 pixelSnap;
+		Vector4 pixelSnapOffset;
 	} frame_t;
 
 	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
@@ -1759,6 +1761,10 @@ namespace jasperengine{
 		Vector2 uberSharpBilinear = Vector2(0.0f, 0.0f);
 		// the Pixel Perfect Cameras of this frame, and the main camera's (-1: none drives it)
 		std::vector<PixelPerfectDrive> pixelPerfectDrives;
+		std::vector<PixelPerfectDrive> previousPixelPerfectDrives;  // updatePixelPerfect's last frame
+		// the rounding bias the vertex stages are given (the rule's 2^-7; a test sets 0 to show
+		// what it protects, setPixelSnapBias)
+		static float pixelSnapBias;
 		int mainPixelPerfect = -1;
 		// objects load with the 'Pxs' bit (a snapping Pixel Perfect Camera in the scene)
 		bool pixelSnapVariants = false;
@@ -2068,7 +2074,7 @@ namespace jasperengine{
 		// a draw's mode for pixelSnapDraw.x: 0 none, 1 every vertex, 2 the pivot
 		float pixelSnapDrawMode(const Matrix4& mvp) const;
 		// u_vs_pbrParams of a draw (model, normal, mvp; and the snap mode of a 'Pxs' variant)
-		void applyObjectBlock(ObjectRender& render, int slot, uint64_t meshProperties, const Matrix4* objectBlock);
+		void applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock);
 		// the blit's source rect within a pixel-perfect target (its smoothing margin and shift)
 		Vector4 pixelPerfectInnerUV(const PixelPerfectDrive& drive) const;
 		// direct mode's bars: a pass that clears to the letterbox colour and fills the viewport with
@@ -2486,6 +2492,20 @@ namespace jasperengine{
 		// variant's bindings (spec S54 §6); false while not ready, or never for this submesh
 		bool prepareSubmeshLodFade(Submesh& submesh, PipelineType pipType, bool mirrored);
 	public:
+		// the snap mode of a depth draw: its colour pass's, but none into a shadow map (the frame
+		// block still holds the camera's grid there)
+		// the bias of the pixel-snap rule the vertex stages round with: pixelart::kSnapBias, the CPU
+		// twin's; any other value is for a test's red control (the GPU then disagrees with the CPU)
+		static void setPixelSnapBias(float bias){ pixelSnapBias = bias; }
+		static float getPixelSnapBias(){ return pixelSnapBias; }
+		static float depthSnapMode(PipelineType pipeline, float colourMode){
+			return pipeline == PIP_SHADOW_DEPTH ? 0.0f : colourMode;
+		}
+		// the bytes of a block to upload: ours, or less when the shader's reflected block is smaller
+		// (a fork made without a member the engine appends); 0 reflected is not known
+		static unsigned int uniformUploadSize(unsigned int bytes, unsigned int reflectedSize){
+			return reflectedSize > 0 && reflectedSize < bytes ? reflectedSize : bytes;
+		}
 		// a LOD fade variant's reflection binds what its base variant's does (checked at load)
 		static bool sameLodFadeBindings(const ShaderData& base, const ShaderData& fade);
 		// a loaded submesh's positions (mesh space) and the triangles of one of its detail levels

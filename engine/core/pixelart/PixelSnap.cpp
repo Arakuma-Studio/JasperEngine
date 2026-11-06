@@ -8,18 +8,16 @@ namespace jasperengine::pixelart {
     // each line is the same operation as in includes/pixel_snap.glsl, in its order
 
     Vector2 toPixels(const Vector4& clip, const SnapGrid& grid){
-        float ndcX = clip.x / clip.w;
-        float ndcY = clip.y / clip.w;
-        ndcY = ndcY * grid.flipY;
-        const float px = (ndcX * 0.5f + 0.5f) * grid.width - grid.offsetX;
-        const float py = (ndcY * 0.5f + 0.5f) * grid.height - grid.offsetY;
-        return Vector2(px, py);
+        const SnapTerms terms = snapTerms(grid);
+        const float ndcX = clip.x / clip.w * 1.0f;
+        const float ndcY = clip.y / clip.w * grid.flipY;
+        return Vector2(ndcX * terms.halfWidth + terms.centerX, ndcY * terms.halfHeight + terms.centerY);
     }
 
     Vector4 fromPixels(const Vector2& pixels, const Vector4& clip, const SnapGrid& grid){
-        const float ndcX = (pixels.x + grid.offsetX) / grid.width * 2.0f - 1.0f;
-        float ndcY = (pixels.y + grid.offsetY) / grid.height * 2.0f - 1.0f;
-        ndcY = ndcY * grid.flipY;
+        const SnapTerms terms = snapTerms(grid);
+        const float ndcX = (pixels.x - terms.centerX) / terms.halfWidth * 1.0f;
+        const float ndcY = (pixels.y - terms.centerY) / terms.halfHeight * grid.flipY;
         return Vector4(ndcX * clip.w, ndcY * clip.w, clip.z, clip.w);
     }
 

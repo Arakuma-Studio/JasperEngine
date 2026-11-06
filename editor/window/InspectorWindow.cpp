@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
@@ -13246,6 +13247,9 @@ void editor::InspectorWindow::show(){
             }
 
             ImGui::SeparatorText("Fixed Resolution");
+            // R4: a Pixel Perfect Camera on the main camera drives the target instead
+            if (const std::string note = pixelart::fixedResolutionNote(sceneProject); !note.empty())
+                ImGui::TextDisabled("%s", note.c_str());
 
             if (ImGui::BeginTable("scene_fixed_resolution_table", 2, tableFlags)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));

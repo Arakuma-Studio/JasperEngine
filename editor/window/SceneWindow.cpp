@@ -3337,6 +3337,32 @@ void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){
     ImGui::PopStyleColor();
     ImGui::SetItemTooltip("Zoom in whole pixel steps (1/8x to 32x), the pixel grid on whole screen pixels");
     UIProbe::item("sceneview.pixel_zoom");
+    // the other R21 display flags of this view (display_settings pixel_grid, pixel_snap_preview,
+    // pixel_move_snap), with or without the zoom
+    const std::string optionsId = "PixelArtOptions" + id;
+    ImGui::SameLine(0, Theme::dpi(2.0f));
+    if (ImGui::Button((std::string(ICON_FA_CARET_DOWN) + "##PixelArtOptionsButton" + id).c_str()))
+        ImGui::OpenPopup(optionsId.c_str());
+    ImGui::SetItemTooltip("Pixel Grid, Snap Preview, Pixel Move Snap");
+    UIProbe::item("sceneview.pixel_options");
+    if (ImGui::BeginPopup(optionsId.c_str())){
+        SceneDisplaySettings& display = sceneProject.displaySettings;
+        if (ImGui::MenuItem("Pixel Grid", nullptr, &display.pixelGrid))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Art-pixel edges from 6x");
+        UIProbe::item("sceneview.pixel_grid");
+        if (ImGui::MenuItem("Snap Preview", nullptr, &display.pixelSnapPreview)){
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        ImGui::SetItemTooltip("Draw the snapped sprites on this view's own pixel grid");
+        UIProbe::item("sceneview.pixel_snap_preview");
+        if (ImGui::MenuItem("Pixel Move Snap", nullptr, &display.pixelMoveSnap))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Move and size on whole art pixels (Ctrl drags freely)");
+        UIProbe::item("sceneview.pixel_move_snap");
+        ImGui::EndPopup();
+    }
     if (!on || !sceneProject.sceneRender)
         return;
 
@@ -3383,15 +3409,21 @@ void editor::SceneWindow::drawPixelGrid(SceneProject& sceneProject, const ImVec2
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const ImU32 color = IM_COL32(255, 255, 255, 31);   // 12 %
     drawList->PushClipRect(canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), true);
-    const float firstX = std::ceil(origin.x / pixel) * pixel;
-    for (float x = firstX; (x - origin.x) / zoom <= viewWidth; x += pixel){
-        const float screenX = canvasMin.x + std::round((x - origin.x) / zoom) / engineScale.x;
+    // whole art pixels counted in integers: a float stepped by 1/PPU far from the origin stops
+    // advancing (and the loop would never end)
+    const long long firstX = (long long)std::ceil(origin.x * (float)std::max(1, ppu));
+    const long long countX = (long long)std::ceil(viewWidth * zoom / pixel) + 1;
+    for (long long i = 0; i <= countX; i++){
+        const double x = (double)(firstX + i) * (double)pixel;
+        const float screenX = canvasMin.x + std::round((float)((x - (double)origin.x) / (double)zoom)) / engineScale.x;
         drawList->AddLine(ImVec2(screenX, canvasMin.y), ImVec2(screenX, canvasMin.y + canvasAvail.y), color, 1.0f);
     }
-    const float firstY = std::ceil(origin.y / pixel) * pixel;
-    for (float y = firstY; (y - origin.y) / zoom <= viewHeight; y += pixel){
+    const long long firstY = (long long)std::ceil(origin.y * (float)std::max(1, ppu));
+    const long long countY = (long long)std::ceil(viewHeight * zoom / pixel) + 1;
+    for (long long i = 0; i <= countY; i++){
+        const double y = (double)(firstY + i) * (double)pixel;
         // a 2D scene's view is y up from its bottom
-        const float screenY = canvasMin.y + canvasAvail.y - std::round((y - origin.y) / zoom) / engineScale.y;
+        const float screenY = canvasMin.y + canvasAvail.y - std::round((float)((y - (double)origin.y) / (double)zoom)) / engineScale.y;
         drawList->AddLine(ImVec2(canvasMin.x, screenY), ImVec2(canvasMin.x + canvasAvail.x, screenY), color, 1.0f);
     }
     drawList->PopClipRect();

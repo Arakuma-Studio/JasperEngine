@@ -4,9 +4,10 @@
 // the bind slots. The members up to ambient are a contract with the library shaders; the
 // engine may only append members after it, identically in both blocks (today the shadow
 // PCF radius lights.glsl reads and the fog fog.glsl reads when this block is declared
-// first, and the pixel-snap grid includes/pixel_snap.glsl reads; the built-in Lit has its own
-// smaller camera block, includes/lit_frame.glsl), but for
-// the post-processing colour's three vectors, which only the fragment block has (USE_POST_COLOR).
+// first; the built-in Lit has its own smaller camera block, includes/lit_frame.glsl), but for
+// the post-processing colour's vectors, which only the fragment block has (USE_POST_COLOR), and
+// the pixel-snap grid after them, which only a pixel-snapped vertex stage declares (PIXEL_SNAP,
+// includes/pixel_snap.glsl; S41): a program without either uploads the bytes it always did.
 
 #if defined(FRAME_VS) && !defined(FRAME_VS_DECLARED)
 #define FRAME_VS_DECLARED
@@ -25,10 +26,15 @@ uniform u_vs_frame {
     vec4 lightingInfo;           // x 3D shadow PCF tap radius (Scene shadowQuality)
     vec4 fogColor_type;          // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
     vec4 fogDensity_start_end;   // x density, z linear start, w linear end
-    // the pixel-snap grid of the pass (S41, includes/pixel_snap.glsl; zero without a Pixel
-    // Perfect Camera): xy T in base pixels, z flipY, w k; xy the smoothing offset, z 1 on-grid view
-    vec4 pixelSnap;
-    vec4 pixelSnapOffset;
+    #ifdef PIXEL_SNAP
+        // the fragment block's post-processing colour (frame_t::postColor), unread here: the
+        // pixel-snap grid comes after it
+        vec4 frameFragmentOnly[4];
+        // the pixel-snap grid of the pass (S41, includes/pixel_snap.glsl; zero without a Pixel
+        // Perfect Camera): xy T in base pixels, z flipY, w k; xy the smoothing offset, z 1 on-grid view
+        vec4 pixelSnap;
+        vec4 pixelSnapOffset;
+    #endif
 } frame;
 #endif
 
@@ -49,10 +55,6 @@ uniform u_fs_frame {
     vec4 lightingInfo;           // x 3D shadow PCF tap radius (Scene shadowQuality)
     vec4 fogColor_type;          // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
     vec4 fogDensity_start_end;   // x density, z linear start, w linear end
-    // the pixel-snap grid of the pass (S41, includes/pixel_snap.glsl; zero without a Pixel
-    // Perfect Camera): xy T in base pixels, z flipY, w k; xy the smoothing offset, z 1 on-grid view
-    vec4 pixelSnap;
-    vec4 pixelSnapOffset;
     #ifdef USE_POST_COLOR
         // the post-processing colour's parameters (includes/post_color.glsl, frame_t::postColor);
         // the fragment stage only, so its block is larger than the vertex stage's

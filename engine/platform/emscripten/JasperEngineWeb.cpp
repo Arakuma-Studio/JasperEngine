@@ -1115,8 +1115,9 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         mousePosX = targetX;
         mousePosY = targetY;
     }else{
-        mousePosX += e->movementX;
-        mousePosY += e->movementY;
+        // movement comes in CSS pixels too (S41 R16)
+        mousePosX += e->movementX * webCanvasPixelRatio;
+        mousePosY += e->movementY * webCanvasPixelRatio;
     }
 
     int modifiers = 0;

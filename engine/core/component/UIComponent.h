@@ -39,6 +39,8 @@ namespace jasperengine{
         ShaderRef customShader;
         uint16_t customShaderId = 0;
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         // a Text with outline or shadow: its SDF atlas and u_fs_textParams (UISystem fills
         // textParams: outline colour, shadow colour (linear), x outline, y shadow softness,

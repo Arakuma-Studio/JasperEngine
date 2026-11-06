@@ -4,10 +4,11 @@
 // S41 AC14 (R17), static half: what the pixel-snap rule adds to a sprite's vertex stage, counted
 // in the SPIR-V of mesh.vert with and without 'Pxs' (glslang runs without an optimizer, so the
 // rule's helpers stay functions and each one's arithmetic is counted on its own). The per-vertex
-// path is pixelSnapClip: pixelSnapToPixels, two pixelSnapRound and pixelSnapFromPixels. The
-// variant without the bit must stay exactly the variant of before (R14).
+// path is pixelSnapClip: pixelSnapToPixels, pixelSnapRound2 and pixelSnapFromPixels. The variant
+// without the bit must stay exactly the variant of before (R14).
 
 #include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
 #include "shader/ShaderVariantCompiler.h"
 
 #include <gtest/gtest.h>
@@ -101,13 +102,44 @@ TEST(PixelSnapShaderTest, VertexCost){
         const auto it = snapped.functions.find(name);
         return it == snapped.functions.end() ? (size_t)0 : it->second;
     };
-    const size_t perVertex = own("pixelSnapClip") + own("pixelSnapToPixels") + 2 * own("pixelSnapRound") + own("pixelSnapFromPixels");
+    const size_t perVertex = own("pixelSnapClip") + own("pixelSnapToPixels") + own("pixelSnapRound2") + own("pixelSnapFromPixels");
     std::printf("[bench] S41 mesh.vert arithmetic: %zu without Pxs, %zu with (the per-vertex snap path %zu, pixelSnapApply %zu, "
                 "the pivot path pixelSnapCenterDelta %zu)\n", plain.arithmetic, snapped.arithmetic, perVertex, own("pixelSnapApply"),
                 own("pixelSnapCenterDelta"));
-    ASSERT_GT(own("pixelSnapRound"), 0u) << "the snapped variant runs the rule";
-    // the rule's own float32 sequence (two additions for the bias, the GLSL twin of the CPU's):
-    // 6 to pixels, 3 per axis to round, 6 back
-    EXPECT_LE(perVertex, 18u);
-    EXPECT_EQ(plain.functions.count("pixelSnapRound"), 0u) << "without the bit nothing of the rule is compiled";
+    ASSERT_GT(own("pixelSnapRound2"), 0u) << "the snapped variant runs the rule";
+    // R17's budget: the rule's float32 sequence (the GLSL twin of the CPU's) at most 14: 4 to
+    // pixels (divide, flip, scale, centre), 3 to round both axes (two additions for the bias,
+    // floor), 4 back
+    EXPECT_LE(perVertex, 14u);
+    EXPECT_EQ(plain.functions.count("pixelSnapRound2"), 0u) << "without the bit nothing of the rule is compiled";
+}
+
+// S41's variant bits stay where saved shader keys and caches put them: MESH 42 'Pxs', DEPTH 19,
+// UI 5, PARTICLES 11, and BLIT 18 'Psb' (Stretch Fill; a later spec takes the next free bit)
+TEST(PixelSnapShaderTest, VariantBitsArePinned){
+    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::MESH), shaderPropertyBit(42));
+    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::DEPTH), shaderPropertyBit(19));
+    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::UI), shaderPropertyBit(5));
+    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::PARTICLES), shaderPropertyBit(11));
+    for (ShaderType type : {ShaderType::MESH, ShaderType::DEPTH, ShaderType::UI, ShaderType::PARTICLES}){
+        const uint64_t bit = ShaderPool::getPixelSnapProperty(type);
+        int index = 0;
+        while (index < 64 && shaderPropertyBit(index) != bit) index++;
+        EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
+    }
+    EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
+}
+
+// a block the engine extends (pixelSnapDraw) is uploaded at most as large as the shader declares
+// it: a fork made without the member gets the prefix it reads, sokol's size check holds
+TEST(PixelSnapShaderTest, UploadsFitTheReflectedBlock){
+    EXPECT_EQ(RenderSystem::uniformUploadSize(208, 192), 192u);
+    EXPECT_EQ(RenderSystem::uniformUploadSize(208, 208), 208u);
+    EXPECT_EQ(RenderSystem::uniformUploadSize(192, 0), 192u) << "a block not reflected keeps the engine's size";
+    // a shadow map is never snapped on the camera's grid; other depth passes follow their colour pass
+    EXPECT_EQ(RenderSystem::depthSnapMode(PIP_SHADOW_DEPTH, 1.0f), 0.0f);
+    EXPECT_EQ(RenderSystem::depthSnapMode(PIP_SHADOW_DEPTH, 2.0f), 0.0f);
+    EXPECT_EQ(RenderSystem::depthSnapMode(PIP_DEPTH, 1.0f), 1.0f);
+    EXPECT_EQ(RenderSystem::depthSnapMode(PIP_ZPREPASS, 2.0f), 2.0f);
 }

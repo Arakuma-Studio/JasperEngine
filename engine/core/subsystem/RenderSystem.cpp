@@ -6649,6 +6649,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
 
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+        shaderData.getUniformBlockMembers("u_vs_pbrParams", mesh.submeshes[i].sizeVSParams);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
         shaderData.getUniformBlockMembers("u_fs_pbrParams", mesh.submeshes[i].sizeFSParams);
         // a built-in Lit lobe variant: the lobes (and UV sets) end u_fs_pbrParams
@@ -8753,6 +8754,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     const uint64_t properties = extra.shaderProperties;
     const bool p_lit = !(properties & (1u << 0));
     extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+    shaderData.getUniformBlockMembers("u_vs_pbrParams", extra.sizeVSParams);
     extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
     shaderData.getUniformBlockMembers("u_fs_pbrParams", extra.sizeFSParams);
     extra.slotFSTexCoordSets = (properties & (1u << 2)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS) : -1;
@@ -8937,7 +8939,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         render.applyUniformBlock(extra.slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
     }
 
-    applyObjectBlock(render, extra.slotVSParams, extra.shaderProperties, objectBlock);
+    applyObjectBlock(render, extra.slotVSParams, extra.sizeVSParams, extra.shaderProperties, objectBlock);
 
     applyCustomUniforms(render, extra.customVSParams, frameTime, passResolution);
     applyCustomUniforms(render, extra.customFSParams, frameTime, passResolution);
@@ -10205,7 +10207,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             //model, normal and mvp matrix (and a pixel-snapped variant's snap of the draw)
-            applyObjectBlock(render, mesh.submeshes[i].slotVSParams, mesh.submeshes[i].shaderProperties, objectBlock);
+            applyObjectBlock(render, mesh.submeshes[i].slotVSParams, mesh.submeshes[i].sizeVSParams, mesh.submeshes[i].shaderProperties, objectBlock);
 
             applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, passResolution);
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
@@ -10365,8 +10367,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             }
 
             //model, mvp matrix
-            // a pixel-snapped depth program snaps as the camera's colour pass (S41)
-            vsDepthParams.pixelSnapDraw = Vector4(pixelSnapDrawMode(vsDepthParams.mvpMatrix), 0.0f, 0.0f, 0.0f);
+            // a pixel-snapped depth program snaps as the camera's colour pass (S41); a shadow map
+            // is the light's view, never on the camera's grid
+            vsDepthParams.pixelSnapDraw = Vector4(depthSnapMode(pipelineType, pixelSnapDrawMode(vsDepthParams.mvpMatrix)), 0.0f, 0.0f, 0.0f);
             depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, std::min((unsigned int)sizeof(vs_depth_t), mesh.submeshes[i].sizeVSDepthParams), &vsDepthParams);
 
             applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, passResolution);
@@ -12326,6 +12329,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ShaderData& shaderData = ui.shader.get()->shaderData;
 
     ui.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_VS_PARAMS);
+    shaderData.getUniformBlockMembers("u_vs_uiParams", ui.sizeVSParams);
     ui.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_PARAMS);
     ui.slotFSTextParams = p_fontAtlasSdf ? shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_TEXT_PARAMS) : -1;
     // the manifest of the shader it draws with (none for the built-in fallback)
@@ -12465,7 +12469,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             block[17] = 0.0f;
             block[18] = 0.0f;
             block[19] = 0.0f;
-            render.applyUniformBlock(ui.slotVSParams, sizeof(block), block);
+            render.applyUniformBlock(ui.slotVSParams, uniformUploadSize(sizeof(block), ui.sizeVSParams), block);
         }else{
             render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         }

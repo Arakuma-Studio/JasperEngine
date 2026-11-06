@@ -40,6 +40,10 @@ async def setup(ed: Editor) -> dict:
     S["empty"] = empty["entity_id"]
     sprite = await ed.call("create_entity", scene=S["scene"], type="sprite", name="Hero", position=[100.5, 60.25, 0])
     S["sprite"] = sprite["entity_id"]
+    # dark on the white background, so a comparison of the Game view's pixels sees it
+    await ed.call("set_properties", scene=S["scene"], entity=S["sprite"],
+                  values={"sprite": {"width": 15, "height": 16},
+                          "mesh": {"submeshes[0].material.baseColorFactor": [0.1, 0.2, 0.6, 1]}})
     # a white inside of the viewport, black bars: the image's bounds are the viewport
     await ed.call("set_scene_settings", scene=S["scene"], settings={"background_color": [1, 1, 1, 1]})
     await ed.call("configure_game_view", resolution="1280x720")
@@ -99,12 +103,29 @@ async def test_layout_values_and_pixel_scale(ed: Editor):
     ed.check(view.get("pixel_scale") == 1, f"the view reports it: {view}")
     values = await ppc_values(ed)
     ed.check(values.get("pixelRatio") == 1, f"1x forces k: {values}")
-    x0, y0, x1, y1 = white_bounds(await ed.screenshot(view="game", max_width=0))
+    one = await ed.screenshot(view="game", max_width=0)
+    x0, y0, x1, y1 = white_bounds(one)
     ed.check((x1 - x0, y1 - y0) == (320, 180), f"the base image at 1:1: {(x0, y0, x1, y1)}")
 
     await ed.call("configure_game_view", pixel_scale=0)
-    x0, y0, x1, y1 = white_bounds(await ed.screenshot(view="game", max_width=0))
-    ed.check((x1 - x0, y1 - y0) == (1280, 720), f"Auto: 4x fills 1280x720: {(x0, y0, x1, y1)}")
+    four = await ed.screenshot(view="game", max_width=0)
+    fx0, fy0, fx1, fy1 = white_bounds(four)
+    ed.check((fx1 - fx0, fy1 - fy0) == (1280, 720), f"Auto: 4x fills 1280x720: {(fx0, fy0, fx1, fy1)}")
+    # pixel exact: the 1x image is the base image, each of its pixels the 4 x 4 block of the 4x one
+    _, _, c1, rows1 = decode_png(one)
+    _, _, c4, rows4 = decode_png(four)
+    differing = 0
+    for by in range(180):
+        for bx in range(320):
+            p1 = tuple(rows1[y0 + by][(x0 + bx) * c1:(x0 + bx) * c1 + 3])
+            for dy in (0, 3):
+                for dx in (0, 3):
+                    q = (fx0 + bx * 4 + dx) * c4
+                    if tuple(rows4[fy0 + by * 4 + dy][q:q + 3]) != p1:
+                        differing += 1
+    ed.check(differing == 0, f"the 1x screenshot is the 4x one's base pixels: {differing} differ")
+    hero = sum(1 for by in range(180) for bx in range(320) if rows1[y0 + by][(x0 + bx) * c1] < 128)
+    ed.check(hero > 0, "the comparison sees the sprite (not only the background)")
     bad = await ed.call_raw("configure_game_view", {"pixel_scale": 9})
     ed.check(bad.is_error, f"pixel_scale is 0 to 8: {bad.text}")
 

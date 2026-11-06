@@ -45,6 +45,11 @@ Sprites and Tilemaps have their own Pixels Per Unit (0 = the project's): their q
 sizes divided by it, while Width and Height stay in pixels. A texel is one base pixel on screen when
 the drawable's Pixels Per Unit equals the project's.
 
+Pixels Per Unit does not change 2D physics: Box2D keeps its 64 world units (points) per metre
+(`PhysicsSystem` `pointsToMeterScale2D`), so at Pixels Per Unit 16 one metre is 64 units, 1,024
+texels. Set the scene's points-to-meter scale yourself when a body should be one world unit per
+metre.
+
 Use a value above 1 for Unity-style tile units (16 texels per unit). UI drawn by the same camera
 stays in camera units, so put the HUD in a layer scene then.
 

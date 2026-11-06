@@ -3,15 +3,19 @@
 
 // S41 AC11 (R14): a 2D scene without a Pixel Perfect Camera and without an integer Scaling draws
 // exactly what it drew before S41: the same passes, the same number of draws, the same shader
-// variants, and no more allocations on the main thread in a steady frame. The reference
-// (fixtures/pixelart/zero_cost.txt) was recorded by this test on the engine before S41's changes
-// (JASPER_TEST_UPDATE_FIXTURES=1 rewrites it; only do that from an engine without S41).
+// variants, and no more allocations on the main thread in a steady frame. In this process: the
+// frame without the component is the baseline (printed), and a disabled component, or one added
+// and removed, leaves that frame pixel for pixel. Across builds: fixtures/pixelart/zero_cost.txt,
+// recorded by this test on the engine before S41's changes, holds its passes, draws, variants and
+// allocations (JASPER_TEST_UPDATE_FIXTURES=1 rewrites it; only from an engine without S41).
 
 #include "Engine.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/UIComponent.h"
 #include "object/Camera.h"
+#include "object/PixelPerfectCamera.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
 #include "object/ui/Image.h"
@@ -32,6 +36,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -199,78 +204,116 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
     label.setPosition(200.0f, 120.0f, 0.0f);
 
     Scene* current = &scene;
-    ASSERT_TRUE(GpuEnvironment::runFrames([current](){
-        return current->getSystem<RenderSystem>()->isAllLoaded();
-    })) << "the scene never finished loading";
+    auto settle = [current](){
+        return GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); });
+    };
+    ASSERT_TRUE(settle()) << "the scene never finished loading";
 
-    ZeroCostFrame record;
+    // the frame as drawn now: passes, draws, the variants its objects drew with, the main
+    // thread's allocations in a steady frame, and its pixels
+    auto recordFrame = [this](ZeroCostFrame& record){
+        // a reader asks for the passes' details: the frames after record them
+        SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+        GpuEnvironment::drawFrames(2);
+        // the least of a few frames (a frame now and then grows a container the others reuse)
+        uint64_t least = UINT64_MAX;
+        for (int i = 0; i < 5; i++){
+            testsupport::ThreadAllocationCount count;
+            Engine::systemDraw();
+            least = std::min(least, count.count());
+        }
+        record.allocations = testsupport::countsAllocations() ? least : 0;
+        record.draws = Engine::getFrameStats().drawCalls;
+        record.passes.clear();
+        const PassList passes = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+        for (const PassRecord& pass : passes.passes)
+            record.passes.push_back(pass.label);
 
-    // the steady frame's allocations on the main thread: the least of a few frames (a frame now
-    // and then grows a container the others reuse)
-    uint64_t least = UINT64_MAX;
-    for (int i = 0; i < 5; i++){
-        testsupport::ThreadAllocationCount count;
-        Engine::systemDraw();
-        least = std::min(least, count.count());
-    }
-    record.allocations = testsupport::countsAllocations() ? least : 0;
-
-    record.draws = Engine::getFrameStats().drawCalls;
-    const PassList passes = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
-    for (const PassRecord& pass : passes.passes)
-        record.passes.push_back(pass.label);
-
-    {
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
-        ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba));
-        uint64_t hash = 1469598103934665603ull;
-        for (uint8_t byte : rgba){
-            hash ^= byte;
-            hash *= 1099511628211ull;
+        if (readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba)){
+            uint64_t hash = 1469598103934665603ull;
+            for (uint8_t byte : rgba){
+                hash ^= byte;
+                hash *= 1099511628211ull;
+            }
+            record.image = hash;
         }
-        record.image = hash;
-    }
 
-    std::set<std::string> shaders;
-    auto meshes = scene.getComponentArray<MeshComponent>();
-    for (size_t i = 0; i < meshes->size(); i++){
-        const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-            shaders.insert(ShaderPool::getShaderStr(ShaderType::MESH, mesh.submeshes[s].shaderProperties));
-            if (mesh.submeshes[s].depthShaderProperties != 0)
-                shaders.insert(ShaderPool::getShaderStr(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties));
+        std::set<std::string> shaders;
+        auto meshes = scene.getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++){
+            const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                shaders.insert(ShaderPool::getShaderStr(ShaderType::MESH, mesh.submeshes[s].shaderProperties));
+                if (mesh.submeshes[s].depthShaderProperties != 0)
+                    shaders.insert(ShaderPool::getShaderStr(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties));
+            }
         }
-    }
-    auto uis = scene.getComponentArray<UIComponent>();
-    for (size_t i = 0; i < uis->size(); i++)
-        shaders.insert(ShaderPool::getShaderStr(ShaderType::UI, uis->getComponentFromIndex(i).shaderProperties));
-    record.shaders.assign(shaders.begin(), shaders.end());
+        auto uis = scene.getComponentArray<UIComponent>();
+        for (size_t i = 0; i < uis->size(); i++)
+            shaders.insert(ShaderPool::getShaderStr(ShaderType::UI, uis->getComponentFromIndex(i).shaderProperties));
+        record.shaders.assign(shaders.begin(), shaders.end());
+    };
 
-    ASSERT_FALSE(record.passes.empty()) << "no pass was recorded for the frame";
-    ASSERT_GT(record.draws, 0u);
+    // the baseline: this scene without a Pixel Perfect Camera, in this process
+    ZeroCostFrame baseline;
+    recordFrame(baseline);
+    std::printf("[S41] zero cost, the baseline frame without the component:\n%s", serializeZeroCost(baseline).c_str());
+    ASSERT_FALSE(baseline.passes.empty()) << "no pass was recorded for the frame";
+    ASSERT_GT(baseline.draws, 0u);
 
     if (envFlag("JASPER_TEST_UPDATE_FIXTURES")){
         std::ofstream out(zeroCostFixturePath(), std::ios::binary | std::ios::trunc);
-        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serializeZeroCost(record);
+        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serializeZeroCost(baseline);
         ASSERT_TRUE(out.good()) << zeroCostFixturePath();
         GTEST_SKIP() << "wrote " << zeroCostFixturePath();
     }
 
+    // the same frame after the component came and went, and with a disabled one: nothing of the
+    // feature stays behind (passes, draws, variants, allocations, pixels; same process, same driver)
+    auto expectBaseline = [&](const ZeroCostFrame& frame, const char* what){
+        SCOPED_TRACE(what);
+        EXPECT_EQ(frame.passes, baseline.passes) << serializeZeroCost(frame);
+        EXPECT_EQ(frame.draws, baseline.draws);
+        EXPECT_EQ(frame.shaders, baseline.shaders) << serializeZeroCost(frame);
+        EXPECT_EQ(frame.image, baseline.image) << "other pixels than without the component";
+        if (testsupport::countsAllocations()){
+            EXPECT_LE(frame.allocations, baseline.allocations);
+        }
+    };
+    {
+        PixelPerfectCamera added(&scene, camera.getEntity());
+        added.setReferenceResolution(Vector2(320.0f, 180.0f));
+        ASSERT_TRUE(settle());
+        ZeroCostFrame drawing;
+        recordFrame(drawing);
+        EXPECT_NE(drawing.shaders, baseline.shaders) << "the component drew with its 'Pxs' variants (the check sees them)";
+    }
+    scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).enabled = false;
+    ASSERT_TRUE(settle());
+    ZeroCostFrame disabled;
+    recordFrame(disabled);
+    expectBaseline(disabled, "a disabled component");
+    scene.removeComponent<PixelPerfectCameraComponent>(camera.getEntity());
+    ASSERT_TRUE(settle());
+    ZeroCostFrame removed;
+    recordFrame(removed);
+    expectBaseline(removed, "the component removed");
+
+    // and across builds: the frame of the engine before S41 (recorded by this test on main; the
+    // pixels are left out, a driver's own)
     std::ifstream in(zeroCostFixturePath(), std::ios::binary);
     ASSERT_TRUE(in.good()) << "missing " << zeroCostFixturePath();
     std::stringstream text;
     text << in.rdbuf();
     ZeroCostFrame before;
     ASSERT_TRUE(parseZeroCost(text.str(), before)) << zeroCostFixturePath();
-
-    EXPECT_EQ(record.passes, before.passes) << serializeZeroCost(record);
-    EXPECT_EQ(record.draws, before.draws);
-    EXPECT_EQ(record.shaders, before.shaders) << serializeZeroCost(record);
-    EXPECT_EQ(record.image, before.image) << "the frame draws other pixels than before S41";
-    // no more than before (a frame may allocate less)
+    EXPECT_EQ(baseline.passes, before.passes) << serializeZeroCost(baseline);
+    EXPECT_EQ(baseline.draws, before.draws);
+    EXPECT_EQ(baseline.shaders, before.shaders) << serializeZeroCost(baseline);
     if (testsupport::countsAllocations()){
-        EXPECT_LE(record.allocations, before.allocations);
+        EXPECT_LE(baseline.allocations, before.allocations);
     }
     EXPECT_NO_ENGINE_ERRORS();
 }

@@ -9,7 +9,9 @@
 #include "support/EditorTestSupport.h"
 
 #include "DocumentFile.h"
+#include "Project.h"
 #include "Stream.h"
+#include "Workspace.h"
 #include "reflect/Reflect.h"
 #include "component/CameraComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
@@ -19,8 +21,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
+namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -159,4 +166,61 @@ TEST(PixelPerfectStream, OldSceneSavesAsItWas){
     DecodedScene again = decodeSceneText(saved, "old.scene");
     EXPECT_EQ(encodeSceneText(again), saved);
     EXPECT_EQ(saved.find("pixel"), std::string::npos) << saved;
+}
+
+// AC17 across the committed fixtures: every scene and project file of tools/fixtures and of the
+// editor tests re-saves without S41's keys (they are written only away from their defaults) and
+// stably (a second save is the first, byte for byte)
+TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
+    const fs::path roots[] = {fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures", fs::path(JASPER_TEST_FIXTURES_DIR)};
+    const char* const s41Keys[] = {"pixelperfectcamera", "pixelsPerUnit", "pixelRotation"};
+    size_t scenes = 0, projects = 0;
+    for (const fs::path& root : roots){
+        ASSERT_TRUE(fs::is_directory(root)) << root;
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(root)){
+            if (!entry.is_regular_file())
+                continue;
+            const fs::path& path = entry.path();
+            std::ifstream in(path, std::ios::binary);
+            std::stringstream text;
+            text << in.rdbuf();
+            const std::string source = text.str();
+            if (path.extension() == ".scene"){
+                SCOPED_TRACE(path.string());
+                DecodedScene decoded = decodeSceneFile(path);
+                if (!decoded.scene || !decoded.scene->scene)
+                    continue;
+                const std::string saved = encodeSceneText(decoded);
+                for (const char* key : s41Keys){
+                    if (source.find(key) == std::string::npos)
+                        EXPECT_EQ(saved.find(key), std::string::npos) << key << " written into a scene that had none";
+                }
+                DecodedScene again = decodeSceneText(saved, path.filename().string());
+                EXPECT_EQ(encodeSceneText(again), saved) << "a second save differs";
+                scenes++;
+            }else if (path.filename() == "project.yaml"){
+                SCOPED_TRACE(path.string());
+                YAML::Node node;
+                try {
+                    node = YAML::Load(source);
+                } catch (const YAML::Exception&) {
+                    continue;
+                }
+                if (!node.IsMap())
+                    continue;
+                Project project;
+                Stream::decodeProject(&project, node, Workspace());
+                const std::string saved = YAML::Dump(Stream::encodeProject(&project));
+                if (source.find("pixelsPerUnit") == std::string::npos)
+                    EXPECT_EQ(saved.find("pixelsPerUnit"), std::string::npos) << "graphics.pixelsPerUnit written into a project that had none";
+                Project reloaded;
+                Stream::decodeProject(&reloaded, YAML::Load(saved), Workspace());
+                EXPECT_EQ(YAML::Dump(Stream::encodeProject(&reloaded)), saved) << "a second save differs";
+                projects++;
+            }
+        }
+    }
+    std::printf("[S41] re-saved %zu fixture scenes and %zu projects\n", scenes, projects);
+    EXPECT_GT(scenes, 20u);
+    EXPECT_GT(projects, 5u);
 }

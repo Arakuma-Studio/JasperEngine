@@ -7,6 +7,7 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "TestSystem.h"
 #include "pixelart/PixelPerfectLayout.h"
 
 #include <gtest/gtest.h>
@@ -65,4 +66,30 @@ TEST(EngineViewLayoutTest, ThePixelPerfectViewGoesWithItsMainScene){
     Engine::setPixelPerfectView(request);
     Engine::setScene(nullptr);
     EXPECT_FALSE(Engine::getPixelPerfectView().active) << "no main scene";
+}
+
+// R6, R12: a pointer maps through the base image's exact canvas (B / PPU), not the Engine's integer
+// canvas: Integer (Expand) at 1366 x 768 with PPU 16 is 341 x 192 base pixels, 21.3125 x 12 units
+TEST(EngineViewLayoutTest, PointerMapsThroughTheExactCanvas){
+    test::TestSystem::get().setScreenSize(1366, 768);
+    PixelPerfectViewRequest request;
+    request.active = true;
+    request.referenceWidth = 320;
+    request.referenceHeight = 180;
+    request.mode = PixelUpscaleMode::INTEGER_EXPAND;
+    request.pixelsPerUnit = 16;
+    Engine::setPixelPerfectView(request);
+    Engine::systemViewChanged();
+    const Rect view = Engine::getViewRect();
+    ASSERT_EQ(Engine::getPixelPerfectLayout().baseWidth, 341);
+    EXPECT_EQ(Engine::getCanvasWidth(), 21) << "the integer canvas rounds";
+    float x = view.getX() + view.getWidth(), y = view.getY() + view.getHeight();
+    ASSERT_TRUE(Engine::transformCoordPos(x, y));
+    EXPECT_NEAR(x, 341.0f / 16.0f, 1e-4f);
+    EXPECT_NEAR(y, 192.0f / 16.0f, 1e-4f);
+    float mid = view.getX() + view.getWidth() * 0.5f, midY = view.getY();
+    ASSERT_TRUE(Engine::transformCoordPos(mid, midY));
+    EXPECT_NEAR(mid, 341.0f / 32.0f, 1e-4f);
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
+    Engine::systemViewChanged();
 }

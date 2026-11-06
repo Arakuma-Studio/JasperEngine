@@ -1196,6 +1196,14 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         float dpiScale = (canvasViewport && canvasViewport->DpiScale > 0.0f) ? canvasViewport->DpiScale : 1.0f;
         if (dpiScale < 0.5f || dpiScale > 8.0f) dpiScale = 1.0f;
         engineScale = Backend::sceneRenderScale(fbScale, dpiScale);
+        // a Pixel Perfect Camera's view is laid out over physical pixels (R20): the framebuffer
+        // gets one pixel per physical display pixel even where the backend renders the scene at
+        // the DPI scale over a 1:1 framebuffer (Linux HiDPI), which would resample it
+        PixelPerfectViewRequest pixelRequest;
+        const bool pixelPerfect = shownPixelPerfect(pixelRequest);
+        if (pixelPerfect) {
+            engineScale = ImVec2(fbScale.x > 0.0f ? fbScale.x : 1.0f, fbScale.y > 0.0f ? fbScale.y : 1.0f);
+        }
 
         // the Recorder's size: the image is that many engine pixels over the area
         if (overridden && areaSize.x > 0.0f && areaSize.y > 0.0f) {
@@ -1246,8 +1254,6 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (resized) syncSafeArea();
 
         // Scale zooms into the image around its centre; the child clips the rest
-        PixelPerfectViewRequest pixelRequest;
-        const bool pixelPerfect = shownPixelPerfect(pixelRequest);
         float zoom = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
         ImVec2 imageSize(areaSize.x * zoom, areaSize.y * zoom);
         ImVec2 imageMin(areaMin.x + (areaSize.x - imageSize.x) * 0.5f,

@@ -39,6 +39,22 @@ namespace jasperengine::pixelart {
         bool isValid() const { return width > 0.0f && height > 0.0f; }
     };
 
+    // What the vertex stage reads of a grid (frame.pixelSnap.xy, frame.pixelSnapOffset.xy): half
+    // the target, and where NDC 0 lands in base pixels. A pixel is ndc * half + center; the CPU
+    // rounds the same terms the GPU is given.
+    struct SnapTerms {
+        float halfWidth = 0, halfHeight = 0;
+        float centerX = 0, centerY = 0;
+    };
+    inline SnapTerms snapTerms(const SnapGrid& grid){
+        SnapTerms terms;
+        terms.halfWidth = grid.width * 0.5f;
+        terms.halfHeight = grid.height * 0.5f;
+        terms.centerX = terms.halfWidth - grid.offsetX;
+        terms.centerY = terms.halfHeight - grid.offsetY;
+        return terms;
+    }
+
     // a clip-space position to base pixels of the grid, and back (pixelSnapToPixels,
     // pixelSnapFromPixels): z and w are kept
     JASPERENGINE_API Vector2 toPixels(const Vector4& clip, const SnapGrid& grid);
