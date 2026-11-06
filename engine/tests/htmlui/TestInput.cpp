@@ -15,6 +15,7 @@
 #include "util/Utf16Combiner.h"
 #include "input/InputActions.h"
 #include "component/ButtonComponent.h"
+#include "component/UIComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "object/ui/Button.h"
 #include "object/ui/InputField.h"
