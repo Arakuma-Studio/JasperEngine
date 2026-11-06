@@ -233,6 +233,17 @@ inverses for undo. Graph kinds (a material graph, an animation graph) register t
 with `GraphRegistry`. MCP `list_graph_kinds`, `get_graph`, `validate_graph` and `edit_graph`
 work on any kind. This spec ships no graph editor and no visual scripting.
 
+A kind sets `strictParams` to have a misspelled parameter or node type and an out-of-range value
+count as errors, each issue with a `suggestion` ("did you mean 'value'?"), so `edit_graph` refuses
+them; other kinds keep them for a newer build. Loading never refuses a file for them. `edit_graph`
+returns `added: [{op_index, id}]`, the id of each new node, edge and group, and an `addNode` with
+its own id still gets its type's defaults. A kind's `fileExtension` is enough for its files to be
+text for `read_file` and `write_file`, and tracked: another program's edit reports its problems in
+`external_changes`; `write_file` and `edit_graph` refuse a file whose `kind` is not its extension's.
+An open window or a pool reacts to `edit_graph` and undoable graph edits with
+`GraphEditCmd::addChangeListener`, called on execute and on undo, and to a file written any other way
+through `HotReloadService`, kind `graph`.
+
 ## Mesh detail levels from Lua
 
 A Mesh's detail level settings (docs/lod.md) are Lua properties, with the Inspector's names:

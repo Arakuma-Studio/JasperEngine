@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "graph/GraphRegistry.h"
 #include "vat/VatDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -224,6 +225,8 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;
     // Vertex Animations: their documents reload, VertexAnimationPool drops them, animators reload
     if (Util::isVertexAnimationFile(path)) return true;
+    // particle effects and the files of any graph kind: their problems are reported, what uses them reloads
+    if (Util::isParticleEffectFile(path) || graph::GraphRegistry::get().kindForFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
     return isModelSourceFile(path);
 }

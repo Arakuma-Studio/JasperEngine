@@ -131,12 +131,19 @@ namespace jasperengine::graph {
         std::vector<std::string> unknownNodeTypes;   // kept as opaque nodes
         bool unknownKind = false;
         int migratedFrom = 0;                    // the kindVersion migrated from, 0 when none ran
+        std::vector<std::string> malformed;      // known keys of the wrong type: their values are not read, a save loses them
     };
 
     // Reads a graph file. The kind's migrations (GraphRegistry) bring an older kindVersion up to
-    // date; unknown keys, node types and kinds are kept.
+    // date; unknown keys, node types and kinds are kept; an edge without an id gets one.
     JASPERENGINE_API Graph load(std::string_view json, LoadReport& report);
     JASPERENGINE_API Graph fromJson(const Json& json, LoadReport& report);
+    // Why this read of the file at `path` is not a file of that path's kind: not a graph, a key
+    // of the wrong type, or another kind than the one its extension belongs to (the kind decides
+    // what is checked, so a file must not choose it); "" when it is
+    JASPERENGINE_API std::string fileProblem(std::string_view path, const Graph& graph, const LoadReport& report);
+    // The load's warnings a caller should pass on: validate() reports the unknown node types itself
+    JASPERENGINE_API std::vector<std::string> fileWarnings(const LoadReport& report);
     // Deterministic: known keys in a fixed order, then the unknown ones as read; nodes and edges
     // in id order; two-space indent, LF line endings, a final newline
     JASPERENGINE_API std::string save(const Graph& graph);
@@ -157,11 +164,13 @@ namespace jasperengine::graph {
     struct Issue {
         Severity severity = Severity::Error;
         std::string code;       // dangling-edge, duplicate-id, direction, type-mismatch, multiplicity, cycle,
-                                // unknown-node-type, missing-required-input, param-range, or a kind's own
+                                // unknown-node-type, missing-required-input, param-range, unknown-param
+                                // (kinds with strictParams only), or a kind's own
         std::string nodeId;
         std::string portId;
         std::string edgeId;
         std::string message;
+        std::string suggestion; // what to do instead ("did you mean 'value'?"), "" when nothing is known
     };
 
     JASPERENGINE_API std::vector<Issue> validate(const Graph& graph);
@@ -176,7 +185,8 @@ namespace jasperengine::graph {
 
     // One edit: {op, args}. apply() returns its inverse, so apply(apply(g, op)) restores g byte
     // for byte. Ops and their args:
-    //   addNode {node (id optional: allocated), edges?}      removeNode {id} (and its edges)
+    //   addNode {node (id optional: allocated), edges?, restore?: true (an undo's: the node as given,
+    //                 no defaults)}                          removeNode {id} (and its edges)
     //   moveNodes {ids, delta: [x, y]} or {positions: {id: [x, y]}}
     //   setParam {node, name, value} (value null removes)    connect {from: {node, port}, to: {...}, id?}
     //   disconnect {id} or {from, to}                         addVariable {variable}

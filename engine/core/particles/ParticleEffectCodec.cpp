@@ -9,6 +9,7 @@
 
 #include "math/CurveJson.h"
 #include "particles/ParticleModules.h"
+#include "util/NearestName.h"
 
 #include <cmath>
 #include <cstdio>
@@ -30,6 +31,12 @@ namespace {
 
     void warn(std::vector<Diagnostic>& out, const std::string& path, const std::string& message){
         out.push_back({Diagnostic::Severity::Warning, path.empty() ? "$" : path, message});
+    }
+
+    // A key the format does not have: a warning here (old files must load), and applyMergePatch
+    // refuses it. `known` holds what it may have meant.
+    void warnUnknownKey(std::vector<Diagnostic>& out, const std::string& path, const std::string& key, const std::string& message, const std::vector<std::string>& known){
+        out.push_back({Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known), true});
     }
 
     std::string join(const std::string& path, const std::string& key){
@@ -112,6 +119,7 @@ namespace {
                 ok = false;
             }else{
                 warn(out, path + issue.path, issue.message);
+                out.back().unknownKey = issue.unknownKey;
             }
         }
         return ok;
@@ -206,7 +214,8 @@ namespace {
                 if (!optionValue(ParticleModules::curveWraps(), *it, wrap)){ error(out, at, "wrap is one of " + optionList(ParticleModules::curveWraps())); ok = false; }
                 v.wrap = (CurveWrap)wrap;
             }else{
-                warn(out, at, "unknown value key");
+                warnUnknownKey(out, at, key, "unknown value key",
+                               {"mode", "constant", "constantMax", "curve", "curveMax", "multiplier", "driver", "driverMin", "driverMax", "wrap"});
             }
         }
         if (!hasMode){
@@ -298,7 +307,8 @@ namespace {
                 if (!optionValue(ParticleModules::curveWraps(), *it, wrap)){ error(out, at, "wrap is one of " + optionList(ParticleModules::curveWraps())); ok = false; }
                 v.wrap = (CurveWrap)wrap;
             }else{
-                warn(out, at, "unknown colour value key");
+                warnUnknownKey(out, at, key, "unknown colour value key",
+                               {"mode", "color", "colorMax", "gradient", "gradientMax", "driver", "driverMin", "driverMax", "wrap"});
             }
         }
         if (!hasMode){
@@ -499,7 +509,10 @@ namespace {
                 continue;
             const FieldDesc* f = desc.find(it.key());
             if (!f){
-                warn(out, join(path, it.key()), std::string("unknown field of ") + desc.name);
+                std::vector<std::string> known;
+                for (const FieldDesc& field : desc.fields) known.push_back(field.key);
+                if (skip) known.insert(known.end(), skip->begin(), skip->end());
+                warnUnknownKey(out, join(path, it.key()), it.key(), std::string("unknown field of ") + desc.name, known);
                 continue;
             }
             ok = fieldFromJson(*f, *it, f->field(owner), join(path, it.key()), out) && ok;
@@ -983,6 +996,13 @@ namespace {
         }
         if (!target.is_object())
             target = Json::object();
+        // a gradient has two object forms and the keyed form holds {colorKeys, alphaKeys}: a patch
+        // in the other form replaces them, or the reader would meet them as unknown keys
+        if ((patch.contains("colors") || patch.contains("alphas")) && (target.contains("colorKeys") || target.contains("alphaKeys"))){
+            target.erase("colorKeys");
+            target.erase("alphaKeys");
+            target.erase("linear");
+        }
         for (auto it = patch.begin(); it != patch.end(); ++it){
             if (it->is_null()){
                 target.erase(it.key());
@@ -1011,7 +1031,9 @@ bool ParticleEffectCodec::applyMergePatch(ParticleEffectDocument& document, cons
     const Json& keyedModules = keyed.contains("modules") && keyed["modules"].is_object() ? keyed["modules"] : Json::object();
     for (auto it = keyedModules.begin(); it != keyedModules.end(); ++it){
         if (!ParticleModules::find(it.key())){
-            error(diagnostics, "modules." + it.key(), "unknown module \"" + it.key() + "\"");
+            std::vector<std::string> known;
+            for (const ModuleDesc& m : ParticleModules::all()) known.push_back(m.key);
+            error(diagnostics, "modules." + it.key(), "unknown module \"" + it.key() + "\"" + NearestNameSuffix(it.key(), known));
             return false;
         }
         if (!it->is_object()){
@@ -1038,8 +1060,18 @@ bool ParticleEffectCodec::applyMergePatch(ParticleEffectDocument& document, cons
     }
     keyed["modules"] = modules;
 
+    // The keyed form holds only what the format has, so an unknown key can only be the patch's: a
+    // misspelled field would be dropped without a trace, so it is an error here, not a warning
     ParticleEffectDocument patched;
-    if (!fromJson(keyed, patched, diagnostics))
+    const size_t firstDiagnostic = diagnostics.size();
+    bool ok = fromJson(keyed, patched, diagnostics);
+    for (size_t i = firstDiagnostic; i < diagnostics.size(); i++){
+        if (!diagnostics[i].unknownKey)
+            continue;
+        diagnostics[i].severity = Diagnostic::Severity::Error;
+        ok = false;
+    }
+    if (!ok)
         return false;
     document = std::move(patched);
     return true;

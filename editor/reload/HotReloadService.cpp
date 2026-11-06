@@ -355,6 +355,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             if (change.origin == ChangeOrigin::External && kind == "animation") {
                 reload::addAnimationFileProblems(*project, change.path, result.problems);
             }
+            // (and what the watcher found in these is the file's as it is now, not as it was)
+            if (change.origin == ChangeOrigin::External && kind == "particles") reload::addParticleEffectFileProblems(*project, change.path, result.problems);
+            if (change.origin == ChangeOrigin::External && kind == "graph") reload::addGraphFileProblems(*project, change.path, result.problems);
             continue;
         }
         if (change.origin == ChangeOrigin::Editor) {
@@ -406,7 +409,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
 
     std::vector<fs::path> scripts = files(external, "script");
     std::vector<fs::path> code = scripts;
-    for (const char* kind : {"shader", "ui", "material", "text"}) {
+    for (const char* kind : {"shader", "ui", "material", "text", "particles", "graph"}) {
         for (const fs::path& path : files(external, kind)) code.push_back(path);
     }
     reload::reloadCodeEditorBuffers(ctx, code, options.full);
@@ -430,6 +433,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadGraphs(ctx, files(external, "graph"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

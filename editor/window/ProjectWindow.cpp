@@ -95,6 +95,7 @@
 
 #include "imgui_internal.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -502,6 +503,7 @@ void editor::ProjectWindow::cancelThumbnailWork(){
         std::queue<ThumbnailRequest> empty;
         std::swap(thumbnailQueue, empty);
         pendingThumbnailRequests.clear();
+        abandonedMaterialThumbnails.clear();
 
         // The worker publishes pending preview state before clearing busy, so
         // after this wait all of its state can be invalidated atomically.
@@ -633,6 +635,18 @@ bool editor::ProjectWindow::hasPendingThumbnailWork() {
            !poseThumbnailQueue.empty() || poseThumbnailer.busy();
 }
 
+namespace {
+
+    // A load that never ends cannot be had on demand (a texture that fails to load is not pending:
+    // it counts as empty): test_material_thumbnail.py holds one with this marker file
+    bool materialThumbnailStuckForTest(const fs::path& projectPath) {
+        static const char* const marker = std::getenv("JASPER_TEST_MATERIAL_THUMBNAIL_STUCK");
+        std::error_code ec;
+        return marker && fs::exists(projectPath / marker, ec);
+    }
+
+}
+
 void editor::ProjectWindow::processMaterialThumbnails() {
     ThumbnailRequest pending;
     {
@@ -653,13 +667,33 @@ void editor::ProjectWindow::processMaterialThumbnails() {
             materialRenderWaitPath = pending.path;
             materialRenderWaits = 0;
         }
-        if (materialRender.isPending() && materialRenderWaits < maxMaterialRenderWaits) {
+        const bool stillLoading = materialRender.isPending() || materialThumbnailStuckForTest(project->getProjectPath());
+        if (stillLoading && materialRenderWaits < maxMaterialRenderWaits) {
             materialRenderWaits++;
             Engine::executeSceneOnce(materialRender.getScene());
             return;
         }
         materialRenderWaits = 0;
         materialRenderWaitPath.clear();
+
+        if (stillLoading) {
+            Log::warn("No thumbnail for material %s: it was still loading after %d frames (asked again when it changes)",
+                      pending.path.string().c_str(), maxMaterialRenderWaits);
+            std::error_code timeError;
+            const fs::file_time_type fileTime = fs::last_write_time(pending.path, timeError);
+            {
+                std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+                if (pending.generation == thumbnailGeneration) {
+                    if (!timeError) abandonedMaterialThumbnails[thumbnailRequestKey(pending.path)] = fileTime;
+                    pendingThumbnailRequests.erase(thumbnailRequestKey(pending.path));
+                    hasPendingMaterialRender = false;
+                    pendingMaterialPath.clear();
+                    pendingMaterialGeneration = 0;
+                }
+            }
+            notifyThumbnailWork();
+            return;
+        }
 
         fs::path thumbnailPath = project->getThumbnailPath(pending.path);
         fs::create_directories(thumbnailPath.parent_path());
@@ -3326,6 +3360,14 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         std::lock_guard<std::mutex> lock(thumbnailMutex);
         if (thumbnailWorkSuspended) {
             return;
+        }
+        if (auto abandoned = abandonedMaterialThumbnails.find(requestKey); abandoned != abandonedMaterialThumbnails.end()) {
+            std::error_code timeError;
+            const fs::file_time_type fileTime = fs::last_write_time(normalizedPath, timeError);
+            if (!forceRegenerate && !timeError && fileTime == abandoned->second) {
+                return;
+            }
+            abandonedMaterialThumbnails.erase(abandoned);
         }
         if (!pendingThumbnailRequests.insert(requestKey).second) {
             return;

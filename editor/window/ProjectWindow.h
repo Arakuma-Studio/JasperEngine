@@ -12,6 +12,7 @@
 #include "organisation/SavedSearchRows.h"
 
 #include <iostream>
+#include <map>
 #include "io/watch/FileWatcher.h"
 
 #include <filesystem>
@@ -329,6 +330,9 @@ namespace jasperengine::editor {
         // frames a material thumbnail waited for its shader variant or textures (main thread)
         int materialRenderWaits = 0;
         fs::path materialRenderWaitPath;
+        // the materials given up on (a texture that never loads), by the file's time then: what
+        // they drew is a stand-in, so no thumbnail is written and only a change asks again
+        std::map<std::string, fs::file_time_type> abandonedMaterialThumbnails; // guarded by thumbnailMutex
 
         fs::path pendingModelPath;
         bool hasPendingModelRender = false; // guarded by thumbnailMutex

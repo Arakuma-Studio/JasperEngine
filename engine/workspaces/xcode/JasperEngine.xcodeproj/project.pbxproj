@@ -4463,6 +4463,9 @@
 		4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */; };
 		4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C31E68F4C6398B1 /* Audio.h */; };
 		4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4779D650DFEE40600C /* SoundHandle.h */; };
+		4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479455F5D4C55C2B3C /* MusicPlayer.h */; };
+		4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47858C3240395205D8 /* MusicSequenceSource.h */; };
+		4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474365841B0820D5A8 /* NearestName.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8728,6 +8731,9 @@
 		4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSnapshotComponent.h; sourceTree = "<group>"; };
 		4A534E470C31E68F4C6398B1 /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
 		4A534E4779D650DFEE40600C /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
+		4A534E479455F5D4C55C2B3C /* MusicPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicPlayer.h; sourceTree = "<group>"; };
+		4A534E47858C3240395205D8 /* MusicSequenceSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicSequenceSource.h; sourceTree = "<group>"; };
+		4A534E474365841B0820D5A8 /* NearestName.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NearestName.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10233,6 +10239,8 @@
 				4A534E478989D5CF2F0ED94E /* SoundEventIO.h */,
 				4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */,
 				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
+				4A534E479455F5D4C55C2B3C /* MusicPlayer.h */,
+				4A534E47858C3240395205D8 /* MusicSequenceSource.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -10724,6 +10732,7 @@
 				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
 				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
+				4A534E474365841B0820D5A8 /* NearestName.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -15513,6 +15522,9 @@
 				4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */,
 				4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */,
 				4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */,
+				4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */,
+				4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */,
+				4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

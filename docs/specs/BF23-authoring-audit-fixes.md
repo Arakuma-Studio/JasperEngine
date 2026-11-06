@@ -282,3 +282,17 @@ result changes S91's first milestone.
   own commands go to that scene's history (`CommandHandle::Redirect`), so they never enter the open
   scene's undo. Open as Text was prefab-only at the cited line, so `.material` and `.particles` get
   the context menu item.
+- **F11 (section B, bf23-agent).** `write_file` also checks what it takes, as it does for clips and
+  masks: an invalid `.particles` or a file that is not a graph is refused, and warnings or issues come
+  back in its result. Without it `write_file` could have broken every Particle System reading the file.
+- **F13 (section B, bf23-agent).** Reporting was not enough. An `edit_particle_effect {seed}` on a
+  running system went through the parameter-only rebind and kept the old seed, so a reported seed
+  could not be pinned to reproduce a run. A changed pinned seed now starts the run over. The golden
+  `tools/mcp/tests/golden/particles/capture_t2.png` was rewritten for it: its test patches `seed: 11`,
+  which never took effect before this fix.
+- **F16 (section B, bf23-agent).** The give-up path cannot be reached from a project on demand. A texture
+  that fails to load is not pending (`Texture::empty()`, `MaterialRender::isPending`), so its material
+  already gets a truthful thumbnail, checked with a material naming a missing file. The audit's example
+  of a texture that never loads is really a load slower than 600 frames, or a variant that never builds.
+  The MCP test holds that state with `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK`, and its red run was that
+  seam with the give-up branch disabled.

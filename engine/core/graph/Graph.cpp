@@ -3,6 +3,7 @@
 
 #include "Graph.h"
 #include "GraphRegistry.h"
+#include "util/NearestName.h"
 
 #include <algorithm>
 #include <cctype>
@@ -199,6 +200,17 @@ namespace {
             }
         }
         return ref.port;
+    }
+
+    std::string didYouMean(const std::string& name, const std::vector<std::string>& candidates){
+        const std::string nearest = jasperengine::NearestName(name, candidates);
+        return nearest.empty() ? std::string() : "did you mean '" + nearest + "'?";
+    }
+
+    std::string listOf(const std::vector<std::string>& names){
+        std::string list;
+        for (const std::string& name : names) list += (list.empty() ? "" : ", ") + name;
+        return list;
     }
 
 }
@@ -423,6 +435,12 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
     }
 
     graph.nextId = json.value("nextId", static_cast<uint64_t>(1));
+    for (const char* key : {"nodes", "edges", "variables", "groups"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_array()) report.malformed.push_back(std::string("'") + key + "' is not a list");
+    }
+    for (const char* key : {"viewport", "metadata"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_object()) report.malformed.push_back(std::string("'") + key + "' is not an object");
+    }
     std::set<std::string> unknownTypes;
     if (auto it = json.find("nodes"); it != json.end() && it->is_array()) {
         for (const Json& item : *it) {
@@ -448,6 +466,11 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
             noteId(graph, group.id);
             graph.groups.push_back(std::move(group));
         }
+    }
+    // a hand-written edge may leave its id out: past every id of the file, in file order, so two
+    // loads of the file agree
+    for (Edge& edge : graph.edges) {
+        if (edge.id.empty()) edge.id = graph.allocateId("e");
     }
     if (auto it = json.find("viewport"); it != json.end() && it->is_object()) {
         if (auto offset = it->find("offset"); offset != it->end()) graph.viewport.offset = vec2From(*offset);
@@ -480,6 +503,20 @@ Graph jasperengine::graph::load(std::string_view text, LoadReport& report){
     return fromJson(json, report);
 }
 
+std::string jasperengine::graph::fileProblem(std::string_view path, const Graph& graph, const LoadReport& report){
+    if (!report.ok) return report.error;
+    if (!report.malformed.empty()) return report.malformed.front();
+    const std::shared_ptr<const GraphKindDesc> owner = GraphRegistry::get().kindForFile(path);
+    if (!owner || owner->id == graph.kind) return {};
+    const std::string expected = "these files have kind '" + owner->id + "'";
+    return graph.kind.empty() ? "it names no kind: " + expected : "its kind is '" + graph.kind + "': " + expected;
+}
+
+std::vector<std::string> jasperengine::graph::fileWarnings(const LoadReport& report){
+    // (fromJson adds those about unknown node types last, one each)
+    return {report.warnings.begin(), report.warnings.end() - static_cast<std::ptrdiff_t>(report.unknownNodeTypes.size())};
+}
+
 std::string jasperengine::graph::save(const Graph& graph){
     std::string text = toJson(graph).dump(2, ' ', false, Json::error_handler_t::replace);
     text += '\n';
@@ -501,15 +538,18 @@ Json jasperengine::graph::toJson(const Issue& issue){
     if (!issue.nodeId.empty()) out["node"] = issue.nodeId;
     if (!issue.portId.empty()) out["port"] = issue.portId;
     if (!issue.edgeId.empty()) out["edge"] = issue.edgeId;
+    if (!issue.suggestion.empty()) out["suggestion"] = issue.suggestion;
     return out;
 }
 
 std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     std::vector<Issue> issues;
-    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {}) {
-        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message)});
+    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {},
+                   std::string suggestion = {}) {
+        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message), std::move(suggestion)});
     };
     std::shared_ptr<const GraphKindDesc> kind = GraphRegistry::get().kind(graph.kind);
+    const Severity paramSeverity = kind && kind->strictParams ? Severity::Error : Severity::Warning;
 
     // ids
     std::unordered_set<std::string> seen;
@@ -534,7 +574,10 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     for (const Node& node : graph.nodes) {
         const NodeTypeDesc* type = kind ? GraphRegistry::nodeType(*kind, node.type) : nullptr;
         if (kind && !type) {
-            add(Severity::Warning, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id);
+            std::vector<std::string> typeIds;
+            for (const NodeTypeDesc& candidate : kind->nodeTypes) typeIds.push_back(candidate.id);
+            add(paramSeverity, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id, {}, {},
+                didYouMean(node.type, typeIds));
         }
         ports[node.id] = portsOf(graph, node);
         if (!type) continue;
@@ -546,12 +589,25 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
                 if ((param.min && value < *param.min) || (param.max && value > *param.max)) {
                     std::string range = "[" + (param.min ? Json(*param.min).dump() : std::string("-inf")) + ", " +
                                         (param.max ? Json(*param.max).dump() : std::string("inf")) + "]";
-                    add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
+                    add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
                 }
             } else if (param.kind == "enum" && it->is_string() && !param.enumValues.empty() &&
                        std::find(param.enumValues.begin(), param.enumValues.end(), it->get<std::string>()) == param.enumValues.end()) {
-                add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id);
+                std::string suggestion = didYouMean(it->get<std::string>(), param.enumValues);
+                if (suggestion.empty()) suggestion = "one of " + listOf(param.enumValues);
+                add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id, {}, {}, std::move(suggestion));
             }
+        }
+        if (!kind->strictParams) continue;
+        for (auto it = node.params.begin(); it != node.params.end(); ++it) {
+            const std::string& name = it.key();
+            const auto declared = [&](const ParamDesc& param) { return param.name == name; };
+            if (std::any_of(type->params.begin(), type->params.end(), declared)) continue;
+            std::vector<std::string> names;
+            for (const ParamDesc& param : type->params) names.push_back(param.name);
+            std::string suggestion = didYouMean(name, names);
+            if (suggestion.empty()) suggestion = names.empty() ? "this node type has no parameters" : "its parameters: " + listOf(names);
+            add(Severity::Error, "unknown-param", "'" + name + "' is not a parameter of '" + node.type + "'", node.id, {}, {}, std::move(suggestion));
         }
     }
 
@@ -690,22 +746,20 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         for (const Edge& edge : edges) {
             if (edge.id.empty() || graph.findEdge(edge.id)) throw GraphOpError("addNode: edge ids must be new");
         }
-        const bool fresh = node.id.empty();
-        if (fresh) {
+        if (node.id.empty()) {
             node.id = graph.allocateId("n");
         } else if (graph.findNode(node.id)) {
             throw GraphOpError("addNode: a node '" + node.id + "' exists");
         }
         // a new node gets its type's parameter defaults, and stores its ports when the type's
-        // ports are dynamic (a node put back by an undo is restored exactly as it was)
-        if (fresh && !node.dynamicPorts) {
+        // ports are dynamic; a node put back by an undo (restore) comes back exactly as it was
+        if (!op.args.value("restore", false)) {
             if (auto kind = GraphRegistry::get().kind(graph.kind)) {
-                const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type);
-                if (type && type->dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
-                if (type) {
+                if (const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type)) {
                     for (const ParamDesc& param : type->params) {
                         if (!node.params.contains(param.name) && !param.defaultValue.is_null()) node.params[param.name] = param.defaultValue;
                     }
+                    if (type->dynamicPorts && !node.dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
                 }
             }
         }
@@ -731,7 +785,7 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         const std::string id = requireString(op, "id");
         auto it = lowerById(graph.nodes, id);
         if (it == graph.nodes.end() || it->id != id) throw GraphOpError("removeNode: no node '" + id + "'");
-        Json inverse = {{"node", toJson(*it)}};
+        Json inverse = {{"node", toJson(*it)}, {"restore", true}};
         Json edges = Json::array();
         graph.edges.erase(std::remove_if(graph.edges.begin(), graph.edges.end(), [&](const Edge& edge) {
             if (edge.from.node != id && edge.to.node != id) return false;
