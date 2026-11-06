@@ -9,6 +9,7 @@
 
 #include "pool/ShaderPool.h"
 #include "buffer/Buffer.h"
+#include "buffer/ExternalBuffer.h"
 #include "pool/MeshBufferPool.h"
 #include "render/ObjectRender.h"
 #include "render/ShaderRender.h"
@@ -95,12 +96,13 @@ TEST(ObjectRenderShaderGpu, APipelineOfADeadShaderIsNeverApplied){
 TEST(ObjectRenderShaderGpu, BindSlotsKeepStrideApart){
     JASPER_REQUIRE_GPU();
     std::vector<float> bytes(64, 0.25f);
-    Buffer vec2s;
-    Buffer vec4s;
-    for (Buffer* buffer : {&vec2s, &vec4s}){
+    // (a plain Buffer has no storage of its own: ExternalBuffer points at the bytes)
+    ExternalBuffer vec2s;
+    ExternalBuffer vec4s;
+    for (ExternalBuffer* buffer : {&vec2s, &vec4s}){
         buffer->setType(BufferType::VERTEX_BUFFER);
         buffer->setUsage(BufferUsage::IMMUTABLE);
-        buffer->importData(bytes.data(), bytes.size() * sizeof(float));
+        buffer->setData(reinterpret_cast<unsigned char*>(bytes.data()), bytes.size() * sizeof(float));
         ASSERT_TRUE(MeshBufferPool::createRender(*buffer));
     }
     ASSERT_EQ(vec2s.getRender()->backend.get().id, vec4s.getRender()->backend.get().id) << "equal bytes share one GPU buffer";
