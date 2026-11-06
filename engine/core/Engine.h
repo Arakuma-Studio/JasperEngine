@@ -380,6 +380,7 @@ namespace jasperengine {
         static double timeScale;
         static double fixedDeltatime;
         static double gameTime;
+        static double shaderGameTime;
         // the shader clock of the frame (latchShaderTime), and whether it last advanced by fixedDeltatime
         static double shaderTime;
         static bool shaderTimeFixed;
@@ -715,6 +716,11 @@ namespace jasperengine {
         static bool isDevelopmentBuild();
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
+        // The game clock shaders read (a custom block's engine-written `gameTime`: Palette
+        // Cycling): scaled seconds advanced only while the game's events run, so it holds at time
+        // scale 0, while the editor's Play is paused and in edit mode. Pinned with the shader clock
+        // (setPinnedShaderTime), for golden images.
+        static double getShaderGameTime();
         static uint64_t getGameFrames();
 
         // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame

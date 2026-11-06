@@ -587,7 +587,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "invalid @property member name '" + property.member + "'");
                 continue;
             }
-            if (property.member == "time" || property.member == "resolution"){
+            if (property.member == "time" || property.member == "gameTime" || property.member == "resolution"){
                 report(lineNumber, true, "'" + property.member + "' is written by the engine and cannot be a @property");
                 continue;
             }
@@ -1155,7 +1155,7 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
     }
 
     for (const auto& member : members){
-        if (member.first != "time" && member.first != "resolution" && !findProperty(member.first)){
+        if (member.first != "time" && member.first != "gameTime" && member.first != "resolution" && !findProperty(member.first)){
             diagnostics.push_back({file, 1, false, "member '" + member.first + "' of the custom block has no @property (it stays zero)"});
         }
     }

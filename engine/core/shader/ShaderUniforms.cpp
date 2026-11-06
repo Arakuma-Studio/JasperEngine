@@ -13,7 +13,7 @@
 using namespace jasperengine;
 
 bool ShaderUniforms::isReserved(const std::string& name){
-    return name == "time" || name == "resolution";
+    return name == "time" || name == "resolution" || name == "gameTime";
 }
 
 bool ShaderUniforms::isEditable(const ShaderUniform& uniform){
@@ -97,6 +97,8 @@ bool CustomUniformBlock::resolve(ShaderData& shaderData, const std::string& bloc
         uniform.name = ShaderData::getUniformShortName(uniform.name);
         if (uniform.name == "time"){
             timeMember = (int)members.size();
+        }else if (uniform.name == "gameTime"){
+            gameTimeMember = (int)members.size();
         }else if (uniform.name == "resolution"){
             resolutionMember = (int)members.size();
         }
@@ -117,13 +119,14 @@ void CustomUniformBlock::clear(){
     members.clear();
     data.clear();
     timeMember = -1;
+    gameTimeMember = -1;
     resolutionMember = -1;
     mixedTypes = false;
 }
 
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == gameTimeMember || (int)m == resolutionMember)
             continue;
         // unset (or removed) members read zero
         writeUniform(data, members[m], ShaderUniforms::get(values, members[m].name));
@@ -133,7 +136,7 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
                                      const ShaderGlobalBindings* bindings){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == gameTimeMember || (int)m == resolutionMember)
             continue;
         const std::string& name = members[m].name;
         Vector4 value = Vector4::ZERO;
@@ -155,6 +158,11 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const Sh
 void CustomUniformBlock::writeTime(float seconds){
     if (timeMember != -1)
         writeUniform(data, members[timeMember], Vector4(seconds, seconds, seconds, seconds));
+}
+
+void CustomUniformBlock::writeGameTime(float seconds){
+    if (gameTimeMember != -1)
+        writeUniform(data, members[gameTimeMember], Vector4(seconds, seconds, seconds, seconds));
 }
 
 void CustomUniformBlock::writeResolution(float width, float height){

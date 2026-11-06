@@ -171,6 +171,7 @@ double Engine::updateTime = 1.0 / 60.0; //60Hz
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
+double Engine::shaderGameTime = 0.0;
 bool Engine::captureFrame = false;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
@@ -1102,6 +1103,10 @@ bool Engine::isDevelopmentBuild(){
 
 double Engine::getGameTime(){
     return gameTime;
+}
+
+double Engine::getShaderGameTime(){
+    return pinnedShaderTime >= 0.0 ? pinnedShaderTime : shaderGameTime;
 }
 
 uint64_t Engine::getGameFrames(){
@@ -2340,6 +2345,8 @@ void Engine::runFrame(bool draw){
         gameFrames++;
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
+        if (gameClocks)
+            shaderGameTime += frameDelta;
 
         unscaledTime += unscaledDeltatime;
         smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);

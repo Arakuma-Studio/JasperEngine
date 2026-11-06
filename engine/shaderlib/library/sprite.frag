@@ -95,6 +95,7 @@ uniform u_fs_customParams {
     #endif
     #ifdef PALETTE_CYCLE
         float paletteCycleSpeed;
+        float gameTime; // engine-written game seconds: they hold while the game is paused
     #endif
 } customParams;
 #endif
@@ -199,10 +200,12 @@ void main() {
         #endif
         #ifdef PALETTE_CYCLE
             float paletteCycleSpeed = customParams.paletteCycleSpeed;
+            float paletteTime = customParams.gameTime;
         #else
             float paletteCycleSpeed = 0.0;
+            float paletteTime = 0.0;
         #endif
-        texel = paletteSwapTexel(texel, paletteRow, customParams.time, paletteCycleSpeed);
+        texel = paletteSwapTexel(texel, paletteRow, paletteTime, paletteCycleSpeed);
     #endif
     vec4 tint = pbrParams.baseColorFactor * v_color;
     vec4 color = vec4(sRGBToLinear(texel.rgb), texel.a) * tint;

@@ -82,6 +82,7 @@ namespace {
         if (block.slot == -1)
             return;
         block.writeTime(frameTime);
+        block.writeGameTime((float)Engine::getShaderGameTime());
         block.writeResolution(resolution.x, resolution.y);
         render.applyUniformBlock(block.slot, (unsigned int)block.data.size(), block.data.data());
     }
