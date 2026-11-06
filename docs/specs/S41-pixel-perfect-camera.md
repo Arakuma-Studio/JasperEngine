@@ -760,3 +760,8 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     `Engine::removeScene` of the main scene drop the Pixel Perfect Camera's view; the new main
     scene's camera sets its own on its update. Without it a scene switch kept the old scene's
     integer layout (`EngineViewLayoutTest.ThePixelPerfectViewGoesWithItsMainScene`).
+22. **Variant bits and S55.** `Pxs` is MESH bit 42 and DEPTH bit 19 (S57 and S55 took MESH 36-41 and
+    DEPTH 18), UI bit 5, PARTICLES bit 11; Stretch Fill is BLIT bit 18 (`Psb`). The per-draw
+    `pixelSnapDraw` is part of the per-draw object blocks (`includes/object_params.glsl`,
+    `object_depth_params.glsl`), so a pixel-snapped drawable never joins an automatic GPU
+    instancing batch (`getSubmeshBatchVariant`).
