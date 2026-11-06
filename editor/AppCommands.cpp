@@ -439,10 +439,7 @@ void editor::App::registerPanelClaims(){
 }
 
 bool editor::App::clipWindowTakesKeys() const{
-    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return true;
-    // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an audio block)
-    const AnimationWindowClip* clip = animationWindow ? animationWindow->getClipMode() : nullptr;
-    return clip && clip->entityKeys;
+    return animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
 }
 
 bool editor::App::poseKeysFromSceneView() const{
@@ -507,7 +504,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
-    if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
+    // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an
+    // audio block); the edit verbs (Delete, Copy...) stay its own
+    const AnimationWindowClip* animationClip = animationWindow ? animationWindow->getClipMode() : nullptr;
+    if (clipWindowTakesKeys() || (animationClip && animationClip->entityKeys)) state.panels.push_back(ShortcutContext::Animation);
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
     if (ui::CurveWindow::get().isFocused()) state.panels.push_back(ShortcutContext::Curve);
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
