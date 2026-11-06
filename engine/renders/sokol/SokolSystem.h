@@ -16,6 +16,7 @@ struct sg_buffer;
 struct sg_image;
 struct sg_range;
 struct sg_image_data;
+struct sg_bindings;
 
 namespace jasperengine{
     struct RenderFeatures;
@@ -67,10 +68,34 @@ namespace jasperengine{
         static bool updateBuffer(sg_buffer buffer, const sg_range& data);
         static int appendBuffer(sg_buffer buffer, const sg_range& data);
         static bool updateImage(sg_image image, const sg_image_data& data);
-        // The draw about to be bound and drawn (its pipeline applied, its uniforms applied):
-        // false when its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the
-        // draw is skipped and counted)
-        static bool reserveDescriptorBytes();
+        // The draw about to be drawn (its pipeline applied, its uniforms applied), with its
+        // bindings applied too when `bindings` (else they are the ones applied last): false when
+        // its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the draw is
+        // skipped and counted)
+        static bool reserveDescriptorBytes(bool bindings);
+
+        // The pipeline and bindings the current pass applied last (render thread, every draw
+        // path): a draw with the same skips the sokol call, which on D3D11 sets every state again
+        // and on Vulkan binds the pipeline and writes a descriptor set. Every event after which
+        // sokol's state may differ from what is recorded here forgets it: a pass, an upload, a
+        // resource destroyed, a sokol error, a draw sokol marked invalid (a binding not ready).
+        // applyPipeline is true when sg_apply_pipeline ran (counted as a SetPass call)
+        static bool applyPipeline(uint32_t pipelineId);
+        static bool isBindingsApplied(const sg_bindings& bindings);
+        static void applyBindings(const sg_bindings& bindings);
+        // sg_draw of the draw set up, then forgets the applied state if sokol turned its later
+        // draws off (a failed binding or uniform block: until the next sg_apply_pipeline)
+        static void draw(int baseElement, int numElements, int numInstances);
+        // the pipeline, its uniforms and the bindings (a pass, an error, a pipeline destroyed)
+        static void forgetAppliedState();
+        // the bindings only (an upload, a buffer, image, view or sampler destroyed)
+        static void forgetAppliedBindings();
+        // changes with every pipeline applied and every forgetAppliedState: the uniform blocks
+        // applied in an earlier epoch are not applied any more (sokol asks for them again after
+        // sg_apply_pipeline), those of this one stay until the next (SokolDrawBatch, spec S55)
+        static uint32_t appliedEpoch();
+        // the pipeline applied last in this pass (SG_INVALID_ID when unknown)
+        static uint32_t appliedPipeline();
 
         // a budget's bytes in the last committed frame (what it asked for, refused items too),
         // the most a frame asked for, the limit, whether items past it are refused, and the

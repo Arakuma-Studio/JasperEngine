@@ -962,6 +962,10 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t verti
     currentFrameStats.vertices += vertices;
 }
 
+void Engine::addSetPassCall(){
+    currentFrameStats.setPassCalls++;
+}
+
 void Engine::addVisibilityStats(uint32_t visible, uint32_t culled){
     currentFrameStats.visible += visible;
     currentFrameStats.culled += culled;

@@ -207,6 +207,9 @@ namespace jasperengine {
             uint32_t visible = 0;
             uint32_t culled = 0;
             uint64_t vertices = 0;
+            // pipelines applied (Unity's SetPass calls): a draw with the pipeline applied last in
+            // its pass applies none
+            uint32_t setPassCalls = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -638,6 +641,7 @@ namespace jasperengine {
         // vertices: the vertex shader runs, indices or vertices drawn times the instances
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static void addVisibilityStats(uint32_t visible, uint32_t culled);
+        static void addSetPassCall();
         static const FrameStats& getFrameStats();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
