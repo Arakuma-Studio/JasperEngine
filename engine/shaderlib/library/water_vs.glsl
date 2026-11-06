@@ -5,6 +5,17 @@
 #include "includes/motion.glsl"
 #include "library/water.glsl"
 
+// the clock the waves run on: the scene clock (customParams.sceneTime) for this library's
+// entry points, which define WATER_SCENE_CLOCK; a fork copied from an older library:water has
+// its .frag on frame.time, so its waves stay on that too
+#ifdef WATER_SCENE_CLOCK
+    #define WATER_VS_TIME customParams.sceneTime
+#else
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #define WATER_VS_TIME frame.time.x
+#endif
+
 uniform u_vs_customParams {
     vec2 waveDirection;
     float waveHeight;
@@ -26,12 +37,12 @@ vec3 waterWavePosition(vec3 position, mat4 modelMatrix){
     #ifdef GERSTNER
         vec3 dPdx;
         vec3 dPdz;
-        vec3 offset = waterGerstner(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+        vec3 offset = waterGerstner(xz, WATER_VS_TIME, customParams.waveDirection, customParams.waveHeight,
                                     customParams.waveLength, customParams.waveSpeed, customParams.waveSteepness,
                                     vec4(1.0), dPdx, dPdz);
         return position + motionWorldToLocal(modelMatrix, offset);
     #else
-        float h = waterWaves(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+        float h = waterWaves(xz, WATER_VS_TIME, customParams.waveDirection, customParams.waveHeight,
                              customParams.waveLength, customParams.waveSpeed).x;
         return position + motionWorldToLocal(modelMatrix, vec3(0.0, h, 0.0));
     #endif
