@@ -7,7 +7,6 @@
 #include "reflect/Components.h"
 
 #include "component/PixelPerfectCameraComponent.h"
-#include "component/Transform.h"
 
 namespace jasperengine::editor::reflect {
 
