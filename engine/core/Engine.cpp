@@ -28,8 +28,13 @@
 #include "manager/SceneManager.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioCapture.h"
+#include "audio/AudioMarkers.h"
 #include "subsystem/CameraControlSystem.h"
 #include "audio/AudioMixer.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "audio/MusicPlayer.h"
+#endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -2121,8 +2126,10 @@ void Engine::runFrame(bool draw){
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
     // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
-    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
-    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held, and on
+    // the deterministic driver while its pump holds: what a Play's pause lasted is not in the mix)
+    const bool audioHeld = paused || simulationHeld || (!onUpdate.isEnabled() && AudioSystem::getOutputMode() == AudioOutputMode::Deterministic);
+    AudioMixer::update(audioHeld ? 0.0 : deltatime, audioHeld ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
     Scheduler& scheduler = Scheduler::game();
@@ -2188,6 +2195,11 @@ void Engine::runFrame(bool draw){
     // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
     // callbacks, the editor's tools), at this frame's first safe point
     SceneManager::flushPersistentMoves();
+
+#if JASPERENGINE_AUDIO_CAPTURE && !defined(JASPERENGINE_EDITOR)
+    // --audio-capture: from the first frame of the start scene, before its update
+    player::RunControl::beginAudioCapture();
+#endif
 
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
@@ -2314,6 +2326,13 @@ void Engine::runFrame(bool draw){
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
     }
+
+#if JASPERENGINE_SOUND_LAYER
+    // the music's callbacks and segments for what this frame mixes (docs/specs/S39-music.md)
+    MusicPlayer::update(unscaledDeltatime);
+#endif
+    // after the scenes, so a voice, what started it and the frame's mix are on the same sample
+    AudioSystem::pumpDeterministic(unscaledDeltatime);
 
     // the debug overlay updates on its own clock: also while the time scale is 0 or the
     // editor holds the game, so it stays usable on a frozen game
@@ -2510,6 +2529,11 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    // a player's capture ends with the run; its voices are still in their scenes
+    AudioCapture::end();
+#endif
 
     // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
@@ -3083,6 +3107,9 @@ void Engine::systemTouchStart(int pointer, float x, float y){
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "down", pointer, x, y);
+#endif
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
@@ -3131,7 +3158,11 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
     DebugOverlay::handleTouch(pointer, x, y, 2);
     // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
     const bool visible = Input::isTouchVisible(pointer);
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
+#endif
+    if (!onCanvas){
         // lifted outside the canvas: no event, but the finger is not down any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::removeTouch(pointer);
@@ -3271,6 +3302,9 @@ void Engine::systemTouchCancel(int pointer){
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "down", button, x, y);
+#endif
         Input::addMousePressed(button, mods);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -3315,7 +3349,11 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
+#endif
+    if (!onCanvas){
         // released outside the canvas: no event, but the button is not held any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::releaseMousePressed(button);
@@ -3467,6 +3505,9 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (!repeat && AudioMarkers::isEnabled()) AudioMarkers::input("key", "down", key, 0.0f, 0.0f);
+#endif
     Input::addKeyPressed(key, repeat, mods);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -3495,6 +3536,9 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("key", "up", key, 0.0f, 0.0f);
+#endif
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
 
@@ -3635,6 +3679,9 @@ void Engine::systemGamepadDisconnect(int gamepad){
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "down", button, 0.0f, 0.0f);
+#endif
     Input::addGamepadButtonPressed(gamepad, button);
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -3646,6 +3693,9 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "up", button, 0.0f, 0.0f);
+#endif
     Input::releaseGamepadButtonPressed(gamepad, button);
 
     // consumed iff its down was, so the game never gets an up without a down

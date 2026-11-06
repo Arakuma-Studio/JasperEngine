@@ -25,6 +25,7 @@
 //     Constant segment: it holds the key's value);
 //   * wrap is never ClipWrapMode::Default (that value only appears in player clip entries);
 //   * events sorted by (time, function); at most MAX_ANIMATION_EVENT_ARGS args each.
+//   * audio cues as ClipAudio.h says (sorted by time, valid; S40).
 //   Editors that build ClipData by hand keep these (AnimationClipIO::normalize restores them).
 // - Paths are relative to the animated root (ClipBinding grammar); asset paths (previewModel,
 //   source.path) are asset-relative like ModelComponent::filename.
@@ -38,6 +39,7 @@
 #include "Export.h"
 #include "action/Ease.h"
 #include "animation/AnimationEvent.h"
+#include "animation/ClipAudio.h"
 #include "animation/ClipTypes.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -152,6 +154,8 @@ namespace jasperengine{
         float additiveReference = 0.0f;
         std::vector<ClipTrackData> tracks;
         std::vector<ClipEventData> events;
+        // audio cues (S40): a clip with any is written as version 3
+        std::vector<ClipAudioCue> audio;
         // editor-only hint: a model or prefab to preview the clip on (asset-relative)
         std::string previewModel;
         ClipSource source;
@@ -164,7 +168,7 @@ namespace jasperengine{
         bool isHumanoid() const;
         // index into tracks of the humanoid track (channel, humanBone), -1 when none
         int findHumanoidTrack(ClipChannel channel, int humanBone) const;
-        // the explicit length, else the last key or event time over the whole clip
+        // the explicit length, else the last key, event or cue time over the whole clip
         float effectiveLength() const;
         // index into tracks, -1 when none (property tracks are not found by this; for a humanoid
         // channel `path` is the bone name: "left_upper_arm", "hips")
@@ -267,6 +271,8 @@ namespace jasperengine{
         bool hasPropertyTracks() const { return propertyTracks; }
         // sorted by (time, function)
         const std::vector<ClipEventData>& getEvents() const { return events; }
+        // sorted by time (S40)
+        const std::vector<ClipAudioCue>& getAudioCues() const { return audio; }
 
         // index into getTracks(), -1 when none (humanoid channels: `path` is the bone name)
         int findTrack(const std::string& path, ClipChannel channel) const;
@@ -292,6 +298,7 @@ namespace jasperengine{
         std::vector<ClipWarning> warnings;
         std::vector<Track> tracks;
         std::vector<ClipEventData> events;
+        std::vector<ClipAudioCue> audio;
         bool propertyTracks = false;
 
         // contiguous storage the Track pointers point into

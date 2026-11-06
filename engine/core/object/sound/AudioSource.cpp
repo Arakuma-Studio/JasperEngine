@@ -4,6 +4,7 @@
 #include "AudioSource.h"
 #include "component/Transform.h"
 #include "subsystem/AudioSystem.h"
+#include "asset/AssetMap.h"
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
 #include "Scene.h"
@@ -13,6 +14,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 
@@ -444,6 +446,83 @@ void AudioSource::setPitch(float pitch){
 float AudioSource::getPitch() const{
     return getSpeed();
 }
+
+#if JASPERENGINE_SOUND_LAYER
+void AudioSource::setEvent(const std::string& pathOrGuid){
+    AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
+    AssetRef ref;
+    if (Guid::isValidText(pathOrGuid)) {
+        ref.guid = Guid::parse(pathOrGuid);
+        AssetMap::findPath(ref.guid, ref.path);
+    } else {
+        ref.path = pathOrGuid;
+        ref.guid = AssetMap::findGuid(pathOrGuid);
+    }
+    audio.event = ref;
+    audio.needUpdate = true;
+}
+
+std::string AudioSource::getEvent() const{
+    return getComponent<AudioSourceComponent>().event.path;
+}
+
+void AudioSource::setPlayOn(uint32_t flags){
+    getComponent<AudioSourceComponent>().playOn = flags & AudioPlayOn_All;
+}
+
+uint32_t AudioSource::getPlayOn() const{
+    return getComponent<AudioSourceComponent>().playOn;
+}
+
+void AudioSource::setMinImpactSpeed(float speed){
+    if (!std::isfinite(speed)) {
+        Log::warn("AudioSource.minImpactSpeed: not a number, ignored");
+        return;
+    }
+    getComponent<AudioSourceComponent>().minImpactSpeed = std::max(0.0f, speed);
+}
+
+float AudioSource::getMinImpactSpeed() const{
+    return getComponent<AudioSourceComponent>().minImpactSpeed;
+}
+
+void AudioSource::setFullVolumeImpactSpeed(float speed){
+    if (!std::isfinite(speed)) {
+        Log::warn("AudioSource.fullVolumeImpactSpeed: not a number, ignored");
+        return;
+    }
+    getComponent<AudioSourceComponent>().fullVolumeImpactSpeed = std::max(0.0f, speed);
+}
+
+float AudioSource::getFullVolumeImpactSpeed() const{
+    return getComponent<AudioSourceComponent>().fullVolumeImpactSpeed;
+}
+
+void AudioSource::setPitchRandomSemitones(float semitones){
+    if (!std::isfinite(semitones)) {
+        Log::warn("AudioSource.pitchRandomSemitones: not a number, ignored");
+        return;
+    }
+    getComponent<AudioSourceComponent>().pitchRandomSemitones = std::clamp(semitones, 0.0f, 24.0f);
+}
+
+float AudioSource::getPitchRandomSemitones() const{
+    return getComponent<AudioSourceComponent>().pitchRandomSemitones;
+}
+
+void AudioSource::setVolumeRandomDb(float db){
+    if (!std::isfinite(db)) {
+        Log::warn("AudioSource.volumeRandomDb: not a number, ignored");
+        return;
+    }
+    getComponent<AudioSourceComponent>().volumeRandomDb = std::clamp(db, 0.0f, 60.0f);
+}
+
+float AudioSource::getVolumeRandomDb() const{
+    return getComponent<AudioSourceComponent>().volumeRandomDb;
+}
+
+#endif // JASPERENGINE_SOUND_LAYER
 
 void AudioSource::playOneShot(const std::string& filename, float volumeScale){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();

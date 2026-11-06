@@ -30,6 +30,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -700,6 +701,16 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("right", &SafeAreaComponent::right, &SafeAreaComponent::right)
         .addProperty("bottom", &SafeAreaComponent::bottom, &SafeAreaComponent::bottom)
         .addProperty("includeExtraInsets", &SafeAreaComponent::includeExtraInsets, &SafeAreaComponent::includeExtraInsets)
+        .endClass();
+
+    // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioSnapshotComponent>("AudioSnapshotComponent")
+        .addProperty("snapshot", &AudioSnapshotComponent::snapshot, &AudioSnapshotComponent::snapshot)
+        .addProperty("seconds", &AudioSnapshotComponent::seconds, &AudioSnapshotComponent::seconds)
+        .addProperty("unscaled", &AudioSnapshotComponent::unscaled, &AudioSnapshotComponent::unscaled)
+        .addProperty("revert", &AudioSnapshotComponent::revert, &AudioSnapshotComponent::revert)
+        .addProperty("revertSeconds", &AudioSnapshotComponent::revertSeconds, &AudioSnapshotComponent::revertSeconds)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

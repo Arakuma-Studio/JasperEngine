@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest a171087d51ea58a1
+digest 992d8b6637ae75f4
 --- 0
 enabled: false
 type: spot
@@ -27,6 +27,9 @@ cascadeSplits: [78, 0, 74]
 shadowDistance: 6501.8354
 shadowAngularDiameter: -0.4667138
 shadowSourceRadius: 7712.1284
+contactShadowLength: -56.714287
+contactShadowThickness: -0
+contactShadowSampleCount: -7
 volumetricIntensity: 104.85714
 intensityUnit: lux
 colorTemperature: 0.70539445
@@ -66,6 +69,9 @@ shadowDistance: 12.755282
 shadowAngularDiameter: -0
 shadowSourceRadius: 0.4072244
 shadowUpdateMode: everyFrame
+contactShadowLength: -0.1813146
+contactShadowThickness: 0.61345905
+contactShadowSampleCount: 20
 volumetricIntensity: 12
 useColorTemperature: true
 colorTemperature: 8664.439
@@ -102,6 +108,10 @@ cascadeSplits: [0.40582916, 2939.4497, 1112.3428]
 shadowDistance: 4976.2725
 shadowAngularDiameter: .inf
 shadowSourceRadius: -0
+contactShadows: true
+contactShadowLength: -0.54718125
+contactShadowThickness: -.inf
+contactShadowSampleCount: 2
 volumetricIntensity: 6874.2964
 useColorTemperature: true
 colorTemperature: 92
@@ -140,6 +150,10 @@ cascadeSplits: [-0.7786519, 0, -56]
 shadowDistance: 18
 shadowAngularDiameter: 0.34710467
 shadowSourceRadius: 100
+contactShadows: true
+contactShadowLength: -0
+contactShadowThickness: -0
+contactShadowSampleCount: -11
 volumetricIntensity: 1e-45
 intensityUnit: lux
 useColorTemperature: true
@@ -178,6 +192,10 @@ shadowDistance: 0.5725937
 shadowAngularDiameter: 30
 shadowSourceRadius: 1e-45
 shadowUpdateMode: everyFrame
+contactShadows: true
+contactShadowLength: 0.21575533
+contactShadowThickness: -0
+contactShadowSampleCount: 2
 volumetricIntensity: -127.14286
 intensityUnit: lumen
 useColorTemperature: true
@@ -209,6 +227,10 @@ cascadeSplits: [1953.6139, 0, 9277.603]
 shadowDistance: -11
 shadowAngularDiameter: 6536.5576
 shadowSourceRadius: -0.9586624
+contactShadows: true
+contactShadowLength: 0.5921002
+contactShadowThickness: 2533.4172
+contactShadowSampleCount: -3
 volumetricIntensity: 73.14286
 intensityUnit: lux
 colorTemperature: 5341.892
@@ -238,6 +260,9 @@ shadowDistance: -51
 shadowAngularDiameter: 4316.468
 shadowSourceRadius: -95
 shadowUpdateMode: everyFrame
+contactShadowLength: 1e-45
+contactShadowThickness: -9
+contactShadowSampleCount: -20
 volumetricIntensity: 1e-45
 intensityUnit: lux
 useColorTemperature: true
@@ -269,6 +294,9 @@ cascadeSplits: [112, 0, 37]
 shadowDistance: 3e+38
 shadowAngularDiameter: 53
 shadowSourceRadius: -0.4190958
+contactShadowLength: 905.7194
+contactShadowThickness: 43
+contactShadowSampleCount: 2
 volumetricIntensity: -121.85714
 intensityUnit: candela
 useColorTemperature: true

@@ -197,6 +197,30 @@ namespace jasperengine{
 		void colorTweenUpdate(TweenComponent& tween, ColorTweenComponent& colortween, Vector4& targetColor);
 		void alphaTweenUpdate(TweenComponent& tween, AlphaTweenComponent& alphatween, Vector4& targetColor);
 
+		// ---- the legacy timeline's sound (docs/specs/S40-timeline-audio.md R17-R21)
+		// an action entity with an AudioSource (audio action) or an AudioSnapshotComponent (Mixer
+		// Snapshot action) and no other kind of action
+		bool isTimelineAudioAction(Entity entity);
+		// what animationUpdate passes to the start of an audio or snapshot child it places
+		struct TimelineStartContext {
+			bool active = false;
+			uint32_t delay = 0;
+			float speedScale = 1.0f;
+			Entity animation = NULL_ENTITY;
+			int frame = -1;
+			float startTime = 0.0f;
+		};
+		TimelineStartContext timelineStart;
+		// inside the editor's animation and action previews: no game sound (the editor previews
+		// timeline audio with its own voices, S40 R23)
+		bool timelinePreview = false;
+		// an Animation ending by itself (not a stop()): its audio actions' sounds play out (S40 D6)
+		bool animationEndingNaturally = false;
+		void startTimelineAudio(Entity entity, ActionComponent& action, ActionState before);
+		void stopTimelineAudio(Entity entity);
+		// the audio and snapshot frames of a running Animation (R20): each starts once per pass,
+		// placed inside the frame, and stops when its frame ends. T: the timecount at entry, advance: this update's
+		void animationAudioFrames(Entity entity, double dt, float advance, int& passed, float& actionsEnd, bool afterWrap);
 		// an editor preview steps no systems: a running controller advances its particles itself
 		void previewParticleController(double dt, Entity entity, const ActionComponent& action);
 
@@ -226,6 +250,8 @@ namespace jasperengine{
 		// "<clip>|<function>" of clip events already warned about having no handler (spec 3.5:
 		// once per (clip, function), whatever the number of players)
 		std::unordered_set<std::string> warnedEventHandlers;
+		// a build without the soundlayer module met audio cues (S40 §6.6), said once
+		bool warnedNoSoundLayer = false;
 		// AnimationClipPool::revision() seen by the last player update (a change: compare generations)
 		uint64_t playerPoolRevision = 0;
 		// update() is between its clearPoseBlend and flushPoseBlend (samplePlayer then waits for it)
@@ -243,6 +269,8 @@ namespace jasperengine{
 		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
 		void startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt);
 		void samplePlayerStates(Entity entity, AnimationPlayerComponent& player);
+		// the audio cues its states crossed this update, then the state_exit stops (S40 R4-R7)
+		void firePlayerCues(Entity entity, AnimationPlayerComponent& player, float dt);
 		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
 		// there on the first write of an entity); `written` (optional) gets the entries written
 		// (`writtenProperties`, optional: the (entity, property key) entries written)
