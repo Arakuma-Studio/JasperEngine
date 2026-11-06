@@ -3156,12 +3156,13 @@ Build a UI tree from one root node {type, name, layout, text, font_size, font, t
 
 Group: `core`
 
-Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; property: component + property; humanoid: bone.
+Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `add_actions` | array of object {action, duration, lane, start_time} |  |  |
 | `animation` | integer or string |  |  |
+| `audio` | array of object {snapshot, sound, source, time} |  |  |
 | `autoplay` | boolean |  |  |
 | `clip` | string |  |  |
 | `create` | object {from, humanoid, remove_tracks} |  |  |
