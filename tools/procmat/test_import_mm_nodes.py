@@ -442,6 +442,15 @@ class CommittedOutputTest(unittest.TestCase):
             (nodes / "broken.json").unlink()
             self.assertEqual(expander.main(["--nodes", str(nodes), "--out", str(Path(scratch) / "out")]), 0)
 
+    def test_the_cpp_expanders_reference_is_current(self):
+        # ProcMatExpanderTest holds the C++ expander to this file: stale, it would hold it to an old library
+        expander_spec = importlib.util.spec_from_file_location("expand_nodes", Path(__file__).with_name("expand_nodes.py"))
+        expander = importlib.util.module_from_spec(expander_spec)
+        sys.modules["expand_nodes"] = expander
+        expander_spec.loader.exec_module(expander)
+        reference = REPO / "editor/tests/procmat/ExpanderReference.txt"
+        self.assertEqual(expander.main(["--nodes", str(NODES), "--check-reference", str(reference)]), 0)
+
     def test_pentagram_is_not_test_data(self):
         for path in Path(__file__).parent.rglob("*"):
             self.assertNotIn("pentagram", path.name)

@@ -21,8 +21,12 @@ Buffer is one shader per side of it. Variants exercise what the C++ expander mus
   Maker's float rand functions back, the red control of R10: same corpus, compare with `crosstier`.
   It exits 1 when a node cannot be expanded.
 
-This is Material Maker's macro semantics (gen_shader.gd) in Python, kept deliberately close to
-it so the later C++ expander (R5) has a reference to compare against. It is a development tool.
+  --write-reference FILE writes one line per shader, chains included: its name and the FNV-1a hashes of
+  its text and its uniforms as 32-bit floats. ProcMatExpanderTest holds the C++ expander (R5) to that
+  file, editor/tests/procmat/ExpanderReference.txt; --check-reference FILE fails when it is stale.
+
+This is Material Maker's macro semantics (gen_shader.gd) in Python, the reference the sweep runs and the
+C++ expander in editor/procmat must agree with. It is a development tool.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import argparse
 import json
 import math
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -913,14 +918,26 @@ def expand_chains(expander: Expander, sink) -> None:
         sink(f"chain{size}", f"chain{size}", "default", 0, "out", expander.shader_text(previous, current), current)
 
 
+def fnv1a(data: bytes) -> int:
+    value = 14695981039346656037
+    for byte in data:
+        value = ((value ^ byte) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return value
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--nodes", type=Path, default=Path(__file__).resolve().parents[2] / "editor/procmat/nodes")
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, help="write the corpus here")
+    parser.add_argument("--write-reference", type=Path, help="write what the C++ expander must agree with")
+    parser.add_argument("--check-reference", type=Path, help="fail when this file is not what --write-reference writes")
     parser.add_argument("--chains", action="store_true", help="also write the N-node passes")
     parser.add_argument("--float-hash", action="store_true", help="Material Maker's rand functions, R10's red control")
     args = parser.parse_args(argv)
-    args.out.mkdir(parents=True, exist_ok=True)
+    if not (args.out or args.write_reference or args.check_reference):
+        parser.error("nothing to do: --out, --write-reference or --check-reference")
+    if args.out:
+        args.out.mkdir(parents=True, exist_ok=True)
     expander = Expander(args.nodes)
     if args.float_hash:
         for name, code in FLOAT_RAND.items():
@@ -928,9 +945,14 @@ def main(argv=None) -> int:
                 expander.functions[name].update(code=code.split("\n"), deps=[])
     manifest = []
     failures = []
+    reference = []
 
     def sink_for(kind):
         def sink(name, node, variant, port, label, text, current):
+            floats = struct.pack(f"<{len(current.values)}f", *current.values)
+            reference.append(f"{name} {fnv1a(text.encode()):016x} {fnv1a(floats):016x}\n")
+            if not args.out:
+                return
             (args.out / f"{name}.frag").write_text(text, encoding="utf-8")
             textures = [{"name": t["name"], "binding": i, "size": t["generator"].size} for i, t in enumerate(current.textures)]
             manifest.append({"shader": name, "node": node, "kind": kind, "variant": variant, "output": port, "pass": label,
@@ -946,10 +968,16 @@ def main(argv=None) -> int:
                 failures.append({"node": node_id, "variant": variant, "error": str(error)})
             except (KeyError, IndexError, TypeError, ValueError) as error:
                 failures.append({"node": node_id, "variant": variant, "error": f"{type(error).__name__}: {error}"})
-    if args.chains:
+    if args.chains or args.write_reference or args.check_reference:
         expand_chains(expander, sink_for("graph"))
-    (args.out / "manifest.json").write_text(json.dumps({"shaders": manifest, "expansion_failures": failures}, indent=0), encoding="utf-8")
-    print(f"expand_nodes: {len(manifest)} shaders from {len(expander.descriptors)} nodes, {len(failures)} expansion failures")
+    if args.out:
+        (args.out / "manifest.json").write_text(json.dumps({"shaders": manifest, "expansion_failures": failures}, indent=0), encoding="utf-8")
+    if args.write_reference:
+        args.write_reference.write_text("".join(reference), encoding="utf-8", newline="\n")
+    if args.check_reference and (not args.check_reference.exists() or args.check_reference.read_text(encoding="utf-8") != "".join(reference)):
+        print(f"expand_nodes: {args.check_reference} is stale: run --write-reference", file=sys.stderr)
+        return 1
+    print(f"expand_nodes: {len(reference)} shaders from {len(expander.descriptors)} nodes, {len(failures)} expansion failures")
     for failure in failures[:40]:
         print(f"  {failure['node']} [{failure['variant']}]: {failure['error']}", file=sys.stderr)
     return 1 if failures else 0
