@@ -161,24 +161,11 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     // (b) the user's build file
     std::error_code ec;
     if (fs::exists(proj->getProjectPath() / "ProjectBuild.cmake", ec)) choice.reasons.push_back("ProjectBuild.cmake");
-    // (c) capacities above the player's (the engine defaults when no player is known)
-    for (const auto& [macro, value] : sceneMaxValuesOf(proj)) {
-        unsigned int capacity = 0;
-        if (playerInfo) {
-            auto it = playerInfo->capacities.find(macro);
-            if (it != playerInfo->capacities.end()) capacity = it->second;
-        }
-        if (capacity == 0) {
-            static const std::map<std::string, unsigned int> defaults = {
-                {"MAX_SUBMESHES", MAX_SUBMESHES}, {"MAX_TILEMAP_TILESRECT", MAX_TILEMAP_TILESRECT}, {"MAX_TILEMAP_TILES", MAX_TILEMAP_TILES},
-                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_EXTERNAL_BUFFERS", MAX_EXTERNAL_BUFFERS}, {"MAX_BONES", MAX_BONES}};
-            // (no collider capacities since upstream's unbounded collider lists)
-            auto it = defaults.find(macro);
-            capacity = it != defaults.end() ? it->second : value;
-        }
-        if (value > capacity)
-            choice.reasons.push_back(macro + " " + std::to_string(value) + " (the player holds " + std::to_string(capacity) + ")");
-    }
+    // (c) a player built when components had fixed array capacities (MAX_SUBMESHES, ...): it
+    // would cut what the project's meshes, sprites and tilemaps hold. Players since hold any
+    if (playerInfo && !playerInfo->capacities.empty())
+        choice.reasons.push_back("player " + playerInfo->id + " holds fixed array capacities (built before " +
+                                 "they were removed): use a player of this editor's version");
     // (d) native plugins and settings the player cannot carry (NativeNeeds: the rest is carried)
     const NativeNeeds native = nativeNeedsFor(*proj, cfg.platform, playerInfo);
     choice.reasons.insert(choice.reasons.end(), native.compileReasons.begin(), native.compileReasons.end());
@@ -191,8 +178,8 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
 }
 
 bool editor::Exporter::resolvePlayer() {
-    // the full player, else any installed variant of it (the method only needs one: every variant
-    // has the same capacities); selectPlayerVariant picks the build's once its modules are known
+    // the full player, else any installed variant of it (the method only needs one);
+    // selectPlayerVariant picks the build's once its modules are known
     const std::string id = playerIdFor(config, config.developmentBuild);
     std::string error;
     std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error);

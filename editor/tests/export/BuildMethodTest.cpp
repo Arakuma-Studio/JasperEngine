@@ -12,6 +12,8 @@
 #include "platform/AndroidPackager.h"
 #include "platform/IosProject.h"
 #include "players/PlayerRuntimes.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
 #include "util/ZipArchive.h"
 
 #include <gtest/gtest.h>
@@ -112,18 +114,33 @@ TEST(BuildMethod, CppScriptsOfTheScenesCompile) {
     EXPECT_TRUE(hasReason(choice, "Spawner.cpp")) << (choice.reasons.empty() ? "" : choice.reasons.front());
 }
 
-TEST(BuildMethod, CapacitiesAboveThePlayersCompile) {
+TEST(BuildMethod, ContentSizeNeverForcesCompile) {
+    // components hold what they are given (mesh-memory): no capacity of a player to pass
     Project project;
-    addScene(project, 1).maxValues.maxBones = 200;
-    BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
-    EXPECT_EQ(choice.method, BuildMethod::Compile);
-    EXPECT_TRUE(hasReason(choice, "MAX_BONES 200 (the player holds 128)")) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    SceneProject& scene = addScene(project, 1);
+    scene.scene = new Scene();
+    const Entity entity = scene.scene->createEntity();
+    MeshComponent mesh;
+    mesh.numSubmeshes = 24;
+    mesh.submeshes[23].material.name = "last";
+    mesh.bonesMatrix.resize(200);
+    scene.scene->addComponent<MeshComponent>(entity, mesh);
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    delete scene.scene;
+    scene.scene = nullptr;
+}
 
-    // a player that holds more takes it
-    PlayerInfo bigger;
-    bigger.capacities["MAX_BONES"] = 256;
-    choice = Exporter::chooseBuildMethod(&project, linuxConfig(), &bigger);
-    EXPECT_EQ(choice.method, BuildMethod::Prebuilt);
+TEST(BuildMethod, PlayerWithCapacitiesIsRefused) {
+    // a player packaged when components had fixed arrays would cut what the scenes hold
+    Project project;
+    addScene(project, 1);
+    PlayerInfo old;
+    old.id = "linux-x64-glcore-release";
+    old.capacities["MAX_BONES"] = 128;
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), &old);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "fixed array capacities")) << (choice.reasons.empty() ? "" : choice.reasons.front());
 }
 
 TEST(BuildMethod, ForcedCompile) {

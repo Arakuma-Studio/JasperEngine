@@ -69,7 +69,7 @@ async def frames_of(ed: Editor, entity: str) -> list:
     return got.get("actions", [])
 
 
-async def test_setup(ed: Editor):
+async def test_the_lane_draws_the_cue_as_a_waveform_block(ed: Editor):
     if not shutil.which("xdotool"):
         ed.fail("xdotool is needed for this real-input UI test (the linux image has it)")
     write_wav(ed.project / TICK, [burst(0.2, 0.5)], 48000)
@@ -95,7 +95,6 @@ async def test_setup(ed: Editor):
     await ed.call("focus_window", window="animation")
 
 
-async def test_the_lane_draws_the_cue_as_a_waveform_block(ed: Editor):
     block = await rect_of(ed, "clip.audio.cue.0")
     lane = await rect_of(ed, "clip.audio.lane")
     ed.check(block[1] >= lane[1] and block[3] <= lane[3], f"the block lies in the lane: {block} in {lane}")

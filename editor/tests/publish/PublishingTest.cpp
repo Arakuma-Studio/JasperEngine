@@ -238,7 +238,7 @@ TEST(PayloadValidator, AndroidBundleLibrariesMayBeCompressed) {
     std::string error;
     ASSERT_TRUE(zip.open(dir / "game.aab", error)) << error;
     ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libjasperengine-android.so", library.data(), library.size(), false, error)) << error;
-    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), true, error)) << error;
     ASSERT_TRUE(zip.add("base/manifest/AndroidManifest.xml", "x", 1, false, error)) << error;
     ASSERT_TRUE(zip.finish(error)) << error;
     ValidationTarget target;

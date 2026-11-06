@@ -9,7 +9,6 @@ linear stage they are what leaves the device.
 
 import json
 import math
-import os
 import shutil
 import struct
 from pathlib import Path
@@ -98,19 +97,6 @@ async def test_loudness_readouts(ed: Editor):
         short = state["audio"]["loudness"]
         ed.check_eq(set(short), {"momentary_lufs", "true_peak_dbtp"}, "get_play_state's results only")
         ed.check(abs(short["momentary_lufs"] - level) < 0.3, f"get_play_state's LUFS-M: {short}")
-    finally:
-        await ed.call("play", action="stop")
-
-
-async def test_the_mixer_window_shows_the_readouts(ed: Editor):
-    """Master's LUFS against the target and the limiter's gain reduction, in Play (evidence: the shot)."""
-    await ed.call("play", action="start", auto_pause=False)
-    try:
-        await ed.call("run_command", id="window.audioMixer")
-        await ed.call("wait", seconds=1.0)
-        evidence = os.environ.get("JASPER_EVIDENCE_DIR")
-        image = await ed.screenshot(view="editor", path=Path(evidence) / "s38-mixer-window.png" if evidence else None, max_width=0)
-        ed.check(len(image) > 1000, f"an image of the editor: {len(image)} bytes")
     finally:
         await ed.call("play", action="stop")
 

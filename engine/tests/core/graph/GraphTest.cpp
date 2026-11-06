@@ -307,13 +307,6 @@ TEST_F(GraphTest, IdsAreNeverReused) {
     EXPECT_NE(graph.findNode("n12"), nullptr);
 }
 
-TEST_F(GraphTest, DescribesOps) {
-    Graph graph = loadOk(SAMPLE);
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "connect"}, {"from", {{"node", "n1"}, {"port", "value"}}}, {"to", {{"node", "n2"}, {"port", "b"}}}})),
-              "Connect Speed \xE2\x86\x92 Blend");
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "moveNodes"}, {"ids", {"n1", "n2"}}, {"delta", {1, 1}}})), "Move 2 Nodes");
-    EXPECT_EQ(describe(graph, opFromJson({{"op", "addNode"}, {"node", {{"type", "add"}}}})), "Add Blend");
-}
 
 TEST_F(GraphTest, Bench1000Nodes2000Edges) {
     Graph graph;

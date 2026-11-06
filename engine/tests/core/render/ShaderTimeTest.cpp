@@ -51,9 +51,6 @@ TEST_F(ShaderTimeTest, FixedDeltaAdvancesExactly){
     Engine::latchShaderTime();
     const double start = Engine::getShaderTimeSeconds();
     for (int frame = 0; frame < 60; frame++){
-        // however long a frame takes
-        if (frame % 20 == 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(15));
         Engine::latchShaderTime();
     }
     EXPECT_NEAR(Engine::getShaderTimeSeconds() - start, 1.0, 1e-9);

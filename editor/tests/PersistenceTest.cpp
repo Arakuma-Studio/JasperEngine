@@ -9,6 +9,8 @@
 #include "ScriptTestHarness.h"
 
 #include "script/ScriptBase.h"
+#include "memory/HeapTrim.h"
+#include "jobs/JobSystem.h"
 #include "registry/EntityCloner.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
@@ -36,9 +38,11 @@
 #include <thread>
 #endif
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
@@ -226,6 +230,27 @@ namespace {
         }
     }
 
+}
+
+// A finished scene load asks for a heap trim (mesh-memory spec 6.8): what the replaced scene and the
+// decoders freed goes back to the system (glibc Linux, Apple, Android; nothing elsewhere)
+TEST_F(PersistenceTest, ASceneLoadRequestsAHeapTrim) {
+    writeManager();
+    writeLevel();
+    registerAB();
+    ASSERT_TRUE(SceneManager::loadScene("A"));
+    const uint64_t before = memory::heapTrimCount();
+    loadAndFrame("B");
+#if (defined(__linux__) && defined(__GLIBC__)) || defined(__APPLE__)
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (memory::heapTrimCount() == before && std::chrono::steady_clock::now() < deadline) {
+        jobs::pump(5.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    EXPECT_GT(memory::heapTrimCount(), before) << "the load's end asked for a trim";
+#else
+    EXPECT_EQ(memory::heapTrimCount(), before);
+#endif
 }
 
 // 1. DontDestroyOnLoad(self) in init: the object (with its child) lives on in the persistent
