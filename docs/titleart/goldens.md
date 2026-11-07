@@ -65,6 +65,15 @@ comparison of the old golden against the new image (before) and after the update
 | `pachislop/generator/patternFill-shippo` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-shippo.png` (parity reference, AC12) |
 | `pachislop/generator/patternFill-tiger` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-tiger.png` (parity reference, AC12) |
 | `pachislop/generator/patternFill-zebra` | copied unchanged from Pachislop's `tests/golden/refs/generator/patternFill-zebra.png` (parity reference, AC12) |
+| `pachislop/scene/adjustment-in-group` | copied unchanged from Pachislop's `tests/golden/refs/scene/adjustment-in-group.png` (scene parity reference, AC12) |
+| `pachislop/scene/adjustment-outside-group` | copied unchanged from Pachislop's `tests/golden/refs/scene/adjustment-outside-group.png` (scene parity reference, AC12) |
+| `pachislop/scene/clipping` | copied unchanged from Pachislop's `tests/golden/refs/scene/clipping.png` (scene parity reference, AC12) |
+| `pachislop/scene/effects-only-gaussian-blur` | copied unchanged from Pachislop's `tests/golden/refs/scene/effects-only-gaussian-blur.png` (scene parity reference, AC12) |
+| `pachislop/scene/flip-2d` | copied unchanged from Pachislop's `tests/golden/refs/scene/flip-2d.png` (scene parity reference, AC12) |
+| `pachislop/scene/mask-group-radial` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-group-radial.png` (scene parity reference, AC12) |
+| `pachislop/scene/mask-shape-feather` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-shape-feather.png` (scene parity reference, AC12) |
+| `pachislop/scene/nested-hidden-groups` | copied unchanged from Pachislop's `tests/golden/refs/scene/nested-hidden-groups.png` (scene parity reference, AC12) |
+| `pachislop/scene/part-effects-2d` | copied unchanged from Pachislop's `tests/golden/refs/scene/part-effects-2d.png` (scene parity reference, AC12) |
 | `text/vertical` | 縦書き with a tate-chu-yoko run in Dela Gothic One through the renderer's text and geometry (AC21) |
 | `text/variable_400` | Source Sans 3 VF (CFF2) at wght 400 (AC21) |
 | `text/variable_800` | Source Sans 3 VF (CFF2) at wght 800: heavier outlines and advances (AC21) |
