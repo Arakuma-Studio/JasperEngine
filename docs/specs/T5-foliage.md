@@ -961,8 +961,15 @@ Recorded by the implementation, each with what it does instead and why.
     `MeshSystem` gives way to F1's `FoliageSystem`; `TerrainFoliageGpu.*` keeps what each test pinned (one entity
     a layer that walking never destroys and that places only entering cells; scaled Draw and Min Draw distances;
     a scale change drawing nothing twice; 0 removing foliage and the preview ignoring it), read from the view's
-    instances instead of chunk components. agent-authoring has not landed: R65's second half is for it.
+    instances instead of chunk components.
 14. **Details on a brush frame.** `TerrainMapUtils::refresh` takes the region a stamp wrote and publishes it as
     `TerrainEditEvents`; a restored snapshot has no region and refills every cell.
 15. **Tree obstacles do not need Physics 3D.** The collector's cylinder builder is compiled in without it,
     since a navmesh is not a physics feature.
+16. **R65: agent-authoring landed first.** `edit_terrain_details`, `sample_terrain`'s `details` and `drawn` and
+    `MeshSystem::getFoliageInstanceCount` stay theirs; the count forwards to `FoliageSystem` (the instances a
+    layer holds over its resident cells, what `drawn` meant). T5's float layer fields join `detailRanges()`
+    (`min_height_ratio`, `max_height_ratio`, `noise_spread`, `wind_bend`, `density_falloff_start`,
+    `far_density`, `density_scale`), so the tool, `set_properties` and the load clamp hold them. The colours
+    (`healthy_color`, `dry_color`) are vectors, which that table of floats does not hold: they go through
+    `set_properties` as any colour does.
