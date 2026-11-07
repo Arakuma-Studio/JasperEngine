@@ -94,6 +94,13 @@ namespace jasperengine{
         // the sprite as grid x grid cells while a lattice deforms it (spec lattice §6.4)
         void createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                               Vector2 pivotPos, int grid);
+        // createSpriteGrid with the quad's corners given (x0, y0 the first vertex): sheet frames
+        // draw their trimmed quad (S44 R49) through it
+        void buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                             float x0, float y0, float x1, float y1, int grid);
+        // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
+        // only when the frame's geometry differs from the one built
+        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -192,6 +199,9 @@ namespace jasperengine{
         void updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform);
 
     public:
+        // Sprite:playTag (S44 R38): the tag's frames at the sheet's durations, at the tag's speed; a
+        // step longer than the tag goes round whole loops (or ends it) at once
+        static void stepSpriteTag(SpriteComponent& sprite, double dt);
         MeshSystem(Scene* scene);
         virtual ~MeshSystem();
 
@@ -233,6 +243,8 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
+        // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
+        size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
@@ -380,6 +392,11 @@ namespace jasperengine{
         static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
         // Normalized [0,1] height at a terrain-local position; 0 without pixels
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
+
+        // The part entities of a model whose geometry is on child entities (one per glTF mesh
+        // node, ModelComponent::meshNodesMapping) that exist and have a mesh, in node-index
+        // order; empty for any other entity (a model on its own mesh too)
+        std::vector<Entity> getModelParts(Entity model) const;
 
         bool hasPendingAsyncModelLoads() const;
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still

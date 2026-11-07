@@ -34,7 +34,7 @@
 //   * Hermite (cubic spline) is used when the segment's tangents are given (both non-null);
 //     rotations are normalized with the zero-norm guard (the nearer key), slerp otherwise: a
 //     normalised lerp where that stays within 0.01 mm at 1 m of slerp (keys up to 30 degrees
-//     apart, S74 R12-R13), exact keys at t = 0 and 1, always the shortest arc.
+//     apart, S77 R12-R13), exact keys at t = 0 and 1, always the shortest arc.
 //   * samples are the raw track values: relative tracks are combined with their rest by the
 //     caller (position: rest + value through getRelativeTrackMatrix; rotation rest * value;
 //     scale rest * value).

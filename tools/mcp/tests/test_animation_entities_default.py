@@ -1,6 +1,6 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""S74 R38, AC16 (docs/specs/S74-clip-quality.md): Project Settings > Animation > Animation Entities.
+"""S77 R38, AC16 (docs/specs/S77-clip-quality.md): Project Settings > Animation > Animation Entities.
 
 - A new project gets Auto: a model of 5 or more clips placed in a scene loads with
   animationEntities false; one of fewer clips keeps them; Always places it as before.

@@ -391,12 +391,16 @@ builds are kept compiling by reading (no new includes beyond `<cstring>`, `<cmat
   are depth-tested, so only exact depth ties can show it); `opaqueSortPriority` stays the tool for a fixed order.
 - A culled mesh is not in the opaque or transparent queue; its Trail Renderer is unaffected (trails are culled
   on their own bounds). Editor billboard overrides and per-view instance bounds cull as `isBatchVisible` does.
-- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). Adding,
-  removing, retyping or (un)disabling lights only switches when the set of types changes. Several scene layers
-  decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get it; unlit submeshes,
-  forks and library shaders never do.
+- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). The first
+  point or spot Light the scene has (enabled or not) switches it to the general variant until the scene loads
+  again: removing, retyping or adding lights afterwards reloads nothing. A mesh still drawing `Dlo` while its
+  general variant builds takes the new light in its SH ambient: drawn, never shaded as a sun nor dropped.
+  Several scene layers decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get
+  it; unlit submeshes, forks, library shaders and Light Mode Tiled variants never do.
 - `Dlo` key missing from a build: the general variant draws (warned once, existing fallback). General key
-  missing while a `Dlo` scene gains a point light: impossible after the twin rule.
+  missing while a `Dlo` scene gains a point light: impossible after the twin rule, which ships the general
+  twin and, unless Light Mode is Per Object, its tiled (`Til`) form (a point light under Automatic or Tiled
+  draws the pixel lights from tiles).
 - Bone bounds: a skinned mesh keeps today's behaviour; a Vertex Animator's `animatedBounds` is unchanged.
 - Zero or negative scales: `composeTRS` and `affineMultiply` give today's values; `affineInverse` falls back to
   `inverse()` on a zero determinant; `isMirroredDraw` gives today's answer.
@@ -603,4 +607,76 @@ backend and a web-gate run.
 
 ## Deviations
 
-None yet (the implementer records any here).
+Recorded during implementation (2026-11-06), after mesh-memory, S54 (LOD cross-fade), S55 (automatic
+GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and changed the draw path.
+
+- **The tracker builds on S55's.** S55 had put a pipeline-only skip in `SokolPipelineCache`
+  (`lastApplied`, `appliedEpoch`), on only while GPU Instancing is on. Its state moved to
+  `SokolSystem` (`applyPipeline`, `applyBindings`, `isBindingsApplied`, `draw`,
+  `forgetAppliedState`, `forgetAppliedBindings`, `appliedEpoch`, `appliedPipeline`) and is on in
+  every mode; S55's uniform-block cache keys on `SokolSystem::appliedEpoch()`. S55's R10 ("GPU
+  Instancing off restores the previous submission") now covers its batches and uniform skips only:
+  a repeated pipeline or binding is skipped either way. `jasperengine_sg_next_draw_valid` already
+  existed (S55); `SokolSystem::draw` checks it after every draw, `applyBindings` after the bind.
+  Uploads and resource destroys forget only the bindings (`forgetAppliedBindings`), so the uniform
+  cache survives them; passes, errors, a pipeline destroyed and context changes forget everything.
+- **Cull before sort is S55's visible list.** `buildVisibleQueue` (jobs, per-submesh bounds,
+  `preCulled`) now runs for every 3D colour pass and probe face whatever GPU Instancing is, before
+  the sort (`sortByState`), and S55's batch grouping runs over that order. The state key reuses
+  S55's batch key ingredients (pipeline id, `materialKey`, `meshKey` of the entry's first submesh)
+  instead of a key read from `SokolObject`'s bindings. No `passQueueCulled` member and no
+  `getOpaqueQueueSize`: S55's `passPreCulled` is the flag, and the tests read the visible list's
+  `Engine::FrameStats::culled`. Transparent mesh entries are culled with `isBatchVisible` before
+  they are queued, and drawn with `passPreCulled`.
+- **LOD polling** was already gated on the scene's LOD on `main` (S54): nothing to change.
+- **Bone bounds (F3):** mesh-memory's palette holds only the entries a skin gives, so a rigid mesh
+  no longer scans 128 matrices. The `hasSkinning` gate still fixes the inflated bounds of a rigid
+  mesh that holds palette entries (a script's write, a posed palette in a file); its regression
+  test writes one.
+- **`Dlo` is MESH bit 44** (36-41 went to S57's `Til`/`Cap`/`Cts`/`Oit`, S54's `Lfd`, S55's `Aui`; 42-43 to
+  water-boats' `Wex`/`Wwk`).
+  It is not combined with Light Mode Tiled (the tiles list the scene's lights as they come). The
+  object lights of a `Dlo` variant leave non-directional lights out in `orderObjectLights`; the
+  cached light bits keep their `uint32_t` and take `Dlo` as bit 1 (UV1's, never in the mask)
+  instead of widening. The editor's prediction reuses S57's `FACT_LOCAL_LIGHTS`. The twin rule runs
+  in `ShaderVariantCollector::collectScene` and `Project::finishBuildShaderKeys` (the list every
+  build reads). The shader cache moved to `v49` (lead rule: a branch changing shaders bumps it).
+- **Tests.** The math guards are one file (`engine/tests/core/math/AffineMathTest.cpp`), the bench a
+  gtest suite in `engine/tests/core/math/DrawPerfBenchTest.cpp` (`engine/tests/core/bench` holds
+  separate executables). `DrawPerfGpu` uses only engine API older than this branch, so all of it is
+  a red control. The dedicated tracker guards (buffer update between draws, a binding not ready, a
+  destroyed resource, a new pass, Vulkan descriptor bytes) are not separate tests: every GPU golden
+  suite (RenderGpu, InstancingGoldenGpu, LightingGpu, SkinPaletteGpu, SpriteFramesGpu, ParticlesGpu,
+  TextureRebindGpu, the HTML UI suites) draws through the tracker and would show a stale binding.
+  The MCP test covers what agents and scripts read (`directional_only`, `setPassCalls`); the
+  SetPass and binding counts are `DrawPerfGpu.RepeatedDrawsApplyStateOnce`.
+- **`scene:getRenderStats()`** keeps its fields (it has no SetPass count; `Profiler.frameStats()`
+  and `DebugOverlay.getStats()` do).
+- **Review round (2026-11-07).** The first point or spot light keeps the general Lit until the scene
+  loads again (`nonDirectionalLightSeen`), so lights coming and going never reload every mesh; a mesh
+  still on `Dlo` takes such a light in its SH (`selectMeshLights`, `MeshLights::directionalOnly`
+  re-picks when it leaves `Dlo`) instead of dropping it. The first update takes the scene's state
+  without a reload. The twin rule adds the tiled (`Til`) form unless Light Mode is Per Object. Dropping
+  `Til` is not added to `ShaderPool::getFallbackProperties`: the tiled and the object lights blocks
+  differ, and the draw uploads by the key it asked for, so a build lacking the tiled twin cannot fall
+  back that way; the collector ships it instead. `SystemRender::setRepeatedStateSkipped` (diagnostics,
+  tests) turns the skipping off: `DrawPerfMixedGpu` compares the two with batched sprites, S55
+  batches, lone meshes and shared-buffer Models in one pass. Every resource and pipeline destroy in
+  `renders/sokol` forgets the state (loading threads excepted: they hold none); the tracker asserts
+  the render thread and `computeWorldTransform` the parent's affine matrix in debug builds.
+  `TransformPropagation.WorldValuesMatchTheGeneralProducts` lives in `engine/tests/core/ecs` (beside
+  its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
+  v53 (v51 is water-reflections', v52 water-boats').
+- **D8 is withdrawn.** Skipping the swapchain pipelines while `Engine::getFramebuffer()` is set lost
+  draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` run alone, a sprite turned
+  alpha-masked never drew in its batched single run (one draw counted for two runs) while it drew with
+  batching off, in every run with the skip; with `PIP_DEFAULT` built it passes (20 of 20 alone). Not
+  every path follows the scene's pipeline set either: `getBatchEligibility` asks for `PIP_DEFAULT`,
+  which the editor would never have. The cause in the batched path is not found, so
+  `getScenePipelines` is `main`'s again and `EditorFramebufferSkipsSwapchainPipelines` (criterion 13)
+  is not shipped.
+- **`SettledSpritesShowDirectWrites` waits for the masked variant.** After the suites added here, the
+  masked sprite's new variant could still be waiting for its first, warmed draw (spec S32) in the three
+  batched and three unbatched frames it compares; the warm request is made by that first draw, so the
+  wait for idle GPU creation does not cover it. The test now compares from a frame in which no draw
+  waited.

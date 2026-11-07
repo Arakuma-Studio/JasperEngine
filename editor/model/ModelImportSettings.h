@@ -92,7 +92,7 @@ namespace jasperengine::editor {
     enum class ScriptMeshData : uint8_t { Automatic, Keep, Release };
     const char* scriptMeshDataName(ScriptMeshData value);
 
-    // Project Settings > Animation > Animation Entities (S74 R38): whether a model placed in a scene
+    // Project Settings > Animation > Animation Entities (S77 R38): whether a model placed in a scene
     // makes an Animation entity per clip. Always is what every project did before; Auto, which new
     // projects get, places a model of kAutoAnimationEntitiesClips or more clips with
     // ModelComponent::animationEntities false (its clips play through an Animation Player or an
@@ -113,7 +113,7 @@ namespace jasperengine::editor {
     };
 
     // Project Settings > Mesh (R19), Quality's render budgets (R25) and Animation's Animation
-    // Entities (S74 R38): project.yaml's `mesh:`
+    // Entities (S77 R38): project.yaml's `mesh:`
     struct ModelProjectSettings {
         // the defaults of every model setting a model does not set, per platform
         std::array<ModelSettingValues, kModelFamilyCount> defaults;

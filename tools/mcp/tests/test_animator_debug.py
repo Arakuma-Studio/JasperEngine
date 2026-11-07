@@ -1,6 +1,6 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""S74 R36, R37, R49, R53, AC17 (docs/specs/S74-clip-quality.md): an Animator's live debug numbers,
+"""S77 R36, R37, R49, R53, AC17 (docs/specs/S77-clip-quality.md): an Animator's live debug numbers,
 on a scratch copy of the pose-animation fixture in an isolated editor:
 
 - get_animator's `live` gains ik[i] weight, reach_error_mm, lock_drift_mm and root_motion speed,

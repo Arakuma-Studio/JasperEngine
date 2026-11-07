@@ -3,6 +3,11 @@
 
 #include "SceneRender2D.h"
 #include "component/AudioSourceComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/Transform.h"
+#include "subsystem/UISystem.h"
+#include "AppSettings.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -51,6 +56,9 @@ editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned 
     documentLines = overlay(new LineRenderer(scene));
     documentLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     documentLines->setVisible(false);
+    navigationLines = overlay(new LineRenderer(scene));
+    navigationLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
+    navigationLines->setVisible(false);
     scene->setDefaultEntityPool(EntityPool::User);
 
     createLines(width, height);
@@ -120,6 +128,7 @@ editor::SceneRender2D::~SceneRender2D(){
     delete gridLines;
     delete tileLines;
     delete documentLines;
+    delete navigationLines;
     // and the selection outline and the lines, as SceneRender3D's destructor does (leaked before)
     delete lines;
     delete selLines;
@@ -860,6 +869,7 @@ void editor::SceneRender2D::hideAllGizmos(){
     gridLines->setVisible(false);
     tileLines->setVisible(false);
     documentLines->setVisible(false);
+    navigationLines->setVisible(false);
     for (auto& pair : containerLines) {
         pair.second->setVisible(false);
     }
@@ -899,6 +909,26 @@ void editor::SceneRender2D::hideAllGizmos(){
     }
     for (auto& pair : light2DObjects) {
         pair.second.icon->setVisible(false);
+    }
+}
+
+void editor::SceneRender2D::hideEntityGizmos(Entity entity){
+    SceneRender::hideEntityGizmos(entity);
+
+    for (auto* lines : {&containerLines, &bodyLines, &jointLines, &controllerLines, &light2DLines, &stickLines,
+                        &shadowCaster2DLines, &linePointLines, &polygonPointLines, &trackLines}) {
+        auto it = lines->find(entity);
+        if (it != lines->end()) it->second->setVisible(false);
+    }
+    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
+        cameraObject->second.icon->setVisible(false);
+        cameraObject->second.lines->setVisible(false);
+    }
+    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
+        sound->second.icon->setVisible(false);
+    }
+    if (auto light = light2DObjects.find(entity); light != light2DObjects.end()) {
+        light->second.icon->setVisible(false);
     }
 }
 
@@ -978,6 +1008,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentSounds;
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
+        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
+        const bool active = gizmoActive(entity);
         if (signature.test(scene->getComponentId<LayoutGroupComponent>()) && 
             signature.test(scene->getComponentId<Transform>()) && 
             signature.test(scene->getComponentId<RectTransformComponent>())){
@@ -1237,6 +1269,10 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                 so.icon->setVisible(false);
             }
         }
+
+        if (!active) {
+            hideEntityGizmos(entity);
+        }
     }
 
     // --- Canvas outline for a selected UI Document (documents are not pickable here:
@@ -1426,6 +1462,55 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             ++itSound;
         }
     }
+
+    updateNavigationLines(entities);
+}
+
+// Unity's Navigation > Visualize: an arrow from each navigable Button toward where each way
+// leads (yellow), drawn while the preference is on
+void editor::SceneRender2D::updateNavigationLines(const std::vector<Entity>& entities){
+    if (!AppSettings::getUINavigationVisualize()){
+        navigationLines->setVisible(false);
+        return;
+    }
+    navigationLines->clearLines();
+    UISystem& ui = *scene->getSystem<UISystem>();
+    const Vector4 color(1.0f, 0.92f, 0.016f, 1.0f);
+    auto center = [&](Entity entity) -> Vector3 {
+        const Transform& transform = scene->getComponent<Transform>(entity);
+        const RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+        return transform.modelMatrix * Vector3(layout.width * 0.5f, layout.height * 0.5f, 0.0f);
+    };
+    bool any = false;
+    for (Entity entity : entities){
+        const Signature signature = scene->getSignature(entity);
+        if (!signature.test(scene->getComponentId<ButtonComponent>()) || !signature.test(scene->getComponentId<RectTransformComponent>()) ||
+            !signature.test(scene->getComponentId<Transform>()) || !ui.isNavigable(entity))
+            continue;
+        const Vector3 from = center(entity);
+        for (MoveDirection dir : {MoveDirection::UP, MoveDirection::DOWN, MoveDirection::LEFT, MoveDirection::RIGHT}){
+            const Entity target = ui.findSelectableOnDirection(entity, dir);
+            if (target == NULL_ENTITY || !scene->findComponent<RectTransformComponent>(target))
+                continue;
+            // from a third of the way to two thirds: the two arrows between a pair stay apart
+            const Vector3 to = center(target);
+            const Vector3 start = from + (to - from) * 0.2f;
+            const Vector3 end = from + (to - from) * 0.8f;
+            navigationLines->addLine(start, end, color);
+            Vector3 back = start - end;
+            const float length = back.length();
+            if (length > 0.0f){
+                back = back * (std::min(12.0f, length * 0.3f) / length);
+                const Vector3 side(-back.y * 0.5f, back.x * 0.5f, 0.0f);
+                navigationLines->addLine(end, end + back + side, color);
+                navigationLines->addLine(end, end + back - side, color);
+            }
+            any = true;
+        }
+    }
+    if (!any)
+        navigationLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
+    navigationLines->setVisible(any);
 }
 
 void editor::SceneRender2D::zoomAtPosition(float width, float height, Vector2 pos, float zoomFactor){

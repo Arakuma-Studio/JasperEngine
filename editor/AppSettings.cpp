@@ -157,6 +157,7 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::uiNavigationVisualize = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
@@ -368,6 +369,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             externalToolPaths.clear();
             for (const auto& item : settingsData["externalTools"]) {
                 if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+                // a tool with its own section (externalTools.aseprite.path, S44 §6.8): "<tool>.path"
+                else if (item.second.IsMap() && item.second["path"] && item.second["path"].IsScalar())
+                    externalToolPaths[item.first.as<std::string>() + ".path"] = item.second["path"].as<std::string>();
             }
         }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
@@ -442,6 +446,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             auto editorNode = settingsData["editor"];
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
+            }
+            if (editorNode["ui_navigation_visualize"]) {
+                uiNavigationVisualize = editorNode["ui_navigation_visualize"].as<bool>();
             }
             if (editorNode["pose_dock_grown"]) {
                 poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
@@ -665,6 +672,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (vcsNode["auto_fetch_minutes"]) vcs.autoFetchMinutes = vcsNode["auto_fetch_minutes"].as<int>();
             if (vcsNode["commit_and_push"]) vcs.commitAndPush = vcsNode["commit_and_push"].as<bool>();
             if (vcsNode["show_changes"]) vcs.showChanges = vcsNode["show_changes"].as<bool>();
+            if (vcsNode["code_editor_changes"]) vcs.codeEditorChanges = vcsNode["code_editor_changes"].as<bool>();
         }
         versionControlSettings = vcs;
         versionControlSettings = getVersionControlSettings();
@@ -703,7 +711,11 @@ bool AppSettings::saveSettings() {
         // Preferences > External Tools
         if (!externalToolPaths.empty()) {
             YAML::Node toolsNode;
-            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            for (const auto& [tool, path] : externalToolPaths) {
+                const size_t dot = tool.find('.');
+                if (dot == std::string::npos) toolsNode[tool] = path;
+                else toolsNode[tool.substr(0, dot)][tool.substr(dot + 1)] = path;
+            }
             settingsData["externalTools"] = toolsNode;
         } else {
             settingsData.remove("externalTools");
@@ -774,6 +786,7 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["ui_navigation_visualize"] = uiNavigationVisualize;
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
@@ -948,6 +961,7 @@ bool AppSettings::saveSettings() {
             vcsNode["auto_fetch_minutes"] = vcs.autoFetchMinutes;
             vcsNode["commit_and_push"] = vcs.commitAndPush;
             vcsNode["show_changes"] = vcs.showChanges;
+            vcsNode["code_editor_changes"] = vcs.codeEditorChanges;
             settingsData["version_control"] = vcsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
@@ -1211,6 +1225,14 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getUINavigationVisualize() {
+    return uiNavigationVisualize;
+}
+
+void AppSettings::setUINavigationVisualize(bool visualize) {
+    uiNavigationVisualize = visualize;
 }
 
 bool AppSettings::getAutoRefresh() {

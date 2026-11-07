@@ -87,7 +87,9 @@
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "script/AsyncOwner.h"
 
 #include <algorithm>
@@ -210,6 +212,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
     // S40 R18: after the last one, so no ComponentType moves
     registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
+    registerComponent<WaterExcluderComponent>(ComponentOrder::Insertion, "WaterExcluderComponent");
+    registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);
@@ -336,7 +340,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
-            childTransform.needUpdateChildVisibility = true;
+            // no visibility cascade: the children and theirs keep their own flags
             hadChildren = true;
         }
     }

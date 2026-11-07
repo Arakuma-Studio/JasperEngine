@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md); S74 R44 names its Web30 and clip memory budgets, the other S74 R10 rows are information. async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md); S77 R44 names its Web30 and clip memory budgets, the other S77 R10 rows are information. async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -66,17 +66,29 @@
     "query_path_p95_ms": {"max": 0.165, "spec": "R26 calculatePath p95 <= 0.15 ms desktop (connected pairs, up to 2048 nodes)"},
     "query_path_complete_share": {"min": 0.5, "spec": "R26 most random pairs are connected (the p95 times those; roofs are islands)"},
     "query_sample_p95_ms": {"max": 0.022, "spec": "R26 samplePosition p95 <= 0.02 ms"},
+    "query_random_p95_ms": {"max": 0.0055, "spec": "S76 R36 randomPoint anywhere, area table cached, p95 <= 0.005 ms"},
+    "query_random_first_ms": {"max": 0.55, "spec": "S76 R36 randomPoint anywhere, first call (builds the area table) <= 0.5 ms"},
+    "query_random_circle_p95_ms": {"max": 0.055, "spec": "S76 R36 randomPoint around, radius 10 m, p95 <= 0.05 ms"},
+    "query_wall_p95_ms": {"max": 0.033, "spec": "S76 R36 findClosestEdge, maxDistance 5 m, p95 <= 0.03 ms"},
+    "query_move_along_p95_ms": {"max": 0.011, "spec": "S76 R36 moveAlongSurface, step <= 2 m, p95 <= 0.01 ms"},
     "query_raycast_p95_ms": {"max": 0.022, "spec": "R26 raycast p95 <= 0.02 ms"},
     "crowd_100_tick_ms": {"max": 0.66, "spec": "R27 dtCrowd update + sync, 100 agents (Good) <= 0.6 ms"},
     "crowd_500_tick_ms": {"max": 3.3, "spec": "R27 500 agents <= 3 ms"},
-    "carve_tick_max_ms": {"max": 1.1, "spec": "R28 carving: <= 1 ms tile-cache work per tick"},
-    "carve_ticks_to_land": {"max": 2, "spec": "R28 an obstacle move lands within 2 fixed ticks"},
+    "stuck_100_extra_ms": {"max": 0.011, "spec": "S76 R38 stuck detection on 100 walking agents adds <= 0.01 ms per tick (median of paired ticks)"},
+    "carve_tick_max_ms": {"max": 1.1, "spec": "R28 carving: <= 1 ms tile-cache work per tick; S74 R19: at Carve Tiles Per Tick Auto (4 on desktop), the wall-clock ceiling off"},
+    "carve_ticks_to_land": {"max": 2, "spec": "R28 an obstacle move lands within 2 fixed ticks (S74 R19: at Carve Tiles Per Tick Auto)"},
     "grid_256_worst_ms": {"max": 2.2, "spec": "R29 A* on 256^2, worst reachable <= 2 ms"},
     "grid_reject_us": {"max": 5.5, "spec": "R29 unreachable reject <= 5 us"},
     "grid_batch_200_4t_ms": {"max": 4.4, "spec": "R29 200 paths on 128^2 on 4 threads <= 4 ms"},
     "grid_bytes_per_cell": {"max": 5.2, "spec": "R29 1 B/cell + the reachability index (4 B/cell, spec Deviations)"},
     "empty_tick_us": {"max": 1.1, "spec": "R25 empty scene fixedUpdate < 1 us"},
-    "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"}
+    "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"},
+    "city_islands_ms": {"max": 1.65, "spec": "S75 R21 island labelling of bench_nav_city <= 1.5 ms desktop"},
+    "islands_bytes_per_poly": {"max": 4.5, "spec": "S75 R21 labels <= 4 B per polygon (+ 48 B per island, a static_assert)"},
+    "query_reject_disconnected_us": {"max": 2.2, "spec": "S75 R22 a disconnected isReachable reject <= 2 us (islands current)"},
+    "query_reject_searches": {"max": 0, "spec": "S75 R6 the reject runs no search"},
+    "query_locate_p95_ms": {"max": 0.033, "spec": "S75 R22 locate p95 <= 0.03 ms (islands current)"},
+    "findings_city_ms": {"max": 2.2, "spec": "S75 R23 findings of bench_nav_city + 100 agents + 20 links, cached stale counts <= 2 ms"}
   },
   "je-bench-splines": {
     "evaluate_at_distance_ns": {"max": 60, "spec": "R18 evaluateAtDistance on a 100-knot spline"},
@@ -108,12 +120,12 @@
     "micro_sample65_us": {"max": 2.2, "spec": "R20 one 65-bone clip sample, median"},
     "micro_state_machine_update_us": {"max": 1.1, "spec": "R20 a state-machine update, 20 states and 60 transitions, median"},
     "micro_instance_state_bytes": {"max": 8192, "spec": "R20 an Animator's runtime state (AnimatorInstance::runtimeStateBytes)"},
-    "web30_serial_p95_ms": {"max": 4.0, "spec": "S74 R44 Web30, one thread (the owner's budget; native here: the web number is je-bench-anim-wasm's)"},
-    "web30_clip_heap_bytes": {"max": 16000000, "spec": "S74 R44 clip memory under 16 MB"}
+    "web30_serial_p95_ms": {"max": 4.0, "spec": "S77 R44 Web30, one thread (the owner's budget; native here: the web number is je-bench-anim-wasm's)"},
+    "web30_clip_heap_bytes": {"max": 16000000, "spec": "S77 R44 clip memory under 16 MB"}
   },
   "je-bench-anim-wasm": {
-    "web30_serial_p95_ms": {"max": 4.0, "spec": "S74 R44 Web30 on WebAssembly, one thread"},
-    "web30_clip_heap_bytes": {"max": 16000000, "spec": "S74 R44 clip memory under 16 MB"}
+    "web30_serial_p95_ms": {"max": 4.0, "spec": "S77 R44 Web30 on WebAssembly, one thread"},
+    "web30_clip_heap_bytes": {"max": 16000000, "spec": "S77 R44 clip memory under 16 MB"}
   },
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},

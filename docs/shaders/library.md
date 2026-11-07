@@ -113,6 +113,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Particles](#libraryparticles) `library:particles` | particles | Particles | none | alpha (Auto) |
 | [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
 | [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
@@ -162,7 +163,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white; built-in particle with `PARTICLE_TEXTURE` | Base map |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -171,6 +172,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 | `STOCHASTIC` | off | Stochastic Tiling |
+| `PARTICLE_TEXTURE` | off | Built-in soft particle texture (when no base map is set) |
 
 ## Lit
 
@@ -901,11 +903,11 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
-Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), FLOW doubles the four texture reads. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows.
+Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine or Gerstner waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), GERSTNER (with WAVES: four Gerstner waves, sharp crests and the surface rolling forward), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), PLANAR_REFLECTION (with REFLECTION: the scene mirrored in the water, from a camera pass per water height at the scene's Planar Reflections resolution, else the environment), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), GERSTNER about thirty, FLOW doubles the four texture reads; PLANAR_REFLECTION draws the scene again (at half resolution by default) for each water height a camera sees. REFRACTION needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves); the waves run on the scene clock, so they hold while the game is paused. Water Excluders (boats, cabins, dry tunnels) cut it, and Water Wakes leave foam and waves on it: engine variants only scenes with those components draw. Alpha blended; casts no shadows.
 
 - **Type**: mesh (a material's shader); category Nature.
 - **Lighting**: none (default), per pixel.
-- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`; `environment` with `REFLECTION`; `rawcolor` with `FLOW`; `uv1` with `MESH_DEPTH`.
+- **Inputs**: `position`, `normals`, `waterexclusion`, `waterwake`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`; `environment` with `REFLECTION`; `planarreflection` with `PLANAR_REFLECTION`; `rawcolor` with `FLOW`; `uv1` with `MESH_DEPTH`.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
 - **Default state**: blend alpha, shadows off; with `UNDERSIDE`: cull off (both faces).
 - **Depth program**: yes (shadows and depth follow its vertices and clipping).
@@ -929,8 +931,10 @@ Stylised water: shallow to deep colour by the view angle, two scrolling normal l
 | `waveHeight` | float | 0.06 | Wave height (world units) (with `WAVES`) |
 | `waveLength` | float | 2.5 | Wave length (world units) (with `WAVES`) |
 | `waveSpeed` | float | 0.8 | Wave speed (world units per second) (with `WAVES`) |
+| `waveSteepness` | range 0 to 1 | 0.5 | Crest sharpness (with `GERSTNER`) |
 | `reflectionColor` | colour | (0.9, 0.95, 1, 1) | Reflection colour (times the environment; alone without one) (with `REFLECTION`) |
 | `reflectionStrength` | range 0 to 2 | 1 | Reflection strength (with `REFLECTION`) |
+| `reflectionDistortion` | range 0 to 0.2 | 0.03 | Planar reflection distortion (screen UV per unit of ripple) (with `PLANAR_REFLECTION`) |
 | `shoreFoamWidth` | float | 0.12 | Shore foam width (world units of depth) (with `DEPTH_FOAM`) |
 | `shoreFoamBreakup` | range 0 to 1 | 0.7 | Shore foam break-up (by the foam noise) (with `DEPTH_FOAM`) |
 | `absorptionDepth` | float | 1.5 | Deep colour thickness (world units of water along the view) (with `ABSORPTION`) |
@@ -958,8 +962,10 @@ Stylised water: shallow to deep colour by the view angle, two scrolling normal l
 | Feature | Default | Description |
 |---|---|---|
 | `WAVES` | off | Waves |
+| `GERSTNER` | off | Gerstner waves (with WAVES: sharp crests, the surface rolling forward) |
 | `BUILTIN_TEXTURES` | off | Built-in ripples and foam noise (unset textures) |
 | `REFLECTION` | off | Reflection (sky or reflection probe, GGX glint) |
+| `PLANAR_REFLECTION` | off | Planar reflection (with REFLECTION: the scene mirrored; a camera pass per water height) |
 | `UNDERSIDE` | off | Seen from below (both faces, Snell's window) |
 | `DEPTH_FOAM` | off | Shore foam (reads the scene depth) |
 | `ABSORPTION` | off | Depth colour (reads the scene depth) |
@@ -1111,6 +1117,38 @@ Image and Text effects: grayscale, hue shift, tint overlay and a moving diagonal
 Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
 
 - **Type**: points (a Points component's custom shader); category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `glowColor` | HDR colour | (2, 1.3, 0.6, 1) | Glow colour (HDR) (with `GLOW`) |
+| `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
+| `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
+| `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
+| `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `GLOW` | off | Glow (alpha as light) |
+| `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
+
+<a id="libraryparticles"></a>
+### Particles (`library:particles`)
+
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+
+- **Type**: particles; category Particles.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
 - **Default state**: depth write off.
 

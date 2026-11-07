@@ -14,7 +14,7 @@
 //   conversions are pure (any thread: the clip loader parses on worker threads). Everything
 //   taking a Scene reads or writes it: the main thread; internPropertyKey is main thread only.
 //   The one exception: the Animator's wave runs a row marked workerSafe on a worker, on an entity
-//   no other Animator writes (AnimatorSystem.h, S74 R8).
+//   no other Animator writes (AnimatorSystem.h, S77 R8).
 // - Invariants:
 //   * read / write work on stored values (linear colours, cone cosines); the key-space helpers
 //     (readPropertyKeySpace, writePropertyKeySpace) apply the display transform:

@@ -16,6 +16,7 @@ struct sg_buffer;
 struct sg_image;
 struct sg_range;
 struct sg_image_data;
+struct sg_bindings;
 
 namespace jasperengine{
     struct RenderFeatures;
@@ -67,10 +68,36 @@ namespace jasperengine{
         static bool updateBuffer(sg_buffer buffer, const sg_range& data);
         static int appendBuffer(sg_buffer buffer, const sg_range& data);
         static bool updateImage(sg_image image, const sg_image_data& data);
-        // The draw about to be bound and drawn (its pipeline applied, its uniforms applied):
-        // false when its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the
-        // draw is skipped and counted)
-        static bool reserveDescriptorBytes();
+        // The draw about to be drawn (its pipeline applied, its uniforms applied), with its
+        // bindings applied too when `bindings` (else they are the ones applied last): false when
+        // its descriptor sets do not fit the frame's descriptor buffer (Vulkan; the draw is
+        // skipped and counted)
+        static bool reserveDescriptorBytes(bool bindings);
+
+        // The pipeline and bindings the current pass applied last (render thread, every draw
+        // path): a draw with the same skips the sokol call, which on D3D11 sets every state again
+        // and on Vulkan binds the pipeline and writes a descriptor set. Every event after which
+        // sokol's state may differ from what is recorded here forgets it: a pass, an upload, a
+        // resource destroyed, a sokol error, a draw sokol marked invalid (a binding not ready).
+        // applyPipeline is true when sg_apply_pipeline ran (counted as a SetPass call)
+        static bool applyPipeline(uint32_t pipelineId);
+        // off: every draw applies its pipeline and bindings (SystemRender::setRepeatedStateSkipped)
+        static void setRepeatedStateSkipped(bool skipped);
+        static bool isBindingsApplied(const sg_bindings& bindings);
+        static void applyBindings(const sg_bindings& bindings);
+        // sg_draw of the draw set up, then forgets the applied state if sokol turned its later
+        // draws off (a failed binding or uniform block: until the next sg_apply_pipeline)
+        static void draw(int baseElement, int numElements, int numInstances);
+        // the pipeline, its uniforms and the bindings (a pass, an error, a pipeline destroyed)
+        static void forgetAppliedState();
+        // the bindings only (an upload, a buffer, image, view or sampler destroyed)
+        static void forgetAppliedBindings();
+        // changes with every pipeline applied and every forgetAppliedState: the uniform blocks
+        // applied in an earlier epoch are not applied any more (sokol asks for them again after
+        // sg_apply_pipeline), those of this one stay until the next (SokolDrawBatch, spec S55)
+        static uint32_t appliedEpoch();
+        // the pipeline applied last in this pass (SG_INVALID_ID when unknown)
+        static uint32_t appliedPipeline();
 
         // a budget's bytes in the last committed frame (what it asked for, refused items too),
         // the most a frame asked for, the limit, whether items past it are refused, and the
@@ -90,6 +117,10 @@ namespace jasperengine{
         static void commitQueue();
         static void executeQueue();
         static void commit();
+        // the frames committed so far (sokol resets STREAM appends at each)
+        static uint64_t getCommitCount();
+        // between frames: returns once the GPU finished what was committed (Metal; nothing elsewhere)
+        static void waitGpuIdle();
         static void shutdown();
         static const RenderFeatures& getFeatures();
         static uint64_t getPipelineCacheMisses();
@@ -121,6 +152,41 @@ namespace jasperengine{
         static void leaseGpuTiming(double seconds);
         static GpuTimingState getGpuTimingState();
         static void setVulkanHostQueryReset(bool enabled);
+
+        // Draws a batcher holds back (RenderSystem's dynamic batching, sprite-batching spec 6.2):
+        // while a flush is installed, any other GPU command of the pass (an object's beginDraw, a
+        // pipeline applied by the cache, a viewport, the pass's end) runs it first, so the held
+        // draws keep their place in the pass whoever draws next. Scissors are lazy meanwhile: a
+        // requested rect reaches the GPU before the next draw that is not the batcher's (the
+        // batcher applies the rect each of its draws captured), so a scissor set and reset
+        // around an element that draws nothing costs nothing. Without a flush installed every
+        // call here is one branch and scissors apply at once, as before. Main thread only.
+        typedef void (*DeferredFlush)(void* owner);
+        struct ScissorRect{
+            int x = 0;
+            int y = 0;
+            int width = 0;
+            int height = 0;
+            bool originTopLeft = false;
+            // false: none known (no pass open). A rect covering the pass's whole target is that
+            // pass's own, whatever its origin (applyScissor normalises it)
+            bool set = false;
+
+            bool operator==(const ScissorRect& rhs) const;
+            bool operator!=(const ScissorRect& rhs) const { return !(*this == rhs); }
+        };
+        // null removes it (the scissor requested meanwhile is applied then)
+        static void setDeferredFlush(DeferredFlush flush, void* owner);
+        static bool isDeferringDraws();
+        // runs the installed flush (not from inside itself)
+        static void flushDeferred();
+        // before a draw that is not the batcher's: the flush, then the requested scissor
+        static void beforeForeignDraw();
+        // the batcher's own draws: the rect it captured, applied when it is not the one applied
+        static void applyBatchScissor(const ScissorRect& rect);
+        // SokolCamera's scissor: deferred while a flush is installed, else applied at once
+        static void applyScissor(int x, int y, int width, int height, bool originTopLeft);
+        static const ScissorRect& getRequestedScissor();
 
         // Every engine render pass begins and ends here. Passes do not nest: a pass begun while
         // another is open is an engine error (Vulkan has one dynamic rendering instance at a

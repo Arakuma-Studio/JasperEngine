@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R27, R48, R53)
+// Contract (S77 R27, R48, R53)
 // - Purpose: the editor's reading and writing of a model's "<model>.clips" sidecar
 //   (anim/ModelClipSettings.h), shared by the Inspector's model clip section and edit_animation.
 // - A write is one project undo step (a WriteFilesCmd: undo puts the previous bytes back, or

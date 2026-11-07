@@ -76,6 +76,10 @@ namespace jasperengine::nav {
         float cost = 0.0f;
         // nodes the search expanded (0 for an O(1) reject)
         uint32_t expanded = 0;
+        // S75: None when Complete; an end outside the grid or on a Not Walkable cell is
+        // *OffMesh, on a cell the mask leaves out *Filtered (also when allowPartial gives a
+        // Partial path to it), else Disconnected
+        PathFailure failure = PathFailure::NoSurface;
     };
 
     // One solver's scratch: 11 bytes per cell (g, parent, generation, state), reused across
@@ -91,6 +95,8 @@ namespace jasperengine::nav {
         size_t scratchBytes() const;
 
     private:
+        // solve without the failure classification (its partial searches recurse here)
+        GridPath search(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts);
         void prepare(int cells);
         bool jpsApplies(const NavGridMap& map, const GridQuery& query, const float* areaCosts) const;
         GridPath solveJps(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts);

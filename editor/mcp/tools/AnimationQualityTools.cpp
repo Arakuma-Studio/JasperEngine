@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Clip quality (S74 R51, R52, D6): check_animation, what a clip costs and how good it is, and
+// Clip quality (S77 R51, R52, D6): check_animation, what a clip costs and how good it is, and
 // optimize_animation, the key reduction with the bake_vertex_animation shape: without output
 // nothing is written, the same arguments + output write exactly that. Both print the structs of
 // animation/ClipReport and animation/ClipOptimize and calculate nothing.

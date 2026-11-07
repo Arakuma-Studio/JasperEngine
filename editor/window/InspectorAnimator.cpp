@@ -167,7 +167,7 @@ namespace{
 
 // ---------------------------------------------------------------- the component
 
-// IK (live) and the Root Motion line (S74 R49): what makeSnapshot says, formatted by its field table.
+// IK (live) and the Root Motion line (S77 R49): what makeSnapshot says, formatted by its field table.
 // Each value is a selectable named "##ik_<column>_<i>" / "##rm_<field>", so a test reads what is drawn.
 void editor::InspectorWindow::drawAnimatorLive(const AnimatorDebugSnapshot& snapshot){
     auto cell = [](const std::string& text, const std::string& id, const ImVec4* color = nullptr){

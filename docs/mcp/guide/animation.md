@@ -15,6 +15,10 @@ Two ways to keyframe in JasperEngine, both edited with `edit_animation`:
 Pose animations (`.poseanim`, `jasper://docs/pose-animation`) are a third, humanoid-only
 format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: true}`).
 
+Motion that can be authored ahead of time (spins, bobs, patrols, doors, fades, UI transitions)
+belongs in a clip or an entity Animation that a script starts (`play`, `crossFade`, `stop`), not in
+script code that moves a transform every frame (`jasper://docs/authoring`).
+
 State machines, blend trees, layers, IK and humanoid retargeting over these clips are the
 **Animator** (Unity's Animator Controller): `edit_animator_controller`, `control_animator`,
 `jasper://docs/animator`.
@@ -278,7 +282,7 @@ frame". Two Animators keying one GameObject's property: the later Animator's val
 | `gameobject` | `active` (bool) |
 | components with the checkbox | `enabled` (bool) |
 | `ui` (Image, Text, Button graphic) | `color` (sRGB) |
-| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `colorSelected`, `disabled` |
 | `canvasgroup` | `alpha` (0-1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` |
 | `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
 | `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
@@ -298,7 +302,7 @@ frame". Two Animators keying one GameObject's property: the later Animator's val
 - `active` changes apply after the other values, parents first; events run after the values (a
   handler at 0.5 sees the GameObject turned on at 0.5). A clip that turns off its own root stops
   its player until something turns it on.
-- A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
+- A Button whose transition tints (the default) overwrites `ui.color` from its state colours: animate `button.colorNormal`, or set its transition to `none` or `sprite_swap`.
 - Bindings report `missing_component` (no such component, submesh, shader member or script field
   on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
   16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
@@ -621,13 +625,18 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed` set the Animation. `audio: [{time, sound | snapshot, path,
+the actions end), `autoplay`, `speed` and `random_start` (each new run in Play starts at a random point
+of one cycle: copies out of step) set the Animation; a fixed start is `set_properties {action:
+{startOffset}}` (seconds) on it or on a nested action; get_animation reports `start_offset` and
+`random_start` (a nested action's when set). `audio: [{time, sound | snapshot, path,
 duration, lane, volume_db, pitch_semitones, group, spatial, seconds, name}]` creates audio actions
 (an action GameObject with an AudioSource playing the clip or `.soundevent`) and Mixer Snapshot
 actions at frame start `time`; `path` names the action's target (where a `spatial` one plays);
 `duration` 0 is the sound's length (a snapshot's: `seconds`), a shorter one cuts it. They start
 once per loop pass, placed to the sample, and stop with the Animation; `remove_actions` removes
 them; `get_animation` lists them as `audio[]` with their frame `index`. One scene undo step per call.
+Values edited while `preview_animation` previews (set_properties, an undo) are kept when it seeks or
+stops; their undo goes back to the authored value, never a previewed pose.
 
 ## Common mistakes
 

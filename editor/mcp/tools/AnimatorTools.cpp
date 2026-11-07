@@ -600,7 +600,7 @@ Json liveJson(const AnimatorTarget& target, AnimatorInstance& instance) {
         out["montage"] = {{"path", montage->path}, {"section", montage->montage->sections[(size_t)montage->section].name},
                           {"time", montage->time}, {"weight", montage->weight}};
     }
-    // the debug numbers (S74 R36): makeSnapshot is their one producer, as for the Inspector
+    // the debug numbers (S77 R36): makeSnapshot is their one producer, as for the Inspector
     const Transform* root = target.scene->scene->findComponent<Transform>(target.entity);
     const AnimatorDebugSnapshot snapshot = root ? makeSnapshot(instance, *target.component, *root) : AnimatorDebugSnapshot();
     if (instance.output.hasRootMotion) {

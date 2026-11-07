@@ -1154,8 +1154,8 @@ namespace{
             warn(warnings, "humanoid.human_scale", "expected a positive number: dropped");
             data.humanoid.humanScale = 0.0f;
         }
-        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose"){
-            warn(warnings, "source.kind", "expected model, entity or pose: source dropped");
+        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose" && data.source.kind != "aseprite"){
+            warn(warnings, "source.kind", "expected model, entity, pose or aseprite: source dropped");
             data.source = ClipSource();
         }
 

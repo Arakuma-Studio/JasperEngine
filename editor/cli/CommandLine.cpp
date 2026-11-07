@@ -13,7 +13,7 @@
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -66,6 +66,7 @@
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "spritenormals/SpriteNormalsCli.h"
+#include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -300,6 +301,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
@@ -713,11 +715,23 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     const ExportProgress progress = exporter.getProgress();
 
     if (!success) {
+        // the build's errors, then what failed
+        for (const BuildDiagnostic& error : progress.errors) std::cerr << error.text << "\n";
+        if (progress.errorCount > progress.errors.size()) {
+            std::cerr << "(and " << progress.errorCount - progress.errors.size() << " more error(s))\n";
+        }
         if (!progress.errorMessage.empty()) {
             std::cerr << commandName << " export: " << progress.errorMessage << "\n";
         }
         return 1;
     }
+
+    const ExportResult result = exporter.getResult();
+    if (!result.warnings.empty()) {
+        std::cerr << commandName << " export: completed with " << result.warnings.size() << " warning(s):\n";
+        for (const BuildWarning& warning : result.warnings) std::cerr << "  " << warning.code << ": " << warning.message << "\n";
+    }
+    for (const std::string& note : result.notes) std::cout << note << "\n";
 
     return 0;
 }
@@ -2693,7 +2707,7 @@ void addClipQualityFindings(const fs::path& root, const std::string& rel, const 
     }
 }
 
-// ---- --anim-quality (S74 R54): how clips move, measured on their models (the project loads, no scene)
+// ---- --anim-quality (S77 R54): how clips move, measured on their models (the project loads, no scene)
 
 // the rows of a bone palette every GLES3 and WebGL2 device's textures hold (their smallest
 // MAX_TEXTURE_SIZE): a skin of more joints cannot load where the palette is a texture
@@ -3234,11 +3248,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"anim_quality", quality.clips});
     }
 
-    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
+    // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;
-        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
-            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        for (const ProjectNavFinding& item : collectProjectFindings(&project, &surfaces)) {
+            run.findings.push_back({"navigation", item.scenePath, 0, 0, nav::findingSeverityName(item.finding.severity),
+                                    item.finding.message, item.finding.code, ""});
+        }
         run.checked.push_back({"navigation", surfaces});
     }
 
@@ -3270,6 +3287,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // water forks without @role, planar reflections on sloped meshes
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(&project);
+            run.findings.insert(run.findings.end(), water.begin(), water.end());
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());
@@ -3913,6 +3933,11 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

@@ -25,6 +25,9 @@ namespace jasperengine::editor{
         bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
+        // a stopped scene's clock runs (Scene::getSceneTime: the water's waves and ripples, the
+        // shaders declaring sceneTime); off holds it. Play always runs it
+        bool animateWater        = true;
         bool showGrid2D          = false;
         float gridSpacing2D      = 50.0f;
         float gridSpacing3D      = 1.0f;
@@ -34,7 +37,7 @@ namespace jasperengine::editor{
         float rotationSnapDegrees = 15.0f;
         // every lattice's cage, not only the selected ones' (faint)
         bool showAllLattices     = false;
-        // Gizmos > Animation (S74 R49): every Animator's IK, root motion paths and foot trails
+        // Gizmos > Animation (S77 R49): every Animator's IK, root motion paths and foot trails
         bool showIK              = false;
         bool showRootMotion      = false;
         bool showFootTrails      = false;

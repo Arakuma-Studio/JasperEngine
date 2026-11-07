@@ -84,6 +84,46 @@ TEST(StreamScene, ChangedSceneSettingsRoundTrip){
     EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
 }
 
+// water planar reflections (water-reflections spec 6.4): written only away from their defaults,
+// read back; a scene without them takes the defaults
+TEST(StreamScene, PlanarReflectionSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("planarReflection"), std::string::npos) << "defaults are not written";
+    EXPECT_EQ(plainYaml.find("maxPlanarReflections"), std::string::npos);
+
+    Scene scene;
+    scene.setPlanarReflectionResolution(PlanarReflectionResolution::QUARTER);
+    scene.setPlanarReflectionLayers(0x5u);
+    scene.setPlanarReflectionShadows(false);
+    scene.setPlanarReflectionFarClip(120.0f);
+    scene.setPlanarReflectionClipOffset(-0.02f);
+    scene.setMaxPlanarReflections(3);
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(read.getPlanarReflectionResolution(), PlanarReflectionResolution::QUARTER);
+    EXPECT_EQ(read.getPlanarReflectionLayers(), 0x5u);
+    EXPECT_FALSE(read.getPlanarReflectionShadows());
+    EXPECT_FLOAT_EQ(read.getPlanarReflectionFarClip(), 120.0f);
+    EXPECT_FLOAT_EQ(read.getPlanarReflectionClipOffset(), -0.02f);
+    EXPECT_EQ(read.getMaxPlanarReflections(), 3);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    // an old scene (none of the keys) over a changed one: the defaults
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getPlanarReflectionResolution(), defaults.planarReflectionResolution);
+    EXPECT_EQ(read.getPlanarReflectionLayers(), defaults.planarReflectionLayers);
+    EXPECT_EQ(read.getPlanarReflectionShadows(), defaults.planarReflectionShadows);
+    EXPECT_EQ(read.getMaxPlanarReflections(), defaults.maxPlanarReflections);
+
+    // the setters keep values in range
+    scene.setMaxPlanarReflections(9);
+    EXPECT_EQ(scene.getMaxPlanarReflections(), 4);
+    scene.setPlanarReflectionFarClip(-5.0f);
+    EXPECT_FLOAT_EQ(scene.getPlanarReflectionFarClip(), 0.0f);
+}
+
 TEST(StreamScene, DecodeSceneWithoutASceneMakesOne){
     Scene source;
     std::unique_ptr<Scene> made(Stream::decodeScene(nullptr, Stream::encodeScene(&source)));
@@ -251,3 +291,34 @@ INSTANTIATE_TEST_SUITE_P(Fixtures, StreamFixtureScene, ::testing::ValuesIn(fixtu
         }
         return name;
     });
+
+// the Water Wakes' map (water-boats spec 6.1): written only away from its defaults, read back; a
+// scene without the keys takes the defaults
+TEST(StreamScene, WaterWakeSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("waterWake"), std::string::npos) << "defaults are not written";
+
+    Scene scene;
+    scene.setWaterWakeResolution(WaterWakeResolution::HIGH);
+    scene.setWaterWakeArea(32.0f);
+    scene.setWaterWakeFade(4.0f);
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(read.getWaterWakeResolution(), WaterWakeResolution::HIGH);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), 32.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 4.0f);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getWaterWakeResolution(), defaults.waterWakeResolution);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), defaults.waterWakeFade);
+
+    // the setters keep values in range
+    read.setWaterWakeArea(2.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), 8.0f);
+    read.setWaterWakeFade(1000.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
+}

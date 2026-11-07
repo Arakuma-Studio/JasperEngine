@@ -25,11 +25,20 @@
 
 using namespace jasperengine;
 
-// (sokol.cpp) the draw being set up is still valid (a failed sg_apply_bindings turns it off until
-// the next sg_apply_pipeline)
-extern "C" bool jasperengine_sg_next_draw_valid(void);
-
 namespace {
+    // binds and draws the draw set up (its pipeline and uniforms applied): its bindings only when
+    // they are not the ones applied last (SokolSystem); false when the frame's descriptor buffer
+    // has no room for it (Vulkan: skipped and counted)
+    bool bindAndDraw(const sg_bindings& bind, int baseElement, int numElements, int numInstances){
+        const bool rebind = !SokolSystem::isBindingsApplied(bind);
+        if (!SokolSystem::reserveDescriptorBytes(rebind))
+            return false;
+        if (rebind)
+            SokolSystem::applyBindings(bind);
+        SokolSystem::draw(baseElement, numElements, numInstances);
+        return true;
+    }
+
     // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
     std::atomic<int> livePipelines(0);
     // loads with an unfed vertex input (SokolObject::getUnfedVertexInputLoads)
@@ -558,10 +567,11 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
             attrOffset = 0;
         }
         
-        if (bufferToBindSlot.count({vbuf.id, bufferOffset}) == 0){
+        const BufferInfo info{vbuf.id, bufferOffset, stride, perInstance};
+        if (bufferToBindSlot.count(info) == 0){
             bind.vertex_buffers[bindSlotIndex] = vbuf;
             bind.vertex_buffer_offsets[bindSlotIndex] = bufferOffset;
-            bufferToBindSlot[{vbuf.id, bufferOffset}] = bindSlotIndex;
+            bufferToBindSlot[info] = bindSlotIndex;
 
             loadingDesc().layout.buffers[bindSlotIndex].stride = stride;
 
@@ -572,7 +582,7 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
             bindSlotIndex++;
         }
 
-        size_t indexBuf = bufferToBindSlot[{vbuf.id, bufferOffset}];
+        size_t indexBuf = bufferToBindSlot[info];
 
         sg_pipeline_desc& desc = loadingDesc();
         desc.layout.attrs[slot].buffer_index = indexBuf;
@@ -600,6 +610,38 @@ void SokolObject::setIndexBuffer(sg_buffer buffer, size_t byteOffset){
 void SokolObject::resetIndexBuffer(){
     bind.index_buffer = loadIndexBuffer;
     bind.index_buffer_offset = (int)loadIndexOffset;
+}
+
+void SokolObject::retargetVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer){
+    if (fromBufferId == toBuffer.id)
+        return;
+    std::vector<std::pair<BufferInfo, size_t>> moved;
+    for (auto it = bufferToBindSlot.begin(); it != bufferToBindSlot.end();){
+        if (it->first.id == fromBufferId){
+            moved.push_back(*it);
+            it = bufferToBindSlot.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    for (std::pair<BufferInfo, size_t>& entry : moved){
+        bind.vertex_buffers[entry.second] = toBuffer;
+        bind.vertex_buffer_offsets[entry.second] = (int)entry.first.offset;
+        entry.first.id = toBuffer.id;
+        bufferToBindSlot[entry.first] = entry.second;
+    }
+}
+
+void SokolObject::retargetIndexBuffer(uint32_t fromBufferId, sg_buffer toBuffer){
+    if (loadIndexBuffer.id == fromBufferId)
+        loadIndexBuffer = toBuffer;
+    if (bind.index_buffer.id == fromBufferId)
+        bind.index_buffer = toBuffer;
+}
+
+void SokolObject::getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const{
+    view = (slot.first >= 0 && slot.first < SG_MAX_VIEW_BINDSLOTS) ? bind.views[slot.first].id : 0;
+    sampler = (slot.second >= 0 && slot.second < SG_MAX_SAMPLER_BINDSLOTS) ? bind.samplers[slot.second].id : 0;
 }
 
 void SokolObject::addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer){
@@ -1069,6 +1111,8 @@ void SokolObject::shareBindings(const SokolObject& source){
 }
 
 bool SokolObject::beginAccumulationDraw(PipelineType colorType, bool mirrored){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     drawWaiting = false;
@@ -1121,12 +1165,14 @@ bool SokolObject::beginAccumulationDraw(PipelineType colorType, bool mirrored){
         waitingDraws++;
         return false;
     }
-    sg_apply_pipeline(held->pipeline);
-    SokolPipelineCache::invalidateApplied();
+    SokolDrawBatch::flush();
+    SokolSystem::applyPipeline(held->pipeline.id);
     return true;
 }
 
 bool SokolObject::beginDraw(const PipelineState& state){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     drawWaiting = false;
@@ -1284,6 +1330,8 @@ SokolObject::Selection SokolObject::selectPipeline(PipelineType pipType, bool di
 }
 
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
@@ -1338,13 +1386,10 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
         SokolDrawBatch::beginHeld(this, selectedPipeline);
         return true;
     }
-    if (SokolDrawBatch::isEnabled()){
+    if (SokolDrawBatch::isEnabled())
         SokolDrawBatch::applyPipeline(selectedPipeline);
-    }else{
-        sg_apply_pipeline(selectedPipeline);
-        // the dynamic path's "applied last" no longer holds
-        SokolPipelineCache::invalidateApplied();
-    }
+    else
+        SokolSystem::applyPipeline(selectedPipeline.id);
     return true;
 }
 
@@ -1402,14 +1447,7 @@ bool SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
     SokolDrawBatch::flush();
     // past the frame's descriptor buffer (Vulkan): skipped (SokolSystem counts and logs it),
     // where sokol would drop it and every draw after it in the frame
-    if (!SokolSystem::reserveDescriptorBytes())
-        return false;
-    sg_apply_bindings(bind);
-    sg_draw(baseElement, vertexCount, instanceCount);
-    // a failed binding leaves the pipeline's later draws invalid until it is applied again
-    if (SokolDrawBatch::isEnabled() && !jasperengine_sg_next_draw_valid())
-        SokolPipelineCache::invalidateApplied();
-    return true;
+    return bindAndDraw(bind, (int)baseElement, (int)vertexCount, (int)instanceCount);
 }
 
 void SokolObject::destroy(){
@@ -1695,12 +1733,8 @@ namespace {
             SokolSystem::countSkippedDraw();
             return;
         }
-        if (!SokolSystem::reserveDescriptorBytes())
+        if (!bindAndDraw(draw.bind, (int)draw.base, (int)draw.count, (int)draw.instances))
             return;
-        sg_apply_bindings(&draw.bind);
-        sg_draw((int)draw.base, (int)draw.count, (int)draw.instances);
-        if (!jasperengine_sg_next_draw_valid())
-            SokolPipelineCache::invalidateApplied();
         Engine::addDrawStats(draw.instances, trianglesOf(draw.primitive, draw.count) * (draw.instances > 0 ? draw.instances : 1),
                             (uint64_t)draw.count * (draw.instances > 0 ? draw.instances : 1));
     }
@@ -1740,7 +1774,7 @@ bool SokolDrawBatch::isRecording(){
 }
 
 void SokolDrawBatch::invalidate(){
-    SokolPipelineCache::invalidateApplied();
+    SokolSystem::forgetAppliedState();
 }
 
 void SokolDrawBatch::applyPipeline(sg_pipeline pipeline){
@@ -1751,7 +1785,7 @@ void SokolDrawBatch::applyPipeline(sg_pipeline pipeline){
 bool SokolDrawBatch::applyUniforms(int slot, const void* data, unsigned int size){
     BatchState& state = batchState();
     BatchState::Slot& held = state.slots[slot];
-    const uint32_t epoch = SokolPipelineCache::appliedEpoch();
+    const uint32_t epoch = SokolSystem::appliedEpoch();
     if (held.epoch == epoch && held.bytes.size() == size && std::memcmp(held.bytes.data(), data, size) == 0){
         state.frame.uniformBytesKept += size;
         return true;
@@ -1894,12 +1928,8 @@ void SokolDrawBatch::flush(){
         SokolSystem::countSkippedDraw();
         return;
     }
-    if (!SokolSystem::reserveDescriptorBytes())
+    if (!bindAndDraw(bindings, (int)head.base, (int)head.count, (int)count))
         return;
-    sg_apply_bindings(&bindings);
-    sg_draw((int)head.base, (int)head.count, (int)count);
-    if (!jasperengine_sg_next_draw_valid())
-        SokolPipelineCache::invalidateApplied();
     Engine::addDrawStats(count, trianglesOf(head.primitive, head.count) * count, (uint64_t)head.count * count);
     state.frame.instancedDraws++;
     state.frame.batchedInstances += count;
@@ -1914,8 +1944,10 @@ void SokolDrawBatch::endFrame(){
         size_t size = std::max(state.streamSize, STREAM_MIN_BYTES);
         while (size < state.streamNeeded && size < STREAM_MAX_BYTES)
             size *= 2;
-        if (state.stream.id != SG_INVALID_ID && state.streamContext == SystemRender::getContextId() && sg_isvalid())
+        if (state.stream.id != SG_INVALID_ID && state.streamContext == SystemRender::getContextId() && sg_isvalid()){
             sg_destroy_buffer(state.stream);
+            SokolSystem::forgetAppliedBindings();
+        }
         state.stream.id = SG_INVALID_ID;
         state.streamSize = std::min(size, STREAM_MAX_BYTES);
     }
@@ -1939,8 +1971,10 @@ sg_buffer SokolDrawBatch::streamBuffer(){
 
 void SokolDrawBatch::shutdown(){
     BatchState& state = batchState();
-    if (state.stream.id != SG_INVALID_ID && state.streamContext == SystemRender::getContextId() && sg_isvalid())
+    if (state.stream.id != SG_INVALID_ID && state.streamContext == SystemRender::getContextId() && sg_isvalid()){
         sg_destroy_buffer(state.stream);
+        SokolSystem::forgetAppliedBindings();
+    }
     state.stream.id = SG_INVALID_ID;
     state.streamSize = 0;
     state.headOpen = false;

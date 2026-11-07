@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 33f66ffad68db21b96d301737b305bed
 id: 1966622498
 name: Transmission
@@ -55,6 +55,22 @@ shaderKeys:
     properties: 8589935704
   - type: mesh
     properties: 8589935706
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 68719477850
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 77309412442
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17592186045530
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 17600775980122
   - type: sky
   - type: depth
   - type: blit
@@ -68,10 +84,34 @@ shaderKeys:
     properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 17592186045528
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 17600775980120
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
     properties: 1114
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8589935706
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477850
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412442
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17592186045530
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17600775980122
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity

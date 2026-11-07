@@ -653,10 +653,22 @@ uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
     return 0;
 }
 
+uint64_t ShaderPool::getDirectionalOnlyProperty(){
+    return shaderPropertyBit(44);
+}
+
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
 // fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
+}
+
+uint64_t ShaderPool::getWaterExclusionProperty(){
+    return shaderPropertyBit(42);
+}
+
+uint64_t ShaderPool::getWaterWakeProperty(){
+    return shaderPropertyBit(43);
 }
 
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
@@ -678,7 +690,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 42;
+        case ShaderType::MESH:   return 45;
         case ShaderType::DEPTH:  return 19;
         case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 5;
@@ -778,6 +790,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
             // the object block per instance (getAutoInstancingProperty)
             case 41: return shortName ? "Aui" : "Auto Instancing";
+            // what keeps water out and the wakes on it (includes/water_interaction.glsl): a
+            // shader requiring waterexclusion / waterwake in a scene with Water Excluders / Wakes
+            case 42: return shortName ? "Wex" : "Water Exclusion";
+            case 43: return shortName ? "Wwk" : "Water Wake";
+            // every light of the scene directional (getDirectionalOnlyProperty): the built-in Lit
+            // without the point and spot paths and their resources
+            case 44: return shortName ? "Dlo" : "Directional Lights Only";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1181,7 +1200,11 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
     // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
     // Ter, Ist, Txr...).
-    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
+    // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
+    // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
+    // bits a manifest shader's: never in one variant)
+    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 

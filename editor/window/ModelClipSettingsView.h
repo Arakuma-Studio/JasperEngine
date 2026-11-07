@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Inspector's model clip settings (S74 R30, R31, R48), Unity's model importer clip list:
+// The Inspector's model clip settings (S77 R30, R31, R48), Unity's model importer clip list:
 //   - the model's clips as rows: Clip, Length, Wrap Mode, Root Motion, Memory, Keys, Loop Match
 //     (the numbers printed from ClipReport, measured a few rows a frame), multi-select with Ctrl
 //     and Shift;

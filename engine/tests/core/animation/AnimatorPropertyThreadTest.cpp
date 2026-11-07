@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Animator's property rows and threads (docs/specs/S74-clip-quality.md R8, R9, AC3): Lua
+// The Animator's property rows and threads (docs/specs/S77-clip-quality.md R8, R9, AC3): Lua
 // fields, a script's enabled and GameObject active never run on a worker, whatever the wave's
 // chunks. TSan sees the race on the Lua stack; the test also records the thread of each write
 // itself, so a run without TSan is red too. The record is lock-free on purpose: a mutex taken on
@@ -423,7 +423,7 @@ TEST(AnimatorPropertyThreadDeterminism, ParallelEqualsSerial){
     EXPECT_EQ(std::memcmp(results[0].data(), results[1].data(), results[0].size() * sizeof(float)), 0) << "bit-identical";
 }
 
-// S74 R8 and docs/animator.md "Order of a frame": every Animator's values, then the callback rows,
+// S77 R8 and docs/animator.md "Order of a frame": every Animator's values, then the callback rows,
 // then root motion and events Animator by Animator; each once
 TEST_F(AnimatorPropertyThread, EveryValueIsWrittenBeforeAnyCallback){
     ClipData data = slide("Hips", 1.0f);

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R19, R22, R24, R46, D2, D6)
+// Contract (S77 R19, R22, R24, R46, D2, D6)
 // - Purpose: the pipeline behind optimize_animation and the Inspector's Reduce Keys... dialog, so a
 //   person and an agent get the same numbers: load the source as it plays, reduce it (ClipReduction),
 //   record the recipe, and measure what the file form of the result does against the source.

@@ -277,6 +277,56 @@ void editor::ModelLoadCmd::restoreMorphWeights(Scene* scene, const ModelComponen
     }
 }
 
+namespace {
+    template <typename From, typename To>
+    void copyPartMeshSettings(const From& from, To& to) {
+        to.castShadows = from.castShadows;
+        to.receiveShadows = from.receiveShadows;
+        to.staticShadowCaster = from.staticShadowCaster;
+        to.receiveLights = from.receiveLights;
+        to.receiveIBL = from.receiveIBL;
+        to.cullingMode = from.cullingMode;
+        to.lodEnabled = from.lodEnabled;
+        to.lodBias = from.lodBias;
+        to.transparent = from.transparent;
+        to.autoTransparency = from.autoTransparency;
+        to.customShader = from.customShader;
+        to.customDepthShader = from.customDepthShader;
+        to.renderInReflectionProbes = from.renderInReflectionProbes;
+        to.shadowsBillboard = from.shadowsBillboard;
+        to.allowGpuInstancing = from.allowGpuInstancing;
+        to.lodFadeMode = from.lodFadeMode;
+        to.lodAnimateCrossFading = from.lodAnimateCrossFading;
+        to.lodFadeTransitionWidth = from.lodFadeTransitionWidth;
+        to.lodCullBelow = from.lodCullBelow;
+        to.shaderUniforms = from.shaderUniforms;
+    }
+}
+
+void editor::ModelLoadCmd::recordPartMeshSettings(Scene* scene, const ModelComponent& model) {
+    savedPartSettings.clear();
+    for (const auto& node : model.meshNodesMapping) {
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second);
+        if (!mesh) continue;
+        PartMeshSettings settings;
+        settings.part = makeNodeRef(model, node.first, false);
+        copyPartMeshSettings(*mesh, settings);
+        savedPartSettings.push_back(std::move(settings));
+    }
+}
+
+void editor::ModelLoadCmd::restorePartMeshSettings(Scene* scene, const ModelComponent& model) {
+    for (const PartMeshSettings& settings : savedPartSettings) {
+        const Entity part = findModelNode(model, settings.part);
+        MeshComponent* mesh = part != NULL_ENTITY && scene->isEntityCreated(part) ? scene->findComponent<MeshComponent>(part) : nullptr;
+        if (!mesh) continue;
+        copyPartMeshSettings(settings, *mesh);
+        // the shader, its variants and the uniform blocks follow the settings
+        mesh->needReload = true;
+        mesh->needUpdateShaderUniforms = true;
+    }
+}
+
 void editor::ModelLoadCmd::recordRetargets(Scene* scene, const ModelComponent& model) {
     retargetedActions.clear();
     std::unordered_map<Entity, NodeRef> modelNodes;
@@ -450,6 +500,9 @@ void editor::ModelLoadCmd::finalizeLoad(){
             sceneProject->entities.push_back(e);
         }
     }
+    // the nodes came in glTF index order, children before parents: the list (and so the
+    // generated scene code) creates parents first, as the Transform array has them
+    ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
 
     for (Entity reused : reusedEntities) {
         if (!isMappedMeshNode(newModel, reused)) {
@@ -460,6 +513,7 @@ void editor::ModelLoadCmd::finalizeLoad(){
 
     restoreArrangement(sceneProject, newModel);
     applyRetargets(scene, newModel);
+    restorePartMeshSettings(scene, newModel);
     if (switchesLayout) {
         restoreMorphWeights(scene, newModel);
     }
@@ -670,6 +724,7 @@ bool editor::ModelLoadCmd::execute(){
     if (firstExecution && sameModelFile && !reuseHierarchy) {
         recordArrangement(sceneProject, model);
         recordRetargets(scene, model);
+        recordPartMeshSettings(scene, model);
     }
     if (firstExecution && switchesLayout) {
         recordMorphWeights(scene, model);
@@ -708,7 +763,7 @@ bool editor::ModelLoadCmd::execute(){
     }
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
 
-    // Project Settings > Animation > Animation Entities: Auto (S74 R38): a model placed with many
+    // Project Settings > Animation > Animation Entities: Auto (S77 R38): a model placed with many
     // clips makes no Animation entity per clip. Only a first load: a reload keeps the user's choice.
     if (isNewModel && model.animationEntities && project->getModelSettings().animationEntities == AnimationEntitiesMode::Auto) {
         if (autoClipCount < 0) {

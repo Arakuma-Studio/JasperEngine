@@ -516,6 +516,10 @@ void SceneRender::updateLatticeCages(const std::vector<Entity>& selEntities, con
         if (!scene->findComponent<LatticeComponent>(entity) || !scene->findComponent<Transform>(entity)){
             return;
         }
+        // a lattice inactive in hierarchy draws no cage (hideEntityGizmos: Unity's gizmo rule)
+        if (!gizmoActive(entity)){
+            return;
+        }
         drawn.insert(entity);
         LatticeCageLines& lines = latticeCages[entity];
         if (!lines.overlay){

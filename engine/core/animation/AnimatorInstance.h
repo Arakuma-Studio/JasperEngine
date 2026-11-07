@@ -116,7 +116,7 @@ namespace jasperengine::anim{
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
-        // weight 0 and nothing that needs the pose: `output` was not sampled (S74 R14). An
+        // weight 0 and nothing that needs the pose: `output` was not sampled (S77 R14). An
         // interruption before the next evaluation freezes what the layer would have shown, the
         // state as it was then: sampled into snapshotPose by the next evaluateLayer
         bool outputSkipped = false;
@@ -193,7 +193,7 @@ namespace jasperengine::anim{
         float lockWeight = 0.0f;
         bool hadPrevious = false;
         Vector3 previousWorld = Vector3(0, 0, 0);   // FootLock: this update's animated foot (world)
-        // FootIK and FootLock, for the debug readouts (S74 R36): whether the leg's own rule has the
+        // FootIK and FootLock, for the debug readouts (S77 R36): whether the leg's own rule has the
         // foot in contact this update (Foot Lock's contact; Foot IK: on the ground with the
         // animated ankle at its planted height) and the animated foot's world velocity, m/s
         bool contact = false;
@@ -307,7 +307,7 @@ namespace jasperengine::anim{
 
         AnimatorOutput output;
         // the root motion of every update since the bind, in the rig frame the Animator had at
-        // the bind (each delta turned by the yaw before it): debug readouts (S74 R36)
+        // the bind (each delta turned by the yaw before it): debug readouts (S77 R36)
         Vector3 rootMotionTotal = Vector3(0, 0, 0);
         float rootMotionTotalYaw = 0.0f;                // radians
         // the values of the property rows that wait for the main thread (RigProperty::inWave

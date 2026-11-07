@@ -3,7 +3,8 @@
 
 // A mesh's bone palette is the skin's (mesh-memory spec 6.4): as many matrices as the skin has
 // joints, none on a mesh without a skin, and no fixed limit on the joints (a skin of 200 joints
-// loads and draws). glcore and Vulkan.
+// loads and draws). The skin has no normals: its pipelines leave no input without a buffer, which
+// Metal and D3D11 refuse (the plate shades with flat normals). glcore, Vulkan and Metal.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -12,6 +13,7 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "render/ObjectRender.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 
@@ -122,8 +124,10 @@ TEST(SkinPaletteGpu, PaletteSizedToTheSkin){
     JASPER_REQUIRE_GPU();
     TempDir dir;
     const LogCapture log;
+    const int unfed = ObjectRender::getUnfedVertexInputLoads();
     SkinnedScene skinned(writeSkinnedPlate(dir, "skin70", 70));
     ASSERT_TRUE(skinned.loaded);
+    EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfed) << "a pipeline left the plate's normal input without a buffer";
     const MeshComponent* mesh = drawnMesh(skinned.scene);
     ASSERT_NE(mesh, nullptr);
     EXPECT_EQ(mesh->bonesMatrix.stored(), 70u);

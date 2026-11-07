@@ -317,7 +317,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
             // a removed .clips sidecar (an undo, a delete): the model's clips play the importer's
-            // settings again, so its clip documents and players reload (S74 R29)
+            // settings again, so its clip documents and players reload (S77 R29)
             if (change.path.extension() == ".clips") {
                 (change.origin == ChangeOrigin::Editor ? editorWritten : external)["animation"].push_back(change.path);
             }
@@ -365,7 +365,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.origin == ChangeOrigin::Editor) {
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
-            if (kind == "material" || kind == "texture" || kind == "animation") editorWritten[kind].push_back(change.path);
+            // (an .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "aseprite") editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -425,6 +426,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadTextures(ctx, textures);
     reload::reloadModels(ctx, files(external, "model"));
+    reload::reloadAseprite(ctx, both("aseprite"));
     reload::reloadAudio(ctx, files(external, "audio"));
     // the project's audio mixer is heard as its file now says, in Edit mode and Play alike: the
     // editor's own writes (audio_mixer edit, the Audio Mixer window, their undo) and another

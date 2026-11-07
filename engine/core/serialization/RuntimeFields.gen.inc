@@ -621,6 +621,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
     JE_RF(Collider2D, material, 0x23926496u, String),
     JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
+    JE_RF(Collider2D, slice, 0xd4adaecfu, String),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -1086,6 +1087,8 @@ const StructTable kBody_RectTransformComponent{"recttransform", kBody_RectTransf
 const FieldEntry kBody_ActionComponent_fields[] = {
     JE_RF(ActionComponent, state, 0xca7b2e94u, Enum),
     JE_RF(ActionComponent, speed, 0x0492459eu, Float),
+    JE_RF(ActionComponent, startOffset, 0x7c51346eu, Float),
+    JE_RF(ActionComponent, randomStart, 0x43832d28u, Bool),
     JE_RF_ENTITY(ActionComponent, target, 0x55190b06u, Entity),
     JE_RF(ActionComponent, ownedTarget, 0x5420ae55u, Bool),
 };
@@ -1235,6 +1238,20 @@ const FieldEntry kBody_ButtonComponent_fields[] = {
     JE_RF(ButtonComponent, colorPressed, 0xc5a5fc56u, Vector4),
     JE_RF(ButtonComponent, colorDisabled, 0x04208fa8u, Vector4),
     JE_RF(ButtonComponent, disabled, 0x314a4b2du, Bool),
+    JE_RF(ButtonComponent, textureSelected, 0x5d4ca8f5u, Texture),
+    JE_RF(ButtonComponent, colorSelected, 0xba8f6da9u, Vector4),
+    JE_RF(ButtonComponent, transition, 0x8067a0fau, Enum),
+    JE_RF(ButtonComponent, fadeDuration, 0x8a75823fu, Float),
+    JE_RF(ButtonComponent, scaleHovered, 0xc324dcf8u, Float),
+    JE_RF(ButtonComponent, scalePressed, 0xcdab3f89u, Float),
+    JE_RF(ButtonComponent, scaleSelected, 0xf90a4298u, Float),
+    JE_RF(ButtonComponent, navigationMode, 0xe1276984u, Enum),
+    JE_RF(ButtonComponent, wrapAround, 0xfd8c6bd4u, Bool),
+    JE_RF_ENTITY(ButtonComponent, selectOnUp, 0x8a84c0ddu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnDown, 0xcd357e1cu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnLeft, 0xee234711u, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnRight, 0x04170632u, Entity),
+    JE_RF(ButtonComponent, selectOnEnable, 0xdb5cb9cfu, Bool),
 };
 const StructTable kBody_ButtonComponent{"button", kBody_ButtonComponent_fields, std::size(kBody_ButtonComponent_fields)};
 
@@ -1597,6 +1614,9 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
+    JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
+    JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
+    JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -2378,6 +2398,23 @@ const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
 };
 const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
+const FieldEntry kBody_WaterExcluderComponent_fields[] = {
+    JE_RF(WaterExcluderComponent, enabled, 0x1f8220bfu, Bool),
+    JE_RF(WaterExcluderComponent, shape, 0x2f859f6fu, Enum),
+    JE_RF(WaterExcluderComponent, center, 0x05110537u, Vector3),
+    JE_RF(WaterExcluderComponent, size, 0x1fad5cbbu, Vector3),
+};
+const StructTable kBody_WaterExcluderComponent{"waterexcluder", kBody_WaterExcluderComponent_fields, std::size(kBody_WaterExcluderComponent_fields)};
+
+const FieldEntry kBody_WaterWakeComponent_fields[] = {
+    JE_RF(WaterWakeComponent, enabled, 0x111e1027u, Bool),
+    JE_RF(WaterWakeComponent, foam, 0x2a7d6e07u, Float),
+    JE_RF(WaterWakeComponent, waves, 0xb229e9e8u, Float),
+    JE_RF(WaterWakeComponent, width, 0xe2a14056u, Float),
+    JE_RF(WaterWakeComponent, length, 0x0f985d8eu, Float),
+};
+const StructTable kBody_WaterWakeComponent{"waterwake", kBody_WaterWakeComponent_fields, std::size(kBody_WaterWakeComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2485,6 +2522,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
+    JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
+    JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENTS_END
 };
 

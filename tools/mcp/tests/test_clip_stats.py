@@ -1,4 +1,4 @@
-"""S74 R5, R7, R53 (the facts of step 1): get_animation and get_asset_info report a clip's `stats`,
+"""S77 R5, R7, R53 (the facts of step 1): get_animation and get_asset_info report a clip's `stats`,
 a model's get_asset_info gives each animation's keys and runtime_bytes, asking changes nothing the
 pool holds, get_frame_times {monitors} has the Animator's monitors, and get_memory_stats lists the
 loaded clips.
@@ -15,7 +15,7 @@ TIMEOUT = 600
 MODEL = "assets/models/hero_animated.gltf"
 CLIP = "assets/anim/s74_stats.anim"
 CONTROLLER = "assets/anim/s74.controller"
-# S74 step 3 adds audio_cues (S40's cues, counted like the rest of the table)
+# S77 step 3 adds audio_cues (S40's cues, counted like the rest of the table)
 STAT_KEYS = {"runtime_bytes", "file_bytes", "keys", "tracks", "length_s", "constant_tracks", "audio_cues"}
 MONITORS = ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms", "Anim Wave ms", "Anim Finalize ms", "Clip memory"]
 

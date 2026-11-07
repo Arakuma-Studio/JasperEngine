@@ -296,7 +296,7 @@ TEST_F(AnimatorFootIK, CulledCastsNoRays){
     }
 }
 
-// S74 R34, the red case: an ankle `footHeight` straight above the hit sinks the sole on a slope,
+// S77 R34, the red case: an ankle `footHeight` straight above the hit sinks the sole on a slope,
 // 1.07 cm at 30 degrees: the foot turns to the slope, so its sole is measured along the normal.
 // Past the default 30 degree clamp the centre of the sole is what stays on the plane.
 TEST_F(AnimatorFootIK, SoleStaysOnTheFlat){ expectSolesOnTheRamp(0.0f); }
@@ -304,7 +304,7 @@ TEST_F(AnimatorFootIK, SoleStaysOnA20DegreeSlope){ expectSolesOnTheRamp(20.0f); 
 TEST_F(AnimatorFootIK, SoleStaysOnA30DegreeSlope){ expectSolesOnTheRamp(30.0f); }
 TEST_F(AnimatorFootIK, SoleCentreStaysOnASlopePastTheClamp){ expectSolesOnTheRamp(45.0f); }
 
-// S74 R32: `reached` and what goes with it, as scripts, tools and overlays read them
+// S77 R32: `reached` and what goes with it, as scripts, tools and overlays read them
 TEST_F(AnimatorFootIK, ReachedReadsTheSolve){
     AnimatorComponent& component = rig();
     component.ik.clear();
@@ -410,7 +410,7 @@ TEST_F(AnimatorFootIK, ScriptSettersReachTheSolver){
     EXPECT_TRUE(object.isIKReached("Look")) << instance().ik[1].reachError;
 }
 
-// S74 R57: the same from Lua
+// S77 R57: the same from Lua
 TEST_F(AnimatorFootIK, LuaReadsReachedAndSetsTheShape){
     AnimatorComponent& component = rig();
     component.ik.clear();
@@ -472,7 +472,7 @@ TEST_F(AnimatorFootIK, FootLockKeepsTheAnimatedFootRotation){
     EXPECT_LE(angleBetween(locked, animated), 0.5f);
 }
 
-// S74 R34 with a lock on the same leg, the usual stack: the lock runs after Foot IK and must not
+// S77 R34 with a lock on the same leg, the usual stack: the lock runs after Foot IK and must not
 // take the foot off the slope Foot IK put it on
 TEST_F(AnimatorFootIK, SoleStaysOnTheSlopeUnderFootLock){
     const float degrees = 30.0f;

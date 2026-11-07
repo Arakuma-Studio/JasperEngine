@@ -5,7 +5,7 @@
 // - Purpose: the IK solvers of the Animator's constraint stack, on a rig's local pose and its
 //   rig-space cache: two-bone (law of cosines, pole), FABRIK, look-at (weighted, clamped), and the
 //   helpers FootIK and FootLock build on (rotate a bone in rig space, move a bone, the ankle's
-//   height on a slope, springs). S74 R32-R34: two-bone soften, hinge axis and twist, the look-at
+//   height on a slope, springs). S77 R32-R34: two-bone soften, hinge axis and twist, the look-at
 //   chain walk with an aim offset, and an IKResult from every solve.
 // - Every solver changes local rotations (local = parentRigRotation^-1 * rigRotation) and brings
 //   the rig-space cache up to date again for the bones after the first one it changed (parents
@@ -33,7 +33,7 @@ namespace jasperengine::anim{
     };
 
     // How far from its target a chain's end may stay and still count as reached, in metres; the
-    // aim error a look-at may keep, in degrees (S74 R33)
+    // aim error a look-at may keep, in degrees (S77 R33)
     constexpr float kIKReachTolerance = 0.001f;
     constexpr float kIKAimTolerance = 0.1f;
 

@@ -19,7 +19,10 @@ namespace jasperengine {
     //   "<kind>:<name>"   the name is non-empty and unique among that kind in the file
     //   "<kind>#<index>"  otherwise, the index among that kind in the file
     // A reference to a sub-asset uses the path hint "<container path>#<key>".
-    enum class SubAssetKind { Mesh, Material, Animation, Skin, Image };
+    // Frame, Slice, Tileset and Palette are an .aseprite file's (S44: its frames, slices,
+    // tilesets and palette; Image its sheet pages, Animation its tag clips); appended, frozen
+    enum class SubAssetKind { Mesh, Material, Animation, Skin, Image,
+                              Frame, Slice, Tileset, Palette };
 
     inline const char* subAssetKindName(SubAssetKind kind) {
         switch (kind) {
@@ -28,13 +31,18 @@ namespace jasperengine {
             case SubAssetKind::Animation: return "animation";
             case SubAssetKind::Skin: return "skin";
             case SubAssetKind::Image: return "image";
+            case SubAssetKind::Frame: return "frame";
+            case SubAssetKind::Slice: return "slice";
+            case SubAssetKind::Tileset: return "tileset";
+            case SubAssetKind::Palette: return "palette";
         }
         return "mesh";
     }
 
     inline bool parseSubAssetKind(std::string_view text, SubAssetKind& kind) {
         static const SubAssetKind kinds[] = {SubAssetKind::Mesh, SubAssetKind::Material, SubAssetKind::Animation,
-                                             SubAssetKind::Skin, SubAssetKind::Image};
+                                             SubAssetKind::Skin, SubAssetKind::Image, SubAssetKind::Frame,
+                                             SubAssetKind::Slice, SubAssetKind::Tileset, SubAssetKind::Palette};
         for (SubAssetKind candidate : kinds) {
             if (text == subAssetKindName(candidate)) {
                 kind = candidate;
@@ -96,7 +104,8 @@ namespace jasperengine {
         return true;
     }
 
-    // True for the model file extensions that hold sub-assets (.gltf, .glb, .obj, any case)
+    // True for the file extensions that hold sub-assets (models: .gltf, .glb, .obj; Aseprite
+    // files: .aseprite, .ase; any case)
     inline bool isSubAssetContainerPath(std::string_view path) {
         auto endsWith = [&](std::string_view ext) {
             if (path.size() < ext.size()) return false;
@@ -107,7 +116,7 @@ namespace jasperengine {
             }
             return true;
         };
-        return endsWith(".gltf") || endsWith(".glb") || endsWith(".obj");
+        return endsWith(".gltf") || endsWith(".glb") || endsWith(".obj") || endsWith(".aseprite") || endsWith(".ase");
     }
 
     // "<container>#<key>" -> container and key; false for a plain path. The container is a

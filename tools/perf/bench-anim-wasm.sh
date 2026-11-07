@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# je-bench-anim as WebAssembly (S74 R11, docs/perf/animator.md): built in the web image's Emscripten
+# je-bench-anim as WebAssembly (S77 R11, docs/perf/animator.md): built in the web image's Emscripten
 # for release, run under its node, one thread, once with the pose kernels on -msimd128 and once
 # scalar. Results in <out>/simd128.json and <out>/scalar.json; check_bench.py gates them as
 # je-bench-anim-wasm (the owner's Web30 and clip memory budgets).

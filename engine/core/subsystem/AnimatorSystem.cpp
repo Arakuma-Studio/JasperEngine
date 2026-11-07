@@ -437,7 +437,7 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     return true;
 }
 
-// S74 R8: a row stays in the wave when its functions reach only its entity and no other Animator
+// S77 R8: a row stays in the wave when its functions reach only its entity and no other Animator
 // writes that entity (its bones, channels, skins, property rows, or the Animator component the
 // wave reads). `owners` does not say that: it claims bones only, property rows bind freely. Every
 // rebind passes through release(), so this runs on the frames a bind changed
@@ -537,7 +537,7 @@ void AnimatorSystem::writePose(const AnimatorComponent& component, anim::Animato
     }
     // properties (anim-properties): the blended key-space values, a discrete one rounded (the
     // heavier side of a two-way blend). A row that stays in the wave is written when it changed;
-    // the others wait for the main thread, which compares and writes (S74 R8)
+    // the others wait for the main thread, which compares and writes (S77 R8)
     for (const anim::RigProperty& property : rig.properties){
         const size_t width = property.binding.width;
         if (width == 0 || width > 16) continue;

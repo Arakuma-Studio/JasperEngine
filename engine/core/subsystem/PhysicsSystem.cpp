@@ -26,6 +26,9 @@
 #include "util/JoltPhysicsAux.h"
 #include "util/MeshTriangles.h"
 #include "component/RagdollComponent.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "component/CameraComponent.h"
+#include "component/SpriteComponent.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "physics/PhysicsMaterial.h"
 #endif
@@ -518,51 +521,11 @@ bool PhysicsSystem::isInterpolation() const{
 }
 
 void PhysicsSystem::clearSubscriptions(){
-#ifdef JASPERENGINE_PHYSICS_2D
-    beginContact2D.clear();
-    endContact2D.clear();
-    beginSensorContact2D.clear();
-    endSensorContact2D.clear();
-    hitContact2D.clear();
-    preSolve2D.clear();
-    shouldCollide2D.clear();
-    stayContact2D.clear();
-    staySensorContact2D.clear();
-#endif
-#ifdef JASPERENGINE_PHYSICS_3D
-    onBodyActivated3D.clear();
-    onRagdollBeforeAnimatedRestore3D.clear();
-    onBodyDeactivated3D.clear();
-    onContactAdded3D.clear();
-    onContactPersisted3D.clear();
-    onContactRemoved3D.clear();
-    shouldCollide3D.clear();
-    onContactModify3D.clear();
-#endif
+    forEachEvent([](auto& event) { event.clear(); });
 }
 
 void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
-#ifdef JASPERENGINE_PHYSICS_2D
-    beginContact2D.removeByTagSubstring(substring);
-    endContact2D.removeByTagSubstring(substring);
-    beginSensorContact2D.removeByTagSubstring(substring);
-    endSensorContact2D.removeByTagSubstring(substring);
-    hitContact2D.removeByTagSubstring(substring);
-    preSolve2D.removeByTagSubstring(substring);
-    shouldCollide2D.removeByTagSubstring(substring);
-    stayContact2D.removeByTagSubstring(substring);
-    staySensorContact2D.removeByTagSubstring(substring);
-#endif
-#ifdef JASPERENGINE_PHYSICS_3D
-    onBodyActivated3D.removeByTagSubstring(substring);
-    onRagdollBeforeAnimatedRestore3D.removeByTagSubstring(substring);
-    onBodyDeactivated3D.removeByTagSubstring(substring);
-    onContactAdded3D.removeByTagSubstring(substring);
-    onContactPersisted3D.removeByTagSubstring(substring);
-    onContactRemoved3D.removeByTagSubstring(substring);
-    shouldCollide3D.removeByTagSubstring(substring);
-    onContactModify3D.removeByTagSubstring(substring);
-#endif
+    forEachEvent([&substring](auto& event) { event.removeByTagSubstring(substring); });
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -955,7 +918,7 @@ void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyCompone
     // a body that never stepped has no pose before the step to draw from
     const RigidbodyInterpolation mode = interpolationOf(body.interpolation);
     if (mode == RigidbodyInterpolation::INTERPOLATE && alpha < 1.0f && !body.newBody){
-        position = body.previousPosition.lerp(position, alpha);
+        position = body.previousPosition.lerpUnclamped(position, alpha);
         if (body.previousRotation != rotation){
             rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
         }
@@ -1473,6 +1436,27 @@ std::vector<std::vector<Vector2>> PhysicsSystem::getCollider2DPiecesLocal(Entity
 
 void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
     Collider2D& shapeData = body.colliders[i];
+    if (!shapeData.slice.empty()){
+        // a slice hidden on this frame (or not known yet): no shape until it shows
+        if (!shapeData.sliceVisible || shapeData.slicePoints.size() < 3){
+            return;
+        }
+        // the slice's box as a polygon for this build only: the saved type and points stay
+        const Collider2DType savedType = shapeData.type;
+        std::vector<Vector2> savedPoints = std::move(shapeData.points);
+        shapeData.type = Collider2DType::POLYGON;
+        shapeData.points = shapeData.slicePoints;
+        createCollider2DShapesOf(entity, body, i, entityScale, layer);
+        Collider2D& built = body.colliders[i];
+        built.type = savedType;
+        built.points = std::move(savedPoints);
+        return;
+    }
+    createCollider2DShapesOf(entity, body, i, entityScale, layer);
+}
+
+void PhysicsSystem::createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
+    Collider2D& shapeData = body.colliders[i];
 
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
@@ -1679,9 +1663,47 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
     }
 }
 
+void PhysicsSystem::updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body){
+    const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+    if (!sprite || !sprite->sheetData){
+        return;
+    }
+    bool uiCamera = false;
+    if (const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        uiCamera = camera->type == CameraType::CAMERA_UI;
+    }
+    for (Collider2D& collider : body.colliders){
+        if (collider.slice.empty()){
+            continue;
+        }
+        Rect bounds(0.0f, 0.0f, 0.0f, 0.0f);
+        const bool visible = spriteSliceLocalRect(*sprite, *sprite->sheetData, uiCamera, collider.slice, bounds);
+        const bool same = visible == collider.sliceVisible && (!visible || (bounds.getX() == collider.sliceBounds.getX() &&
+                          bounds.getY() == collider.sliceBounds.getY() && bounds.getWidth() == collider.sliceBounds.getWidth() &&
+                          bounds.getHeight() == collider.sliceBounds.getHeight()));
+        if (same && (!visible || !collider.slicePoints.empty())){
+            continue;
+        }
+        collider.sliceVisible = visible;
+        collider.sliceBounds = bounds;
+        collider.slicePoints.clear();
+        if (visible){
+            const float x0 = bounds.getX(), y0 = bounds.getY();
+            const float x1 = x0 + bounds.getWidth(), y1 = y0 + bounds.getHeight();
+            collider.slicePoints = {Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)};
+        }
+        collider.dirty = true;
+        body.needUpdateColliders = true;
+    }
+}
+
 bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all){
     if (!b2Body_IsValid(body.body)){
         return false;
+    }
+    body.hasSliceColliders = std::any_of(body.colliders.begin(), body.colliders.end(), [](const Collider2D& c) { return !c.slice.empty(); });
+    if (body.hasSliceColliders){
+        updateSliceColliders2D(entity, body);
     }
 
     const Vector2 entityScale = entityWorldScale2D(scene, entity);
@@ -4045,6 +4067,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
+        if (body.hasSliceColliders){
+            updateSliceColliders2D(entity, body);
+        }
         if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || body.needApplyMass || entityWorldScale2D(scene, entity) != body.loadedScale){
             loadRigidbody2D(entity);
         }

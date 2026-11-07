@@ -145,7 +145,7 @@ TEST(ModelImportSettings, ProjectSettingsWriteOnlyWhatDiffers){
     EXPECT_EQ(decoded.cacheSizeMB, 64);
 }
 
-// S74 R38: Animation Entities is written only when Auto; a project without the key is Always
+// S77 R38: Animation Entities is written only when Auto; a project without the key is Always
 TEST(ModelImportSettings, AnimationEntitiesMissingKeyIsAlways){
     ModelProjectSettings settings;
     EXPECT_EQ(settings.animationEntities, AnimationEntitiesMode::Always) << "what every project did before";

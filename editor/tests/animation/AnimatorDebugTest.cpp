@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R36, R37, R40, R49, AC17: makeSnapshot puts what the last update left in world space and mm;
+// S77 R36, R37, R40, R49, AC17: makeSnapshot puts what the last update left in world space and mm;
 // foot contact comes only from the Animator's legs; the field table and the live JSON hold the same
 // keys; the overlay pass takes no snapshot and draws no line while every toggle is off.
 

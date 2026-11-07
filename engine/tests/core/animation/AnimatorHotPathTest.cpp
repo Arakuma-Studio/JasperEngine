@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Animator's hot paths of docs/specs/S74-clip-quality.md: a layer of weight 0 is not sampled
+// The Animator's hot paths of docs/specs/S77-clip-quality.md: a layer of weight 0 is not sampled
 // (R14, AC6) and an interruption still blends from the right pose, and a first use through the
 // thread pool starts like one through the calling thread (R16, AC7).
 

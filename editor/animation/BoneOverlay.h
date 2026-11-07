@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R26)
+// Contract (S77 R26)
 // - Purpose: where the Scene view's skeleton overlay draws a model's bones. Under an Animator with
 //   Write Bones: Exposed most bones' Transforms are never written, so reading them would show the
 //   rest pose while the mesh moves: those bones are read from the Animator's evaluated pose. Every

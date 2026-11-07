@@ -71,6 +71,21 @@ namespace jasperengine {
         Matrix4 transpose() const;
         float determinant() const;
 
+        // Affine matrices (the last row 0 0 0 1: every Transform's) take shorter forms of the
+        // general operations, each computing the general one's non-zero terms in its order, so the
+        // results are the general ones' (zeros' sign aside)
+        bool isAffine() const;
+        // the upper-left 3x3's determinant: the sign of determinant() for an affine matrix
+        float determinant3x3() const;
+        // *this * rhs, both affine
+        Matrix4 affineMultiply(const Matrix4& rhs) const;
+        // *this * v of an affine matrix (no divide by w, which is 1)
+        Vector3 transformAffine(const Vector3& v) const;
+        // inverse() of an affine matrix
+        Matrix4 affineInverse() const;
+        // translateMatrix(t) * r.getRotationMatrix() * scaleMatrix(s) without the products
+        static Matrix4 composeTRS(const Vector3& t, const Quaternion& r, const Vector3& s);
+
         static Matrix4 translateMatrix(const float x, const float y, const float z);
         static Matrix4 translateMatrix(const Vector3& position);
 
@@ -88,7 +103,8 @@ namespace jasperengine {
 
         // Lengyel oblique near-plane: returns this projection with its near plane
         // moved onto clipPlane (given in view space). Only the depth (3rd) row
-        // changes, so clip x/y/w are preserved. Used for planar-reflection clipping.
+        // changes, so clip x/y/w are preserved. Perspective or orthographic. Used for
+        // planar-reflection clipping.
         Matrix4 obliqueNearClip(const Vector4& clipPlane) const;
         static Matrix4 frustumMatrix(float left, float right, float bottom, float top, float near, float far);
         static Matrix4 orthoMatrix(float l, float r, float b, float t, float n, float f);

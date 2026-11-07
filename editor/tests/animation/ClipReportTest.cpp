@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R18, D3: the numbers of a clip come from analyzeClip and the field table and the report's
+// S77 R18, D3: the numbers of a clip come from analyzeClip and the field table and the report's
 // JSON hold the same keys.
 
 #include <gtest/gtest.h>
@@ -114,7 +114,7 @@ TEST(ClipReport, TheTableAndTheJsonHoldTheSameKeys){
     request.rootMotion = true;
     request.compareTo = clip;
     request.toleranceMm = 1.0;
-    // foot sliding on a foot it has and one it has not; a crossfade into the clip itself (S74 R37, R54)
+    // foot sliding on a foot it has and one it has not; a crossfade into the clip itself (S77 R37, R54)
     request.footSliding = true;
     request.feet = {"Hand", "Toe"};
     request.transitionTo = clip;
@@ -529,7 +529,7 @@ namespace {
 
 }
 
-// S74 R37, AC17: a foot planted while it moves 50 mm slides 50 mm; one planted still slides none;
+// S77 R37, AC17: a foot planted while it moves 50 mm slides 50 mm; one planted still slides none;
 // a rig without foot goals and no feet asked has no contact to judge
 TEST(ClipReport, FootSlidingMeasuresTheFeetOnTheGround){
     const anim::ClipRig rig = groundArm();
@@ -590,7 +590,7 @@ TEST(ClipReport, FootSlidingOfAnInPlaceClipUsesTheMatchingGroundSpeed){
     EXPECT_GT(report.footSliding->maxSlideMm, 350.0) << "standing still, it slides the whole 40 cm";
 }
 
-// S74 R54: an instant switch between two poses steps the whole distance in one frame; a 0.5 s
+// S77 R54: an instant switch between two poses steps the whole distance in one frame; a 0.5 s
 // crossfade spreads it, and the causes name the duration
 TEST(ClipReport, TransitionPopIsTheStepThroughTheCrossfade){
     const anim::ClipRig rig = groundArm();

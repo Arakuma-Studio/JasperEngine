@@ -15,6 +15,7 @@
 #include "io/File.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "sprite/AsepriteClips.h"
 #include "subsystem/MeshSystem.h"
 #include "jobs/JobSystem.h"
 #include "memory/MemoryStats.h"
@@ -533,8 +534,8 @@ uint64_t AnimationClipPool::revision(){
 }
 
 void AnimationClipPool::invalidate(const std::string& path){
-    // a model file: every sub-clip of it (spec 9.R13)
-    if (anim::isModelFilePath(path)){
+    // a model (or Aseprite) file: every sub-clip of it (spec 9.R13)
+    if (anim::isModelFilePath(path) || anim::isAsepriteClipContainer(path)){
         invalidateModel(path);
         return;
     }

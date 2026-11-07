@@ -11,7 +11,6 @@
 
 #include "InspectorWindow.h"
 
-#include "Out.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -27,11 +26,14 @@
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
 #include "navigation/NavBakeCollector.h"
+#include "navigation/NavBakeInput.h"
 #include "reflect/Enums.h"
 #include "subsystem/NavigationSystem.h"
+#include "util/UIProbe.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 using namespace jasperengine;
@@ -195,7 +197,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
 
     if (beginFoldout("Advanced##navsurface")) {
         const nav::AgentTypeSettings agent = nav::getSettings().agentTypeOrDefault(surface.agentType);
-        beginTable(cpType, getLabelSize("Override Voxel Size"), "advanced");
+        beginTable(cpType, getLabelSize("Max Carving Obstacles"), "advanced");
         propertyRow(RowPropertyType::Bool, cpType, "overrideCellSize", "Override Voxel Size", sceneProject, entities, RowSettings());
         if (surface.overrideCellSize) {
             RowSettings child = settingsAdvanced;
@@ -217,6 +219,13 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
         RowSettings regions = settingsAdvanced;
         regions.help = "Islands smaller than this (square metres) are dropped";
         propertyRow(RowPropertyType::FloatPositive, cpType, "minRegionArea", "Minimum Region Area", sceneProject, entities, regions);
+        if (surface.runtimeCarving) {
+            RowSettings obstacles = settingsAdvanced;
+            obstacles.intMin = 1;
+            obstacles.intMax = 4096;
+            obstacles.help = "Carving NavMesh Obstacles it cuts at once; more are avoided instead, with a warning (read when the navmesh is created)";
+            propertyRow(RowPropertyType::Int, cpType, "maxCarvingObstacles", "Max Carving Obstacles", sceneProject, entities, obstacles);
+        }
         propertyRow(RowPropertyType::Asset, cpType, "navMeshData", "NavMesh Data", sceneProject, entities, settingsData);
         endTable();
         const float cellSize = surface.overrideCellSize ? surface.cellSize : agent.radius / 3.0f;
@@ -228,6 +237,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
             const float points = nav::NavBakeCollector::unitScaleOf(scene, surface);
             ImGui::TextDisabled("2D: %.1f point voxels, tiles of %.0f points", cellSize * points, cellSize * (float)tileSize * points);
         }
+        endFoldout();
     }
 
     if (entities.size() != 1) return;
@@ -242,8 +252,73 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     const NavSurfaceStatus status = system->getSurfaceStatus(entity);
     NavigationEditor& navEditor = NavigationEditor::get();
     const bool baking = status.state == NavBakeState::BAKING || navEditor.isBaking(sceneProject->id, entity);
+    // the summary lines are rows get_inspector_layout reads (kind Label, their text as label)
+    auto infoRow = [&](const char* id, const std::string& text) {
+        recordLayoutRow(RowPropertyType::Label, cpType, id, text, sceneProject, entities);
+    };
 
+    // S75 R29: what a bake would build, from the editor's cached collection (Volume: the box)
     ImGui::Spacing();
+    {
+        // the bake's own configuration (nav units: metres, scene points on a 2D surface)
+        const nav::NavBuildConfig config = nav::NavBakeCollector::configOf(scene, surface);
+        float cellSize = config.cellSize;
+        int tileSize = config.tileSize;
+        int64_t wide = -1, high = -1;
+        if (surface.collectObjects == NavCollectObjects::VOLUME) {
+            // the bake's box: the volume in the surface's nav space, which its scale does not
+            // stretch (NavBakeCollector, NavFrame), on whole tiles anchored like the bake's grid
+            // (NavBakeInput::computeTileGrid)
+            const bool xy = surface.plane == nav::NavPlane::XY;
+            const float size = std::max(cellSize * (float)tileSize, 1e-6f);
+            auto tiles = [&](float center, float extent) {
+                return std::max<int64_t>(1, (int64_t)std::ceil((center + extent * 0.5f) / size) -
+                                                (int64_t)std::floor((center - extent * 0.5f) / size));
+            };
+            wide = tiles(surface.volumeCenter.x, surface.volumeSize.x) * tileSize;
+            high = (xy ? tiles(surface.volumeCenter.y, surface.volumeSize.y) : tiles(surface.volumeCenter.z, surface.volumeSize.z)) * tileSize;
+        } else if (const NavigationSystem::InputReport* report = navEditor.inputReport(*sceneProject, entity)) {
+            if (report->tileSize > 0) {
+                cellSize = report->cellSize;
+                tileSize = report->tileSize;
+                wide = (int64_t)report->tilesWide * report->tileSize;
+                high = (int64_t)report->tilesHigh * report->tileSize;
+            } else if (!report->error.empty()) {
+                const std::string text = "A bake would fail: " + report->error + " (" + nav::bakeErrorName(report->errorCode) + ")";
+                warningLine(text.c_str());
+                infoRow("estimateError", text);
+            }
+        }
+        if (wide >= 0 && high >= 0) {
+            const int64_t tiles = (wide / std::max(tileSize, 1)) * (high / std::max(tileSize, 1));
+            const float perRadius = config.agentRadius / std::max(cellSize, 1e-6f);
+            char estimate[160];
+            std::snprintf(estimate, sizeof(estimate), "Voxels %lld \xC3\x97 %lld, %lld tiles (%.1f voxels per agent radius)", (long long)wide,
+                          (long long)high, (long long)tiles, perRadius);
+            ImGui::TextDisabled("%s", estimate);
+            ImGui::SetItemTooltip("What a bake builds: the voxel grid of the collected bounds, its tiles, and how finely the agent's "
+                                  "radius is voxelized");
+            infoRow("estimate", estimate);
+            if (perRadius < 2.0f) {
+                const std::string text = "Fewer than 2 voxels per agent radius: corners and narrow passages get lost. Lower the Voxel Size "
+                                         "(Advanced) to radius / 3.";
+                warningLine(text.c_str());
+                infoRow("estimateVoxels", text);
+            }
+            if (tiles > 512) {
+                const std::string text = std::to_string(tiles) + " tiles is above the mobile/web budget (512): raise the Tile Size or the "
+                                         "Voxel Size, or bake a Volume.";
+                warningLine(text.c_str());
+                infoRow("estimateTiles", text);
+            }
+            const std::string limit = nav::checkPolyRefBits(tiles, config.maxPolysPerTile);
+            if (!limit.empty()) {
+                const std::string text = "The bake would be refused: " + limit;
+                warningLine(text.c_str());
+                infoRow("estimateLimit", text);
+            }
+        }
+    }
     if (baking) {
         const std::string overlay = "Baking " + std::to_string((int)std::round(status.progress * 100.0f)) + "%";
         ImGui::ProgressBar(status.progress, ImVec2(-6.0f * ImGui::GetFontSize(), 0.0f), overlay.c_str());
@@ -254,11 +329,12 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
 
     const bool playing = sceneProject->playState != ScenePlayState::STOPPED;
     ImGui::BeginDisabled(playing);
+    // (a refused start is logged by NavigationEditor; a Shift-click starts only the full bake
+    // below, so it is logged once)
     std::string error;
-    if (ImGui::Button(ICON_FA_HAMMER " Bake")) {
+    if (ImGui::Button(ICON_FA_HAMMER " Bake") && !ImGui::GetIO().KeyShift) {
         // a stale bake rebuilds the changed tiles; nothing baked: every tile
-        if (!navEditor.bake(project, sceneProject->id, entity, NavBakeMode::DIRTY, error))
-            Out::error("Bake: %s", error.c_str());
+        navEditor.bake(project, sceneProject->id, entity, NavBakeMode::DIRTY, error);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Bakes the tiles whose inputs changed (all of them the first time); Shift: every tile");
@@ -268,11 +344,22 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     }
     ImGui::SameLine();
     ImGui::BeginDisabled(status.state == NavBakeState::NOT_BAKED && surface.navMeshData.empty());
-    if (ImGui::Button(ICON_FA_TRASH_CAN " Clear")) {
-        if (!navEditor.clear(project, sceneProject->id, entity, error)) Out::error("Clear: %s", error.c_str());
+    if (ImGui::Button(ICON_FA_TRASH_CAN " Clear")) navEditor.clear(project, sceneProject->id, entity, error);
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    // the last bake of this session (S74 R3): a failure until a bake succeeds, or its warnings
+    const NavigationEditor::LastBake* editorBake = navEditor.lastBake(sceneProject->id, entity);
+    const bool failureShown = editorBake && !editorBake->ok && !editorBake->cancelled;
+    if (failureShown) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::ErrorText);
+        ImGui::TextWrapped("Bake failed: %s", editorBake->error.c_str());
+        ImGui::PopStyleColor();
+    } else if (editorBake && editorBake->ok && !editorBake->warnings.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        ImGui::TextWrapped("Baked with %d warning(s); see the Console", (int)editorBake->warnings.size());
+        ImGui::PopStyleColor();
     }
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
 
     // the state line, then the stale-bake warning (R32)
     if (status.state == NavBakeState::NOT_BAKED) {
@@ -291,6 +378,45 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
                              " tile(s) changed since the bake. Bake to update them.").c_str());
             }
         }
+    }
+    // S75 R29: the last bake of this session, the walkable area and the islands
+    if (const NavBakeResult* last = system->getLastBakeResult(entity)) {
+        char line[192];
+        if (last->ok) {
+            std::snprintf(line, sizeof(line), "Last bake: %.0f ms, %d of %d tiles built, %d polys", last->milliseconds, last->tilesBuilt,
+                          last->tilesTotal, last->polys);
+            ImGui::TextDisabled("%s", line);
+        } else {
+            std::snprintf(line, sizeof(line), "Last bake %s: %s", last->cancelled ? "cancelled" : "failed",
+                          last->error.empty() ? nav::bakeErrorName(last->errorCode) : last->error.c_str());
+            ImGui::PushTextWrapPos(0.0f);
+            // (the same failure is the "Bake failed" line above already: only its hint here)
+            if (!(failureShown && editorBake->error == last->error)) ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
+            if (!last->hint.empty()) ImGui::TextDisabled("%s", last->hint.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        infoRow("lastBake", line);
+        if (!last->warnings.empty()) {
+            const std::string label = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(last->warnings.size()) +
+                                      (last->warnings.size() == 1 ? " warning" : " warnings") + "##navbakewarnings";
+            infoRow("lastBakeWarnings", label.substr(0, label.find("##")));
+            if (ImGui::TreeNode(label.c_str())) {
+                ImGui::PushTextWrapPos(0.0f);
+                for (const std::string& warning : last->warnings) ImGui::TextColored(Theme::Colors::WarningText, "%s", warning.c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::TreePop();
+            }
+        }
+    }
+    if (status.state != NavBakeState::NOT_BAKED) {
+        const nav::NavCoverage coverage = system->getCoverage(entity);
+        char line[160];
+        std::snprintf(line, sizeof(line), "Walkable: %.1f m\xC2\xB2, %d island%s (largest %.1f m\xC2\xB2)", coverage.walkableArea,
+                      coverage.islandCount, coverage.islandCount == 1 ? "" : "s", coverage.largestIslandArea);
+        ImGui::TextDisabled("%s", line);
+        ImGui::SetItemTooltip("The navmesh's area and its connected parts (links join them); Scene view > AI Navigation > Color By "
+                              "Islands shows them");
+        infoRow("walkable", line);
     }
     if (playing && status.crowdCapacity > 0)
         ImGui::TextDisabled("Crowd: %d / %d agents", status.crowdAgents, status.crowdCapacity);
@@ -363,6 +489,24 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::Bool, cpType, "updateRotation", "Update Rotation", sceneProject, entities, settingsFlag);
     endTable();
 
+    // ---- S76 agents: the stuck watchdog (R40)
+    if (beginFoldout("Stuck Detection##navagent")) {
+        RowSettings settingsDetect;
+        settingsDetect.help = "Fire onStuck when it makes no progress along its path for Stuck After seconds";
+        RowSettings settingsRatio = settings;
+        settingsRatio.help = "Progress counts once it moved this fraction of Speed x Stuck After from where it was";
+        RowSettings settingsTimeout = settings;
+        settingsTimeout.help = "Seconds without progress before onStuck fires";
+        RowSettings settingsRepath;
+        settingsRepath.help = "Ask for the destination again when stuck";
+        beginTable(cpType, getLabelSize("Repath When Stuck"), "stuck");
+        propertyRow(RowPropertyType::Bool, cpType, "stuckDetection", "Detect Stuck", sceneProject, entities, settingsDetect);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "stuckSpeedRatio", "Stuck Speed Ratio", sceneProject, entities, settingsRatio);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "stuckTimeout", "Stuck After (s)", sceneProject, entities, settingsTimeout);
+        propertyRow(RowPropertyType::Bool, cpType, "repathWhenStuck", "Repath When Stuck", sceneProject, entities, settingsRepath);
+        endTable();
+    }
+
     // what the crowd says, while the scene plays (R32)
     if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1) {
         const NavMeshAgentComponent& agent = scene->getComponent<NavMeshAgentComponent>(entities[0]);
@@ -372,6 +516,19 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
         ImGui::TextDisabled("Is On NavMesh: %s", agent.isOnNavMesh ? "yes" : "no");
         ImGui::TextDisabled("Velocity: %.2f, %.2f, %.2f", agent.velocity.x, agent.velocity.y, agent.velocity.z);
         ImGui::TextDisabled("Destination: %.2f, %.2f, %.2f", agent.destination.x, agent.destination.y, agent.destination.z);
+        // ---- S76 agents (R26, R27, R21, R9)
+        if (agent.stuckDetection)
+            ImGui::TextDisabled("Stuck Time: %.2f s", agent.stuckTime);
+        ImGui::TextDisabled("Last Path Failure: %s", nav::pathFailureName(agent.lastPathFailure));
+        if (NavigationSystem* system = scene->getSystem<NavigationSystem>().get()) {
+            ImGui::TextDisabled("Path Stale: %s", system->isAgentPathStale(entities[0]) ? "yes" : "no");
+            const nav::NavigationSettings& navSettings = nav::getSettings();
+            for (int area = 0; area < nav::AREA_COUNT; area++) {
+                const float cost = system->getAgentAreaCost(entities[0], area);
+                if (cost != navSettings.areas[(size_t)area].cost)
+                    ImGui::TextDisabled("Area Cost: %s %.2f", navSettings.areas[(size_t)area].name.c_str(), cost);
+            }
+        }
     }
 }
 
@@ -432,6 +589,8 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     settingsAuto.help = "Follow the GameObject when it moves (the link is updated at runtime)";
     RowSettings settingsArea;
     settingsArea.enumEntries = &areaEntries().entries;
+    RowSettings settingsActivated;
+    settingsActivated.help = "Agents may use it; off: paths and agents ignore it (an agent on it finishes). Not baked";
 
     beginTable(cpType, getLabelSize("Auto Update Positions"));
     propertyRow(RowPropertyType::Enum, cpType, "agentType", "Agent Type", sceneProject, entities, settingsAgent);
@@ -442,7 +601,13 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Bool, cpType, "autoUpdatePosition", "Auto Update Positions", sceneProject, entities, settingsAuto);
     propertyRow(RowPropertyType::Bool, cpType, "bidirectional", "Bidirectional", sceneProject, entities, settingsBidirectional);
     propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
+    propertyRow(RowPropertyType::Bool, cpType, "activated", "Activated", sceneProject, entities, settingsActivated);
     endTable();
+
+    // ---- S76 areas: in play, whether an agent is crossing it (R17)
+    NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
+    if (entities.size() == 1 && system && sceneProject->playState != ScenePlayState::STOPPED)
+        ImGui::TextDisabled("Occupied: %s", system->isLinkOccupied(entities[0]) ? "yes" : "no");
 
     if (entities.size() == 1) {
         const NavMeshLinkComponent& link = scene->getComponent<NavMeshLinkComponent>(entities[0]);
@@ -467,8 +632,8 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsInclusion;
     settingsInclusion.enumEntries = enumEntries(reflect::enums::kNavModifierInclusion);
-    settingsInclusion.help = "Remove Object: as the surface decides (moving objects are left out); Add or Modify: collected even "
-                             "when it would not be; Remove (always): never collected";
+    settingsInclusion.help = "Surface Policy: collected as the surface decides (moving bodies, agents and obstacles are left out); "
+                             "Add or Modify Object: collected even when the surface would leave it out; Remove Object: never collected";
     RowSettings settingsOverride;
     settingsOverride.help = "Give what it covers its own area";
     RowSettings settingsArea;
@@ -478,11 +643,17 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settingsChildren.help = "Its descendants too (the nearest modifier wins)";
     RowSettings settingsVolume;
     settingsVolume.help = "Mark a box (this GameObject's space) instead of the GameObject's geometry";
+    RowSettings settingsRuntime;
+    settingsRuntime.indent = true;
+    settingsRuntime.help = "The bake only splits the navmesh along the volume; while enabled, the polygons inside take its Area Type "
+                           "(a door, a bridge), in edit mode and in play";
+    // a runtime volume always marks its Area Type (S76 R40)
+    const bool runtimeVolume = modifier.useVolume && modifier.applyAtRuntime;
 
-    beginTable(cpType, getLabelSize("Apply To Children"));
+    beginTable(cpType, getLabelSize("Apply At Runtime"));
     propertyRow(RowPropertyType::Enum, cpType, "overrideInclusion", "Mode", sceneProject, entities, settingsInclusion);
     propertyRow(RowPropertyType::Bool, cpType, "overrideArea", "Override Area", sceneProject, entities, settingsOverride);
-    if (modifier.overrideArea) propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
+    if (modifier.overrideArea || runtimeVolume) propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
     propertyRow(RowPropertyType::Bool, cpType, "applyToChildren", "Apply To Children", sceneProject, entities, settingsChildren);
     propertyRow(RowPropertyType::Bool, cpType, "useVolume", "Volume", sceneProject, entities, settingsVolume);
     if (modifier.useVolume) {
@@ -490,8 +661,14 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
         child.indent = true;
         propertyRow(RowPropertyType::Vector3, cpType, "volumeCenter", "Center", sceneProject, entities, child);
         propertyRow(RowPropertyType::Vector3, cpType, "volumeSize", "Size", sceneProject, entities, child);
+        propertyRow(RowPropertyType::Bool, cpType, "applyAtRuntime", "Apply At Runtime", sceneProject, entities, settingsRuntime);
     }
     endTable();
+
+    // ---- S76 areas: in play, the polygons the runtime volume holds now
+    NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
+    if (entities.size() == 1 && runtimeVolume && system && sceneProject->playState != ScenePlayState::STOPPED)
+        ImGui::TextDisabled("Applied Polygons: %d", system->getModifierAppliedPolygons(entities[0]));
 }
 
 void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities) {
@@ -671,6 +848,8 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
             brush.shape = (NavigationEditor::BrushShape)shape;
             ImGui::SetNextItemWidth(12 * ImGui::GetFontSize());
             ImGui::SliderInt("Size (cells)##navbrush", &brush.size, 1, 64);
+            // the size in the name: a UI test reads what [ and ] did
+            UIProbe::item("inspector.navBrushSize." + std::to_string(brush.size));
         }
         ImGui::TextDisabled("Left-drag in the Scene view paints; one stroke is one undo step.");
     }

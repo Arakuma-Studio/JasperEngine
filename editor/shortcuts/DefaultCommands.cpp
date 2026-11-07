@@ -139,11 +139,18 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("playmode.playOrResume", "Play or Resume", C::Global, "F5");
     b.add("playmode.pauseOnly", "Pause", C::Global, "F6");
     b.add("playmode.stop", "Stop", C::Global, "F7");
+    // Escape in the Game view does it too (Unity), the key still reaching the game
+    b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
+        "Give a cursor the running game captured back to the editor; click the Game view to return it";
+    b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11").description =
+        "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
 
     b.group = "Assets";
     b.menu("assets.createFolder", "Create Folder", AppMenuCommand::AssetsCreateFolder);
     b.menu("assets.createLuaScript", "Create Lua Script", AppMenuCommand::AssetsCreateLuaScript);
     b.menu("assets.createCppScript", "Create C++ Script", AppMenuCommand::AssetsCreateCppScript);
+    b.menu("assets.createCppSource", "Create C++ Source File", AppMenuCommand::AssetsCreateCppSource);
+    b.menu("assets.createCppHeader", "Create C++ Header File", AppMenuCommand::AssetsCreateCppHeader);
     b.menu("assets.createHtmlDocument", "Create HTML Document", AppMenuCommand::AssetsCreateHtmlDocument);
     b.menu("assets.createPoseAnimation", "Create Pose Animation", AppMenuCommand::AssetsCreatePoseAnimation);
     b.menu("assets.createAnimationClip", "Create Animation Clip", AppMenuCommand::AssetsCreateAnimationClip);
@@ -159,10 +166,14 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
+    b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
     b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
+    b.menu("assets.duplicate", "Duplicate Asset", AppMenuCommand::AssetsDuplicate).description =
+        "Copy the selected assets beside themselves (Unity names: hero 1.png)";
     b.menu("assets.delete", "Delete Asset", AppMenuCommand::AssetsDelete);
     b.menu("assets.import", "Import New Asset...", AppMenuCommand::AssetsImport);
     b.menu("assets.refresh", "Refresh", AppMenuCommand::AssetsRefresh, C::Editor, "Ctrl+R");
@@ -241,6 +252,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
         "Generate and edit normal maps for 2D sprites";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
+    b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
+        "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
@@ -301,6 +314,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Measure distances: drag from A to B (Esc ends it)";
     b.add("sceneView.deleteMeasure", "Delete Measure", C::SceneView, "Delete", "Backspace").description =
         "Delete the selected measure (while one is selected)";
+    // S75 R25: rebindable, no default key
+    b.add("navigation.pathTester", "Path Tester", C::SceneView).description =
+        "Query navigation paths in the Scene view: Shift+click the start, click the end (Esc ends it)";
     for (int slot = 1; slot <= 9; slot++) {
         static const char* recallIds[] = {"sceneView.recallBookmark1", "sceneView.recallBookmark2", "sceneView.recallBookmark3",
                                           "sceneView.recallBookmark4", "sceneView.recallBookmark5", "sceneView.recallBookmark6",
@@ -403,10 +419,22 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
     b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
 
+    // The Sprite Preview window (docs/specs/S44-aseprite-import.md R31): while it has focus; , and .
+    // step as in Aseprite
+    b.group = "Sprite Preview";
+    b.add("spritePreview.playPause", "Play / Pause", C::SpritePreview, "Space");
+    b.add("spritePreview.previousFrame", "Previous Frame", C::SpritePreview, ",").repeat = true;
+    b.add("spritePreview.nextFrame", "Next Frame", C::SpritePreview, ".").repeat = true;
+    b.add("spritePreview.firstFrame", "First Frame", C::SpritePreview, "Home").description = "The first frame of the tag (or of the file)";
+    b.add("spritePreview.lastFrame", "Last Frame", C::SpritePreview, "End").description = "The last frame of the tag (or of the file)";
+    b.add("spritePreview.zoomIn", "Zoom In", C::SpritePreview, "=", "NumpadAdd").repeat = true;
+    b.add("spritePreview.zoomOut", "Zoom Out", C::SpritePreview, "-", "NumpadSubtract").repeat = true;
+
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");
     b.add("project.cut", "Cut Assets", C::Project, "Ctrl+X");
     b.add("project.paste", "Paste Assets", C::Project, "Ctrl+V");
+    b.add("project.duplicate", "Duplicate Assets", C::Project, "Ctrl+D");
     b.add("project.selectAll", "Select All Assets", C::Project, "Ctrl+A");
     b.add("project.delete", "Delete Assets", C::Project, "Delete", "Backspace");
     b.add("project.rename", "Rename Asset", C::Project, "F2");

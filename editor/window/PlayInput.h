@@ -43,6 +43,11 @@ namespace jasperengine::editor {
         uint32_t mouseInsideSceneId = 0;
         // ImGui frame whose characters were forwarded (the trail is read once per frame)
         int charactersFrame = -1;
+        // a game holding the cursor (captured, confined) gave it back to the editor: Escape, or
+        // Release Game Cursor; a click on the game image takes it again
+        bool cursorReleased = false;
+        // the last ImGui frame the Game view had the focus
+        int gameViewFocusFrame = -1;
 
         void updateMouseInside(uint32_t sceneId, bool inside);
         void forwardCharacters(ImGuiIO& io);
@@ -51,6 +56,8 @@ namespace jasperengine::editor {
         void releaseKeys(int mods);
         void releaseMouseButtons(int mods);
         static int currentMods();
+        // Escape went down this frame, whoever owns the key
+        static bool escapeWentDown();
 
     public:
         explicit PlayInput(Project* project);
@@ -67,6 +74,13 @@ namespace jasperengine::editor {
         void releaseAll();
 
         void setPointerInjected(bool injected) { pointerInjected = injected; }
+
+        // Gives a cursor the game captured or confined back to the editor (Escape in the Game
+        // view does it too, as in Unity); clicking the game image gives it back to the game
+        void releaseCursor();
+        bool isCursorReleased() const { return cursorReleased; }
+        // The editor keeps the cursor: released, or the Game view does not have the focus
+        bool wantsEditorCursor() const;
 
         // The engine key (D_KEY_*) of an ImGui key, D_KEY_UNKNOWN (-1) when the game has none:
         // what forward() sends (Project Settings > Input's Listen captures with it)

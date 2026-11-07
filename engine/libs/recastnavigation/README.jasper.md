@@ -19,8 +19,14 @@ contributors, zlib licence (`License.txt`): the navigation meshes of JasperEngin
   (`NavMesh::debugGeometry`).
 - **Configuration:** 32-bit polygon references (`DT_POLYREF64` off) and the native
   `dtQueryFilter` (`DT_VIRTUAL_QUERYFILTER` off): an area is a polygon's flag bit.
-- **Local changes:** one patch, the avoidance priority of DetourCrowd (`PATCHES.md`). Every
-  changed line is marked `JasperEngine patch`, as the licence requires of altered sources.
+- **Local changes:** five patches (`PATCHES.md`). Every changed line is marked
+  `JasperEngine patch`, as the licence requires of altered sources.
+  1. The avoidance priority of DetourCrowd (ours).
+  2. `dtPathCorridor::setCorridor` accepts a full corridor (upstream `9147d09`).
+  3. `dtMergeCorridorStartMoved` stays within its buffer (upstream `599fd0f`).
+  4. `buildPolyDetail` skips samples when no triangle is left (upstream `9f4ce64`).
+  5. The proximity grid's hash wraps in unsigned arithmetic (ours).
 
-To upgrade, vendor the new tag the same way, re-apply `PATCHES.md`, update the version above and
-`NOTICE.md`, and run `NavCrowdTest.PriorityYields` and the navigation suites.
+To upgrade, vendor the new tag the same way and re-apply `PATCHES.md`: patches 2-4 are upstream
+fixes, dropped when the vendored tag contains them. Update the version above and `NOTICE.md`, and
+run `NavCrowdTest.PriorityYields`, the tests each patch names (patch 5 under UBSan) and the navigation suites.

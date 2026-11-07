@@ -1638,7 +1638,7 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
     }
 }
 
-// A layer of weight 0 adds nothing to the final pose (S74 R14), but a transition or a snapshot may be
+// A layer of weight 0 adds nothing to the final pose (S77 R14), but a transition or a snapshot may be
 // interrupted, and a montage's pose is frozen with the layer's: those keep `output` current. The
 // weight is final here (fades moved it at the start of this update); a change after this update
 // reaches the next one, which evaluates the layer before it uses it.

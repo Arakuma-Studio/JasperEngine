@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R27, R28, R40, D4)
+// Contract (S77 R27, R28, R40, D4)
 // - Purpose: a model's per-clip import settings, Unity's clip Wrap Mode and Root Motion, in the
 //   sidecar "<model>.clips" next to the model file ("models/hero.glb.clips"), as the .humanoid
 //   sidecar keeps its Avatar. JSON: {"version": 1, "clips": {"Walk": {"wrap": "loop",

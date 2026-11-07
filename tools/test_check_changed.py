@@ -133,6 +133,16 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # navigation's runtime and the engine's CMake: the engine without Recast/Detour too (S74 R28)
+        for f in ("engine/core/navigation/NavMesh.cpp", "engine/libs/recastnavigation/Detour/Source/DetourNavMesh.cpp",
+                  "engine/core/subsystem/NavigationSystem.h", "engine/core/object/navigation/NavMeshAgent.cpp",
+                  "engine/core/component/NavMeshSurfaceComponent.h", "engine/CMakeLists.txt",
+                  "engine/tests/core/navigation/NavStubTest.cpp"):
+            self.assertIn("navigation-off", self.plan(f).builds, f)
+        self.assertEqual(self.plan("tools/check-navigation-off.sh").builds, ["navigation-off"])
+        for f in ("engine/core/Foo.cpp", "editor/navigation/NavigationEditor.cpp", "engine/core/component/Transform.h",
+                  "docs/navigation.md"):
+            self.assertNotIn("navigation-off", self.plan(f).builds, f)
         # an engine shader: the shader lint and its tests
         self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
         self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
@@ -140,6 +150,12 @@ class Builds(unittest.TestCase):
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
+        # an engine event's holder, or a clear walking them: the event clears lint
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
+        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, ["tools/check_apple_privacy.py"])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
@@ -588,6 +604,19 @@ class Runs(unittest.TestCase):
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
         self.assertFalse([c for c in self.calls() if c.startswith("web")])
         self.assertTrue([c for c in self.calls() if c.startswith("linux")])
+
+    def test_navigation_off_runs_its_script(self):
+        nav = self.root / "engine/core/navigation/NavMesh.cpp"
+        nav.parent.mkdir(parents=True, exist_ok=True)
+        nav.write_text("int mesh;\n")
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertIn("navigation-off (engine/core/navigation/NavMesh.cpp changed", out)
+        self.assertIn("exec linux tools/check-navigation-off.sh RUN= UNIT_SUITE= UNIT_TEST_ARGS=", self.calls())
+        os.environ["FAIL_TARGET"] = "exec"
+        code, out = self.run_main("--no-cache")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL (exit 1) navigation OFF", out)
 
     def test_failure_exits_1_and_is_not_cached(self):
         (self.root / "editor/App.cpp").write_text("int app = 3;\n")

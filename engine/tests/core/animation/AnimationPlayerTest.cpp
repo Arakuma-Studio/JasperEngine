@@ -136,7 +136,7 @@ namespace {
 
 }
 
-// S74 R16: sample() shows its pose in the call, as without async loading
+// S77 R16: sample() shows its pose in the call, as without async loading
 TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
     // large enough for the thread pool otherwise
     animtest::writeAsset(prefix + "slide.anim", anim::writeClip(slide("Arm", 3.0f)) + std::string(70000, ' '));
@@ -151,7 +151,7 @@ TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
     EXPECT_NEAR(x(arm), 1.5f, 1e-5f);
 }
 
-// AC8 (S74 R17): an idle player, one that never played and one holding its last pose, allocates
+// AC8 (S77 R17): an idle player, one that never played and one holding its last pose, allocates
 // nothing per frame and marks nothing dirty
 TEST_F(Player, IdleAllocatesNothingAndMarksNothingDirty){
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";

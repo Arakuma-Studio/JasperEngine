@@ -60,6 +60,8 @@ grep -rn "setColor" .jasperengine/engine-api/lua/                     # who has 
   to change it: `obj.position = Vector3(...)`, not `obj.position.x = 1`), `(event)` is an event
   object (subscribe with `RegisterEvent`).
 - A name that is not in the stubs is not bound to Lua: do not guess C++ names.
+- A client without file access (or without MCP resources) reads the same API references through
+  `read_file`: `read_file jasper://docs/lua-api`, `read_file jasper://guide` (the agent guide, whole).
 - Lines starting with `---` above a declaration are its documentation (from the engine headers).
 
 ## Lua: lua-language-server

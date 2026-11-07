@@ -77,7 +77,7 @@ namespace jasperengine::anim{
         std::vector<ClipWarning> warnings;
         ClipParseError error;
         // keys of slerp tracks whose sign the file flips from the key before (path, time), which
-        // normalize takes out: a canonical file has none. check --anims reports them (S74 R25)
+        // normalize takes out: a canonical file has none. check --anims reports them (S77 R25)
         std::vector<std::pair<std::string, float>> rotationSignFlips;
 
         bool ok() const { return data.has_value(); }

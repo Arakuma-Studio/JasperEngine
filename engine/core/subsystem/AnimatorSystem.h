@@ -14,7 +14,7 @@
 //      AnimatorInstance::update and the writes of its own entities (bone local TRS, morph
 //      weights, lattice offsets, skin matrices of its animator-driven ModelSkinBindings, the
 //      workerSafe property rows of entities no other Animator writes). The other property rows
-//      only copy their values to the instance's buffer: no Lua runs on a worker (S74 R8).
+//      only copy their values to the instance's buffer: no Lua runs on a worker (S77 R8).
 //   3. Finalize (main thread, entity order): the waiting property rows of every Animator, values
 //      first, then the rows that run callbacks (GameObject active, a script's enabled). Then,
 //      Animator by Animator: root motion (Transform, S22 setRootMotion, or onAnimatorMove), state

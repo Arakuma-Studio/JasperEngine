@@ -1,8 +1,8 @@
-"""S74 R24, R25, R51-R53, R55 (AC9, AC11, AC19): check_animation and optimize_animation are hidden until
+"""S77 R24, R25, R51-R53, R55 (AC9, AC11, AC19): check_animation and optimize_animation are hidden until
 tool_groups enables them, run as jobs, preview before they write, and the journey reduce + prove takes
 3 calls with numbers measured from the file. `check --anims` plants each of its codes; a clean clip
 triggers none. A dense clip is sampled from the fixture's Walk here, since its Walk has few keys.
-S74 R37, R54 (AC11, AC17): a planted 50 mm foot slide fails and a clean step passes, a generic rig
+S77 R37, R54 (AC11, AC17): a planted 50 mm foot slide fails and a clean step passes, a generic rig
 with no feet reports contact_source "none", an instant crossfade pops, record_seconds watches the
 Animator's legs in play mode, and `check --anim-quality` plants each of its codes.
 

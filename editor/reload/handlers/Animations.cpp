@@ -4,7 +4,7 @@
 // Pose animations, humanoid maps, animation clips and Vertex Animations (S05 R11, with upstream's
 // animation clips spec 4.1, pose animation phase 2 and vertex animation spec 2.1): the open
 // PoseAnimationDocuments of changed .poseanim / .humanoid files, the open AnimationClipDocuments
-// of changed .anim files (and of a model whose .clips sidecar changed, S74 R29) and the
+// of changed .anim files (and of a model whose .clips sidecar changed, S77 R29) and the
 // VatDocuments of changed .vat files reload (a file that fails to
 // load leaves the document at its last valid content), AnimationClipPool drops the clips so the
 // Animation Players using them reload, and VertexAnimationPool the Vertex Animations so their
@@ -78,7 +78,7 @@ void reload::addAnimationFileProblems(Project& project, const fs::path& path, Js
 
     std::vector<std::string> warnings;
     if (clipSettings) {
-        // a model's clip settings (S74 R27): its clips play with the importer's until it reads again
+        // a model's clip settings (S77 R27): its clips play with the importer's until it reads again
         anim::ModelClipSettings settings;
         std::string error;
         if (!anim::parseModelClipSettings(text, settings, warnings, &error)) {

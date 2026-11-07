@@ -38,7 +38,17 @@ counts and times, and a preview of one attachment (Color, Alpha, Depth, R, G, B;
 with a near/far, or through Levels).
 
 The Game view's **Stats** overlay shows the frame's CPU time, and its GPU time while something
-times the GPU.
+times the GPU. Next to **Draw calls** it shows **SetPass calls** (Unity's name): the pipelines the
+frame applied. A draw whose pipeline is the one its pass applied last applies none, and a draw
+whose buffers, textures and samplers are the ones applied last binds nothing either: every
+backend skips them, which matters most on D3D11 (every state set again) and Vulkan (a pipeline
+bind and a descriptor set each). The opaque queue of a 3D pass is culled first, then sorted by
+sort priority, distance band (one per doubling of the distance), render state and distance, so
+draws of one material and mesh run together within a band. SetPass calls well below draw calls
+mean that sharing works; close to them, the scene's meshes use too many different materials or
+shaders. Lua reads the count from `Profiler.frameStats().setPassCalls` and
+`DebugOverlay.getStats().setPassCalls`; agents read `pipelines_applied` and `bindings_applied` of
+`get_render_stats`.
 
 The panels change no project data; their layout is kept in the editor settings.
 
