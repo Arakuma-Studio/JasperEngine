@@ -67,8 +67,8 @@ void CameraRender::startSplitRenderPass(FramebufferRender* framebuffer){
     backend.startSplitRenderPass(framebuffer);
 }
 
-void CameraRender::resumeRenderPass(FramebufferRender* framebuffer, bool split){
-    backend.resumeRenderPass(framebuffer, split);
+void CameraRender::resumeRenderPass(FramebufferRender* framebuffer, bool split, bool loadColor){
+    backend.resumeRenderPass(framebuffer, split, loadColor);
 }
 
 void CameraRender::applyViewport(Rect rect){

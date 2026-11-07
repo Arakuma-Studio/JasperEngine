@@ -47,8 +47,10 @@ namespace jasperengine{
         // resumeRenderPass can continue it after other passes (the scene-colour copy)
         void startSplitRenderPass(FramebufferRender* framebuffer);
         // continues such a pass: colour, depth and stencil loaded as they were left; split: kept
-        // when it ends too (multisampled colour included), for another resume
-        void resumeRenderPass(FramebufferRender* framebuffer, bool split = false);
+        // when it ends too (multisampled colour included), for another resume; loadColor false:
+        // the colour is not loaded (the first draw covers it), on another target of the same size
+        // that shares the depth-stencil
+        void resumeRenderPass(FramebufferRender* framebuffer, bool split = false, bool loadColor = true);
 
         void applyViewport(Rect rect);
         void applyScissor(Rect rect);

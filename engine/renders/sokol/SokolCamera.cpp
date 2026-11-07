@@ -176,7 +176,7 @@ void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
     beginPass(split);
 }
 
-void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer, bool split){
+void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer, bool split, bool loadColor){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pass resumed = pass;
     resumed.swapchain = {};
@@ -189,7 +189,7 @@ void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer, bool split){
         // the samples resolve into the framebuffer at the end and are dropped
         resumed.action.colors[0].store_action = SG_STOREACTION_DONTCARE;
     }
-    resumed.action.colors[0].load_action = SG_LOADACTION_LOAD;
+    resumed.action.colors[0].load_action = loadColor ? SG_LOADACTION_LOAD : SG_LOADACTION_DONTCARE;
     resumed.action.depth.load_action = SG_LOADACTION_LOAD;
     resumed.action.stencil.load_action = SG_LOADACTION_LOAD;
     beginPass(resumed);

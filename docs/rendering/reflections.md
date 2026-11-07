@@ -103,13 +103,12 @@ leave a small difference where SSR is confident:
 - the probe blend weight is stored in 62 steps;
 - the volumetric fog's marched part is approximated by the analytic height fog over the whole ray;
 - with post-processing's exposure, tone curve or colour grade on, the opaque objects and the sky are
-  kept in linear light until SSR composites them (8 bits a channel, in the tone curve's range), and
-  the composite applies the post-processing colour: next to the same frame without SSR, a pixel
-  differs by up to 1/255 (measured under ACES). Two cases keep the display colour and swap in it (the
-  reflection's brightness then follows the curve only roughly): a far-plane video over a sky, and,
-  without a sky, a visible shader-library mesh whose shader moves or clips its vertices or pixels
-  (the G-buffer cannot tell it from the background there). Without a sky and with MSAA, the
-  pixels on an object's outline against the clear colour are a little off.
+  kept in linear light until SSR composites them (8 bits a channel in the tone curve's range,
+  dithered so gradients do not band), and the composite applies the post-processing colour to
+  every pixel but the clear colour: next to the same frame without SSR a pixel differs by a step
+  of dither noise, nothing on average. A far-plane video keeps the display colour and the swap is
+  made in it (the reflection's brightness then follows the curve only roughly). Without a sky and
+  with MSAA, the pixels on an object's outline against the clear colour are a little off.
 
 ### What SSR reflects and what it covers
 
@@ -118,8 +117,8 @@ atmosphere's clouds and volumetric fog, the transparent objects, trails, particl
 videos, screen fluids and the UI (the order of Unity's pipelines). So a glass pane is not
 reflected and its colour does not smear into reflections; a transparent object over a reflective
 floor covers its reflection as it covers the floor; and glass or water reading the scene colour
-sees the reflections. The debug views are drawn at that point too: what is drawn after shows over
-them.
+sees the reflections. The debug views are drawn over the whole frame after it, so they show SSR's
+buffers alone.
 
 A camera with Transparent Sort off draws everything in hierarchy order; there SSR composites after
 the whole pass, so what it draws is reflected and takes the swap of the surface behind it.
@@ -131,8 +130,11 @@ normal/roughness/metallic, albedo and reflection source, occlusion and the norma
 16 bytes a pixel, plus its depth buffer), the reflection march, an optional blur, and the
 composite. Pixels SSR does not reflect on (most of a frame) cost the composite two texture reads
 (and, under the post-processing colour, its lookup); the march skips surfaces that get no SSR.
-The rest of the colour pass draws into a second scene colour target (4 bytes a pixel), copied to
-the screen at the end, unless FXAA, bloom or another uber-pass effect reads it there.
+The rest of the colour pass continues in the camera's destination (the view's target, a camera
+texture, the fixed-resolution target, the post-process chain, the uber pass's input). Only where
+that cannot take the scene's depth, the screen of an exported build without uber-pass effects or
+a camera texture of another size, it draws into a second scene colour target (4 bytes a pixel)
+copied there at the end.
 
 ## Changes in 2026-11
 

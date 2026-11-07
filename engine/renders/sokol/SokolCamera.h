@@ -56,7 +56,8 @@ namespace jasperengine{
         void startSplitRenderPass(FramebufferRender* framebuffer);
         // continues a pass on the same target: colour, depth and stencil as they were left;
         // split: stored at its end as startSplitRenderPass stores them (another resume follows)
-        void resumeRenderPass(FramebufferRender* framebuffer, bool split = false);
+        // loadColor false: its colour is not loaded (DONTCARE: no tile load on tilers)
+        void resumeRenderPass(FramebufferRender* framebuffer, bool split = false, bool loadColor = true);
 
         void applyViewport(Rect rect);
         void applyScissor(Rect rect);

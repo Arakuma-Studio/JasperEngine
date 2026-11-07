@@ -1059,6 +1059,9 @@ void RenderSystem::destroy(){
     // the post-processing LUTs, rebaked by the next applyPostProcessing
     postTailLut.destroyTexture();
     postTailLutSize = 0;
+    ssrIdentityLut.destroyTexture();
+    ssrIdentityLutReady = false;
+    passPostColorLut = nullptr;
     postGradeLut.destroyTexture();
     postGradeLutSize = 0;
     postProcessingDirty = true;
@@ -5379,7 +5382,39 @@ void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindi
     if (bindings.slotFSPostColor != -1)
         render.applyUniformBlock(bindings.slotFSPostColor, sizeof(post_color_t), &passPostColors[bindings.postColorBlend]);
     if (bindings.slotPostColorLut.first != -1)
-        render.addTexture(bindings.slotPostColorLut, ShaderStageType::FRAGMENT, postTailLut.isCreated() ? &postTailLut : &emptyWhite);
+        render.addTexture(bindings.slotPostColorLut, ShaderStageType::FRAGMENT, currentPostColorLut());
+}
+
+TextureRender* RenderSystem::currentPostColorLut(){
+    if (passPostColorLut)
+        return passPostColorLut;
+    return postTailLut.isCreated() ? &postTailLut : &emptyWhite;
+}
+
+bool RenderSystem::ensureSSRIdentityLut(){
+    if (ssrIdentityLutReady)
+        return true;
+    // a strip LUT (post_color.glsl samplePostColorLut) of side N whose texels are their own
+    // coordinates: i / (N - 1) is 17 i / 255, exact in 8 bits, and linear filtering between
+    // them reproduces any input
+    constexpr int n = SSR_IDENTITY_LUT_SIDE;
+    if (!ssrIdentityLut.isCreated()){
+        JE_GPU_ALLOC_SCOPE(PostFX, "SSR identity LUT");
+        if (!ssrIdentityLut.createDynamicColorTexture("SSR identity LUT", n * n, n))
+            return false;
+    }
+    std::vector<uint8_t> pixels((size_t)n * n * n * 4);
+    for (int g = 0; g < n; g++){
+        for (int x = 0; x < n * n; x++){
+            uint8_t* p = &pixels[((size_t)g * n * n + x) * 4];
+            p[0] = (uint8_t)((x % n) * 255 / (n - 1));
+            p[1] = (uint8_t)(g * 255 / (n - 1));
+            p[2] = (uint8_t)((x / n) * 255 / (n - 1));
+            p[3] = 255;
+        }
+    }
+    ssrIdentityLutReady = ssrIdentityLut.updateTexture(pixels.data(), pixels.size());
+    return ssrIdentityLutReady;
 }
 
 void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -11985,6 +12020,7 @@ void RenderSystem::destroySSR(){
 
     rv().gbufferFramebuffer.destroy();
     // (before the target whose depth-stencil it borrows)
+    rv().ssrSceneAlias.destroyFramebuffer();
     rv().ssrSceneTarget.destroyFramebuffer();
     rv().sceneColorFramebuffer.destroy();
     rv().ssrFramebuffer.destroy();
@@ -12015,6 +12051,7 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     if (rv().sceneColorFramebuffer.isCreated() && rv().ssrWidth == width && rv().ssrHeight == height)
         return true;
 
+    rv().ssrSceneAlias.destroyFramebuffer();
     rv().ssrSceneTarget.destroyFramebuffer();
     rv().sceneColorFramebuffer.destroy();
     rv().ssrFramebuffer.destroy();
@@ -12068,7 +12105,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
 
     // --- 3. composite pass: SSR swapped for the environment specular -> real destination ---
     TextureRender* prefiltered = nullptr;
-    fillSSRComposite(camera, !destination && Engine::isOpenGL(), prefiltered);
+    fillSSRComposite(camera, !destination && Engine::isOpenGL(), prefiltered, true);
     ssrPassRender.setLabel("ssr composite");
     ssrPassRender.setClearColor(scene->getBackgroundColor());
     if (destination){
@@ -12100,28 +12137,46 @@ bool RenderSystem::ensureSSRSceneTarget(){
     return rv().ssrSceneTarget.createFramebuffer(desc);
 }
 
-void RenderSystem::renderBlitTo(TextureRender* source, FramebufferRender* destination){
-    fixedResPassRender.setClearColor(scene->getBackgroundColor());
-    fixedResPassRender.setLabel("ssr scene blit");
-    PipelineType blitPip = PIP_RTT;
-    bool flipGL = false;
-    if (destination){
-        // source and destination are both offscreen (flipped alike on GL)
-        fixedResPassRender.startRenderPass(destination);
-    }else{
-        fixedResPassRender.startRenderPass();
-        fixedResPassRender.applyViewport(targetViewRect());
-        blitPip = PIP_DEFAULT;
-        flipGL = Engine::isOpenGL();
-    }
-    if (blitRender.beginDraw(blitPip)){
-        ShaderData& bd = blitShader.get()->shaderData;
-        blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
-        fs_blit.params = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
-        blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
-        blitRender.draw(0, 3, 1);
-    }
-    fixedResPassRender.endRenderPass();
+FramebufferRender* RenderSystem::ensureSSRSceneAlias(FramebufferRender* destination){
+    if (!destination || !rv().sceneColorFramebuffer.isCreated() || destination->getSampleCount() != 1)
+        return nullptr;
+    TextureRender& color = destination->getColorTexture();
+    if ((unsigned int)color.getWidth() != rv().ssrWidth || (unsigned int)color.getHeight() != rv().ssrHeight)
+        return nullptr;
+    FramebufferRender& sceneColor = rv().sceneColorFramebuffer.getRender();
+    const uint32_t image = color.backend.get().id;
+    const uint32_t depth = sceneColor.backend.getDepthAttachmentView().id;
+    if (rv().ssrSceneAlias.isCreated() && rv().ssrSceneAliasImage == image && rv().ssrSceneAliasDepth == depth)
+        return &rv().ssrSceneAlias;
+    rv().ssrSceneAlias.destroyFramebuffer();
+    FramebufferDesc desc;
+    desc.width = (int)rv().ssrWidth;
+    desc.height = (int)rv().ssrHeight;
+    desc.depth = DepthStencilFormat::DEPTH_STENCIL;
+    desc.shareDepthStencil = &sceneColor;
+    desc.shareColor = destination;
+    desc.label = "SSR scene (destination)";
+    if (!rv().ssrSceneAlias.createFramebuffer(desc))
+        return nullptr;
+    rv().ssrSceneAliasImage = image;
+    rv().ssrSceneAliasDepth = depth;
+    return &rv().ssrSceneAlias;
+}
+
+void RenderSystem::releaseSSRTargets(){
+    // (the targets borrowing the scene colour's depth first)
+    rv().ssrSceneAlias.destroyFramebuffer();
+    rv().ssrSceneTarget.destroyFramebuffer();
+    if (rv().gbufferFramebuffer.isCreated())
+        rv().gbufferFramebuffer.destroy();
+    if (rv().sceneColorFramebuffer.isCreated())
+        rv().sceneColorFramebuffer.destroy();
+    if (rv().ssrFramebuffer.isCreated())
+        rv().ssrFramebuffer.destroy();
+    if (rv().ssrBlurFramebuffer.isCreated())
+        rv().ssrBlurFramebuffer.destroy();
+    rv().ssrWidth = 0;
+    rv().ssrHeight = 0;
 }
 
 TextureRender* RenderSystem::renderSSRReflections(CameraComponent& camera){
@@ -12188,7 +12243,7 @@ TextureRender* RenderSystem::renderSSRReflections(CameraComponent& camera){
     return reflectionTexture;
 }
 
-void RenderSystem::fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered){
+void RenderSystem::fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered, bool debugView){
     const Matrix4& renderProj = camera.projectionMatrix;
     // The composite rebuilds per pixel the environment specular the colour pass added (the
     // sky, the local probe the G-buffer pass gave a slot, or the scene ambient: the G-buffer's
@@ -12201,7 +12256,7 @@ void RenderSystem::fillSSRComposite(CameraComponent& camera, bool flipDestinatio
     // the GL swapchain keeps row 0 at the bottom while the offscreen sources do not,
     // so a swapchain destination samples them flipped (renderBlit does the same)
     const float flipGL = isRenderingFlipped(camera) ? 1.0f : 0.0f;
-    fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, (float)scene->getSSRDebugMode(), flipDestination ? 1.0f : 0.0f);
+    fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, debugView ? (float)scene->getSSRDebugMode() : 0.0f, flipDestination ? 1.0f : 0.0f);
 
     // the sky as Lit's IBL reads it (skyEnvironment, also the colour pass's binding)
     prefiltered = &emptyCubeBlack;
@@ -12236,7 +12291,11 @@ void RenderSystem::fillSSRComposite(CameraComponent& camera, bool flipDestinatio
 
     // how the colour pass stored the scene: linear light under the post-processing colour, which
     // the composite then applies (its own block), else display-encoded and passed through
-    fs_composite.sceneEncoding = Vector4(ssrLinearStore ? 1.0f : 0.0f, (ssrLinearStore && ssrBackgroundStored) ? 1.0f : 0.0f, 0.0f, 0.0f);
+    fs_composite.sceneEncoding = Vector4(ssrLinearStore ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+    // the clear colour as an RGBA8 target holds it
+    const Vector4 clear = scene->getBackgroundColor();
+    auto stored = [](float c){ return std::round(std::clamp(c, 0.0f, 1.0f) * 255.0f) / 255.0f; };
+    fs_composite.clearColor = Vector4(stored(clear.x), stored(clear.y), stored(clear.z), (ssrLinearStore && ssrClearColorShown) ? 1.0f : 0.0f);
 }
 
 void RenderSystem::drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered){
@@ -12351,15 +12410,19 @@ bool RenderSystem::ensureFixedResFramebuffer(unsigned int width, unsigned int he
     return rv().fixedResFramebuffer.isCreated();
 }
 
-void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
+void RenderSystem::renderBlit(TextureRender* source, Rect viewport, FramebufferRender* destination, const char* label){
     // bars outside the viewport keep the background color (same as the direct
     // path, which clears the whole destination before applying the viewport)
     fixedResPassRender.setClearColor(scene->getBackgroundColor());
-    fixedResPassRender.setLabel("blit");
+    fixedResPassRender.setLabel(label);
 
     PipelineType blitPip;
     bool flipGL = false;
-    if (Framebuffer* target = targetFramebuffer()){
+    if (destination){
+        // source and destination are both offscreen (flipped alike on GL)
+        fixedResPassRender.startRenderPass(destination);
+        blitPip = PIP_RTT;
+    }else if (Framebuffer* target = targetFramebuffer()){
         if (!target->isCreated()){
             JE_GPU_ALLOC_SCOPE(RenderTargets, "View target");
             target->create();
@@ -18442,14 +18505,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // A distance-sorted pass composites SSR inside its colour pass, over the opaque queue and the
     // sky, before the atmosphere's composites, the transparents, the UI and the overlays (Unity's
     // order): those are not reflected, take no swap, and the scene colour copy holds the
-    // reflections. The pass resumes on ssrSceneTarget (the opaque depth), blitted to the
-    // destination at its end unless the uber pass reads it. A hierarchy-ordered pass has no such
-    // point: its composite stays after it.
-    bool ssrInPass = false;
-    if (useSSR && sortsByDistance(camera)){
-        loadBlit();
-        ssrInPass = blitLoaded && ensureSSRSceneTarget();
-    }
+    // reflections. The pass resumes on its destination with the opaque depth (ssrSceneAlias),
+    // or, where the destination cannot take that depth (the swapchain, another size), on
+    // ssrSceneTarget, blitted there at its end; the uber pass reads ssrSceneTarget itself. A
+    // hierarchy-ordered pass has no such point: its composite stays after it.
+    bool ssrInPass = useSSR && sortsByDistance(camera);
+    FramebufferRender* ssrPassTarget = nullptr;
+    TextureRender* ssrReflection = nullptr;
+    // the SSR targets of a view that draws no SSR go (SSR off; a pass without SSR's conditions)
+    if (isMainCamera && (isBaseLayer() || pass.renderToTexture) && !useSSR)
+        releaseSSRTargets();
 
     // the packed opaque depth of this pass another effect draws (the G-buffer, the SSAO or
     // post-process depth pre-pass), which the scene inputs then reuse. Not the G-buffer's when
@@ -18506,7 +18571,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     FramebufferRender* uberSource = nullptr;
     const bool uberReadsChain = useUber && usePostProcess && !useFixedRes;
     // (SSR inside the pass: the uber pass reads the target the pass ends in)
-    const bool uberReadsSSRScene = useUber && ssrInPass && !uberReadsChain && !useFixedRes;
+    const bool uberReadsSSRScene = useUber && ssrInPass && !uberReadsChain && !useFixedRes && ensureSSRSceneTarget();
     if (useUber && !uberReadsChain){
         if (useFixedRes){
             uberSource = &rv().fixedResFramebuffer.getRender();
@@ -18764,6 +18829,26 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else{
             ssrDestination = destination;
         }
+
+        // where the pass continues after the SSR composite (see ssrInPass); its other targets go
+        if (ssrInPass){
+            if (uberReadsSSRScene){
+                ssrPassTarget = &rv().ssrSceneTarget;
+            }else{
+                ssrPassTarget = ensureSSRSceneAlias(ssrDestination);
+                if (!ssrPassTarget){
+                    loadBlit();
+                    if (blitLoaded && ensureSSRSceneTarget())
+                        ssrPassTarget = &rv().ssrSceneTarget;
+                    else
+                        ssrInPass = false;
+                }
+            }
+        }
+        if (ssrPassTarget != &rv().ssrSceneTarget)
+            rv().ssrSceneTarget.destroyFramebuffer();
+        if (ssrPassTarget != &rv().ssrSceneAlias)
+            rv().ssrSceneAlias.destroyFramebuffer();
 
         if (useSSR){
             colorPassViewport = Rect(0, 0, (float)rv().ssrWidth, (float)rv().ssrHeight);
@@ -19026,25 +19111,26 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     const bool skyVisible = skyDrawn && skys->getComponentFromIndex(0).visible;
 
     // The SSR composite inside this pass, under the post-processing colour: the colour pass up to
-    // the composite stores linear light (post_color.glsl, the shaper's code: the range the tone
-    // curve takes, in 8 bits), so the composite swaps in linear light and applies the curve
-    // itself, as the colour pass would have. The background is stored too when a sky draws it;
-    // without one it is the clear colour or a far-plane video, display colour the composite
-    // tells from the surfaces by the G-buffer's depth. A pass where that cannot tell them apart
-    // (a G-buffer that may miss a surface the colour pass draws, displaced or clipped library
-    // meshes; a far-plane video over a sky) keeps the display colour (and the display-colour swap)
+    // the composite stores linear light, its own post-processing colour with an identity LUT and
+    // no vignette (the shaper's code: the range the tone curve takes, in 8 bits, dithered against
+    // banding), so the composite swaps in linear light and applies the scene's post-processing
+    // colour to every pixel, as the colour pass would have, the sky's included. The clear colour,
+    // display colour, is told by its value where the G-buffer has no surface and passed through.
+    // A far-plane video (display colour too) keeps the display colour and its swap.
     ssrLinearStore = false;
-    ssrBackgroundStored = false;
+    ssrClearColorShown = false;
+    passPostColorLut = nullptr;
     ssrCompositePostColor = ssrNeutralPostColor();
-    if (ssrInPass && passPostColorActive && !(skyVisible && videoFarPlanes)){
-        ssrBackgroundStored = skyVisible;
-        ssrLinearStore = skyVisible || gbufferDepthMismatch.empty() || !hasVisibleGBufferDepthMismatch(camera, instanceView);
-        if (ssrLinearStore){
-            ssrCompositePostColor = passPostColors[POST_BLEND_OWN];
-            post_color_t stored = ssrCompositePostColor;
-            stored.params.w = -stored.params.w;
-            setPassPostColor(stored);
-        }
+    if (ssrInPass && passPostColorActive && !videoFarPlanes && ensureSSRIdentityLut()){
+        ssrLinearStore = true;
+        ssrClearColorShown = !skyVisible;
+        ssrCompositePostColor = passPostColors[POST_BLEND_OWN];
+        post_color_t stored = ssrCompositePostColor;
+        stored.params.w = (float)SSR_IDENTITY_LUT_SIDE;
+        stored.params.z = 1.0f / 255.0f;
+        stored.vignetteColor = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        setPassPostColor(stored);
+        passPostColorLut = &ssrIdentityLut;
     }
 
     //---------Draw sky----------
@@ -19098,26 +19184,29 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passSubmeshMask = 0xFFFFFFFFu;
         passPreCulled = false;
         passLodFade = LodFadePass::ALL;
-        // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
-        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
-        // drawn after (transparents) takes the analytic fog alone
         // SSR over the opaque queue and the sky (ssrInPass): the march between two halves of the
-        // pass, the composite the first draw of the second, into ssrSceneTarget (the opaque depth
-        // kept); the rest of the pass draws over it with the scene's post-processing colour
+        // pass, the composite the first draw of the second, over every pixel of ssrPassTarget
+        // (its colour not loaded; the opaque depth kept); the rest of the pass draws over it with
+        // the scene's post-processing colour. The debug views are drawn after the pass, alone
         if (ssrInPass){
             camera.render.endRenderPass();
-            TextureRender* reflection = renderSSRReflections(camera);
-            colorTarget = &rv().ssrSceneTarget;
-            camera.render.resumeRenderPass(colorTarget, copySceneColorPending || oitPlanned);
+            ssrReflection = renderSSRReflections(camera);
+            colorTarget = ssrPassTarget;
+            camera.render.resumeRenderPass(colorTarget, copySceneColorPending || oitPlanned, false);
             if (colorPassViewportApplied){
                 camera.render.applyViewport(colorPassViewport);
             }
             TextureRender* prefiltered = nullptr;
-            fillSSRComposite(camera, false, prefiltered);
-            drawSSRComposite(targetFormatFor(colorPip, passMsaa), reflection, prefiltered);
-            if (ssrLinearStore)
+            fillSSRComposite(camera, false, prefiltered, false);
+            drawSSRComposite(targetFormatFor(colorPip, passMsaa), ssrReflection, prefiltered);
+            if (ssrLinearStore){
                 setPassPostColor(ssrCompositePostColor);
+                passPostColorLut = nullptr;
+            }
         }
+        // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
+        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
+        // drawn after (transparents) takes the analytic fog alone
         if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
         // the opaque queue and the sky are drawn (and SSR's reflections): the scene colour,
@@ -19490,9 +19579,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // real destination (the swapchain or the captured framebuffer); composited inside the
     // pass, its scene goes there (the uber pass reads it itself)
     if (ssrInPass){
-        if (ssrDestination != &rv().ssrSceneTarget)
-            renderBlitTo(&rv().ssrSceneTarget.getColorTexture(), ssrDestination);
+        // a debug view over what the pass drew: SSR's buffers alone
+        if (scene->getSSRDebugMode() != 0 && ssrReflection){
+            TextureRender* prefiltered = nullptr;
+            fillSSRComposite(camera, false, prefiltered, true);
+            ssrPassRender.setLabel("ssr debug view");
+            ssrPassRender.setClearColor(scene->getBackgroundColor());
+            ssrPassRender.startRenderPass(ssrPassTarget);
+            drawSSRComposite(targetFormatFor(PIP_RTT), ssrReflection, prefiltered);
+            ssrPassRender.endRenderPass();
+        }
+        if (ssrPassTarget == &rv().ssrSceneTarget && ssrDestination != ssrPassTarget){
+            const Rect whole = ssrDestination ? Rect(0, 0, (float)ssrDestination->getColorTexture().getWidth(), (float)ssrDestination->getColorTexture().getHeight())
+                                              : targetViewRect();
+            renderBlit(&rv().ssrSceneTarget.getColorTexture(), whole, ssrDestination, "ssr scene blit");
+        }
         ssrLinearStore = false;
+        passPostColorLut = nullptr;
     }else if (useSSR){
         renderSSR(camera, ssrDestination);
     }
@@ -20208,6 +20311,7 @@ void RenderSystem::destroyRenderView(RenderView& view){
     view.currentSSAOTexture = nullptr;
 
     view.gbufferFramebuffer.destroy();
+    view.ssrSceneAlias.destroyFramebuffer();
     view.ssrSceneTarget.destroyFramebuffer();
     view.sceneColorFramebuffer.destroy();
     view.ssrFramebuffer.destroy();

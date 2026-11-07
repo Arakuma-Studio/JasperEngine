@@ -21,6 +21,7 @@
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Skybox.h"
 #include "shader/ShaderUniforms.h"
+#include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
@@ -722,6 +723,84 @@ namespace {
 
 }
 
+namespace {
+
+    // the largest difference of two images' mean colours over the 8 x 8 blocks whose pixels all
+    // pass `use` (banding shows in it, a dither's noise averages out)
+    double ssrBlockMeanDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const std::function<bool(size_t)>& use){
+        const int width = (int)GpuEnvironment::target().getWidth();
+        const int height = (int)GpuEnvironment::target().getHeight();
+        double largest = 0.0;
+        for (int by = 0; by + 8 <= height; by += 8){
+            for (int bx = 0; bx + 8 <= width; bx += 8){
+                double sum[3] = {0.0, 0.0, 0.0};
+                bool whole = true;
+                for (int y = by; y < by + 8 && whole; y++){
+                    for (int x = bx; x < bx + 8; x++){
+                        const size_t p = (size_t)y * width + x;
+                        if (!use(p)){
+                            whole = false;
+                            break;
+                        }
+                        for (int c = 0; c < 3; c++)
+                            sum[c] += (int)a[p * 4 + c] - (int)b[p * 4 + c];
+                    }
+                }
+                if (!whole)
+                    continue;
+                for (int c = 0; c < 3; c++)
+                    largest = std::max(largest, std::fabs(sum[c] / 64.0));
+            }
+        }
+        return largest;
+    }
+
+    // a sky face brightest at the horizon, darker up and down (even in the elevation: continuous
+    // across the faces whatever their image orientation), a long smooth gradient
+    TextureData ssrGradientFace(std::vector<uint8_t>& pixels, int face){
+        constexpr int SIZE = 64;
+        pixels.assign((size_t)SIZE * SIZE * 4, 255);
+        for (int y = 0; y < SIZE; y++){
+            for (int x = 0; x < SIZE; x++){
+                const float sc = 2.0f * ((float)x + 0.5f) / SIZE - 1.0f;
+                const float tc = 2.0f * ((float)y + 0.5f) / SIZE - 1.0f;
+                Vector3 d;
+                switch (face){
+                    case 0:  d = Vector3(1.0f, -tc, -sc); break;
+                    case 1:  d = Vector3(-1.0f, -tc, sc); break;
+                    case 2:  d = Vector3(sc, 1.0f, tc); break;
+                    case 3:  d = Vector3(sc, -1.0f, -tc); break;
+                    case 4:  d = Vector3(sc, -tc, 1.0f); break;
+                    default: d = Vector3(-sc, -tc, -1.0f); break;
+                }
+                d.normalize();
+                const float horizon = 1.0f - std::fabs(d.y);
+                uint8_t* p = &pixels[((size_t)y * SIZE + x) * 4];
+                p[0] = (uint8_t)std::lround((0.25f + 0.65f * horizon) * 255.0f);
+                p[1] = (uint8_t)std::lround((0.35f + 0.6f * horizon) * 255.0f);
+                p[2] = (uint8_t)std::lround((0.6f + 0.4f * horizon) * 255.0f);
+            }
+        }
+        return TextureData(SIZE, SIZE, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
+    }
+
+    // the passes of the last frame
+    PassList ssrPasses(){
+        SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+        GpuEnvironment::drawFrames(2);
+        return SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+    }
+
+    bool ssrHasPass(const PassList& list, const char* label){
+        for (const PassRecord& pass : list.passes){
+            if (std::string(pass.label) == label)
+                return true;
+        }
+        return false;
+    }
+
+}
+
 // The transparent queue draws after the composite (Unity's order): SSR samples the opaque scene,
 // so a glass pane in front of the box does not tint the box's reflection in the floor
 TEST_F(SSRCompositeGpu, TransparentsAreNotReflected){
@@ -863,7 +942,11 @@ TEST_F(SSRCompositeGpu, ToneCurveKeepsPixelsWithoutReflection){
     ASSERT_TRUE(render(5));
     const std::vector<uint8_t> off = ssrReadTarget();
     ssrWriteImage("tone-curve-no-reflection-diff-x16", ssrDiffImage(on, off, 16));
-    EXPECT_LE(ssrMeasured("tone curve, SSR on against off", ssrMaxDiff(on, off)), 2);
+    // the linear store's dither: a step of noise per pixel, nothing on average
+    EXPECT_LE(ssrMeasured("tone curve, SSR on against off", ssrMaxDiff(on, off)), 3);
+    const double blocks = ssrBlockMeanDiff(on, off, [](size_t){ return true; });
+    std::printf("[measured] tone curve, SSR on against off, 8 x 8 means: %.2f/255\n", blocks);
+    EXPECT_LE(blocks, 1.0);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -955,5 +1038,193 @@ TEST_F(SSRCompositeGpu, RebuiltEnvironmentFollowsACurvedSurface){
     ssrWriteImage("curved-mirror-rebuilt", rebuilt);
     ssrWriteImage("curved-mirror-error-x8", ssrDiffImage(drawn, rebuilt, 8));
     EXPECT_LE(ssrMeasured("pixel-to-pixel error of the rebuilt environment (99th percentile)", grain[grain.size() * 99 / 100]), 6);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The linear store is 8 bits of the shaper's code, a step of about 2% of the light near white:
+// undithered, a long sky gradient under the tone curve bands; dithered, the 8 x 8 means of the
+// image with SSR follow the image without it
+TEST_F(SSRCompositeGpu, AGradientSkyDoesNotBandUnderAToneCurve){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.tonemap = TonemapMode::ACES;
+    post.exposure = 1.0f;
+    scene.setPostProcessing(post);
+    static std::vector<uint8_t> faces[6];
+    auto sky = std::make_unique<Skybox>(&scene);
+    sky->setTextures("ssr-composite-gradient-sky", ssrGradientFace(faces[0], 0), ssrGradientFace(faces[1], 1), ssrGradientFace(faces[2], 2),
+                     ssrGradientFace(faces[3], 3), ssrGradientFace(faces[4], 4), ssrGradientFace(faces[5], 5));
+    build(0.9f);
+    // looking at the sky above the horizon
+    camera.setPosition(0.0f, 1.0f, 6.0f);
+    camera.setTarget(0.0f, 4.0f, -6.0f);
+    ASSERT_TRUE(render(10));
+    const std::vector<uint8_t> on = shot(VIEW_OFF);
+    scene.setSSREnabled(false);
+    ASSERT_TRUE(render(5));
+    const std::vector<uint8_t> off = ssrReadTarget();
+    ssrWriteImage("gradient-sky-with-ssr", on);
+    ssrWriteImage("gradient-sky-diff-x16", ssrDiffImage(on, off, 16));
+    const double blocks = ssrBlockMeanDiff(on, off, [](size_t){ return true; });
+    std::printf("[measured] gradient sky, SSR on against off: 8 x 8 means %.2f/255, pixels %d/255\n", blocks, ssrMaxDiff(on, off));
+    EXPECT_LE(blocks, 0.75);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// Under the tone curve every pixel the colour pass drew takes it, a surface the G-buffer pass
+// left out too (a mesh loaded before SSR was on, a terrain refreshing its maps): only the clear
+// colour, as it was cleared, is passed through
+TEST_F(SSRCompositeGpu, SurfacesOutsideTheGBufferTakeTheToneCurve){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.tonemap = TonemapMode::ACES;
+    post.exposure = 1.0f;
+    scene.setPostProcessing(post);
+    build(0.9f);
+    setBoxColor(Vector4(0.4f, 0.6f, 0.2f, 1.0f));
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> inGBuffer = shot(VIEW_OFF);
+    // the box without its G-buffer program: the G-buffer pass skips it
+    MeshComponent& mesh = box->getComponent<MeshComponent>();
+    std::shared_ptr<ShaderRender> program = mesh.submeshes[0].gbufferShader;
+    ASSERT_TRUE(program);
+    mesh.submeshes[0].gbufferShader.reset();
+    const std::vector<uint8_t> outside = shot(VIEW_OFF);
+    mesh.submeshes[0].gbufferShader = program;
+    const size_t boxPixel = pixelOf(Vector3(0.0f, 1.0f, -3.5f));
+    std::vector<size_t> pixels;
+    const int width = (int)GpuEnvironment::target().getWidth();
+    for (int dy = -10; dy <= 10; dy++)
+        for (int dx = -10; dx <= 10; dx++)
+            pixels.push_back(boxPixel + (size_t)((long)dy * width + dx));
+    ssrWriteImage("outside-gbuffer", outside);
+    EXPECT_LE(ssrMeasured("a surface outside the G-buffer, under ACES", ssrMaxDiff(inGBuffer, outside, pixels)), 3);
+    // and the clear colour is as it was cleared
+    const size_t backgroundPixel = (size_t)width * 4 + 4;
+    EXPECT_NEAR((int)outside[backgroundPixel * 4], (int)std::lround(0.08f * 255.0f), 1);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The resumed halves of the colour pass: the one after the composite does not load the colour the
+// composite covers; every one another half follows keeps its depth and stencil (with DONTCARE
+// GLES, WebGL and tilers drop them: the transparents would test against nothing)
+TEST_F(SSRCompositeGpu, ResumedColourPassesKeepTheirDepth){
+    JASPER_REQUIRE_GPU();
+    build();
+    // a reader of the scene colour over the floor: the pass splits again for its copy
+    Primitive water(&scene);
+    water.createPlane(4.0f, 4.0f);
+    water.setPosition(0.0f, 0.05f, 2.0f);
+    Material material;
+    material.name = "Water";
+    material.shader = "library:water";
+    material.shaderFeatures = {"REFRACTION"};
+    water.setMaterial(material);
+    ASSERT_TRUE(render());
+    const PassList list = ssrPasses();
+    std::vector<size_t> camera;
+    size_t afterMarch = list.passes.size();
+    bool marched = false;
+    for (size_t i = 0; i < list.passes.size(); i++){
+        const std::string label = list.passes[i].label;
+        if (label == "ssr")
+            marched = true;
+        if (label == "camera"){
+            camera.push_back(i);
+            if (marched && afterMarch == list.passes.size())
+                afterMarch = i;
+        }
+    }
+    ASSERT_GE(camera.size(), 3u) << "the colour pass in three halves (SSR, the copy)";
+    ASSERT_LT(afterMarch, list.passes.size());
+    EXPECT_EQ(list.passes[afterMarch].colorLoad[0], PassLoadAction::DontCare) << "the composite covers the colour";
+    EXPECT_EQ(list.passes[afterMarch].depthLoad, PassLoadAction::Load);
+    for (size_t k = 0; k + 1 < camera.size(); k++){
+        const PassRecord& pass = list.passes[camera[k]];
+        EXPECT_EQ(pass.depthStore, PassStoreAction::Store) << "half " << k << " of " << camera.size();
+        EXPECT_EQ(pass.stencilStore, PassStoreAction::Store) << "half " << k << " of " << camera.size();
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// With the uber pass (FXAA here) the pass ends in the target the uber pass reads: no blit
+TEST_F(SSRCompositeGpu, TheUberPassReadsTheSSRScene){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.fxaaEnabled = true;
+    scene.setPostProcessing(post);
+    build();
+    ASSERT_TRUE(render());
+    const std::vector<size_t> pixels = hit();
+    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
+    const int bare = ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels);
+    EXPECT_GE(bare, 30) << "the floor reflects the box";
+    Primitive cover(&scene);
+    ssrTransparentQuad(cover, 30.0f, 7.0f, Vector4(0.0f, 0.0f, 0.0f, 0.9f));
+    cover.setPosition(0.0f, 0.02f, 0.0f);
+    EXPECT_LE(ssrMeasured("reflection under the cover, uber pass", ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels)), bare / 6 + 2);
+    const PassList list = ssrPasses();
+    EXPECT_FALSE(ssrHasPass(list, "ssr scene blit"));
+    EXPECT_TRUE(ssrHasPass(list, "ssr"));
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The view's own target, of the pass's size, is where the pass continues: no target of its own,
+// no blit; a camera drawing into a texture of another size takes the scene target and the blit
+TEST_F(SSRCompositeGpu, ThePassContinuesInItsDestination){
+    JASPER_REQUIRE_GPU();
+    build();
+    ASSERT_TRUE(render());
+    EXPECT_FALSE(ssrHasPass(ssrPasses(), "ssr scene blit"));
+
+    camera.setRenderToTexture(true);
+    camera.setFramebufferSize(320, 180);
+    ASSERT_TRUE(render(5));
+    const PassList list = ssrPasses();
+    EXPECT_TRUE(ssrHasPass(list, "ssr scene blit"));
+    // the reflection reaches the camera's texture
+    scene.setSSRDebugMode(VIEW_REFLECTION);
+    ASSERT_TRUE(render(3));
+    std::vector<uint8_t> rgba;
+    Framebuffer* texture = camera.getFramebuffer();
+    ASSERT_TRUE(texture);
+    readTexture(texture->getRender().getColorTexture(), 320, 180, rgba);
+    size_t white = 0;
+    for (size_t p = 0; p < rgba.size() / 4; p++)
+        white += (rgba[p * 4] >= 245 && rgba[p * 4 + 1] >= 245 && rgba[p * 4 + 2] >= 245) ? 1 : 0;
+    EXPECT_GE(white, 50u) << "the box's reflection in the camera's texture";
+    scene.setSSRDebugMode(VIEW_OFF);
+    camera.setRenderToTexture(false);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// Transparent Sort off: the pass draws in hierarchy order, no opaque/transparent boundary; SSR
+// composites after it as before, and reflects
+TEST_F(SSRCompositeGpu, AHierarchyOrderedPassCompositesAfterIt){
+    JASPER_REQUIRE_GPU();
+    camera.setTransparentSort(false);
+    build();
+    ASSERT_TRUE(render());
+    const std::vector<size_t> pixels = hit();
+    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
+    EXPECT_GE(ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 30);
+    const PassList list = ssrPasses();
+    EXPECT_TRUE(ssrHasPass(list, "ssr composite"));
+    camera.setTransparentSort(true);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// SSR off: the view's SSR targets go
+TEST_F(SSRCompositeGpu, TurningSSROffFreesItsTargets){
+    JASPER_REQUIRE_GPU();
+    build();
+    ASSERT_TRUE(render());
+    const RenderStats on = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+    scene.setSSREnabled(false);
+    ASSERT_TRUE(render(5));
+    GpuEnvironment::drawFrames(2);
+    const RenderStats off = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+    // the G-buffer (four targets and its depth), the scene colour and its depth, the march, the blur
+    EXPECT_LE(off.aliveImages + 8, on.aliveImages) << on.aliveImages << " images with SSR, " << off.aliveImages << " without";
     EXPECT_NO_ENGINE_ERRORS();
 }

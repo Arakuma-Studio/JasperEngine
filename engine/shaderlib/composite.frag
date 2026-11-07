@@ -14,10 +14,12 @@
 //   out = scene + T * ao * (w * ssr - min(w, 1) * env)      w = SSR mask * intensity
 //
 // in linear light: the scene is decoded as the colour pass stored it (comp.sceneEncoding). Under
-// the post-processing colour the colour pass stores linear light (includes/post_color.glsl's
-// linear store) and this pass applies the tone curve, the grade, the vignette and the dither to
-// the result (its own u_fs_postColor, the scene's), as the colour pass would have; else the
-// colour pass's sRGB-encoded colour is swapped in linear light and passed through elsewhere.
+// the post-processing colour the colour pass stores linear light: its post-processing colour
+// with an identity LUT, the shaper's code sqrt(x / (x + k)) of includes/post_color.glsl,
+// dithered; this pass decodes it and applies the tone curve, the grade, the vignette and the
+// dither to every pixel (its own u_fs_postColor and LUT, the scene's), as the colour pass would
+// have, but the clear colour's (no sky), passed through. Else the colour pass's sRGB-encoded
+// colour is swapped in linear light and passed through elsewhere.
 //
 // A fullscreen pass fragment at v_texcoord t writes destination texel t and samples
 // scene/SSR (composite space) at t, flipped by params.w when the destination is the
@@ -64,7 +66,8 @@ uniform u_fs_compositeParams {
     vec4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
     vec4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
     vec4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
-    vec4 sceneEncoding; // x 1 = the surfaces are stored in linear light, y 1 = the background too
+    vec4 sceneEncoding; // x 1 = the colour pass stored linear light
+    vec4 clearColor;    // rgb = the clear colour as stored, w 1 = it is display colour, passed through
 } comp;
 
 #include "includes/depth_util.glsl"
@@ -168,25 +171,45 @@ float fogTransmittance(vec2 d, float depth01, vec3 P){
     return max(exp(-tau), 1.0 - heightFog.extinction_base_H_maxOpacity.w);
 }
 
-// the colour pass's stored colour of a surface (or, background, of the background) in linear light
-vec3 storedToLinear(vec3 stored, bool background){
-    if (comp.sceneEncoding.x > 0.5 && (!background || comp.sceneEncoding.y > 0.5))
-        return postColorStoredToLinear(stored);
-    return sRGBToLinear(stored);
+bool linearStore(){
+    return comp.sceneEncoding.x > 0.5;
+}
+
+// the linear store's shaper code back in linear light (k s^2 / (1 - s^2))
+vec3 storedToLinearLight(vec3 stored){
+    vec3 s2 = min(stored * stored, vec3(0.999));
+    return POST_COLOR_BLOCK.postColor_shaper.x * s2 / (1.0 - s2);
+}
+
+// a background pixel the clear colour holds as it was cleared (display colour)
+bool isClearColor(vec3 stored, bool background){
+    return background && comp.clearColor.w > 0.5 && all(lessThan(abs(stored - comp.clearColor.rgb), vec3(1.5 / 255.0)));
+}
+
+// the colour pass's stored colour in linear light
+vec3 storedToLinear(vec3 stored){
+    return linearStore() ? storedToLinearLight(stored) : sRGBToLinear(stored);
 }
 
 // a linear colour encoded for the target: the post-processing colour after a linear store
 vec3 linearToTarget(vec3 linearColor){
-    if (comp.sceneEncoding.x > 0.5)
+    if (linearStore())
         return postColorEncode(linearColor);
     return linearTosRGB(max(linearColor, vec3(0.0)));
 }
 
 // a pixel as the colour pass drew it: as stored, or the stored linear light encoded
 vec4 asDrawn(vec3 stored, bool background){
-    if (comp.sceneEncoding.x > 0.5 && (!background || comp.sceneEncoding.y > 0.5))
-        return vec4(postColorEncode(postColorStoredToLinear(stored)), 1.0);
+    if (linearStore() && !isClearColor(stored, background))
+        return vec4(postColorEncode(storedToLinearLight(stored)), 1.0);
     return vec4(stored, 1.0);
+}
+
+// the reflection as the Reflection debug view shows it (premultiplied by its confidence)
+vec3 reflectionView(vec4 refl){
+    if (linearStore())
+        return postColorEncode(storedToLinearLight(refl.rgb / max(refl.a, 1e-4))) * refl.a;
+    return refl.rgb * refl.a;
 }
 
 // the Reflection Source debug view's colours (docs/rendering/reflections.md)
@@ -218,7 +241,7 @@ void main(){
     float w = refl.a * intensity;
     if (mode == 0 && w < 1.0 / 1024.0){
         // (a surface or the background: the G-buffer's depth tells them apart when it matters)
-        if (comp.sceneEncoding.x > 0.5 && comp.sceneEncoding.y < 0.5){
+        if (linearStore() && comp.clearColor.w > 0.5){
             vec2 g = c;
             if (comp.params.y > 0.5) g.y = 1.0 - g.y;
             frag_color = asDrawn(scene, decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), g)) >= 1.0);
@@ -237,7 +260,7 @@ void main(){
     // background (no geometry): nothing to reflect, the SSR mask is 0 anyway
     if (depth01 >= 1.0){
         if (mode == 0)      frag_color = asDrawn(scene, true);
-        else if (mode == 1) frag_color = vec4(refl.rgb * refl.a, 1.0);
+        else if (mode == 1) frag_color = vec4(reflectionView(refl), 1.0);
         else                frag_color = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
@@ -299,7 +322,7 @@ void main(){
 
     // debug visualizations of the SSR G-buffer channels
     if (mode != 0){
-        if (mode == 1)      frag_color = vec4(refl.rgb * refl.a, 1.0);          // reflection
+        if (mode == 1)      frag_color = vec4(reflectionView(refl), 1.0);       // reflection
         else if (mode == 2) frag_color = vec4(nV * 0.5 + 0.5, 1.0);            // view normal
         else if (mode == 3) frag_color = vec4(vec3(roughness), 1.0);          // roughness
         else if (mode == 4) frag_color = vec4(vec3(metallic), 1.0);           // metallic
@@ -311,7 +334,7 @@ void main(){
     }
 
     // SSR reflection: un-premultiply, linearize, apply the same BRDF weight
-    vec3 ssrSpec = storedToLinear(refl.rgb / max(refl.a, 1e-4), false) * FssEss;
+    vec3 ssrSpec = storedToLinear(refl.rgb / max(refl.a, 1e-4)) * FssEss;
 
     // the swap: the reflection by its confidence (intensity a strength multiplier), never more
     // of the environment taken out than there is, weighed by occlusion and fog
@@ -320,7 +343,7 @@ void main(){
     // taking the rebuilt term out would leave a dark hole (a bright probe or the sun on chrome). The
     // swap fades out as the pixel reaches white; a clipped pixel stays as drawn.
     float clipFade = 1.0 - smoothstep(SSR_CLIP_FADE_START, 1.0, max(scene.r, max(scene.g, scene.b)));
-    vec3 sceneLin = storedToLinear(scene, false);
+    vec3 sceneLin = storedToLinear(scene);
     vec3 outLin = sceneLin + clipFade * T * ao * (w * ssrSpec - min(w, 1.0) * envSpec);
 
     frag_color = vec4(linearToTarget(max(outLin, vec3(0.0))), 1.0);

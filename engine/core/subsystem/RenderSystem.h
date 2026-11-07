@@ -315,10 +315,10 @@ namespace jasperengine{
 		Vector4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
 		Vector4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
 		Vector4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
-		// how the colour pass stored what the composite reads: x 1 = its surfaces in linear light
-		// (post_color.glsl's linear store, under the post-processing colour), y 1 = its background too
-		// (a sky drew it); 0 = display-encoded, as drawn
+		// how the colour pass stored what the composite reads: x 1 = linear light (the shaper's code,
+		// under the post-processing colour), 0 = display-encoded, as drawn
 		Vector4 sceneEncoding;
+		Vector4 clearColor; // rgb = the clear colour as stored, w 1 = the composite passes it through
 	} fs_composite_t;
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
@@ -1357,6 +1357,11 @@ namespace jasperengine{
 			// transparents, UI and overlays drawn over it with sceneColorFramebuffer's depth-stencil
 			// (made on first use, destroyed before it)
 			FramebufferRender ssrSceneTarget;
+			// the same with the pass's destination for colour (same size: no target, no blit), for
+			// the destination image and depth it was made with
+			FramebufferRender ssrSceneAlias;
+			uint32_t ssrSceneAliasImage = 0;
+			uint32_t ssrSceneAliasDepth = 0;
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
 
@@ -1894,7 +1899,14 @@ namespace jasperengine{
 		// composite (post_color.glsl), and the composite's own (the scene's), else neutral
 		post_color_t ssrCompositePostColor;
 		bool ssrLinearStore = false;
-		bool ssrBackgroundStored = false;
+		bool ssrClearColorShown = false;  // no sky: the clear colour shows where nothing is drawn
+		// the linear store's LUT (its texels their coordinates), bound in place of the scene's while
+		// the colour pass stores linear light (passPostColorLut; null: the scene's)
+		static constexpr int SSR_IDENTITY_LUT_SIDE = 16;
+		TextureRender ssrIdentityLut;
+		bool ssrIdentityLutReady = false;
+		TextureRender* passPostColorLut = nullptr;
+		bool ensureSSRIdentityLut();
 		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3
 		std::pair<int, int> compositeOcclusionSlot;               // u_occlusionGBufferTexture
 		std::pair<int, int> compositeSSAOSlot;                    // u_ssaoTexture
@@ -2341,6 +2353,8 @@ namespace jasperengine{
 		void setPassPostColor(const post_color_t& postColor);
 		void fillPassPostColor(bool active, const Rect& viewport, float targetHeight);
 		void applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the post-processing colour's LUT of the draws now (the scene's, or the SSR linear store's)
+		TextureRender* currentPostColorLut();
 		// the vignette's parameters for a viewport of a target targetHeight high (gl_FragCoord)
 		void fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
 		                  Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const;
@@ -3077,21 +3091,23 @@ namespace jasperengine{
 		// the SSR march and its glossy blur (their own passes): the reflection the composite reads
 		TextureRender* renderSSRReflections(CameraComponent& camera);
 		// the composite's block (flipDestination: a GL swapchain destination), its sky's map out
-		void fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered);
+		void fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered, bool debugView);
 		// the composite's draw into the open pass (target: that pass's format)
 		void drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered);
 		// the target a distance-sorted pass resumes on after its SSR composite (ssrSceneTarget)
 		bool ensureSSRSceneTarget();
-		// source onto destination, whole (null: the swapchain at the view rect)
-		void renderBlitTo(TextureRender* source, FramebufferRender* destination);
+		// the destination with the scene colour's depth (ssrSceneAlias), null when it cannot be
+		FramebufferRender* ensureSSRSceneAlias(FramebufferRender* destination);
+		// a view's SSR targets, freed while it draws no SSR
+		void releaseSSRTargets();
 
 		// fixed game resolution
 		void loadBlit();
 		void destroyBlit();
 		bool ensureFixedResFramebuffer(unsigned int width, unsigned int height, TextureFilter filter);
-		// draws source over the real destination (Engine framebuffer in the editor,
-		// swapchain in exported builds)
-		void renderBlit(TextureRender* source, Rect viewport);
+		// draws source over the real destination at viewport: destination, else the Engine
+		// framebuffer in the editor, the swapchain in exported builds
+		void renderBlit(TextureRender* source, Rect viewport, FramebufferRender* destination = nullptr, const char* label = "blit");
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
