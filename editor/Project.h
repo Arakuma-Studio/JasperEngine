@@ -582,7 +582,8 @@ namespace jasperengine::editor{
         bool filterAllTools = false;     // T1 R66: the Slope Filter reaches every map tool
         std::vector<TerrainPaintRule> paintRules;   // T1 R67
         int paintRulesSeed = 0;
-        bool slopeFilterInvert = false;  // T1 R66: the filter keeps what is outside its ranges
+        bool slopeFilterInvert = false;  // T1 R66: the Slope Filter keeps slopes outside its range
+        bool heightFilterInvert = false; // and heights outside the height range
         float paintMinSlope = 0.0f;      // degrees
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight

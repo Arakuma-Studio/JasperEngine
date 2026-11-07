@@ -1874,6 +1874,7 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     terrainNode["paintUseMask"] = ts.paintUseMask;
     if (ts.filterAllTools) terrainNode["filterAllTools"] = true;
     if (ts.slopeFilterInvert) terrainNode["slopeFilterInvert"] = true;
+    if (ts.heightFilterInvert) terrainNode["heightFilterInvert"] = true;
     if (!ts.paintRules.empty()) {
         YAML::Node rules(YAML::NodeType::Sequence);
         for (const TerrainPaintRule& rule : ts.paintRules) {
@@ -1927,6 +1928,7 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = YamlNumbers::as<bool>(tn["paintUseMask"]);
     ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
     ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
+    ts.heightFilterInvert = tn["heightFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["heightFilterInvert"]);
     ts.paintRules.clear();
     // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
     if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {

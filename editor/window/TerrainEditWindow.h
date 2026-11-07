@@ -173,6 +173,7 @@ namespace jasperengine::editor{
         bool paintUseMask;
         bool filterAllTools = false;
         bool filterInvert = false;
+        bool heightFilterInvert = false;
         // T1 R63: the next click picks the Set Height value instead of painting
         bool pickHeightArmed = false;
         float paintMinSlope;
