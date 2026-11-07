@@ -17,6 +17,7 @@
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
 #include "Backend.h"
+#include "asset/AssetTypes.h"
 #include "App.h"
 #include "util/Util.h"
 #include "window/Widgets.h"
@@ -1247,14 +1248,31 @@ void ProjectSettingsWindow::drawSettings() {
     const std::string privacyProblem = applePrivacyError();
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty() && privacyProblem.empty();
 
+    // other asset roots move the referenced files: a confirmation says what moves first
+    if (!m_rootsError.empty()) {
+        ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY));
+        ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - buttonsWidth - style.ItemSpacing.x);
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Asset directories not changed: %s", m_rootsError.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
+    }
     ImGui::BeginDisabled(!canSave);
     if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-        if (applySettings()) {
+        if (m_assetsDir != m_project->getAssetsDir() || m_luaDir != m_project->getLuaDir()) {
+            m_rootsPlan = m_project->planAssetRootChange(m_assetsDir, m_luaDir, false);
+            m_rootsConfirmRequested = true;
+        } else if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     }
     ImGui::EndDisabled();
+    drawRootsConfirmation();
+    if (m_rootsCloseWindow) {
+        m_rootsCloseWindow = false;
+        m_isOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (!hasAbi) {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
@@ -1280,6 +1298,89 @@ void ProjectSettingsWindow::drawSettings() {
     // Per-frame lifecycle, matching Properties: the pool keeps the underlying
     // thumbnail textures cached, so re-creating the wrappers next frame is cheap.
     m_thumbnailTextures.clear();
+}
+
+void ProjectSettingsWindow::drawRootsConfirmation() {
+    constexpr const char* POPUP = "Change Asset Directories";
+    if (m_rootsConfirmRequested) {
+        ImGui::OpenPopup(POPUP);
+        m_rootsConfirmRequested = false;
+    }
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    auto rel = [this](const fs::path& path) { return FileUtils::pathToGenericUtf8(m_project->normalizeToProjectRelative(path)); };
+    const AssetRootChange& plan = m_rootsPlan;
+    const float width = Theme::dpi(460.0f);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+    if (!plan.blocker.empty()) {
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Can't change the asset directories: %s.", plan.blocker.c_str());
+        ImGui::TextUnformatted("Nothing was changed.");
+        EditorModal::message("Can't change the asset directories: " + plan.blocker + ". Nothing was changed.");
+    } else {
+        size_t files = 0;
+        for (const AssetRootChange::Move& move : plan.moves) {
+            if (!AssetTypes::isMetaFile(move.from)) files++;
+        }
+        ImGui::Text("%zu referenced file(s) or folder(s) move into the new directories:", files);
+        if (!plan.moves.empty() && ImGui::BeginChild("##RootMoves", ImVec2(width, Theme::dpi(120.0f)), ImGuiChildFlags_Borders)) {
+            for (const AssetRootChange::Move& move : plan.moves) {
+                if (AssetTypes::isMetaFile(move.from)) continue;
+                ImGui::BulletText("%s  ->  %s", rel(move.from).c_str(), rel(move.to).c_str());
+            }
+        }
+        if (!plan.moves.empty()) ImGui::EndChild();
+        ImGui::Text("%zu file(s) are rewritten (scenes, prefabs, materials, project.yaml). Files nothing references stay where they are.",
+                    plan.rewritten.size());
+        if (!plan.alreadyThere.empty()) {
+            ImGui::Text("%zu identical file(s) already at the destination are used as they are.", plan.alreadyThere.size());
+        }
+        if (!plan.keptOutside.empty()) {
+            ImGui::Text("%zu reference(s) outside both directories keep their paths.", plan.keptOutside.size());
+        }
+        if (!plan.savedScenesWithEdits.empty()) {
+            ImGui::Text("Open scenes with unsaved changes are saved: %zu.", plan.savedScenesWithEdits.size());
+        }
+        if (!plan.unsavedBuffers.empty()) {
+            ImGui::Text("Unsaved script edits are saved first: %zu file(s).", plan.unsavedBuffers.size());
+        }
+        if (!plan.textReferencesBroken.empty()) {
+            ImGui::Text("%zu text reference(s) (require, HTML, CSS, #include) will still name the old paths.", plan.textReferencesBroken.size());
+        }
+        ImGui::TextDisabled("This cannot be undone; changing the directories back moves the files back.");
+        EditorModal::message(std::to_string(files) + " referenced file(s) or folder(s) move into the new directories; " +
+                             std::to_string(plan.rewritten.size()) + " file(s) are rewritten. This cannot be undone.");
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Separator();
+    const float buttonWidth = Theme::dpi(projectSettingsButtonWidth);
+    if (plan.blocker.empty()) {
+        if (EditorModal::button("Move and Apply", "yes", ImVec2(buttonWidth * 1.4f, 0))) {
+            const AssetRootChange done = m_project->changeAssetRoots(m_assetsDir, m_luaDir, false);
+            ImGui::CloseCurrentPopup();
+            if (!done.ok()) {
+                // the window stays open, nothing else is applied
+                m_rootsError = done.refusal();
+            } else {
+                m_rootsError.clear();
+                if (!done.failedSaves.empty()) {
+                    std::string files;
+                    for (const fs::path& path : done.failedSaves) files += "\n" + rel(path);
+                    Backend::getApp().registerAlert("Change Asset Directories",
+                        "The directories changed, but these files could not be saved and still hold the old paths on disk "
+                        "(the editor keeps the new ones; save them again):" + files);
+                }
+                // the window closes after this popup ended (CloseCurrentPopup there closes it)
+                m_rootsCloseWindow = applySettings();
+            }
+        }
+        ImGui::SameLine();
+    }
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        if (!plan.blocker.empty()) m_rootsError = plan.blocker;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 std::string ProjectSettingsWindow::inheritedApplicationName() const {
@@ -5128,8 +5229,6 @@ bool ProjectSettingsWindow::applySettings() {
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
     application.allowInsecureHttp = m_allowInsecureHttp;
 
-    // Moves the referenced files in and rewrites every reference to the new roots
-    m_project->changeAssetRoots(m_assetsDir, m_luaDir);
     m_project->setScriptDirs(m_scriptDirs);
     if (m_cxxStandardIndex < 0 || m_cxxStandardIndex >= cxxStandardCount) {
         m_cxxStandardIndex = 0;

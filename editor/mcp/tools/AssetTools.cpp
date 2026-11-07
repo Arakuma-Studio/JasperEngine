@@ -1698,8 +1698,23 @@ void moveAssetTool(const CallPtr& call) {
     // a copy only reads its source (a copy out of a linked-in library is fine); a move moves the entry
     const bool copying = call->args().value("copy", false);
     if (!resolveExisting(call, "path", from, true, copying ? PathFor::Read : PathFor::Entry)) return;
-    if (!resolveExisting(call, "to", to, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
+    const bool hasTo = call->args().contains("to") && call->args()["to"].is_string() && !call->args()["to"].get<std::string>().empty();
+    if (!hasTo && copying) {
+        // Unity's Duplicate: beside the source, under its free name ("hero 1.png")
+        std::string error;
+        const std::string beside = projectRelative(project, CopyFileCmd::freeName(from));
+        if (!McpRefs::resolveProjectWritePath(project, beside, to, error, false)) {
+            call->fail(error);
+            return;
+        }
+        to = to.lexically_normal();
+    } else if (!hasTo) {
+        call->fail("to is required for a move (folder + name); a copy without to is a Duplicate beside the source.");
+        return;
+    } else if (!resolveExisting(call, "to", to, false, PathFor::Write)) {
+        return;
+    }
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
     std::string why;
     // not the project root, its project.yaml or a hidden folder's contents, nor a file named
@@ -1773,8 +1788,8 @@ void moveAssetTool(const CallPtr& call) {
         call->fail("The destination folder " + projectRelative(project, to.parent_path()) + " does not exist; create it with create_folder.");
         return;
     }
-    if (Util::isInsidePath(to, from)) {
-        call->fail("Can't move a folder into itself.");
+    if (const std::string refusal = copying ? AssetOps::copyRefusal(from, to) : AssetOps::moveRefusal(from, to); !refusal.empty()) {
+        call->fail(refusal);
         return;
     }
     const bool copy = call->args().value("copy", false);
@@ -4097,13 +4112,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
             "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
-            "shader forks, Animation Players (as the Project window does); or copy it (a copied prefab or clip gets a new GUID). The "
-            "destination must not exist; its folder must.";
+            "shader forks, Animation Players; or copy it (a copied prefab or clip gets a new GUID). The "
+            "destination must not exist.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"to", assetPath("New path (folder + name).")},
+            {"to", assetPath("New path; omit with copy to duplicate.")},
             {"copy", withDefault(boolean(""), false)}
-        }, {"path", "to"});
+        }, {"path"});
         tool.allowedWhilePlaying = false;
         tool.handler = moveAssetTool;
         registry.addTool(std::move(tool));

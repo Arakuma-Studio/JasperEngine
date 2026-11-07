@@ -70,10 +70,12 @@ namespace jasperengine::editor {
         // refused, a link planted on the way since is never followed. Without `beneath`: beneath
         // the write scope the step is made in (an MCP call: the project directory), else, with
         // `ownFolders`, each file beneath its own folder once resolved (no new refusal; still no
-        // link planted below it followed), else plain writes.
+        // link planted below it followed), else plain writes. `stepName` names the undo step
+        // ("Create Lua Script Goblin.lua"; empty: WriteFilesCmd's own name).
         static bool writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
                                   std::function<void(const std::vector<std::filesystem::path>&)> afterChange = nullptr,
-                                  Guard guard = nullptr, std::filesystem::path beneath = {}, bool ownFolders = false);
+                                  Guard guard = nullptr, std::filesystem::path beneath = {}, bool ownFolders = false,
+                                  const std::string& stepName = {});
     };
 
 }

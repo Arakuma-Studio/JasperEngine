@@ -95,6 +95,60 @@ namespace {
 
 }
 
+namespace {
+
+    bool intoItself(const fs::path& from, const fs::path& to) {
+        std::error_code ec;
+        if (!fs::is_directory(from, ec)) {
+            return false;
+        }
+        // strictly below: the folder's own place is a duplicate beside it (a free name), not into it
+        auto below = [](const fs::path& path, const fs::path& dir) {
+            return safewrite::isAtOrBelow(path, dir) && !safewrite::isAtOrBelow(dir, path);
+        };
+        if (below(to.lexically_normal(), from.lexically_normal())) {
+            return true;
+        }
+        const fs::path fromReal = safewrite::resolvedPath(from);
+        const fs::path toReal = safewrite::resolvedPath(to);
+        return !fromReal.empty() && !toReal.empty() && below(toReal, fromReal);
+    }
+
+    std::string movedName(const fs::path& path) {
+        return "'" + FileUtils::pathToUtf8(path.filename()) + "'";
+    }
+
+}
+
+std::string AssetOps::moveRefusal(const fs::path& from, const fs::path& to) {
+    if (intoItself(from, to)) {
+        return "Can't move " + movedName(from) + " into itself: pick a folder outside it.";
+    }
+    return std::string();
+}
+
+std::string AssetOps::copyRefusal(const fs::path& from, const fs::path& to) {
+    if (intoItself(from, to)) {
+        return "Can't copy " + movedName(from) + " into itself: pick a folder outside it.";
+    }
+    std::error_code ec;
+    if (fs::is_directory(from, ec)) {
+        size_t entries = 0;
+        for (fs::recursive_directory_iterator it(from, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end && entries < 200000; it.increment(ec), entries++) {
+            if (safewrite::isProjectFileName(it->path())) {
+                return "Can't copy " + movedName(from) + ": it holds " + FileUtils::pathToGenericUtf8(it->path().lexically_relative(from.parent_path())) +
+                       ", and a second project.yaml would be another project inside this one.";
+            }
+        }
+    }
+    return std::string();
+}
+
+std::vector<std::pair<fs::path, fs::path>> AssetOps::withCompanions(const fs::path& from, const fs::path& to) {
+    return withMeta(from, to);
+}
+
 fs::path AssetOps::uniqueTrashPath(const fs::path& trashDir, const fs::path& file) {
     std::error_code ec;
     fs::path candidate = trashDir / file.filename();
@@ -140,6 +194,10 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
     std::error_code ec;
     if (!fs::exists(from, ec)) {
         result.error = from.string() + " does not exist";
+        return result;
+    }
+    if (std::string refusal = moveRefusal(from, to); !refusal.empty()) {
+        result.error = std::move(refusal);
         return result;
     }
     if (fs::exists(to, ec)) {
@@ -287,6 +345,10 @@ Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to
     std::error_code ec;
     if (!fs::exists(from, ec)) {
         result.error = from.string() + " does not exist";
+        return result;
+    }
+    if (std::string refusal = copyRefusal(from, to); !refusal.empty()) {
+        result.error = std::move(refusal);
         return result;
     }
     if (fs::exists(to, ec)) {

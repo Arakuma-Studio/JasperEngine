@@ -1929,6 +1929,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
         {"maximize_on_play", settings.maximizeOnPlay},
+        {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},

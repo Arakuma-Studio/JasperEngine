@@ -87,6 +87,11 @@ namespace jasperengine::editor {
         DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
+        // OK with other asset roots: what the change would do (the confirmation), why it did not
+        AssetRootChange m_rootsPlan;
+        bool m_rootsConfirmRequested = false;
+        bool m_rootsCloseWindow = false;
+        std::string m_rootsError;
         std::vector<fs::path> m_scriptDirs;
         int m_cxxStandardIndex = 0;
         bool m_physics2DEnabled = true;
@@ -314,6 +319,8 @@ namespace jasperengine::editor {
         std::string inheritedApplicationBuild() const;
 
         bool applySettings();
+        // the "Change Asset Directories" confirmation: Move and Apply runs the change, then the rest
+        void drawRootsConfirmation();
 
     public:
         // category: a page to show, e.g. "Player"; nullptr keeps the last one.
