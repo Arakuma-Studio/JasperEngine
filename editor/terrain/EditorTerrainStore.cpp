@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorTerrainStore.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "terrain/TerrainMapPersistence.h"

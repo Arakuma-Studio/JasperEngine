@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapDeltaCmd.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "command/CommandNames.h"

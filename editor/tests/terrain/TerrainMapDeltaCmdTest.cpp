@@ -5,6 +5,7 @@
 // it was not cut from, with the memory R26 states. Structural steps keep compressed snapshots.
 
 #include "TerrainProjectFixture.h"
+#include "component/TerrainComponent.h"
 
 #include "command/type/TerrainMapDeltaCmd.h"
 #include "command/type/TerrainTextureEditCmd.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapPersistence.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "pool/TextureDataPool.h"

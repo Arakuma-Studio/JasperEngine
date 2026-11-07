@@ -4,6 +4,7 @@
 // When an edited map reaches its file (T1 R29-R32; AC21, AC22)
 
 #include "TerrainProjectFixture.h"
+#include "component/TerrainComponent.h"
 
 #include "command/type/TerrainMapDeltaCmd.h"
 #include "util/PngWriter.h"

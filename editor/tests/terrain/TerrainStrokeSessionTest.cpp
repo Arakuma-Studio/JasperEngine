@@ -5,6 +5,8 @@
 // for the routes that have to reach a Project (AC15, AC64).
 
 #include "TerrainProjectFixture.h"
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
 
 #include "command/type/TerrainMapDeltaCmd.h"
 #include "component/SplineComponent.h"

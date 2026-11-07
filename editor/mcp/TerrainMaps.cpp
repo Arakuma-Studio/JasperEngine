@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMaps.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "mcp/McpRefs.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainTextureEditCmd.h"
+#include "component/TerrainComponent.h"
 
 #include "command/CommandNames.h"
 #include "terrain/TerrainBytes.h"
