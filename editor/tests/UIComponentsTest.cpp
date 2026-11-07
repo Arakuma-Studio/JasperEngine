@@ -650,15 +650,17 @@ TEST_F(UIComponentsTest, TransitionOwnership) {
     EXPECT_EQ(uic(e).texture.getId(), "uicomponents|h");
     EXPECT_EQ(uic(e).color, Vector4(0, 0, 1, 1)) << "Sprite Swap leaves the colour alone";
 
+    // drawn once (a first load takes the transition as it is): the UI system alone, without a GPU
+    uic(e).loaded = true;
     btn(e).transition = ButtonTransition::COLOR_TINT;
     btn(e).needUpdateButton = true;
-    frame();
+    ui().update(0.0);
     EXPECT_EQ(uic(e).texture.getId(), "uicomponents|n") << "no longer swapped: the Normal texture once";
     EXPECT_EQ(uic(e).color, Vector4(0, 1, 0, 1));
 
     btn(e).transition = ButtonTransition::NONE;
     btn(e).needUpdateButton = true;
-    frame();
+    ui().update(0.0);
     uic(e).color = Vector4(1, 0, 1, 1);
     ui().eventOnPointerMove(-1, 900, 900, false);
     EXPECT_EQ(uic(e).color, Vector4(1, 0, 1, 1)) << "None writes nothing";

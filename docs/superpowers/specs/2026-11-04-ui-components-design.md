@@ -1047,7 +1047,9 @@ lean MCP rules, the sound layer).
    `TextOutgrowingItsBufferReloads` are not written: the unit harness cannot hold a texture in `Loading`, and
    no GPU harness loads component UI; both fixes are covered by reading (inferred). The UBSan run of the
    inactive layout child is not run (no sanitizer tree built, per the brief's build rules). The MCP tests are one
-   file, `tools/mcp/tests/test_ui_buttons.py`.
+   file, `tools/mcp/tests/test_ui_buttons.py`; it also checks a label clipped by its ancestor (AC3, green only:
+   the clip by ancestors is unchanged code), the runtime state while held and disabled, the Selected tint in Game
+   view pixels, the undo of a Button edit, and Play/Stop/Play.
 9. **A pointer press on a Button whose Navigation is None** (with a selection elsewhere) deselects, as a press on
    any non-selectable element.
 10. **`get_entity` / `get_runtime_entity`** return `selectable {navigable, navigation {up, down, left, right, next}}`
@@ -1066,3 +1068,7 @@ lean MCP rules, the sound layer).
 15. **MCP text within the core budget:** `create_ui`'s description names `select_on_enable` only (the rest is
     in jasper://docs/ui); `get_play_state`'s description is unchanged (its `input.ui_selected` is documented
     in jasper://docs/ui).
+16. **Review fixes:** Play stop resets the played scene's selection and every Button's runtime state
+    (`UISystem::resetSelection`, called by `Project::stop`); clones and moves remap Explicit navigation; a lost
+    selection shows its unselected look; a key the selection took keeps its release and its typed character from
+    the game; `Engine::getUINavigationWants` gives `Input::beginFrame` both wants from one look at the scenes.

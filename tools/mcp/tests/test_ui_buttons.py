@@ -164,8 +164,12 @@ async def test_nine_patch_label_not_clipped(ed: Editor):
     await frame(ed)
     shot_raw = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
     shot = Shot(shot_raw.images[0][0], shot_raw.value)
-    outside = sum(1 for x in range(810, 1100, 2) for y in range(300, 340) if sum(shot.px(x, y)) < 240)
-    ed.check(outside == 0, f"the label is clipped at the image's edge: {outside} dark samples beyond it")
+    # beyond the image's right edge nothing of the button draws (its white image nor its label):
+    # the black background only
+    drawn = sum(1 for x in range(810, 1100, 2) for y in range(302, 338) if sum(shot.px(x, y)) > 60)
+    inside = sum(1 for x in range(702, 798, 2) for y in range(302, 338) if sum(shot.px(x, y)) > 60)
+    ed.check(inside > 0, f"the button draws inside the image ({inside} lit samples)")
+    ed.check(drawn == 0, f"the button and its label are clipped at the image's edge: {drawn} lit samples beyond it")
     await ed.call("delete_entities", scene=sid, entity="Clip")
     for name in ("Plain", "Patched"):
         await ed.call("delete_entities", scene=sid, entity=name)
@@ -293,8 +297,16 @@ async def test_play_stop_play_resets_the_selection(ed: Editor):
             selected = state["input"]["ui_selected"]
             ed.check(selected and selected[0]["entity"]["path"].endswith("Resume"),
                      f"Play {round_}: Select On Enable selects Resume: {selected!r}")
+            # left unselected: only Select On Enable selects it again in the next Play
+            await ed.call("eval_lua", code="UI.setSelected(scene, nil); return true")
+            await ed.call("eval_lua", code="UI.setSelected(scene, entity('Menu/Resume')); return true")
+            await ed.call("wait", frames=2)
+            await ed.call("eval_lua", code="UI.setSelected(scene, nil); return true")
         finally:
             await ed.call("play", action="stop")
+        await frame(ed)
+        # an edit redraws the Button in edit mode: no state factor may divide the saved scale
+        await ed.call("set_properties", scene=sid, entity="Menu/Resume", values={"button": {"fadeDuration": 0.05 * round_}})
         await frame(ed)
         after = await ed.call("get_entity", scene=sid, entity="Menu/Resume", components=["transform", "ui"])
         ed.check(component_values(after, "transform")["scale"] == scale,
