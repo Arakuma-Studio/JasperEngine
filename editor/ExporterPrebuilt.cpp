@@ -123,6 +123,7 @@ namespace {
 
 editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, const ExportConfig& cfg, const PlayerInfo* playerInfo) {
     BuildMethodChoice choice;
+    const std::string appName = proj->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(proj->getName());
     // (a) C++ scripts: what a script directory compiles (Generator::writeSourceFiles)
     std::vector<std::string> sources;
     for (const fs::path& scriptDir : proj->getScriptDirs()) {
@@ -132,7 +133,9 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
         for (auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
              !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
             const std::string name = it->path().filename().string();
-            if (it->is_directory(ec) && (name.empty() || name[0] == '.' || name == "build")) {
+            // an earlier export left in the project holds the engine's sources: none of them is the game's
+            if (it->is_directory(ec) && (name.empty() || name[0] == '.' || name == "build" ||
+                                         !exportfiles::exportFolderMarker(it->path(), appName).empty())) {
                 it.disable_recursion_pending();
                 continue;
             }
@@ -648,8 +651,8 @@ bool editor::Exporter::writeGameConfig() {
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     std::error_code ec;
     if (!icon.empty() && fs::is_regular_file(icon, ec) && icon.extension() == ".png") {
-        fs::copy_file(icon, contentDir / "icon.png", fs::copy_options::overwrite_existing, ec);
-        if (!ec) game.icon = "icon.png";
+        if (!copyOrFail(icon, contentDir / "icon.png")) return false;
+        game.icon = "icon.png";
     }
     std::string error;
     if (!writeText(contentDir / "game.json", game.toJson().dump(2) + "\n", error)) {
@@ -1062,7 +1065,7 @@ bool editor::Exporter::finalizeWeb() {
         page = text.replace(marker, std::string("{{JASPERENGINE_DEFAULT_HTML}}").size(), page);
     }
     page = composeWebPage(page, project->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
-                          web.hideEmscriptenUI, fs::is_regular_file(contentDir / "icon.png", ec) || !web.favicon.empty(),
+                          web.hideEmscriptenUI, true,
                           project->getCanvasWidth(), project->getCanvasHeight(), threads);
     if (page.find("player-loader.js") == std::string::npos) {
         setError("The web page does not load player-loader.js (a custom shell keeps {{JASPERENGINE_DEFAULT_HTML}} or {{JASPERENGINE_LOADER}})");
@@ -1075,25 +1078,21 @@ bool editor::Exporter::finalizeWeb() {
     }
     if (threads) {
         // hosts that read a _headers file (Netlify, Cloudflare Pages) send the isolation headers
-        writeText(stagingDir / "_headers", "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n", error);
+        if (!writeText(stagingDir / "_headers", "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n", error)) {
+            setError(error);
+            return false;
+        }
     }
     // the notices next to the page
     if (!copyInto(contentDir / "licenses", stagingDir / "licenses", error)) {
         setError(error);
         return false;
     }
-    if (fs::is_regular_file(contentDir / "THIRD-PARTY-NOTICES.txt", ec))
-        fs::copy_file(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir / "THIRD-PARTY-NOTICES.txt", fs::copy_options::overwrite_existing, ec);
-    if (!web.favicon.empty()) {
-        const fs::path favicon = web.favicon.is_absolute() ? web.favicon : project->getProjectPath() / web.favicon;
-        fs::copy_file(favicon, stagingDir / "favicon.png", fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            setError("Cannot copy the web favicon " + favicon.string() + ": " + ec.message());
-            return false;
-        }
-    } else if (fs::is_regular_file(contentDir / "icon.png", ec)) {
-        fs::copy_file(contentDir / "icon.png", stagingDir / "favicon.png", fs::copy_options::overwrite_existing, ec);
+    if (fs::is_regular_file(contentDir / "THIRD-PARTY-NOTICES.txt", ec) &&
+            !copyOrFail(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir / "THIRD-PARTY-NOTICES.txt")) {
+        return false;
     }
+    if (!writeWebFavicon(stagingDir / "favicon.png")) return false;
     std::lock_guard<std::mutex> lock(progressMutex);
     result.executable = stagingDir / "index.html";
     result.artifacts = {stagingDir / "index.html", stagingDir / "content.jpak"};

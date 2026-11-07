@@ -825,6 +825,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp

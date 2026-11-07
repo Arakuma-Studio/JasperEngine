@@ -1095,6 +1095,9 @@ namespace jasperengine::editor{
             // scenes a scene load replaced (script-lifecycle 9.4): out of the game, their scripts
             // released; a Play copy is deleted and the played scene restored at Stop
             std::vector<PlayRuntimeScene> retiredRuntimeScenes;
+            // the variants the session's objects used, by source scene id: collected when a load
+            // retires a scene and at Stop, before the scripts go (they own what they created)
+            std::map<uint32_t, std::set<ShaderKey>> playShaderKeys;
             std::atomic<bool> cancelled{false};
             std::atomic<bool> startupThreadDone{false};  // Set when connect thread exits
             std::atomic<bool> startupSucceeded{false};   // True only if finalizeStart was called
@@ -1395,7 +1398,11 @@ namespace jasperengine::editor{
 
         void destroyPlayCreatedEntities(SceneProject* sceneProject);
         void finalizeStart(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene>& runtimeScenes);
-        void finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes);
+        void finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes,
+                          const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys);
+        // the variants `entries` drew with, objects made during Play included, into
+        // session.playShaderKeys (the DontDestroyOnLoad scene's under the played scene)
+        void collectPlayShaderKeys(PlaySession& session, const std::vector<PlayRuntimeScene>& entries);
         void runPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const LocalBuildSettings& buildSettings);
         // What Play's startup reads of the scenes, taken on the main thread (preparePlayStartup)
         // for its worker thread, which then only compiles shaders and C++ scripts
@@ -1560,12 +1567,14 @@ namespace jasperengine::editor{
         // goes through `limit` and comes again for what is pending. Unreadable scenes are named.
         ShaderListStatus refreshClosedSceneShaderKeys(const ShaderListLimit& limit = {});
         // What the scenes need, normalized: each one's keys, and what an open one has loaded and
-        // needs now. Any thread an export runs on.
-        void collectBuildShaderKeys(std::set<ShaderKey>& keys) const;
+        // needs now. Any thread an export runs on. Keys of project forks whose sources are gone
+        // are left out (the build could only fail on them), their names added to deadForks.
+        void collectBuildShaderKeys(std::set<ShaderKey>& keys, std::set<std::string>* deadForks = nullptr) const;
         // The list of a build from what the scenes need: what every build ships, the additions and
-        // the warm-up list in, the exclusions out
+        // the warm-up list in (a deleted fork's left out, named in deadForks), the exclusions out
         std::set<ShaderKey> finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
-                                                  const std::set<ShaderKey>& exclusions) const;
+                                                  const std::set<ShaderKey>& exclusions,
+                                                  std::set<std::string>* deadForks = nullptr) const;
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
         // and cannot compile, so a variant the editor never draws with is missing there. The
@@ -1574,8 +1583,13 @@ namespace jasperengine::editor{
         std::set<ShaderKey> collectStandaloneShaderKeys();
 
         // Live-derive the shader keys a scene needs from its current components
-        // (used at scene save and by the Export window's pre-populated list).
-        void collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
+        // (used at scene save and by the Export window's pre-populated list). With
+        // includeRuntimeEntities, also every GameObject made during Play (scripts, prefab spawns)
+        void collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys,
+                                    bool includeRuntimeEntities = false) const;
+        // Removes the keys of project forks whose sources no longer resolve (deleted forks: what
+        // the export's shader build would fail on), adding their names to deadForks
+        void dropDeadForkKeys(std::set<ShaderKey>& shaderKeys, std::set<std::string>* deadForks = nullptr) const;
         // a project script sets the scene's maxLightsPerObject (the export then ships the lit
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
@@ -1595,6 +1609,14 @@ namespace jasperengine::editor{
         // (collectRequiredShaderKeys) and the keys it had (its file's, Play's at Stop), never what
         // has drawn, so the same scene saves the same list whatever rendered before
         void collectSavedShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
+
+        // An export's sources of the scenes never saved (it cleared the generated folder; main.cpp
+        // names every scene): written from what the editor holds, their names in `written`; a
+        // never-saved scene that is not loaded has nothing to write and goes to `notOpen`.
+        // Main thread.
+        void writeUnsavedSceneSources(std::vector<std::string>& written, std::vector<std::string>& notOpen);
+        // The scenes the generated main.cpp names that have no generated source
+        std::vector<std::string> scenesWithoutSource() const;
 
         std::string getName() const;
         // The C++ scripts library's name (the project name as an identifier)

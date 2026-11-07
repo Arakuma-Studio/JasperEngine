@@ -15625,7 +15625,7 @@ bool RenderSystem::isBaseLayer() const{
     if (rv().secondary)
         return rv().baseLayer;
 #endif
-    return Engine::getMainScene() == scene;
+    return Engine::getBaseScene() == scene;
 }
 
 const LightCamera& RenderSystem::lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const{
@@ -15863,7 +15863,7 @@ bool RenderSystem::isFixedResolutionActive() const{
         return rv().fixedResolution && rv().baseLayer;
 #endif
     // main scene only: layer scenes keep rendering at native resolution on top
-    return !disableFixedResolution && Engine::getMainScene() == scene;
+    return !disableFixedResolution && Engine::getBaseScene() == scene;
 }
 
 void RenderSystem::updateSwapchainRedirect(){
@@ -15874,7 +15874,7 @@ void RenderSystem::updateSwapchainRedirect(){
     bool redirect = false;
 
     if (!Engine::getFramebuffer() && !isFixedResolutionActive()
-            && Engine::getMainScene() == scene && Engine::isViewLoaded()){
+            && Engine::getBaseScene() == scene && Engine::isViewLoaded()){
         unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
         unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
 

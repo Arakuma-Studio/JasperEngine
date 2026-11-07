@@ -495,6 +495,9 @@ namespace jasperengine {
         static bool isSceneRunning(Scene* scene);
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
+        // The scene drawn first, which clears the frame: the main scene, or before there is one
+        // (a loading scene covering the start scene) the bottom running scene
+        static Scene* getBaseScene();
         static Scene* getLastScene();
         // every running scene: the main scene and its layers (child scenes), bottom first
         static std::vector<Scene*> getSceneLayers();

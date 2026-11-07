@@ -37,6 +37,41 @@ A build replaces its output folder only once it is complete: it is made in
 `<folder>.staging-<pid>` and swapped in at the end, so a failed or cancelled build leaves the
 previous one as it was.
 
+## What a build checks
+
+A build either ships what the project holds or fails and says why; it never reports success with
+something missing.
+
+- **Every copy and write is checked.** A file that can't be copied or written (the disk is full, a
+  folder sits where the file goes) fails the build, naming the file and the reason. A folder that
+  can't be read is left out with the warning `W-UNREADABLE-FOLDER`.
+- **The output folder is never inside the project** (or its assets or Lua folder): the editor would
+  import the exported files as project assets. Build Settings marks such a folder in red and
+  disables Build; the command line and MCP refuse it with the same text. Below a hidden folder
+  (`.jasperengine/builds`, MCP's default) or the project's top-level `build/` is fine. A path with a `;` is refused too (CMake reads it as a list separator): rename the folder.
+- **An earlier export left inside the project is left out** of the next one (`W-EXPORT-FOLDER-SKIPPED`
+  names it): a folder with `jasperengine.py`, `content-manifest.json`, the web player, the game's
+  executable or its Android package. Its textures and models are not cooked either. Move it out of the project.
+- **The engine workspaces' IDE output never ships** (`.gradle`, `.idea`, `local.properties`,
+  `build/`, `xcuserdata`, `DerivedData`, `*.iml`), and a re-export leaves the IDE state of an
+  exported workspace alone: Android Studio keeps its `local.properties` and caches.
+- **Shader variants**: a scene's saved variants of a fork whose files were deleted go at its next
+  save (the build saves every scene); one that only Build Settings or the warm-up list still names is
+  left out with `W-SHADER-FORK-MISSING`. Stop saves the variants of what scripts made during Play
+  (also in scenes a load replaced), so the build ships them.
+- **A scene never saved** ships as the editor holds it (`W-SCENE-NOT-SAVED`; Build Settings lists it
+  with a **Save...** button). One that is not open either fails the build.
+- **Build errors**: a failed compile names its first error in the message ("Compiling failed with 2
+  error(s). First: scripts/Player.cpp:12: ..."), lists up to 20 in the Build dialog (each opens the
+  file at the line; **Copy Errors** copies them) and repeats them at the end of the log. The Console
+  counts compiler errors and warnings with its Error and Warning counters.
+- **Warnings** of every build are listed when it completes ("Build completed with 2 warning(s)"),
+  by the command line, and in MCP's `warnings[]`.
+
+**D3D11 shaders** ship as bytecode when the build runs on Windows (the game skips compiling them);
+a Windows build made on Linux or macOS ships their HLSL source, which the game compiles when first
+used (the result's note says so).
+
 ## Building an exported source project
 
 Export source (Build Settings, `jasperengine-editor export --project <dir> --out <dir>`, MCP
@@ -194,7 +229,11 @@ startup and every export use the same list.
   let the worker isolate the page, it runs the single-thread player. Project Settings > Player >
   Threading > Web: Multithreaded decides whether the pthreads player ships at all. Serve the
   folder over HTTP (`python3 tools/web/serve.py --root <folder>`): `file://` does not load
-  WebAssembly.
+  WebAssembly. The page is always `index.html` (what web hosts such as itch.io open; a compiled
+  build used to name it `<app>.html`, and a re-export removes that one). Its icon is Web >
+  Favicon, else the Player icon (a PNG), else the JasperEngine logo. A source export built with
+  `jasperengine.py --platform web` writes `index.html` next to `<app>.export.html` and names it at
+  the end.
 - **Windows**: the editor and `jasperengine-editor` (CLI exports included) need Windows 10
   version 1903 or later, which runs them in the UTF-8 code page so file names in any language
   work; on older Windows (Server 2019 too) they stop with a message. Windows games run on older

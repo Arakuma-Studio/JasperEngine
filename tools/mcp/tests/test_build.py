@@ -852,6 +852,13 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_in("undefined_symbol_xyz", first["message"])
     ed.check_eq(first["line"], 2)
     ed.check_eq(first.get("project_file"), "cpp/Broken.cpp")
+    # the failure names its first error itself (export-pipeline 6.10), and the log ends with the list
+    ed.check(re.match(r"Compiling failed with \d+ error\(s\)\. First: \S*Broken\.cpp:2: ", job["message"]) is not None,
+             f"the failure's first error: {job['message']}")
+    listed = (await ed.call("read_console", contains="Build errors (", limit=5)).get("entries", [])
+    ed.check(listed, "the errors repeated at the end of the log")
+    # each compiler error counts once: the repeat and the failure line are not errors again
+    ed.check(all(e.get("level") != "error" for e in listed), f"the repeat is not an error: {listed}")
     (ed.project / "cpp" / "Broken.cpp").unlink()
     await ed.call("set_project_settings", values={"scripting.script_dirs": []})
 

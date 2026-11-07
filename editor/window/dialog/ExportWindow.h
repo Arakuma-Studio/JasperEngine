@@ -71,6 +71,9 @@ namespace jasperengine::editor {
 
         // UI state
         fs::path m_targetDir;
+        // Exporter::outputFolderRefusal of m_targetDir, computed when it changes
+        fs::path m_refusalCheckedDir;
+        std::string m_outputRefusal;
         bool m_targetDirFromDefault = false;
         bool m_projectSettingsDirty = false;
 
@@ -238,6 +241,8 @@ namespace jasperengine::editor {
         void drawTextureSection();
         void drawBackendSection();
         void applySourcePlatformPresets();
+        // a failed build's errors, each with a location a link that opens the file at the line
+        void drawBuildErrors(const ExportProgress& progress);
         void drawProgress();
         void drawAddShaderDialog();
         void drawOverwriteConfirmDialog();
