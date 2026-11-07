@@ -150,6 +150,13 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   build-toolchain landed, plus a header fan-out cut and a generated AssetRefSchema. Merged into integration (conflicts in the
   asset table, reflection, CreateEntityCmd includes and the Xcode project; holeMap now gets its reference row from reflection).
   Each stream merges integration once. Owner repeated: light, filtered suites only.
+- 2026-11-07 04:48: all five leads stopped on a revoked API login (not their work) and were revived. `origin/main` gained 338
+  commits, including Doriax agent-authoring (`edit_terrain_details`, `TerrainDetailRules`, the terrain guide), merged into
+  integration (one conflict in docs/testing.md). T1 and T5 merge it now because they overlap it; T2, T3 and T6 at landing.
+- Verified so far (filtered runs): integration's core filter 84/84 after the first upstream merge; T1's collider refresh
+  (29bb7a78b) 162/162 with WERROR; T6 voxel core 144/144 on its merged tree; T2 Lua API 12/12. T2 found and fixed a vacuous MCP
+  test and moved the graph-shipping rule into `Exporter::shipsForNoise` with unit tests; its player-level test runs at the end.
+- NoiseGraph is asset type 32 (upstream's SoundEvent took 28).
 - Stream findings so far (filtered runs only, nothing is final):
   - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
     now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`
