@@ -322,6 +322,8 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
 
     const size_t boneCount = rig.bones.size();
     const size_t channelCount = rig.channels.size();
+    deferredProperties.assign(rig.properties.empty() ? 0 : channelCount, 0.0f);
+    propertiesPending = false;
     for (Pose* pose : {&temp, &accumulate, &source, &destination, &montagePose, &finalPose}) pose->resize(boneCount, channelCount);
     finalPose.copyFrom(rig.rest);
     spaceWorld.assign(boneCount, Affine());

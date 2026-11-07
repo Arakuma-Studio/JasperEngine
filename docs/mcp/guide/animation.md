@@ -207,6 +207,10 @@ component: `color.a`). An unknown name is refused with a did-you-mean and the co
 List what a GameObject has with `get_animation {root, list_properties: "Panel/Stats"}`
 (`[{component, property, kind, label, value}]`).
 
+On an Animator, Lua fields, `active` and a script's `enabled` apply on the main thread before the
+frame's root motion, state callbacks and events, in the order in `docs/animator.md`, "Order of a
+frame". Two Animators keying one GameObject's property: the later Animator's value stays.
+
 | component | properties |
 |---|---|
 | `gameobject` | `active` (bool) |

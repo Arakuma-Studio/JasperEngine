@@ -249,6 +249,8 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
   `onEnable` / `onDisable` they run never interrupt the player; clip events run after the values
   are written. A child the clip turns off keeps being animated (it can be turned on again). A clip
   that turns off its own root stops its player (an inactive GameObject's player waits), as in Unity.
+  An Animator keeps the same order across all its characters: see
+  [Order of a frame](animator.md#order-of-a-frame).
 - **A Button** writes its graphic's `ui.color` from its state colours every frame: animate
   `button.colorNormal` instead (the binding report says so).
 - **Lua fields.** The clip sets the instance field `self.<name>` (a fresh Vector for vectors) of the
