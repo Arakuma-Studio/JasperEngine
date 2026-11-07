@@ -5,6 +5,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/TerrainComponent.h"
 
+#include "Out.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -12,6 +13,9 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/TerrainTextureEditCmd.h"
+#include "graph/Graph.h"
+#include "noise/TerrainGeneration.h"
+#include "noise/TerrainPresets.h"
 #include "physics/JoltShapeBuilder.h"
 #include "terrain/TerrainSizePresets.h"
 #include "util/TerrainMapUtils.h"
@@ -44,6 +48,35 @@ void editor::CreateTerrainDialog::applyPreset(int index){
     settings.meshResolution = p.meshResolution;
     settings.rootGrid = p.root;
     settings.levels = p.levels;
+}
+
+// T2 R61: a preset's recommended size and height become the dialog's
+void editor::CreateTerrainDialog::applyNoisePreset(const std::string& id){
+    settings.noisePreset = id;
+    TerrainPreset preset;
+    if (id.empty() || !TerrainPresets::find(id, preset)) return;
+    settings.size = preset.terrainSize;
+    settings.height = preset.maxHeight;
+}
+
+bool editor::CreateTerrainDialog::generate(Project* project, uint32_t sceneId, Entity entity, const std::string& presetId, uint32_t seed,
+                                           std::function<void(const GenerationResult&)> done, std::string& error){
+    TerrainPreset preset;
+    if (!TerrainPresets::find(presetId, preset)){
+        error = "No Noise Graph preset '" + presetId + "'.";
+        return false;
+    }
+    graph::LoadReport report;
+    GenerationRequest request;
+    request.graph = graph::load(TerrainPresets::json(presetId), report);
+    if (!report.ok){
+        error = report.error;
+        return false;
+    }
+    request.displayName = preset.name;
+    request.seed = seed;
+    TerrainGeneration::start(project, sceneId, entity, std::move(request), std::move(done));
+    return true;
 }
 
 void editor::CreateTerrainDialog::open(Project* project, uint32_t sceneId, Entity parent){
@@ -202,6 +235,23 @@ void editor::CreateTerrainDialog::show(){
         ImGui::SetNextItemWidth(width);
         EditorModal::inputFloat("Base Height", "base_height", &settings.baseHeight, 0.0f, 0.0f, "%.1f m");
     }
+    // T2 R61: generated after Create, from a preset; its recommended size and height fill the fields above
+    static const std::vector<TerrainPreset> noisePresets = TerrainPresets::list();
+    std::vector<std::string> noiseNames{"None"};
+    for (const TerrainPreset& p : noisePresets) noiseNames.push_back(p.name);
+    int noise = 0;
+    for (size_t i = 0; i < noisePresets.size(); i++){
+        if (noisePresets[i].id == settings.noisePreset) noise = static_cast<int>(i) + 1;
+    }
+    ImGui::SetNextItemWidth(width);
+    if (EditorModal::combo("Noise Graph", "noise_graph", &noise, noiseNames)){
+        applyNoisePreset(noise > 0 && noise <= static_cast<int>(noisePresets.size()) ? noisePresets[static_cast<size_t>(noise) - 1].id : std::string());
+    }
+    if (!settings.noisePreset.empty()){
+        int seed = static_cast<int>(settings.seed);
+        ImGui::SetNextItemWidth(width);
+        if (EditorModal::inputInt("Seed", "seed", &seed, 0, 0)) settings.seed = static_cast<uint32_t>(std::max(seed, 1));
+    }
     EditorModal::checkbox("Add Terrain Collider", "add_terrain_collider", &settings.collider);
     settings.heightmap = std::clamp(settings.heightmap, 2, 8192);
     settings.control = std::clamp(settings.control, 2, 8192);
@@ -212,7 +262,15 @@ void editor::CreateTerrainDialog::show(){
 
     ImGui::Separator();
     if (EditorModal::button("Create", "ok", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
-        if (create(project, sceneId, parent, settings, error) != NULL_ENTITY){
+        const Entity made = create(project, sceneId, parent, settings, error);
+        if (made != NULL_ENTITY){
+            if (!settings.noisePreset.empty()){
+                std::string failed;
+                const bool started = generate(project, sceneId, made, settings.noisePreset, settings.seed, [](const GenerationResult& result){
+                    if (!result.ok && !result.cancelled) Out::error("Create Terrain: " + result.error);
+                }, failed);
+                if (!started) Out::error("Create Terrain: " + failed);
+            }
             isOpen = false;
             ImGui::CloseCurrentPopup();
         }

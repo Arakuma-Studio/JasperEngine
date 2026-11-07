@@ -8,6 +8,7 @@ The stream-key lint runs here too: tools/check_stream_keys.py knows the two new 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -186,6 +187,52 @@ async def test_settings_persist_across_a_reload(ed: Editor):
     text = "\n".join(path.read_text() for path in workspace)
     ed.check("preset:plains" in text, f"generateGraph persisted in {workspace}")
     ed.check("4242" in text, f"generateSeed persisted in {workspace}")
+
+
+async def create_through_dialog(ed: Editor, ui: Ui, sid, values: dict):
+    """Create Terrain from the Terrain window's empty state, answered with values; the new terrain's id"""
+    await ed.call("select_entities", scene=sid, entities=[])
+    await ed.call("focus_window", window="terrain")
+    await ui.click_revealed("Create Terrain...", WINDOW)
+    for _ in range(60):
+        if (await ed.call("editor_status")).get("dialog"):
+            break
+        await ui.frames(2)
+    await ed.call("respond_dialog", values=values)
+    await ed.call("respond_dialog", choice="ok")
+    for _ in range(60):
+        found = (await ed.call("find_entities", scene=sid, name=values["name"]))["entities"]
+        if found:
+            return found[0]["id"]
+        await ui.frames(2)
+    ed.fail(f"Create Terrain made no {values['name']}")
+
+
+async def test_create_dialog_preset_is_generate_terrain(ed: Editor):
+    """T2 R61: Create Terrain with a Noise Graph preset takes the preset's recommended size and height and gives the
+    heights generate_terrain gives with that preset and seed"""
+    ui = Ui(ed)
+    await ed.call("tool_groups", enable=["terrain"])
+    made = await ed.call("create_scene", name="Dialog", type="3D", path="scenes/Dialog")
+    sid = made["scene"] if "scene" in made else made["scene_id"]
+    meta = json.loads((REPO / "editor" / "resources" / "noisegraphs" / "mountains.noisegraph").read_text())["metadata"]["preset"]
+    dunes = await create_through_dialog(ed, ui, sid, {"name": "Dunes", "noise_graph": "Mountains", "heightmap_resolution": 65, "seed": 7})
+    terrain = (await ed.call("get_entity", scene=sid, entity=dunes, components=["terrain"]))["components"]["terrain"]
+    ed.check_eq((terrain["terrainSize"], terrain["maxHeight"]), (meta["terrain_size"], meta["max_height"]), "the preset's recommended sizes")
+    # the same sizes without a preset, then generate_terrain
+    plain = await create_through_dialog(ed, ui, sid, {"name": "Plain", "heightmap_resolution": 65,
+                                                      "terrain_size": terrain["terrainSize"], "terrain_height": terrain["maxHeight"]})
+    flat = await ed.call("sample_terrain", scene=sid, entity=plain, grid=16)
+    await ed.call("generate_terrain", scene=sid, entity=plain, preset="mountains", seed=7)
+    want = await ed.call("sample_terrain", scene=sid, entity=plain, grid=16)
+    got = {}
+    for _ in range(300):
+        got = await ed.call("sample_terrain", scene=sid, entity=dunes, grid=16)
+        if got["grid"] == want["grid"]:
+            break
+        await ui.frames(2)
+    ed.check(want["grid"] != flat["grid"], "generate_terrain shaped the plain terrain")
+    ed.check_eq(got["grid"], want["grid"], "the dialog's preset gives generate_terrain's heights")
 
 
 async def test_stream_keys_lint(ed: Editor):

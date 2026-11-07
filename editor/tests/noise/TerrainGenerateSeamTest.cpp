@@ -1,9 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// T2 R61, AC44: what T1's Create Terrain dialog does with this spec, through a fake dialog: it lists
-// TerrainPresets::list() with each preset's recommended size and height, and once it has made the terrain,
-// calls TerrainGeneration::start. T1 owns the dialog; these two calls are T2's seam.
+// T2 R61, AC44: T1's Create Terrain dialog offers TerrainPresets::list() with each preset's recommended size and
+// height, and once it has made the terrain, runs the preset through TerrainGeneration::start. T1 owns the dialog;
+// these two calls are T2's seam.
 
 #include <gtest/gtest.h>
 
@@ -13,6 +13,7 @@
 #include "EditorHost.h"
 #include "Engine.h"
 #include "Project.h"
+#include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
@@ -20,6 +21,7 @@
 #include "noise/NoiseGraphRuntime.h"
 #include "noise/TerrainGeneration.h"
 #include "noise/TerrainPresets.h"
+#include "window/dialog/CreateTerrainDialog.h"
 
 #include <unistd.h>
 
@@ -122,31 +124,6 @@ namespace {
         return *simple;
     }
 
-    // The shape of T1's dialog: what it shows, and what it does on Create
-    struct FakeCreateDialog {
-        std::vector<TerrainPreset> offered = TerrainPresets::list();
-        TerrainPreset chosen;
-        float terrainSize = 0.0f;
-        float maxHeight = 0.0f;
-
-        void choose(const TerrainPreset& preset) {
-            chosen = preset;
-            terrainSize = preset.terrainSize;
-            maxHeight = preset.maxHeight;
-        }
-
-        std::shared_ptr<TerrainGeneration::Run> create(Project* project, uint32_t sceneId, Entity entity, TerrainGeneration::Done done) const {
-            GenerationRequest request;
-            graph::LoadReport report;
-            request.graph = graph::load(TerrainPresets::json(chosen.id), report);
-            EXPECT_TRUE(report.ok) << report.error;
-            request.displayName = chosen.name;
-            request.seed = 7;
-            request.resolution = 33;
-            return TerrainGeneration::start(project, sceneId, entity, std::move(request), std::move(done));
-        }
-    };
-
 }
 
 TEST(TerrainGeneration, CreateDialogSeam) {
@@ -157,30 +134,45 @@ TEST(TerrainGeneration, CreateDialogSeam) {
     SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
 
-    FakeCreateDialog dialog;
-    ASSERT_FALSE(dialog.offered.empty());
-    for (const TerrainPreset& preset : dialog.offered) {
+    const std::vector<TerrainPreset> offered = TerrainPresets::list();
+    ASSERT_FALSE(offered.empty());
+    for (const TerrainPreset& preset : offered) {
         EXPECT_FALSE(preset.hidden) << preset.id << ": the dialog offers no utility graph";
         EXPECT_GT(preset.terrainSize, 0.0f) << preset.id;
         EXPECT_GT(preset.maxHeight, 0.0f) << preset.id;
     }
-    dialog.choose(simplestPreset(dialog.offered));
-    const Entity entity = addTerrain(scene, sceneProject, dialog.terrainSize, dialog.maxHeight);
+    const TerrainPreset chosen = simplestPreset(offered);
+    CreateTerrainDialog::Settings settings;
+    settings.name = "Seam";
+    settings.size = chosen.terrainSize;
+    settings.height = chosen.maxHeight;
+    settings.heightmap = 33;
+    settings.noisePreset = chosen.id;
+    settings.seed = 7;
+    std::string error;
+    const Entity entity = CreateTerrainDialog::create(project, sceneId, NULL_ENTITY, settings, error);
+    ASSERT_NE(entity, NULL_ENTITY) << error;
+    CommandHistory* history = CommandHandle::get(sceneId);
+    const size_t created = history->position();
 
     LoopHost host;
     HostScope scope(host);
     bool called = false;
     GenerationResult got;
-    std::shared_ptr<TerrainGeneration::Run> run = dialog.create(project, sceneId, entity, [&](const GenerationResult& result) {
+    ASSERT_TRUE(CreateTerrainDialog::generate(project, sceneId, entity, settings.noisePreset, settings.seed, [&](const GenerationResult& result) {
         called = true;
         got = result;
-    });
+    }, error)) << error;
     runFramesUntil(host, called, 120);
     ASSERT_TRUE(called);
     EXPECT_TRUE(got.ok) << got.error;
-    EXPECT_NE(got.undoName.find(dialog.chosen.name), std::string::npos) << got.undoName;
+    EXPECT_NE(got.undoName.find(chosen.name), std::string::npos) << got.undoName;
     EXPECT_NE(got.undoName.find("seed 7"), std::string::npos) << got.undoName;
-    EXPECT_FALSE(scene->getComponent<TerrainComponent>(entity).heightMap.empty()) << "the map exists and was written";
+    EXPECT_EQ(history->position(), created + 1) << "the generation is one undo step after Create's";
+    EXPECT_LT(got.stats.heightMin, got.stats.heightMax) << "the preset shaped the flat map";
+    const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    EXPECT_EQ(terrain.terrainSize, chosen.terrainSize);
+    EXPECT_EQ(terrain.maxHeight, chosen.maxHeight);
 }
 
 // The Generate section's Preview in an editor that draws nothing else: its result comes back through the editor's
