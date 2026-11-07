@@ -28,6 +28,9 @@
 
 using namespace jasperengine;
 
+// the component's cap and the terrain folder's are one (T3 R15)
+static_assert(MAX_TERRAIN_LAYERS == terrain::TERRAIN_MAX_LAYERS, "TerrainComponent.h and TerrainLayers.h disagree on the layer count");
+
 // T3 R18, R20, R29: a variant with 'Thl' reads the hole map in whichever pass this binds. The loaded
 // variant may outlive the map (the last fill, until its plain variant is built), and a map that fails
 // to load or is not R8 has no texels for the CPU queries: both bind white, which is solid, so the

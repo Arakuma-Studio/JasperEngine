@@ -10,6 +10,7 @@
 
 #include "Export.h"
 #include "component/TerrainComponent.h"
+#include "terrain/TerrainLayers.h"
 #include "texture/TextureFormat.h"
 
 #include <array>
@@ -25,8 +26,8 @@ namespace jasperengine::terrain {
         std::vector<std::string> sliceKeys;
         int colorSlices = 0;
         // where a layer's normal and packed surface slices landed, -1 when it has none
-        std::array<int, MAX_TERRAIN_LAYERS> normalSlice;
-        std::array<int, MAX_TERRAIN_LAYERS> surfaceSlice;
+        std::array<int, TERRAIN_MAX_LAYERS> normalSlice;
+        std::array<int, TERRAIN_MAX_LAYERS> surfaceSlice;
         bool anySource = false;
     };
 

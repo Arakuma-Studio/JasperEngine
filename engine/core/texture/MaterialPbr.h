@@ -283,8 +283,8 @@ namespace jasperengine{
         static uint64_t getDefineBits(const std::vector<std::string>& defines);
         static uint64_t getDefineBit(const std::string& define);
         static std::vector<std::string> getDefinesFromBits(uint64_t bits);
-        // T3 D2: every define the terrain's own state decides, the one mask the
-        // terrain's reload hook compare
+        // T3 D2: every define the terrain's own state decides: the one mask the
+        // terrain's reload hook compares
         static uint64_t getTerrainDefineBits();
 
         // the High Lit Quality's define (SceneSettings::litQuality)

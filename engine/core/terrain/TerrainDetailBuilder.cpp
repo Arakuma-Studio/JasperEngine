@@ -79,7 +79,7 @@ namespace {
 
     std::vector<SliceSources> gatherSources(const TerrainComponent& terrain, const DetailPlan& plan, SourceFiles& files) {
         std::vector<SliceSources> sources(plan.sliceKeys.size());
-        const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(MAX_TERRAIN_LAYERS));
+        const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
         for (size_t i = 0; i < layerCount; i++) {
             const TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
             sources[i].color = files.get(layer.colorTexture);
@@ -152,7 +152,7 @@ std::string jasperengine::terrain::detailSourceKey(const Texture& texture) {
 DetailPlan jasperengine::terrain::planDetailArray(const TerrainComponent& terrain) {
     DetailPlan plan;
     // The shader reaches all three layers of any bound blend map, so colors come in threes
-    const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(MAX_TERRAIN_LAYERS));
+    const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
     plan.colorSlices = static_cast<int>(((layerCount + 2) / 3) * 3);
     plan.sliceKeys.resize(static_cast<size_t>(plan.colorSlices));
     plan.normalSlice.fill(-1);
@@ -186,7 +186,7 @@ DetailPlan jasperengine::terrain::planDetailArray(const TerrainComponent& terrai
 
 DetailSliceKind jasperengine::terrain::detailSliceKind(const DetailPlan& plan, int slice) {
     if (slice < plan.colorSlices) return DetailSliceKind::COLOR;
-    for (int layer = 0; layer < MAX_TERRAIN_LAYERS; layer++) {
+    for (int layer = 0; layer < TERRAIN_MAX_LAYERS; layer++) {
         if (plan.normalSlice[layer] == slice) return DetailSliceKind::NORMAL;
     }
     return DetailSliceKind::SURFACE;
