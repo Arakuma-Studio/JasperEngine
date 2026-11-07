@@ -3,8 +3,3 @@
 # libraries under libs/ and engine/libs/. Engine and editor code is never suppressed: fix it.
 # Every entry has a comment line above it giving the reason.
 
-
-# recastnavigation (engine/libs/recastnavigation, upstream as of v1.6.0 and main): the proximity
-# grid's spatial hash multiplies cell coordinates in int and wraps on purpose; it overflows for
-# crowds far from the origin (a 600 m corridor: NavCrowdTest.CorridorAtCapacity)
-signed-integer-overflow:DetourProximityGrid.cpp

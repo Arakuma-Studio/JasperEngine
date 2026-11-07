@@ -55,6 +55,18 @@ only builds with asserts failed; upstream's fix skips the sample.
 
 Covered by `NavBakeTest.DetailSamplingDegenerate` (slopes 100 km from the origin, no Recast assert).
 
+## 5. The proximity grid's hash wraps in unsigned arithmetic (DetourCrowd, ours)
+
+`hashPos2` multiplied cell coordinates by large primes in `int`, which overflows (undefined
+behaviour) for a crowd far enough from the origin: UBSan stops at a crowd 300 m out. The products
+and the XOR are now taken in `unsigned int`, whose wrap is defined and gives the same bits the
+signed code gave wherever it happened to wrap: the same buckets, the same crowd.
+
+- `DetourCrowd/Source/DetourProximityGrid.cpp`, `hashPos2`.
+
+Covered by `NavCrowdTest.CorridorAtCapacity` and `NavAgentTest.ExtensionKeepsPathWithoutAutoRepath`
+under `SANITIZE=address,undefined` (a crowd on a 600 m strip). Upstream (main) still has it.
+
 ## Considered and not taken
 
 - `0096f0d`: `dtNavMeshQuery::raycast` stops once its path buffer is full. It changes query and

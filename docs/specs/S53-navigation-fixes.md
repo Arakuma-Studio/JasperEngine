@@ -706,6 +706,9 @@ P2 order:
 - S53 P1: AC14 RemoveNeverLost, 70 boxes disabled the tick after they appear do not lose a cut
   (the removals follow the adds' tile order); the test disables 60 cut boxes while it enables 10
   others, 70 requests in one tick, which is what loses cuts in the S19 code.
+- S53 P1: R1, a fifth local patch: dtProximityGrid's spatial hash overflowed `int` (UBSan) for
+  the AC1 strip's crowd 300 m from the origin; it now wraps in `unsigned int` (same buckets).
+  NOTICE.md and README.jasper.md count five patches.
 - S53 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
   Android test's project), with two gate lines.
 
