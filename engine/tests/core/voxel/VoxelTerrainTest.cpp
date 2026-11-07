@@ -370,7 +370,8 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
     body.createSphereCollider(0.5f);
     steps(10);
     const JPH::BodyID id = scene->getComponent<RigidbodyComponent>(ball).body;
-    physics->getBodyInterface3D().SetLinearVelocity(id, JPH::Vec3(6.0f, 0.0f, 0.0f));
+    // fast enough, rolling, to climb back out of the 1 m dish with what contacts take
+    physics->getBodyInterface3D().SetLinearVelocity(id, JPH::Vec3(9.0f, 0.0f, 0.0f));
     float lowest = 1e9f;
     bool crossed = false;
     for (int tick = 0; tick < 480 && !crossed; tick++) {
