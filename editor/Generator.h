@@ -254,6 +254,8 @@ namespace jasperengine::editor {
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
         bool keepScreenOn = true;
         int targetFrameRate = -1;
+        // Project Settings > Graphics > Dynamic Batching
+        bool dynamicBatching = true;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
@@ -264,6 +266,7 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         DrawSubmissionSettings drawSubmission;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
@@ -350,6 +353,9 @@ namespace jasperengine::editor {
         // CMake that fails a plugin configure below the compiler floors of the engine build
         // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
         static std::string getToolchainFloorCheck();
+        // The Jolt and Box2D macros the editor's engine library was built with (space-separated
+        // definitions): every C++ that links it compiles with them (scripts, editor scripts, clangd)
+        static std::string physicsCompileDefinitions();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
@@ -406,6 +412,7 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
         void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()

@@ -757,6 +757,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
+        {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
         {"ui", ui},
         // S25: what the layouts and the palette change

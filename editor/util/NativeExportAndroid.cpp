@@ -378,7 +378,7 @@ bool NativeExportAndroid::write(const fs::path& workspaceDir, const fs::path& ex
         g += pluginManifest ? "            manifest.srcFile pluginsRootAbs+'/AndroidManifest.xml'\n" : "            manifest.srcFile 'generated/AndroidManifest.xml'\n";
         g += "        }\n";
         g += "    }\n\n";
-        g += "    namespace 'com.jaspergameengine.nativeplugins'\n";
+        g += "    namespace = 'com.jaspergameengine.nativeplugins'\n";
         g += "}\n\n";
         g += "dependencies {\n";
         g += "    api project(':jasperbridge')\n";

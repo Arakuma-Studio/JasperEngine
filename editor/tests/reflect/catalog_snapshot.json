@@ -2387,6 +2387,11 @@
      34359738368,
      true
     ],
+    "foliageLayers[].minDrawDistance": [
+     2,
+     34359738368,
+     true
+    ],
     "foliageLayers[].minHeight": [
      2,
      34359738368,
@@ -4049,7 +4054,9 @@
    "key": "action",
    "known_keys": [
     "ownedTarget",
+    "randomStart",
     "speed",
+    "startOffset",
     "state",
     "target"
    ],
@@ -4060,7 +4067,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -4082,7 +4099,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -6570,7 +6597,9 @@
     "instancedBillboard",
     "instancedCylindricalBillboard",
     "instances",
-    "maxInstances"
+    "maxInstances",
+    "nearFadeEnd",
+    "nearFadeStart"
    ],
    "name": "InstancedMeshComponent",
    "properties_of_default": {
@@ -6623,6 +6652,16 @@
      9,
      8,
      true
+    ],
+    "nearFadeEnd": [
+     2,
+     0,
+     true
+    ],
+    "nearFadeStart": [
+     2,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -6674,6 +6713,16 @@
     "maxInstances": [
      9,
      8,
+     true
+    ],
+    "nearFadeEnd": [
+     2,
+     0,
+     true
+    ],
+    "nearFadeStart": [
+     2,
+     0,
      true
     ]
    },
@@ -20937,7 +20986,17 @@
     0,
     true
    ],
+   "randomStart": [
+    0,
+    0,
+    true
+   ],
    "speed": [
+    2,
+    0,
+    true
+   ],
+   "startOffset": [
     2,
     0,
     true
@@ -22551,6 +22610,16 @@
    "maxInstances": [
     9,
     8,
+    true
+   ],
+   "nearFadeEnd": [
+    2,
+    0,
+    true
+   ],
+   "nearFadeStart": [
+    2,
+    0,
     true
    ]
   },

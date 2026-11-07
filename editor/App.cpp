@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "render/ViewCameraMirror.h"
+#include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"
@@ -266,6 +268,10 @@ editor::App::App(){
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
+    // Ctrl+S while playing, and any key whose command cannot run now: the status bar says why
+    shortcutDispatcher.setDisabledHandler([](const CommandDef& def, const std::string& reason) {
+        StatusBar::setTransientMessage(def.name + ": " + reason, 4.0);
+    });
     bookmarksWindow = new BookmarksWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
@@ -310,7 +316,7 @@ void editor::App::saveFunc(){
     }
 }
 
-void editor::App::saveAllFunc(std::function<void(bool)> callback){
+void editor::App::saveAllFunc(std::function<void(bool)> callback, bool includeUntitled){
     if (project.isAnyScenePlaying() || saveDialogInProgress) {
         if (callback) callback(false);
         return;
@@ -327,13 +333,13 @@ void editor::App::saveAllFunc(std::function<void(bool)> callback){
             return;
         }
         if (project.isTempProject()) {
-            registerProjectSaveDialog([callback]() { if (callback) callback(true); });
+            registerProjectSaveDialog([callback](bool saved) { if (callback) callback(saved); });
         } else {
             const bool saved = project.saveProject(true);
             if (!saved) registerAlert("Save Failed", "The project could not be saved. Check its directory and try again.");
             if (callback) callback(saved);
         }
-    });
+    }, includeUntitled);
 }
 
 void editor::App::saveAllAndProject(std::function<void()> onSuccess){
@@ -937,13 +943,13 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::SaveProjectAs:
             if (project.isAnyScenePlaying() || saveDialogInProgress) return;
-            registerProjectSaveDialog([](){});
+            registerProjectSaveDialog();
             break;
         case AppMenuCommand::Save:
             saveFunc();
             break;
         case AppMenuCommand::SaveAll:
-            saveAllFunc();
+            saveAllFunc(nullptr, true);
             break;
         case AppMenuCommand::ExportProject:
             exportWindow.open(&project);
@@ -3802,9 +3808,13 @@ void editor::App::beforeFrame() {
 
 void editor::App::processProjectChange() {
     if (projectLoading || !pendingProjectChange) return;
+    // a scene save in flight finishes into the project it started in
+    if (project.isAnySceneSaving()) return;
     auto change = std::move(pendingProjectChange);
     pendingProjectChange = nullptr;
     if (project.isAnyScenePlaying()) return;
+    // the old project's save dialogs never act on the next one
+    cancelSaveDialogs();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -4023,6 +4033,12 @@ void editor::App::engineRender(){
         // The running game renders into the Game view's framebuffer, shown or not, and
         // the Scene view is a second, draw-only view of the same frame
         if (gameWindow->hostsScene(sceneProject.id)) {
+            // send_input app hide: the game updates without drawing, its Game view keeps the
+            // last frame
+            if (Platform::isGameHiddenSimulated() && runningGameScene() == &sceneProject) {
+                runHiddenGameFrame();
+                continue;
+            }
             if (sceneNeedsRender(sceneProject, isSelected)) {
                 renderRunningScene(sceneProject);
             }
@@ -4230,30 +4246,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // stop ends it: Engine::resetApplicationState)
     Device::setSimulation(gameWindow->getDeviceSimulation());
 
-    bool viewChanged = false;
-    if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
-        // Collected before activateGame(): it drops every engine layer, and a dropped
-        // layer no longer counts as running, so this would come back empty.
-        std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
-        sceneRender->activateGame(gameTarget);
-
-        if (project.isPlayedSceneReplaced(sceneProject.id)) {
-            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
-            // stack that load made, its main scene first
-            Engine::removeScene(sceneProject.scene);
-            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
-            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
-                Engine::setScene(loadedMain);
-            }
-        }
-        for (Scene* runtimeLayer : runtimeLayers) {
-            Engine::addSceneLayer(runtimeLayer);
-        }
-
-        lastActivatedScene = sceneProject.id;
-        lastActivatedGame = true;
-        viewChanged = true;
-    }
+    bool viewChanged = activateRunningGame(sceneProject);
 
     if (pendingResizeScene == sceneProject.id) {
         viewChanged = true;
@@ -4297,7 +4290,19 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the gizmos follow the objects where this frame's update left them
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
-        sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        // after a game load replaced the played scene, the Scene view shows the scene the game
+        // runs now, through a copy of the editor camera placed in it
+        Scene* replacingBase = nullptr;
+        Entity replacingCamera = NULL_ENTITY;
+        if (SceneProject* loaded = project.getReplacingMainScene(sceneProject.id); loaded && loaded->scene && sceneRender->getCamera()) {
+            replacingCamera = ViewCameraMirror::ensure(loaded->scene, loaded->sceneViewMirror, "Scene View Camera");
+            if (ViewCameraMirror::copy(sceneProject.scene, sceneRender->getCamera()->getEntity(), loaded->scene, replacingCamera)) {
+                loaded->scene->getSystem<RenderSystem>()->updateTransform(loaded->scene->getComponent<Transform>(replacingCamera), replacingCamera);
+                replacingBase = loaded->scene;
+            }
+        }
+        sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true,
+                                   replacingBase, replacingBase ? replacingCamera : NULL_ENTITY);
         sceneWindow->renderInactivePanes(sceneProject);
     }
 
@@ -4307,6 +4312,72 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     renderedSceneThisFrame = true;
     sceneProject.needUpdateRender = false;
+}
+
+bool editor::App::activateRunningGame(SceneProject& sceneProject) {
+    if (lastActivatedScene == sceneProject.id && lastActivatedGame)
+        return false;
+
+    // Collected before activateGame(): it drops every engine layer, and a dropped
+    // layer no longer counts as running, so this would come back empty.
+    std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
+    sceneProject.sceneRender->activateGame(gameWindow->getFramebuffer());
+
+    if (project.isPlayedSceneReplaced(sceneProject.id)) {
+        // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+        // stack that load made, its main scene first
+        Engine::removeScene(sceneProject.scene);
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+            Engine::setScene(loadedMain);
+        }
+    }
+    for (Scene* runtimeLayer : runtimeLayers) {
+        Engine::addSceneLayer(runtimeLayer);
+    }
+
+    lastActivatedScene = sceneProject.id;
+    lastActivatedGame = true;
+    return true;
+}
+
+const editor::SceneProject* editor::App::runningGameScene() const {
+    if (projectLoading || Engine::isSimulationHeld())
+        return nullptr;
+    const SceneProject* sceneProject = project.getScene(project.getPlaySessionSceneId());
+    if (!sceneProject || sceneProject->playState != ScenePlayState::PLAYING || !sceneProject->scene || !sceneProject->sceneRender)
+        return nullptr;
+    return sceneProject;
+}
+
+bool editor::App::isHiddenGameRunning() const {
+    return (!windowVisible || Platform::isGameHiddenSimulated()) && runningGameScene();
+}
+
+// An exported game minimized keeps running without drawing (Engine::getHiddenUpdateFps), and so
+// does Play while the editor window can't be seen or the game is hidden by send_input. Only the
+// game's own frame: no Scene view, no Step, no Recorder capture, no view size change.
+bool editor::App::runHiddenGameFrame() {
+    const SceneProject* running = runningGameScene();
+    if (!running) {
+        hiddenGameClock.reset();
+        return false;
+    }
+    SceneProject* sceneProject = project.getScene(running->id);
+    // a wake-up a millisecond early counts (the loop sleeps until this deadline)
+    if (!hiddenGameClock.isDue(Engine::getHiddenUpdateFps(), 0.001))
+        return false;
+
+    // scripts saved meanwhile swap in at the frame boundary, as in engineRender
+    ScriptStatus::get().update();
+    ScriptReloadService::get().update();
+    if (activateRunningGame(*sceneProject)) {
+        // the view of the stack activated here is set when the game draws again
+        pendingResizeScene = sceneProject->id;
+    }
+    // waits for the GPU on Metal first
+    Engine::systemUpdate();
+    return true;
 }
 
 // A stopped scene's Scene view while another scene plays: its systems update here (the
@@ -4329,6 +4400,8 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
             if (childScene->sceneRender) {
                 childScene->sceneRender->hideAllGizmos();
             }
+            // nothing activates a view beside the game: its camera comes from here
+            Project::prepareInlineChildForView(childScene->scene);
             childScene->scene->update(Engine::getDeltatime());
             childScene->needUpdateRender = false;
         }
@@ -4904,7 +4977,11 @@ bool editor::App::hasPendingMainThreadTasks() {
 
 double editor::App::idleWaitSeconds(double maxSeconds) const {
     const double next = scheduler().nextDueRealTime();
-    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    double wait = next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    // a hidden game's next update (runHiddenGameFrame); a paused or held one keeps the idle sleep
+    if (isHiddenGameRunning())
+        wait = std::min(wait, hiddenGameClock.secondsUntilDue());
+    return wait;
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
@@ -5182,6 +5259,11 @@ bool editor::App::shouldSyncEngineApi() const {
     return true;
 }
 
+bool editor::App::recordsRecentProjects() const {
+    const mcp::McpLaunchOptions& options = mcp::mcpLaunchOptions();
+    return !options.stdio && !options.headless && !benchmarkEnabled;
+}
+
 void editor::App::updateResourcesPath(){
     std::filesystem::path currentProjectPath = project.getProjectPath().lexically_normal();
     bool projectPathChanged = lastResourcesProjectPath != currentProjectPath;
@@ -5384,7 +5466,7 @@ bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
     return false;
 }
 
-void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {
+void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void(bool)> callback) {
     // Add scene to the save dialog queue with callback
     SaveDialogQueueItem item = {SaveDialogType::Scene, sceneId, callback};
     saveDialogQueue.push(item);
@@ -5396,7 +5478,7 @@ void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()
     // If queue has more items or another dialog is open, they'll be processed later
 }
 
-void editor::App::registerProjectSaveDialog(std::function<void()> callback) {
+void editor::App::registerProjectSaveDialog(std::function<void(bool)> callback) {
     // Add project save to the dialog queue with callback
     SaveDialogQueueItem item = {SaveDialogType::Project, 0, callback};  // sceneId is unused for Project saves
     saveDialogQueue.push(item);
@@ -5583,7 +5665,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
+    // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
+    //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
+    //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
+    // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
+    //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5899,28 +5987,30 @@ void editor::App::resetLayout(){
 }
 
 void editor::App::processNextSaveDialog() {
-    // Check if there's anything to process and no dialogs are currently open
     if (saveDialogInProgress || saveDialogQueue.empty() || sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
         return;
     }
 
-    // Get the next item from the queue
     SaveDialogQueueItem item = saveDialogQueue.front();
-    // Store the callback to use it later
-    std::function<void()> completionCallback = item.callback;
+    // every way out answers the caller once: true only when the file was written
+    std::function<void(bool)> completion = item.callback;
+    auto finish = [this, completion](bool saved) {
+        saveDialogInProgress = false;
+        popSaveDialogQueueItem();
+        if (completion) completion(saved);
+        processNextSaveDialog();
+    };
 
     if (item.type == SaveDialogType::Scene) {
-        // Process scene save dialog
-        uint32_t sceneId = item.sceneId;
+        const uint32_t sceneId = item.sceneId;
         SceneProject* sceneProject = project.getScene(sceneId);
         if (!sceneProject) {
-            // Invalid scene, remove from queue and try next item
             popSaveDialogQueueItem();
+            if (completion) completion(false);
             processNextSaveDialog();
             return;
         }
 
-        // Set default filename
         std::string defaultName = sceneProject->name + ".scene";
         fs::path initialDirectory = project.getProjectPath();
         if (projectWindow) {
@@ -5931,103 +6021,55 @@ void editor::App::processNextSaveDialog() {
         }
 
         saveDialogInProgress = true;
-
-        // Open dialog for the current scene
         sceneSaveDialog.open(
             project.getProjectPath(),
             initialDirectory,
             defaultName,
-            // Save callback
-            [this, sceneId, completionCallback](const fs::path& fullPath) {
-                bool saveStarted = false;
-                SceneProject* sceneProject = project.getScene(sceneId);
-                if (sceneProject) {
-                    // Create directory if it doesn't exist
-                    std::filesystem::create_directories(fullPath.parent_path());
-
-                    // Save the scene
-                    std::error_code ec;
-                    fs::path relPath = fs::relative(fullPath, project.getProjectPath(), ec);
-                    if (ec || relPath.empty()) {
-                        Out::error("Scene filepath must be relative to project path: %s", fullPath.string().c_str());
-                        Backend::getApp().registerAlert("Error", "Scene file must be inside the project folder.");
-                    } else {
-                        sceneProject->filepath = relPath;
-                        saveStarted = true;
-                        project.saveSceneToPathAsync(sceneId, fullPath, [this, completionCallback](bool success) {
-                            saveDialogInProgress = false;
-                            popSaveDialogQueueItem();
-
-                            if (success && completionCallback) {
-                                completionCallback();
-                            }
-
-                            processNextSaveDialog();
-                        });
-                    }
+            [this, sceneId, finish](const fs::path& fullPath) {
+                // the scene takes the path only once the file is written (saveSceneFile)
+                if (!project.getScene(sceneId)) {
+                    finish(false);
+                    return;
                 }
-
-                if (!saveStarted) {
-                    saveDialogInProgress = false;
-                    popSaveDialogQueueItem();
-                    processNextSaveDialog();
-                }
+                project.saveSceneToPathAsync(sceneId, fullPath, finish);
             },
-            // Cancel callback
-            [this, completionCallback]() {
-                // Remove the current item from the queue without saving
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Process the next item if available
-                processNextSaveDialog();
-            }
+            [finish]() { finish(false); },
+            [this, sceneId](const fs::path& fullPath) { return project.sceneSavePathProblem(sceneId, fullPath); }
         );
     }
     else if (item.type == SaveDialogType::Project) {
-        // Process project save dialog
         std::string defaultName = project.getName();
         if (defaultName.empty()) {
             defaultName = "MyProject";
         }
 
         saveDialogInProgress = true;
-
         projectSaveDialog.open(
             defaultName,
-            // Save callback
-            [this, completionCallback](const std::string& projectName, const fs::path& projectPath) {
-                // Set the project name if provided
+            [this, finish](const std::string& projectName, const fs::path& projectPath) {
                 if (!projectName.empty()) {
                     project.setName(projectName);
                 }
-
-                // Save the project to the selected path
                 const bool saved = project.saveProjectToPath(projectPath);
                 if (!saved) registerAlert("Save Failed", "The project could not be saved. Check its directory and try again.");
-
-                // Remove this item from the queue
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Execute the completion callback if provided
-                if (saved && completionCallback) {
-                    completionCallback();
-                }
-
-                // Process the next item if available
-                processNextSaveDialog();
+                finish(saved);
             },
-            // Cancel callback
-            [this, completionCallback]() {
-                // Remove the current item from the queue without saving
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Process the next item if available
-                processNextSaveDialog();
-            }
+            [finish]() { finish(false); }
         );
+    }
+}
+
+void editor::App::cancelSaveDialogs() {
+    std::queue<SaveDialogQueueItem> pending;
+    std::swap(pending, saveDialogQueue);
+    sceneSaveDialog.abandon();
+    projectSaveDialog.abandon();
+    saveDialogInProgress = false;
+    // answered after the queue is empty, so none of them opens another dialog
+    while (!pending.empty()) {
+        std::function<void(bool)> callback = std::move(pending.front().callback);
+        pending.pop();
+        if (callback) callback(false);
     }
 }
 
@@ -6151,9 +6193,9 @@ void editor::App::exit() {
         return;  // Don't proceed with exit yet, user needs to click close again
     }
 
-    // Also check if the scene save dialog is specifically open
-    if (sceneSaveDialog.isOpen()) {
-        sceneSaveDialog.close();
+    // An open save dialog is cancelled first (with the ones queued behind it)
+    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
+        cancelSaveDialogs();
         return;
     }
 

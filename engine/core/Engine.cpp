@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "component/OnScreenControlComponents.h"
 #include "Engine.h"
+#include "component/ComponentEvents.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
 #include "Log.h"
@@ -136,6 +137,9 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
+bool Engine::foliageDistanceScaleOverridden = false;
+float Engine::foliageDistanceScaleOverride = 1.0f;
 bool Engine::gpuInstancingEnabled = true;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
@@ -194,6 +198,9 @@ bool Engine::gameEventsPaused = false;
 bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
+bool Engine::dynamicBatching = true;
+bool Engine::dynamicBatchingDefault = true;
+std::atomic<bool> Engine::visible = true;
 int Engine::targetFrameRate = -1;
 int Engine::textureQuality = 0;
 uint32_t Engine::qualityRevision = 0;
@@ -228,6 +235,7 @@ FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(bool)> Engine::onVisibilityChanged;
 FunctionSubscribe<void(int)> Engine::onOrientationChanged;
 FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSafeAreaChanged;
@@ -901,6 +909,53 @@ bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
 }
 
+namespace {
+    // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
+    float clampFoliageDistanceScale(float scale){
+        return std::clamp(scale, 0.0f, 10.0f);
+    }
+}
+
+void Engine::setFoliageDistanceScaleDefaults(float desktop, float mobile, float web){
+    const float scales[3] = {desktop, mobile, web};
+    for (int i = 0; i < 3; i++){
+        foliageDistanceScaleDefaults[i] = std::isfinite(scales[i]) ? clampFoliageDistanceScale(scales[i]) : 1.0f;
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return foliageDistanceScaleDefaults[1];
+        case Platform::Web:
+            return foliageDistanceScaleDefaults[2];
+        default:
+            return foliageDistanceScaleDefaults[0];
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(){
+    return getFoliageDistanceScaleDefault(getPlatform());
+}
+
+void Engine::setFoliageDistanceScale(float scale){
+    if (!std::isfinite(scale)){
+        Log::warn("Engine::setFoliageDistanceScale: non-finite value ignored");
+        return;
+    }
+    foliageDistanceScaleOverride = clampFoliageDistanceScale(scale);
+    foliageDistanceScaleOverridden = true;
+}
+
+float Engine::getFoliageDistanceScale(){
+    return foliageDistanceScaleOverridden ? foliageDistanceScaleOverride : getFoliageDistanceScaleDefault();
+}
+
+void Engine::resetFoliageDistanceScale(){
+    foliageDistanceScaleOverridden = false;
+}
+
 GraphicBackend Engine::getGraphicBackend(){
 #if defined(SOKOL_GLCORE)
     return GraphicBackend::GLCORE;
@@ -1440,6 +1495,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onShutdown.removeByTagSubstring(substring);
     onFocus.removeByTagSubstring(substring);
     onOrientationChanged.removeByTagSubstring(substring);
+    onVisibilityChanged.removeByTagSubstring(substring);
     onLowMemory.removeByTagSubstring(substring);
     onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
@@ -1508,6 +1564,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onShutdown.clear();
         onFocus.clear();
         onOrientationChanged.clear();
+        onVisibilityChanged.clear();
         onLowMemory.clear();
         onSafeAreaChanged.clear();
     }
@@ -1519,124 +1576,10 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     if (!scene)
         return;
 
-    auto buttons = scene->getComponentArray<ButtonComponent>();
-    for (size_t i = 0; i < buttons->size(); i++) {
-        ButtonComponent& button = buttons->getComponentFromIndex(i);
-        button.onPress.clear();
-        button.onRelease.clear();
-    }
-
-    auto uis = scene->getComponentArray<UIComponent>();
-    for (size_t i = 0; i < uis->size(); i++) {
-        UIComponent& ui = uis->getComponentFromIndex(i);
-        ui.onGetFocus.clear();
-        ui.onLostFocus.clear();
-        ui.onPointerEnter.clear();
-        ui.onPointerLeave.clear();
-        ui.onPointerMove.clear();
-        ui.onPointerDown.clear();
-        ui.onPointerUp.clear();
-        ui.onClick.clear();
-        ui.onDoubleClick.clear();
-        ui.onDragStart.clear();
-        ui.onDrag.clear();
-        ui.onDragEnd.clear();
-    }
-
-    auto sticks = scene->getComponentArray<OnScreenStickComponent>();
-    for (size_t i = 0; i < sticks->size(); i++) {
-        OnScreenStickComponent& stick = sticks->getComponentFromIndex(i);
-        stick.onValueChanged.clear();
-        stick.onPress.clear();
-        stick.onRelease.clear();
-    }
-    auto onScreenButtons = scene->getComponentArray<OnScreenButtonComponent>();
-    for (size_t i = 0; i < onScreenButtons->size(); i++) {
-        onScreenButtons->getComponentFromIndex(i).onPress.clear();
-        onScreenButtons->getComponentFromIndex(i).onRelease.clear();
-    }
-    auto touchAreas = scene->getComponentArray<TouchAreaComponent>();
-    for (size_t i = 0; i < touchAreas->size(); i++) {
-        touchAreas->getComponentFromIndex(i).onDrag.clear();
-    }
-
-    auto panels = scene->getComponentArray<PanelComponent>();
-    for (size_t i = 0; i < panels->size(); i++) {
-        PanelComponent& panel = panels->getComponentFromIndex(i);
-        panel.onMove.clear();
-        panel.onResize.clear();
-    }
-
-    auto scrollbars = scene->getComponentArray<ScrollbarComponent>();
-    for (size_t i = 0; i < scrollbars->size(); i++) {
-        scrollbars->getComponentFromIndex(i).onChange.clear();
-    }
-
-    auto inputFields = scene->getComponentArray<InputFieldComponent>();
-    for (size_t i = 0; i < inputFields->size(); i++) {
-        InputFieldComponent& inputField = inputFields->getComponentFromIndex(i);
-        inputField.onChange.clear();
-        inputField.onSubmit.clear();
-    }
-
-    auto documents = scene->getComponentArray<UIDocumentComponent>();
-    for (size_t i = 0; i < documents->size(); i++) {
-        UIDocumentComponent& document = documents->getComponentFromIndex(i);
-        document.onLoad.clear();
-        document.onUnload.clear();
-    }
-
-    auto sounds = scene->getComponentArray<AudioSourceComponent>();
-    for (size_t i = 0; i < sounds->size(); i++) {
-        AudioSourceComponent& sound = sounds->getComponentFromIndex(i);
-        sound.onStart.clear();
-        sound.onPause.clear();
-        sound.onStop.clear();
-    }
-
-    auto actions = scene->getComponentArray<ActionComponent>();
-    for (size_t i = 0; i < actions->size(); i++) {
-        ActionComponent& action = actions->getComponentFromIndex(i);
-        action.onStart.clear();
-        action.onPause.clear();
-        action.onStop.clear();
-        action.onStep.clear();
-    }
-
-    // contact and activation events a script subscribed to on the scene's physics
+    // every event of every component (ComponentEvents.h), then the physics system's: what the
+    // scripts registered goes while the code behind the callbacks is still loaded
+    forEachComponentEvent(*scene, [](auto& event) { event.clear(); });
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
-
-    auto animators = scene->getComponentArray<PoseAnimatorComponent>();
-    for (size_t i = 0; i < animators->size(); i++) {
-        animators->getComponentFromIndex(i).onFinish.clear();
-    }
-
-    auto players = scene->getComponentArray<AnimationPlayerComponent>();
-    for (size_t i = 0; i < players->size(); i++) {
-        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
-        player.onEvent.clear();
-        player.onFinish.clear();
-        player.onStateEnter.clear();
-        player.onStateExit.clear();
-    }
-
-    auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
-    for (size_t i = 0; i < vertexAnimators->size(); i++) {
-        VertexAnimatorComponent& animator = vertexAnimators->getComponentFromIndex(i);
-        animator.onEvent.clear();
-        animator.onFinish.clear();
-        animator.onInstanceEvent.clear();
-        animator.onInstanceFinish.clear();
-    }
-    auto stateAnimators = scene->getComponentArray<AnimatorComponent>();
-    for (size_t i = 0; i < stateAnimators->size(); i++) {
-        AnimatorComponent& animator = stateAnimators->getComponentFromIndex(i);
-        animator.onEvent.clear();
-        animator.onStateEnter.clear();
-        animator.onStateExit.clear();
-        animator.onMontageEnded.clear();
-        animator.onAnimatorMove.clear();
-    }
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -1876,6 +1819,7 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     osPaused = false;
     nativePaused = false;
     focused = true;
+    visible = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
 
@@ -2163,6 +2107,9 @@ void Engine::systemFramePresented(){
 }
 
 void Engine::systemUpdate(){
+    // Metal frees what a frame released by frame count, and only a frame with a pass waits for
+    // the GPU: frames without passes would free what the GPU still reads
+    SystemRender::waitGpuIdle();
     runFrame(false);
 }
 
@@ -2605,6 +2552,11 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
 #endif
 
 void Engine::systemViewDestroyed(){
+    // a launch that failed before systemViewLoaded (macOS without Metal), or a second destroy:
+    // there is nothing to tear down, and sokol was never set up
+    if (!viewLoaded)
+        return;
+
     SoundPool::requestShutdown();
     TextureDataPool::requestShutdown();
 
@@ -2779,6 +2731,16 @@ void Engine::systemFocus(bool hasFocus){
     Engine::onFocus.call(hasFocus);
 }
 
+void Engine::systemVisibilityChanged(bool isVisible){
+    if (isVisible == visible) return;
+    visible = isVisible;
+    if (isVisible)
+        Log::print("Window visible: drawing again");
+    else
+        Log::print("Window hidden: updating at %g Hz without drawing", getHiddenUpdateFps());
+    Engine::onVisibilityChanged.call(isVisible);
+}
+
 void Engine::systemOrientationChanged(){
     if (!System::hasInstance()) return;
     const int orientation = (int)Screen::getOrientation();
@@ -2850,12 +2812,14 @@ void Engine::resetApplicationState(){
         AudioSystem::setPlatformPaused(false);
     }
     focused = true;
+    visible = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
     // no tier a script set, no Game view simulation, the thermal and memory response at rest
     Device::resetSession();
     applyFramePacing();
+    dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
 }
@@ -2866,6 +2830,28 @@ bool Engine::isFocused(){
 
 bool Engine::isPaused(){
     return paused;
+}
+
+void Engine::setDynamicBatchingDefault(bool enabled){
+    dynamicBatchingDefault = enabled;
+    dynamicBatching = enabled;
+}
+
+void Engine::setDynamicBatching(bool enabled){
+    dynamicBatching = enabled;
+}
+
+bool Engine::isDynamicBatching(){
+    return dynamicBatching;
+}
+
+bool Engine::isVisible(){
+    return visible;
+}
+
+double Engine::getHiddenUpdateFps(){
+    const double refreshRate = System::hasInstance() ? System::instance().getRefreshRate() : 0.0;
+    return PlatformRules::hiddenUpdateFps(targetFrameRate, vSyncCount, refreshRate);
 }
 
 void Engine::setTargetFrameRate(int fps){

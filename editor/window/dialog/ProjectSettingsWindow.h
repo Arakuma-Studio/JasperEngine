@@ -39,6 +39,8 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Quality > Foliage Distance (desktop, mobile, web)
+        float m_foliageDistanceScale[3] = {1.0f, 1.0f, 1.0f};
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
         ModelProjectSettings m_modelSettings;
@@ -97,6 +99,7 @@ namespace jasperengine::editor {
         std::string m_inputStatus;
         Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
+        bool m_dynamicBatching = true;
         int m_mobilePbrTierIndex = 1;
         int m_lightModeIndex = 0;
         bool m_packNativeResources = false;

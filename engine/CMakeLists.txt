@@ -591,6 +591,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND PLATFORM_SOURCE
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
+            ${PLATFORM_ROOT}/X11Visibility.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
             ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
@@ -913,6 +914,10 @@ if(JASPERENGINE_SHARED)
 else()
     set(JASPERENGINE_LIB_TYPE STATIC)
 endif()
+
+# (the editor's export and Play builds pass their job cap; empty or 0: every CPU)
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
 
 if(WIN32)
     if(MSVC)
@@ -1696,10 +1701,13 @@ set(JASPERENGINE_SRCS
     core/render/DynamicResolutionController.cpp
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
+    core/render/FrustumCull.cpp
+    core/render/DrawBatcher.cpp
     core/render/LineRibbonBuilder.cpp
     core/render/LodFade.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
+    core/render/SSRProbeSlots.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
     core/render/VisibleList.cpp
@@ -1791,6 +1799,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
@@ -1843,6 +1852,7 @@ set(JASPERENGINE_SRCS
     core/util/Base64.cpp
     core/util/Color.cpp
     core/util/CrashHook.cpp
+    core/util/ContentHash.cpp
     core/util/CubeLut.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
@@ -2345,6 +2355,30 @@ if(JASPERENGINE_SHARED)
     endif()
 endif()
 
+# C++ scripts link only the editor's shared engine, so it carries all of Box2D and Jolt and exports
+# them: built with their export macros (the engine's own sources too, so every object agrees on
+# Jolt's shared-library declarations), every archive member linked, and whoever links the engine
+# (the editor, its tests; generated projects through Generator::physicsCompileDefinitions) compiles
+# with the import macros (MSVC links data such as JPH::Allocate only through dllimport)
+if(JASPERENGINE_SHARED AND JASPERENGINE_PHYSICS_2D)
+    target_compile_definitions(box2d PRIVATE box2d_EXPORTS)
+    target_compile_definitions(jasperengine PRIVATE box2d_EXPORTS INTERFACE BOX2D_DLL)
+    if(MINGW)
+        # base.h uses dllexport with MSVC only
+        target_compile_options(box2d PRIVATE "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/platform/win/Box2DExport.h\"")
+    endif()
+    jasperengine_link_whole_archive(jasperengine box2d)
+endif()
+if(JASPERENGINE_SHARED AND JASPERENGINE_PHYSICS_3D)
+    target_compile_definitions(joltphysics PRIVATE JPH_SHARED_LIBRARY JPH_BUILD_SHARED_LIBRARY)
+    target_compile_definitions(jasperengine PRIVATE JPH_BUILD_SHARED_LIBRARY PUBLIC JPH_SHARED_LIBRARY)
+    if(MINGW)
+        # Core.h uses dllexport with MSVC only
+        target_compile_options(joltphysics PRIVATE "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/platform/win/JoltExport.h\"")
+    endif()
+    jasperengine_link_whole_archive(jasperengine joltphysics)
+endif()
+
 # =============================================================
 # STANDALONE EXECUTABLE BUILD
 # Only runs when this file is used as the top-level build.
@@ -2412,6 +2446,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         jasperengine_skip_unity_build(
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)

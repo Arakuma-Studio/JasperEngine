@@ -105,7 +105,8 @@ namespace jasperengine {
     // and Lua (the FunctionSubscribe_* bindings). Built on detail::SlotList, Signal's core:
     // removing or adding subscribers from inside a callback is safe (see SlotList), and
     // invoking allocates nothing. While a CrashHook is set every callback runs under the crash
-    // guard; one that faults is removed and reported with its tag. Like Signal, externally
+    // guard; one that faults or throws is removed and reported with its tag; without a hook a
+    // C++ exception is logged (CrashHook::logFailure) and the subscriber stays. Like Signal, externally
     // synchronized (PhysicsSystem invokes its events from Jolt threads under a mutex);
     // hasSubscribers() is safe from any thread. Copying copies the subscribers.
     template<typename Ret, typename ...Args>
@@ -130,12 +131,18 @@ namespace jasperengine {
             }
         }
 
-        // One callback, under the crash guard when a hook is set. False when it faulted (it
-        // is removed and reported).
+        // One callback, under the crash guard when a hook is set. False when it faulted or
+        // threw: with a hook it is removed and reported; without one (an exported game) a C++
+        // exception is logged and the subscriber stays (Unity: Update runs again next frame).
         template<typename Call>
         bool runSlot(List& slots, Slot& slot, bool guarded, Call&& call) {
             if (!guarded) {
-                call(slot.function);
+                try {
+                    call(slot.function);
+                } catch (...) {
+                    CrashHook::logFailure(slot.tag.empty() ? std::string("event subscriber") : slot.tag);
+                    return false;
+                }
                 return true;
             }
             struct Context {

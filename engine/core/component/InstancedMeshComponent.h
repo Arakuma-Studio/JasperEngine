@@ -182,11 +182,21 @@ namespace jasperengine{
         bool distanceFade = false;
         float fadeStart = 0;
         float fadeEnd = 0;
+        // Instances grow from nothing at nearFadeStart to full size at nearFadeEnd, both model-space
+        // distances (a far level of detail's inner edge); an empty range turns it off. Needs
+        // distanceFade, whose variant draws both ranges
+        float nearFadeStart = 0;
+        float nearFadeEnd = 0;
         Vector3 fadeEyeLocal; //camera in model space, where the range is measured
 
-        // fade range the render lists were cut at (render system cache)
+        // fade ranges the render lists were cut at, and the eye movement they still cover (render
+        // system cache)
         float lastFadeCullEnd = -1;
+        float lastFadeCullNear = 0;
+        float lastCullSlack = 0;
         Vector3 lastFadeCullEye;
+        // a cylindrical billboard's last yaw, kept while the camera looks straight along the up axis
+        float lastBillboardYaw = 0;
 
         bool instancedBillboard = false;
         bool instancedCylindricalBillboard = false;

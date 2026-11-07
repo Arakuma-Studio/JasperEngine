@@ -481,7 +481,7 @@ void RenderSystem::ensureCasterLayers(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         if ((terrain && !mesh.staticShadowCaster) || unbounded){
@@ -608,7 +608,7 @@ void RenderSystem::updateShadowCasters(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         // a static terrain draws a cut of its own in each slot (shadowTerrainCut): the camera
@@ -687,7 +687,7 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
         input.aspect = (projection[0][0] != 0.0f) ? projection[1][1] / projection[0][0] : 1.0f;
         input.orthoHalfWidth = (projection[0][0] != 0.0f) ? 1.0f / std::abs(projection[0][0]) : 1.0f;
         input.orthoHalfHeight = (projection[1][1] != 0.0f) ? 1.0f / std::abs(projection[1][1]) : 1.0f;
-        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : camera.nearClip;
+        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : getCameraNearFar(camera).x;
         input.shadowDistance = lightShadowDistance(light, camera);
         input.lightDir = light.worldDirection;
         input.cascades = std::max(numCascades, 1u);
@@ -1729,6 +1729,11 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : pointFaceLodView(light, lightIndex, cameraIndex);
         const LodView* lodView = &shadowLod;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
+        // Dynamic Batching: casters of one depth state draw as one (depth only: in any order)
+        beginBatchPass(BatchPass::SHADOW, BatchMode::GROUP, nullptr, nullptr, PIP_SHADOW_DEPTH, shadowCamera.lightViewProjectionMatrix,
+                       shadowCamera.nearFar.y, shadowCamera.frustumPlanes);
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
 
         auto drawCaster = [&](Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh,
                               TerrainComponent* terrain, TilemapComponent* tilemap){
@@ -1759,8 +1764,14 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             }
 
             passShadowTerrain = terrain ? &shadowTerrainCut(entity, *terrain, transform, mesh, shadowCamera) : nullptr;
-            drawMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
-                          instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            // (a billboard's shadow faces the light: its own view matrix, drawn alone)
+            if (transform.billboard && mesh.shadowsBillboard){
+                drawMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                              instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }else{
+                submitMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                                instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }
             passShadowTerrain = nullptr;
         };
 
@@ -1799,6 +1810,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             passSubmeshMask = 0xFFFFFFFFu;
             passPreCulled = false;
         }
+        endBatchPass();
     };
 
     // what one slot of an atlas does this frame

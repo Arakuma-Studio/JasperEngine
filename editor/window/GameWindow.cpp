@@ -1282,6 +1282,14 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         const bool hovered = ImGui::IsWindowHovered();
 
         if (running && sceneProject->playState == ScenePlayState::PLAYING) {
+            // Escape is the game's while it plays here (Unity): ImGui's keyboard navigation
+            // would take it to leave this child window (its focus lost before PlayInput saw the
+            // key). The claim applies from the next frame on and locks nothing, so every editor
+            // reader of the key with the default owner test still sees the press (a captured
+            // cursor's release among them)
+            if (focused) {
+                ImGui::SetKeyOwner(ImGuiKey_Escape, ImGui::GetID("##GameCanvasKeys"));
+            }
             const ImVec2 inputScale(engineScale.x / zoom, engineScale.y / zoom);
             playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
             cursorInView = hovered;
@@ -1301,7 +1309,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[14][112];
+    char lines[16][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1366,6 +1374,17 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     snprintf(lines[lineCount], sizeof(lines[lineCount]), "Safe area: %g,%g %gx%g", std::round(safe.getX()), std::round(safe.getY()),
              std::round(safe.getWidth()), std::round(safe.getHeight()));
     lineCount++;
+    // Dynamic Batching (Unity's Stats: Batches, Saved by batching) of the scene's last frame in the
+    // view the game draws
+    if (render){
+        // (the game's own frame while it plays, else the Game view's)
+        const RenderSystem::BatchFrame* batching = render->getBatchFrame(playing ? SystemRender::FRAME_STATS_FRAME : GAME_VIEW_ID);
+        if (batching && batching->stats.enabled){
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "Batches: %u   Saved by batching: %u", batching->stats.batches,
+                     batching->stats.savedByBatching());
+            lineCount++;
+        }
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {

@@ -72,7 +72,7 @@ namespace {
 
     ProcessResult runSvn(const fs::path& svn, const fs::path& cwd, const std::vector<std::pair<std::string, std::string>>& env,
                          std::vector<std::string> args, int timeoutMs, const jobs::CancelToken* cancel = nullptr,
-                         const std::vector<std::string>& globalArgs = {}) {
+                         const std::vector<std::string>& globalArgs = {}, size_t maxOutputBytes = 0) {
         ProcessSpec spec;
         spec.exe = svn;
         spec.cwd = cwd;
@@ -84,6 +84,7 @@ namespace {
         for (std::string& arg : args) spec.args.push_back(std::move(arg));
         spec.timeoutMs = timeoutMs;
         spec.cancel = cancel;
+        if (maxOutputBytes > 0) spec.maxOutputBytes = maxOutputBytes;
         return runProcess(spec);
     }
 
@@ -363,14 +364,22 @@ VcsResult SvnProvider::branchInfo(VcsBranchInfo& out) {
     out.headOid = entry->attribute("revision");
     out.name = entry->childText("relative-url");
     if (out.name.empty()) out.name = entry->childText("url");
+    // a working copy of ^/tags/<tag>/...: named by its tag, as a detached git HEAD is
+    constexpr std::string_view tags = "^/tags/";
+    if (out.name.rfind(tags, 0) == 0) {
+        const std::string rest = out.name.substr(tags.size());
+        out.tag = rest.substr(0, rest.find('/'));
+    }
     return VcsResult::success();
 }
 
-VcsResult SvnProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out) {
+VcsResult SvnProvider::baseContent(const RepoPath& path, std::string_view rev, std::string& out, size_t maxBytes) {
     if (!validRevision(rev)) return VcsResult::failure("not a revision: " + std::string(rev));
-    const ProcessResult result = svn({"cat", "-r", std::string(rev), "--", pegged(path)});
+    ProcessResult result = runSvn(cfg.executable, cfg.repoRoot, env, {"cat", "-r", std::string(rev), "--", pegged(path)},
+                                  cfg.localTimeoutMs, nullptr, cfg.svnGlobalArgs, keptOutputBytes(maxBytes));
     if (!result.ok()) return resultOf(result);
-    out = result.out;
+    out = std::move(result.out);
+    if (maxBytes != SIZE_MAX && out.size() > maxBytes) out.resize(maxBytes + 1);
     return VcsResult::success();
 }
 
@@ -382,15 +391,18 @@ VcsResult SvnProvider::textDiff(const RepoPath& path, std::string_view rev, std:
         args.push_back(std::string(rev));
     }
     args.push_back("--");
-    args.push_back(pegged(path));
+    // svn 1.14 diff reads a peg revision only with -r: against BASE "a.lua@" names no file,
+    // against a revision "icon@2x.lua" is a peg revision "2x.lua"
+    args.push_back(rev != "BASE" ? pegged(path) : std::string(path));
     const ProcessResult result = svn(std::move(args));
-    if (result.ok() && !result.out.empty()) {
+    // a versioned file: its diff, empty when it has no changes
+    if (result.ok()) {
         out = result.out;
         return VcsResult::success();
     }
-    // an unversioned file: all of it is new
+    // an unversioned file (svn refuses to diff it): all of it is new
     std::string text;
-    if (!readFile(absoluteOf(cfg.repoRoot, path), text)) return result.ok() ? VcsResult::success() : resultOf(result);
+    if (!readFile(absoluteOf(cfg.repoRoot, path), text)) return resultOf(result);
     if (text.find('\0') != std::string::npos) {
         out = "Binary file " + path + " added\n";
         return VcsResult::success();

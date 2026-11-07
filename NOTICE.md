@@ -151,6 +151,7 @@ Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Zstandard](https://github.com/facebook/zstd) | 1.5.7 | `engine/libs/zstd/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the supercompression of cooked KTX2 textures: the decoder in games, the encoder in the editor's cook |
+| [xxHash](https://github.com/Cyan4973/xxHash) | 0.8.2 (Zstandard 1.5.7's copy) | `engine/libs/xxhash/` (`LICENSE`, `README.jasper.md`; local change: Zstandard's prelude removed) | BSD (dual BSD / GPLv2) | content hashes of shared GPU buffers and mesh LOD keys (XXH3) |
 | [bcdec](https://github.com/iOrange/bcdec) | `main` at `80859ed3b7af` | `engine/libs/bcdec/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1-BC7 CPU decoding: the fallback when a GPU cannot sample a cooked BC format, editor previews |
 | [Basis Universal](https://github.com/BinomialLLC/basis_universal) | 2.50 (`v2_50`) | `engine/libs/basisu/` (`LICENSE`, `NOTICE`, `LICENSES/`, `README.jasper.md`; local change: `zstd/zstd.h` forwards to the engine's Zstandard) | Apache-2.0; its encoder's bundled tinyexr BSD-3-Clause, qoi and tinydds MIT, miniz MIT, jpgd public domain (`LICENSES/`) | ETC1S / UASTC / UASTC HDR encoding of web textures, UASTC to ETC2/EAC, `.exr` reading (editor); the transcoder of web textures (web games, editor) |
 | [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
@@ -162,6 +163,8 @@ Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a ga
 |---|---|---|---|---|
 | [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27) |
 | [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
+
+The code editor's line diff (`editor/util/LineDiff.cpp`, from Doriax) follows the clean-up passes of [Visual Studio Code](https://github.com/microsoft/vscode)'s line diff (`defaultLinesDiffComputer`: joining and sliding changes over repeated lines, better boundaries, joining across short matches; MIT, Copyright (c) Microsoft Corporation), so its change markers land where VS Code's do; the file names that origin.
 
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 

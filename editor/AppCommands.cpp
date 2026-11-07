@@ -23,7 +23,9 @@
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "Engine.h"
 #include "util/Util.h"
+#include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
 #include "pose/PoseViewportLogic.h"
@@ -122,10 +124,24 @@ void editor::App::registerCommands(){
         if (saveDialogInProgress) return false;
         if (project.isTempProject()) return !project.isAnyScenePlaying();
         if (lastFocusedWindow == LastFocusedWindow::Code) return codeEditor->hasLastFocusedUnsavedChanges();
-        return !project.isAnyScenePlaying() && project.hasSelectedSceneUnsavedChanges();
+        // an untitled scene saves even unchanged: the dialog asks for its file (Unity)
+        return !project.isAnyScenePlaying() && project.sceneNeedsSave(project.getSelectedSceneId());
     });
     auto canSaveAll = [this]() { return !project.isAnyScenePlaying() && !saveDialogInProgress; };
     enable("file.saveAll", canSaveAll);
+    // a shortcut pressed while they cannot run says why (the status bar), as the menu's tooltip
+    auto saveDisabledReason = [this]() -> std::string {
+        if (project.isAnyScenePlaying()) return "Stop Play to save (changes made in Play mode are not kept)";
+        if (saveDialogInProgress) return "A Save dialog is open";
+        return {};
+    };
+    for (const char* id : {"file.save", "file.saveAll"}) {
+        if (const CommandDef* existing = catalog.find(id)) {
+            CommandDef def = *existing;
+            def.disabledReason = saveDisabledReason;
+            catalog.add(std::move(def));
+        }
+    }
     enable("file.saveProjectAs", canSaveAll);
     enable("file.removeScene", [this]() {
         return project.getSelectedScene() && !project.isAnyScenePlaying() && project.getScenes().size() > 1;
@@ -189,6 +205,12 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
+    bind("playmode.releaseCursor", [this](const CommandArgs&) { playInput->releaseCursor(); },
+         [this]() {
+             const MouseMode mode = Engine::getMouseMode();
+             return project.isPlaySessionActive() && !playInput->isCursorReleased() &&
+                    (mode == MouseMode::CAPTURED || mode == MouseMode::CONFINED);
+         });
 
     // ---- Assets
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });

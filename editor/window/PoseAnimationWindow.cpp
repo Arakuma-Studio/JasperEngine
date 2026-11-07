@@ -1036,7 +1036,7 @@ void editor::PoseAnimationWindow::drawCharacterField(){
     if (ImGui::BeginDragDropTarget()){
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")){
             const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
-            const uint32_t sceneId = entityPayload->entitySceneId != 0 ? entityPayload->entitySceneId : project->getSelectedSceneId();
+            const uint32_t sceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
             std::string error;
             if (bindCharacter(sceneId, entityPayload->entity, &error)){
                 if (data() && !data()->poses.empty()) session.startPosing();

@@ -80,22 +80,22 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
-| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
+| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
-| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
+| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
 
@@ -176,3 +176,52 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
   batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
   merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.
+- 2026-11-06 22:xx: **build-toolchain merged** after an independent review (editor C++ scripts get the physics
+  macros, CMAKE_GENERATOR respected, node lookup order, vswhere only when needed and UTF-8, /WHOLEARCHIVE only for
+  MSVC-style drivers). Round on box H with main merged: WERROR editor, unit 41/41, MCP 35 + 2, physics link check,
+  jasperengine.py 11/11, lints; red controls failed as they should. MSVC, MinGW, clang-cl and macOS paths by
+  reading only. rbox now has `auto` (any idle box); the brief says so.
+- 2026-11-06 23:xx: **ssr-probes merged** after an independent review (saturated pixels keep their colour, coverage
+  clipped to the near plane, two-probe test with authored gradients, stats cleared per frame, spec tolerances).
+  Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
+  controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
+  Shader cache v49 is now taken: later landings bump it.
+- 2026-11-07 00:xx: **render-correctness merged** after an independent review (flat normals turned toward the eye on
+  every backend, catalog snapshot regenerated, foliage refills on a distance-scale change, scaled cylindrical
+  billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
+  rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
+  red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.
+- 2026-11-07 00:xx: **code-editor-git merged** after an independent review (revert is its own undo step, editor-buffer
+  diffs match git byte for byte, renamed files diff from their old path, svn '@' paths, restored MCP warnings, core
+  budget kept at 99000 by trimming). Landing check on main + branch (box C): WERROR editor, gen_tool_docs and
+  tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
+  render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
+  water-reflections takes 1.4.
+- 2026-11-07 01:xx: **runtime-core, platform-lifecycle and scene-integrity merged as one batch** (`f0fc338d9`), each
+  after an independent review and its fixes. They share Engine.cpp, App.cpp, Project.cpp and InspectorWindow.cpp,
+  so one landing check covered the three on main: WERROR editor, unit filters of all three plus render-correctness
+  and code-editor-git suites (343), MCP files of all three plus budget/docs/protocol (57 and 75), Android compile,
+  lints. Integration fixes made at landing: onVisibilityChanged cleared with the other lifecycle events
+  (runtime-core's event-clear lint meets platform-lifecycle's new event); set_child_scene description trimmed to keep
+  core at 99000; RuntimeFields.gen.inc regenerated (runtime-core's action fields and render-correctness' foliage and
+  instanced fade fields were not in cooked scenes, so prebuilt exports dropped them).
+- Lesson for every landing check: a branch that adds component fields runs `RuntimeFields.*:CookedScene.*`.
+- Open, not ours: a many-material OBJ drops submeshes on main since mesh-memory (S55's per-submesh culling assumed
+  contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
+  diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
+  program). An FBX foliage layer draws no instances in the headless editor (unverified).
+- 2026-11-07 02:xx: **sprite-batching merged** after an independent review (Buffer write counter so geometry uploaded
+  by another pass is rebaked, lazy-MVP test that can fail, the dropped spec tests added, lazy MVP off with several
+  cameras and on in the depth pre-pass, annotations on the batch's own draw, chunks kept past 16 MB, draw modes and
+  scissor). Landing tree = main (with the batch and code-editor-git) + branch; integration resolved at landing:
+  writeCustomUniforms(scene, mesh) in both draw paths, Engine/SokolSystem additions from both sides, two eval cases
+  an earlier conflict union had joined. Checks on box H: WERROR editor, gen_tool_docs and budget, unit (SpriteBatch,
+  DrawBatcher, S55, mesh-memory, render-correctness, SSR, scene defaults, cooked, RuntimeFields, platform-lifecycle),
+  MCP (batching, scene defaults, hidden window, budget/docs/protocol), web compile, lints. Red controls in the branch:
+  batching compiled out fails all 17 batch tests. Pixel-snapped sprites (S41) draw one by one until S41 wires in.
+- Landing is now parallel: the next features are pre-merged onto main + the previous landing and checked at once.
+- 2026-11-07 02:xx: **scripting merged** after an independent review (C++ fields kept when a header is missing,
+  instancing refuses cleanly on parts models, winding not carried across a rebuild, guide fixed on omitted bools,
+  eval cases for the new text). Landing tree = main + sprite-batching + branch, conflicts resolved by its agent;
+  box D: WERROR editor (0 warnings), fanout, budget (core 98966), unit 60 core + 44 editor incl. RuntimeFields and
+  CookedScene, MCP 32, lints, test_grade.

@@ -954,6 +954,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    for (int i = 0; i < 3; i++)
+        m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
     m_modelSettings = project->getModelSettings();
     m_playerLogging = project->getPlayerLogging();
@@ -991,6 +993,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
+    m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
     m_lightModeIndex = static_cast<int>(project->getLightMode());
 
@@ -1928,6 +1931,16 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawShaderCreationSettings();
 
+        if (settingsui::beginRow("graphics.dynamic_batching")) {
+            if (projectBeginSettingsRow("Dynamic Batching", m_dynamicBatching != Project::defaultDynamicBatching)) {
+                m_dynamicBatching = Project::defaultDynamicBatching;
+            }
+            ImGui::Checkbox("##DynamicBatching", &m_dynamicBatching);
+            endSettingsRow("Consecutive Sprites, small meshes (64 vertices at most) and UI elements that share a material, textures "
+                "and render state draw as one draw call: their vertices are placed on the CPU and drawn together. The image is the same; "
+                "turn it off to compare. The Game view's Stats show Batches and Saved by batching, the Frame Debugger why a draw "
+                "was not batched with the previous one.");
+        }
         drawUploadBudgetSettings();
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
@@ -2029,6 +2042,22 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // the scale of every terrain foliage layer's draw distances (Unity's
+        // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
+        static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
+        static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
+        static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+        static const char* const foliageTooltip =
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(foliageKeys[i])) continue;
+            if (projectBeginSettingsRow(foliageRows[i], m_foliageDistanceScale[i] != Project::defaultFoliageDistanceScale[i]))
+                m_foliageDistanceScale[i] = Project::defaultFoliageDistanceScale[i];
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragFloat(foliageIds[i], &m_foliageDistanceScale[i], 0.01f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            endSettingsRow(foliageTooltip);
+        }
         // the render budgets check_render_budgets holds a scene to (S53 R25): 0 is no limit
         for (size_t f = 0; f < kModelFamilyCount; f++) {
             RenderBudget& budget = m_modelSettings.renderBudgets[f];
@@ -3298,7 +3327,8 @@ void ProjectSettingsWindow::drawEditorSettings() {
             ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
             endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
                 "working directory, this machine's build settings and each developer's own layout stay out "
-                "of the repository. A file the editor did not generate is never replaced.");
+                "of the repository. A file the editor did not generate is never replaced, and the lines you "
+                "add below the editor's block are kept.");
         }
         // S29: the project's version control (project.yaml versionControl)
         const VcsProjectSettings vcsDefaults;
@@ -4895,6 +4925,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setPlayerCrash(m_playerCrash);
@@ -4945,6 +4976,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
+    m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
     m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));
 

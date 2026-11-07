@@ -37,6 +37,30 @@ A build replaces its output folder only once it is complete: it is made in
 `<folder>.staging-<pid>` and swapped in at the end, so a failed or cancelled build leaves the
 previous one as it was.
 
+## Building an exported source project
+
+Export source (Build Settings, `jasperengine-editor export --project <dir> --out <dir>`, MCP
+`build_project mode: source`) writes a CMake project with the engine, the game and two ways in:
+
+- `cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build` for this
+  computer's platform.
+- `./jasperengine.py --platform <linux|windows|macos|web|macos-xcode|ios-xcode>` (Python 3), which
+  configures and builds; `--dry-run` prints the commands and runs nothing. For `web` it runs CMake
+  with Emscripten's toolchain file (`EMSDK` set by `emsdk_env`, or `emcc` on `PATH`; Emscripten
+  6's Windows launchers work). On Windows a web build needs Ninja or mingw32-make: Ninja on
+  `PATH`, else the one Visual Studio's C++ CMake tools install (found through vswhere), else
+  mingw32-make; `--generator` picks one yourself.
+- Android: `cd workspaces/androidstudio && ./gradlew assembleRelease` (or open the folder in
+  Android Studio). Android builds have OpenGL ES 3 only, so its Build Settings preset compiles
+  the GLES3 shaders alone.
+
+The export keeps `jasperengine.py` and `gradlew` executable. A folder copied through Windows
+(NTFS has no execute bit) or an archive that drops modes needs `chmod +x jasperengine.py
+workspaces/androidstudio/gradlew`, or `python3 jasperengine.py` and `bash ./gradlew`.
+
+Project Settings > Player > Window Title can hold any text: it reaches the game's compile as
+escaped bytes, so `;`, `#`, quotes and every language build.
+
 ## Player runtimes
 
 A runtime is named `<platform>-<arch>-<backend>-<flavour>`, for example
@@ -183,7 +207,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | Option | Effect |
 |---|---|
 | `--headless` | no window (Linux still needs an X server: Xvfb in CI) |
-| `--quit-after N` | quit after N frames |
+| `--quit-after N` | quit after N drawn frames (a minimized or hidden window updates without drawing: use `--headless` in automation) |
 | `--after-ready` | count the frames from "Engine ready:" (every scene loaded, no shader being made, no texture loading) |
 | `--fixed-fps F` | a fixed time step of 1/F seconds |
 | `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default); a frame drawn with shaders still being made or textures still loading waits for them (the game held), up to 120 s, then exits 4 naming them |

@@ -8,6 +8,8 @@
 #include "Project.h"
 #include "util/EntityPayload.h"
 #include "util/ScriptEvents.h"
+#include "vcs/TextBaselines.h"
+#include <optional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -31,6 +33,7 @@ namespace jasperengine::editor {
         int savedUndoIndex;
         int propertyInsertUndoIndex; // undo index after a drag-drop insertion, -1 if none pending
         bool pendingWindowFocus; // focus the window when it is drawn next
+        uint64_t baselineVersion = 0; // of the vcs::TextBaseline the change markers come from
 
         EditorInstance() : isOpen(true), languageType(SyntaxLanguage::None), isModified(false), savedUndoIndex(0), propertyInsertUndoIndex(-1), pendingWindowFocus(false) {}
     };
@@ -59,6 +62,12 @@ namespace jasperengine::editor {
         std::atomic<bool> newSymbolsReady{false};
 
         ScriptEventScan eventMenuScan;
+
+        // the open files' version control baselines (the change markers)
+        vcs::TextBaselines baselines;
+        void updateBaselines();
+        // the status row's version control segment and its menu
+        void showVcsSegment(EditorInstance& instance);
         // Added after the windows are drawn, it can open a file
         std::string pendingEventFile;
         size_t pendingEvent = 0;
@@ -71,7 +80,6 @@ namespace jasperengine::editor {
         void handleFileChangePopup();
         std::string getWindowTitle(const EditorInstance& instance) const;
         void updateScriptProperties(const EditorInstance& instance, const std::string& inMemoryContent = "");
-        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
 
         void updateAllProjectSymbols();
         void applyParsedProjectSymbols();
@@ -95,6 +103,9 @@ namespace jasperengine::editor {
         void addScriptEvent(const std::string& filepath, size_t event);
 
     public:
+        // the script entries reading their properties from this file (a path relative to the project,
+        // or absolute) take the file's, or the code being edited
+        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
         CodeEditor(Project* project);
         ~CodeEditor();
 
@@ -122,6 +133,12 @@ namespace jasperengine::editor {
             std::string path;       // project-relative key
             bool modified = false;  // unsaved edits in the buffer
             int cursorLine = 0;     // 1-based
+            int lineCount = 0;
+            // version control: the baseline's state ("ready", "untracked", ...; "none" when off),
+            // its revision and the buffer's changes against it
+            std::string baselineState = "none";
+            std::string baselineRevision;
+            std::vector<LineChange> changes;
         };
         // Opens (or focuses) a file and puts the cursor at line/column (1-based, 0 = keep)
         void openFileAt(const std::string& filepath, int line, int column);
@@ -134,6 +151,11 @@ namespace jasperengine::editor {
         bool saveFile(const std::string& filepath);
         // Discards the buffer's unsaved edits and loads the file from disk
         bool reloadFile(const std::string& filepath);
+        // Revert Change on the change at a 1-based line (or the line a deletion is marked at): one
+        // undo step in the buffer, unsaved
+        bool revertChangeAt(const std::string& filepath, int line, std::string& error);
+        // The buffer's text (unsaved edits included); none when the file is not open
+        std::optional<std::string> bufferText(const std::string& filepath) const;
 
         void show();
     };

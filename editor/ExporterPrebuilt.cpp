@@ -598,6 +598,7 @@ bool editor::Exporter::writeGameConfig() {
     game.threading.ioThreads = threading.ioThreads;
     game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
     game.atmosphereQuality = project->getAtmosphereQuality();
+    game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
@@ -609,6 +610,7 @@ bool editor::Exporter::writeGameConfig() {
     game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
+    game.dynamicBatching = project->isDynamicBatching();
     game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
     game.device = project->getDeviceSettings();

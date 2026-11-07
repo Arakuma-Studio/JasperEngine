@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
+#include "animation/ActionPreviewSnapshot.h"
 
 #include <memory>
 #include <unordered_set>
@@ -126,12 +127,9 @@ namespace jasperengine::editor{
 
         // Animation preview
         bool isPreviewing;
-        struct PreviewEntityState {
-            Entity entity = NULL_ENTITY;
-            Entity parent = NULL_ENTITY;
-            YAML::Node components;
-        };
-        std::vector<PreviewEntityState> previewState;
+        // the authored state of what the preview writes; values commands write meanwhile are
+        // kept (runtime-core spec 6.6)
+        ActionPreviewSnapshot previewSnapshot;
 
         // Keying: right-click a track block or the empty tracks area to store the
         // target's current position/rotation/scale as a keyframe at the clicked
@@ -179,7 +177,9 @@ namespace jasperengine::editor{
         void collectPreviewEntitiesRecursive(Scene* scene, Entity entity, std::vector<Entity>& entities,
                              std::unordered_set<Entity>& visitedAnimations,
                              std::unordered_set<Entity>& collectedEntities) const;
-        PreviewEntityState buildPreviewEntityState(Scene* scene, Entity entity) const;
+        // takes `entity` into the preview's snapshot, without the Animation and the key data
+        // (the preview reads them, never writes them)
+        void snapshotPreviewEntity(Scene* scene, Entity entity);
         void restorePreviewState(Scene* scene) const;
         void applyPreviewModelBindPose(Scene* scene) const;
         float getAnimationDuration(const AnimationComponent& anim, Scene* scene) const;

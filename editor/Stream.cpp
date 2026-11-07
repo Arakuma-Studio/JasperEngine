@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+
+#include <unordered_map>
+#include <unordered_set>
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
@@ -2497,12 +2500,23 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["uiScale"] = encodeCanvasScaler(project->getUIScale());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    // absent = on (projects from before Dynamic Batching)
+    if (!project->isDynamicBatching())
+        root["dynamicBatching"] = false;
     if (project->getAtmosphereQuality() != Project::defaultAtmosphereQuality) {
         YAML::Node quality;
         quality["desktop"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[0]);
         quality["mobile"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[1]);
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
+    }
+    // Project Settings > Quality > Foliage Distance, omitted at its defaults
+    if (project->getFoliageDistanceScale() != Project::defaultFoliageDistanceScale) {
+        YAML::Node scale;
+        scale["desktop"] = project->getFoliageDistanceScale()[0];
+        scale["mobile"] = project->getFoliageDistanceScale()[1];
+        scale["web"] = project->getFoliageDistanceScale()[2];
+        root["foliageDistanceScale"] = scale;
     }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
@@ -3055,8 +3069,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             }
         };
 
+        // one entry per file: two scenes on one file would each load and overwrite the other
+        std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
             if (sceneProject.filepath.empty()) {
+                continue;
+            }
+            const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
+            if (!added) {
+                Out::warning("Scenes \"%s\" and \"%s\" both name %s: project.yaml lists the file once",
+                             listed->second->name.c_str(), sceneProject.name.c_str(), sceneProject.filepath.generic_string().c_str());
                 continue;
             }
             appendUnresolved();
@@ -3124,6 +3146,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
     }
 
+    project->setDynamicBatching(node["dynamicBatching"].IsDefined() ? YamlNumbers::as<bool>(node["dynamicBatching"]) : Project::defaultDynamicBatching);
+
     {
         // omitted at the defaults; each platform group defaults on its own
         std::array<AtmosphereQuality, 3> quality = Project::defaultAtmosphereQuality;
@@ -3136,6 +3160,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        std::array<float, 3> scale = Project::defaultFoliageDistanceScale;
+        const YAML::Node scaleNode = node["foliageDistanceScale"];
+        if (scaleNode.IsDefined() && scaleNode.IsMap()) {
+            const char* keys[3] = {"desktop", "mobile", "web"};
+            for (int i = 0; i < 3; i++)
+                scale[i] = decodeFinite(scaleNode[keys[i]], scale[i]);
+        }
+        project->setFoliageDistanceScale(scale);
     }
 
     {
@@ -3835,6 +3870,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     bool isFirstScene = true;
     size_t listPosition = 0;
+    std::unordered_set<std::string> listedFiles;
     if (node["scenes"]) {
         for (const auto& sceneNode : node["scenes"]) {
             if (!sceneNode["filepath"]) {
@@ -3851,6 +3887,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                     relStr = moved.generic_string();
                 }
             }
+            // a second entry for one file would build a second scene saving into it
+            if (!listedFiles.insert(project->sceneFileKey(relStr)).second) {
+                Out::warning("project.yaml lists %s twice: the second entry is ignored (the next save writes it once)", relStr.c_str());
+                continue;
+            }
             fs::path scenePath = relStr;
             if (scenePath.is_relative()) {
                 scenePath = project->getProjectPath() / scenePath;
@@ -3866,7 +3907,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 project->addUnresolvedScene(position, relStr);
                 continue;
             }
-            if (!project->loadScene(scenePath, opened, true, opened)) {
+            if (!project->loadScene(scenePath, opened, true, opened, true)) {
                 project->addUnresolvedScene(position, relStr);
                 continue;
             }
@@ -4405,6 +4446,15 @@ void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, 
     walkSpeedOffset = decodeFinite(node["walkSpeed"], 0.0f);
 }
 
+// scene keys of the default shaders' property values (Scene > Default Shaders)
+static const std::pair<ShaderType, const char*> defaultShaderUniformKeys[] = {
+    {ShaderType::MESH, "defaultMeshShaderUniforms"},
+    {ShaderType::UI, "defaultUIShaderUniforms"},
+    {ShaderType::SKYBOX, "defaultSkyShaderUniforms"},
+    {ShaderType::POINTS, "defaultPointsShaderUniforms"},
+    {ShaderType::LINES, "defaultLinesShaderUniforms"},
+};
+
 YAML::Node editor::Stream::encodeScene(Scene* scene) {
     YAML::Node sceneNode;
 
@@ -4487,6 +4537,12 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         encodeShaderRef(sceneNode, "defaultPointsShader", scene->getDefaultShaderRef(ShaderType::POINTS));
     if (!scene->getDefaultLinesShader().empty())
         encodeShaderRef(sceneNode, "defaultLinesShader", scene->getDefaultShaderRef(ShaderType::LINES));
+    // the default shaders' property values, written only when set (older scenes re-save unchanged)
+    for (const auto& [type, key] : defaultShaderUniformKeys) {
+        const ShaderUniformValues& values = scene->getDefaultShaderUniforms(type);
+        if (!values.empty())
+            sceneNode[key] = encodeShaderUniforms(values);
+    }
 
     for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
         YAML::Node passNode;
@@ -4664,6 +4720,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setDefaultShaderRef(ShaderType::SKYBOX, decodeShaderRef(node, "defaultSkyShader"));
     scene->setDefaultShaderRef(ShaderType::POINTS, decodeShaderRef(node, "defaultPointsShader"));
     scene->setDefaultShaderRef(ShaderType::LINES, decodeShaderRef(node, "defaultLinesShader"));
+    for (const auto& [type, key] : defaultShaderUniformKeys) {
+        scene->setDefaultShaderUniforms(type, decodeShaderUniforms(node[key]));
+    }
 
     // absent key clears the chain so decoding into a reused scene (play restore) is exact
     std::vector<PostProcessPass> postProcess;

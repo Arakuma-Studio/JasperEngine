@@ -10,6 +10,8 @@
 #include "LuaBridgeAddon.h"
 #include "LuaComponentSetters.h"
 
+#include <optional>
+
 #include "ecs/Entity.h"
 #include "ecs/Signature.h"
 #include "ecs/EntityManager.h"
@@ -206,6 +208,17 @@ namespace {
         const AudioLoadType type = lua_isnumber(L, 2) ? (AudioLoadType)lua_tointeger(L, 2) : AudioLoadType::Auto;
         lua_pushboolean(L, AudioSystem::preload(path, type));
         return 1;
+    }
+
+    // RenderSystem:getLoadCount() -> loaded, total
+    int luaRenderGetLoadCount(lua_State* L){
+        RenderSystem* self = luabridge::detail::Userdata::get<RenderSystem>(L, 1, true);
+        size_t loaded = 0;
+        size_t total = 0;
+        if (self) self->getLoadCount(loaded, total);
+        lua_pushinteger(L, static_cast<lua_Integer>(loaded));
+        lua_pushinteger(L, static_cast<lua_Integer>(total));
+        return 2;
     }
 
 }
@@ -428,7 +441,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<ActionSystem>("ActionSystem")
-        .addFunction("actionStart", &ActionSystem::actionStart)
+        // an omitted newRun is C++'s default true (a missing Lua bool would read false)
+        .addFunction("actionStart", [] (ActionSystem* self, Entity entity, std::optional<bool> newRun) {
+            self->actionStart(entity, newRun.value_or(true));
+        })
+        .addFunction("getDuration", luabridge::overload<Entity>(&ActionSystem::getDuration))
+        .addFunction("getFrameDuration", &ActionSystem::getFrameDuration)
         .addFunction("actionStop", &ActionSystem::actionStop)
         .addFunction("actionPause", &ActionSystem::actionPause)
         .endClass();
@@ -443,6 +461,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("preload", &luaAudioPreload)
         .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
         .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
+        // the sounds of this system's scene only (stopAll: every scene's)
+        .addFunction("stopSceneSounds", &AudioSystem::stopSceneSounds)
         .endClass();
 
     // Unity AudioListener: the pause of every source but the ignoreListenerPause ones, and the
@@ -509,8 +529,16 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("createCylinder", &MeshSystem::createCylinder)
         .addFunction("createCapsule", &MeshSystem::createCapsule)
         .addFunction("createTorus", &MeshSystem::createTorus)
-        .addFunction("loadGLTF", &MeshSystem::loadGLTF)
+        // an omitted changeRootTransform is C++'s default true (a missing Lua bool would read false)
+        .addFunction("loadGLTF", [] (MeshSystem* self, Entity entity, const std::string& filename, bool asyncLoad,
+                                     bool skipEntities, std::optional<bool> changeRootTransform, bool bakeSceneRoot) {
+            return self->loadGLTF(entity, filename, asyncLoad, skipEntities, changeRootTransform.value_or(true), bakeSceneRoot);
+        })
         .addFunction("loadOBJ", &MeshSystem::loadOBJ)
+        .addFunction("hasPendingAsyncModelLoads", &MeshSystem::hasPendingAsyncModelLoads)
+        .addFunction("isAsyncModelLoadPending", luabridge::overload<Entity, const std::string&>(&MeshSystem::isAsyncModelLoadPending))
+        .addFunction("cancelAsyncModelLoad", &MeshSystem::cancelAsyncModelLoad)
+        .addFunction("cancelAsyncModelLoads", &MeshSystem::cancelAsyncModelLoads)
         .addFunction("createInstancedMesh", &MeshSystem::createInstancedMesh)
         .addFunction("removeInstancedMesh", &MeshSystem::removeInstancedMesh)
         .endClass();
@@ -531,6 +559,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
             luabridge::overload<Vector3>(&PhysicsSystem::setGravity3D),
             luabridge::overload<float, float, float>(&PhysicsSystem::setGravity3D))
         .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
+        // every physics event callback of the scene (all scripts'), or those whose tag holds the substring
+        .addFunction("clearSubscriptions", &PhysicsSystem::clearSubscriptions)
+        .addFunction("removeSubscriptionsByTag", &PhysicsSystem::removeSubscriptionsByTag)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
         // Box2D sub-steps of each fixed step (1-16, the scene setting physics2DSubSteps)
@@ -603,6 +634,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<RenderSystem>("RenderSystem")
         .addFunction("updateCameraSize", &RenderSystem::updateCameraSize)
+        // loading screens: everything the scene waits for has loaded / how much of it
+        .addFunction("isAllLoaded", &RenderSystem::isAllLoaded)
+        .addFunction("getLoadCount", &luaRenderGetLoadCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -613,6 +647,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("getAnchorReferenceWidth", &UISystem::getAnchorReferenceWidth)
         .addFunction("getAnchorReferenceHeight", &UISystem::getAnchorReferenceHeight)
         .addFunction("isInputFieldFocused", &UISystem::isInputFieldFocused)
+        .addFunction("parentToLayoutSpace", &UISystem::parentToLayoutSpace)
+        .addFunction("layoutToParentSpace", &UISystem::layoutToParentSpace)
+        .addFunction("hasPendingImages", &UISystem::hasPendingImages)
+        .addFunction("resetButtonStates", &UISystem::resetButtonStates)
         .addFunction("eventOnCharInput", &UISystem::eventOnCharInput)
         .addFunction("eventOnKeyDown", &UISystem::eventOnKeyDown)
         // (x, y): the mouse's left button; (pointerId, button, x, y, touch): any pointer (ui-multitouch)
@@ -653,6 +691,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("state", &ActionComponent::state)
         .addProperty("timecount", &ActionComponent::timecount)
         .addProperty("speed", &ActionComponent::speed, &setTrackedMember<&ActionComponent::speed>)
+        .addProperty("startOffset", &ActionComponent::startOffset, &setTrackedMember<&ActionComponent::startOffset>)
+        .addProperty("randomStart", &ActionComponent::randomStart, &setTrackedMember<&ActionComponent::randomStart>)
         .addProperty("startTrigger", &ActionComponent::startTrigger, &setTrackedMember<&ActionComponent::startTrigger>)
         .addProperty("stopTrigger", &ActionComponent::stopTrigger, &setTrackedMember<&ActionComponent::stopTrigger>)
         .addProperty("pauseTrigger", &ActionComponent::pauseTrigger, &setTrackedMember<&ActionComponent::pauseTrigger>)

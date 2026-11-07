@@ -14,6 +14,7 @@
 #include "serialization/SceneSettingsCodec.h"
 #include "util/Fnv.h"
 #include "component/MeshComponent.h"
+#include "util/ProjectUtils.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "resources/sky/Daylight_Box_Back_png.h"
@@ -153,6 +154,8 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t
     std::vector<Entity> ordered;
     for (Entity entity : entities)
         if (scene->isEntityCreated(entity)) ordered.push_back(entity);
+    // parents before their children, whatever order the list came in (the runtime adds them so)
+    ProjectUtils::sortEntitiesByTransformOrder(scene, ordered);
     // a default camera that is none of the scene's GameObjects: a system entity of its own
     const bool systemCamera = camera != NULL_ENTITY && std::find(ordered.begin(), ordered.end(), camera) == ordered.end() &&
                               scene->isEntityCreated(camera);
