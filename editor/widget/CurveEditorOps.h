@@ -101,6 +101,12 @@ namespace jasperengine::editor::curveops {
     Curve remap(const Curve& normalised, const CurveRange& range);
     Curve normalise(const Curve& curve, const CurveRange& range);
 
+    // Align (S91 R23): the selected keys take the mean of their values, a level line through them
+    void alignKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection);
+    // Smooth: each selected key Free and joined, its slope the mean of the slopes to its
+    // neighbours (Unity's SmoothTangents, weight 0); Sharpen: Linear on both sides, a corner
+    void smoothKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection);
+    void sharpenKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection);
     // the selected keys of one curve, their times relative to the first; pasted at `time`
     std::vector<CurveKey> copyKeys(const Curve& curve, const std::vector<KeyRef>& selection, int curveIndex);
     // the pasted keys' indices (a key landing on an existing key's time replaces it)

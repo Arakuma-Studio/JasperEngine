@@ -81,6 +81,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool textureSynthesis = false;
     bool audioMixer = false;
+    bool particleEffect = false;
     bool soundBrowser = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
@@ -100,6 +101,7 @@ struct PanelVisibilitySettings {
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && audioMixer == other.audioMixer
+            && particleEffect == other.particleEffect
             && soundBrowser == other.soundBrowser
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement

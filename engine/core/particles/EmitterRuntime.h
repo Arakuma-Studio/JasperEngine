@@ -257,6 +257,8 @@ namespace jasperengine { namespace particles {
         // the hash of every live channel, and of the children (determinism)
         uint64_t stateHash() const;
         uint32_t seedValue() const { return seed; }
+        // particles spawned since the last reset, its children's not counted (what the preview's metrics call emitted)
+        uint32_t spawnedCount() const { return spawnCounter; }
         uint32_t raysLastTick() const { return lastRays; }
 
         // a copy of the state (seek checkpoints)

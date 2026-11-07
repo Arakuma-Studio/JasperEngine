@@ -226,3 +226,46 @@ TEST(CurvePresets, Libraries) {
     ASSERT_TRUE(curvepresets::fromJson(R"({"version": 3, "presets": []})", future, error));
     EXPECT_TRUE(future.readOnly);
 }
+
+// S91 R23: the Curve window's Align, Smooth and Sharpen on the selected keys
+TEST(CurveEditorOps, AlignGivesTheSelectedKeysTheirMeanValue) {
+    Curve a;
+    a.addKey(0.0f, 0.0f);
+    a.addKey(0.5f, 1.0f);
+    a.addKey(1.0f, 0.2f);
+    Curve b;
+    b.addKey(0.0f, 0.5f);
+    std::vector<Curve*> curves = {&a, &b};
+    alignKeys(curves, {{0, 1}, {0, 2}, {1, 0}});
+    const float mean = (1.0f + 0.2f + 0.5f) / 3.0f;
+    EXPECT_FLOAT_EQ(a.keys[0].value, 0.0f);
+    EXPECT_FLOAT_EQ(a.keys[1].value, mean);
+    EXPECT_FLOAT_EQ(a.keys[2].value, mean);
+    EXPECT_FLOAT_EQ(b.keys[0].value, mean);
+    // a stale reference is skipped
+    alignKeys(curves, {{0, 7}, {3, 0}});
+    EXPECT_FLOAT_EQ(a.keys[1].value, mean);
+}
+
+TEST(CurveEditorOps, SmoothJoinsAKeyAlongItsNeighboursAndSharpenMakesACorner) {
+    Curve curve;
+    curve.addKey(0.0f, 0.0f);
+    curve.addKey(1.0f, 1.0f);
+    curve.addKey(2.0f, 0.0f);
+    std::vector<Curve*> curves = {&curve};
+    sharpenKeys(curves, {{0, 1}});
+    const CurveKey& middle = curve.keys[1];
+    EXPECT_EQ(middle.inMode(), CurveTangentMode::Linear);
+    EXPECT_EQ(middle.outMode(), CurveTangentMode::Linear);
+    // towards each neighbour: up from the left, down to the right
+    EXPECT_FLOAT_EQ(middle.inTangent, 1.0f);
+    EXPECT_FLOAT_EQ(middle.outTangent, -1.0f);
+
+    smoothKeys(curves, {{0, 1}});
+    EXPECT_EQ(middle.inMode(), CurveTangentMode::Free);
+    EXPECT_EQ(middle.outMode(), CurveTangentMode::Free);
+    EXPECT_FALSE(middle.broken());
+    // the mean of the slopes to its neighbours: a peak is flat
+    EXPECT_FLOAT_EQ(middle.inTangent, 0.0f);
+    EXPECT_FLOAT_EQ(middle.outTangent, 0.0f);
+}

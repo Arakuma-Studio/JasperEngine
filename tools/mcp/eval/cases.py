@@ -1958,6 +1958,21 @@ CASES = [
         "max_turns": 6,
     },
     {
+        "id": "guard_focus_particle_effect",
+        "kind": "guard",
+        "what_happened": "S91 added the Particle Effect window; focus_window's enum names it so an agent showing a human an "
+                         "effect brings that window up instead of a screenshot or the Inspector.",
+        "text_at_issue": "focus_window's window enum: 'particle_effect'",
+        "source": "S91 (new window); no failure on record",
+        "prompt": "Bring the Particle Effect window to the front, I want to watch the effect's timing with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "particle_effect"},
+             "result": ok("Focused the Particle Effect window.", {"window": "particle_effect"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "particle_effect"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
         "id": "guard_patch_did_you_mean",
         "kind": "guard",
         "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "
@@ -1992,6 +2007,71 @@ CASES = [
         "checks": {"calls": [{"tool": "control_particles", "args": {"action": "trigger", "name": "ignite"}}],
                    "must_not_call": ["eval_lua", "play"]},
         "max_turns": 6,
+    },
+    {
+        "id": "pick_particle_preview",
+        "kind": "guard",
+        "what_happened": "Agents checked an effect with capture_particles, one frame per call, which seeks the live system "
+                         "and shows whatever the view shows; preview_particle_effect runs it apart, with a filmstrip and "
+                         "checks, and its result's fix_hint is the next edit.",
+        "text_at_issue": "preview_particle_effect's description; capacity_hit's fix_hint",
+        "source": "S91 R26, D2 (design study 3.3); no failure on record",
+        "prompt": "Check assets/fx/muzzle.particles for problems on mobile and fix what the check finds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "preview_particle_effect", "args": {"path": "assets/fx/muzzle.particles"}, "result": ok(
+                "assets/fx/muzzle.particles: 30 ticks of 0.0333 s (1 s), peak 400 particles at 0.0333 s, emitted 400. Verdict FAIL.\n"
+                "FAIL capacity_hit: {\"max_particles\":400,\"never_born\":200,\"peak\":400}. assets/fx/muzzle.particles: Max Particles "
+                "400 refused 200 births; emission was silently limited. Raise assets/fx/muzzle.particles's Max Particles to 600, or "
+                "emit fewer (lower the burst or the rate).\nPASS platform_budget: {\"cpu_ms\":0.04,\"estimate\":true}\n"
+                "Cost on mobile: 0.03 ms simulation + 0.01 ms render prep a frame (estimate, not measured on a device).",
+                {"verdict": "FAIL", "next": "Fix what fix_hint says, preview again. Never loosen a threshold. Report these numbers; "
+                 "cost is an estimate, not measured on a device, and never says an effect runs on a phone."})},
+            {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": ["preview_particle_effect", {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}}],
+                   "order": [["preview_particle_effect", "edit_particle_effect"]],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "pick_particle_sheet_bake",
+        "kind": "guard",
+        "what_happened": "Asked for a flipbook of an effect, agents captured frames one by one and stitched them; "
+                         "bake_particle_sheet bakes the sheet and the effect playing it, and writes only with output.",
+        "text_at_issue": "bake_particle_sheet's description: 'Without output nothing is written ... With output both files'",
+        "source": "S91 R12; no failure on record",
+        "prompt": "Bake assets/fx/smoke.particles into a 4x4 sprite sheet at assets/fx/smoke_sheet, so I can use it as a cheap flipbook.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "bake_particle_sheet", "result": ok(
+                "assets/fx/smoke.particles: 4x4 frames of 128 px over 2.0 s, straight alpha. Wrote assets/fx/smoke_sheet.png and "
+                "assets/fx/smoke_sheet.particles (Texture Sheet Animation 4x4) as one undo step \"Bake Sprite Sheet\".",
+                {"written": ["assets/fx/smoke_sheet.png", "assets/fx/smoke_sheet.particles"],
+                 "next": "set_particle_effect plays assets/fx/smoke_sheet.particles on a Particle System."})},
+        ],
+        "checks": {"calls": [{"tool": "bake_particle_sheet", "args": {"output": "re:smoke_sheet"}}],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_particle_subtree_seek",
+        "kind": "guard",
+        "what_happened": "A multi-system effect (a parent GameObject with several Particle Systems) was sought one child at a "
+                         "time; with_children seeks the subtree as one.",
+        "text_at_issue": "control_particles' with_children",
+        "source": "S91 R31; no failure on record",
+        "prompt": "In the open scene, jump the Explosion effect (a GameObject with child Particle Systems) to 0.5 seconds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"with_children": True}, "result": ok(
+                "seek: 340 particles in 3 systems at 0.500000 s (Edit mode: the Scene view's preview runs it).", {"systems": []})},
+            {"tool": "control_particles", "result": err("\"Explosion\" has no Particle System (create_particles adds one).")},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "seek", "with_children": True}}],
+                   "max_calls": {"control_particles": 2}},
+        "max_turns": 8,
     },
     {
         "id": "guard_graph_new_ids",

@@ -149,7 +149,8 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial,
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
-        ToggleMaximizeOnPlay
+        ToggleMaximizeOnPlay,
+        ToggleParticleEffect          // Window > Visual Effects > Particle Effect (S91)
     };
 
 }

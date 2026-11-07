@@ -3,6 +3,7 @@
 
 #include "ActionSystem.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/Transform.h"
 
 #include "Scene.h"
 #include "Engine.h"
