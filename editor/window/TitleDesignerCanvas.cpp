@@ -1095,7 +1095,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
             TextEditFrame frame;
             frame.layout = &laid;
             frame.layerToDoc = parentToDoc * layerTransformAffine(ta::decodeTransform(layer->value("transform", ta::Json::object())));
-            frame.titleXform = titleXform;
+            frame.xform = titleXform;
             frame.fieldPos = ImVec2(canvasMin.x + 2.0f, canvasMin.y + 2.0f);
             // the art outside the edited layer dims to 60 %
             const TitleRect editBox = layerBounds(textEdit->layerId());
