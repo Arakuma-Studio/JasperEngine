@@ -115,8 +115,9 @@ TEST(ClipReport, TheTableAndTheJsonHoldTheSameKeys){
     request.compareTo = clip;
     request.toleranceMm = 1.0;
     std::set<std::string> full = flattened(anim::clipReportJson(anim::analyzeClip(request)));
-    anim::ClipOptimizeResult reduction;
-    for (const auto& item : anim::clipOptimizeJson(reduction).items()) full.insert(item.key());
+    // a named value: items() of a temporary would outlive it (no lifetime extension before C++23)
+    const nlohmann::json reduction = anim::clipOptimizeJson(anim::ClipOptimizeResult());
+    for (const auto& item : reduction.items()) full.insert(item.key());
     for (const char* notAField : {"clip", "written_to", "kept", "kept_all_keys"}) full.erase(notAField);
     EXPECT_EQ(full, table);
 }
