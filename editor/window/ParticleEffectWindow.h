@@ -131,6 +131,8 @@ namespace jasperengine::editor {
         // a new random seed, the same time
         void reroll();
         void setPerLoopSeed(bool on) { perLoopSeed = on; }
+        // the toolbar's label of that option
+        static const char* perLoopSeedLabel();
         bool isPerLoopSeed() const { return perLoopSeed; }
         // the clock loops over [start, end] (off: over the effect, a one-shot from its end to 0)
         void setLoopRange(bool enabled, float start, float end);

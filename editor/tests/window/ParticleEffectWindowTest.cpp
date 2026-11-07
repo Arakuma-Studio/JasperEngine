@@ -533,30 +533,49 @@ TEST(ParticleEffectWindow, ALoopingEffectWrapsByWholeDurationsOnceSteady) {
     EXPECT_EQ(window.getSeed(), 7u);
 }
 
-TEST(ParticleEffectWindow, PerLoopSeedOnALoopingEffectSeeksWithTheNewSeed) {
+// R20's seed per loop (review round 3): a preview option, off by default; off, the preview is the game's
+// run; on, it differs on purpose and says so: each loop shows a new seed
+TEST(ParticleEffectWindow, SeedPerLoopIsAVisiblePreviewOnlyOption) {
     ASSERT_TRUE(headless().ready);
     ParticleEffectDocument d = fountain();
     d.duration = 1.0f;
     d.main.startLifetime = MinMaxCurve(0.5f);
-    const std::string path = writeEffect("fx/seeded_loop.particles", d);
+    const std::string path = writeEffect("fx/seed_per_loop.particles", d);
+    EXPECT_STREQ(ParticleEffectWindow::perLoopSeedLabel(), "Seed per loop: preview only; the game keeps one seed");
+
+    // off by default: across its loops the preview is the game's run, on one seed
     ParticleEffectWindow window(project());
+    EXPECT_FALSE(window.isPerLoopSeed());
     window.openEffect(path);
     window.setSeed(7);
-    window.setPerLoopSeed(true);
     settle(window);
     play(window, 150);
-    // the clock stays within its bounds and the seed moved on
-    EXPECT_LE(window.getTime(), 3.0 + 1e-6);
-    EXPECT_NE(window.getSeed(), 7u);
     window.pause();
     settle(window);
-    const double time = window.getTime();
-    ParticleEffectWindow fresh(project());
-    fresh.openEffect(path);
-    fresh.setSeed(window.getSeed());
-    fresh.seek(time);
-    settle(fresh);
-    EXPECT_EQ(window.stageStats().stateHash, fresh.stageStats().stateHash) << time;
+    EXPECT_EQ(window.getSeed(), 7u);
+    EXPECT_EQ(window.uiState().seed, 7u);
+    ParticleEffectWindow game(project());
+    game.openEffect(path);
+    game.setSeed(7);
+    game.seek(window.getTime());
+    settle(game);
+    EXPECT_EQ(window.stageStats().stateHash, game.stageStats().stateHash);
+
+    // on: every loop shows another seed, and the window shows it
+    window.setPerLoopSeed(true);
+    window.play();
+    std::vector<uint32_t> seeds = {window.getSeed()};
+    double last = window.getTime();
+    for (int i = 0; i < 240; i++) {
+        window.update(1.0 / 30.0);
+        if (window.getTime() < last) {
+            EXPECT_NE(window.getSeed(), seeds.back()) << i;
+            seeds.push_back(window.getSeed());
+        }
+        EXPECT_EQ(window.uiState().seed, window.getSeed());
+        last = window.getTime();
+    }
+    EXPECT_GE(seeds.size(), 3u);
 }
 
 TEST(ParticleEffectWindow, ClosingTheWindowReleasesTheStage) {

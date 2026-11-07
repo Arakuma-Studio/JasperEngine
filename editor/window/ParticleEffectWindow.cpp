@@ -414,6 +414,11 @@ void ParticleEffectWindow::wrapLoop() {
     stage.seek(clock);
 }
 
+const char* ParticleEffectWindow::perLoopSeedLabel() {
+    // it makes the preview differ from the game on purpose: the label says so where it is switched
+    return "Seed per loop: preview only; the game keeps one seed";
+}
+
 void ParticleEffectWindow::play() {
     playing = true;
 }
@@ -787,8 +792,8 @@ void ParticleEffectWindow::drawToolbar() {
     UIProbe::item("particle_effect.reroll");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reroll: a new seed, the same time");
     ImGui::SameLine();
-    ImGui::Checkbox("Per-Loop Seed", &perLoopSeed);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A new seed each time the clock loops");
+    ImGui::Checkbox(perLoopSeedLabel(), &perLoopSeed);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A new seed each time the preview's clock loops, to see the variation; off, the preview is the game's run");
 
     bool range = loopRange;
     if (ImGui::Checkbox("Loop Range", &range)) setLoopRange(range, loopStart, loopRange ? loopEnd : timelineSpan());
