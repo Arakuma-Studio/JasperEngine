@@ -73,20 +73,18 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     qa.overdrawMobile = 6.0f;   // the project's thresholds reach both
     h.project->setParticleQaSettings(qa);
 
-    // the window's path
+    // the window's path (a project without assetsDir: its assets root is the project's folder)
     ParticleChecksPanel panel;
-    panel.setAsset("fx/burst.particles");
+    panel.setAsset("assets/fx/burst.particles");
     ParticlePreviewRequest windowRequest;
     std::string error;
-    ASSERT_TRUE(panel.buildRequest(h.project.get(), windowRequest, error))
-        << error << " (assets " << h.project->getAssetsPath() << ", file there: " << fs::exists(h.project->getAssetsPath() / "fx" / "burst.particles")
-        << ", the engine's asset path: " << System::instance().getAssetPath() << ")";
+    ASSERT_TRUE(panel.buildRequest(h.project.get(), windowRequest, error)) << error;
     qa::Json windowReport;
     ASSERT_TRUE(ParticleEffectPreview::runCpu(windowRequest, windowReport, error)) << error;
 
     // the tool's path: its source and arguments (frames 0, the default platform)
     ParticlePreviewRequest toolRequest;
-    ASSERT_TRUE(ParticlePreviewSource::fromAsset("fx/burst.particles", toolRequest.systems, error)) << error;
+    ASSERT_TRUE(ParticlePreviewSource::fromAsset("assets/fx/burst.particles", toolRequest.systems, error)) << error;
     ASSERT_TRUE(ParticlePreviewSource::applyArgs(qa::Json{{"frames", 0}}, toolRequest, error)) << error;
     toolRequest.qa = h.project->getParticleQaSettings();
     qa::Json toolReport;
@@ -102,7 +100,7 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     EXPECT_EQ(rows[0].id, "capacity_hit");
     EXPECT_EQ(rows[0].status, "FAIL");
     EXPECT_EQ(rows[0].fix, 0) << "a single edit: the Fix button";
-    EXPECT_EQ(toolReport["fixes"][0]["path"], "fx/burst.particles");
+    EXPECT_EQ(toolReport["fixes"][0]["path"], "assets/fx/burst.particles");
     EXPECT_EQ(toolReport["thresholds"]["changed"][0]["key"], "particles.qa.overdraw_mobile");
     h.project->setParticleQaSettings(ParticleQaSettings());
 }

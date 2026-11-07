@@ -166,10 +166,12 @@ void ParticleChecksPanel::finishRun(Project* project){
     run.reset();
 }
 
-std::string ParticleChecksPanel::defaultRecordPath() const{
+std::string ParticleChecksPanel::defaultRecordPath(Project* project) const{
     namespace fs = std::filesystem;
-    std::string base = asset.empty() ? std::string("fx/effect") : (fs::path(asset).parent_path() / fs::path(asset).stem()).generic_string();
-    return "assets/" + base + (recordKind == 0 ? "_sheet" : "_frames");
+    // beside the effect, project-relative (the assets folder may be the project's or one inside it)
+    const fs::path assets = project->getAssetsPath().lexically_relative(project->getProjectPath());
+    const fs::path base = asset.empty() ? fs::path("effect") : fs::path(asset).parent_path() / fs::path(asset).stem();
+    return ((assets.empty() || assets == ".") ? base : assets / base).generic_string() + (recordKind == 0 ? "_sheet" : "_frames");
 }
 
 void ParticleChecksPanel::finishRecording(Project* project){
@@ -337,7 +339,7 @@ void ParticleChecksPanel::draw(Project* project){
     ImGui::SetNextItemWidth(80.0f);
     ImGui::InputInt("Cell Size##particleRecord", &cellSize, 16);
     cellSize = std::clamp(cellSize, 16, 1024);
-    if (recordPath[0] == 0) std::snprintf(recordPath, sizeof(recordPath), "%s", defaultRecordPath().c_str());
+    if (recordPath[0] == 0) std::snprintf(recordPath, sizeof(recordPath), "%s", defaultRecordPath(project).c_str());
     ImGui::SetNextItemWidth(-90.0f);
     ImGui::InputText("##particleRecordPath", recordPath, sizeof(recordPath));
     UIProbe::item("particleRecord.path");

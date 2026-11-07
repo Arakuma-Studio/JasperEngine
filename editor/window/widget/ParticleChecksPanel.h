@@ -91,7 +91,7 @@ namespace jasperengine::editor {
         void finishRun(Project* project);
         void finishRecording(Project* project);
         void applyFix(Project* project, int index);
-        std::string defaultRecordPath() const;
+        std::string defaultRecordPath(Project* project) const;
     };
 
 }
