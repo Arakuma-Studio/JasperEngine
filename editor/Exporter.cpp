@@ -26,6 +26,7 @@
 #include <regex>
 #include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
+#include "platform/ExternalTools.h"
 #include "util/ApplePrivacy.h"
 #include "util/PngEditorChunks.h"
 #include "navigation/NavigationFindings.h"
@@ -1782,12 +1783,13 @@ bool editor::Exporter::runBuild() {
     const fs::path buildDir = config.targetDir / buildDirName;
 
     const unsigned int jobs = effectiveBuildJobs();
+    const unsigned int buildJobs = Generator::buildStepParallelJobs(buildDir, jobs);
 
     // the CMake that configured the tree (Web too: no emcmake picking its own any more)
     const std::string cmakeCmd = Generator::cmakeProgram();
 
     std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
-                                      "--parallel", std::to_string(Generator::buildStepParallelJobs(buildDir, jobs)) };
+                                      "--parallel", std::to_string(buildJobs) };
     // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
     CommandRunner::Environment toolEnv;
     std::string msvcError;
@@ -1805,7 +1807,8 @@ bool editor::Exporter::runBuild() {
     // bar until MSBuild confirms work by emitting a source filename.
     MsBuildProgress msBuildProgress(buildDir, config.buildType);
 
-    Out::info("Building export with %u parallel jobs...", jobs);
+    if (buildJobs == jobs) Out::info("Building export with %u parallel jobs...", buildJobs);
+    else Out::info("Building export with %u parallel job(s), %u compiler processes each (Visual Studio /MP)...", buildJobs, jobs);
     buildErrors.clear();
     auto onBuild = [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
@@ -3744,10 +3747,10 @@ namespace {
 
     // Mirrors the folder `src` (below `root`) into `dst` without following links: a link that
     // stays inside `root` (a framework's Versions/Current) is copied as that link (its target
-    // when links cannot be made), any other link is left out with a warning; the editor's .meta
-    // sidecars are left out (a .meta in an Android res/ folder fails the resource compile, one
-    // in a framework breaks its signature's seal); unchanged files keep their time; what `src`
-    // no longer has goes
+    // when links cannot be made), any other link is left out with a warning; what the plugin scan
+    // skips is left out (NativePlugins::isSkippedEntry: a .meta in an Android res/ folder fails the
+    // resource compile, a .DS_Store or .meta in a framework breaks its signature's seal); unchanged
+    // files keep their time; what `src` no longer has goes
     bool mirrorNoFollow(const fs::path& root, const fs::path& src, const fs::path& dst, std::string& error) {
         std::error_code ec;
         const fs::file_status dstStatus = fs::symlink_status(dst, ec);
@@ -3762,7 +3765,7 @@ namespace {
             const fs::path from = it->path();
             const fs::path to = dst / from.filename();
             const fs::file_status status = it->symlink_status(ec);
-            if (!fs::is_directory(status) && editor::NativePlugins::isEditorSidecar(from)) continue;
+            if (editor::NativePlugins::isSkippedEntry(from, fs::is_directory(status))) continue;
             names.insert(from.filename());
             if (fs::is_symlink(status)) {
                 const fs::path target = fs::read_symlink(from, ec);
@@ -3852,33 +3855,69 @@ bool editor::Exporter::copyMacosNativeSdks(const fs::path& projectRoot, const fs
     error.clear();
     const NativePlugins::Scan scan = NativePlugins::scan(projectRoot);
     const fs::path frameworks = destination / "Frameworks";
-    std::set<fs::path> embedded;
+    std::set<fs::path> embedded, resources;
     std::error_code ec;
     for (const NativePlugins::MacosSdk& sdk : NativePlugins::macosSdks(scan)) {
         if (!sdk.embedded && !sdk.resource) continue;
         const fs::path from = scan.root / FileUtils::pathFromUtf8(sdk.library);
         const fs::path to = (sdk.embedded ? frameworks : destination) / from.filename();
-        if (sdk.embedded) embedded.insert(from.filename());
+        (sdk.embedded ? embedded : resources).insert(from.filename());
         if (fs::is_directory(from, ec)) {
             if (!mirrorNoFollow(scan.root, from, to, error)) return false;
-            continue;
+        } else {
+            // an .xcframework's dynamic library that is a file
+            fs::create_directories(to.parent_path(), ec);
+            if (fs::is_symlink(fs::symlink_status(to, ec)) || fs::is_directory(fs::symlink_status(to, ec))) removeAllNoFollow(to, ec);
+            ec.clear();
+            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                error = "cannot copy " + genericUtf8Path(from) + ": " + ec.message();
+                return false;
+            }
         }
-        // an .xcframework's dynamic library that is a file
-        fs::create_directories(to.parent_path(), ec);
-        if (fs::is_symlink(fs::symlink_status(to, ec)) || fs::is_directory(fs::symlink_status(to, ec))) removeAllNoFollow(to, ec);
+        if (!sdk.embedded) continue;
+        // Xcode's RemoveHeadersOnCopy and CodeSignOnCopy (NativePlugins::macosCMake does the same)
+        std::vector<fs::path> headers;
+        for (auto it = fs::recursive_directory_iterator(to, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            const fs::path name = it->path().filename();
+            if (name == "Headers" || name == "PrivateHeaders") {
+                headers.push_back(it->path());
+                it.disable_recursion_pending();
+            }
+        }
         ec.clear();
-        fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            error = "cannot copy " + genericUtf8Path(from) + ": " + ec.message();
-            return false;
+        for (const fs::path& path : headers) removeAllNoFollow(path, ec);
+#ifdef __APPLE__
+        const platform::ToolLocation codesign = platform::ExternalTools::codesign();
+        if (codesign.found()) {
+            const char* identity = std::getenv("JASPER_MACOS_SIGN_IDENTITY");
+            CommandRunner runner;
+            int code = -1;
+            std::string log;
+            runner.runArgs({codesign.path.string(), "--force", "--sign", identity && *identity ? identity : "-",
+                            "--preserve-metadata=identifier,entitlements,flags", "--timestamp=none", to.string()},
+                           destination, [&log](const std::string& line) { log += line + "\n"; }, &code);
+            if (code != 0) {
+                error = "codesign failed for " + genericUtf8Path(to) + ":\n" + log;
+                return false;
+            }
         }
+#endif
     }
-    // what an earlier build embedded and the project no longer has
+    // what an earlier build carried and the project no longer has
+    auto lowerExtensionOf = [](const fs::path& path) {
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return ext;
+    };
     std::vector<fs::path> stale;
     for (fs::directory_iterator it(frameworks, ec), end; !ec && it != end; it.increment(ec)) {
-        std::string ext = it->path().extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const std::string ext = lowerExtensionOf(it->path());
         if ((ext == ".framework" || ext == ".dylib") && !embedded.count(it->path().filename())) stale.push_back(it->path());
+    }
+    ec.clear();
+    for (fs::directory_iterator it(destination, ec), end; !ec && it != end; it.increment(ec)) {
+        if (lowerExtensionOf(it->path()) == ".bundle" && !resources.count(it->path().filename())) stale.push_back(it->path());
     }
     for (const fs::path& path : stale) removeAllNoFollow(path, ec);
     ec.clear();
@@ -5617,13 +5656,22 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
-            // a dynamic SDK is embedded too (a static one is only linked)
-            bool embed = false;
-            if (linked && ext != ".a") {
+            // a dynamic SDK is embedded too (a static one is only linked); an .xcframework by its
+            // library for the target's platform, as NativePlugins::macosSdks picks it for CMake
+            auto embedsOn = [&](bool ios) {
+                if (!linked || ext == ".a") return false;
                 const fs::path bundle = nativeRoot / FileUtils::pathFromUtf8(path);
-                const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(bundle) : NativePlugins::xcframeworkBinary(bundle);
-                embed = !binary.empty() && !NativePlugins::isStaticArchive(binary);
-            }
+                fs::path binary;
+                if (ext == ".framework") {
+                    binary = NativePlugins::frameworkBinary(bundle);
+                } else {
+                    const fs::path library = NativePlugins::xcframeworkLibrary(bundle, ios ? "ios" : "macos");
+                    // (an Info.plist that names no platform: its first library)
+                    if (library.empty()) binary = NativePlugins::xcframeworkBinary(bundle);
+                    else binary = library.extension() == ".framework" ? NativePlugins::frameworkBinary(bundle / library) : bundle / library;
+                }
+                return !binary.empty() && !NativePlugins::isStaticArchive(binary);
+            };
             for (AppTarget& target : targets) {
                 if (std::find(target.folders.begin(), target.folders.end(), folder) == target.folders.end()) continue;
                 const std::string phase = resource ? "Resources" : source ? "Sources" : "Frameworks";
@@ -5643,7 +5691,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
                 const std::string dir = "\"" + layout.pluginsPath + "/" + parentDir(path) + "\"";
                 if (ext == ".a") target.libraryDirs.insert(dir);
                 else target.frameworkDirs.insert(dir);
-                if (embed) {
+                if (embedsOn(target.ios)) {
                     const std::string embedId = addObject("embed:" + target.name + ":" + path, buildFiles, [&](const std::string& id) {
                         return "\t\t" + id + " /* " + name + " in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " + name +
                             " */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };\n";

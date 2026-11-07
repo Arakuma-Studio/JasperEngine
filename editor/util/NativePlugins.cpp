@@ -203,9 +203,8 @@ NativePlugins::Scan NativePlugins::scan(const fs::path& projectPath){
         std::vector<std::string>& list = result.files[platform];
         for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
              !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
-            const std::string name = it->path().filename().string();
             const bool directory = it->is_directory(ec);
-            if (name.empty() || name[0] == '.' || (directory && name == "build")){
+            if (isSkippedEntry(it->path(), directory)){
                 if (directory) it.disable_recursion_pending();
                 continue;
             }
@@ -218,8 +217,7 @@ NativePlugins::Scan NativePlugins::scan(const fs::path& projectPath){
                 }
                 continue;
             }
-            // the editor's .meta of a plugin source is no plugin file: no build reads it
-            if (it->is_regular_file(ec) && !isEditorSidecar(it->path())) list.push_back(relative);
+            if (it->is_regular_file(ec)) list.push_back(relative);
         }
         std::sort(list.begin(), list.end());
     }
@@ -389,6 +387,12 @@ bool NativePlugins::isEditorSidecar(const fs::path& path){
     return AssetTypes::isMetaFile(path);
 }
 
+bool NativePlugins::isSkippedEntry(const fs::path& path, bool directory){
+    const std::string name = path.filename().string();
+    if (name.empty() || name[0] == '.') return true;
+    return directory ? name == "build" : isEditorSidecar(path);
+}
+
 std::vector<NativePlugins::MacosSdk> NativePlugins::macosSdks(const Scan& scan){
     std::vector<MacosSdk> sdks;
     for (const char* folder : {"apple", "macos"}){
@@ -525,14 +529,31 @@ std::string NativePlugins::macosCMake(const Scan& scan, const std::string& targe
             s += "    endif()\n";
             // a linker flag: every generator passes it (Xcode keeps its own LD_RUNPATH_SEARCH_PATHS)
             if (anyEmbedded) s += "    target_link_options(" + target + " PRIVATE \"-Wl,-rpath,${JASPERENGINE_NATIVE_RPATH}\")\n";
+            if (anyEmbedded){
+                // Xcode's Embed Frameworks with CodeSignOnCopy and RemoveHeadersOnCopy: a hardened,
+                // team-signed app loads another team's framework only once it carries the app's
+                // signature. ditto keeps a framework's Versions/Current links.
+                s += "    file(WRITE \"${CMAKE_CURRENT_BINARY_DIR}/jasperengine-embed-framework.sh\" [==[set -e\n"
+                     "rm -rf \"$2\"\n"
+                     "mkdir -p \"$(dirname \"$2\")\"\n"
+                     "ditto \"$1\" \"$2\"\n"
+                     "find \"$2\" \\( -name Headers -o -name PrivateHeaders \\) -prune -exec rm -rf {} +\n"
+                     "codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:-${JASPER_MACOS_SIGN_IDENTITY:--}}\" "
+                     "--preserve-metadata=identifier,entitlements,flags --timestamp=none \"$2\"\n"
+                     "]==])\n";
+            }
             s += "    add_custom_command(TARGET " + target + " POST_BUILD\n";
             for (const MacosSdk& sdk : sdks){
                 if (!sdk.embedded && !sdk.resource) continue;
-                // ditto keeps a framework's Versions/Current links (and so its signature)
-                const std::string to = std::string(sdk.embedded ? "${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/" : "${JASPERENGINE_NATIVE_RESOURCES_DIR}/") +
-                                       nativeNameOf(sdk.library);
-                s += "        COMMAND \"${CMAKE_COMMAND}\" -E rm -rf \"" + to + "\"\n";
-                s += "        COMMAND ditto \"" + rootExpression + "/" + sdk.library + "\" \"" + to + "\"\n";
+                const std::string from = "\"" + rootExpression + "/" + sdk.library + "\"";
+                if (sdk.embedded){
+                    s += "        COMMAND /bin/sh \"${CMAKE_CURRENT_BINARY_DIR}/jasperengine-embed-framework.sh\" " + from +
+                         " \"${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/" + nativeNameOf(sdk.library) + "\"\n";
+                    continue;
+                }
+                const std::string to = "\"${JASPERENGINE_NATIVE_RESOURCES_DIR}/" + nativeNameOf(sdk.library) + "\"";
+                s += "        COMMAND \"${CMAKE_COMMAND}\" -E rm -rf " + to + "\n";
+                s += "        COMMAND ditto " + from + " " + to + "\n";
             }
             s += "        VERBATIM)\n";
         }

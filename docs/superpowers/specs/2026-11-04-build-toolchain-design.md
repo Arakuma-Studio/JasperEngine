@@ -753,6 +753,25 @@ Workstream platform-build (branch `fu/platform-build`).
    with precompiled headers, and cannot be checked without Windows. Cost: small libraries and link
    steps no longer overlap. Ninja and the other generators keep `--parallel <jobs>`. Builds started
    from the Visual Studio IDE follow its "maximum number of parallel project builds" setting, which
-   the editor does not control. Not run here: a Visual Studio build.
+   the editor does not control. Not run here: a Visual Studio build. The build log says what runs
+   ("1 parallel job(s), <n> compiler processes each").
+   **Unmeasured speed:** the batched Windows check times a clean Release build of one exported
+   source project (File > Build Settings > Export source, Windows) both ways, with the same `<n>`
+   and Visual Studio 2022, each in a new build folder, and samples the `cl.exe` count during each:
+
+   ```powershell
+   cd <export>\engine
+   # new: --parallel 1, /MP<n>
+   Measure-Command { python jasperengine.py --platform windows -G "Visual Studio 17 2022" -j <n> -s <export>\project -o <export>\build-new }
+   # old: /m:<n> over projects, /MP<n> in each
+   cmake -S . -B <export>\build-old -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release -DPROJECT_ROOT=<export>\project -DJASPERENGINE_PARALLEL_BUILD_JOBS=<n>
+   Measure-Command { cmake --build <export>\build-old --config Release --parallel <n> }
+   # in a second shell during each build: the compilers at once, and the free memory
+   while ($true) { "{0} cl.exe, {1:N0} MB free" -f @(Get-Process cl -EA SilentlyContinue).Count, ((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1KB); Start-Sleep 5 }
+   ```
+
+   Keep whichever is faster without more than `<n>` compilers at once and without running out of
+   memory; if the old way wins, cap it another way (for example `/MP` at `<n>` divided by the
+   projects MSBuild runs at once) rather than going back to `<n>` x `<n>`.
 2. The spec named `copyTreeIfChanged`, which export-pipeline replaced by `exportfiles::mirrorTree`
    (editor/export/ExportFiles.cpp): the references say so now.

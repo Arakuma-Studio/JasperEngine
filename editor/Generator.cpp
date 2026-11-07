@@ -445,9 +445,11 @@ unsigned int editor::Generator::buildStepParallelJobs(const fs::path& buildPath,
 }
 
 bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
+    const unsigned int buildJobs = buildStepParallelJobs(buildPath, parallelJobs);
     std::vector<std::string> buildArgv = { cmakeProgram(), "--build", buildPath.string(),
-                                           "--config", configType, "--parallel", std::to_string(buildStepParallelJobs(buildPath, parallelJobs)) };
-    Out::info("Building project with %u parallel jobs...", parallelJobs);
+                                           "--config", configType, "--parallel", std::to_string(buildJobs) };
+    if (buildJobs == parallelJobs) Out::info("Building project with %u parallel jobs...", buildJobs);
+    else Out::info("Building project with %u parallel job(s), %u compiler processes each (Visual Studio /MP)...", buildJobs, parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
     // MSVC environment as configure (see CommandRunner::msvcEnvironment). Launched as argv (no
     // shell). Its lines go to the Console as before, and their progress to the script status

@@ -882,3 +882,16 @@ Workstream platform-build (branch `fu/platform-build`).
    plugin-folder mirror of the exports leaves them out too: one in an Android `res/` folder fails the
    resource compile, one inside a framework breaks its signature's seal.
    Tests: `BuildMethod.EditorSidecarsAreNeitherCarriedNorAReason`, `MacNativeSdk.*`.
+3. **Review round.** An embedded framework or dylib is copied as Xcode's Embed Frameworks phase
+   with `CodeSignOnCopy, RemoveHeadersOnCopy` copies it: `Headers` and `PrivateHeaders` removed and
+   re-signed (a hardened, team-signed app rejects another team's framework). The CMake post-build
+   step does it through a script it writes into the build tree (`jasperengine-embed-framework.sh`:
+   the identity Xcode builds with, `EXPANDED_CODE_SIGN_IDENTITY`, else `JASPER_MACOS_SIGN_IDENTITY`,
+   else ad hoc), the editor's Desktop build in `copyMacosNativeSdks` (`JASPER_MACOS_SIGN_IDENTITY`,
+   else ad hoc; `codesign` on a Mac only). A re-export removes resource bundles the project no
+   longer has, as it removes frameworks. The Xcode project's targets decide what to embed from an
+   `.xcframework`'s library for their own platform (`NativePlugins::xcframeworkLibrary`, an
+   Info.plist naming no platform falls back to its first library), the library the CMake build
+   picks. The scan and every copy of plugin folders and SDK bundles skip the same entries
+   (`NativePlugins::isSkippedEntry`: hidden names such as `.DS_Store` and the atomic-write
+   temporaries, `build/`, `.meta`). Not run here: `ditto`, `codesign` and a signed app's launch.

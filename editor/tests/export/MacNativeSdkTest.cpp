@@ -59,6 +59,8 @@ namespace mac_native_sdk_test {
         TestTempDir::write(native / "macos/Dyn.framework/Versions/A/Headers/Dyn.h", "void dyn(void);\n");
         fs::create_directory_symlink("A", native / "macos/Dyn.framework/Versions/Current");
         fs::create_symlink("Versions/Current/Dyn", native / "macos/Dyn.framework/Dyn");
+        fs::create_directory_symlink("Versions/Current/Headers", native / "macos/Dyn.framework/Headers");
+        TestTempDir::write(native / "macos/Dyn.framework/Versions/A/Resources/Info.plist", "<plist/>\n");
         TestTempDir::write(native / "macos/Static.framework/Static", staticBinary);
         TestTempDir::write(native / "macos/libZip.a", staticBinary);
         TestTempDir::write(native / "apple/Res.bundle/Contents/Info.plist", "<plist/>\n");
@@ -76,6 +78,10 @@ namespace mac_native_sdk_test {
         TestTempDir::write(native / "apple/IosOnly.xcframework/Info.plist",
                            xcframeworkPlist(plistLibrary("ios-arm64", "IosOnly.framework", "ios")));
         TestTempDir::write(native / "apple/IosOnly.xcframework/ios-arm64/IosOnly.framework/IosOnly", dynamicBinary);
+        // a macOS library that is a lone dylib
+        TestTempDir::write(native / "macos/Dylib.xcframework/Info.plist",
+                           xcframeworkPlist(plistLibrary("macos-arm64_x86_64", "libdyn.dylib", "macos")));
+        TestTempDir::write(native / "macos/Dylib.xcframework/macos-arm64_x86_64/libdyn.dylib", dynamicBinary);
     }
 
     bool has(const std::string& text, const std::string& part) {
@@ -115,9 +121,20 @@ TEST(MacNativeSdk, TheCMakeBuildLinksAndCarriesTheSdks) {
     EXPECT_TRUE(has(cmake, "set(JASPERENGINE_NATIVE_RPATH \"@executable_path/Frameworks\")")) << cmake;
     EXPECT_TRUE(has(cmake, "target_link_options(Game PRIVATE \"-Wl,-rpath,${JASPERENGINE_NATIVE_RPATH}\")")) << cmake;
     EXPECT_TRUE(has(cmake, "add_custom_command(TARGET Game POST_BUILD")) << cmake;
-    EXPECT_TRUE(has(cmake, "COMMAND ditto \"${PROJECT_ROOT}/plugins/native/macos/Dyn.framework\" \"${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/Dyn.framework\"")) << cmake;
-    EXPECT_TRUE(has(cmake, "COMMAND ditto \"${PROJECT_ROOT}/plugins/native/apple/Ads.xcframework/macos-arm64_x86_64/Ads.framework\" "
+    // embedded as Xcode's CodeSignOnCopy and RemoveHeadersOnCopy do (platform-build review)
+    const std::string embed = "COMMAND /bin/sh \"${CMAKE_CURRENT_BINARY_DIR}/jasperengine-embed-framework.sh\" ";
+    EXPECT_TRUE(has(cmake, embed + "\"${PROJECT_ROOT}/plugins/native/macos/Dyn.framework\" \"${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/Dyn.framework\"")) << cmake;
+    EXPECT_TRUE(has(cmake, embed + "\"${PROJECT_ROOT}/plugins/native/apple/Ads.xcframework/macos-arm64_x86_64/Ads.framework\" "
                            "\"${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/Ads.framework\"")) << cmake;
+    EXPECT_TRUE(has(cmake, embed + "\"${PROJECT_ROOT}/plugins/native/macos/Dylib.xcframework/macos-arm64_x86_64/libdyn.dylib\" "
+                           "\"${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/libdyn.dylib\"")) << cmake;
+    const size_t links = cmake.find("target_link_libraries(Game PRIVATE \"-framework Ads\"");
+    ASSERT_NE(links, std::string::npos) << cmake;
+    EXPECT_TRUE(has(cmake.substr(links, cmake.find('\n', links) - links), "\"${PROJECT_ROOT}/plugins/native/macos/Dylib.xcframework/macos-arm64_x86_64/libdyn.dylib\""))
+        << "linked too\n" << cmake;
+    EXPECT_TRUE(has(cmake, "file(WRITE \"${CMAKE_CURRENT_BINARY_DIR}/jasperengine-embed-framework.sh\" [==[")) << cmake;
+    EXPECT_TRUE(has(cmake, "find \"$2\" \\( -name Headers -o -name PrivateHeaders \\) -prune -exec rm -rf {} +")) << cmake;
+    EXPECT_TRUE(has(cmake, "codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:-${JASPER_MACOS_SIGN_IDENTITY:--}}\"")) << cmake;
     EXPECT_TRUE(has(cmake, "COMMAND ditto \"${PROJECT_ROOT}/plugins/native/apple/Res.bundle\" \"${JASPERENGINE_NATIVE_RESOURCES_DIR}/Res.bundle\"")) << cmake;
     EXPECT_FALSE(has(cmake, "macos/Static.framework\"")) << "a static framework is linked, not carried\n" << cmake;
     EXPECT_FALSE(has(cmake, "libZip.a\" \"${JASPERENGINE_NATIVE")) << cmake;
@@ -155,15 +172,19 @@ TEST(MacNativeSdk, ThePlayLibraryFindsTheDynamicOnesWhereTheyAre) {
     EXPECT_FALSE(has(cmake, "MACOSX_BUNDLE")) << cmake;
 }
 
-// red before platform-build for the sidecar: plugin folders were mirrored with the editor's .meta
-// files, and one inside a framework breaks its signature's seal
+// red before platform-build for the sidecars: plugin folders were mirrored with the editor's .meta
+// files and Finder's .DS_Store, and one inside a framework or bundle breaks its signature's seal;
+// red before the review for the headers (Xcode's RemoveHeadersOnCopy) and a removed bundle
 TEST(MacNativeSdk, TheExportCarriesThemBesideTheExecutable) {
     TestTempDir dir("mac-native-sdk");
     const fs::path project = dir / "project";
     writeSdks(project);
-    TestTempDir::write(project / "plugins/native/macos/Dyn.framework/Versions/A/Headers/Dyn.h.meta", "guid: 1\n");
+    TestTempDir::write(project / "plugins/native/macos/Dyn.framework/Versions/A/Resources/Info.plist.meta", "guid: 1\n");
+    TestTempDir::write(project / "plugins/native/macos/Dyn.framework/Versions/A/.DS_Store", "Bud1");
+    TestTempDir::write(project / "plugins/native/apple/Res.bundle/Contents/.DS_Store", "Bud1");
     const fs::path out = dir / "out";
     TestTempDir::write(out / "Frameworks/Old.framework/Old", dynamicBinary);
+    TestTempDir::write(out / "Old.bundle/Contents/Info.plist", "<plist/>\n");
 
     std::string error;
     ASSERT_TRUE(Exporter::copyMacosNativeSdks(project, out, error)) << error;
@@ -171,10 +192,16 @@ TEST(MacNativeSdk, TheExportCarriesThemBesideTheExecutable) {
     EXPECT_TRUE(fs::is_symlink(fs::symlink_status(out / "Frameworks/Dyn.framework/Versions/Current", ec))) << "the framework's links stay links";
     EXPECT_TRUE(fs::is_symlink(fs::symlink_status(out / "Frameworks/Dyn.framework/Dyn", ec)));
     EXPECT_TRUE(fs::is_regular_file(out / "Frameworks/Dyn.framework/Versions/A/Dyn"));
-    EXPECT_TRUE(fs::is_regular_file(out / "Frameworks/Dyn.framework/Versions/A/Headers/Dyn.h"));
-    EXPECT_FALSE(fs::exists(out / "Frameworks/Dyn.framework/Versions/A/Headers/Dyn.h.meta")) << "an editor sidecar is no SDK file";
+    EXPECT_TRUE(fs::is_regular_file(out / "Frameworks/Dyn.framework/Versions/A/Resources/Info.plist"));
+    EXPECT_FALSE(fs::exists(fs::symlink_status(out / "Frameworks/Dyn.framework/Headers", ec))) << "no headers in an app";
+    EXPECT_FALSE(fs::exists(out / "Frameworks/Dyn.framework/Versions/A/Headers"));
+    EXPECT_FALSE(fs::exists(out / "Frameworks/Dyn.framework/Versions/A/Resources/Info.plist.meta")) << "an editor sidecar is no SDK file";
+    EXPECT_FALSE(fs::exists(out / "Frameworks/Dyn.framework/Versions/A/.DS_Store"));
     EXPECT_TRUE(fs::is_regular_file(out / "Frameworks/Ads.framework/Ads"));
+    EXPECT_TRUE(fs::is_regular_file(out / "Frameworks/libdyn.dylib")) << "an xcframework's lone dylib";
     EXPECT_TRUE(fs::is_regular_file(out / "Res.bundle/Contents/Info.plist"));
+    EXPECT_FALSE(fs::exists(out / "Res.bundle/Contents/.DS_Store"));
+    EXPECT_FALSE(fs::exists(out / "Old.bundle")) << "an earlier build's bundle the project no longer has";
     EXPECT_FALSE(fs::exists(out / "Frameworks/Static.framework")) << "linked into the executable";
     EXPECT_FALSE(fs::exists(out / "Frameworks/IosOnly.framework"));
     EXPECT_FALSE(fs::exists(out / "Frameworks/Old.framework")) << "an earlier build's framework the project no longer has";

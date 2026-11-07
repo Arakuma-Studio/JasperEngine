@@ -83,6 +83,10 @@ namespace jasperengine::editor::NativePlugins {
 
     // A file the editor keeps beside a project file and no build reads: an asset's .meta
     bool isEditorSidecar(const fs::path& path);
+    // What the scan and the exports' copies of plugin folders and SDK bundles leave out: hidden
+    // names (".DS_Store", the atomic-write temporaries, ".git"), build/ folders and the editor's
+    // sidecars. A copied one would break a framework's or bundle's signature seal.
+    bool isSkippedEntry(const fs::path& path, bool directory);
 
     // An SDK of plugins/native/apple or macos as the macOS Xcode target takes it
     struct MacosSdk {
@@ -103,9 +107,10 @@ namespace jasperengine::editor::NativePlugins {
     // there are none). rootExpression: where plugins/native is ("${PROJECT_ROOT}/plugins/native");
     // includeDir: the folder of JasperNative.h. Swift is left out (Xcode builds only).
     // The SDKs (macosSdks) are linked as the Xcode project links them; an executable `target`
-    // also gets the dynamic ones in Frameworks/ (its rpath) and the resource bundles as resources:
-    // Contents/ of a .app, or beside an unbundled executable, where its NSBundle.mainBundle
-    // looks. A library finds the dynamic ones where they are.
+    // also gets the dynamic ones in Frameworks/ (its rpath; without headers and signed, as Xcode's
+    // CodeSignOnCopy and RemoveHeadersOnCopy do) and the resource bundles as resources: Contents/
+    // of a .app, or beside an unbundled executable, where its NSBundle.mainBundle looks. A
+    // library finds the dynamic ones where they are.
     std::string macosCMake(const Scan& scan, const std::string& target, const std::string& rootExpression,
                            const std::vector<std::string>& frameworks, const std::string& includeDir, bool executable = true);
 
