@@ -70,6 +70,11 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
                                                      faces, sizes, TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
                     textureRender = &terrainHoleOverlay;
                 }
+                // sokol copied the classes, or the loading thread's queue reads them when it runs: they live till then
+                if (Engine::isAsyncThread()){
+                    auto* keep = new std::vector<uint8_t>(std::move(classes));
+                    SystemRender::scheduleCleanup([](void* pixels){ delete static_cast<std::vector<uint8_t>*>(pixels); }, keep);
+                }
             }
         }else if (!terrain.holeMapWarned){
             terrain.holeMapWarned = true;
@@ -428,6 +433,11 @@ void RenderSystem::updateTerrainMacroNormal(Entity entity, TerrainComponent& ter
             map.render.createTextureLevels("terrain|macronormal|" + std::to_string(entity), TextureType::TEXTURE_2D, GpuTextureFormat::RG8,
                                            work.levels[0].width, work.levels[0].height, 1, levels,
                                            TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+            // sokol copied the levels, or the loading thread's queue reads them when it runs: they live till then
+            if (Engine::isAsyncThread()){
+                auto* keep = new std::vector<terrain::MacroNormalLevel>(std::move(work.levels));
+                SystemRender::scheduleCleanup([](void* levels){ delete static_cast<std::vector<terrain::MacroNormalLevel>*>(levels); }, keep);
+            }
             map.bakedRevision = work.revision;
             map.lastUpload = now;
             map.work.reset();
