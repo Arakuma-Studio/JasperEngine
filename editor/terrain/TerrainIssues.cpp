@@ -4,6 +4,7 @@
 #include "TerrainIssues.h"
 
 #include "component/TerrainComponent.h"
+#include "object/TerrainEdit.h"
 #include "physics/JoltShapeBuilder.h"
 #include "texture/TextureData.h"
 
@@ -96,6 +97,12 @@ std::vector<editor::TerrainIssue> editor::TerrainIssues::check(TerrainComponent&
     if (std::min(width, height) > static_cast<int>(JoltShapeBuilder::MAX_HEIGHTFIELD_SAMPLES)){
         add(issues, "collision_resampled", S::Info, "The collider samples " + std::to_string(JoltShapeBuilder::MAX_HEIGHTFIELD_SAMPLES) +
             " per side, fewer than the height map's " + std::to_string(std::min(width, height)) + ".");
+    }
+    if (terrain.allowRuntimeEdits){
+        const std::string refusal = terrainRuntimeEditRefusal(terrain);
+        if (!refusal.empty()){
+            add(issues, "runtime_edit_map_too_large", S::Error, "Allow Runtime Edits is on, but " + refusal + ".");
+        }
     }
 
     for (size_t i = 0; i < terrain.surfaceLayers.size(); i++){

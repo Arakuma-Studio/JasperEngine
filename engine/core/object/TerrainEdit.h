@@ -101,6 +101,9 @@ namespace jasperengine {
 
     // R23, DC10: what a terrain's edits leave for the next MeshSystem::update. Made by the first edit:
     // a terrain never edited has only a null pointer (R53). The rest of T1 keeps its stream images here.
+    // R46: the largest height map side mobile and web devices edit at runtime
+    inline constexpr int MAX_RUNTIME_EDIT_SIDE_SMALL = 2049;
+
     struct TerrainEditState {
         // R23: during a stroke the surface revision advances at most this often
         static constexpr double REVISION_SECONDS = 0.25;
@@ -122,6 +125,12 @@ namespace jasperengine {
             terrain::MapId map;
             uint64_t lastFrame = 0;
             bool waiting = false;
+            // the texels changed since the last upload, and the float copy of a height map where
+            // 16-bit heights do not filter (R45: only the changed rows are converted)
+            terrain::TexelRect dirty;
+            std::vector<uint8_t> shadow;
+            // the last upload was refused (R46: the frame's stream staging budget): next frame
+            bool retry = false;
         };
         std::vector<Upload> uploads;
         uint64_t frame = 0;
@@ -132,8 +141,21 @@ namespace jasperengine {
         bool runtimeDetached = false;
     };
 
+    // R45: heights as a stream image that cannot filter 16-bit texels takes them
+    enum class TerrainUploadFormat { Float32, Half };
+    // The rows of rect of a width-wide R16 height map into shadow (width * height texels of format)
+    JASPERENGINE_API void convertTerrainHeightRect(const uint16_t* source, int width, terrain::TexelRect rect, TerrainUploadFormat format, uint8_t* shadow);
+
     // DC9: the frames between two uploads of a map of this many bytes
     JASPERENGINE_API uint64_t terrainUploadInterval(size_t mapBytes, size_t budget);
+
+    // R46: why this device refuses runtime edits of the terrain's height map ("" when it takes
+    // them): one upload past the Vulkan stream staging budget, or a map over 2049 a side on mobile
+    // and web
+    JASPERENGINE_API std::string terrainRuntimeEditRefusal(TerrainComponent& terrain);
+    // The rule itself, for a map of width x height: texelBytes per uploaded texel, the Vulkan
+    // stream staging budget when vulkan
+    JASPERENGINE_API std::string terrainRuntimeEditRefusalFor(int width, int height, bool smallDevice, bool vulkan, size_t texelBytes, int stagingBytes);
 
     // R78: before a game's first write, every map of the terrain moves under a private id
     // (__terrain_runtime_<n>_<entity>_<map>), so the authored files and another terrain sharing

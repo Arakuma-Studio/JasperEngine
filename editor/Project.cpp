@@ -6,6 +6,8 @@
 #include "util/ProjectChecks.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
+#include "object/TerrainEdit.h"
+#include "component/TerrainComponent.h"
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
@@ -4558,6 +4560,16 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     }
 
     restartFluids(runtime->scene);
+
+    // T1 R77, R78: a terrain the game may edit draws from copies of its maps from the start, so
+    // the edit scene's terrain and the files keep what was authored
+    auto runtimeTerrains = runtime->scene->getComponentArray<TerrainComponent>();
+    for (size_t i = 0; i < runtimeTerrains->size(); i++){
+        TerrainComponent& terrain = runtimeTerrains->getComponentFromIndex(i);
+        if (terrain.allowRuntimeEdits){
+            detachTerrainMapsForRuntime(terrain, runtimeTerrains->getEntity(i));
+        }
+    }
 
     // the scene clock (the water's waves) starts at 0, as in an exported game: the edit-mode
     // clock ran on while the scene was stopped

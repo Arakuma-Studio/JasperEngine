@@ -7352,6 +7352,22 @@ void MeshSystem::update(double dt){
         Entity entity = terrains->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+#ifndef JASPERENGINE_EDITOR
+        // T1 R77, R78: a game's terrain with Allow Runtime Edits draws from copies of its maps,
+        // made at load and kept readable (the editor makes them when Play starts)
+        // (once: both outcomes leave an edit state)
+        if (terrain.allowRuntimeEdits && !terrain.editState){
+            // R46: a map too large for this device stays shared; writes refuse with the reason
+            const std::string refusal = terrainRuntimeEditRefusal(terrain);
+            if (refusal.empty()){
+                detachTerrainMapsForRuntime(terrain, entity);
+            }else{
+                terrain.editState = std::make_shared<TerrainEditState>();
+                Log::warn("Terrain %u: Allow Runtime Edits is off on this device: %s", entity, refusal.c_str());
+            }
+        }
+#endif
+
         if (signature.test(scene->getComponentId<MeshComponent>()) && signature.test(scene->getComponentId<Transform>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
