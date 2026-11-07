@@ -154,7 +154,11 @@ TEST_F(VoxelCreate, DialogEstimateAndUndo) {
     const std::filesystem::path file = project->getAssetsPath() / component->volumeData.path;
     EXPECT_TRUE(std::filesystem::exists(file)) << file;
     const std::filesystem::path sceneFile = sceneProject->filepath.is_absolute() ? sceneProject->filepath : project->getProjectPath() / sceneProject->filepath;
-    EXPECT_EQ(file.parent_path().lexically_normal(), sceneFile.parent_path().lexically_normal()) << "beside the scene";
+    // beside the scene when it is under the assets, else in assets/voxels (this fixture's scene is not)
+    const std::filesystem::path sceneDir = sceneFile.parent_path().lexically_normal();
+    const std::filesystem::path underAssets = sceneDir.lexically_relative(project->getAssetsPath().lexically_normal());
+    const bool sceneInAssets = !underAssets.empty() && *underAssets.begin() != "..";
+    EXPECT_EQ(file.parent_path().lexically_normal(), sceneInAssets ? sceneDir : (project->getAssetsPath() / "voxels").lexically_normal());
     system->update(0.0);
     const std::shared_ptr<VoxelAsset> made = system->getAsset(entity);
     ASSERT_NE(made, nullptr);
@@ -204,10 +208,12 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
     scene->getComponent<Transform>(owner).scale = Vector3(1.0f, 1.0f, 1.0f);
 
     // over_budget: a budget below what the volume holds, named per target. A small cavity or mound in
-    // every level-0 block makes each one hold its samples: 64 blocks of 16 KB, and the coarser level
+    // every level-0 block, painted, makes each one hold both channels: 64 blocks of 16 KB, and the
+    // coarser level
     VoxelProjectSettings lower;
     lower.cpuBudgetMB = 1;
     project->setVoxelSettings(lower);
+    scene->getComponent<VoxelVolumeComponent>(owner).materialSlots.resize(2);
     std::vector<voxel::EditOp> everyBlock;
     for (int z = 0; z < 4; z++) {
         for (int y = 0; y < 4; y++) {
@@ -219,6 +225,11 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
                 // the ground is solid below y = 32: a cavity there, a mound above
                 op.kind = op.shape.center.y < 32.0 ? voxel::EditKind::Dig : voxel::EditKind::Add;
                 everyBlock.push_back(op);
+                voxel::EditOp paint = op;
+                paint.kind = voxel::EditKind::Paint;
+                paint.material = 1;
+                paint.shape.radius = 5.0;
+                everyBlock.push_back(paint);
             }
         }
     }
