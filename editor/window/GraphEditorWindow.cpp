@@ -94,22 +94,21 @@ namespace{
         return std::string();
     }
 
-    // "Base Color" from "base_color"
-    std::string paramLabel(const std::string& name){
-        std::string out;
-        bool upper = true;
-        for (char c : name){
-            if (c == '_' || c == '-'){
-                out += ' ';
-                upper = true;
-                continue;
-            }
-            out += upper ? (char)std::toupper((unsigned char)c) : c;
-            upper = false;
-        }
-        return out;
-    }
+}
 
+std::string GraphEditorWindow::paramLabel(const std::string& name){
+    std::string out;
+    bool upper = true;
+    for (char c : name){
+        if (c == '_' || c == '-'){
+            out += ' ';
+            upper = true;
+            continue;
+        }
+        out += upper ? (char)std::toupper((unsigned char)c) : c;
+        upper = false;
+    }
+    return out;
 }
 
 std::vector<GraphEditorWindow*>& GraphEditorWindow::instances(){
@@ -121,17 +120,8 @@ GraphEditorWindow::GraphEditorWindow(Project* project, std::string windowName, s
     : project(project), name(std::move(windowName)), kindFilter(std::move(kindId)){
     instances().push_back(this);
     graphEditorHooks().drawSelection = [](){ return drawClaimedInspector(); };
-    // a kind's own window first, the window of any kind after it
     graphEditorHooks().openGraph = [](const std::string& path){
-        auto kind = graph::GraphRegistry::get().kindForFile(path);
-        if (!kind) return false;
-        GraphEditorWindow* target = nullptr;
-        for (GraphEditorWindow* window : instances()){
-            if (window->kindFilter == kind->id) target = window;
-        }
-        for (GraphEditorWindow* window : instances()){
-            if (!target && window->kindFilter.empty()) target = window;
-        }
+        GraphEditorWindow* target = windowFor(path);
         if (!target || !target->openGraph(path)) return false;
         target->setOpen(true);
         target->requestFocus();
@@ -278,6 +268,19 @@ bool GraphEditorWindow::claimHolds(){
 
 bool GraphEditorWindow::inspectorShowsSelection() const{
     return inspectorFrame >= ImGui::GetFrameCount() - 1;
+}
+
+GraphEditorWindow* GraphEditorWindow::windowFor(const std::string& path){
+    auto kind = graph::GraphRegistry::get().kindForFile(path);
+    if (!kind) return nullptr;
+    // a kind's own window first, the window of any kind after it
+    for (GraphEditorWindow* window : instances()){
+        if (window->kindFilter == kind->id) return window;
+    }
+    for (GraphEditorWindow* window : instances()){
+        if (window->kindFilter.empty()) return window;
+    }
+    return nullptr;
 }
 
 void GraphEditorWindow::showAll(){
@@ -924,8 +927,10 @@ void GraphEditorWindow::drawProblems(){
     const std::vector<Problem> rows = problems();
     if (rows.empty()) return;
     const std::string header = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(rows.size()) + " problem(s)###graph_problems";
-    if (ImGui::CollapsingHeader(header.c_str())){
-        UIProbe::item("graph.problems");
+    const bool open = ImGui::CollapsingHeader(header.c_str());
+    // the header whether open or not: a UI test opens it
+    UIProbe::item("graph.problems");
+    if (open){
         ImGui::BeginChild("##graph_problem_list", ImVec2(0, std::min(6.0f, (float)rows.size()) * ImGui::GetFrameHeightWithSpacing() + 4.0f));
         for (size_t i = 0; i < rows.size(); i++){
             const Problem& problem = rows[i];
@@ -1154,8 +1159,6 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
     ImGui::TextDisabled("%s", node.id.c_str());
     if (type && !type->category.empty()) ImGui::TextDisabled("%s", type->category.c_str());
     ImGui::Separator();
-    const std::string nodeId = node.id;
-    const bool editable = document->editable();
     std::vector<graph::ParamDesc> params = type ? type->params : std::vector<graph::ParamDesc>();
     // values the type does not declare (a newer build's, a typo) still show, as JSON
     for (auto it = node.params.begin(); it != node.params.end(); ++it){
@@ -1166,8 +1169,14 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
         ImGui::TextDisabled("This node has no parameters.");
         return;
     }
+    drawParamRows(node, params, "##graph_params", "graph.inspector");
+}
+
+void GraphEditorWindow::drawParamRows(const graph::Node& node, const std::vector<graph::ParamDesc>& params, const char* tableId, const std::string& probe){
+    const std::string nodeId = node.id;
+    const bool editable = document->editable();
     CommandHistory* history = project->getProjectCommandHistory();
-    if (!ImGui::BeginTable("##graph_params", 2, ImGuiTableFlags_SizingStretchProp)) return;
+    if (!ImGui::BeginTable(tableId, 2, ImGuiTableFlags_SizingStretchProp)) return;
     ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthStretch, 0.4f);
     ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch, 0.6f);
     ImGui::BeginDisabled(!editable);
@@ -1180,10 +1189,11 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(label.c_str());
-        UIProbe::item("graph.inspector." + param.name + ".label");
+        UIProbe::item(probe + "." + param.name + ".label");
         if (ImGui::BeginPopupContextItem("##value_menu")){
             if (ImGui::MenuItem("Copy Value")) ImGui::SetClipboardText(value.dump().c_str());
             if (ImGui::MenuItem("Paste Value", nullptr, false, editable && ImGui::GetClipboardText())) pasteValueText(nodeId, param.name, ImGui::GetClipboardText());
+            drawParamMenuExtras(node, param.name);
             ImGui::EndPopup();
         }
         ImGui::TableNextColumn();
@@ -1210,12 +1220,12 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
                 changed = ImGui::DragFloat("##v", &v, speed, (float)lo, (float)hi, "%.3f", ImGuiSliderFlags_AlwaysClamp);
                 number = v;
             }
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
             if (changed) setParam(nodeId, param.name, whole ? GraphJson((int)number) : GraphJson(std::round(number * 1e6) / 1e6));
         }else if (kind == "bool"){
             bool v = value.is_boolean() ? value.get<bool>() : (value.is_number() && value.get<double>() != 0.0);
             if (ImGui::Checkbox("##v", &v)) setParam(nodeId, param.name, v);
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
         }else if (kind == "enum"){
             const std::string current = value.is_string() ? value.get<std::string>() : std::string();
             if (ImGui::BeginCombo("##v", paramLabel(current).c_str())){
@@ -1224,7 +1234,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
                 }
                 ImGui::EndCombo();
             }
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
         }else if (kind == "vector2" || kind == "vector3"){
             const int count = kind == "vector2" ? 2 : 3;
             float v[3] = {0.0f, 0.0f, 0.0f};
@@ -1242,7 +1252,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
             options.label = label.c_str();
             options.linearStorage = false;   // stored as shown (GraphRegistry.h)
             const ui::EditPhase p = ui::colorField("##v", color, options);
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
             phase(p, graphvalues::colorJson(color, value));
         }else if (kind == "gradient"){
             Gradient gradient = Gradient::twoColors(Vector3(0, 0, 0), Vector3(1, 1, 1));
@@ -1251,7 +1261,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
             options.label = label.c_str();
             options.maxKeys = graphvalues::RAMP_KEYS_MAX;
             const ui::EditPhase p = ui::gradientField("##v", gradient, options);
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
             if (p != ui::EditPhase::None){
                 GraphJson next;
                 std::string error;
@@ -1268,7 +1278,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
                 options.range.v1 = std::max(options.range.v1, key.value);
             }
             const ui::EditPhase p = ui::curveField("##v", curve, options);
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
             if (p != ui::EditPhase::None){
                 GraphJson next;
                 std::string error;
@@ -1292,7 +1302,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
                     pasteValueText(nodeId, param.name, buffer);
                 }
             }
-            UIProbe::item("graph.inspector." + param.name);
+            UIProbe::item(probe + "." + param.name);
             if (!text && kind != "asset") ImGui::SetItemTooltip("JSON; Enter applies it");
         }
         ImGui::PopID();

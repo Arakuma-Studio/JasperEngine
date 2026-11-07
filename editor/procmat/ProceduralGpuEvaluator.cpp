@@ -559,3 +559,11 @@ TextureRender* ProceduralGpuEvaluator::outputTexture(const std::string& name) co
     auto it = outputs.find(name);
     return it == outputs.end() ? nullptr : it->second.get();
 }
+
+std::unique_ptr<TextureRender> ProceduralGpuEvaluator::takeOutputTexture(const std::string& name) {
+    auto it = outputs.find(name);
+    if (it == outputs.end()) return nullptr;
+    std::unique_ptr<TextureRender> taken = std::move(it->second);
+    outputs.erase(it);
+    return taken;
+}

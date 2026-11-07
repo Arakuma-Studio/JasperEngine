@@ -1105,8 +1105,42 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         return inverse;
     }
 
+    if (op.op == "setMetadata") {
+        // a kind's window keeps what is the graph's own (a Procedural Material's seed, exposed values) here
+        const std::string key = requireString(op, "key");
+        if (!graph.metadata.is_object()) graph.metadata = Json::object();
+        Json previous;
+        size_t at = 0;
+        for (auto it = graph.metadata.begin(); it != graph.metadata.end(); ++it, at++) {
+            if (it.key() == key) {
+                previous = *it;
+                break;
+            }
+        }
+        auto value = op.args.find("value");
+        if (value == op.args.end() || value->is_null()) {
+            graph.metadata.erase(key);
+            // its undo puts it back where it was, so the file comes back byte for byte
+            return {"setMetadata", {{"key", key}, {"value", previous}, {"at", at}}};
+        }
+        if (previous.is_null() && op.args.contains("at") && op.args["at"].is_number_unsigned()) {
+            Json placed = Json::object();
+            size_t index = 0;
+            const size_t wanted = op.args["at"].get<size_t>();
+            for (auto it = graph.metadata.begin(); it != graph.metadata.end(); ++it, index++) {
+                if (index == wanted) placed[key] = *value;
+                placed[it.key()] = *it;
+            }
+            if (!placed.contains(key)) placed[key] = *value;
+            graph.metadata = std::move(placed);
+        } else {
+            graph.metadata[key] = *value;
+        }
+        return {"setMetadata", {{"key", key}, {"value", previous}}};
+    }
+
     throw GraphOpError("unknown op '" + op.op + "' (addNode, removeNode, moveNodes, layout, setParam, connect, disconnect, addVariable, "
-                       "removeVariable, renameVariable, setVariable, group, ungroup)");
+                       "removeVariable, renameVariable, setVariable, group, ungroup, setMetadata)");
 }
 
 std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op){
@@ -1144,5 +1178,6 @@ std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op)
     if (op.op == "setVariable") return "Set Variable " + op.args.value("name", std::string());
     if (op.op == "group") return "Group Nodes";
     if (op.op == "ungroup") return "Ungroup";
+    if (op.op == "setMetadata") return "Set " + op.args.value("key", std::string("Metadata"));
     return "Edit Graph";
 }

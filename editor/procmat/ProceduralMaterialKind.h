@@ -49,6 +49,10 @@ namespace jasperengine::editor::procmat {
     // The ports a node of this type has at that generic size
     std::vector<graph::Port> nodePorts(const Json& descriptor, int genericSize);
 
+    // What Assets > Create > Procedural Material writes: a Perlin noise on a Material Output's Base
+    // Color and Roughness, with `guid` as its identity
+    graph::Graph starterProceduralMaterial(const std::string& guid);
+
 }
 
 #endif

@@ -79,6 +79,7 @@ namespace jasperengine::editor{
     class ParticleEffectWindow;
     class SoundBrowserWindow;
     class GraphEditorWindow;
+    class ProceduralMaterialWindow;
     class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
@@ -257,6 +258,7 @@ namespace jasperengine::editor{
         ParticleEffectWindow* particleEffectWindow;
         SoundBrowserWindow* soundBrowserWindow;
         GraphEditorWindow* graphEditorWindow;
+        ProceduralMaterialWindow* proceduralMaterialWindow;
         AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -697,6 +699,7 @@ namespace jasperengine::editor{
         AnimatorWindow* getAnimatorWindow() const { return animatorWindow; }
         ParticleEffectWindow* getParticleEffectWindow() const { return particleEffectWindow; }
         GraphEditorWindow* getGraphEditorWindow() const { return graphEditorWindow; }
+        ProceduralMaterialWindow* getProceduralMaterialWindow() const { return proceduralMaterialWindow; }
         AvatarWindow* getAvatarWindow() const;
         // the Avatar Configuration window on the Model of `entity` (anim-retarget 9)
         void openAvatarWindow(uint32_t sceneId, Entity entity);

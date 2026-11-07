@@ -29,7 +29,8 @@ namespace jasperengine::editor {
         PlaceholderSound,
         PhysicsMaterial,
         PhysicsMaterial2D,
-        ShakePreset
+        ShakePreset,
+        ProceduralMaterial
     };
 
     struct AssetCreateItem {

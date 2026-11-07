@@ -3,6 +3,8 @@
 
 #include "ProceduralSession.h"
 
+#include <algorithm>
+
 using namespace jasperengine::editor::procmat;
 
 ProceduralSession::ProceduralSession(ProceduralEvaluator& evaluator, std::shared_ptr<const NodeLibrary> library, PlanOptions options)
@@ -18,11 +20,18 @@ void ProceduralSession::setOptions(const PlanOptions& newOptions, double now) {
     if (current) replan(now);
 }
 
+void ProceduralSession::setRoots(const std::vector<PlanRoot>& newRoots, double now) {
+    const auto same = [](const PlanRoot& a, const PlanRoot& b) { return a.name == b.name && a.node == b.node && a.port == b.port; };
+    if (newRoots.size() == roots.size() && std::equal(newRoots.begin(), newRoots.end(), roots.begin(), same)) return;
+    roots = newRoots;
+    if (current) replan(now);
+}
+
 void ProceduralSession::replan(double now) {
     stale = true;
     PassPlan plan;
     std::string planError;
-    if (!planGraph(*current, library, {}, options, plan, planError)) {
+    if (!planGraph(*current, library, roots, options, plan, planError)) {
         problem = std::move(planError);
         // what was on its way was for a graph that no longer is
         pending.reset();
