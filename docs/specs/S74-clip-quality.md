@@ -346,3 +346,25 @@ Step 5 solvers (stream `solvers`):
   field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
   fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so
   the fields are `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`.
+
+Step 5 debug (stream `debug`):
+
+- **R36, the signature.** `makeSnapshot(instance, component, root)`: the third argument is the Animator
+  GameObject's Transform, because the runtime keeps the chain, the hit and the root motion in rig space and
+  only the Transform can put them in world space.
+- **D3, the IK rows.** Reach Error, Pelvis Offset, Lock Drift, Slide and the root motion rates are in
+  `kAnimatorDebugFields` (`editor/animation/AnimatorDebug.h`), the same shape as `kClipReportFields`, with its
+  own gtest against the live JSON: `ClipReportTest` holds the clip table equal to the clip JSON, where these
+  keys never appear. The table also names `foot_speed_mps` (R49's Foot Speed) and `accumulated_yaw`.
+- **R36, what the numbers mean.** Lock Drift is the distance from where a Foot Lock locked to where the clip
+  has the foot now (the slide the lock hides; the end's own miss is Reach Error). `accumulated_position` is
+  metres of root motion since the bind, in the rig frame the Animator had then; `accumulated_yaw` is degrees.
+  The slide is the planted foot's world speed, one update's step: Foot Lock's contact, or Foot IK's ground with
+  the animated ankle within 2 cm of its planted height. The runtime gains `AnimatorIKRun::contact`,
+  `footVelocity`, `AnimatorOutput::deltaTime` and the root motion total: plain stores, no allocation.
+- **R49, edit mode.** The live table shows while an Animator previews in edit mode too, not only in Play.
+- **R38, where and when.** The setting is stored with the model settings (`project.yaml` `mesh:
+  {animationEntities: auto}`) and drawn on a new **Animation** page. It decides when a model is first placed
+  in a scene (`ModelLoadCmd`, from the file's clip count): the scene stores `animationEntities: false`, so
+  Play, players and exports read the scene as before and nothing at runtime reads the setting. A reload keeps
+  the model's value.
