@@ -64,6 +64,6 @@ async def test_an_old_project_keeps_its_behaviour(ed: Editor):
 
 async def test_a_project_from_a_template_is_new_too(ed: Editor):
     target = ed.scratch.root / "from-template"
-    await ed.call("create_project", path=str(target), name="From Template", template="empty")
+    await ed.call("create_project", path=str(target), name="From Template", template="empty", unsaved="discard")
     ed.check_eq(await setting(ed), "auto", "a template's project is a new project")
     ed.check("animationEntities: auto" in (target / "project.yaml").read_text(), "its project.yaml holds it")

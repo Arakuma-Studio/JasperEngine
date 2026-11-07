@@ -119,7 +119,11 @@ async def test_live_fields_equal_the_inspector(ed: Editor):
         await ed.call("play", action="resume")
         await ed.call("wait", game_seconds=1.0)
         await ed.call("play", action="pause")
-        await ed.call("frame_entity", entity="Hero")
+        # nothing selected (no bones, no gizmo over the lines), close on the legs
+        await ed.call("select_entities", entities=[])
+        # the fixture's Hero stands at x = -0.75 (its walk is in place)
+        await ed.call("set_scene_camera", target=[-0.75, 0.7, 0], orbit={"yaw": 35, "pitch": 12}, distance=2.2,
+                      display={"show_grid_3d": False})
         await ed.screenshot("scene", path=str(evidence(ed) / "ac17-overlays-on.png"))
         await ed.call("set_scene_camera", display={flag: False for flag in FLAGS})
         await ed.screenshot("scene", path=str(evidence(ed) / "ac17-overlays-off.png"))
