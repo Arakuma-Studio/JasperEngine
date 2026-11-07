@@ -793,3 +793,63 @@ Hot spots: `editor/Exporter.cpp` (AdMob deletions, helper extraction, `writeAppl
   fixture after merging.
 - **agent-authoring**: agent guide (`McpInstructions.cpp`) budget; I add at most one short line.
 - No dependency on the rendering, water, mesh or UI features.
+
+## Deviations
+
+Recorded during implementation (branch `dc/mobile-shipping`).
+
+1. **No `AppleProjectText` / `AppleNativeXcode` modules.** The plist and pbx helpers stay in
+   `Exporter.cpp`'s anonymous namespace; `addNativePluginsToXcode` is generalized in place with an
+   `Exporter::XcodeNativeLayout` (source export: two targets; prebuilt iOS template: one target,
+   `$(SRCROOT)/plugins/native`, `$(SRCROOT)/include`). `platform::buildIosProject` is split into
+   `stageIosProject` and `buildIosProject`, and the Exporter edits the staged project in between
+   (`addNativeToIosPlayer`); `MacBundleSettings` gets `privacyManifest` and a `customizePlist`
+   hook that applies `Exporter::applyNativePlistEntries`. Same behaviour, far less code moved
+   between hot files. Only `isStaticArchive`, `frameworkBinary` and `xcframeworkBinary` moved, to
+   `editor/util/NativePlugins`, because `ApplePrivacy` needs them.
+2. **`NativeNeeds` lives in `editor/util/`** (there is no `editor/export/` folder).
+3. **C++ plugins keep their own reason.** `chooseBuildMethod` still scans `getScriptDirs()` for
+   "C++ scripts"; `plugins/native/cpp` is reported by `NativeNeeds` as "C++ native plugins (...)",
+   which says better what to change. The fix of finding 4.3 is the same: such a project compiles.
+4. **The Lua API fixture is not regenerated.** `regex_symbols.txt` is a snapshot of a deleted
+   parser; `test_lua_api.py` lists the AdMob symbols under `removed_on_purpose` like the other
+   later API changes.
+5. **A third committed manifest**: `engine/platform/apple/ios/player-template/PrivacyInfo.xcprivacy`
+   (the template is copied whole by `ios_player.sh`); `ApplePrivacyTest.CommittedManifestsMatchTheEngine`
+   keeps all three equal to `toXml(engineManifest())`.
+6. **Rule 7.2's message** ("already included by the engine") is not given: settings rows have no
+   success-message channel. Repeating an engine entry is accepted and the composed manifest holds
+   it once.
+7. **AC1's grep** also lists the tests and the Lua API test that assert AdMob's absence
+   (`test_build.py::test_no_admob`, `AppleTemplatesTest.NoAdMobLeft`, `BuildMethodTest.cpp`,
+   `test_lua_api.py` and its `regex_symbols.txt` fixture, deviation 4), the glossary row pointing
+   to the native bridge, the native-bridge worked example, the lead's `FOLLOWUPS-LEDGER.md`, and
+   `docs/specs/S01-cxx20.md`, a historical spec that is not rewritten. `NoAdMobLeft` walks every
+   source and template file below `engine/` and `editor/` (spec 10.1) with the two tests as its
+   allowlist.
+8. **No agent-guide line** (lead decision: only agent-authoring restructures the guide). The
+   detail is in `docs/mcp/guide/shipping.md` and `native-bridge.md`; the new tool text has the
+   eval case `bad_privacy_manifest_by_hand`.
+9. **Prebuilt macOS players use the running name `macos-cmake`** for `game.json`'s
+   `nativePlatformOnly`: a prebuilt macOS build exists only when the project has no Apple plugin
+   code, so the two names give the same map.
+10. **The Android template markers** are new (`{{NATIVE_MANIFEST_XML}}`, `{{NATIVE_APPLICATION_XML}}`):
+    editor and runtime versions must match, so no fallback for older templates is kept.
+11. **No CI step for `tools/check_apple_privacy.py`**: `main` removed the GitHub workflows while
+    this was implemented. `tools/check-changed` runs the check for every change to engine C/C++
+    or to the engine's manifest.
+12. **S67 (packaging tests, merged from main) adapted**: `tools/players/ios_player.sh` no longer passes
+    the removed `JASPERENGINE_ADMOB` option, `IosBuild.ThePlayerTemplateLinksWhatTheEngineNeeds`
+    checks that the option is gone and that the template ships `PrivacyInfo.xcprivacy`,
+    `IosBuild.WithoutAMacTheXcodeProjectIsTheResult` stages before it builds (the split of
+    deviation 1), and `tools/ci/ios_packaging.sh` checks the manifest in the simulator and device apps.
+13. **Review round.** An SDK's resource `.bundle` in `plugins/native/{apple,ios,macos}` is copied
+    whole into the app (a Resources build phase entry in the source export's targets and the
+    prebuilt iOS template), and its `PrivacyInfo.xcprivacy` joins the composed manifest; the
+    macOS CMake build still copies no plugin bundle (it builds Objective-C sources only, as
+    before). Merging one call's `apple.privacy_*` keys into one undo step is limited to agent
+    calls: the dialog's OK is one command already, and two user edits stay two steps. The
+    privacy rows show on Player > macOS in search through display-only rows `macos.privacy_*`
+    (MCP sets the `apple.privacy_*` keys). An Android plugin folder forces a compile only for
+    what the export's Gradle module reads (`.java`, `.kt`, `.aar`, `.jar`, `res/`,
+    `AndroidManifest.xml`, `proguard-rules.pro`), so notes and READMEs ride along.

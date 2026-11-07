@@ -211,7 +211,7 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
 | `gameobject` | `active` (bool) | `m_IsActive` |
 | any component with the enable checkbox (`ui`, `mesh`, `sprite`, `light`, `camera`, `audiosource`, `canvasgroup`, `rigidbody`, `onscreenstick`...) | `enabled` (bool), applied as the Lua setter does: a Rigidbody 2D leaves or joins the world at once, a 3D body on the physics step; disabling a Trail Renderer clears its points; enabling a broken Joint 2D makes it a fresh joint | `m_Enabled` |
 | `ui` (Image, Text, Button graphic, any UI element) | `color` (Color4), `shaderUniforms.<member>` | `m_Color`, TMP `m_fontColor` |
-| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled` (Color4), `disabled` (bool) | `m_Colors.*` |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `colorSelected` (Color4), `disabled` (bool) | `m_Colors.*` |
 | `canvasgroup` | `alpha` (float, 0 to 1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` (bool) | `m_Alpha`... |
 | `recttransform` | `positionOffset` (Vector2, the anchored position), `width`, `height`, `anchorOffsetLeft/Top/Right/Bottom` (ints that interpolate and round), `pivot` (Vector2), `anchorPointLeft/Top/Right/Bottom` (float) | `m_AnchoredPosition`, `m_SizeDelta`, `m_Pivot`, `m_AnchorMin/Max` |
 | `mesh` (meshes, sprites, model meshes, tilemaps) | `submeshes[N].material.baseColorFactor` (Color4; a sprite's colour is submesh 0's), `.emissiveFactor` (Color3), `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff` (float), `submeshes[N].textureRect` (offset x y, scale x y), `submeshes[N].material.shaderParams.<member>` | `material._Color`... |

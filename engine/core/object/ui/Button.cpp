@@ -9,6 +9,9 @@
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace jasperengine;
 
 Button::Button(Scene* scene): Image(scene){
@@ -141,7 +144,7 @@ void Button::setTextureNormal(const std::string& path){
     btcomp.needUpdateButton = true;
     markChanged<ButtonComponent>();
 
-    setTexture(path);
+    Image::setTexture(path);
 }
 
 void Button::setTextureHovered(const std::string& path){
@@ -175,7 +178,7 @@ void Button::setColorNormal(Vector4 color){
     btcomp.needUpdateButton = true;
     markChanged<ButtonComponent>();
 
-    setColor(color);
+    Image::setColor(color);
 }
 
 void Button::setColorNormal(const float red, const float green, const float blue, const float alpha){
@@ -261,4 +264,204 @@ void Button::setDisabled(bool disabled){
 bool Button::getDisabled() const{
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     return btcomp.disabled;
+}
+void Button::setInteractable(bool interactable){
+    setDisabled(!interactable);
+}
+
+bool Button::isInteractable() const{
+    return !getDisabled();
+}
+
+void Button::setColor(Vector4 color){
+    if (UISystem::buttonOwnsUIColor(getComponent<ButtonComponent>()))
+        setColorNormal(color);
+    else
+        Image::setColor(color);
+}
+
+void Button::setColor(const float red, const float green, const float blue, const float alpha){
+    setColor(Vector4(red, green, blue, alpha));
+}
+
+void Button::setColor(const float red, const float green, const float blue){
+    setColor(Vector4(red, green, blue, getColor().w));
+}
+
+void Button::setTexture(const std::string& path){
+    if (UISystem::buttonOwnsUITexture(getComponent<ButtonComponent>()))
+        setTextureNormal(path);
+    else
+        Image::setTexture(path);
+}
+
+void Button::setTextureSelected(const std::string& path){
+    ButtonComponent& btcomp = getComponent<ButtonComponent>();
+    btcomp.textureSelected.setPath(path);
+    btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
+}
+
+void Button::setColorSelected(Vector4 color){
+    ButtonComponent& btcomp = getComponent<ButtonComponent>();
+    btcomp.colorSelected = Color::sRGBToLinear(color);
+    btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
+}
+
+void Button::setColorSelected(const float red, const float green, const float blue, const float alpha){
+    setColorSelected(Vector4(red, green, blue, alpha));
+}
+
+void Button::setColorSelected(const float red, const float green, const float blue){
+    setColorSelected(Vector4(red, green, blue, getColorSelected().w));
+}
+
+Vector4 Button::getColorSelected() const{
+    return Color::linearTosRGB(getComponent<ButtonComponent>().colorSelected);
+}
+
+namespace {
+    // a Button field written from a script: the button redraws
+    template<typename T>
+    void setButtonField(ButtonComponent& button, T ButtonComponent::* field, T value){
+        button.*field = value;
+        button.needUpdateButton = true;
+    }
+}
+
+void Button::setTransition(ButtonTransition transition){
+    setButtonField(getComponent<ButtonComponent>(), &ButtonComponent::transition, transition);
+    markChanged<ButtonComponent>();
+}
+
+ButtonTransition Button::getTransition() const{
+    return getComponent<ButtonComponent>().transition;
+}
+
+void Button::setFadeDuration(float seconds){
+    setButtonField(getComponent<ButtonComponent>(), &ButtonComponent::fadeDuration, std::isfinite(seconds) ? std::max(0.0f, seconds) : 0.0f);
+    markChanged<ButtonComponent>();
+}
+
+float Button::getFadeDuration() const{
+    return getComponent<ButtonComponent>().fadeDuration;
+}
+
+void Button::setScaleHovered(float scale){
+    setButtonField(getComponent<ButtonComponent>(), &ButtonComponent::scaleHovered, scale);
+    markChanged<ButtonComponent>();
+}
+
+float Button::getScaleHovered() const{
+    return getComponent<ButtonComponent>().scaleHovered;
+}
+
+void Button::setScalePressed(float scale){
+    setButtonField(getComponent<ButtonComponent>(), &ButtonComponent::scalePressed, scale);
+    markChanged<ButtonComponent>();
+}
+
+float Button::getScalePressed() const{
+    return getComponent<ButtonComponent>().scalePressed;
+}
+
+void Button::setScaleSelected(float scale){
+    setButtonField(getComponent<ButtonComponent>(), &ButtonComponent::scaleSelected, scale);
+    markChanged<ButtonComponent>();
+}
+
+float Button::getScaleSelected() const{
+    return getComponent<ButtonComponent>().scaleSelected;
+}
+
+void Button::setNavigationMode(NavigationMode mode){
+    getComponent<ButtonComponent>().navigationMode = mode;
+    markChanged<ButtonComponent>();
+}
+
+NavigationMode Button::getNavigationMode() const{
+    return getComponent<ButtonComponent>().navigationMode;
+}
+
+void Button::setWrapAround(bool wrapAround){
+    getComponent<ButtonComponent>().wrapAround = wrapAround;
+    markChanged<ButtonComponent>();
+}
+
+bool Button::getWrapAround() const{
+    return getComponent<ButtonComponent>().wrapAround;
+}
+
+void Button::setSelectOnUp(Entity entity){
+    getComponent<ButtonComponent>().selectOnUp = entity;
+    markChanged<ButtonComponent>();
+}
+
+Entity Button::getSelectOnUp() const{
+    return getComponent<ButtonComponent>().selectOnUp;
+}
+
+void Button::setSelectOnDown(Entity entity){
+    getComponent<ButtonComponent>().selectOnDown = entity;
+    markChanged<ButtonComponent>();
+}
+
+Entity Button::getSelectOnDown() const{
+    return getComponent<ButtonComponent>().selectOnDown;
+}
+
+void Button::setSelectOnLeft(Entity entity){
+    getComponent<ButtonComponent>().selectOnLeft = entity;
+    markChanged<ButtonComponent>();
+}
+
+Entity Button::getSelectOnLeft() const{
+    return getComponent<ButtonComponent>().selectOnLeft;
+}
+
+void Button::setSelectOnRight(Entity entity){
+    getComponent<ButtonComponent>().selectOnRight = entity;
+    markChanged<ButtonComponent>();
+}
+
+Entity Button::getSelectOnRight() const{
+    return getComponent<ButtonComponent>().selectOnRight;
+}
+
+void Button::setSelectOnEnable(bool selectOnEnable){
+    getComponent<ButtonComponent>().selectOnEnable = selectOnEnable;
+    markChanged<ButtonComponent>();
+}
+
+bool Button::getSelectOnEnable() const{
+    return getComponent<ButtonComponent>().selectOnEnable;
+}
+
+bool Button::select(){
+    return scene->getSystem<UISystem>()->setSelected(entity);
+}
+
+bool Button::isSelected() const{
+    return scene->getSystem<UISystem>()->getSelected() == entity;
+}
+
+SelectionState Button::getState() const{
+    return scene->getSystem<UISystem>()->getButtonState(entity);
+}
+
+Entity Button::findSelectableOnUp() const{
+    return scene->getSystem<UISystem>()->findSelectableOnDirection(entity, MoveDirection::UP);
+}
+
+Entity Button::findSelectableOnDown() const{
+    return scene->getSystem<UISystem>()->findSelectableOnDirection(entity, MoveDirection::DOWN);
+}
+
+Entity Button::findSelectableOnLeft() const{
+    return scene->getSystem<UISystem>()->findSelectableOnDirection(entity, MoveDirection::LEFT);
+}
+
+Entity Button::findSelectableOnRight() const{
+    return scene->getSystem<UISystem>()->findSelectableOnDirection(entity, MoveDirection::RIGHT);
 }

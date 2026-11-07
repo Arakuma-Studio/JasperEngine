@@ -17,6 +17,7 @@
 #include "component/MeshComponent.h"
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SplineExtrudeComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "object/Camera.h"
@@ -193,6 +194,22 @@ TEST(GeneratedScenes, AGeneratedMeshGeneratesTheSameBeforeAndAfterItsGeometryIsM
     EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()), before);
 }
 
+// A Spline Extrude's Mesh is its chunks' template: SplineSystem gives it its one submesh when it
+// first runs, which the code holds whether or not that happened before the save
+TEST(GeneratedScenes, ASplineExtrudeTemplateGeneratesTheSameBeforeAndAfterItsSystemRan) {
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<MeshComponent>(entity, MeshComponent());
+    scene.addComponent<SplineExtrudeComponent>(entity, SplineExtrudeComponent());
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
+    ASSERT_EQ(mesh.numSubmeshes, 0u);
+    const std::string before = Factory::createMeshComponent(8, &scene, entity, fs::path());
+
+    mesh.numSubmeshes = 1;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, entity, fs::path()), before);
+    EXPECT_NE(before.find("mesh.numSubmeshes = 1;"), std::string::npos) << before;
+}
+
 // A plain mesh keeps its data, and a load sets its vertexCount (RenderSystem::loadMesh), which the
 // file does not hold either
 TEST(GeneratedScenes, AnInlineMeshGeneratesItsDataButNoVertexCount) {
@@ -283,6 +300,23 @@ TEST(GeneratedScenes, ATerrainWhoseHeightMapFailedToLoadGeneratesNoVertices) {
     }
     ASSERT_TRUE(heightMap.empty());
     EXPECT_EQ(Factory::createMeshComponent(8, &scene, terrain.getEntity(), fs::path()), before);
+}
+
+// A sprite or tilemap sets hasTextureRect once its texture loads, so with async loading its buffers
+// (in the scene's code) can load first and pick a variant without the texture rect, which the
+// build may not ship. The cooked scenes keep the flag (Stream); the scene's code does too
+// (Doriax 33172858c, export-pipeline spec 6.13).
+TEST(GeneratedScenes, SpriteKeepsHasTextureRect) {
+    Scene scene;
+    Sprite sprite(&scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(sprite.getEntity());
+    ASSERT_GE(mesh.numSubmeshes, 1u);
+    mesh.submeshes[0].hasTextureRect = true;
+    const std::string code = Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path());
+    EXPECT_NE(code.find("mesh.submeshes[0].hasTextureRect = true;"), std::string::npos) << code;
+
+    mesh.submeshes[0].hasTextureRect = false;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()).find("hasTextureRect"), std::string::npos);
 }
 
 // A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since
