@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // The export's copies keep the scripts a terminal runs executable (./gradlew, ./jasperengine.py):
-// an unchanged file over an older export gets the source's permissions, and ensureExecutable
+// an unchanged file over an older export gets the source's permissions (exportfiles::mirrorTree), and ensureExecutable
 // adds the execute bits an installed or unzipped editor lost
 
 #include <gtest/gtest.h>
 
 #include "Exporter.h"
+#include "export/ExportFiles.h"
 #include "support/TestTempDir.h"
 
 #include <filesystem>
@@ -48,9 +49,8 @@ TEST(ExportCopy, UnchangedFileGetsTheSourcesPermissions) {
     fs::permissions(dst / "workspaces" / "gradlew", fs::perms(0644), fs::perm_options::replace);
     const auto mtime = fs::last_write_time(dst / "workspaces" / "gradlew");
 
-    std::error_code ec;
-    Exporter::copyTreeIfChanged(src, dst, ec);
-    ASSERT_FALSE(ec) << ec.message();
+    std::string error;
+    ASSERT_TRUE(exportfiles::mirrorTree(src, dst, false, error)) << error;
     EXPECT_EQ(exportCopyPerms(dst / "workspaces" / "gradlew"), fs::perms(0755));
     // still unchanged for the incremental build (compared as counts: gtest would print a time_point
     // through libc++'s std::format, whose floating-point to_chars macOS has only from 13.3)

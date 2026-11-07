@@ -434,6 +434,17 @@ editor::ProjectChecks::CppHeaderInfo editor::ProjectChecks::checkCppHeader(const
     return info;
 }
 
+std::string editor::ProjectChecks::checkCppToolchain(const LocalBuildSettings& settings, CMakeKit& kit) {
+    // Default needs a discoverable kit compatible with the editor; explicit kits may live outside
+    // PATH and are ABI-checked by the generated CMake
+    const bool useDefaultKit = settings.cCompiler.empty() && settings.cxxCompiler.empty() && settings.generator.empty();
+    kit = CMakeKit();
+    kit.cCompiler = settings.cCompiler;
+    kit.cxxCompiler = settings.cxxCompiler;
+    kit.generator = settings.generator;
+    return Generator::checkBuildTools(useDefaultKit, &kit);
+}
+
 editor::ProjectChecks::CppPrepare editor::ProjectChecks::prepareCppBuild(Project* project, CppBuildPlan& plan, std::string& error) {
     try {
         plan.scripts = project->prepareScriptBuild();
@@ -445,13 +456,8 @@ editor::ProjectChecks::CppPrepare editor::ProjectChecks::prepareCppBuild(Project
         return CppPrepare::NothingToBuild;
     }
     const LocalBuildSettings settings = AppSettings::getBuildSettings(project->getProjectPath() / "project.yaml");
-    const bool useDefaultKit = settings.cCompiler.empty() && settings.cxxCompiler.empty() && settings.generator.empty();
-    plan.kit = CMakeKit();
-    plan.kit.cCompiler = settings.cCompiler;
-    plan.kit.cxxCompiler = settings.cxxCompiler;
-    plan.kit.generator = settings.generator;
     plan.jobs = settings.buildJobs;
-    const std::string missing = Generator::checkBuildTools(useDefaultKit, &plan.kit);
+    const std::string missing = checkCppToolchain(settings, plan.kit);
     if (!missing.empty()) {
         error = "C++ build tools are missing:\n" + missing;
         return CppPrepare::MissingTools;

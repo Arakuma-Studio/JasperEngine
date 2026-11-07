@@ -362,7 +362,9 @@ steps; the play-change tools (`get_play_changes`, `apply_play_changes`, `discard
 
 JSON ↔ every `PropertyType`: Bool, Int, UInt, Float, Double, String; Vector2/3/4 as
 `[x,y,(z,(w))]` (also accept `{x,y,z,w}`); Quat as `[x,y,z,w]` or `{"euler":[x,y,z]}`
-degrees; colors as Vector3/4; Enum by name (string) or int; Ease by name; Texture /
+degrees (a quaternion within 10% of unit length is normalized, one further off is refused as
+probable Euler degrees; an object form needs all of x, y, z, w; a read returns it normalized, and a
+read `{quat, euler}` written back with one edited takes the one that moved); colors as Vector3/4; Enum by name (string) or int; Ease by name; Texture /
 Font by asset path (or `{"camera": <entity>}` for render textures); Material as an object
 or a `.material` asset path; Entity / EntityReference by entity ref; Custom via the
 component's YAML encoding (Stream) round-trip so nothing is unsettable.

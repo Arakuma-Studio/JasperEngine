@@ -78,23 +78,23 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
-| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
-| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
+| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | merged |
+| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | merged |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
-| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
+| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
+| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
-| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
+| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
@@ -210,3 +210,30 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
   diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
   program). An FBX foliage layer draws no instances in the headless editor (unverified).
+- 2026-11-07 02:xx: **sprite-batching merged** after an independent review (Buffer write counter so geometry uploaded
+  by another pass is rebaked, lazy-MVP test that can fail, the dropped spec tests added, lazy MVP off with several
+  cameras and on in the depth pre-pass, annotations on the batch's own draw, chunks kept past 16 MB, draw modes and
+  scissor). Landing tree = main (with the batch and code-editor-git) + branch; integration resolved at landing:
+  writeCustomUniforms(scene, mesh) in both draw paths, Engine/SokolSystem additions from both sides, two eval cases
+  an earlier conflict union had joined. Checks on box H: WERROR editor, gen_tool_docs and budget, unit (SpriteBatch,
+  DrawBatcher, S55, mesh-memory, render-correctness, SSR, scene defaults, cooked, RuntimeFields, platform-lifecycle),
+  MCP (batching, scene defaults, hidden window, budget/docs/protocol), web compile, lints. Red controls in the branch:
+  batching compiled out fails all 17 batch tests. Pixel-snapped sprites (S41) draw one by one until S41 wires in.
+- Landing is now parallel: the next features are pre-merged onto main + the previous landing and checked at once.
+- 2026-11-07 02:xx: **scripting merged** after an independent review (C++ fields kept when a header is missing,
+  instancing refuses cleanly on parts models, winding not carried across a rebuild, guide fixed on omitted bools,
+  eval cases for the new text). Landing tree = main + sprite-batching + branch, conflicts resolved by its agent;
+  box D: WERROR editor (0 warnings), fanout, budget (core 98966), unit 60 core + 44 editor incl. RuntimeFields and
+  CookedScene, MCP 32, lints, test_grade.
+- 2026-11-07 03:xx: **agent-authoring and export-pipeline merged** (landing train 1), each after an independent review
+  and its fixes, each pre-checked on main + sprite-batching, then together on main + scripting (box: WERROR editor,
+  gen_tool_docs and budget with the guide's client cut, unit filters of both plus RuntimeFields/CookedScene and
+  scripting's parts tests, MCP 122 passed across both features plus scripting's overlap, lints and test_grade).
+  Conflicts at landing: eval cases (union, graded), the shipping guide (both paragraphs).
+- 2026-11-07 03:xx: **mobile-shipping merged** (landing train 2 = train 1 + branch) after an independent review (SDK
+  resource bundles copied and their manifests merged, guide anchor, iOS red controls incl. the old-runtime fallback,
+  privacy warnings in the build result, OK disabled on an invalid manifest, one undo step per agent call). Conflicts
+  at landing with export-pipeline in Exporter/ExporterPrebuilt (manifests and the Xcode project written only when
+  changed, a failed write names the file; every web export keeps its favicon and carries native web scripts),
+  StreamSchema keys, check-changed rules. Box: WERROR editor, budget, unit 294, MCP 57, web compile, lints, Apple
+  privacy check. No Apple code compiled here.

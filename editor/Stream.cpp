@@ -2287,6 +2287,71 @@ std::vector<std::string> decodeStringList(const YAML::Node& node) {
     return values;
 }
 
+// apple.privacy: the project's additions to the Apple privacy manifest, short names; nothing
+// when there are none
+void encodeApplePrivacy(YAML::Node& root, const jasperengine::editor::ApplePrivacy::Manifest& privacy) {
+    if (privacy.empty()) return;
+    YAML::Node node;
+    if (privacy.tracking) node["tracking"] = true;
+    encodeStringList(node, "trackingDomains", privacy.trackingDomains);
+    if (!privacy.collectedData.empty()) {
+        YAML::Node list(YAML::NodeType::Sequence);
+        for (const auto& data : privacy.collectedData) {
+            YAML::Node item;
+            item["type"] = data.type;
+            item["linked"] = data.linked;
+            item["tracking"] = data.tracking;
+            encodeStringList(item, "purposes", data.purposes);
+            list.push_back(item);
+        }
+        node["collectedData"] = list;
+    }
+    if (!privacy.accessedApis.empty()) {
+        YAML::Node list(YAML::NodeType::Sequence);
+        for (const auto& api : privacy.accessedApis) {
+            YAML::Node item;
+            item["type"] = api.type;
+            encodeStringList(item, "reasons", api.reasons);
+            list.push_back(item);
+        }
+        node["accessedApis"] = list;
+    }
+    root["apple"]["privacy"] = node;
+}
+
+// Long names (NSPrivacy...) are read too; what is no YAML of that shape is left out
+jasperengine::editor::ApplePrivacy::Manifest decodeApplePrivacy(const YAML::Node& node) {
+    namespace ApplePrivacy = jasperengine::editor::ApplePrivacy;
+    ApplePrivacy::Manifest privacy;
+    if (!node || !node.IsMap()) return privacy;
+    auto flag = [](const YAML::Node& value) {
+        return value && value.IsScalar() && (value.as<std::string>() == "true" || value.as<std::string>() == "yes");
+    };
+    privacy.tracking = flag(node["tracking"]);
+    privacy.trackingDomains = decodeStringList(node["trackingDomains"]);
+    if (node["collectedData"] && node["collectedData"].IsSequence()) {
+        for (const YAML::Node& item : node["collectedData"]) {
+            if (!item.IsMap() || !item["type"] || !item["type"].IsScalar()) continue;
+            ApplePrivacy::CollectedData data;
+            data.type = item["type"].as<std::string>();
+            data.linked = flag(item["linked"]);
+            data.tracking = flag(item["tracking"]);
+            data.purposes = decodeStringList(item["purposes"]);
+            privacy.collectedData.push_back(data);
+        }
+    }
+    if (node["accessedApis"] && node["accessedApis"].IsSequence()) {
+        for (const YAML::Node& item : node["accessedApis"]) {
+            if (!item.IsMap() || !item["type"] || !item["type"].IsScalar()) continue;
+            ApplePrivacy::AccessedApi api;
+            api.type = item["type"].as<std::string>();
+            api.reasons = decodeStringList(item["reasons"]);
+            privacy.accessedApis.push_back(api);
+        }
+    }
+    return ApplePrivacy::normalized(privacy);
+}
+
 // A plain scalar read back as a plist value: true/false, an integer, a real, else a string
 NativePlistValue plainPlistValue(const std::string& text) {
     NativePlistValue value;
@@ -2500,6 +2565,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["uiScale"] = encodeCanvasScaler(project->getUIScale());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    // absent = on (projects from before Dynamic Batching)
+    if (!project->isDynamicBatching())
+        root["dynamicBatching"] = false;
     if (project->getAtmosphereQuality() != Project::defaultAtmosphereQuality) {
         YAML::Node quality;
         quality["desktop"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[0]);
@@ -2831,8 +2899,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.hideStatusBar != defaultIOS.hideStatusBar) iosNode["hideStatusBar"] = ios.hideStatusBar;
         if (ios.hideHomeIndicator != defaultIOS.hideHomeIndicator) iosNode["hideHomeIndicator"] = ios.hideHomeIndicator;
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
-        if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
-        if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (!ios.teamId.empty()) iosNode["teamId"] = ios.teamId;
         if (ios.exportMethod != defaultIOS.exportMethod) iosNode["exportMethod"] = ios.exportMethod;
         encodePlistEntries(iosNode, ios.plistEntries);
@@ -2864,6 +2930,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.deploymentTarget != defaultIOS.deploymentTarget) iosNode["deploymentTarget"] = ios.deploymentTarget;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
+    encodeApplePrivacy(root, project->getApplePrivacy());
 
     {
         const AndroidProjectSettings& android = project->getAndroidProjectSettings();
@@ -2905,8 +2972,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
-        if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
-        if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (android.packageFormat != defaults.packageFormat) androidNode["packageFormat"] = android.packageFormat;
         if (!android.keystorePath.empty() || !android.keystoreAlias.empty()) {
             YAML::Node keystoreNode;
@@ -3142,6 +3207,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["vsync"].IsDefined()) {
         project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
     }
+
+    project->setDynamicBatching(node["dynamicBatching"].IsDefined() ? YamlNumbers::as<bool>(node["dynamicBatching"]) : Project::defaultDynamicBatching);
 
     {
         // omitted at the defaults; each platform group defaults on its own
@@ -3616,6 +3683,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         macOS.frameworks = decodeStringList(macOSNode["frameworks"]);
     }
 
+    project->setApplePrivacy(node["apple"] && node["apple"].IsMap() ? decodeApplePrivacy(node["apple"]["privacy"])
+                                                                    : ApplePrivacy::Manifest());
+
     if (node["ios"] && node["ios"].IsMap()) {
         const YAML::Node& iosNode = node["ios"];
         IOSProjectSettings& ios = project->getIOSProjectSettings();
@@ -3627,8 +3697,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
         if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
-        if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
-        if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
         if (iosNode["teamId"]) ios.teamId = iosNode["teamId"].as<std::string>();
         if (iosNode["exportMethod"]) {
             const std::string method = iosNode["exportMethod"].as<std::string>();
@@ -3706,8 +3774,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         // android.keepScreenOn is dropped: exported games always kept the screen on (the native
         // window flag), which presentation.keepScreenOn (default true) keeps doing
-        if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
-        if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
         if (androidNode["packageFormat"]) {
             // aab, apk-per-abi or apk (universal); an unknown word reads as the default
             AndroidFormat format = AndroidFormat::Aab;
@@ -3841,7 +3907,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (workspace.hasTerrainEditorSettings()) {
-        project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
+        project->setTerrainEditorSettings(workspace.getTerrainEditorSettings());
     }
     project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();

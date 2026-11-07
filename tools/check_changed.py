@@ -106,6 +106,8 @@ EVENT_CLEARS_TRIGGERS = ("engine/core/component/*.h", "engine/core/subsystem/Phy
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
+# the required-reason APIs of engine code against the engine's Apple privacy manifest
+APPLE_PRIVACY_CHECK = "tools/check_apple_privacy.py"
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
@@ -287,6 +289,10 @@ def plan_builds(files: list[str], plan: Plan) -> None:
             plan.self_tests.append(CI_SUITE_GUARD)
         if match(f, EVENT_CLEARS_TRIGGERS) and EVENT_CLEARS_LINT not in plan.self_tests:
             plan.self_tests.append(EVENT_CLEARS_LINT)
+    # engine code may call a required-reason API the Apple privacy manifest must declare
+    if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
+        if APPLE_PRIVACY_CHECK not in plan.self_tests:
+            plan.self_tests.append(APPLE_PRIVACY_CHECK)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
     plan.modules_off = next((f for f in files if f in ("engine/CMakeLists.txt", MODULES_OFF_CHECK)
                              or (f.startswith("engine/core/") and f.endswith(HEADER))), everything[0] if everything else "")

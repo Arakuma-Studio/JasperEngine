@@ -74,6 +74,8 @@ namespace jasperengine{
         std::string loadedFilename;
         bool loadedMergeStaticMeshes = false;
         bool needUpdateModel = true;
+        // runtime: a Mesh call refused on this model made of parts was logged (Mesh::refuseOnParts)
+        bool refusedPartsCallLogged = false;
     };
 
 }
