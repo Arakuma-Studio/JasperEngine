@@ -1442,6 +1442,7 @@ set(JASPERENGINE_SRCS
     core/animation/PropertyBindings.cpp
     core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
+    core/animation/ModelClipSettings.cpp
     core/animation/ModelSubClips.cpp
     core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
