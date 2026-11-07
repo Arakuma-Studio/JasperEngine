@@ -142,8 +142,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     // Escape in the Game view does it too (Unity), the key still reaching the game
     b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
         "Give a cursor the running game captured back to the editor; click the Game view to return it";
-    b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11").description =
-        "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
+    CommandDef& maximize = b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11");
+    maximize.description = "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
+    // macOS takes F11 for Show Desktop: Control+Cmd+F, the Mac's full-screen key, comes first there
+    maximize.macPrimary = chord("Ctrl+Super+F");
 
     b.group = "Assets";
     b.menu("assets.createFolder", "Create Folder", AppMenuCommand::AssetsCreateFolder);

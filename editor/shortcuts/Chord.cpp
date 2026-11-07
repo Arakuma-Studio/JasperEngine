@@ -147,8 +147,11 @@ std::string Chord::format(bool mac) const {
     if (empty()) return {};
     std::string text;
     const ImGuiKeyChord modifiers = mods();
+    // macOS: Super is the Control key (ConfigMacOSXBehaviors swaps it with Cmd), named before Cmd as
+    // the Mac's menus do
+    if (mac && (modifiers & ImGuiMod_Super)) text += "Control+";
     if (modifiers & ImGuiMod_Ctrl) text += mac ? "Cmd+" : "Ctrl+";
-    if (modifiers & ImGuiMod_Super) text += "Super+";
+    if (!mac && (modifiers & ImGuiMod_Super)) text += "Super+";
     if (modifiers & ImGuiMod_Alt) text += mac ? "Option+" : "Alt+";
     if (modifiers & ImGuiMod_Shift) text += "Shift+";
     text += keyName(key());

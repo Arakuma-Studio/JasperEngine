@@ -836,3 +836,14 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
     call moving both roots reports both relocations; refusals name their fix. Test of the tabs' re-keying: none (no
     unit test builds a Code Editor; inferred from the code: relative keys follow the project path, absolute ones are
     re-keyed).
+
+## Follow-ups (2026-11-07)
+
+1. **Maximize On Play on macOS is Control+Cmd+F** (the Mac's own full-screen key), with F11 kept behind
+   it (`macPrimary`, as Redo keeps Cmd+Y); every other platform keeps F11 alone. macOS takes F11 for Show
+   Desktop by default. The editor names no menu "View" and sets no windows menu, so AppKit adds no Enter
+   Full Screen item holding the same key (inferred from `BackendMac.mm`; not run on a Mac).
+2. On macOS a chord with the Control key (ImGui's `ImGuiMod_Super` there, swapped with Cmd) reads
+   "Control+Cmd+F" in menus, tooltips, the hint and Edit > Shortcuts; the native menu maps "Control" to
+   `NSEventModifierFlagControl`. Test `CommandCatalog.MaximizeOnPlayIsControlCmdFOnMac` (red before);
+   docs/editor/keyboard-shortcuts.md regenerated.

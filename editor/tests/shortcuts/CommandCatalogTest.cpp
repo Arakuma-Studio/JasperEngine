@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
+#include <vector>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -198,4 +199,25 @@ TEST(CommandCatalog, ProjectDuplicateAndMaximizeOnPlayAreBound) {
                            "assets.createPhysicsMaterial2D"}) {
         EXPECT_NE(catalog.find(id), nullptr) << id;
     }
+}
+
+// macOS takes F11 for Show Desktop: Maximize On Play is Control+Cmd+F there first, F11 still
+// behind it; every other platform keeps F11 alone (project-window spec, Follow-ups)
+TEST(CommandCatalog, MaximizeOnPlayIsControlCmdFOnMac) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(true), "Control+Cmd+F");
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(false), "Ctrl+Super+F");
+    catalog.setMac(true);
+    const std::vector<Chord> mac(catalog.bindings("playmode.maximizeOnPlay").begin(),
+                                 catalog.bindings("playmode.maximizeOnPlay").end());
+    EXPECT_EQ(mac, (std::vector<Chord>{chordOf("Ctrl+Super+F"), chordOf("F11")}));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "Control+Cmd+F");
+    for (Chord chord : mac) {
+        EXPECT_EQ(catalog.findConflict("playmode.maximizeOnPlay", chord), nullptr) << chord.format(true);
+    }
+    catalog.setMac(false);
+    ASSERT_EQ(catalog.bindings("playmode.maximizeOnPlay").size(), 1u);
+    EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "F11");
 }

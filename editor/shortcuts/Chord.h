@@ -31,7 +31,7 @@ namespace jasperengine::editor {
         // "Ctrl+Shift+S", "F2", "Numpad7", "Shift+[", "Delete"; Cmd and Command read as Ctrl,
         // Option as Alt. Case-insensitive; nullopt for anything else (an empty text included)
         static std::optional<Chord> parse(std::string_view text);
-        // "Ctrl+Shift+S", or on macOS "Cmd+Shift+S"; "" for an empty chord
+        // "Ctrl+Shift+S", or on macOS "Cmd+Shift+S" (Super there: "Control+Cmd+F"); "" for an empty chord
         std::string format(bool mac) const;
         // The form the menu backends parse (BackendMac.mm reads Ctrl as Command): format(false)
         std::string menuText() const { return format(false); }
