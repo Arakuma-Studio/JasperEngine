@@ -6,12 +6,14 @@
 // mode switches, removal) and pointer events reaching a document through a mesh.
 
 #include "TestGoldenCommon.h"
+#include "component/CameraComponent.h"
 
 #include "HtmlUIClock.h"
 #include "HtmlUIContext.h"
 #include "RmlRenderer.h"
 #include "Input.h"
 #include "UIWorldRaycast.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "object/Camera.h"

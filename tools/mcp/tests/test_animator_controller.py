@@ -18,6 +18,8 @@ import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
+CI_EXCLUDED = ("long-running (about 3 minutes on a loaded server: controllers played on the pose-animation rig); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 CONTROLLER = "assets/anim/granjero.controller"

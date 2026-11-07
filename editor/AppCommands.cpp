@@ -7,10 +7,23 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/MainToolbar.h"
+#include "window/ProjectWindow.h"
+#include "render/SceneRender.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/GameWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "util/Util.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
 #include "pose/PoseViewportLogic.h"
@@ -18,12 +31,17 @@
 #include "window/PoseAnimationWindow.h"
 #include "navigation/NavigationEditor.h"
 #include "sceneview/SceneViewController.h"
+#include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
+#include "shortcuts/PanelClaims.h"
 #include "util/FluidEditorTools.h"
 #include "shortcuts/ShortcutOverrides.h"
 #include "util/EditorScripts.h"
 #include "util/EntityClipboard.h"
 #include "util/ScriptReloadService.h"
+#include "widget/ColorPickerWindow.h"
+#include "widget/CurveField.h"
+#include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
@@ -71,17 +89,7 @@ void editor::App::registerCommands(){
 
     auto busy = [this]() { return project.isAnyScenePlaying(); };
     auto notBusy = [busy]() { return !busy(); };
-    // Duplicate, Delete and Rename leave the Project window and the Jobs & Memory panel to
-    // their own keys (as before the catalog)
-    auto notAssetPanel = [this]() { return !projectWindow->isFocused() && !jobsMemoryWindow->isFocused(); };
     auto noDrag = []() { return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsAnyItemActive(); };
-    // the scene's editing keys stay off while the Animation window editing a clip or the Pose
-    // Animation window (or a Scene view posing for it) has the keys: F2 would move the focus to
-    // the Inspector's name, Delete / Ctrl+D act on the poses and the clip keys there
-    auto sceneKeys = [this]() { return !clipWindowTakesKeys() && lastFocusedWindow != LastFocusedWindow::PoseAnimation; };
-    auto sceneKeysAnd = [sceneKeys](std::function<bool()> gate) {
-        return [sceneKeys, gate]() { return sceneKeys() && (!gate || gate()); };
-    };
 
     // ---- Assets > Version Control (S29 R29): the Project window's selection; a disabled item
     // says why (VcsUi::canRun, the menu's tooltip)
@@ -141,14 +149,14 @@ void editor::App::registerCommands(){
     auto timelineKeys = [this]() { return undoTarget() == UndoTimeline::Target::Timeline; };
     enable("edit.undo", [undoEnabled]() { return undoEnabled(true); }, timelineKeys);
     enable("edit.redo", [undoEnabled]() { return undoEnabled(false); }, timelineKeys);
-    enable("edit.selectAll", [this]() { return canSelectAll(); }, sceneKeys);
-    enable("edit.cut", [this]() { return canCutSelection(); }, sceneKeys);
-    enable("edit.copy", [this]() { return canCopySelection(); }, sceneKeys);
-    enable("edit.paste", [this]() { return canPasteSelection(false); }, sceneKeys);
-    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); }, sceneKeys);
-    enable("edit.duplicate", [this]() { return canEditSelection(true); }, sceneKeysAnd(notAssetPanel));
-    // the Input Actions window, focused, deletes its selected map, action or binding
-    enable("edit.delete", [this]() { return canEditSelection(false) || inputActionsWindow->canDelete(); }, sceneKeysAnd(notAssetPanel));
+    // what these do while no panel claims them (registerPanelClaims)
+    enable("edit.selectAll", [this]() { return canSelectAll(); });
+    enable("edit.cut", [this]() { return canCutSelection(); });
+    enable("edit.copy", [this]() { return canCopySelection(); });
+    enable("edit.paste", [this]() { return canPasteSelection(false); });
+    enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); });
+    enable("edit.duplicate", [this]() { return canEditSelection(true); });
+    enable("edit.delete", [this]() { return canEditSelection(false); });
     // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
     bind("edit.rename", [this](const CommandArgs& args) {
         if (args.source == CommandSource::Keyboard) {
@@ -160,12 +168,12 @@ void editor::App::registerCommands(){
         const uint32_t sceneId = project.getSelectedSceneId();
         return !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() && lastFocusedWindow == LastFocusedWindow::AnySceneWindow &&
                project.getSelectedScene() && project.getSelectedEntities(sceneId).size() == 1;
-    }, sceneKeysAnd(notAssetPanel));
+    });
     enable("edit.frameSelected", [this]() {
         const SceneProject* scene = project.getSelectedScene();
         return scene && !ImGui::GetIO().WantTextInput && !project.isAnyScenePlaying() &&
                lastFocusedWindow == LastFocusedWindow::AnySceneWindow && sceneWindow->hasFrameableSelection(project.getSelectedSceneId());
-    }, sceneKeysAnd(noDrag));
+    }, noDrag);
     enable("edit.play", [this]() { return mainToolbar->canTogglePlay(); });
     enable("edit.pause", [this]() { return mainToolbar->canPause(); });
     enable("edit.step", [this]() { return mainToolbar->canStep(); });
@@ -186,6 +194,15 @@ void editor::App::registerCommands(){
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
+    enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
+    bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
+    bind("soundEvent.playAsMusic", [this](const CommandArgs&) { inspectorWindow->requestSoundEventPlayAsMusic(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()) && !project.isAnyScenePlaying(); });
+    bind("audioClip.detectTempo", [this](const CommandArgs&) { inspectorWindow->requestAudioClipDetectTempo(); },
+         [this]() { return Util::isAudioFile(project.getInspectedAsset().string()); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
     enable("assets.emptyTrash", notBusy);
@@ -216,7 +233,8 @@ void editor::App::registerCommands(){
     // ---- Tools: not while flying the 3D camera (Right Mouse + WASDQE) or dragging a field,
     // nor while the Pose Animation window (or a Scene view posing its character) or the
     // Animation window editing a clip has the keys: their letters are theirs
-    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys(); };
+    // (the Sprite Normal Map window, focused, has its letters too: handleShortcuts)
+    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused(); };
     auto tool = [this, &bind, toolKeys](const char* id, MainToolbar::Tool which) {
         bind(id, [this, which](const CommandArgs&) { mainToolbar->setTool(which); },
              [this, which]() { return mainToolbar->canUseTool(which); }, toolKeys);
@@ -258,6 +276,10 @@ void editor::App::registerCommands(){
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
+    // under the pointer it must not take Delete from a panel that claims it
+    bind("sceneView.deleteMeasure", nullptr, nullptr, [this, noDrag]() {
+        return noDrag() && (sceneWindow->isFocused() || !PanelClaims::editor().active());
+    });
     for (int slot = 1; slot <= 9; slot++) {
         const std::string number = std::to_string(slot);
         onView(("sceneView.recallBookmark" + number).c_str(), [slot](SceneViewController& view, SceneProject& scene) {
@@ -338,7 +360,86 @@ void editor::App::registerCommands(){
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
 
+    // ---- The Sound Browser, while it has focus: keys typed into its search stay text
+    auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
+        bind(id, [run](const CommandArgs&) { run(); }, [this]() { return soundBrowserWindow->isOpen(); },
+             [whileTyping]() { return whileTyping || !ImGui::GetIO().WantTextInput; });
+    };
+    browser("soundBrowser.focusSearch", [this]() { soundBrowserWindow->focusSearch(); }, true);
+    browser("soundBrowser.next", [this]() { soundBrowserWindow->selectNext(1); });
+    browser("soundBrowser.previous", [this]() { soundBrowserWindow->selectNext(-1); });
+    browser("soundBrowser.play", [this]() { soundBrowserWindow->playOrStop(false); });
+    browser("soundBrowser.playMatched", [this]() { soundBrowserWindow->playOrStop(true); });
+    browser("soundBrowser.use", [this]() { soundBrowserWindow->useSelected(); });
+    browser("soundBrowser.selectAll", [this]() { soundBrowserWindow->selectAll(); });
+    browser("soundBrowser.stop", [this]() { soundBrowserWindow->stopOrClear(); }, true);
+
+    // ---- Window > Audio > Captures, while it has focus
+    auto captures = [&bind, this](const char* id, std::function<void()> run) {
+        bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
+    };
+    captures("audioCaptures.playMoment", [this]() { audioCapturesWindow->playMoment(); });
+    captures("audioCaptures.stop", [this]() { audioCapturesWindow->stopMoment(); });
+    captures("audioCaptures.nextMoment", [this]() { audioCapturesWindow->selectMoment(1); });
+    captures("audioCaptures.previousMoment", [this]() { audioCapturesWindow->selectMoment(-1); });
+
+    // ---- The Curve window and the Color window, while they have focus
+    using CurveCommand = ui::CurveEditor::Command;
+    auto curve = [&bind](const char* id, CurveCommand command) {
+        bind(id, [command](const CommandArgs&) { ui::CurveWindow::get().run(command); },
+             [command]() { return ui::CurveWindow::get().canRun(command); },
+             []() { return !ImGui::GetIO().WantTextInput; });
+    };
+    curve("curve.frame", CurveCommand::Frame);
+    curve("curve.delete", CurveCommand::Delete);
+    curve("curve.copy", CurveCommand::Copy);
+    curve("curve.paste", CurveCommand::Paste);
+    bind("colorPicker.eyedropper", [](const CommandArgs&) { ui::ColorPickerWindow::get().eyedropper(); },
+         []() { return ui::ColorPickerWindow::get().canEyedropper(); });
+
+    registerPanelClaims();
+
     ShortcutOverrides::load(ShortcutOverrides::defaultFile(), catalog);
+}
+
+void editor::App::registerPanelClaims(){
+    PanelClaims& claims = PanelClaims::editor();
+    // (the palette's own field does not count: its entries show what they would do)
+    claims.setTyping([this]() { return ImGui::GetIO().WantTextInput && !searchPalette->isOpen(); });
+    auto own = [](const char* command) {
+        ClaimHandler handler;
+        handler.command = command;
+        return handler;
+    };
+    using Verb = EditVerb;
+    claims.add({"Curve", []() { return ui::CurveWindow::get().isFocused(); },
+                {{Verb::Frame, own("curve.frame")}, {Verb::Delete, own("curve.delete")},
+                 {Verb::Copy, own("curve.copy")}, {Verb::Paste, own("curve.paste")}}});
+    claims.add({"Color Picker", []() { return ui::ColorPickerWindow::get().isFocused(); }, {}});
+    claims.add({"Gradient Editor", []() { return ui::GradientWindow::get().isFocused(); }, {}});
+    // its selected map, action or binding
+    claims.add({"Input Actions", [this]() { return inputActionsWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return inputActionsWindow->canDelete(); }, [this]() { inputActionsWindow->requestDelete(); }}}}});
+    // its selected state, sub-state machine, transition or layer
+    claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Project", [this]() { return projectWindow->isFocused(); },
+                {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
+                 {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")}}});
+    claims.add({"Console", [this]() { return consoleWindow->isListFocused(); }, {{Verb::Copy, own("console.copy")}}});
+    claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
+                {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});
+    // the Animation window editing a clip: the clip's keys
+    claims.add({"Animation", [this]() { return clipWindowTakesKeys(); },
+                {{Verb::Delete, own("animation.delete")}, {Verb::Duplicate, own("animation.duplicate")}, {Verb::Copy, own("animation.copy")},
+                 {Verb::Paste, own("animation.paste")}, {Verb::Frame, own("animation.frameSelected")}}});
+    // the Pose Animation window, or a Scene view posing for it (also while its camera flies:
+    // the pose commands wait then, and the scene's keys still stay off)
+    claims.add({"Pose Animation", [this]() { return poseAnimationWindow->isFocused() || lastFocusedWindow == LastFocusedWindow::PoseAnimation; },
+                {{Verb::Delete, own("pose.delete")}, {Verb::Duplicate, own("pose.duplicate")}, {Verb::Copy, own("pose.copy")},
+                 {Verb::Paste, own("pose.paste")}, {Verb::Rename, own("pose.rename")}}});
+    claims.bindEditCommands();
 }
 
 bool editor::App::clipWindowTakesKeys() const{
@@ -407,8 +508,16 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
-    if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
+    // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an
+    // audio block); the edit verbs (Delete, Copy...) stay its own
+    const AnimationWindowClip* animationClip = animationWindow ? animationWindow->getClipMode() : nullptr;
+    if (clipWindowTakesKeys() || (animationClip && animationClip->entityKeys)) state.panels.push_back(ShortcutContext::Animation);
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
+    if (ui::CurveWindow::get().isFocused()) state.panels.push_back(ShortcutContext::Curve);
+    if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
+    if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
+    if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }
 

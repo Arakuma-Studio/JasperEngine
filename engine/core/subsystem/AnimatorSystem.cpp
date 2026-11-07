@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimatorSystem.h"
+#include "audio/AudioMarkers.h"
+#include "audio/TimelineAudio.h"
+#include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -505,6 +508,59 @@ void AnimatorSystem::writePose(const AnimatorComponent& component, anim::Animato
     }
 }
 
+void AnimatorSystem::fireCues(Entity entity, anim::AnimatorInstance& instance){
+#if JASPERENGINE_SOUND_LAYER
+    const anim::AnimatorOutput& output = instance.output;
+    for (const anim::AnimatorPendingCue& pending : output.cues){
+        if (pending.clip < 0 || (size_t)pending.clip >= instance.clips.size()) continue;
+        const anim::AnimatorClipSlot& slot = instance.clips[(size_t)pending.clip];
+        if (!slot.clip || pending.index < 0 || (size_t)pending.index >= slot.clip->getAudioCues().size()) continue;
+        TimelineCueInfo info;
+        info.clip = slot.path;
+        info.cue = pending.index;
+        info.scene = scene;
+        info.player = entity;
+        info.state = pending.montage >= 0 && (size_t)pending.montage < instance.montages.size() ? instance.montages[(size_t)pending.montage].path
+                                                                                                : stateName(instance, pending.state);
+        info.layer = pending.layer;
+        info.position = pending.position;
+        const TimelineVoice voice = TimelineAudio::fireCue(scene, entity, slot.clip->getAudioCues()[(size_t)pending.index],
+                                                           TimelineAudio::delayFrames(pending.fraction), pending.speed, info);
+        if (!voice.empty()) instance.cueVoices.push_back({pending.layer, pending.state, pending.montage, voice.id, voice.generation, voice.source});
+    }
+    // state_exit (R7): a state's exit note (it was left, or its crossfade out ended), a montage's end
+    for (size_t i = 0; i < instance.cueVoices.size();){
+        const anim::AnimatorCueVoice& voice = instance.cueVoices[i];
+        bool exited = false;
+        if (voice.montage >= 0){
+            exited = (size_t)voice.montage >= instance.montages.size() ||
+                     instance.montages[(size_t)voice.montage].phase == anim::AnimatorMontageRun::Phase::Ended;
+        }else{
+            for (const anim::AnimatorStateNote& note : stateNotes){
+                if (!note.enter && note.layer == voice.layer && note.state == voice.state) exited = true;
+            }
+        }
+        if (!exited){
+            i++;
+            continue;
+        }
+        TimelineVoice stopped;
+        stopped.id = voice.id;
+        stopped.generation = voice.generation;
+        stopped.source = voice.source;
+        TimelineAudio::stop(scene, stopped);
+        instance.cueVoices.erase(instance.cueVoices.begin() + (std::ptrdiff_t)i);
+    }
+#else
+    (void)entity;
+    if (!instance.output.cues.empty() && !warnedNoSoundLayer){
+        warnedNoSoundLayer = true;
+        Log::error("Animator: clip audio cues need the soundlayer module, which this build leaves out");
+    }
+    instance.cueVoices.clear();
+#endif
+}
+
 void AnimatorSystem::finalize(Job& job, float dt){
     const Entity entity = job.entity;
     // callbacks can remove the component or destroy the GameObject: looked up again each time
@@ -607,6 +663,9 @@ void AnimatorSystem::finalize(Job& job, float dt){
         // the controller's events too (object/AnimationPlayer.h)
         const bool forwarded = player && !player->enabled && player->onEvent.hasSubscribers();
         const bool subscribed = component->onEvent.hasSubscribers() || forwarded;
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::animationEvent(scene, entity, event.functionName, event.state, event.time);
+#endif
         component->onEvent.call(event);
         if (forwarded){
             player = scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
@@ -627,6 +686,7 @@ void AnimatorSystem::finalize(Job& job, float dt){
                       scene->getEntityName(entity).c_str(), event.functionName.c_str(), source->c_str());
         }
     }
+    if (!output.cues.empty() || !instance->cueVoices.empty()) fireCues(entity, *instance);
     // upstream's controller callbacks on the GameObject's Animation Player (layer index, state
     // name), after the update's events; a player that hands over to the Animator (disabled)
     // also calls its scripts' onStateEnter / onStateExit methods, as upstream's player did
@@ -779,6 +839,7 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
     instance.output.states.clear();
     instance.output.montages.clear();
     instance.output.events.clear();
+    instance.output.cues.clear();
     instance.montages.erase(std::remove_if(instance.montages.begin(), instance.montages.end(),
         [](const anim::AnimatorMontageRun& m){ return m.phase == anim::AnimatorMontageRun::Phase::Ended; }), instance.montages.end());
     return true;

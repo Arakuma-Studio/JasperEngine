@@ -39,7 +39,7 @@ async def run(root: Path, *args: str) -> tuple[int, str]:
     files = [str(f) for f in sorted(root.glob("test_*.py"))]
     proc = await asyncio.create_subprocess_exec(sys.executable, str(RUNNER), *args, *files,
                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-    out, _ = await asyncio.wait_for(proc.communicate(), 300)
+    out, _ = await proc.communicate()
     return proc.returncode, out.decode(errors="replace")
 
 

@@ -9,6 +9,7 @@
 #include "Backend.h"
 #include "nfd.hpp"
 #include "diag/HangWatchdog.h"
+#include "window/EditorFilePicker.h"
 
 namespace jasperengine::editor{
 
@@ -108,11 +109,40 @@ namespace jasperengine::editor{
             return filterItems;
         }
 
+        // What MCP sees of this picker (EditorFilePicker): the extensions of the filter's "png,jpg" lists
+        static EditorFilePicker::Request pickerRequest(EditorFilePicker::Mode mode, const std::string& defaultPath, const std::string& defaultName,
+                                                       const std::vector<nfdfilteritem_t>& filters) {
+            EditorFilePicker::Request request;
+            request.mode = mode;
+            request.defaultPath = defaultPath;
+            request.defaultName = defaultName;
+            for (const nfdfilteritem_t& filter : filters) {
+                std::string extension;
+                for (const char* c = filter.spec;; c++) {
+                    if (*c == ',' || *c == '\0') {
+                        if (!extension.empty()) request.extensions.push_back(extension);
+                        extension.clear();
+                        if (*c == '\0') break;
+                    } else {
+                        extension += *c;
+                    }
+                }
+            }
+            return request;
+        }
+
+        static std::string firstOf(const std::vector<std::string>& paths) {
+            return paths.empty() ? std::string() : paths.front();
+        }
+
     public:
         inline static std::string openFileDialog(std::string defaultPath = "", int filterFlags = FILE_DIALOG_ALL, bool selectDirectory = false) {
             std::string retPath;
 
             if (selectDirectory) {
+                const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::OpenFolder, defaultPath, "", {});
+                if (const auto answered = EditorFilePicker::ask(request)) return firstOf(*answered);
+                const EditorFilePicker::NativeScope picker(request);
                 // Directory selection
                 nfdu8char_t* outPath;
                 nfdpickfolderu8args_t args = {0};
@@ -135,6 +165,10 @@ namespace jasperengine::editor{
                 nfdopendialogu8args_t args = {0};
 
                 std::vector<nfdfilteritem_t> filterItems = filterItemsFor(filterFlags);
+
+                const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::OpenFile, defaultPath, "", filterItems);
+                if (const auto answered = EditorFilePicker::ask(request)) return firstOf(*answered);
+                const EditorFilePicker::NativeScope picker(request);
 
                 if (!filterItems.empty()) {
                     args.filterCount = (nfdfiltersize_t)filterItems.size();
@@ -172,6 +206,9 @@ namespace jasperengine::editor{
             nfdsavedialogu8args_t args = {0};
 
             std::vector<nfdfilteritem_t> filterItems = filterItemsFor(filterFlags);
+            const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::SaveFile, defaultPath, defaultName, filterItems);
+            if (const auto answered = EditorFilePicker::ask(request)) return firstOf(*answered);
+            const EditorFilePicker::NativeScope picker(request);
             if (!filterItems.empty()) {
                 args.filterCount = (nfdfiltersize_t)filterItems.size();
                 args.filterList = filterItems.data();
@@ -197,6 +234,9 @@ namespace jasperengine::editor{
 
         // One file of a type of our own ("Layouts", "yaml"); "" when cancelled
         inline static std::string openFileDialogFiltered(const std::string& defaultPath, const char* filterName, const char* filterSpec) {
+            const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::OpenFile, defaultPath, "", {{filterName, filterSpec}});
+            if (const auto answered = EditorFilePicker::ask(request)) return firstOf(*answered);
+            const EditorFilePicker::NativeScope picker(request);
             std::string retPath;
             nfdu8char_t* path;
             nfdopendialogu8args_t args = {0};
@@ -218,6 +258,9 @@ namespace jasperengine::editor{
         // Where to write a file ("Save Layout to File..."); "" when cancelled
         inline static std::string saveFileDialog(const std::string& defaultPath, const std::string& defaultName,
                                                  const char* filterName, const char* filterSpec) {
+            const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::SaveFile, defaultPath, defaultName, {{filterName, filterSpec}});
+            if (const auto answered = EditorFilePicker::ask(request)) return firstOf(*answered);
+            const EditorFilePicker::NativeScope picker(request);
             std::string retPath;
             nfdu8char_t* path;
             nfdsavedialogu8args_t args = {0};
@@ -238,6 +281,9 @@ namespace jasperengine::editor{
         }
 
         inline static std::vector<std::string> openFileDialogMultiple(){
+            const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::OpenFiles, "", "", {});
+            if (const auto answered = EditorFilePicker::ask(request)) return *answered;
+            const EditorFilePicker::NativeScope picker(request);
             std::vector<std::string> filePaths;
             const nfdpathset_t* pathSet;
             nfdopendialogu8args_t args = {0};
@@ -278,6 +324,9 @@ namespace jasperengine::editor{
         }
 
         inline static std::vector<std::string> pickFolderDialogMultiple(){
+            const EditorFilePicker::Request request = pickerRequest(EditorFilePicker::Mode::OpenFolders, "", "", {});
+            if (const auto answered = EditorFilePicker::ask(request)) return *answered;
+            const EditorFilePicker::NativeScope picker(request);
             std::vector<std::string> folderPaths;
             const nfdpathset_t* pathSet;
             nfdpickfolderu8args_t args = {0};

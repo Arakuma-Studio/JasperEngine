@@ -18,7 +18,7 @@ void main(){
     for (int x = -2; x < 2; ++x){
         for (int y = -2; y < 2; ++y){
             vec2 offset = vec2(float(x), float(y)) * blurParams.texelSize.xy;
-            result += texture(sampler2D(u_ssaoTexture, u_ssao_smp), v_texcoord + offset).r;
+            result += textureLod(sampler2D(u_ssaoTexture, u_ssao_smp), v_texcoord + offset, 0.0).r;
         }
     }
     frag_color = vec4(vec3(result / 16.0), 1.0);

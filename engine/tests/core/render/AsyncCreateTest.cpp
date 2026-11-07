@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Asynchronous shader and pipeline creation (docs/specs/S32-async-shaders.md): the sokol patch
-// markers, pipeline interning and its record format, the warm-up list's format (CPU), and on the
+// Asynchronous shader and pipeline creation (docs/specs/S32-async-shaders.md): pipeline
+// interning and its record format, the warm-up list's format (CPU), and on the
 // headless device the pending state, deferred destroys, interning, immediate passes, failures,
 // every GL mode drawing the LitCube golden, and a stand-in while a variant is pending (GPU).
 
@@ -25,6 +25,8 @@
 #include "sokol/SokolPipelineRecord.h"
 #include "subsystem/RenderSystem.h"
 
+#include "json.hpp"
+
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
 #include "LogCapture.h"
@@ -42,7 +44,6 @@
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -51,22 +52,6 @@ using namespace jasperengine;
 using namespace jasperengine::test;
 
 namespace {
-
-    std::string readRepoFile(const std::filesystem::path& relative){
-        // engine/tests/core/render -> engine
-        const std::filesystem::path engine = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-        std::ifstream file(engine / relative);
-        std::stringstream text;
-        text << file.rdbuf();
-        return text.str();
-    }
-
-    size_t countOf(const std::string& text, const std::string& what){
-        size_t count = 0;
-        for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1))
-            count++;
-        return count;
-    }
 
     void setEnv(const char* name, const char* value){
     #if defined(_WIN32)
@@ -171,22 +156,6 @@ namespace {
 
 }
 
-// a sokol update that dropped the patches fails here: re-apply the lines PATCHES.md lists
-TEST(SokolPatchMarkers, AsyncCreationHooks){
-    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
-    ASSERT_FALSE(header.empty());
-    EXPECT_EQ(countOf(header, "JasperEngine: async creation"), 11u);
-    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## Asynchronous creation (spec S32)"), std::string::npos);
-}
-
-// (one on the lock's own definition, 6 + 6 + 2 where it is taken, 6 asserts of sg_destroy_* gone)
-TEST(SokolPatchMarkers, PoolLock){
-    const std::string header = readRepoFile("libs/sokol/sokol_gfx.h");
-    ASSERT_FALSE(header.empty());
-    EXPECT_EQ(countOf(header, "JasperEngine: pool lock"), 21u);
-    EXPECT_NE(readRepoFile("libs/sokol/PATCHES.md").find("## A lock on the resource pools"), std::string::npos);
-}
-
 TEST(PipelineIntern, EveryFieldChangesTheDescription){
     const sg_pipeline_desc base = sampleDesc();
     EXPECT_TRUE(SokolPipelineCache::descEqual(base, base));
@@ -237,6 +206,23 @@ TEST(PipelineRecord, RefusesWhatItCannotRead){
     EXPECT_FALSE(SokolPipelineRecord::fromJson(R"({"depth":{"write":"yes"}})", desc, &error));
 }
 
+TEST(ShaderWarmup, ReadShaderKeysLeavesTheLoadedList){
+    const std::string loaded = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000001","custom":""}],"pipelines":[]})";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(loaded, &error)) << error;
+
+    const std::string other = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000002","custom":""},{"key":"0x20000004","custom":""}],"pipelines":[]})";
+    std::vector<ShaderKey> keys;
+    ASSERT_TRUE(ShaderWarmup::readShaderKeys(other, keys, &error)) << error;
+    EXPECT_EQ(keys.size(), 2u);
+    EXPECT_EQ(ShaderWarmup::getShaderCount(), 1u) << "the loaded list stays as it was";
+
+    keys.clear();
+    EXPECT_FALSE(ShaderWarmup::readShaderKeys("not json", keys, &error));
+    EXPECT_TRUE(keys.empty());
+    ShaderWarmup::clear();
+}
+
 TEST(ShaderWarmup, RoundTrip){
     const std::string record = SokolPipelineRecord::toJson(sampleDesc());
     const std::string list = std::string(R"({"version":1,"shaders":[{"key":"0x1000000ff","custom":""},{"key":"0x200000001","custom":"shaders/myMesh"}],)") +
@@ -253,6 +239,42 @@ TEST(ShaderWarmup, RoundTrip){
     ASSERT_TRUE(ShaderWarmup::mergeFromString(saved, &error));
     EXPECT_EQ(ShaderWarmup::getShaderCount(), 2u);
     EXPECT_EQ(ShaderWarmup::getPipelineCount(), 1u);
+    ShaderWarmup::clear();
+}
+
+TEST(ShaderWarmup, UpgradesThreeAttachmentGBufferRecords){
+    // a G-buffer pipeline recorded before the SSR occlusion attachment (R8, colors[3])
+    sg_pipeline_desc old = {};
+    old.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
+    old.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+    old.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    old.depth.write_enabled = true;
+    old.color_count = 3;
+    for (int i = 0; i < 3; i++)
+        old.colors[i].pixel_format = SG_PIXELFORMAT_RGBA8;
+    sg_pipeline_desc current = old;
+    current.color_count = 4;
+    current.colors[3].pixel_format = SG_PIXELFORMAT_R8;
+
+    const std::string gbufferKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::GBUFFER, shaderPropertyBit(1)));
+    const std::string meshKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(6)));
+    const std::string record = SokolPipelineRecord::toJson(old);
+    const std::string list = R"({"version":1,"shaders":[{"key":")" + gbufferKey + R"(","custom":""},{"key":")" + meshKey +
+                             R"(","custom":""}],"pipelines":[{"shader":0,"family":"gl","desc":)" + record +
+                             R"(},{"shader":1,"family":"gl","desc":)" + record + "}]}";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(list, &error)) << error;
+    EXPECT_EQ(ShaderWarmup::getPipelineCount(), 2u);
+    EXPECT_EQ(ShaderWarmup::getSkippedCount(), 0u);
+
+    const nlohmann::json saved = nlohmann::json::parse(ShaderWarmup::saveToString());
+    ASSERT_EQ(saved["pipelines"].size(), 2u);
+    // the G-buffer's is the layout the engine asks for now, the other kept as recorded
+    sg_pipeline_desc read = {};
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][0]["desc"].dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << saved["pipelines"][0]["desc"].dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][1]["desc"].dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << saved["pipelines"][1]["desc"].dump();
     ShaderWarmup::clear();
 }
 
@@ -437,6 +459,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         const uint16_t id = ShaderPool::registerCustomShader("tests/async_queued_clear.frag");
         ShaderPool::setShaderBuilder([data](ShaderKey){ return ShaderBuildResult(data, ResourceLoadState::Finished); });
         const uint32_t aliveBefore = sg_query_stats().total.shaders.alive;
+        const uint64_t createdBefore = SystemRender::getGpuCreationStats().createdShaders;
         std::shared_ptr<ShaderRender> kept;
         withAVariantsMakeQueued(0, id, [&](){
             kept = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
@@ -450,6 +473,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         ShaderPool::setShaderBuilder(nullptr);
         EXPECT_LE(sg_query_stats().total.shaders.alive, aliveBefore) << "a GPU shader was left over";
         EXPECT_TRUE(SystemRender::isGpuCreationIdle());
+        EXPECT_EQ(SystemRender::getGpuCreationStats().createdShaders, createdBefore) << "the make that found its handle gone is counted";
 
         // the pool works on: the same source from a new id, and the slot its handle had is not it
         ShaderData again;

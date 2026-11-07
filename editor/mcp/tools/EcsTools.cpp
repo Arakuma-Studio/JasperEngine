@@ -121,7 +121,7 @@ void getEcsStatsTool(const CallPtr& call){
     Scene* scene = sp->scene;
 
     Json types = Json::array();
-    size_t holes = 0, dirty = 0, componentBytes = 0, overheadBytes = 0, components = 0;
+    size_t holes = 0, dirty = 0, componentBytes = 0, overheadBytes = 0, heapBytes = 0, components = 0;
     for (size_t id = 0; id < scene->getComponentTypeCount(); id++){
         ComponentArrayBase* array = scene->getComponentArray((ComponentId)id);
         holes += array->getHoleCount();
@@ -130,9 +130,13 @@ void getEcsStatsTool(const CallPtr& call){
         overheadBytes += array->overheadBytes();
         components += array->size();
         if (array->size() == 0 && array->getHoleCount() == 0) continue;
+        // what the components hold in arrays of their own (a mesh's submeshes, a sprite's frames)
+        const size_t heap = array->arrayHeapBytes();
+        heapBytes += heap;
         types.push_back({{"name", typeName(scene, (ComponentId)id)}, {"count", array->size()}, {"holes", array->getHoleCount()},
                          {"order", orderName(array->getOrder())}, {"order_dirty", array->isOrderDirty()},
-                         {"bytes", array->componentBytes() + array->overheadBytes()}});
+                         {"bytes", array->componentBytes() + array->overheadBytes()}, {"element_bytes", array->componentSize()},
+                         {"heap_bytes", heap}});
     }
     const size_t entities = scene->getEntityCount();
     const size_t systemEntities = scene->getSystemEntityCount();
@@ -147,14 +151,15 @@ void getEcsStatsTool(const CallPtr& call){
         {"holes", holes},
         {"dirty_arrays", dirty},
         {"bytes", {{"components", componentBytes}, {"overhead", overheadBytes}, {"metadata", metadataBytes},
-                   {"total", componentBytes + overheadBytes + metadataBytes}}},
+                   {"heap", heapBytes}, {"total", componentBytes + overheadBytes + metadataBytes + heapBytes}}},
         {"change_tick", tick}
     };
     call->ok(std::to_string(entities) + " entities (" + std::to_string(systemEntities) + " system), " +
              std::to_string(components) + " components in " + std::to_string(types.size()) + " of " +
              std::to_string(scene->getComponentTypeCount()) + " registered types (max " + std::to_string(kMaxComponentTypes) +
              "), " + std::to_string(holes) + " pending holes, " + std::to_string(dirty) + " arrays waiting to re-sort, " +
-             std::to_string((componentBytes + overheadBytes + metadataBytes) / 1024) + " KiB. change_tick " + std::to_string(tick) +
+             std::to_string((componentBytes + overheadBytes + metadataBytes + heapBytes) / 1024) + " KiB (" +
+             std::to_string(heapBytes / 1024) + " KiB in component arrays). change_tick " + std::to_string(tick) +
              " (pass it to query_entities changed_since_tick).", data);
 }
 

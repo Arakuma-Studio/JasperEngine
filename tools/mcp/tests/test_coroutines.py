@@ -6,6 +6,7 @@ traceback and ends Play, and Play stop leaves nothing behind."""
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Coroutines"}
+CI = True
 
 MOVER = """---@class CoMover : ScriptInstance
 local CoMover = { properties = {} }

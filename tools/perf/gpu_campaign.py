@@ -12,6 +12,7 @@ run opens new editors; the reported value is the median of the runs.
     ... gpu_campaign.py pbr --project build/pbr-extended                       # S11 AC11 (R13)
     ... gpu_campaign.py post                                                   # S13 presets (desktop)
     ... gpu_campaign.py particles                                              # S20 R23
+    ... gpu_campaign.py lighting  [--size 1920 1080]                            # S57 R7
     ... --editor build/linux/editor-vulkan-install/bin/jasperengine-editor     # another build
 
 On a GPU host: tools/gpu/xorg-headless.sh start, then inside the image `. tools/gpu/env.sh` and
@@ -280,8 +281,134 @@ def particles_report(results: dict, dev: dict | None = None) -> list[str]:
             f"| {live:.0f} live reference particles at 1080p (passes over the empty scene) | {cost:.3f} | ≤ 1.5 (100 k) |"]
 
 
+# ------------------------------------------------------------------ S57 lighting (R7)
+
+# each feature off and on in the same scene: (case, scene, what turns it on)
+LIGHTING_CASES = ["tiles_per_object", "tiles_tiled", "capsules_off", "capsules_on", "contact_off", "contact_on",
+                  "oit_sorted", "oit_on", "hair_standard", "hair_on"]
+
+
+async def lighting_scene(ed: Editor, name: str) -> tuple[int, int, int]:
+    made = await ed.call("create_scene", name=name, type="3D", path=name)
+    sid = made["scene"]["id"]
+    sun = (await ed.call("find_entities", scene=sid, component="light"))["entities"][0]["id"]
+    # a new scene draws through the default camera, which has no GameObject: make one
+    camera = (await ed.call("create_entity", scene=sid, type="camera", name="Main Camera", position=[0.0, 7.0, 9.0],
+                            select=False, values={"camera": {"useTarget": True, "target": [0.0, 0.0, 0.0]}}))["entity_id"]
+    await ed.call("set_main_camera", scene=sid, entity=camera)
+    # from behind the camera, so what it sees is lit (the default sun lights the far faces only)
+    await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"direction": [-0.3, -0.8, -0.6], "intensity": 1.5}})
+    return sid, sun, camera
+
+
+async def lighting_entity(ed: Editor, sid: int, kind: str, name: str, position, scale=None, values=None) -> int:
+    args = {"scene": sid, "type": kind, "name": name, "position": position, "select": False}
+    if scale is not None:
+        args["scale"] = scale
+    if values:
+        args["values"] = values
+    return (await ed.call("create_entity", **args))["entity_id"]
+
+
+async def lighting_build(ed: Editor) -> None:
+    """the five scenes of the campaign, saved (each case toggles its feature before playing)"""
+    sid, sun, _ = await lighting_scene(ed, "tiles")
+    await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"intensity": 0.3}})
+    await lighting_entity(ed, sid, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2])
+    for i in range(64):
+        await lighting_entity(ed, sid, "point_light", f"Lamp{i}", [-7 + 2 * (i % 8), 0.6, -7 + 2 * (i // 8)],
+                              values={"light": {"range": 2.5, "intensity": 2.0}})
+    await ed.call("save_scene", scene=sid)
+
+    sid, sun, _ = await lighting_scene(ed, "capsules")
+    await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"shadows": True}})
+    await lighting_entity(ed, sid, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2], values={"mesh": {"staticShadowCaster": True}})
+    for i in range(4):
+        body = await lighting_entity(ed, sid, "cube", f"Body{i}", [-3 + 2 * i, 0.9, 0], scale=[0.6, 1.8, 0.4])
+        await ed.call("add_component", scene=sid, entity=body, component="capsuleshadowcaster")
+        capsules = [{"bone": "", "radius": 0.15, "length": 0.4, "offset": [0, -0.4 + 0.12 * k, 0]} for k in range(8)]
+        await ed.call("set_properties", scene=sid, entity=body,
+                      values={"capsuleshadowcaster": {"castShadows": "capsules_only", "capsules": capsules}})
+    await ed.call("save_scene", scene=sid)
+
+    sid, sun, _ = await lighting_scene(ed, "contact")
+    await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"shadows": True, "contactShadowSampleCount": 16}})
+    await lighting_entity(ed, sid, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2])
+    for i in range(20):
+        await lighting_entity(ed, sid, "cube", f"Box{i}", [-6 + (i % 5) * 3, 0.25, -4 + (i // 5) * 2.5], scale=[0.5, 0.5, 0.5])
+    await ed.call("save_scene", scene=sid)
+
+    sid, sun, _ = await lighting_scene(ed, "oit")
+    await lighting_entity(ed, sid, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2])
+    for i in range(24):
+        # stacked, so the camera looks through them all
+        await lighting_entity(ed, sid, "plane", f"Glass{i}", [-1 + (i % 6) * 0.4, 0.5 + i * 0.15, -1 + (i // 6) * 0.4], scale=[0.6, 1, 0.6],
+                              values={"mesh": {"submeshes[0].material": {"baseColorFactor": [0.3, 0.6, 0.9, 0.4],
+                                                                         "blendMode": "alpha", "cullMode": "off"}}})
+    await ed.call("save_scene", scene=sid)
+
+    sid, sun, camera = await lighting_scene(ed, "hair")
+    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 0.0, 4.5])
+    await lighting_entity(ed, sid, "sphere", "Hair", [0, 0, 0], scale=[2, 2, 2])
+    await ed.call("save_scene", scene=sid)
+
+
+async def lighting_toggle(ed: Editor, case: str) -> str:
+    """turns the case's feature on or off in its scene; returns the scene file"""
+    scene_name, mode = case.rsplit("_", 1)
+    scene_file = {"tiles": "tiles", "capsules": "capsules", "contact": "contact", "oit": "oit", "hair": "hair"}[scene_name.split("_")[0]]
+    sid = (await ed.call("open_scene", scene=f"{scene_file}.scene"))["scene"]["id"]
+    on = mode in ("tiled", "on")
+    if scene_file == "tiles":
+        await ed.call("set_project_settings", values={"graphics.light_mode": "tiled" if on else "per_object"})
+    elif scene_file == "capsules":
+        await ed.call("set_scene_settings", scene=sid, settings={"capsule_shadows_enabled": on})
+    elif scene_file == "contact":
+        sun = (await ed.call("find_entities", scene=sid, component="light"))["entities"][0]["id"]
+        await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"contactShadows": on}})
+    elif scene_file == "oit":
+        camera = (await ed.call("find_entities", scene=sid, component="camera"))["entities"][0]["id"]
+        await ed.call("set_properties", scene=sid, entity=camera,
+                      values={"camera": {"transparencyMode": "order_independent" if on else "sorted"}})
+    elif scene_file == "hair":
+        hair = (await ed.call("find_entities", scene=sid, name="Hair"))["entities"][0]["id"]
+        await ed.call("set_properties", scene=sid, entity=hair, values={"mesh": {"submeshes[0].material": {"pbr": {"hair": {"enabled": on}}}}})
+    await ed.call("save_scene", scene=sid)
+    return f"{scene_file}.scene"
+
+
+async def lighting_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
+    out, dev = {}, {}
+    async with Editor(create=True, name=f"GpuLighting{run}", label=f"gpu-lighting-{run}", **editor_args(args)) as ed:
+        dev = await prepare(ed)
+        await lighting_build(ed)
+        for case in args.lighting_cases.split(","):
+            scene = await lighting_toggle(ed, case)
+            got = await play_and_time(ed, scene, tuple(args.size), args.frames)
+            out[case] = got
+            print(f"run {run} lighting {case}: frame {got['_frame']:.3f} ms at {got['_size']}", flush=True)
+        await ed.call("set_project_settings", values={"graphics.light_mode": "automatic"})
+    return out, dev
+
+
+def lighting_report(results: dict, dev: dict | None = None) -> list[str]:
+    rows = ["| Feature | Off: GPU frame (ms) | On: GPU frame (ms) | Cost (ms) | Its own pass (ms) |", "|---|---|---|---|---|"]
+    pairs = [("Tiled lights, 64 point lights (vs Per Object)", "tiles_per_object", "tiles_tiled", None),
+             ("Capsule shadows, 4 casters x 8 capsules", "capsules_off", "capsules_on", None),
+             ("Contact shadows, 16 samples", "contact_off", "contact_on", "contact shadows"),
+             ("Order Independent, 24 overlapping planes (vs Sorted)", "oit_sorted", "oit_on", "oit accumulation"),
+             ("Hair shading model, a sphere filling the view (vs Standard)", "hair_standard", "hair_on", None)]
+    for label, off, on, pass_label in pairs:
+        if off not in results or on not in results:
+            continue
+        a, b = results[off]["_frame"], results[on]["_frame"]
+        own = f"{results[on].get(pass_label, 0.0):.3f}" if pass_label else "-"
+        rows.append(f"| {label} | {a:.3f} | {b:.3f} | {b - a:+.3f} | {own} |")
+    return rows
+
+
 CASES = {"shadows": (shadows_run, shadows_report), "pbr": (pbr_run, pbr_report), "post": (post_run, post_report),
-         "particles": (particles_run, particles_report)}
+         "particles": (particles_run, particles_report), "lighting": (lighting_run, lighting_report)}
 
 
 async def main_async(args: argparse.Namespace) -> int:
@@ -314,6 +441,7 @@ def main() -> int:
     parser.add_argument("--qualities", default="standard,high", help="pbr: the Lit qualities")
     parser.add_argument("--size", type=int, nargs=2, default=[1920, 1080], metavar=("W", "H"),
                         help="pbr: the Game view's render size (a bigger one keeps the GPU at its clocks)")
+    parser.add_argument("--lighting-cases", default=",".join(LIGHTING_CASES), help="lighting: the cases")
     parser.add_argument("--editor", default="", help="editor binary (default: the harness's)")
     parser.add_argument("--json", default="")
     return asyncio.run(main_async(parser.parse_args()))
