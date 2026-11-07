@@ -10,6 +10,13 @@
 //   preview, and equal requests share one job. Device loss is the queue's (it re-requests).
 // - Thumbnails (TitleArtThumbnailer): the fresh main output's PNG when there is one, else a
 //   render, written as a PNG to the thumbnail path the Project window reads.
+// - Budget (R45): a preview's work is three kinds of pieces: building the job, its render steps
+//   and the readback. Each is measured on the main thread and teaches one model
+//   (titleArtPreviewCosts) that predicts the next piece, and a step() starts a piece only while it
+//   fits what is left of its budget (the first piece of a call always runs). The work a request
+//   does before its job exists (loading the document its key needs) and the thumbnailer's PNG
+//   encode are charged to the queue's frame; the thumbnailer starts such work only while the frame
+//   has budget left.
 // - Thread-safety: main thread.
 
 #pragma once
@@ -34,6 +41,8 @@ namespace jasperengine::editor {
         uint32_t nextStepCostUs() const override;
         bool step(uint32_t budgetUs) override;
         bool failed() const override { return !failure.empty(); }
+        std::string longestStepLabel() const override { return longestLabel; }
+        double longestStepMs() const override { return longestMs; }
 
         const std::string& error() const { return failure; }
         // the finished render (straight RGBA8)
@@ -46,7 +55,15 @@ namespace jasperengine::editor {
         TitleRenderedImage result;
         std::string failure;
         bool finished = false;
+        std::string longestLabel;
+        double longestMs = 0.0;
+
+        uint32_t readbackEstimateUs() const;
+        void noteLongest(const std::string& label, double ms);
     };
+
+    // what the pieces of the editor's previews cost on this machine, learned as they run
+    titleart::TitleStepCosts& titleArtPreviewCosts();
 
     // a preview of a document at most `side` pixels on its larger side; 0 with `error` when the
     // document does not load (or the renderer is unavailable)

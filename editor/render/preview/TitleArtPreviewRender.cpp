@@ -51,36 +51,105 @@ namespace {
 
 }
 
+namespace {
+
+    // the static estimates of the pieces that are not render steps (the model scales them)
+    constexpr uint32_t BUILD_ESTIMATE_US = 500;
+    constexpr const char* BUILD_KIND = "preview build";
+    constexpr const char* READBACK_KIND = "preview readback";
+
+    // charges the main-thread time of its scope to the preview queue's frame
+    class SideWork {
+    public:
+        SideWork() : start(titleArtPreviewCosts().nowUs()) {}
+        ~SideWork() { TitlePreviewQueue::editor().charge((titleArtPreviewCosts().nowUs() - start) / 1000.0); }
+        SideWork(const SideWork&) = delete;
+        SideWork& operator=(const SideWork&) = delete;
+
+    private:
+        double start;
+    };
+
+}
+
+titleart::TitleStepCosts& editor::titleArtPreviewCosts() {
+    static titleart::TitleStepCosts* costs = new titleart::TitleStepCosts();
+    return *costs;
+}
+
 TitleArtPreviewJob::TitleArtPreviewJob(Project* project, titleart::RenderRequest request) : project(project), request(std::move(request)) {
+}
+
+uint32_t TitleArtPreviewJob::readbackEstimateUs() const {
+    // about 10 ns a pixel: the copy, unpremultiply and encode of RGBA8
+    const titleart::TitleImage& image = job->image();
+    return std::max<uint32_t>(1, static_cast<uint32_t>(static_cast<double>(std::max(0, image.width)) * std::max(0, image.height) / 100.0));
 }
 
 uint32_t TitleArtPreviewJob::nextStepCostUs() const {
     if (finished || failed()) return 0;
-    // before the job exists: the cost of building it is small, its first step is measured then
-    return job ? std::max<uint32_t>(1, job->nextStepCostUs()) : 500;
+    const titleart::TitleStepCosts& costs = titleArtPreviewCosts();
+    if (!job) return costs.predictUs(BUILD_KIND, BUILD_ESTIMATE_US);
+    if (!job->done()) return std::max<uint32_t>(1, job->nextStepCostUs());
+    return costs.predictUs(READBACK_KIND, readbackEstimateUs());
+}
+
+void TitleArtPreviewJob::noteLongest(const std::string& label, double ms) {
+    if (ms < longestMs) return;
+    longestMs = ms;
+    longestLabel = label;
 }
 
 bool TitleArtPreviewJob::step(uint32_t budgetUs) {
     if (finished) return true;
     if (failed()) return true;
+    titleart::TitleStepCosts& costs = titleArtPreviewCosts();
+    const double start = costs.nowUs();
+    longestLabel.clear();
+    longestMs = 0.0;
+    bool first = true;
+    // the next piece starts while it fits what is left of the budget (the first always does)
+    const auto fits = [&](uint32_t predictedUs) {
+        return first || costs.nowUs() - start + predictedUs <= static_cast<double>(budgetUs);
+    };
     if (!job) {
         std::string error;
+        const double t0 = costs.nowUs();
         job = TitleArtRenderHost::editor().begin(project, request, error);
+        const double us = costs.nowUs() - t0;
         if (!job) {
             failure = error;
             return true;
         }
+        job->useCosts(&costs);
+        costs.observe(BUILD_KIND, BUILD_ESTIMATE_US, us);
+        noteLongest(BUILD_KIND, us / 1000.0);
+        first = false;
     }
-    titleart::StepBudget budget;
-    budget.budgetUs = std::max<uint32_t>(1, budgetUs);
-    job->step(budget);
-    if (job->failed()) {
-        failure = job->error();
-        return true;
+    if (!job->done()) {
+        if (!fits(job->nextStepCostUs())) return false;
+        titleart::StepBudget budget;
+        const double left = static_cast<double>(budgetUs) - (costs.nowUs() - start);
+        budget.budgetUs = static_cast<uint32_t>(std::max(1.0, left));
+        titleart::StepReport report;
+        job->step(budget, &report);
+        if (report.steps > 0) noteLongest(report.longestLabel, report.longestUs / 1000.0);
+        first = false;
+        if (job->failed()) {
+            failure = job->error();
+            return true;
+        }
+        if (!job->done()) return false;
     }
-    if (!job->done()) return false;
+    const uint32_t estimate = readbackEstimateUs();
+    if (!fits(costs.predictUs(READBACK_KIND, estimate))) return false;
     std::string error;
-    if (!TitleArtRenderHost::readBack(*job, 8, result, error)) {
+    const double t0 = costs.nowUs();
+    const bool read = TitleArtRenderHost::readBack(*job, 8, result, error);
+    const double us = costs.nowUs() - t0;
+    costs.observe(READBACK_KIND, estimate, us);
+    noteLongest(READBACK_KIND, us / 1000.0);
+    if (!read) {
         failure = error;
         return true;
     }
@@ -91,6 +160,8 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
 
 uint64_t editor::requestTitleArtPreview(Project* project, const fs::path& document, int side, TitlePreviewPriority priority,
                                         TitlePreviewOwner owner, bool visible, std::string& error) {
+    // the document load and hash the key needs are the preview's main-thread work too
+    SideWork charge;
     titleart::TitleArtDoc doc;
     std::string code;
     if (!loadTitleArtForBake(project, document, doc, code, error)) return 0;
@@ -133,13 +204,24 @@ void TitleArtThumbnailer::request(Project* forProject, const fs::path& document,
 }
 
 void TitleArtThumbnailer::process() {
+    TitlePreviewQueue& queue = TitlePreviewQueue::editor();
     for (size_t i = 0; i < pending.size();) {
         Pending& item = pending[i];
         bool finished = false, ok = false;
         texsynth::Image image;
         if (item.id == 0) {
-            // the fresh main output, thumbnailed like an image (a worker-free CPU downscale)
-            if (titleArtFreshOutputImage(project, item.document, item.side, image)) {
+            // a new item's document loads on the main thread: only while the frame has budget left
+            if (queue.frameLeftMs() <= 0) {
+                i++;
+                continue;
+            }
+            bool fresh = false;
+            {
+                SideWork charge;
+                // the fresh main output, thumbnailed like an image (a worker-free CPU downscale)
+                fresh = titleArtFreshOutputImage(project, item.document, item.side, image);
+            }
+            if (fresh) {
                 finished = true;
                 ok = true;
             } else {
@@ -165,6 +247,7 @@ void TitleArtThumbnailer::process() {
             continue;
         }
         if (ok) {
+            SideWork charge;
             std::vector<uint8_t> png;
             std::error_code ec;
             FileUtils::createDirectories(item.thumbnail.parent_path(), ec);

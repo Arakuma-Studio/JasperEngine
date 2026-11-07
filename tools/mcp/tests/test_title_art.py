@@ -1,8 +1,9 @@
 """S80 Title Art core: the `title_art` group (docs/specs/S80-title-art-core.md AC5-AC10, AC26, AC27,
-AC34-AC37, AC48; jasper://docs/title-art): list_title_library, get_title, edit_title,
+AC30, AC34-AC37, AC48; jasper://docs/title-art): list_title_library, get_title, edit_title,
 render_title, check_title, export_title, the .titleart parts of get_asset_info and view_asset,
 Missing Assets, rename and move of a document with its derived PNGs, hot reload, Project Settings >
-Title Art, the export's handling of documents and stale bakes, and `check --titles`.
+Title Art, the export's handling of documents and stale bakes, `check --titles`, and the preview budget
+(R45: get_title's `previews` while the Project window thumbnails 20 unbaked documents).
 """
 
 import asyncio
@@ -535,3 +536,47 @@ async def test_rim_spikes(ed: Editor):
     await ed.call("edit_title", path=path, ops=fix["ops"])
     again = (await ed.call("check_title", path=path, checks=["rim_spikes"]))["checks"][0]
     ed.check_eq(again["status"], "PASS", f"round joins: {again}")
+
+
+async def test_preview_budget(ed: Editor):
+    """AC30 (R45): while the Project window thumbnails 20 unbaked documents, the preview queue keeps
+    the previews' main-thread time within 4 ms a frame (p95 of its last 200 working frames, from
+    get_title's `previews`, the queue's own clock); every thumbnail is written. The 4 ms is a
+    wall-clock budget: the benchmark run enforces it (harness.over_budget)."""
+    await setup(ed)
+    await ed.call("tool_groups", enable=["editor_ux"])
+    folder = "assets/titles/budget"
+    paths = [f"{folder}/title{i:02d}.titleart" for i in range(20)]
+    for i, path in enumerate(paths):
+        await create(ed, path, text=f"Budget {i}")
+    await need_renderer(ed, paths[0])
+    before = (await ed.call("get_title", path=paths[0]))["previews"]
+    thumbs = ed.project / ".jasperengine" / "thumbs"
+
+    def count() -> int:
+        return len(list(thumbs.glob("*"))) if thumbs.exists() else 0
+
+    thumbs_before = count()
+    # the folder shown in the Project window: its 20 thumbnails are queued at once
+    await ed.call("focus_window", window="project")
+    await ed.call("edit_bookmarks", action="add", ref=folder)
+    await ed.call("edit_bookmarks", action="navigate", ref=folder)
+    previews = before
+    for _ in range(1200):
+        await asyncio.sleep(0.25)
+        previews = (await ed.call("get_title", path=paths[0]))["previews"]
+        if count() - thumbs_before >= len(paths) and previews["queued"] == 0:
+            break
+    ed.check(count() - thumbs_before >= len(paths), f"the 20 thumbnails are written: {count() - thumbs_before} new, previews {previews}")
+    worked = previews["working_frames"] - before["working_frames"]
+    ed.check(worked > 0, f"the queue worked: {previews}")
+    ed.check_eq(previews["budget_ms"], 4.0, "the editor's budget")
+    ed.check_eq(previews["p95_frames"], min(200, previews["working_frames"]), "the p95 is over the last 200 working frames")
+    ed.check(0 < previews["p95_ms"] <= previews["worst_frame_ms"], f"p95 within the worst frame: {previews}")
+    ed.check(previews["worst_step"]["label"] and previews["worst_step"]["ms"] > 0, f"the worst step is named: {previews}")
+    frames = await ed.call("get_frame_times", window=600, frames=0)
+    print(f"     [budget] {worked} working frames, {previews['over_budget_frames'] - before['over_budget_frames']} over 4 ms, "
+          f"p95 {previews['p95_ms']} ms, worst frame {previews['worst_frame_ms']} ms, worst step {previews['worst_step']}, "
+          f"side work {previews['side_work_ms']} ms; editor frame cpu_ms {frames['summary']['cpu_ms']}", flush=True)
+    slow = harness.over_budget("AC30 previews' main-thread time per frame", {"p95": previews["p95_ms"]}, 4.0, "ms")
+    ed.check(not slow, f"R45: the previews' p95 is over 4 ms: {previews}")

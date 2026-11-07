@@ -15,6 +15,12 @@
 //   maxUs into scissor tiles of at least TITLE_MIN_TILE x TITLE_MIN_TILE; the step's run is
 //   called once per tile with the tile as its scissor, so a pass that writes only its own
 //   scissor gives the same image split or not.
+// - Measured costs (R45, Deviation 54): with a TitleStepCosts model (useCosts) the estimates the
+//   job schedules by are the model's predictions, every step that ran teaches the model what it
+//   took, and step() stops on the clock too: a step starts only while the time already spent
+//   (measured, or predicted when that is more) plus its prediction fits the budget, so steps that
+//   cost more than estimated end the call instead of running on. Without a model the static
+//   estimates predict and the steady clock measures.
 // - Double buffering is the owner's: keep the previous finished job (and its image) until the
 //   new one is done.
 // - Thread-safety: main thread (GPU steps record draw calls); a CPU step may hand work to the
@@ -27,6 +33,7 @@
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleArtTypes.h"
 #include "titleart/render/TitleTargetPool.h"
+#include "titleart/render/TitleStepCosts.h"
 
 #include <cstdint>
 #include <functional>
@@ -82,12 +89,14 @@ namespace jasperengine::titleart {
         uint32_t maxPasses = 0;
     };
 
-    // what one step() call did
+    // what one step() call did (estimatedUs: the predictions of the steps it ran)
     struct StepReport {
         uint32_t steps = 0;
         uint32_t passes = 0;
         uint32_t estimatedUs = 0;
         uint32_t measuredUs = 0;
+        uint32_t longestUs = 0;         // the longest step it ran, measured
+        std::string longestLabel;
     };
 
     // per layer, for S82's cost readout (R71)
@@ -122,10 +131,13 @@ namespace jasperengine::titleart {
         TitleRenderJob(const TitleRenderJob&) = delete;
         TitleRenderJob& operator=(const TitleRenderJob&) = delete;
 
-        // Runs whole steps while their estimates fit the budget (always at least one that is
-        // ready); true when the job is complete, false while steps remain (waiting() when the
-        // next one is not ready) or after a failure (error() says which)
+        // Runs whole steps while the time spent plus the next one's estimate fits the budget
+        // (always at least one that is ready); true when the job is complete, false while steps
+        // remain (waiting() when the next one is not ready) or after a failure (error() says which)
         bool step(const StepBudget& budget, StepReport* report = nullptr);
+        // predicts with, measures with and teaches `model` from now on (null: the static
+        // estimates and the steady clock); the model outlives the job
+        void useCosts(TitleStepCosts* model) { costModel = model; }
         bool done() const;
         bool failed() const { return !failure.empty(); }
         // the next step is not ready (TitleRenderStep::ready): step() ran nothing for it
@@ -134,7 +146,7 @@ namespace jasperengine::titleart {
         float progress() const;
         uint32_t passesDone() const { return passesRun; }
         uint32_t passesTotal() const { return passCount; }
-        // the next step's estimate in us (0 when done)
+        // the next step's estimate in us, the model's prediction when there is one (0 when done)
         uint32_t nextStepCostUs() const;
         // cuts the remaining splittable GPU steps estimated above maxUs into scissor tiles >= 256 x 256
         void splitOversizedSteps(uint32_t maxUs);
@@ -171,8 +183,11 @@ namespace jasperengine::titleart {
         std::vector<TitleProblem> found;
         std::vector<std::shared_ptr<void>> held;
         bool blocked = false;
+        TitleStepCosts* costModel = nullptr;
 
         NodeCost& costOf(const std::string& layerId);
+        uint32_t predictUs(const TitleRenderStep& step) const;
+        double nowUs() const;
     };
 
 }

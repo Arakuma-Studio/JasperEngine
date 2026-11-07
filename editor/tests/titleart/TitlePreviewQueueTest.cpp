@@ -14,22 +14,25 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    // a job of `steps` steps of `costUs` each that advances the fake clock by its cost and logs itself
+    // a job of `steps` steps predicted at `costUs` each that advance the fake clock by `actualUs`
+    // (the prediction unless given) and log themselves
     struct FakeJob : TitlePreviewJob {
         double* clock;
         std::vector<std::string>* log;
         std::string name;
         int steps;
         uint32_t costUs;
-        FakeJob(double* c, std::vector<std::string>* l, std::string n, int s, uint32_t cost)
-            : clock(c), log(l), name(std::move(n)), steps(s), costUs(cost) {}
+        uint32_t actualUs;
+        FakeJob(double* c, std::vector<std::string>* l, std::string n, int s, uint32_t cost, uint32_t actual = 0)
+            : clock(c), log(l), name(std::move(n)), steps(s), costUs(cost), actualUs(actual ? actual : cost) {}
         uint32_t nextStepCostUs() const override { return steps > 0 ? costUs : 0; }
         bool step(uint32_t budgetUs) override {
-            // whole steps while they fit, at least one (TitleRenderJob's rule)
+            // whole steps while the time spent and the next prediction fit, at least one
+            // (TitleRenderJob's rule)
             uint32_t spent = 0;
             do {
-                *clock += costUs / 1000.0;
-                spent += costUs;
+                *clock += actualUs / 1000.0;
+                spent += actualUs;
                 steps--;
                 if (log) log->push_back(name);
             } while (steps > 0 && spent + costUs <= budgetUs);
@@ -45,9 +48,9 @@ namespace {
         TitlePreviewQueue queue{[this] { return now; }, [this] { return context; }};
 
         uint64_t submit(TitlePreviewPriority priority, const std::string& name, int steps, uint32_t costUs, TitlePreviewOwner owner = 0,
-                        bool visible = true) {
-            return queue.request(priority, name, [this, name, steps, costUs] {
-                return std::make_unique<FakeJob>(&now, &log, name, steps, costUs);
+                        bool visible = true, uint32_t actualUs = 0) {
+            return queue.request(priority, name, [this, name, steps, costUs, actualUs] {
+                return std::make_unique<FakeJob>(&now, &log, name, steps, costUs, actualUs);
             }, owner, visible);
         }
 
@@ -138,4 +141,39 @@ TEST_F(TitlePreviewQueueTest, AnUnlimitedFrameBreaksTheBudget) {
     // the red control of ThreeSubmittersStayWithinTheBudget: without the budget one frame does it all
     for (int i = 0; i < 5; i++) submit(TitlePreviewPriority::Layers, "layer" + std::to_string(i), 6, 700, 1);
     EXPECT_GT(frame(1e9), 4.0);
+}
+
+TEST_F(TitlePreviewQueueTest, SideWorkCountsInTheFrame) {
+    // R45: a submitter's own main-thread work (a document load) is part of the frame's budget
+    for (int i = 0; i < 3; i++) submit(TitlePreviewPriority::Thumbnails, "thumb" + std::to_string(i), 10, 700);
+    queue.charge(3.0);
+    EXPECT_DOUBLE_EQ(queue.frameLeftMs(), 1.0);
+    EXPECT_LE(frame(), 1.0 + 1e-9) << "the steps get what the side work left";
+    EXPECT_LE(queue.stats().lastFrameMs, 4.0 + 1e-9);
+    EXPECT_DOUBLE_EQ(queue.frameLeftMs(), 4.0) << "a frame's charges end with it";
+    queue.charge(4.5);
+    EXPECT_DOUBLE_EQ(frame(), 0.0) << "side work that spent the frame leaves no step";
+    EXPECT_EQ(queue.stats().overBudgetFrames, 1u);
+    EXPECT_DOUBLE_EQ(queue.stats().sideWorkMs, 7.5);
+}
+
+TEST_F(TitlePreviewQueueTest, AnOverrunIsCountedAndRested) {
+    // a step predicted at 1 ms that takes 6: the frame stops on the clock, says it went over and
+    // rests ceil(6 / 4) - 1 = 1 frame
+    submit(TitlePreviewPriority::Thumbnails, "liar", 3, 1000, 0, true, 6000);
+    submit(TitlePreviewPriority::Thumbnails, "honest", 3, 500);
+    EXPECT_DOUBLE_EQ(frame(), 6.0);
+    EXPECT_EQ(log, (std::vector<std::string>{"liar"})) << "nothing starts once the frame's time is spent";
+    EXPECT_EQ(queue.stats().overBudgetFrames, 1u);
+    EXPECT_DOUBLE_EQ(queue.stats().worstStepMs, 6.0);
+    EXPECT_EQ(queue.stats().worstStepLabel, "liar") << "a job that names no step: its key";
+    EXPECT_DOUBLE_EQ(frame(), 0.0);
+    EXPECT_EQ(queue.stats().restFrames, 1u);
+    EXPECT_GT(frame(), 0.0);
+    EXPECT_EQ(queue.stats().workingFrames, 2u);
+    EXPECT_DOUBLE_EQ(queue.p95FrameMs(), 6.0);
+    EXPECT_DOUBLE_EQ(queue.stats().maxFrameMs, 6.0);
+    queue.resetStats();
+    EXPECT_EQ(queue.windowFrames(), 0u);
+    EXPECT_DOUBLE_EQ(queue.p95FrameMs(), 0.0);
 }

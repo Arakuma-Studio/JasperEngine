@@ -48,44 +48,65 @@ float TitleRenderJob::progress() const {
     return (float)std::min(1.0, (double)doneUs / (double)totalUs);
 }
 
+uint32_t TitleRenderJob::predictUs(const TitleRenderStep& step) const {
+    return costModel ? costModel->predictUs(step) : estimateUs(step);
+}
+
+double TitleRenderJob::nowUs() const {
+    if (costModel) return costModel->nowUs();
+    return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 uint32_t TitleRenderJob::nextStepCostUs() const {
-    return next < steps.size() && failure.empty() ? estimateUs(steps[next]) : 0;
+    return next < steps.size() && failure.empty() ? predictUs(steps[next]) : 0;
 }
 
 bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
     StepReport local;
     blocked = false;
+    const double callStart = nowUs();
     while (failure.empty() && next < steps.size()) {
         TitleRenderStep& s = steps[next];
         const uint32_t estimate = estimateUs(s);
+        const uint32_t predicted = predictUs(s);
         const bool isPass = s.kind == StepKind::Gpu && s.countsAsPass;
         if (local.steps > 0) {
-            if (budget.budgetUs > 0 && local.estimatedUs + estimate > budget.budgetUs) break;
+            // what the call took so far, readiness checks included, or what its steps were
+            // predicted to take when that is more (a clock too coarse for tiny steps)
+            const double spent = std::max(nowUs() - callStart, (double)local.estimatedUs);
+            if (budget.budgetUs > 0 && spent + predicted > budget.budgetUs) break;
             if (budget.maxPasses > 0 && isPass && local.passes >= budget.maxPasses) break;
         }
+        // the readiness check may build the step's program: part of what the step costs
+        const double start = nowUs();
         if (s.ready && !s.ready()) {
             blocked = true;
             break;
         }
-        const auto start = std::chrono::steady_clock::now();
         std::string error;
         const bool ok = !s.run || s.run(s.scissor, error);
-        const auto elapsed = std::chrono::steady_clock::now() - start;
-        const uint32_t measured = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+        const double measuredUs = std::max(0.0, nowUs() - start);
+        const uint32_t measured = (uint32_t)std::min(measuredUs, 4.0e9);
         local.steps++;
-        local.estimatedUs += estimate;
+        local.estimatedUs += predicted;
         local.measuredUs += measured;
+        if (measured >= local.longestUs) {
+            local.longestUs = measured;
+            local.longestLabel = s.label;
+        }
         NodeCost& cost = costOf(s.layerId);
         cost.measuredUs += measured;
         if (!ok) {
             failure = error.empty() ? std::string("render step '") + s.label + "' failed" : error;
             break;
         }
-        // a step that met a program still being compiled runs again once it is built
+        // a step that met a program still being compiled runs again once it is built (what it
+        // took then is not what it costs)
         if (s.ready && !s.ready()) {
             blocked = true;
             break;
         }
+        if (costModel) costModel->observe(s, measuredUs);
         if (isPass) {
             local.passes += s.passes;
             passesRun += s.passes;

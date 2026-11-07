@@ -137,3 +137,79 @@ TEST_F(TitleRenderJobTest, AFailedStepStopsTheJob) {
     EXPECT_EQ(job.nextStepCostUs(), 0u);
     EXPECT_FALSE(job.step(StepBudget{})) << "nothing runs after a failure";
 }
+
+namespace {
+
+    // `count` "flood" passes estimated at `estimateUs` each (1 ns/px) that take `actualUs` of the
+    // fake clock: what a software rasterizer does to the desktop estimates (Deviation 54)
+    TitleStepList slowPasses(int count, uint32_t estimateUs, uint32_t actualUs, double* clockUs) {
+        TitleStepList list;
+        for (int i = 0; i < count; i++) {
+            TitleRenderStep step;
+            step.kind = StepKind::Gpu;
+            step.label = "flood";
+            step.scissor = {0, 0, (int)estimateUs, 1000};
+            step.run = [clockUs, actualUs](const TitleRectI&, std::string&) {
+                *clockUs += actualUs;
+                return true;
+            };
+            list.add(std::move(step));
+        }
+        return list;
+    }
+
+}
+
+TEST_F(TitleRenderJobTest, MeasuredCostsHoldTheBudget) {
+    // R45: steps estimated at 100 us that take 2000 us. Trusting the estimates, a 4 ms budget would
+    // run all 40 of them (80 ms); measured, the call stops once the clock says the budget is spent
+    double now = 0;
+    TitleStepCosts costs([&now] { return now; });
+    TitleRenderJob job(slowPasses(40, 100, 2000, &now));
+    job.useCosts(&costs);
+    EXPECT_EQ(job.nextStepCostUs(), 100u) << "nothing measured yet: the static estimate";
+    StepReport report;
+    const double start = now;
+    EXPECT_FALSE(job.step(StepBudget{4000, 0}, &report));
+    EXPECT_LE(now - start, 4000.0) << report.steps << " steps ran";
+    EXPECT_EQ(report.steps, 2u);
+    EXPECT_EQ(report.measuredUs, 4000u);
+    EXPECT_EQ(report.longestUs, 2000u);
+    EXPECT_EQ(report.longestLabel, "flood");
+    EXPECT_EQ(job.nextStepCostUs(), 2000u) << "the next prediction is what the kind took";
+    // a new job of the same kinds starts from what the model learned
+    TitleRenderJob again(slowPasses(4, 100, 2000, &now));
+    again.useCosts(&costs);
+    EXPECT_EQ(again.nextStepCostUs(), 2000u);
+    // a step predicted over what is left waits for the next call, unless it is the call's first
+    EXPECT_FALSE(again.step(StepBudget{3000, 0}, &report));
+    EXPECT_EQ(report.steps, 1u);
+    EXPECT_FALSE(again.step(StepBudget{1000, 0}, &report));
+    EXPECT_EQ(report.steps, 1u) << "always at least one step";
+}
+
+TEST_F(TitleRenderJobTest, CostModelLearnsPerKind) {
+    TitleStepCosts costs([] { return 0.0; });
+    TitleRenderStep flood;
+    flood.label = "flood";
+    flood.scissor = {0, 0, 100, 1000};      // 100 us estimated
+    TitleRenderStep tile = flood;
+    tile.label = "flood tile 2/4";
+    EXPECT_EQ(TitleStepCosts::kindOf(tile), TitleStepCosts::kindOf(flood)) << "a split's tiles are its kind";
+    TitleRenderStep outlines;
+    outlines.kind = StepKind::Cpu;
+    outlines.label = "flood";
+    outlines.cpuUs = 50;
+    EXPECT_NE(TitleStepCosts::kindOf(outlines), TitleStepCosts::kindOf(flood)) << "a CPU stage is another kind";
+    EXPECT_EQ(costs.predictUs(flood), 100u);
+    costs.observe(flood, 1000.0);
+    EXPECT_EQ(costs.predictUs(flood), 1000u) << "the first measurement is what the kind knows";
+    EXPECT_EQ(costs.predictUs(outlines), 500u) << "an unmeasured kind takes the machine's ratio";
+    costs.observe(flood, 3000.0);
+    EXPECT_EQ(costs.predictUs(flood), 2000u) << "a slower run moves it half way";
+    costs.observe(flood, 200.0);
+    EXPECT_EQ(costs.predictUs(flood), 1550u) << "a quicker one a quarter of the way";
+    EXPECT_EQ(costs.kinds(), 1u);
+    for (size_t i = 0; i < TitleStepCosts::MAX_KINDS + 10; i++) costs.observe("kind " + std::to_string(i), 10, 10.0);
+    EXPECT_EQ(costs.kinds(), TitleStepCosts::MAX_KINDS) << "kinds are capped";
+}
