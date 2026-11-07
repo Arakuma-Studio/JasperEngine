@@ -667,9 +667,15 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
   v52 (v51 is water-reflections').
 - **D8 is withdrawn.** Skipping the swapchain pipelines while `Engine::getFramebuffer()` is set lost
-  draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` a sprite turned alpha-masked
-  draws when batching is off but not in its batched single run (the frame counts one draw for two
-  runs), and the test passes once `PIP_DEFAULT` is built again. Not every path follows the scene's
-  pipeline set either: `getBatchEligibility` asks for `PIP_DEFAULT`, which the editor would then
-  never have. The cause in the batched path is not found, so `getScenePipelines` is `main`'s again
-  and `EditorFramebufferSkipsSwapchainPipelines` (criterion 13) is not shipped.
+  draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` run alone, a sprite turned
+  alpha-masked never drew in its batched single run (one draw counted for two runs) while it drew with
+  batching off, in every run with the skip; with `PIP_DEFAULT` built it passes (20 of 20 alone). Not
+  every path follows the scene's pipeline set either: `getBatchEligibility` asks for `PIP_DEFAULT`,
+  which the editor would never have. The cause in the batched path is not found, so
+  `getScenePipelines` is `main`'s again and `EditorFramebufferSkipsSwapchainPipelines` (criterion 13)
+  is not shipped.
+- **`SettledSpritesShowDirectWrites` waits for the masked variant.** After the suites added here, the
+  masked sprite's new variant could still be waiting for its first, warmed draw (spec S32) in the three
+  batched and three unbatched frames it compares; the warm request is made by that first draw, so the
+  wait for idle GPU creation does not cover it. The test now compares from a frame in which no draw
+  waited.
