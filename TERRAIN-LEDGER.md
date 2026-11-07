@@ -124,7 +124,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
 | T4 implementation | not started | After T1 and T3 |
 | T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
-| T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
+| T6 implementation | in progress, nearly complete | `terrain/t6-voxels` at b9fd20144, integration merged. Core 163/164, editor 198/200 (2 are T2's), test_voxels.py 12/12, soak and fuzz pass. Open: AC35 cave-mouth step (decision: no step over 2 cm at the rim), AC23 tunnelling (496/1000 lost, root cause unknown), fan-out (TerrainSurfaceLayer moves to its own header on T1's branch) |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -163,6 +163,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- T6 decision: where a voxel volume meets terrain at a cave mouth there must be no upward step over 2 cm along any path into
+  the mouth; the voxel surface meets the terrain edge exactly in render and collision. A 0.25 m lip (the cut tolerance) is a bug.
 - Follow-ups outside the programme (for their owners, not fixed here):
   - `SplineGpu.FenceAndWall` fails deterministically on integration's engine code alone (6612 pixels over threshold, fence rails
     about 1.5 px lower; posts and wall match), proven by T3 building integration's exact `engine/`. T1's passing run predates the
