@@ -32,6 +32,7 @@
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/NoiseGraphWindow.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -2916,6 +2917,9 @@ void editor::App::show(){
     aboutWindow.show();
     projectSettingsWindow.show();
     nativePluginDialog.show();
+    // Create Terrain opens from the Hierarchy and from the Terrain window's empty state: drawn here, where it
+    // shows whichever of the two asked and whether the Inspector is drawn or behind another tab
+    CreateTerrainDialog::instance().show();
     // a native plugin was made (either dialog): its Lua mock opens in the code editor
     for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
         if (created.empty()) continue;
