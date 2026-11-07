@@ -4594,6 +4594,11 @@
 		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
 		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
 		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E47842F87918C8F5A9C /* NoiseClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471F52730024ADE407 /* NoiseClassesLua.cpp */; };
+		4A534E47838495C86EBD1E25 /* NoiseClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471F52730024ADE407 /* NoiseClassesLua.cpp */; };
+		4A534E470FEF85A7ED474EE6 /* RenderSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */; };
+		4A534E474E606B3936AD3F48 /* RenderSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */; };
+		4A534E477E18B45CB3FF3DE2 /* VoxelVolumeCodec.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D8F8FD342C1B5421 /* VoxelVolumeCodec.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8946,6 +8951,9 @@
 		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
 		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
 		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E471F52730024ADE407 /* NoiseClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemTerrain.cpp; sourceTree = "<group>"; };
+		4A534E47D8F8FD342C1B5421 /* VoxelVolumeCodec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelVolumeCodec.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9502,6 +9510,7 @@
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 				564F584C235DA717A8154716 /* VoxelClassesLua.cpp */,
 				5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */,
+				4A534E471F52730024ADE407 /* NoiseClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10611,6 +10620,7 @@
 				4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */,
 				4A534E473433D981FDF2CFAB /* CookTypes.h */,
 				4A534E476ED3B894B5F99179 /* CustomCodecs.h */,
+				4A534E47D8F8FD342C1B5421 /* VoxelVolumeCodec.h */,
 			);
 			path = codecs;
 			sourceTree = "<group>";
@@ -11525,6 +11535,7 @@
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 				5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */,
+				4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15892,6 +15903,7 @@
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
 				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E477E18B45CB3FF3DE2 /* VoxelVolumeCodec.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18460,6 +18472,8 @@
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
+				4A534E47842F87918C8F5A9C /* NoiseClassesLua.cpp in Sources */,
+				4A534E470FEF85A7ED474EE6 /* RenderSystemTerrain.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19319,6 +19333,8 @@
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
+				4A534E47838495C86EBD1E25 /* NoiseClassesLua.cpp in Sources */,
+				4A534E474E606B3936AD3F48 /* RenderSystemTerrain.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
