@@ -3,9 +3,10 @@
 //
 // What a mesh costs (mesh-memory spec, docs/superpowers/specs/2026-11-04-mesh-memory-design.md):
 // a component holds what it uses, not a capacity. Each ceiling is the size measured on Linux
-// (libstdc++, x86-64: 816, 832, 8,528, 1,744, 72 and 152 bytes; 2,528, 2,544, 11,776, 204,928,
+// (libstdc++, x86-64: 816, 832, 8,632, 1,760, 72 and 152 bytes; 2,528, 2,544, 11,776, 204,928,
 // 6,192 and 125,992 before; a Submesh holds S55's two batch render objects since) with some
-// room; a field that brings an inline array back trips it.
+// room; a field that brings an inline array back trips it. MSVC's x64 layouts, Release and
+// Debug (checked iterators), and MinGW's are smaller or within the room (spec, Follow-ups).
 
 #include <gtest/gtest.h>
 
@@ -22,28 +23,16 @@
 
 using namespace jasperengine;
 
-namespace {
-
-    // MSVC's checked iterators (Debug: _ITERATOR_DEBUG_LEVEL above 0) give every std::string,
-    // std::vector and std::map a proxy pointer of their own, which the measured sizes do not hold
-#if defined(_MSC_VER) && defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL > 0
-    constexpr size_t meshMemoryCeiling(size_t bytes) { return bytes + bytes / 2; }
-#else
-    constexpr size_t meshMemoryCeiling(size_t bytes) { return bytes; }
-#endif
-
-}
-
 TEST(MeshMemory, SizeofCeilings) {
     std::printf("[sizes] SokolObject %zu, ObjectRender %zu, Submesh %zu, MeshComponent %zu, SpriteComponent %zu, TilemapComponent %zu\n",
                 sizeof(SokolObject), sizeof(ObjectRender), sizeof(Submesh), sizeof(MeshComponent), sizeof(SpriteComponent),
                 sizeof(TilemapComponent));
-    EXPECT_LE(sizeof(SokolObject), meshMemoryCeiling(896));
-    EXPECT_LE(sizeof(ObjectRender), meshMemoryCeiling(896));
-    EXPECT_LE(sizeof(Submesh), meshMemoryCeiling(9472));
-    EXPECT_LE(sizeof(MeshComponent), meshMemoryCeiling(2048));
-    EXPECT_LE(sizeof(SpriteComponent), meshMemoryCeiling(256));
-    EXPECT_LE(sizeof(TilemapComponent), meshMemoryCeiling(384));
+    EXPECT_LE(sizeof(SokolObject), 896u);
+    EXPECT_LE(sizeof(ObjectRender), 896u);
+    EXPECT_LE(sizeof(Submesh), 9472u);
+    EXPECT_LE(sizeof(MeshComponent), 2048u);
+    EXPECT_LE(sizeof(SpriteComponent), 256u);
+    EXPECT_LE(sizeof(TilemapComponent), 384u);
 }
 
 // A sprite's mesh holds one submesh and no palette: about a twentieth of the 204,928 bytes every
@@ -55,7 +44,7 @@ TEST(MeshMemory, SpriteCostsAnOrderOfMagnitudeLess) {
     EXPECT_EQ(mesh.bonesMatrix.stored(), 0u);
     EXPECT_EQ(mesh.eBuffers.stored(), 0u);
     std::printf("[sizes] a sprite's mesh: %zu bytes with its arrays\n", sizeof(MeshComponent) + mesh.arrayHeapBytes());
-    EXPECT_LE(sizeof(MeshComponent) + mesh.arrayHeapBytes(), meshMemoryCeiling(11264));
+    EXPECT_LE(sizeof(MeshComponent) + mesh.arrayHeapBytes(), 11264u);
 }
 
 // Every Mesh method taking a submesh index refuses one the mesh does not have, with an error, and
