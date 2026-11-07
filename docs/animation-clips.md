@@ -144,6 +144,8 @@ tangents of imported clips. Rotations are shown as continuous Euler angles.
   `bounce`...) become linear tangents, and the window says how many did (steps stay: Constant).
   Rotations keep the Interpolation presets; their handles (imported glTF CUBICSPLINE tangents)
   are read-only.
+  A linear rotation segment plays the shortest arc: up to 30 degrees between keys a cheaper
+  normalised blend within 0.01 mm at 1 m of a true slerp, an exact slerp beyond.
 - Stepped properties (bools, ints, sprite frames) draw as steps and move in time only.
 - All curves share one value axis (rotations in degrees, positions in units, weights 0 to 1): hide
   curves or click a property name to frame the ones you work on. The axis shows `°` while only

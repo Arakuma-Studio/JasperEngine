@@ -54,6 +54,7 @@ namespace jasperengine{
             size_t animators = 0;       // updated this frame
             size_t sampled = 0;         // evaluated and written
             size_t culled = 0;
+            size_t footRaycasts = 0;    // Foot IK's ground rays
 
             Stats& operator+=(const Stats& other){
                 prepareMs += other.prepareMs;
@@ -62,6 +63,7 @@ namespace jasperengine{
                 animators += other.animators;
                 sampled += other.sampled;
                 culled += other.culled;
+                footRaycasts += other.footRaycasts;
                 return *this;
             }
         };
@@ -129,8 +131,8 @@ namespace jasperengine{
         bool prepare(Entity entity, AnimatorComponent& component, float dt, Job& job);
         bool loadController(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
         // (re)binds when needed; false while waiting (models loading, clips loading)
-        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
-        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind);
+        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall = false);
+        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loading);
         bool visible(const anim::AnimatorInstance& instance) const;
         void ikInputs(AnimatorComponent& component, anim::AnimatorInstance& instance, const anim::AnimatorUpdateContext& context);
         void writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance);

@@ -170,10 +170,16 @@ The Animator evaluates its characters in parallel (the job system), keeps poses 
 arrays and writes skin matrices directly. Lua-field and active tracks run on the main thread
 ([Order of a frame](#order-of-a-frame)): a clip that keys them on many characters costs main-thread
 time, a plain component value does not. **Culling Mode** Cull Update Transforms skips writing
-the pose of characters no camera sees (time, states, events and root motion go on); Cull
-Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
-attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
-per frame (see `docs/perf/animator.md`).
+the pose of characters no camera sees (time, states, events and root motion go on) and casts no
+Foot IK rays for them; Cull Completely stops them. A layer of weight 0 is not sampled: its states'
+time and events go on, and raising the weight shows the right pose in that frame (a running
+transition or montage on the layer is still sampled, so interrupting it blends from the right
+pose). **Write Bones: Exposed** writes only the bones listed (and bones with attachments) to their
+GameObjects: the skins still follow every bone. With `Engine.asyncLoading` on, `.anim` files of 64 KB
+and up parse on the thread pool where the platform has threads (smaller ones, and every one on the web
+without threads, in the call); an Animator's first bind waits for all its clips, so its time starts as
+it does without async loading, some frames later for a large clip. The
+budget: 200 humanoids per frame (see `docs/perf/animator.md`).
 
 What it costs right now: Window > Analysis > Profiler shows the Animator under the **Animation**
 band of CPU Usage, and its monitors `Animators`, `Animators sampled`, `Animators culled`,

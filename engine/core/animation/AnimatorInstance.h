@@ -116,6 +116,12 @@ namespace jasperengine::anim{
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
+        // weight 0 and nothing that needs the pose: `output` was not sampled (S74 R14). An
+        // interruption before the next evaluation freezes what the layer would have shown, the
+        // state as it was then: sampled into snapshotPose by the next evaluateLayer
+        bool outputSkipped = false;
+        bool snapshotPending = false;
+        AnimatorStateRun skippedState;
         std::vector<float> mask;            // per bone (pose stride), null when the layer has no mask
         std::vector<float> channelMask;
         bool masked = false;
@@ -445,6 +451,8 @@ namespace jasperengine::anim{
         bool rootSample(const AnimatorClipSlot& slot, float clipTime, Vector3& position, Quaternion& rotation) const;
         void rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong, Vector3& delta, float& yaw) const;
         void applyMontages(size_t layer, Pose& out, const AnimatorComponent& component);
+        bool layerNeedsPose(size_t layer) const;
+        void freezeLayerOutput(AnimatorLayerRun& run);
         void runIK(const AnimatorComponent& component, const AnimatorUpdateContext& context);
         void fireEvents(int slot, ClipWrapMode wrap, double from, double to, bool includeStart, int state, int layer);
         struct LeafRun{

@@ -125,6 +125,49 @@ Vector3 anim::sampleVector3(const KeyLocation& at, const Vector3* values, const 
     return previous + at.interpolation * (values[at.index] - previous);
 }
 
+namespace {
+
+    // The rotation between two keys for less than Quaternion::slerp's acos and three sin, within
+    // 0.01 mm at 1 m of it up to 30 degrees between keys (S74 R12, R13).
+    //
+    // A normalised lerp of a and b with parameter u lies on the arc where
+    // u / (1 - u) = sin(t th) / sin((1 - t) th), th the angle between the quaternions (half the
+    // rotation between the keys), so slerp is a normalised lerp with
+    //     u(t) = sin(t th) / (sin(t th) + sin((1 - t) th)).
+    // Expanding each sine to th^3 and the quotient to th^2:
+    //     u(t) = t + (th^2 / 6) t (t^3 + (1 - t)^3 - t^2) = t + (th^2 / 3) t (t - 1/2) (t - 1),
+    // since t^3 + (1 - t)^3 - t^2 = (1 - t)(1 - 2 t). With x = 1 - cos(th) = 1 - |d|,
+    // th^2 = 2 x + x^2 / 3 + ..., so th^2 / 3 = k = (2/3) x (1 + x / 6).
+    // Below 5 degrees between keys (|d| >= 0.999) the correction is under the bound by itself.
+    constexpr float kPlainLerpDot = 0.999f;
+    constexpr float kCorrectedLerpDot = 0.9659f;    // cos(15 degrees): 30 degrees between keys
+
+    Quaternion tieredSlerp(float t, const Quaternion& a, const Quaternion& b){
+        const float d = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
+        const float absDot = std::fabs(d);
+        // wide segments, an eased t past the segment (Back, Elastic: slerp extrapolates) and NaN
+        if (!(absDot >= kCorrectedLerpDot) || !(t >= 0.0f && t <= 1.0f)) return Quaternion::slerp(t, a, b);
+        // the shortest arc, as slerp: b on a's side, also at t = 1
+        const float side = d < 0.0f ? -1.0f : 1.0f;
+        if (t == 0.0f) return a;
+        if (t == 1.0f) return Quaternion(side * b.w, side * b.x, side * b.y, side * b.z);
+        float u = t;
+        if (absDot < kPlainLerpDot){
+            const float x = 1.0f - absDot;
+            u = t + (2.0f / 3.0f) * x * (1.0f + x / 6.0f) * t * (t - 0.5f) * (t - 1.0f);
+        }
+        const float from = 1.0f - u;
+        const float to = side * u;
+        const float w = from * a.w + to * b.w;
+        const float x = from * a.x + to * b.x;
+        const float y = from * a.y + to * b.y;
+        const float z = from * a.z + to * b.z;
+        const float inverse = 1.0f / std::sqrt(w * w + x * x + y * y + z * z);
+        return Quaternion(w * inverse, x * inverse, y * inverse, z * inverse);
+    }
+
+}
+
 Quaternion anim::sampleQuaternion(const KeyLocation& at, const Quaternion* values, const Quaternion* inTangents, const Quaternion* outTangents){
     Quaternion previous = values[(at.index > 0) ? at.index - 1 : 0];
 
@@ -141,7 +184,7 @@ Quaternion anim::sampleQuaternion(const KeyLocation& at, const Quaternion* value
             value = (at.interpolation < 0.5f) ? previous : values[at.index];
         }
     }else{
-        value = Quaternion::slerp(at.interpolation, previous, values[at.index]);
+        value = tieredSlerp(at.interpolation, previous, values[at.index]);
     }
     return value;
 }

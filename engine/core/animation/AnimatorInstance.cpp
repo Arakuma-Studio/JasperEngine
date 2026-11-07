@@ -344,6 +344,8 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         run.output.copyFrom(rig.rest);
         run.snapshotPose.resize(boneCount, channelCount);
         run.hasOutput = false;
+        run.outputSkipped = false;
+        run.snapshotPending = false;
         const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
         // a layer whose mask does not load contributes nothing (safer than the whole body; the
         // error is logged once by AnimatorSystem)
@@ -603,8 +605,7 @@ bool anim::AnimatorInstance::crossFade(const std::string& stateName, float durat
     if (run.current.state < 0 || seconds <= 0.0f) return play(stateName, (int)l, std::max(0.0f, offset));
     if (run.transition != -1){
         // an interruption: blend from the frozen pose
-        if (run.hasOutput) run.snapshotPose.copyFrom(run.output);
-        else run.snapshotPose.copyFrom(rig.rest);
+        freezeLayerOutput(run);
         if (!run.snapshot && run.current.state >= 0) output.states.push_back({false, (int)l, run.current.state});
         if (run.next.state >= 0) output.states.push_back({false, (int)l, run.next.state});
         run.current = run.next;
@@ -951,6 +952,16 @@ bool anim::AnimatorInstance::tryTransitions(size_t layer, uint32_t begin, uint32
     return false;
 }
 
+void anim::AnimatorInstance::freezeLayerOutput(AnimatorLayerRun& run){
+    if (run.outputSkipped){
+        run.snapshotPending = true;
+    }else if (run.hasOutput){
+        run.snapshotPose.copyFrom(run.output);
+    }else{
+        run.snapshotPose.copyFrom(rig.rest);
+    }
+}
+
 void anim::AnimatorInstance::startTransition(size_t layer, int index){
     AnimatorLayerRun& run = layers[layer];
     const CompiledTransition& t = controller->transitions[(size_t)index];
@@ -978,8 +989,7 @@ void anim::AnimatorInstance::startTransition(size_t layer, int index){
     }
     if (interrupting){
         // freeze what the layer showed: the new transition blends from it
-        if (run.hasOutput) run.snapshotPose.copyFrom(run.output);
-        else run.snapshotPose.copyFrom(rig.rest);
+        freezeLayerOutput(run);
         if (!run.snapshot && run.current.state >= 0) output.states.push_back({false, (int)layer, run.current.state});
         if (run.next.state >= 0) output.states.push_back({false, (int)layer, run.next.state});
         run.current = run.next;
@@ -1178,7 +1188,8 @@ void anim::AnimatorInstance::collectLayer(size_t layer, const AnimatorComponent&
             // its start went out (a step that did not move keeps it for the next one)
             if (leaf.to != leaf.from) (leaf.next ? run.next : run.current).startPending = false;
         }
-        if (component.applyRootMotion && !additive){
+        // a layer of weight 0 moves nothing: its root is not sampled
+        if (component.applyRootMotion && !additive && (layer == 0 || run.weight > 0.0f)){
             const AnimatorClipSlot& slot = clips[(size_t)leaf.slot];
             if (slot.rootBone >= 0){
                 Vector3 delta;
@@ -1622,8 +1633,26 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
     }
 }
 
+// A layer of weight 0 adds nothing to the final pose (S74 R14), but a transition or a snapshot may be
+// interrupted, and a montage's pose is frozen with the layer's: those keep `output` current. The
+// weight is final here (fades moved it at the start of this update); a change after this update
+// reaches the next one, which evaluates the layer before it uses it.
+bool anim::AnimatorInstance::layerNeedsPose(size_t layer) const{
+    const AnimatorLayerRun& run = layers[layer];
+    if (layer == 0 || run.weight > 0.0f || run.transition != -1 || run.snapshot) return true;
+    for (const AnimatorMontageRun& montage : montages){
+        if (montage.layer == (int)layer && montage.weight > 0.0f && montage.phase != AnimatorMontageRun::Phase::Ended) return true;
+    }
+    return false;
+}
+
 void anim::AnimatorInstance::evaluateLayer(size_t layer, const AnimatorComponent& component){
     AnimatorLayerRun& run = layers[layer];
+    if (run.snapshotPending){
+        run.snapshotPending = false;
+        if (run.snapshot) evaluateMotion(layer, run.skippedState, run.snapshotPose, component);
+    }
+    run.outputSkipped = false;
     if (run.transition != -1){
         const Pose* from = &run.snapshotPose;
         if (!run.snapshot){
@@ -1685,7 +1714,14 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
     for (size_t l = 0; l < layers.size(); l++) collectLayer(l, component);
 
     if (context.sample){
-        for (size_t l = 0; l < layers.size(); l++) evaluateLayer(l, component);
+        for (size_t l = 0; l < layers.size(); l++){
+            if (layerNeedsPose(l)){
+                evaluateLayer(l, component);
+            }else{
+                layers[l].outputSkipped = true;
+                layers[l].skippedState = layers[l].current;
+            }
+        }
         // layers combined (D3)
         AnimatorLayerRun& base = layers[0];
         if (base.masked) poseBlend(finalPose, rig.rest, base.output, 1.0f, base.mask.data(), base.channelMask.data());

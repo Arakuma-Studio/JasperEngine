@@ -2586,6 +2586,21 @@ if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
 endif()
 
+# je-bench-anim as WebAssembly, run under node by tools/perf/bench-anim-wasm.sh (docs/perf/animator.md,
+# S74 R11); JASPERENGINE_WASM_SIMD says whether the pose kernels are built with -msimd128
+option(JASPERENGINE_WASM_BENCH "Build je-bench-anim for Emscripten and node" OFF)
+if(JASPERENGINE_WASM_BENCH AND EMSCRIPTEN AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/bench/AnimBench.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support/AllocationCounter.cpp)
+    target_link_libraries(je-bench-anim PRIVATE jasperengine)
+    target_include_directories(je-bench-anim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support)
+    target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
+    jasperengine_apply_cxx_standard(je-bench-anim)
+    set_target_properties(je-bench-anim PROPERTIES
+        SUFFIX ".js"
+        LINK_FLAGS "--profiling-funcs -s ENVIRONMENT=node -s NODERAWFS=1 -s EXIT_RUNTIME=1 -s INITIAL_MEMORY=256MB -s STACK_SIZE=4MB ${ALLOW_MEMORY_GROWTH} ${USE_WEBGL2}")
+endif()
+
 if(JASPERENGINE_ECS_BENCH)
     include(${CMAKE_CURRENT_SOURCE_DIR}/../tools/performance/EcsBench.cmake)
 endif()

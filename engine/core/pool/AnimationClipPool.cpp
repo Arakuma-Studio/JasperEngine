@@ -12,7 +12,9 @@
 #include "pose/ModelRig.h"
 #include "Engine.h"
 #include "io/Data.h"
+#include "io/File.h"
 #include "io/FileData.h"
+#include "io/ResourcePack.h"
 #include "subsystem/MeshSystem.h"
 #include "jobs/JobSystem.h"
 #include "memory/MemoryStats.h"
@@ -226,6 +228,13 @@ namespace{
         return *loads;
     }
 
+    // forgets the build of one key: one not asked for again must not keep its clip alive
+    void forgetAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        loads.pending.erase(key);
+    }
+
     // forgets the builds in flight of a model ("<model key>#" prefix), every one when empty
     void forgetAsyncLoads(const std::string& modelKey){
         AsyncLoads& loads = asyncLoads();
@@ -418,14 +427,62 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     return cached;
 }
 
-std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
-    loading = false;
-    if (path.empty() || !Engine::isAsyncLoading() || !anim::isSubClipReference(path)){
-        return getOrLoad(path, error);
+namespace{
+
+    // Under this a .anim parses in the call: at about 50 ms per MB it takes a few milliseconds at
+    // most, and a job would start it at least a frame late, moving the clip against the rest of
+    // the game's timeline for nothing (tools/test-projects/upgrade-from-main plays frame for frame)
+    constexpr uint64_t kAnimInCallBytes = 64 * 1024;
+
+    // a file that cannot be opened counts as small: its error comes from the call
+    bool smallAnim(const std::string& path){
+        uint64_t packed = 0;
+        if (ResourcePack::size(path, packed)) return packed < kAnimInCallBytes;
+        File file;
+        return file.open(path.c_str()) != 0 || file.length() < kAnimInCallBytes;
     }
-    if (std::shared_ptr<const AnimationClip> cached = get(path)) return cached;
+
+    bool hasAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        return loads.pending.count(key) != 0;
+    }
+
+    bool noThreads(){
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
+        std::function<bool()> singleThreaded;
+        {
+            PoolState& pool = state();
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            singleThreaded = pool.hooks.singleThreaded;
+        }
+        if (singleThreaded) return singleThreaded();
+#endif
+        return jobs::system().isSingleThreaded();
+    }
+
+}
+
+std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error, bool animInCall){
+    loading = false;
+    if (path.empty() || !Engine::isAsyncLoading()) return getOrLoad(path, error);
+    // a .anim takes no lock another thread holds: without threads it needs no frames to wait for
+    // the pump (a sub-clip's builder may wait for a loading model, so it keeps its job)
+    if (!anim::isSubClipReference(path) && (animInCall || noThreads())){
+        std::shared_ptr<const AnimationClip> clip = getOrLoad(path, error);
+        // a job of an earlier poll is not asked for again
+        if (clip) forgetAsyncLoad(getKey(path));
+        return clip;
+    }
 
     const std::string key = getKey(path);
+    if (std::shared_ptr<const AnimationClip> cached = get(path)){
+        // its job's handle holds the clip too: clearUnused would never free it
+        forgetAsyncLoad(key);
+        return cached;
+    }
+    if (!anim::isSubClipReference(path) && !hasAsyncLoad(key) && smallAnim(path)) return getOrLoad(path, error);
+
     AsyncLoads& loads = asyncLoads();
     jobs::Task<AsyncLoad> build;
     {
@@ -483,6 +540,7 @@ void AnimationClipPool::invalidate(const std::string& path){
     }
     Reference ref = reference(path);
     if (ref.subClip) forgetAsyncLoads(ref.key);
+    else forgetAsyncLoad(ref.key);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     std::string key = entryKeyLocked(pool, ref);
