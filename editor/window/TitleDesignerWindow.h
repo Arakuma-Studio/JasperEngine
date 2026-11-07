@@ -200,6 +200,8 @@ namespace jasperengine::editor {
         bool pivotMode = true;                      // Pivot (true) / Center (Z)
         std::map<std::string, titledesigner::TitleVec2> pivotOverride;     // per layer, the session's
         titledesigner::CanvasXform xform;
+        // document space of the title on screen: xform, or the title placed on a Device's screen (R31)
+        titledesigner::CanvasXform titleXform;
         ImVec2 canvasMin = ImVec2(0, 0), canvasMax = ImVec2(0, 0);
         double lastViewChange = 0.0;               // the 150 ms settle (R29)
         bool interacting = false;                  // a gesture or a view change in progress

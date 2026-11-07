@@ -1472,3 +1472,8 @@ rest of S82 lands in 6B.
     §6.2's `jasperengine::editor::titleart::designer` / `::fonts`: a namespace
     `jasperengine::editor::titleart` would shadow `titleart::` (the engine's `jasperengine::titleart`)
     in every editor file that names it unqualified.
+15. **Implementation: the core listing room for R78/R79.** The default listing had 38 characters
+    left under its 99,000 limit, less than the window enum values and the `title_designer` object
+    need (95). `focus_window` paid for them inside the tool: its description is shorter, and
+    `page` no longer lists the Preferences pages (a wrong page still fails listing them). Core
+    grows by about 18 characters (R81 allows 120).

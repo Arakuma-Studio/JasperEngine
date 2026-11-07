@@ -2172,12 +2172,12 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Focus Window";
         // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
-        // state. Budget-neutral with the pose_animation window added.
+        // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
+        // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}; "
-            "title_designer: {path, select, ...} (jasper://docs/title-art).";
+            "Fronts an editor panel, e.g. for a watching human (not needed before screenshot). console: returns "
+            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled checkbox rect; "
+            "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
@@ -2189,7 +2189,7 @@ void registerViewTools(McpRegistry& registry) {
                 {"collapse", boolean("")},
                 {"select", integer("Select the row of this message id (as a click).")}
             })},
-            {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
+            {"page", string("preferences: page name (a wrong one lists them).")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
             {"pose", anyObject("")},
