@@ -997,6 +997,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_particleWorldBudget = (int)project->getParticleWorldBudget();
+    m_particleQa = project->getParticleQaSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
@@ -2019,6 +2020,31 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawIntSetting("World Particle Budget", "##ParticleWorldBudget", m_particleWorldBudget, 0, 0,
                 "The most particles alive at once in a scene, sub-emitter children included: past it, effects of lower priority "
                 "and smaller on screen emit less. 0 keeps the platform's default (262,144 on desktop, 131,072 on the web, 65,536 on mobile).");
+        }
+
+        // the thresholds of the particle checks (Particle Effect window, preview_particle_effect)
+        if (settingsui::sectionVisible("Particle Checks")) {
+            ImGui::SeparatorText("Particle Checks");
+            const ParticleQaSettings defaults;
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? m_particleQa.*field.real != defaults.*field.real : m_particleQa.*field.whole != defaults.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) m_particleQa.*field.real = defaults.*field.real;
+                    else m_particleQa.*field.whole = defaults.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(m_particleQa.*field.real), 0.1f, (float)field.minimum, (float)field.maximum);
+                    m_particleQa.*field.real = std::clamp(m_particleQa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(m_particleQa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    m_particleQa.*field.whole = std::clamp(m_particleQa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix an effect; checks report changed thresholds.").c_str());
+            }
         }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
@@ -5248,6 +5274,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setParticleWorldBudget((uint32_t)std::clamp(m_particleWorldBudget, 0, (int)Project::maxParticleWorldBudget));
+    m_project->setParticleQaSettings(m_particleQa);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);

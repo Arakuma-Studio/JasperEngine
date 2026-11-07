@@ -280,3 +280,82 @@ Effort in person-weeks, estimates at ±50%.
 - **M6 (about 1).** Budgets, docs, guide, final gate. AC16.
 
 ## Deviations
+
+The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-window`):
+
+- **The eye and the Overdraw view work on copies, not on the renderer.** The stage plays copies of
+  the documents under its own effect-library keys (`particle-effect-window/<node>.particles`), each
+  copy's sub-emitter entries naming its children's copies. A hidden node's copy has Render Mode None
+  and its trails off; it still simulates, so its children play as before. Overdraw makes every copy
+  additive, untextured, unlit and one constant heat colour, on black. The per-module random streams
+  keep the simulation identical. No runtime or shader code changed for either, so the eye cannot
+  reach a file or an export (R18). The Overdraw view is a heat of quad coverage, not the GPU heat row
+  of `overdraw_map` (R27, s91-preview).
+- **R17's checkpoints after an edit.** An edit invalidates the stage's checkpoints, because they hold
+  runs of the old effect, so the re-simulation after an edit starts from 0, at most 4 ms a frame
+  with its progress shown. Scrubs and loops use the checkpoints. With the moving emitter on, a seek
+  replays the motion tick by tick from 0, because a checkpoint does not hold the emitter's path.
+- **A looping effect's clock goes back by whole Durations** when no Loop Range is set (review I2 and
+  N1, the lead's ruling): it runs to S + D, then back by D, where S is the first whole number of
+  Durations D covering the longest particle life plus one Duration (the steady state). The stage seeks
+  to the time it shows, from the checkpoints, so the preview at a displayed time is the game at that
+  time, the timeline holds the whole Duration, and an edit re-simulates at most S + D. With Seed per
+  loop on, the step back also takes a new seed and seeks with it (from 0, at most S). Several looping
+  systems step back by the longest Duration. While a game plays the stage holds its frame and queues none; a paused, settled stage queues
+  no frame either (D4).
+- **R20's per-loop seed** applies to the window's own loops (the Loop Range, or a one-shot effect
+  starting again). It does not apply to a looping effect's internal Duration cycles, which the
+  runtime keeps on one seed.
+- **R19's timing for MCP** is `ParticleEffectTiming::compute` and `toJson`
+  (`editor/util/ParticleEffectTiming.h`). The tool that returns it, and the Filmstrip and Checks rows
+  (R24), belong to `feature/s91-preview`. The window hosts its `ParticleChecksPanel` in a
+  "Filmstrip and Checks" section under Exposed Parameters, on the file or subtree it shows and with
+  its seed (`ParticleEffectWindow::getChecksPanel`); AC15 in the window is
+  `ParticleChecksPanel.TheWindowsHostedRowsAreTheTools`.
+- **R25's sliders are drag fields.** An exposed parameter has no range in the format, so a slider
+  would have to invent one. Trigger buttons list the Trigger sub-emitters' names. R9's declared
+  triggers and R10's cheap updates come from `feature/s91-runtime`, and `triggerNames()` and
+  `setExposedValue()` are where they plug in.
+- **R23's playhead** is the window's clock as a fraction of the selected system's Duration. It shows
+  only while the Curve window edits a curve of this window that is read over the emitter's time
+  (`particlerows::curveOverEmitterTime`). Smooth is Unity's SmoothTangents (Free, joined, the neighbours' mean slope), since Clamped
+  Auto already has its own menu entry.
+- **R22's help links** open `docs/editor/particle-effect.md#<module>` on GitHub.
+- **A `.particles` double-click opens the window** instead of BF23's interim Inspector routing. A
+  single click still shows the file in the Inspector. `test_project_window_open.py` changed with it.
+- **The window's settings** (background, seed, loop range, eye) are not saved with the layout or the
+  project. They are preview state, reset when another effect opens.
+
+- **M3, bake as a tool of its own (R12, §6 Budget).** Bake Sprite Sheet is `bake_particle_sheet`,
+  the 13th tool of `particles`, rather than a mode of `preview_particle_effect`: it writes two files
+  as one undo step and runs as a job, as `bake_vertex_animation` does, and the preview stays
+  read-only but for `save_path`. `tools/mcp/budget.json` gives `particles` 13 tools.
+- **M3, D5 adopted by S35 now.** `editor/util/QaChecks` holds the row, the rounds, the threshold
+  audit, the guidance and the row's text line; `AudioQa` and `audio_session` use it, so S90 only
+  adopts it.
+- **M3, overdraw (R27, AC12).** The analytic overdraw counts camera-facing squares of each
+  particle's size, with the Renderer's screen-size clamp, over a 64 x 64 grid of the frame;
+  stretched billboards, meshes and trails are approximated by that square. The heat row redraws the
+  systems as flat additive squares adding 4/255 a layer (it reads up to 63 layers); sub-emitter
+  children keep their own look there (their files are not rewritten), so the cross-check is exact
+  for effects without sub-emitters. AC12's tolerance is 10% of the analytic peak.
+- **M3, cost (R29).** Mobile has no measured row in docs/perf/particles.md; its per-particle costs
+  are assumed twice desktop's single-thread ones (S20 R21's budget ratio) and the result says so in
+  `cost.basis`. `platform_budget` warns over `particles.qa.cpu_ms_<platform>` and fails over twice.
+- **M3, checks (R28).** `pop` is the share of an emitter's live particles (20 or more) dying in one
+  tick at alpha 0.25 or more; `blown_out` needs cells and is SKIP with `frames: 0`; `never_ends` is
+  SKIP for a looping root. `reference` is shown as the last cell, not compared.
+- **M3, AC15.** The Particle Effect window that hosts `ParticleChecksPanel` is M2's (another
+  branch), and an editor test cannot call an MCP handler. The handler and the panel therefore build
+  their requests through one function (`ParticlePreviewSource::complete`: arguments, thresholds,
+  rounds, validation) and share one rounds store; AC15 is an editor test running the panel's request
+  and the handler's through the editor's frame loop on one effect (rows and rounds equal), and the
+  MCP tests cover the handler. A `ui_probe` test of the hosted panel belongs after both merge.
+- **M3, cells and checks after review.** Cells sit in the middle of their share of the run (a
+  one-shot's start and end are empty). `invisible` follows the analytic cover of every tick and fails
+  on cells only where the quads cover the view but no pixel shows. `blown_out` applies to effects with
+  an additive emitter. `never_ends` is SKIP when `seconds` or `times` set the run. capacity_hit's fix
+  is the emitter's peak with nothing refused. `check --particles` checks an effect used as a
+  sub-emitter only through its parents.
+- **M3, CLI (R33).** `check --particles` is opt-in (and part of `--all`), not in the default set: it
+  starts the engine for every effect. `--fail-on warn` reports WARN rows as errors too.

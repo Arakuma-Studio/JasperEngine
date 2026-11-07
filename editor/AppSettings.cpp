@@ -486,6 +486,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
+                if (panelsNode["particleEffect"]) panelVisibility.particleEffect = panelsNode["particleEffect"].as<bool>();
                 if (panelsNode["soundBrowser"]) panelVisibility.soundBrowser = panelsNode["soundBrowser"].as<bool>();
                 if (panelsNode["graphEditor"]) panelVisibility.graphEditor = panelsNode["graphEditor"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
@@ -804,6 +805,7 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["audioMixer"] = panelVisibility.audioMixer;
+        panelsNode["particleEffect"] = panelVisibility.particleEffect;
         panelsNode["soundBrowser"] = panelVisibility.soundBrowser;
         panelsNode["graphEditor"] = panelVisibility.graphEditor;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;

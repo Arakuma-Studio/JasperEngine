@@ -1,6 +1,7 @@
-"""Double-clicking a .material or a .particles in the Project window (BF23 F23), like a human: xdotool in the harness's
-Xvfb, the files found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). The file shows in the
-Inspector and the Inspector takes the focus, as in Unity; no text buffer opens. Open as Text stays in the context menu.
+"""Double-clicking a .material or a .particles in the Project window (BF23 F23, S91), like a human: xdotool in the
+harness's Xvfb, the files found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). A .material shows
+in the Inspector and the Inspector takes the focus, as in Unity; a .particles opens the Particle Effect window (a single
+click still shows it in the Inspector). No text buffer opens. Open as Text stays in the context menu.
 
 The Inspector edits a .material as Unity's does: the rows of a submesh's material, each gesture one project undo step
 on the file (byte-exact back), the linked submeshes following, the open scene's undo untouched. An agent's edit reaches
@@ -109,39 +110,30 @@ async def test_double_click_material_shows_it_in_the_inspector(ed: Editor):
     await shot(ed, "material-inspector")
 
 
-async def test_double_click_particles_behaves_like_a_material(ed: Editor):
+async def test_double_click_particles_opens_the_particle_effect_window(ed: Editor):
     ui = Ui(ed)
     await ui.release_all()
     await fresh(ed)
     await ed.call("select_entities", entities=["Ball"])
     rect = await project_file(ui, "Smoke.particles")
     await ui.click(centre(ui, rect))
-    # Assets > Open runs what a double-click runs: the Inspector's particle preview makes frames on this
-    # software renderer longer than ImGui's double-click time, so two real clicks do not read as one here
-    await ed.call("run_command", id="assets.open")
-    await ui.frames(6)
-    ed.check_eq(await focused(ed), "Inspector", "the Inspector takes the focus")
-    ed.check_eq(await buffers(ed), [], "no text buffer opens")
-    # the effect is what the Inspector shows, so Delete is not the selected GameObject's
+    # a single click shows the effect in the Inspector, so Delete there is not the selected GameObject's
+    await probe_item(ui, "asset.particles.header")
+    await ed.call("focus_window", window="inspector")
     ui.focus()
     await ui.key("Delete")
     await ui.frames(4)
     ed.check(await ball_exists(ed), "Delete with the effect in the Inspector leaves the GameObject")
-    await probe_item(ui, "asset.particles.header")
-    # the Inspector goes back to the GameObject, with the Project window's selection unchanged: open it again
-    await ed.call("select_entities", entities=[])
-    await ui.frames(2)
-    await ed.call("select_entities", entities=["Ball"])
-    await ui.frames(6)
-    ed.check("asset.particles.header" not in ed.ui_items(), "the GameObject has the Inspector")
+    # Assets > Open runs what a double-click runs: the particle previews make frames on this software
+    # renderer longer than ImGui's double-click time, so two real clicks do not read as one here
     await ed.call("run_command", id="assets.open")
     await ui.frames(6)
-    await probe_item(ui, "asset.particles.header")
-    ed.check_eq(await focused(ed), "Inspector", "the Inspector takes the focus again")
-    ui.focus()
-    await ui.key("Delete")
-    await ui.frames(4)
-    ed.check(await ball_exists(ed), "and Delete still leaves the GameObject")
+    ed.check_eq(await focused(ed), "Particle Effect", "the Particle Effect window takes the focus (S91)")
+    ed.check_eq(await buffers(ed), [], "no text buffer opens")
+    status = (await ed.call("editor_status"))["ui"]["particle_effect"]
+    ed.check_eq(status["effect"], EFFECT, "the window shows the effect")
+    await probe_item(ui, "particle_effect.stage")
+    await shot(ed, "particle-effect-window")
 
 
 async def test_open_as_text_stays_in_the_context_menu(ed: Editor):

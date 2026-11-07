@@ -150,6 +150,7 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
         ToggleMaximizeOnPlay,
+        ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
         ToggleGraphEditor             // Window > Assets > Graph Editor (S90)
     };
 
