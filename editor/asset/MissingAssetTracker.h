@@ -52,8 +52,11 @@ namespace jasperengine::editor {
         const std::vector<Group>& getGroups() const { return groups; }
         const std::vector<ResolvedByPath>& getResolvedByPath() const { return resolvedByPath; }
         const std::vector<AssetDatabase::OrphanMeta>& getOrphanMetas() const { return orphanMetas; }
-        // The status bar badge: missing groups and orphan metas
-        size_t count() const { return groups.size() + orphanMetas.size(); }
+        // Assets in a folder linked in from out of the project whose identity cannot be written
+        // there (a read-only target, S68 R7): they work, with GUIDs the database keeps
+        const std::vector<std::string>& getReadOnlyLinked() const { return readOnlyLinked; }
+        // The status bar badge: missing groups and orphan metas, and one for the read-only files
+        size_t count() const { return groups.size() + orphanMetas.size() + (readOnlyLinked.empty() ? 0 : 1); }
         const Group* findGroup(const Guid& guid, const std::string& lastPath = std::string()) const;
         // Bumped whenever the lists change
         uint64_t getVersion() const { return version; }
@@ -62,6 +65,7 @@ namespace jasperengine::editor {
         std::vector<Group> groups;
         std::vector<ResolvedByPath> resolvedByPath;
         std::vector<AssetDatabase::OrphanMeta> orphanMetas;
+        std::vector<std::string> readOnlyLinked;
         uint64_t databaseVersion = UINT64_MAX;
         uint64_t indexVersion = UINT64_MAX;
         uint64_t version = 0;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Prefab.h"
+#include "component/PrefabComponent.h"
 #include "StreamPreserved.h"
 
 #include "Stream.h"

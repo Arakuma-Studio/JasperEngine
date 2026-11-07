@@ -2,6 +2,86 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityCloner.h"
+#include "model/ModelCpuData.h"
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "component/BoneComponent.h"
+#include "component/BuoyancyComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/FogComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/PrefabComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineInstantiateComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/VolumetricCloudsComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "subsystem/MeshSystem.h"
@@ -145,18 +225,32 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
     const bool keepsModelData = ctx.modelMeshes.count(sourceEntity) != 0;
-    for (unsigned int i = 0; i < mesh.numExternalBuffers && i < mesh.eBuffers.size(); i++) {
+    // (its bytes are copied below: a clone that shares the model takes the GPU buffers instead)
+    if (!keepsModelData)
+        ModelCpuData::ensure(mesh, "a clone without its model");
+    // every element held, also past the counts: each carries GPU handles of the original's
+    for (size_t i = 0; i < mesh.eBuffers.stored(); i++) {
         resetBuffer(mesh.eBuffers[i]);
         // bytes in the file data of a model not copied along may go with the original
-        if (!keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
+        if (i < mesh.numExternalBuffers && !keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
             mesh.eBuffers[i].copyToOwnData();
         }
     }
-    for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++) {
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++) {
         Submesh& submesh = mesh.submeshes[i];
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
+        // the batch variants too (spec S55): the clone's load destroys what they hold, which
+        // were the original's pipelines
+        submesh.batchRender = ObjectRender();
+        submesh.batchDepthRender = ObjectRender();
+        submesh.batchShader.reset();
+        submesh.batchDepthShader.reset();
+        submesh.batchShaderProperties = 0;
+        submesh.batchDepthShaderProperties = 0;
+        submesh.batchShaderId = 0;
+        submesh.batchDepthShaderId = 0;
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();
@@ -178,6 +272,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
+    mesh.bonesUploadRows = 0;
     mesh.needUpdateBones = true;
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
@@ -258,6 +353,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
     points.uiGroupAlpha = 1.0f;
+    points.loadedTransparent = false;
 }
 
 template<>
@@ -339,6 +435,8 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
         view = InstanceViewRange();
     }
     instmesh.lastFadeCullEnd = -1;
+    instmesh.lastFadeCullNear = 0;
+    instmesh.lastCullSlack = 0;
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 }
@@ -807,6 +905,13 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
+    // a copy has not started: it has nothing to revert
+    snapshot.previousSnapshot.clear();
+    snapshot.applied = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1123,6 +1228,7 @@ bool keepInMove(const T&, Entity, const CloneContext&) {
     return true;
 }
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
 // a joint to a body outside the moved GameObjects (the bodies are in different worlds then)
 bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceEntity, const CloneContext& ctx) {
     for (Entity body : bodies) {
@@ -1133,6 +1239,7 @@ bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceE
     }
     return true;
 }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 template<>
@@ -1183,12 +1290,14 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SafeAreaComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<AudioSnapshotComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CapsuleShadowCasterComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ActionComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PositionTweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

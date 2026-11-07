@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ScrollbarComponent.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
 #include "shader/ShaderGlobals.h"
@@ -354,6 +359,22 @@ float Scene::getMeshLodThreshold() const{
     return settings.meshLodThreshold;
 }
 
+void Scene::setMeshLodCrossFade(bool crossFade){
+    settings.meshLodCrossFade = crossFade;
+}
+
+bool Scene::isMeshLodCrossFade() const{
+    return settings.meshLodCrossFade;
+}
+
+void Scene::setMeshLodCrossFadeDuration(float seconds){
+    settings.meshLodCrossFadeDuration = std::isfinite(seconds) ? std::clamp(seconds, 0.05f, 2.0f) : settings.meshLodCrossFadeDuration;
+}
+
+float Scene::getMeshLodCrossFadeDuration() const{
+    return settings.meshLodCrossFadeDuration;
+}
+
 void Scene::setDepthPrepassEnabled(bool enabled){
     if (settings.depthPrepassEnabled != enabled){
         settings.depthPrepassEnabled = enabled;
@@ -588,6 +609,33 @@ void Scene::setPhysicalLightEV100(float ev100){
 
 float Scene::getPhysicalLightEV100() const{
     return settings.physicalLightEV100;
+}
+
+void Scene::setCapsuleShadowsEnabled(bool enabled){
+    // the lit variants take capsule shadows or leave them (RenderSystem::updateLightingFeatures)
+    settings.capsuleShadowsEnabled = enabled;
+}
+
+bool Scene::isCapsuleShadowsEnabled() const{
+    return settings.capsuleShadowsEnabled;
+}
+
+void Scene::setCapsuleShadowIntensity(float intensity){
+    if (std::isfinite(intensity))
+        settings.capsuleShadowIntensity = std::clamp(intensity, 0.0f, 1.0f);
+}
+
+float Scene::getCapsuleShadowIntensity() const{
+    return settings.capsuleShadowIntensity;
+}
+
+void Scene::setCapsuleShadowSoftness(float softness){
+    if (std::isfinite(softness))
+        settings.capsuleShadowSoftness = std::clamp(softness, 0.0f, 2.0f);
+}
+
+float Scene::getCapsuleShadowSoftness() const{
+    return settings.capsuleShadowSoftness;
 }
 
 void Scene::setAmbientLight2D(float intensity, Vector3 color){

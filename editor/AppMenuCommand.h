@@ -51,6 +51,8 @@ namespace jasperengine::editor {
         MigrateAssetReferences,
         ToggleAssetReferences,
         ToggleJobsMemory,
+        ToggleMeshAudit,
+        ToggleBuildReport,
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
@@ -131,7 +133,15 @@ namespace jasperengine::editor {
         ToggleRecording,
         // upstream (audio-mixer, native-bridge, camera-shake): after S27's
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
+        ToggleSoundBrowser,           // Window > Audio > Sound Browser
+        ToggleAudioCaptures,          // Window > Audio > Captures
+        ResetLoudness,                // Audio Mixer > Master strip
         AssetsCreateAudioMixer,
+        AssetsCreateSoundEvent,
+        AssetsCreateSoundEventFromClips,
+        AssetsImportSoundEssentials,   // S36
+        AssetsCreatePlaceholderSound,  // S36
+        AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera

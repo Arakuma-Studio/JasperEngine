@@ -1,0 +1,122 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 89f6fd280504cc0a
+--- 0
+text: 213
+selection: 87
+cursor: 0
+cursorBlink: -.inf
+cursorWidth: .inf
+cursorColor: [-0.3651714, 0, -39.714287, 0]
+selectionColor: [-49, -0.29374978, 1e-45, 3e+38]
+placeholderColor: [-97, -94.71429, -47.285713, -82.85714]
+placeholder: ümlaut
+passwordChar: C
+cursorIndex: -3
+selectionAnchor: -4
+disabled: false
+password: true
+--- 1
+text: 119
+selection: 105
+cursor: 0
+cursorBlink: .inf
+cursorWidth: 7936.926
+cursorColor: [19.428572, 1502.9362, 0, -98.57143]
+selectionColor: [0.15853193, -0.5024491, 0, 1e-45]
+placeholderColor: [89, -0.99299026, -0.5714286, 7071.216]
+placeholder: a/b/c.html
+passwordChar: _
+cursorIndex: 11
+selectionAnchor: -16
+disabled: true
+password: false
+--- 2
+text: 216
+selection: 0
+cursor: 366
+cursorBlink: -.inf
+cursorWidth: 8581.637
+cursorColor: [25.714285, -0.46099678, 1e-45, -21.714285]
+selectionColor: [702.585, 6.1046705, 0.48546052, -7]
+placeholderColor: [0.9038691, -4, -0.60225296, -30]
+placeholder: "  padded  "
+passwordChar: "\""
+cursorIndex: 18
+selectionAnchor: 0
+disabled: true
+password: false
+--- 3
+text: 181
+selection: 270
+cursor: 27
+cursorBlink: -0.9174133
+cursorWidth: -0.6101281
+cursorColor: [-70, -84, 33, 9]
+selectionColor: [-85.57143, -67, -0.70532423, -100]
+placeholderColor: [44, -23, -0, 65]
+placeholder: true
+passwordChar: v
+cursorIndex: -18
+selectionAnchor: -13
+disabled: false
+password: true
+--- 4
+text: 333
+selection: 0
+cursor: 386
+cursorBlink: 9875.45
+cursorWidth: -.inf
+cursorColor: [77, -0, -110.71429, -11.714286]
+selectionColor: [0.3316912, 0, 0.7880208, -83]
+placeholderColor: [0, -7.714286, -0.23359711, -19.285715]
+placeholder: with "quotes"
+passwordChar: ","
+cursorIndex: 1
+selectionAnchor: 13
+disabled: true
+password: false
+--- 5
+text: 32
+selection: 33
+cursor: 155
+cursorBlink: 0.65136504
+cursorWidth: 21
+cursorColor: [0, 0, 0, -0.5783642]
+selectionColor: [-83, 0, 1e-45, 3617.816]
+placeholderColor: [-140.14285, 0.28448695, -93, 0]
+placeholder: "~"
+passwordChar: Y
+cursorIndex: 19
+selectionAnchor: -9
+disabled: false
+password: false
+--- 6
+text: 0
+selection: 138
+cursor: 0
+cursorBlink: 140
+cursorWidth: -53
+cursorColor: [1836.9899, 41, -0.8121877, 0]
+selectionColor: [-0, 9662.1875, 9241.665, 0]
+placeholderColor: [-96.85714, 3e+38, 0.83151335, 0]
+placeholder: with "quotes"
+passwordChar: x
+cursorIndex: 70416
+selectionAnchor: -10
+disabled: true
+password: false
+--- 7
+text: 168
+selection: 300
+cursor: 258
+cursorBlink: -61
+cursorWidth: 52
+cursorColor: [-79.71429, 81, -0, 1702.8408]
+selectionColor: [-0, 49, 0.4739175, 0]
+placeholderColor: [-135, 2063.6106, -13, 0]
+placeholder: "~"
+passwordChar: n
+cursorIndex: 4
+selectionAnchor: 32213
+disabled: false
+password: true

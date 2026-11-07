@@ -25,20 +25,15 @@
 //       vec4 tint;
 //   } customParams;
 
-uniform u_vs_pbrParams {
-    mat4 modelMatrix;
-    mat4 normalMatrix;
-    mat4 mvpMatrix;
-} pbrParams;
+// the object's matrices: per draw (u_vs_pbrParams), or per instance in an automatically
+// instanced batch (HAS_AUTO_INSTANCING); a fork keeping its own block is never batched
+#include "includes/object_params.glsl"
 
 // same expression as depth.vert, so a depth prepass and this pass agree bit for bit
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
-    uniform u_vs_fade {
-        vec4 fadeRange; //start.x, end.y
-        vec4 fadeEye;   //camera in model space.xyz
-    } fadeParams;
+    #include "includes/instance_fade.glsl"
 #endif
 
 #if defined(HAS_TEXTURERECT) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
@@ -125,6 +120,8 @@ in vec3 a_position;
     #endif
 #endif
 
+#define LOD_FADE_VS
+#include "includes/lod_fade.glsl"
 #include "includes/skinning.glsl"
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
@@ -181,6 +178,15 @@ vec3 getTangent(mat4 boneTransform){
 #endif
 
 void main() {
+    #ifdef USE_LOD_FADE
+        // an instance matrix is affine (its first column's w is 0) and so is a normal matrix's
+        // direction part: those lanes carry the fade of a fading draw (includes/lod_fade.glsl)
+        #ifdef HAS_INSTANCING
+            v_lodFade = i_matrix_col1.w;
+        #else
+            v_lodFade = objectLodFade();
+        #endif
+    #endif
     // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -208,13 +214,13 @@ void main() {
         latticeNormal = normalize(getSkinNormal(latticeNormal, boneTransform));
         latticeTangent = normalize(getSkinTangent(latticeTangent, boneTransform));
         #ifdef HAS_INSTANCING
-            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             pos = instanceMatrix * pos;
             latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
             latticeTangent = mat3(instanceMatrix) * latticeTangent;
         #endif
     #elif defined(HAS_INSTANCING)
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);
@@ -224,12 +230,7 @@ void main() {
         // Shrink toward the instance base, on XZ like the chunk selection so looking down does
         // not eat grass still inside the spawn square. An empty range keeps everything solid.
         vec3 fadeOrigin = i_matrix_col4.xyz;
-        float fadeVisible = 1.0;
-        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
-            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
-            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
-                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
-        }
+        float fadeVisible = instanceFadeVisible(fadeOrigin);
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 

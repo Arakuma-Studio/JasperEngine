@@ -89,6 +89,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kMirrorDesc;
     extern const ComponentDesc kLight2DDesc;
     extern const ComponentDesc kShadowCaster2DDesc;
+    extern const ComponentDesc kCapsuleShadowCasterDesc;
     extern const ComponentDesc kReflectionProbeDesc;
     extern const ComponentDesc kUIDocumentDesc;
     extern const ComponentDesc kLocalVolumetricFogDesc;
@@ -131,6 +132,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kTextEffectDesc;
     extern const ComponentDesc kVideoPlayerDesc;
     extern const ComponentDesc kSafeAreaDesc;
+    extern const ComponentDesc kAudioSnapshotDesc;
     // VoxelReflect.cpp (T6)
     extern const ComponentDesc kVoxelVolumeDesc;
 

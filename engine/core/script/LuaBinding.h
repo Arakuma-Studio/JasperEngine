@@ -83,6 +83,7 @@ namespace jasperengine {
         static void registerParticleClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
+        static void registerAudioClasses(lua_State *L);
         static void registerIOClasses(lua_State *L);
         static void registerMathClasses(lua_State *L);
         static void registerNetClasses(lua_State *L);

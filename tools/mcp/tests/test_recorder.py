@@ -14,13 +14,16 @@ points per game second. record_game:
 - the editor_tools group is not listed until tool_groups enables it.
 """
 
+import array
 import json
+import math
 import shutil
 import subprocess
 from pathlib import Path
 
 import harness
 import pngdiff
+from audio_refs import capture_sessions, read_float_wav, write_tone
 from harness import Editor
 
 CI = True
@@ -138,14 +141,19 @@ async def test_deterministic(ed: Editor):
 async def test_frame_interval(ed: Editor):
     await setup(ed)
     out = ed.scratch.root / "rec-interval"
-    r = await record(ed, frames=30, start_frame=30, fps=30, format="png", width=640, height=360,
-                     output=str(out), exit_play=True)
-    names = sorted(f.name for f in out.rglob("*.png"))
-    ed.check_eq(len(names), 30, f"{r}")
-    ed.check_eq((names[0], names[-1]), ("frame_0030.png", "frame_0059.png"))
-    ed.check_eq(r["startFrame"], 30)
-    state = await ed.call("get_play_state")
-    ed.check(state.get("state") in ("stopped", None) or state.get("playing") is False, f"Exit Play Mode stopped Play: {state}")
+    try:
+        r = await ed.call("record_game", frames=30, start_frame=30, fps=30, format="png", width=640, height=360,
+                          output=str(out), exit_play=True, timeout_seconds=900)
+        names = sorted(f.name for f in out.rglob("*.png"))
+        ed.check_eq(len(names), 30, f"{r}")
+        ed.check_eq((names[0], names[-1]), ("frame_0030.png", "frame_0059.png"))
+        ed.check_eq(r["startFrame"], 30)
+        state = await ed.call("get_play_state")
+        ed.check_eq(state["state"], "stopped", f"Exit Play Mode stopped Play: {state}")
+    finally:
+        state = await ed.call("get_play_state")
+        if state["state"] != "stopped":
+            await ed.call("play", action="stop")
 
 
 def ffprobe(path: Path) -> dict:
@@ -202,6 +210,49 @@ async def test_mp4_audio(ed: Editor):
     ed.check(audio and audio[0]["codec_name"] == "aac", f"an AAC stream: {streams}")
     duration = float(audio[0]["duration"])
     ed.check(abs(duration - 3.0) <= 1024 / 48000 + 1e-3, f"3 s of audio (one AAC frame of slack): {duration}")
+
+
+async def test_movie_audio_matches_capture():
+    """S35 AC6: one tap: a movie's PCM audio is the capture's master.wav, quantised the same way, frame
+    for frame; the mixer's effect is in it (MOV: its audio is PCM, an MP4's AAC is lossy)."""
+    if not has_h264():
+        harness.skip("no ffmpeg/ffprobe with an H.264 encoder on this host")
+    async with Editor(create=True, name="Recorder Capture") as ed:
+        await ed.call("tool_groups", enable=["editor_tools"])
+        await ed.call("audio_mixer", action="edit", ops=[{"op": "add_group", "name": "Music"}])
+        await ed.call("audio_mixer", action="edit", ops=[{"op": "add_effect", "group": "Music", "type": "lowpass", "params": {"cutoff": 200}}])
+        write_tone(ed.project / "sounds/tone.wav", seconds=2.0, frequency=4000.0, amplitude=0.5, rate=48000)
+        await ed.call("sync_files")
+        made = await ed.call("create_scene", name="Rec", type="2D", path="scenes/Rec")
+        scene = made["scene"]["id"]
+        await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
+        await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {
+            "filename": "sounds/tone.wav", "looping": True, "outputGroup": "Music", "state": "playing"}})
+        await ed.call("save_scene", scene=scene)
+
+        movie = ed.scratch.root / "rec-capture.mov"
+        await ed.call("record_game", frames=60, fps=30, format="mov", width=64, height=64, output=str(movie), audio=True, timeout_seconds=900)
+        if (await ed.call("get_play_state"))["state"] != "stopped":
+            await ed.call("play", action="stop")
+        pcm = ed.scratch.root / "rec-capture.pcm"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(movie), "-f", "s16le", "-acodec", "copy", str(pcm)], check=True)
+        movie_audio = array.array("h")
+        movie_audio.frombytes(pcm.read_bytes())
+        ed.check_eq(len(movie_audio) // 2, 60 * 1600, "2 s of audio at 30 fps: 1600 frames a frame")
+
+        session = capture_sessions(ed.project)[-1]
+        _, channels, master = read_float_wav(session / "master.wav")
+        ed.check_eq(channels, 2, "stereo")
+        ed.check(len(master) >= len(movie_audio), f"the capture has them all: {len(master)} of {len(movie_audio)}")
+
+        def quantised(x: float) -> int:
+            scaled = max(-1.0, min(1.0, x)) * 32767.0
+            return int(math.floor(scaled + 0.5)) if scaled >= 0 else int(math.ceil(scaled - 0.5))
+
+        different = next((i for i, v in enumerate(movie_audio) if v != quantised(master[i])), -1)
+        ed.check_eq(different, -1, "the movie's samples are the capture's")
+        peak = max(abs(v) for v in movie_audio[len(movie_audio) // 2:]) / 32767.0
+        ed.check(0.0 < peak < 0.05, f"the group's low-pass is in the movie: a 4 kHz tone reads {peak}")
 
 
 async def test_no_ffmpeg():

@@ -5,7 +5,7 @@
 #define SPRITEANIMATION_COMPONENT_H
 
 #include "Engine.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 
 namespace jasperengine{
 
@@ -13,10 +13,12 @@ namespace jasperengine{
         bool loop = true;
 
         unsigned int framesTimeSize = 0;
-        HybridArray<int, MAX_SPRITE_FRAMES> framesTime;
+        GrowArray<int> framesTime;
 
         unsigned int framesSize = 0;
-        HybridArray<int, MAX_SPRITE_FRAMES> frames;
+        GrowArray<int> frames;
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return framesTime.storageBytes() + frames.storageBytes(); }
 
         int frameIndex = 0;
         int frameTimeIndex = 0;

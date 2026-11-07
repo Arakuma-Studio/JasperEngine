@@ -37,10 +37,11 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // 24-27 are pixel art's (programme ledger D19): the value is stored in assetmap.bin, so it never moves
-        NoiseGraph = 28,            // a .noisegraph Noise Graph (T2)
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
         // 29 and 30 are the other terrain streams' (D22)
-        VoxelVolume = 31            // a .voxelvolume (T6 R77, its GUID in a sidecar)
+        VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
+        NoiseGraph = 32             // a .noisegraph Noise Graph (T2; D22 moved it from 28)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -69,6 +70,7 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::SoundEvent: return "sound_event";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;
@@ -78,7 +80,7 @@ namespace jasperengine {
 
     inline AssetType assetTypeFromName(std::string_view name) {
         // (a reserved number has no name: it never matches)
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::VoxelVolume); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::NoiseGraph); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

@@ -70,6 +70,9 @@ namespace jasperengine{
     struct TerrainView{
         // 0 = fullRes, 1 = halfRes; selected and uploaded independently once per frame
         InterleavedBuffer nodesbuffer[2];
+        // the TerrainComponent::nodes each record of nodesbuffer is, in its order (a shadow slot
+        // culls them one by one, spec S55 R5)
+        std::vector<uint32_t> nodeIndices[2];
         // per-view morph origin, paired with this view's node selection
         Vector3 nodesEyePos;
         bool needUpdateNodesBuffer = false;
@@ -162,6 +165,9 @@ namespace jasperengine{
         float minHeight = 0; //normalized against the terrain maxHeight
         float maxHeight = 1;
         float drawDistance = 50;
+        // nearer instances fade out (grow in over [0.75, 1] of it): with a nearer copy of the layer
+        // whose drawDistance equals it, the two cross-fade (a far detail level with a cheaper mesh)
+        float minDrawDistance = 0;
         unsigned int seed = 0;
         bool castShadows = true; // off spares grass-scale scatter the shadow cascades
     };

@@ -8,8 +8,10 @@
 #include "asset/AssetRefSchema.h"
 #include "asset/ModelSubAssets.h"
 #include "asset/TextReferences.h"
+#include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/ModelSubClips.h"
+#include "audio/SoundEventIO.h"
 #include "util/Util.h"
 #include "voxel/VoxelFile.h"
 #include "voxel/VoxelGenerator.h"
@@ -165,6 +167,9 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
         case AssetType::ParticleEffect:
         case AssetType::AnimatorController: case AssetType::AnimationMontage:
+        case AssetType::SoundEvent:
+        // its audio cues' sounds (S40 R3)
+        case AssetType::AnimationClip:
         case AssetType::VoxelVolume:
             return true;
         case AssetType::Script:
@@ -361,6 +366,53 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                                     (Util::isAvatarMaskFile(ref.path) ? AssetType::AvatarMask : AssetType::AnimationClip);
                     edge.target = isSubClip ? Guid() : Guid::parse(ref.guid);
                     edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, isSubClip ? subClip.model : ref.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
+                break;
+            }
+            case AssetType::SoundEvent: {
+                // one edge per clip (assets-relative {guid, path})
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                SoundEventDef event;
+                if (!SoundEventIO::parse(text, event)) break;
+                for (size_t i = 0; i < event.clips.size(); i++) {
+                    const AssetRef& clip = event.clips[i].clip;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = "clips[" + std::to_string(i) + "].clip";
+                    edge.expected = AssetType::Audio;
+                    edge.target = clip.guid;
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, clip.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
+                break;
+            }
+            case AssetType::AnimationClip: {
+                // one edge per audio cue's sound (S40 R3): an audio clip or a Sound Event
+                std::string text;
+                if (!assetio::readFile(full, text) || text.find("\"audio\"") == std::string::npos) break;
+                anim::ClipParseResult parsed = anim::parseClip(text);
+                if (!parsed.ok()) break;
+                const std::vector<ClipAudioCue>& cues = parsed.data->audio;
+                for (size_t i = 0; i < cues.size(); i++) {
+                    if (cues[i].kind != ClipCueKind::Sound || !cues[i].sound.isSet()) continue;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = "audio[" + std::to_string(i) + "].sound";
+                    edge.expected = Util::isSoundEventFile(cues[i].sound.path) ? AssetType::SoundEvent : AssetType::Audio;
+                    edge.target = cues[i].sound.guid;
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, cues[i].sound.path);
                     if (edge.target.isNull()) {
                         const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
                         if (resolution.found()) edge.target = resolution.guid;
@@ -740,10 +792,11 @@ void AssetIndex::collectReferences(const Guid& target, const std::string& target
             for (const Guid& former : info.formerGuids) targets.insert(former);
         }
     }
+    const std::string directoryPrefix = targetPath.empty() ? std::string() : targetPath + "/";
     auto matches = [&](const DepEdge& edge) {
         if (!edge.target.isNull() && targets.count(edge.target)) return true;
         if (!targetPath.empty() && edge.targetPath == targetPath && (edge.target.isNull() || isTextEdge(edge.kind))) return true;
-        if (!targetPath.empty() && isTextEdge(edge.kind) && edge.targetPath.compare(0, targetPath.size() + 1, targetPath + "/") == 0) return true;
+        if (!directoryPrefix.empty() && isTextEdge(edge.kind) && edge.targetPath.compare(0, directoryPrefix.size(), directoryPrefix) == 0) return true;
         return false;
     };
     std::unordered_set<Guid> candidates;
@@ -756,17 +809,18 @@ void AssetIndex::collectReferences(const Guid& target, const std::string& target
         if (it != byTargetPath.end()) candidates.insert(it->second.begin(), it->second.end());
         // a directory: the text edges into it
         for (const auto& [path, list] : byTargetPath) {
-            if (path.compare(0, targetPath.size() + 1, targetPath + "/") == 0) candidates.insert(list.begin(), list.end());
+            if (path.compare(0, directoryPrefix.size(), directoryPrefix) == 0) candidates.insert(list.begin(), list.end());
         }
     }
     for (const auto& [guid, edges] : memory) {
         candidates.insert(guid);
     }
     std::vector<Guid> ordered(candidates.begin(), candidates.end());
+    const std::string noPath;
     std::sort(ordered.begin(), ordered.end(), [&](const Guid& a, const Guid& b) {
         auto pa = referrers.find(a), pb = referrers.find(b);
-        const std::string na = pa != referrers.end() ? pa->second.path : std::string();
-        const std::string nb = pb != referrers.end() ? pb->second.path : std::string();
+        const std::string& na = pa != referrers.end() ? pa->second.path : noPath;
+        const std::string& nb = pb != referrers.end() ? pb->second.path : noPath;
         return na != nb ? na < nb : a < b;
     });
     for (const Guid& guid : ordered) {

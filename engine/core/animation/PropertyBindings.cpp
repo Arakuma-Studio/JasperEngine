@@ -51,6 +51,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -285,8 +286,7 @@ namespace {
 
     MeshComponent* meshOf(Scene* scene, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
-        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes) ||
-            (size_t)params.submesh >= MAX_SUBMESHES){
+        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes)){
             return nullptr;
         }
         return mesh;
@@ -294,8 +294,7 @@ namespace {
 
     bool hasSubmesh(EntityRegistry* registry, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = registry ? registry->findComponent<MeshComponent>(entity) : nullptr;
-        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes) &&
-               (size_t)params.submesh < MAX_SUBMESHES;
+        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes);
     }
 
     template<typename T, T Material::*Field>
@@ -626,6 +625,7 @@ namespace {
         rows.push_back(enabledRow<TextEffectComponent>("texteffect"));
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
+        rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));
@@ -1372,7 +1372,7 @@ std::vector<anim::AnimatablePropertyInfo> anim::listAnimatableProperties(Scene* 
         if (pattern.find("submeshes[N]") != std::string::npos){
             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
-            const unsigned int count = std::min<unsigned int>(std::max(1u, mesh->numSubmeshes), MAX_SUBMESHES);
+            const unsigned int count = std::max(1u, mesh->numSubmeshes);
             for (unsigned int s = 0; s < count; s++){
                 const std::string prefix = "submeshes[" + std::to_string(s) + "]";
                 const std::string property = prefix + pattern.substr(std::strlen("submeshes[N]"));

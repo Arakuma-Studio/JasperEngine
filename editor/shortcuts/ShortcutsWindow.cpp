@@ -10,6 +10,7 @@
 #include "shortcuts/ShortcutOverrides.h"
 
 #include "imgui_internal.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -143,15 +144,17 @@ void ShortcutsWindow::pollCapture() {
 
 void ShortcutsWindow::drawConflictPopup() {
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(CONFLICT_POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (!EditorModal::begin(CONFLICT_POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         return;
     }
     const CommandDef* other = catalog.find(conflictWith);
     ImGui::Text("%s is already used by %s.", captured.format(catalog.isMac()).c_str(), other ? title(*other).c_str() : conflictWith.c_str());
+    EditorModal::message(captured.format(catalog.isMac()) + " is already used by " + (other ? title(*other) : conflictWith) +
+                         ". Reassign takes it from that command.");
     ImGui::TextDisabled("Reassign takes it from that command.");
     ImGui::Separator();
     const float width = ImGui::GetFontSize() * 6.0f;
-    if (ImGui::Button("Reassign", ImVec2(width, 0.0f))) {
+    if (EditorModal::button("Reassign", "ok", ImVec2(width, 0.0f))) {
         std::string error;
         if (!reassign(catalog, captureId, pendingChords, &error)) Out::warning("Shortcuts: %s", error.c_str());
         conflictPending = false;
@@ -159,7 +162,7 @@ void ShortcutsWindow::drawConflictPopup() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(width, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(width, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         // both bindings stay as they were
         conflictPending = false;
         captureId.clear();

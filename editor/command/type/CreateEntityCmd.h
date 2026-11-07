@@ -114,6 +114,11 @@ namespace jasperengine::editor{
         RAGDOLL_WIZARD,
         // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
         SAFE_AREA,
+        // the legacy action timeline's sound (S40 R17, R18): an action with an AudioSource that plays
+        // a clip or a Sound Event, and a Mixer Snapshot action
+        AUDIO_ACTION,
+        SOUND_EVENT_ACTION,
+        MIXER_SNAPSHOT_ACTION,
         // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
         VOXEL_VOLUME
     };

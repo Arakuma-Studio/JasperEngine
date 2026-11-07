@@ -159,7 +159,7 @@ void LuaFunctionBase::push_value(lua_State *vm, const std::string &s){
     lua_pushstring(vm, s.c_str());
 }
 
-void LuaFunctionBase::push_value(lua_State *vm, wchar_t s){
+void LuaFunctionBase::push_value(lua_State *vm, char32_t s){
     lua_pushstring(vm, StringUtils::toUTF8(s).c_str());
 }
 

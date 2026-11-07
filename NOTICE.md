@@ -20,7 +20,7 @@ Libraries of the engine, the editor and the tools:
 | [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation |
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
-| [tinygltf](https://github.com/syoyo/tinygltf) | 2.x | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
 | [Transvoxel](https://github.com/EricLengyel/Transvoxel) | `51a494f03c5b` | `engine/libs/transvoxel/` (`LICENSE`; `Transvoxel.cpp` verbatim, included by `engine/core/voxel/TransvoxelTables.cpp`) | MIT | the regular and transition cell tables of the Voxel Volume mesher (left out of a player without the `voxel` module) |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
@@ -28,7 +28,7 @@ Libraries of the engine, the editor and the tools:
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
 | [Tracy](https://github.com/wolfpld/tracy) | 0.11.1 (the client, `public/`) | `engine/libs/tracy/` (`LICENSE`) | BSD-3-Clause | optional remote profiling of development games (`JASPERENGINE_TRACY`, off by default; never in the editor or release games) |
-| [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.2 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
+| [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.3 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
 | [msdfgen](https://github.com/Chlumsky/msdfgen) | 1.13.0 (`master` at `1c106ed81178`), `core/` only; local change: `core/base.h` includes the hand-written `msdfgen-config.h` | `engine/libs/msdfgen/` (`LICENSE.txt`) | MIT | the HTML UI's MTSDF glyph atlas (scaling text, GPU text effects) |
 | [recastnavigation](https://github.com/recastnavigation/recastnavigation) (Recast, Detour, DetourCrowd, DetourTileCache, DebugUtils) | 1.6.0 (`v1.6.0`, `6dc1667f5803`) | `engine/libs/recastnavigation/` (`License.txt`, `README.jasper.md`; one local patch, the crowd's avoidance priority, `PATCHES.md`) | zlib | navigation meshes, path queries, crowds and carving obstacles (`engine/core/navigation/`); games built with `JASPERENGINE_NAVIGATION` off leave it out |
 | [RmlUi](https://github.com/mikke89/RmlUi) | 6.3 (`ba95ffe8bfb6`), JasperEngine's fork | `engine/libs/rmlui/` (`LICENSE.txt`; Taffy's below, `LICENSE-taffy.txt`) | MIT | the HTML/CSS UI |
@@ -74,6 +74,10 @@ Layout of the HTML/CSS UI:
 |---|---|---|---|---|
 | [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid` and `src/compute/flexbox.rs`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*`, `engine/libs/rmlui/Source/Core/Layout/FlexFormattingContext.*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid and flexbox layout in the RmlUi fork |
 | [libebur128](https://github.com/jiixyj/libebur128) (the five numeric design constants of the K-weighting filters) | `master` | `engine/core/audio/AudioMeter.cpp` | MIT | BS.1770-4 K-weighting at any sample rate |
+
+Sounds: the editor embeds 40 CC0 clips by Kenney (`editor/resources/sound-library/essentials/`, each pack's licence in `licenses/`) and installs a CC0 starter library of 927 clips by Kenney and Freesound users next to itself (`editor/resources/sound-library/library/`, licences in `licenses/`, per clip author, URL and licence in `manifest.json`). No player carries them: a game holds only the clips a project imported, credited in its `licenses/THIRD-PARTY-AUDIO.txt`. The editor also compiles SoLoud's sfxr (`engine/libs/soloud/src/audiosource/sfxr/`, part of SoLoud, zlib/libpng) for placeholder sounds; players do not.
+
+The layered placeholder presets (`generate_sound`, `editor/audio/SoundDesign.cpp`): idea from earshot (MIT), reimplemented; no code of it is here.
 
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`). The audio tests' Ogg Vorbis clip is Kenney's "Sci-Fi Sounds" 1.0 (CC0, `engine/tests/core/fixtures/audio/License-kenney.txt`); their FLAC and MP3 sweeps are FFmpeg encodes of a synthetic source (tests only, never shipped).
 

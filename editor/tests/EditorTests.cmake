@@ -10,9 +10,9 @@
 
 file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
-# the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
+    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
+# the reflection codec's benchmark against the frozen numbers of the codecs it replaced
+# (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
@@ -42,7 +42,9 @@ if(WIN32 OR APPLE)
     list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
 endif()
 
-# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
+# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods).
+# Like je_log_crash_helper, it has no UTF-8 manifest: it stands for the programs the editor
+# runs, which write in the system's code page.
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
 set_target_properties(je_vcs_process_helper PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
@@ -58,6 +60,7 @@ jasperengine_add_test_target(jasperengine-editor-tests
     SOURCES ${EDITOR_TEST_SOURCES}
     # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
     INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
+        ${CMAKE_SOURCE_DIR}/engine/libs/meshoptimizer
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr
@@ -118,6 +121,7 @@ endif()
 
 # The engine's include directories and definitions, for tests that compile the C++ the editor
 # generates for exports (LineRendererStreamTest: Factory's component code against the engine
-# headers, with the compiler that builds the tests)
+# headers, with the compiler that builds the tests; as a game's code sees them, every component
+# through Scene.h, without the engine's own JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
-"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<FILTER:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,EXCLUDE,^JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES$>,\n>\n")

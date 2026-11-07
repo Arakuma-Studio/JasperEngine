@@ -57,13 +57,15 @@ namespace {
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
         ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER, ShaderType::FLUID,
         ShaderType::SHADOW_CACHE, ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE};
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::LIGHTING_PASS};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
-    // and bits 34-35, the Vertex Animation ('Vat', 'Vab')
-    const uint64_t meshValidMask = 0xFFFFFFFFFULL;
+    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
+    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), and bit 41, S55's automatic GPU
+    // instancing ('Aui')
+    const uint64_t meshValidMask = 0x3FFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -193,7 +195,7 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 35 (the Vertex Animation's) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 41 (S55's 'Aui') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -406,7 +408,12 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(36) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(42) | shaderPropertyBit(63), "mesh_UltNor"},
+        // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
+        {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
+        {ShaderType::MESH, 0x51 | shaderPropertyBit(38), "mesh_UltShwNorCts"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(39), "mesh_UltNorOit"},
         // bit 33, S10's high shadow filters
         {ShaderType::MESH, 0x51 | shaderPropertyBit(33), "mesh_UltShwNorShq"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
@@ -418,9 +425,16 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(17), "depth_Vab"},
         {ShaderType::GBUFFER, shaderPropertyBit(14), "gbuffer_Vat"},
         {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
+        // bits 16-17: the SSR composite's occlusion map and the second UV set
+        {ShaderType::GBUFFER, shaderPropertyBit(16), "gbuffer_Occ"},
+        {ShaderType::GBUFFER, shaderPropertyBit(1) | shaderPropertyBit(16) | shaderPropertyBit(17), "gbuffer_NorOccUv2"},
+        {ShaderType::GBUFFER, shaderPropertyBit(18), "gbuffer_Ifd"},
+        // S55's automatic GPU instancing: MESH bit 41 (40 is S54's), DEPTH bit 18
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(41), "mesh_UltNorAui"},
+        {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVab"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAui"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -459,16 +473,16 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
 // T3 R20, D2: bits are names plus an order, numbers taken at landing. This pins the number 'Thl' got on
 // each type; a stream landing before it moves them here and bumps the shader cache.
 TEST(ShaderKey, TerrainHolesBitIsPinned) {
-    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::MESH), shaderPropertyBit(36));
-    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH), shaderPropertyBit(18));
-    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER), shaderPropertyBit(16));
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 36, true), "Thl");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 18, true), "Thl");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 16, true), "Thl");
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::MESH), shaderPropertyBit(42));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH), shaderPropertyBit(19));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER), shaderPropertyBit(19));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 42, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 19, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 19, true), "Thl");
     EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::UI), 0u);
     // no fallback may drop it: a dropped hole would draw over the hole (T3 R34)
-    const uint64_t withFeatures = shaderPropertyBit(36) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
+    const uint64_t withFeatures = shaderPropertyBit(42) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
     for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::MESH, withFeatures)) {
-        EXPECT_NE(candidate & shaderPropertyBit(36), 0u);
+        EXPECT_NE(candidate & shaderPropertyBit(42), 0u);
     }
 }

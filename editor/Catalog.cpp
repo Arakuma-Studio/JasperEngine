@@ -2,6 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "component/AnimatorComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -185,7 +200,7 @@ namespace {
 
     // The properties of a component come from its reflection table (docs/specs/S08-reflection.md
     // R7, editor/reflect/Properties.cpp)
-    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
+    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, bool append) {
         const reflect::ComponentDesc* desc = reflect::find(component);
         if (!desc || !registry) {
             return PropertyData();
@@ -194,7 +209,7 @@ namespace {
         if (!comp) {
             return PropertyData();
         }
-        return reflect::property(*desc, comp, propertyName);
+        return reflect::property(*desc, comp, propertyName, append);
     }
 
     bool tryEnumerateProperties(ComponentType component, void* compRef, std::map<std::string, PropertyData>& ps) {
@@ -372,7 +387,7 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
             if (!mesh) {
                 return false;
             }
-            for (size_t s = 0; s < mesh->submeshes.size(); s++) {
+            for (size_t s = 0; s < mesh->numSubmeshes; s++) {
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
@@ -1563,8 +1578,8 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
-editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
-    return tableProperty(registry, entity, component, propertyName);
+editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append){
+    return tableProperty(registry, entity, component, propertyName, append);
 }
 
 editor::PropertyData editor::Catalog::getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

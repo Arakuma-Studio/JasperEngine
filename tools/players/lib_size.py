@@ -16,7 +16,7 @@ names (engine/libs/<library>, engine/core/<area>...).
 A WebAssembly module (a web player's .wasm) is read directly: its functions' code bytes, named
 by its "name" section (--profiling-funcs keeps it in release builds), and its data segments.
 --modules rolls the groups up into the player modules of docs/specs/S34-player-size.md (HTML UI,
-video, the runtime shader compiler, 3D and 2D physics, navigation; the Lua bindings and the C++
+video, the runtime shader compiler, 3D and 2D physics, navigation, the sound layer; the Lua bindings and the C++
 standard library apart); --baseline <json> prints each group next to another build's --json.
 
 NM defaults to llvm-nm, then nm. Standard library only.
@@ -110,6 +110,7 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     # Curl noise shares jasperengine::noise and stays with the particles: only what the module holds counts (T2 R42)
     (r"curl", "engine: particles"),
     (r"noise::|NoiseGraph|CompiledGraph|HeightfieldErosion|NoiseClassesLua", "engine: noise"),
+    (r"AudioClipSource|AudioImportTable|ClipImportSettings|clipFadeWeight", "engine: sound layer"),
     (r"spline", "engine: splines"),
     (r"lattice", "engine: lattice deformer"),
     (r"particle", "engine: particles"),
@@ -117,6 +118,7 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"terrain|foliage", "engine: terrain"),
     (r"physics|body|joint|collider|character|buoyan|raycast", "engine: physics"),
     (r"video|webm", "engine: video"),
+    (r"soundevent|soundhandle|triggersink|audiosystem::startevent|audiosystem::startmainevent|audio::play|audio::stopall", "engine: sound layer"),
     (r"audio|sound", "engine: audio"),
     (r"lua|script", "engine: Lua and scripts"),
     (r"shader|sokol|render|texture|framebuffer|material|light|shadow|camera|sky|postprocess|uber|gpu|draw", "engine: rendering"),
@@ -316,6 +318,7 @@ MODULES = [(re.compile(p), m) for p, m in [
     (r"navigation", "navigation"),
     (r"engine: noise", "noise"),
     (r"voxel", "voxel"),
+    (r"sound layer", "soundlayer"),
     (r"luabridge3", "Lua bindings"),
     (r"^lib: lua$", "Lua"),
     (r"C\+\+ standard library", "C++ standard library"),

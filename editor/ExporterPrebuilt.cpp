@@ -158,24 +158,11 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     // (b) the user's build file
     std::error_code ec;
     if (fs::exists(proj->getProjectPath() / "ProjectBuild.cmake", ec)) choice.reasons.push_back("ProjectBuild.cmake");
-    // (c) capacities above the player's (the engine defaults when no player is known)
-    for (const auto& [macro, value] : sceneMaxValuesOf(proj)) {
-        unsigned int capacity = 0;
-        if (playerInfo) {
-            auto it = playerInfo->capacities.find(macro);
-            if (it != playerInfo->capacities.end()) capacity = it->second;
-        }
-        if (capacity == 0) {
-            static const std::map<std::string, unsigned int> defaults = {
-                {"MAX_SUBMESHES", MAX_SUBMESHES}, {"MAX_TILEMAP_TILESRECT", MAX_TILEMAP_TILESRECT}, {"MAX_TILEMAP_TILES", MAX_TILEMAP_TILES},
-                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_EXTERNAL_BUFFERS", MAX_EXTERNAL_BUFFERS}, {"MAX_BONES", MAX_BONES}};
-            // (no collider capacities since upstream's unbounded collider lists)
-            auto it = defaults.find(macro);
-            capacity = it != defaults.end() ? it->second : value;
-        }
-        if (value > capacity)
-            choice.reasons.push_back(macro + " " + std::to_string(value) + " (the player holds " + std::to_string(capacity) + ")");
-    }
+    // (c) a player built when components had fixed array capacities (MAX_SUBMESHES, ...): it
+    // would cut what the project's meshes, sprites and tilemaps hold. Players since hold any
+    if (playerInfo && !playerInfo->capacities.empty())
+        choice.reasons.push_back("player " + playerInfo->id + " holds fixed array capacities (built before " +
+                                 "they were removed): use a player of this editor's version");
     // (d) a compile-time feature the player lacks: Google Mobile Ads
     const bool ads = (cfg.platform == BuildPlatform::Android && proj->getAndroidProjectSettings().admobEnabled) ||
                      (cfg.platform == BuildPlatform::IOS && proj->getIOSProjectSettings().admobEnabled);
@@ -188,8 +175,8 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
 }
 
 bool editor::Exporter::resolvePlayer() {
-    // the full player, else any installed variant of it (the method only needs one: every variant
-    // has the same capacities); selectPlayerVariant picks the build's once its modules are known
+    // the full player, else any installed variant of it (the method only needs one);
+    // selectPlayerVariant picks the build's once its modules are known
     const std::string id = playerIdFor(config, config.developmentBuild);
     std::string error;
     std::optional<PlayerInfo> found = PlayerRuntimes::find(id, config.playersDir, config.allowPlayerMismatch, error);
@@ -326,6 +313,8 @@ void editor::Exporter::runPlayerBuild() {
         discardStaging();
         return;
     }
+    measureBuildEngine(config.destinationDir);
+    if (!writeBuildReport(config.destinationDir, "prebuilt")) return;
     setProgressRaw("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
@@ -469,10 +458,14 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
+    checkSoundEventClips();
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
+    if (!cookModels()) return false;
+    if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -487,6 +480,9 @@ bool editor::Exporter::runPrebuilt() {
     if (!stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
+    // what ships, measured before the pack hides it (S53 R21)
+    buildReport = BuildReport();
+    measureBuildContent(contentDir);
     if (!packContent()) return false;
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;
@@ -602,6 +598,7 @@ bool editor::Exporter::writeGameConfig() {
     game.threading.ioThreads = threading.ioThreads;
     game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
     game.atmosphereQuality = project->getAtmosphereQuality();
+    game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
@@ -616,7 +613,9 @@ bool editor::Exporter::writeGameConfig() {
     game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
+    game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
+    game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
@@ -640,7 +639,11 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMixer = audio.mixer;
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
+    game.audioSeed = audio.seed;
+    game.audioMusicGroup = audio.musicGroup;
     game.audioSampleRate = audio.sampleRate;
+    game.audioOutputStage = audio.outputStage;
+    game.audioIosSession = audio.iosSessionCategory;
 
     // the project icon, at the content root: the window and taskbar icon of every platform
     fs::path icon = project->getWindowIcon();
@@ -1182,10 +1185,12 @@ bool editor::Exporter::finalizeIOS() {
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, error)) {
+    std::vector<BuildWarning> warnings;
+    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
+    for (const BuildWarning& warning : warnings) warn(warning.code, warning.message);
     for (const std::string& note : notes) Out::info("%s", note.c_str());
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;

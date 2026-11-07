@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "PasteEntitiesCmd.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 
 #include "Stream.h"
 #include "Out.h"

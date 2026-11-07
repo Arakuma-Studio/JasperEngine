@@ -84,13 +84,16 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   rules (a failing eval case for new text, guide limits, budget ratchet).
 - D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
   determinism can be checked here. Asset types: NoiseGraph 28, TreeData 29, TerrainWorld 30, VoxelVolume 31.
+- D23. Owner rule: nothing runs a full suite until the very end of the whole programme. Streams run only filtered tests, and
+  not `tools/check-changed`. Full gates, the MCP baseline, and web and Android builds run once on the merged tree, by the coordinator.
 
 ## How the work runs
 
 - **Everything builds on this host**, at the owner's instruction (this replaces the brief's rule against
   building here; no rented boxes). Docker was installed for this. 8 cores, 15 GB RAM, 32 GB swap, no GPU, no KVM.
 - **Build queue:** `/var/lib/orquester/workspaces/jaspersito/je-remote/rb.sh L ...`, a local stand-in for
-  the brief's `rb.sh`: 2 slots, `JOBS=4` each, shared ccache from the main checkout.
+  the brief's `rb.sh`: 3 slots of 3 jobs, first come first served, shared ccache from the main checkout. `rb.sh Q ...` is a
+  fast lane of 2 single-job slots for work under a few minutes.
 - **Branches:** `terrain/integration` collects finished work and merges to `main` at the end. Each spec has
   its own worktree under `.worktrees/` and branch `terrain/sNN-*`.
 - **Evidence** stays outside the repository in `/var/lib/orquester/workspaces/jaspersito/terrain-evidence/`.
@@ -114,13 +117,13 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Spec reconciliation | done | One bit table, one landing order, T1's names win |
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
-| T1 foundation | in progress | Committed work is on integration, provisional until verified |
-| T1 implementation | not started | |
-| T2 implementation | in progress | `.worktrees/t2` |
-| T3 implementation | in progress | `.worktrees/t3` |
+| T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
+| T1 implementation | in progress | `.worktrees/s41`. Every brush, bake and generator writes through the engine |
+| T2 implementation | in progress | `.worktrees/t2`. Core: 67 filtered tests pass at `c7ded25f3`. Editor half uncommitted, its tests not yet run |
+| T3 implementation | in progress | `.worktrees/t3`. Holes committed at `a88e00f3d`, 41 filtered core tests pass; collider tests and Vulkan not run. Tiers and materials next |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | in progress | `.worktrees/t5` |
-| T6 implementation | in progress | `.worktrees/t6` |
+| T5 implementation | in progress | `.worktrees/t5`. Runtime, render hooks and editor panel committed; filtered tests running |
+| T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -140,4 +143,23 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - The foundation took about 10 hours. Main cause: the coordinator made every stream wait on it, leaving half the host idle
   from 08:03. Stopped waiting: T2, T3, T5 and T6 start now on the foundation's committed work; queue changed to 3 slots of 3 jobs.
 - `origin/main` moved 95 more commits and took S53-S73, so the specs moved to their own T1-T6 series. Merged.
+- 2026-11-07: the coordinator session restarted and stopped every agent mid-work; all five leads revived from their saved
+  state (their own sub-agents are gone; T2's canvas agent had died on an API weekly limit). `origin/main` was 763 commits
+  ahead: Doriax render-correctness (foliage ring, Min Draw Distance, Foliage Distance), mesh-memory, ssr-probes and
+  build-toolchain landed, plus a header fan-out cut and a generated AssetRefSchema. Merged into integration (conflicts in the
+  asset table, reflection, CreateEntityCmd includes and the Xcode project; holeMap now gets its reference row from reflection).
+  Each stream merges integration once. Owner repeated: light, filtered suites only.
+- Stream findings so far (filtered runs only, nothing is final):
+  - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
+    now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`
+    sorts; red control run. ARM noise check (`cross_check.sh`, qemu-user: emulation) runs once near the end.
+  - T3: `mesh.frag` discards at the end of `main`, because a discard at the top crashed llvmpipe's JIT. Costs extra shading on hole
+    pixels on real GPUs, only in hole variants; cause inferred, not proven.
+  - T6: fixed a use-after-free in physics prepare jobs, heights scaled twice in the terrain base, and voxelizer edge misses. A ball
+    on voxel ground lost about 18% more speed than on a seamless box; trace says rolling on triangles, not seams, so the test now
+    compares against one mesh body. Keep that loss in T6's report: it could still show in games.
+- `origin/main` is 71+ commits ahead. Merging at landing instead of now, because a merge forces every stream to rebuild.
+- Owner asked that nothing runs full suites until the very end. Checked: nothing was. The brief's `check-changed` step could have
+  grown into one, so it is banned for streams.
+- Queue starved a one-file syntax check for over an hour; made the queue first come first served and added a fast lane.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.

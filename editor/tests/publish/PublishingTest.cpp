@@ -242,7 +242,7 @@ TEST(PayloadValidator, AndroidBundleLibrariesMayBeCompressed) {
     std::string error;
     ASSERT_TRUE(zip.open(dir / "game.aab", error)) << error;
     ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libjasperengine-android.so", library.data(), library.size(), false, error)) << error;
-    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), true, error)) << error;
     ASSERT_TRUE(zip.add("base/manifest/AndroidManifest.xml", "x", 1, false, error)) << error;
     ASSERT_TRUE(zip.finish(error)) << error;
     ValidationTarget target;
@@ -252,6 +252,43 @@ TEST(PayloadValidator, AndroidBundleLibrariesMayBeCompressed) {
     validatePayload(dir.path(), target, findings);
     EXPECT_FALSE(hasFinding(findings, "compressed")) << join(findings);
     EXPECT_FALSE(hasFinding(findings, "aligned to")) << join(findings);
+}
+
+// jarsigner's signature block is what makes a bundle one the store takes; an APK's apksigner verify
+TEST(PayloadValidator, AndroidPackagesMustBeSigned) {
+    TestTempDir dir("payload-signed");
+    std::string error;
+    const auto writeZip = [&error](const fs::path& path, const std::vector<std::string>& entries) {
+        ZipWriter zip;
+        ASSERT_TRUE(zip.open(path, error)) << error;
+        for (const std::string& entry : entries) ASSERT_TRUE(zip.add(entry, "x", 1, false, error)) << error;
+        ASSERT_TRUE(zip.finish(error)) << error;
+    };
+    ValidationTarget target;
+    target.platform = BuildPlatform::Android;
+    target.arch = "universal";
+    std::vector<std::string> findings;
+
+    writeZip(dir / "game.aab", {"base/manifest/AndroidManifest.xml", "META-INF/MANIFEST.MF"});
+    validatePayload(dir.path(), target, findings);
+    EXPECT_TRUE(hasFinding(findings, "the bundle is not signed")) << join(findings);
+
+    for (const char* block : {"META-INF/ANDROIDD.RSA", "META-INF/KEY.EC"}) {
+        writeZip(dir / "game.aab", {"base/manifest/AndroidManifest.xml", "META-INF/MANIFEST.MF", block});
+        findings.clear();
+        validatePayload(dir.path(), target, findings);
+        EXPECT_FALSE(hasFinding(findings, "not signed")) << block << ": " << join(findings);
+    }
+
+    fs::remove(dir / "game.aab");
+    writeZip(dir / "game.apk", {"AndroidManifest.xml"});
+    target.verifyApk = [](const fs::path&, std::string& output) {
+        output = "DOES NOT VERIFY";
+        return false;
+    };
+    findings.clear();
+    validatePayload(dir.path(), target, findings);
+    EXPECT_TRUE(hasFinding(findings, "apksigner verify failed: DOES NOT VERIFY")) << join(findings);
 }
 
 // 16 KB pages are a 64-bit requirement: a 32-bit library with 4 KB pages is accepted (the NDK's

@@ -47,9 +47,13 @@ namespace {
 
     std::string hostName() {
 #if defined(_WIN32)
-        char name[256] = {};
-        DWORD size = sizeof(name);
-        return GetComputerNameA(name, &size) ? std::string(name) : std::string();
+        wchar_t name[MAX_COMPUTERNAME_LENGTH + 1] = {};
+        DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
+        if (!GetComputerNameW(name, &size)) return std::string();
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, name, static_cast<int>(size), nullptr, 0, nullptr, nullptr);
+        std::string utf8(static_cast<size_t>(bytes > 0 ? bytes : 0), '\0');
+        if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, name, static_cast<int>(size), utf8.data(), bytes, nullptr, nullptr);
+        return utf8;
 #else
         char name[256] = {};
         return gethostname(name, sizeof(name) - 1) == 0 ? std::string(name) : std::string();

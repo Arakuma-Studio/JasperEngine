@@ -84,6 +84,23 @@ namespace jasperengine::editor{
             std::string function;
             int ordinal = 0;
         };
+        // an audio cue by identity (S40: time, kind, n-th of the cues with both equal)
+        struct CueId{
+            float time = 0.0f;
+            ClipCueKind kind = ClipCueKind::Sound;
+            int ordinal = 0;
+        };
+        // R10's alignments of a cue (or an audio action) to the playhead
+        enum class CueAlign{ Start, Peak, End };
+        // the start time an alignment gives a sound of `length` seconds (and its peak, peakMs < 0:
+        // none) for the playhead at `playhead`; false and why when it would start before 0 or the
+        // sound has no peak. Shared with the entity mode's audio actions.
+        static bool alignedStart(CueAlign align, float playhead, double length, double peakMs, float& time, std::string* why);
+        // the action mode's handler of the commands both modes share (Align, Add ... action): set by
+        // AnimationWindow; returns whether it ran (enabled: whether it can)
+        std::function<bool(std::string_view id, bool run)> entityCommands;
+        // the window shows the entity mode and has focus: its commands take keys
+        bool entityKeys = false;
 
         explicit AnimationWindowClip(Project* project);
 
@@ -167,7 +184,8 @@ namespace jasperengine::editor{
             uint64_t version = 0;
         };
 
-        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter, PendingCurve, CurveKeys, CurveBox, CurvePan, CurveTangent };
+        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter, PendingCurve, CurveKeys, CurveBox, CurvePan, CurveTangent,
+                         PendingCue, Cue };
         enum class EntityModeRequest{ None, State, Create };
 
         Project* project = nullptr;
@@ -223,6 +241,19 @@ namespace jasperengine::editor{
         float eventDragBase = 0.0f;
         uint64_t eventDragSerial = 0;
         std::string eventMergeKey;
+
+        // audio cues (S40): the selection by identity, its index resolved per revision
+        int selectedCue = -1;
+        bool cueSelected = false;
+        CueId selectedCueId;
+        uint64_t cueRevision = 0;
+        std::weak_ptr<AnimationClipDocument> cueDocument;
+        bool openCueEditor = false;
+        float cueDragBase = 0.0f;
+        uint64_t cueDragSerial = 0;
+        std::string cueMergeKey;
+        // Add Property opened by an Add ... Cue command: that section unfolded
+        int addPropertyCueKind = -1;
 
         // popups
         bool openAddProperty = false;
@@ -485,6 +516,33 @@ namespace jasperengine::editor{
         std::vector<std::string> scriptFunctions() const;
         // why `event` can't be written ("" when valid): identifier (no Lua keyword), args
         static std::string eventProblem(const ClipEventData& event);
+
+        // ---- audio cues (AnimationWindowClipAudio.cpp, S40 R9-R11) ----
+        // the lane's height: a row per cue kind in use, one while sounds are dragged over the window
+        float audioLaneHeight(const ClipData& data) const;
+        // the kinds the lane shows, in row order
+        std::vector<ClipCueKind> audioLaneKinds(const ClipData& data) const;
+        void drawAudioLane(ImDrawList* drawList, ImVec2 origin, float width, float height, float timeOriginX);
+        void drawAudioLaneLabels(ImDrawList* drawList, ImVec2 origin, float width);
+        void drawCueEditor();
+        // the Add Property popup's Timeline Audio section (Audio Cue, Snapshot Cue) and an entity's Source Cue
+        bool drawAddCueItems(const std::string& needle);
+        bool drawSourceCueItem(Entity entity, const std::string& path);
+        void selectCue(int index);
+        void resolveSelectedCue();
+        bool addCue(const ClipAudioCue& cue, const std::string& undoName, std::string* error);
+        bool editCue(int index, const ClipAudioCue& cue, const std::string& undoName, const std::string& mergeKey, std::string* error);
+        bool deleteCue(int index, std::string* error);
+        bool moveCue(int index, float time, const std::string& mergeKey, std::string* error);
+        bool alignCue(int index, CueAlign align, std::string* error);
+        // why the alignment can't run now ("" when it can; `time` the start it gives)
+        std::string alignProblem(int index, CueAlign align, float* time) const;
+        // sounds dropped at `time`: one Audio Cue each, one undo step
+        bool dropSounds(const std::vector<std::string>& assetPaths, float time, std::string* error);
+        // what a cue plays (assets-relative): its sound, or a source cue's AudioSource's clip or event
+        std::string cueSound(const ClipAudioCue& cue) const;
+        // its block's length in seconds at the preview's speed (0: unknown)
+        double cueLength(const ClipAudioCue& cue) const;
     };
 
 }

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "component/TerrainComponent.h"
 #include "command/CommandHistory.h"
 #include "Project.h"
 #include "math/Ray.h"
@@ -14,6 +15,13 @@
 #include <random>
 #include <string>
 #include <vector>
+#include "io/watch/FileIdentity.h"
+
+namespace jasperengine{
+    struct TerrainComponent;
+    struct TerrainFoliageLayer;
+    struct TerrainSurfaceLayer;
+}
 
 namespace jasperengine::editor{
 

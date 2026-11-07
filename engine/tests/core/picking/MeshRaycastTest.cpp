@@ -344,7 +344,7 @@ TEST(MeshRaycast, SkinnedArmRaised){
         for (size_t b = 0; b < std::min<size_t>(m.bonesAABB.size(), 3); b++) bones += " [" + std::to_string(b) + "] " + box(m.bonesAABB[b]);
         ASSERT_TRUE(bounds.contains(middle)) << middle.toString() << " outside " << box(bounds) << "; aabb " << box(m.aabb)
                                              << " skinned " << box(m.skinnedAABB) << " bonesAABB " << m.bonesAABB.size() << bones
-                                             << " bonesMatrix " << m.bonesMatrix.size() << " needUpdateAABB " << m.needUpdateAABB
+                                             << " bonesMatrix " << m.bonesMatrix.stored() << " needUpdateAABB " << m.needUpdateAABB
                                              << " loaded " << m.loaded << " buffer " << m.buffer.getSize();
     }
     {
