@@ -801,3 +801,7 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     The `pixel_scale` description earns its bytes. The guide line does not change this case: the
     agent finds the component through `list_component_types` without it. The line stays because
     the brief asks for the area's guide entry; whether to cut it is the coordinator's call.
+27. **S44's sheets.** An `.aseprite` sheet whose `pixelsPerUnit` is `project` imports with the
+    project's Pixels Per Unit (S44 used 1 until S41 landed), and changing the project's value
+    imports those sheets again. A sheet Sprite's own Pixels Per Unit, when not 0, wins over its
+    sheet's, as it does over the project's for a texture Sprite.

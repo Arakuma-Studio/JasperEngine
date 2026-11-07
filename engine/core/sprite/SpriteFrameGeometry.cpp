@@ -50,7 +50,8 @@ namespace jasperengine{
         input.width = sprite.width;
         input.height = sprite.height;
         input.pivot = sprite.pivotPreset;
-        input.pixelsPerUnit = sheet.pixelsPerUnit;
+        // as the quad (MeshSystem): the Sprite's own Pixels Per Unit over its sheet's
+        input.pixelsPerUnit = sprite.pixelsPerUnit > 0.0f ? sprite.pixelsPerUnit : sheet.pixelsPerUnit;
         input.pixelRatio = sheet.pixelRatio;
         input.flipY = sprite.flipY;
         input.uiCamera = uiCamera;

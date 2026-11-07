@@ -43,7 +43,9 @@ Project Settings > Graphics > Pixels Per Unit (1 to 256, default 1): how many te
 unit. At 1, a world unit is a pixel and moving 1 unit moves 1 pixel, as every scene made before.
 Sprites and Tilemaps have their own Pixels Per Unit (0 = the project's): their quads are their pixel
 sizes divided by it, while Width and Height stay in pixels. A texel is one base pixel on screen when
-the drawable's Pixels Per Unit equals the project's.
+the drawable's Pixels Per Unit equals the project's. A sheet Sprite (an `.aseprite` file) at 0 takes
+its sheet's: the import setting, whose default `project` follows this setting (a change imports
+the sheets again).
 
 Pixels Per Unit does not change 2D physics: Box2D keeps its 64 world units (points) per metre
 (`PhysicsSystem` `pointsToMeterScale2D`), so at Pixels Per Unit 16 one metre is 64 units, 1,024

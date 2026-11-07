@@ -3,7 +3,8 @@
 
 // S41 AC12 (R6): Pixels Per Unit. A sprite's and a tilemap's quads are their pixel sizes over
 // their Pixels Per Unit (0: the project's); at PPU 0 and 1 the vertices are the pixel sizes, as
-// before S41, and spriteWorldSize is what world-size readers use.
+// before S41, and spriteWorldSize is what world-size readers use. A sheet Sprite (S44) takes its
+// sheet's Pixels Per Unit unless it has its own.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -13,6 +14,8 @@
 #include "object/Camera.h"
 #include "object/Sprite.h"
 #include "object/Tilemap.h"
+#include "sprite/SpriteSheet.h"
+#include "sprite/SpriteSheetPool.h"
 #include "subsystem/MeshSystem.h"
 #include "texture/TextureData.h"
 
@@ -20,6 +23,8 @@
 
 #include <chrono>
 #include <cstring>
+#include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -141,4 +146,53 @@ TEST(SpritePpuTest, TilemapQuadsArePixelsOverPixelsPerUnit){
                  << ", texture " << mesh.submeshes[0].material.baseColorTexture.getWidth());
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x, 2.0f);
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().y, 1.0f);
+}
+
+TEST(SpritePpuTest, SheetSpriteTakesItsOwnOverTheSheets){
+    const std::string path = "pixelart-test://ppu-sheet";
+    SpriteSheetData data;
+    data.pixelsPerUnit = 16.0f;
+    data.pages.push_back({"pixelart|ppu|sheet-page", 16, 16});
+    SpriteFrame frame;
+    frame.name = "f0";
+    frame.rect = Rect(0.0f, 0.0f, 16.0f, 16.0f);
+    frame.sourceSize = Vector2(16.0f, 16.0f);
+    data.frames.push_back(frame);
+    SpriteSlice slice;
+    slice.name = "box";
+    SpriteSliceKey key;
+    key.bounds = Rect(0.0f, 0.0f, 16.0f, 16.0f);
+    slice.keys.push_back(key);
+    data.slices.push_back(slice);
+    auto sheet = std::make_shared<const SpriteSheetData>(data);
+    SpriteSheetPool::registerSource([path](const std::string& p){ return p == path; }, [sheet](const std::string&){ return sheet; });
+
+    // the quad's and the slice "box"'s width (a collider's slice is in the quad's units)
+    auto bounds = [&](float spritePpu, float& sliceWidth){
+        Scene scene;
+        Camera camera(&scene);
+        camera.setType(CameraType::CAMERA_ORTHO);
+        camera.activate();
+        Sprite sprite(&scene);
+        sprite.setSheet(path);
+        sprite.setFrame(0);
+        sprite.setPivotPreset(PivotPreset::BOTTOM_LEFT);
+        sprite.setPixelsPerUnit(spritePpu);
+        scene.getSystem<MeshSystem>()->update(0);
+        Rect slice;
+        sliceWidth = sprite.getSliceRect("box", slice) ? slice.getWidth() : -1.0f;
+        return scene.getComponent<MeshComponent>(sprite.getEntity()).aabb;
+    };
+    float sliceWidth = 0.0f;
+    // PPU 0: the sheet's 16, a 16 x 16 frame is one unit (the project's 1 is not used)
+    AABB box = bounds(0.0f, sliceWidth);
+    EXPECT_FLOAT_EQ(box.getMaximum().x, 1.0f);
+    EXPECT_FLOAT_EQ(box.getMaximum().y, 1.0f);
+    EXPECT_FLOAT_EQ(sliceWidth, 1.0f);
+    // its own 32 wins: half a unit
+    box = bounds(32.0f, sliceWidth);
+    EXPECT_FLOAT_EQ(box.getMaximum().x, 0.5f);
+    EXPECT_FLOAT_EQ(box.getMaximum().y, 0.5f);
+    EXPECT_FLOAT_EQ(sliceWidth, 0.5f);
+    SpriteSheetPool::invalidate(path);
 }
