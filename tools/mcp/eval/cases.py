@@ -2592,7 +2592,7 @@ CASES = [
         "what_happened": "Pixel art drawn at a fractional scale (columns 2 and 3 px wide, blur): the fix is the camera's Pixel "
                          "Perfect Camera component (S41), not a post-processing pixelate, a shader fork or the scene's Fixed "
                          "Resolution.",
-        "text_at_issue": "Guide 'Other areas': 'pixel art (a camera's Pixel Perfect Camera component)'",
+        "text_at_issue": "None since the guide's 'pixel art' line was cut (it passed without it): the component's name in list_component_types",
         "source": "S41 (docs/specs/S41-pixel-perfect-camera.md R3, the @asynkimo failure); no failure on record",
         "prompt": "My pixel-art game looks wrong at 1366x768: some pixel columns are wider than others and sprites shimmer "
                   "when the camera moves. Make the Main Camera pixel perfect at 320x180.",

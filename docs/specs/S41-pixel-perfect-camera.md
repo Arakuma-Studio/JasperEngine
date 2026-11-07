@@ -676,7 +676,8 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
 
 1. **Guide entry (the ledger's upstream-rule override).** The agent guide gets no `## Pixel art`
    section: the upstream rules of 2026-11-04 give a new area one entry of the "Other areas" index.
-   It reads "pixel art (a camera's Pixel Perfect Camera component): jasper://docs/<area>". It
+   It read "pixel art (a camera's Pixel Perfect Camera component): jasper://docs/<area>", and is
+   cut since (deviation 26: its case passes without it, and the guide's byte budget). It
    names no tool: `check_pixel_art` does not exist before S42, and `test_autosync.py` refuses a
    guide name that does not exist; S42 adds it to the entry. Its eval cases are in
    `tools/mcp/eval/cases.py` (`guard_pixel_perfect_camera`, `guard_game_view_pixel_scale`).
@@ -799,8 +800,9 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     | `guard_game_view_pixel_scale` (`pixel_scale`'s description) | 5 of 6 pass | 3 of 6 pass (the case fails: half its samples) |
     | `guard_pixel_perfect_camera` (the "Other areas" line) | 2 of 2 pass | 6 of 6 pass |
     The `pixel_scale` description earns its bytes. The guide line does not change this case: the
-    agent finds the component through `list_component_types` without it. The line stays because
-    the brief asks for the area's guide entry; whether to cut it is the coordinator's call.
+    agent finds the component through `list_component_types` without it. After S44's sprites line
+    the agent guide passed its byte budget (`tools/mcp/budget.json`), so the "Other areas" pixel
+    art line is cut; the case stays as a guard of the component's name.
 27. **S44's sheets.** An `.aseprite` sheet whose `pixelsPerUnit` is `project` imports with the
     project's Pixels Per Unit (S44 used 1 until S41 landed), and changing the project's value
     imports those sheets again. A sheet Sprite's own Pixels Per Unit, when not 0, wins over its
