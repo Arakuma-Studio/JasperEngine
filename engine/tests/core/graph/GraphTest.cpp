@@ -142,7 +142,7 @@ namespace {
   "variables": [{"name": "speed", "type": "float", "default": 1.5, "exposed": true, "tooltip": "how fast"}],
   "groups": [{"id": "g7", "title": "Inputs", "rect": [0.0, 0.0, 100.0, 50.0], "nodes": ["n1"], "collapsed": false}],
   "viewport": {"offset": [10.0, 20.0], "zoom": 1.25, "grid": true},
-  "metadata": {"author": "test"},
+  "metadata": {"author": "test", "seed": 7},
   "futureKey": {"keep": [1, 2, 3]}
 })";
 
@@ -271,6 +271,10 @@ TEST_F(GraphTest, ApplyAndInverseRestoreEveryOp) {
         {{"op", "setVariable"}, {"name", "speed"}, {"default", 9}, {"exposed", false}, {"group", "Motion"}},
         {{"op", "group"}, {"title", "Math"}, {"nodes", {"n2", "n3"}}},
         {{"op", "ungroup"}, {"id", "g7"}},
+        {{"op", "setMetadata"}, {"key", "seed"}, {"value", 12}},
+        {{"op", "setMetadata"}, {"key", "presets"}, {"value", Json::array({{{"name", "Wet"}}})}},
+        // removing the first key: its undo puts it back first
+        {{"op", "setMetadata"}, {"key", "author"}, {"value", nullptr}},
     };
     const std::string before = save(loadOk(SAMPLE));
     for (const Json& json : ops) {

@@ -589,6 +589,7 @@ namespace jasperengine::editor {
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
         void assetsCreateShakePreset(const fs::path& directory);
+        void assetsCreateProceduralMaterial(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);

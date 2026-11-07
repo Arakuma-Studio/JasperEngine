@@ -196,7 +196,7 @@ namespace jasperengine::graph {
     //   disconnect {id} or {from, to}                         addVariable {variable}
     //   removeVariable {name}                                 renameVariable {from, to}
     //   setVariable {name, type?, default?, exposed?, group?} group {title, nodes, rect?, id?}
-    //   ungroup {id}
+    //   ungroup {id}                                          setMetadata {key, value} (value null removes)
     // A bad op (unknown node, missing args) throws GraphOpError and changes nothing.
     struct GraphOp {
         std::string op;

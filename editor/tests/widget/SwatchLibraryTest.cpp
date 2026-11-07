@@ -100,3 +100,27 @@ TEST(SwatchLibrary, FileNames) {
     EXPECT_EQ(swatches::libraryPath("/x", "My: Colors?").filename().string(), "My_ Colors_.colors");
     EXPECT_EQ(swatches::libraryPath("/x", "..").filename().string(), "_.colors");
 }
+
+// S90 R26: a preset saved from a graph's 32-key ramp comes back with its 32 keys (the particles' 8
+// are a field's limit, not the library's)
+TEST(SwatchLibrary, AGradientPresetKeepsAGraphRampsKeys) {
+    TestTempDir dir("swatches-ramp");
+    const fs::path project = swatches::projectDirectory(dir.path() / "Game");
+    SwatchLibrary library;
+    std::string error;
+    ASSERT_TRUE(swatches::createLibrary(project, LibraryScope::Project, "Ramps", library, error)) << error;
+    Gradient ramp;
+    for (int i = 0; i < 32; i++) {
+        const float t = (float)i / 31.0f;
+        ramp.colorKeys.push_back({t, Vector3(t, 1.0f - t, 0.5f)});
+        ramp.alphaKeys.push_back({t, 1.0f - t * 0.5f});
+    }
+    library.gradients.push_back({"Ramp 32", ramp});
+    ASSERT_TRUE(swatches::write(library, error)) << error;
+    SwatchLibrary read;
+    ASSERT_TRUE(swatches::read(project / "Ramps.colors", LibraryScope::Project, read, error)) << error;
+    ASSERT_EQ(read.gradients.size(), 1u);
+    EXPECT_EQ(read.gradients[0].gradient.colorKeys.size(), 32u);
+    EXPECT_EQ(read.gradients[0].gradient.alphaKeys.size(), 32u);
+    EXPECT_EQ(read.gradients[0].gradient, ramp);
+}

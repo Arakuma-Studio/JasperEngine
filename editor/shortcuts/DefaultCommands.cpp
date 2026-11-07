@@ -166,6 +166,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
+        "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
     b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
     b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);

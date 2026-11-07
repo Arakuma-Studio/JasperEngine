@@ -15,6 +15,7 @@ set(PROCMAT_SOURCES
     ${EDITOR_DIR}/procmat/ProceduralChecks.cpp
     ${EDITOR_DIR}/procmat/ProceduralBake.cpp
     ${EDITOR_DIR}/procmat/ProceduralRun.cpp
+    ${EDITOR_DIR}/procmat/ProcMatThumbnails.cpp
 )
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${PROCMAT_SOURCES})
 jasperengine_skip_unity_build(

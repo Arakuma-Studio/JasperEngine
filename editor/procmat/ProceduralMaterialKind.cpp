@@ -430,3 +430,27 @@ graph::GraphKindDesc jasperengine::editor::procmat::makeProceduralMaterialKind(c
     kind.validate = [library](const graph::Graph& file, std::vector<graph::Issue>& issues) { validateGraph(*library, file, issues); };
     return kind;
 }
+
+graph::Graph jasperengine::editor::procmat::starterProceduralMaterial(const std::string& guid) {
+    graph::Graph file;
+    file.kind = PROCEDURAL_MATERIAL_KIND;
+    graph::Node noise;
+    noise.id = "n1";
+    noise.type = "perlin";
+    noise.position = {0.0, 0.0};
+    graph::Node output;
+    output.id = "n2";
+    output.type = MATERIAL_OUTPUT_NODE;
+    output.position = {graph::LAYOUT_COLUMN, 0.0};
+    file.nodes = {noise, output};
+    for (const char* port : {"base_color", "roughness"}) {
+        graph::Edge edge;
+        edge.id = "e" + std::to_string(file.edges.size() + 3);
+        edge.from = {"n1", "output"};
+        edge.to = {"n2", port};
+        file.edges.push_back(std::move(edge));
+    }
+    file.nextId = 5;
+    file.passthrough["guid"] = guid;
+    return file;
+}
