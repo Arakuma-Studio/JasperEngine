@@ -1116,6 +1116,147 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_scene_default_shader_values",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): a look shared by every object on the scene's default shader is one "
+                         "scene-level value (set_shader_uniform shader_type), not the same value set on each object.",
+        "text_at_issue": "set_shader_uniform: '... pass_index or shader_type (the scene's default shader)'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; Doriax e3243c29b",
+        "prompt": "Every mesh in the Main scene is drawn with the scene's default mesh shader (library:toon). Make their rim "
+                  "colour orange, all of them at once.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": default_mesh_shader library:toon, default_mesh_shader_uniforms {} ...",
+                {"settings": {"default_mesh_shader": "library:toon", "default_mesh_shader_uniforms": {}}})},
+            {"tool": "get_shader_uniforms", "args": {"shader_type": "mesh"}, "result": ok(
+                "Scene default mesh shader library:toon: used by 3 object(s), 3 member(s), 0 value(s) set.",
+                {"shader_type": "mesh", "default_shader": "library:toon", "used_by": 3, "values": {},
+                 "parameters": [{"member": "rimColor", "kind": "color", "default": [1, 1, 1, 1]},
+                                {"member": "shadeSteps", "kind": "range", "default": [3, 0, 0, 0]}]})},
+            {"tool": "list_shaders", "result": ok(
+                "library:toon (mesh): parameters shadeSteps, rimColor (colour), rimPower",
+                {"shaders": [{"name": "library:toon", "type": "mesh"}]})},
+            {"tool": "set_shader_uniform", "args": {"shader_type": "mesh"}, "result": ok(
+                "Set rimColor on the scene's default mesh shader (inherited by 3 object(s)).",
+                {"shader_type": "mesh", "property": "default_mesh_shader_uniforms", "name": "rimColor", "declared": True,
+                 "used_by": 3, "value": [1, 0.216, 0, 1]})},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_shader_uniform", "args": {"shader_type": "mesh", "name": "rimColor"}}]},
+                              {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"default_mesh_shader_uniforms": "*"}}}]}],
+                   "must_not_call": ["fork_shader"], "max_calls": {"set_properties": 0}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_code_editor_unsaved_diff",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): what the user changed in a script they have open with unsaved edits is "
+                         "the code editor's buffer (diff_file source editor, the default), which git diff on disk cannot see.",
+        "text_at_issue": "diff_file: 'the code editor's unsaved buffer when it has one (source editor), else the file on disk'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I have scripts/player.lua open in the editor's code editor with edits I haven't saved yet. What have I "
+                  "changed in it since the last commit? Don't modify anything.",
+        "mocks": [
+            {"tool": "code_editor", "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12,
+                              "vcs": {"state": "ready", "revision": "HEAD",
+                                      "changes": [{"kind": "modified", "lines": [12, 12], "base_lines": [12, 12]}]}}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n--- a/scripts/player.lua\n"
+                "+++ b/scripts/player.lua\n@@ -10,5 +10,5 @@\n ...\n-    self.speed = 5\n+    self.speed = 9\n ...\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+            {"tool": "get_vcs_status", "result": ok("git main: 0 entries", {"state": "active", "provider": "git", "entries": []})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": ["diff_file"], "must_not_call": [{"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)speed|\b9\b"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_code_editor_reload_drops_edits",
+        "kind": "guard",
+        "what_happened": "code_editor reload throws away the human's unsaved buffer edits; an agent asked to pick up a change on "
+                         "disk must say so before reloading a buffer with unsaved edits.",
+        "text_at_issue": "code_editor: '... save, reload (drops unsaved edits), close ...'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; lead review of the trimmed text",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I just ran git checkout on scripts/player.lua. Refresh it in the editor's code editor so it shows the "
+                  "checked-out version.",
+        "mocks": [
+            {"tool": "code_editor", "args": {"action": "status"}, "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12}]})},
+            {"tool": "code_editor", "args": {"action": "reload"}, "result": ok(
+                "Reloaded scripts/player.lua from disk.", {"buffers": [{"path": "scripts/player.lua", "unsaved": False}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n-    self.speed = 5\n+    self.speed = 9\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"must_not_call": [{"tool": "code_editor", "args": {"action": "reload"}},
+                                     {"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)unsaved"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniforms_read",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameters are read with get_shader_uniforms pass_index; the scene settings "
+                         "list the pass but not its shader's parameters.",
+        "text_at_issue": "get_shader_uniforms pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "The Main scene has a vignette post-process pass. Which parameters does its shader take, and what are they set "
+                  "to now? Don't change anything.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "args": {"pass_index": 0}, "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0], "effective": [0.4, 0, 0, 0],
+                              "source": "pass"},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0], "effective": [0.75, 0, 0, 0],
+                              "source": "pass"}]})},
+        ],
+        "checks": {"calls": [{"tool": "get_shader_uniforms", "args": {"pass_index": 0}}],
+                   "must_not_call": ["set_shader_uniform", "set_scene_settings"],
+                   "reply_must": [r"(?i)strength", r"(?i)radius"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniform_set",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameter is set with set_shader_uniform pass_index, not by forking the shader or "
+                         "rewriting the pass list.",
+        "text_at_issue": "set_shader_uniform pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "In the Main scene, make the vignette post-process pass stronger: set its strength to 0.8.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0]},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0]}]})},
+            {"tool": "set_shader_uniform", "args": {"pass_index": 0}, "result": ok(
+                "Set strength on post-process pass 0.", {"pass_index": 0, "name": "strength", "declared": True})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"pass_index": 0, "name": "strength"}}],
+                   "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
+        "max_turns": 10,
+    },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {
         "id": "dialog_fills_a_name_prompt",
@@ -1429,7 +1570,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
                          "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
-        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to the project'; the target enum's "
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to <directory>/<name>.vert/.frag'; the target enum's "
                          "material",
         "source": "water-reflections spec F10 (Doriax d62f09407)",
         "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "

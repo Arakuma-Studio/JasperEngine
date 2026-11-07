@@ -5570,9 +5570,12 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
     //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
     //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
-    // v51: water-reflections (v50 is render-correctness's): library:water on the scene clock
-    //      (sceneTime), GERSTNER, PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow
-    //      lookup with the smooth normal and shadowed caustics; @role in water.frag and underwater.frag.
+    // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
+    //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
+    // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
+    //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
+    //      normal and shadowed caustics; @role in water.frag and underwater.frag.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
 }
 

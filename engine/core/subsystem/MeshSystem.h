@@ -73,6 +73,10 @@ namespace jasperengine{
             std::string loadedMeshPath;
             bool loadFailed = false;
             float chunkSize = 0; //the size the slot coordinates are in
+            // the scaled distances the slots were filled for: a slot past the span keeps its
+            // instances and fade, so a new distance (the quality scale too) refills every slot
+            float appliedDrawDistance = -1.0f;
+            float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
         };

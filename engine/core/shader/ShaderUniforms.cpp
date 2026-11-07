@@ -12,6 +12,43 @@
 
 using namespace jasperengine;
 
+const char* jasperengine::uniformSourceName(UniformSource source){
+    switch (source){
+        case UniformSource::Global: return "global";
+        case UniformSource::Own: return "own";
+        case UniformSource::Fallback: return "fallback";
+        case UniformSource::SceneDefault: return "scene_default";
+        case UniformSource::ShaderDefault: return "shader_default";
+        case UniformSource::Zero: return "zero";
+    }
+    return "zero";
+}
+
+Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& name, UniformSource* source){
+    Vector4 value = Vector4::ZERO;
+    UniformSource from = UniformSource::Zero;
+    const std::string global = chain.bindings ? ShaderGlobals::getBinding(*chain.bindings, name) : std::string();
+    if (!global.empty()){
+        // the global's current value; zero while it does not exist (or is a texture)
+        ShaderGlobals::getBoundValue(global, value);
+        from = UniformSource::Global;
+    }else if (chain.values && has(*chain.values, name)){
+        value = get(*chain.values, name);
+        from = UniformSource::Own;
+    }else if (chain.fallback && has(*chain.fallback, name)){
+        value = get(*chain.fallback, name);
+        from = UniformSource::Fallback;
+    }else if (chain.sceneDefault && has(*chain.sceneDefault, name)){
+        value = get(*chain.sceneDefault, name);
+        from = UniformSource::SceneDefault;
+    }else if (chain.manifest && chain.manifest->getDefault(name, value)){
+        from = UniformSource::ShaderDefault;
+    }
+    if (source)
+        *source = from;
+    return value;
+}
+
 bool ShaderUniforms::isReserved(const std::string& name){
     return name == "time" || name == "resolution" || name == "sceneTime";
 }
@@ -135,23 +172,19 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
 
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
                                      const ShaderGlobalBindings* bindings){
+    UniformChain chain;
+    chain.values = &values;
+    chain.fallback = fallbackValues;
+    chain.manifest = manifest;
+    chain.bindings = bindings;
+    writeValues(chain);
+}
+
+void CustomUniformBlock::writeValues(const UniformChain& chain){
     for (size_t m = 0; m < members.size(); m++){
         if ((int)m == timeMember || (int)m == resolutionMember || (int)m == sceneTimeMember)
             continue;
-        const std::string& name = members[m].name;
-        Vector4 value = Vector4::ZERO;
-        const std::string global = bindings ? ShaderGlobals::getBinding(*bindings, name) : std::string();
-        if (!global.empty()){
-            // the global's current value; zero while it does not exist (or is a texture)
-            ShaderGlobals::getBoundValue(global, value);
-        }else if (ShaderUniforms::has(values, name)){
-            value = ShaderUniforms::get(values, name);
-        }else if (fallbackValues && ShaderUniforms::has(*fallbackValues, name)){
-            value = ShaderUniforms::get(*fallbackValues, name);
-        }else if (manifest){
-            manifest->getDefault(name, value);
-        }
-        writeUniform(data, members[m], value);
+        writeUniform(data, members[m], ShaderUniforms::resolve(chain, members[m].name));
     }
 }
 

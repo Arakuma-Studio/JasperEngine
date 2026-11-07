@@ -718,9 +718,9 @@ Recorded during implementation (branch `dc/water-reflections`):
     (1e-5 L)^2, so 6 is only the cap; near-singular Jacobians at steep crests (steepness up to 0.95) take the
     slower fixed-point step, which the larger cap leaves room for. Not measured against 4. The C++ Gerstner twin
     matches the GPU within tolerance (`WaterWavesGpu.GerstnerMatchesCpu`: worst 4.19e-05 on glcore).
-13. **Cooked scenes, format 1.3:** the six planar reflection settings are appended to the cooked scene settings
-    (`SceneSettingsCodec.cpp`, `FORMAT_MINOR` 3), so prebuilt exports keep them; a 1.2 record leaves them at their
-    defaults. A branch that also appends (code-editor-git) renumbers when it lands after this one.
+13. **Cooked scenes, format 1.4:** the six planar reflection settings are appended to the cooked scene settings
+    after code-editor-git's 1.3 default shader values (`SceneSettingsCodec.cpp`, `FORMAT_MINOR` 4), so prebuilt
+    exports keep them; a 1.3 record leaves them at their defaults.
 14. **Forks made before the scene clock keep the frame clock:** library `water.vert` and `water_depth.vert` define
     `WATER_SCENE_CLOCK`, and `water_vs.glsl` runs the waves on the scene clock only with it; an older fork's copied
     `.vert` (without it) runs them on `frame.time`, as its copied `.frag` does.

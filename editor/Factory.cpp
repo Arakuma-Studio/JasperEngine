@@ -1761,6 +1761,8 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".minHeight = " << formatFloat(layer.minHeight) << ";\n";
         code << ind << var << ".maxHeight = " << formatFloat(layer.maxHeight) << ";\n";
         code << ind << var << ".drawDistance = " << formatFloat(layer.drawDistance) << ";\n";
+        if (layer.minDrawDistance != 0.0f)
+            code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
@@ -3148,6 +3150,15 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setDefaultPointsShader(" << formatString(scene->getDefaultPointsShader()) << ");\n";
     if (!scene->getDefaultLinesShader().empty())
         out << ind2 << "scene->setDefaultLinesShader(" << formatString(scene->getDefaultLinesShader()) << ");\n";
+    // the default shaders' property values, only when set (scenes without them generate as before)
+    const std::pair<ShaderType, const char*> defaultShaderTypes[] = {
+        {ShaderType::MESH, "MESH"}, {ShaderType::UI, "UI"}, {ShaderType::SKYBOX, "SKYBOX"},
+        {ShaderType::POINTS, "POINTS"}, {ShaderType::LINES, "LINES"}};
+    for (const auto& [type, token] : defaultShaderTypes) {
+        const ShaderUniformValues& values = scene->getDefaultShaderUniforms(type);
+        if (!values.empty())
+            out << ind2 << "scene->setDefaultShaderUniforms(ShaderType::" << token << ", " << formatShaderUniforms(values) << ");\n";
+    }
     if (!scene->getPostProcessPasses().empty()) {
         out << ind2 << "{\n";
         out << ind3 << "std::vector<PostProcessPass> postProcess;\n";
@@ -3679,6 +3690,10 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
     code << ind << "instmesh.cullDistance = " << formatFloat(p.cullDistance) << ";\n";
     code << ind << "instmesh.fadeStart = " << formatFloat(p.fadeStart) << ";\n";
     code << ind << "instmesh.fadeEnd = " << formatFloat(p.fadeEnd) << ";\n";
+    if (p.nearFadeStart != 0.0f || p.nearFadeEnd != 0.0f) {
+        code << ind << "instmesh.nearFadeStart = " << formatFloat(p.nearFadeStart) << ";\n";
+        code << ind << "instmesh.nearFadeEnd = " << formatFloat(p.nearFadeEnd) << ";\n";
+    }
     code << ind << "instmesh.instancedBillboard = " << formatBool(p.instancedBillboard) << ";\n";
     code << ind << "instmesh.instancedCylindricalBillboard = " << formatBool(p.instancedCylindricalBillboard) << ";\n";
 

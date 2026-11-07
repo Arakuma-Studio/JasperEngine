@@ -631,7 +631,9 @@ namespace jasperengine::editor{
         EntityPickerResult drawEntityPickerPopup(const std::string& popupId, const Signature& filter, SceneProject* owningScene, bool includeChildScenes, Entity currentValue, uint32_t currentValueSceneId = 0, const std::vector<Entity>& excludeEntities = {});
         void syncSubSelection(SceneProject* sceneProject, Entity entity, int tileIndex, int instanceIndex);
 
-        void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "");
+        // widthKey: part of the table's id, so a saved (resized) column width lasts only as long as
+        // the rows it was made for (a hash of a uniform table's member names; 0 for none)
+        void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "", uint64_t widthKey = 0);
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
@@ -660,13 +662,20 @@ namespace jasperengine::editor{
             bool buildFailed = false; // the fork failed and the built-in is rendering
         };
         ShaderUniformRows resolveShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity);
-        // rows under the Shader row, stored by name in shaderUniforms
+        // the rows of the properties table under the Shader rows, stored by name in shaderUniforms
         void drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows);
         // one member row: a label for engine-written and non-editable members, else a
         // drag field; true with newValue when it changed
         // reserveRight: room left after the field (a link button drawn on the same line)
+        // chain: the value shown while the member has none of its own (ShaderUniforms::resolve);
+        // revertTooltip: an own value gets a revert arrow with that tooltip, which sets *revert
         bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
-                                  float reserveRight = 0.0f);
+                                  float reserveRight = 0.0f, const UniformChain* chain = nullptr, bool* revert = nullptr,
+                                  const char* revertTooltip = nullptr);
+        // the label column of a properties table: its widest member name (or manifest label)
+        float getShaderPropertiesLabelSize(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest);
+        // the hash of a table's member names (beginTable's widthKey)
+        static uint64_t shaderMembersKey(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest);
         // Under a Stochastic Tiling Rotation row (a material's, a terrain layer's): when the rotation is
         // on and the normal map's average normal leans (util/NormalMapTilt), a warning and a button that
         // sets rotationProperty to 0 on every entity in one undo step
@@ -760,6 +769,9 @@ namespace jasperengine::editor{
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
         void drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
+        // One default shader's table (its Shader row and status) and, when it is set, its
+        // "<Shader> Properties" table of the scene's values every object using it inherits
+        void drawSceneDefaultShader(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
 
         // Ordered user post-process chain: per-pass enable, shader fork/pick, reorder
         // and remove. Uniform rows come from the fork's own u_fs_postParams block.

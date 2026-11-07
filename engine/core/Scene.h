@@ -417,6 +417,22 @@ namespace jasperengine{
         const ShaderRef& getDefaultShaderRef(ShaderType type) const;
         void setDefaultShaderRef(ShaderType type, const ShaderRef& ref);
 
+        // Property values of a default shader (mesh, UI, sky, points, lines), inherited by the
+        // objects that use it, under their own: Scene > Default Shaders > <Shader> Properties.
+        // Other types log an error and change nothing.
+        void setDefaultShaderUniforms(ShaderType type, const ShaderUniformValues& values);
+        const ShaderUniformValues& getDefaultShaderUniforms(ShaderType type) const;
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector4& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector3& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector2& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, float value);
+        Vector4 getDefaultShaderUniform(ShaderType type, const std::string& name) const;
+        bool hasDefaultShaderUniform(ShaderType type, const std::string& name) const;
+        bool removeDefaultShaderUniform(ShaderType type, const std::string& name);
+        // What an object whose own shader is ownShader inherits: null when it has a shader of its
+        // own, when the scene has no default shader of the type, or no values for it
+        const ShaderUniformValues* getInheritedShaderUniforms(ShaderType type, const std::string& ownShader) const;
+
         // ordered user post-process chain; setting it rebuilds the RenderSystem passes
         // unless only uniform values changed
         const std::vector<PostProcessPass>& getPostProcessPasses() const;
