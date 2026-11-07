@@ -172,6 +172,19 @@ vec3 getLighIntensity(Light light, vec3 pointToLight, int lightIndex)
     return getLightAttenuation(light, pointToLight, lightIndex) * light.intensity * light.color;
 }
 
+#elif defined(DIRECTIONAL_LIGHTS_ONLY)
+
+// a directional-only variant ('Dlo') has no spot light to mask: the same functions, unattenuated
+float getLightAttenuation(Light light, vec3 pointToLight, int lightIndex)
+{
+    return getLightConeAttenuation(light, pointToLight);
+}
+
+vec3 getLighIntensity(Light light, vec3 pointToLight, int lightIndex)
+{
+    return getLightAttenuation(light, pointToLight, lightIndex) * light.intensity * light.color;
+}
+
 #endif // spot masks
 
 #endif // PUNCTUAL_GLSL

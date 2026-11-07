@@ -14,6 +14,7 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+startSceneId: 2685538481
 scenes:
   - filepath: TableCrate.scene
     filepathGuid: 1082f39094f679d9fd1c631216e5bc6a

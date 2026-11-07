@@ -13,15 +13,17 @@
 
 set(THORVG_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(THORVG_SRC_GLOB "${THORVG_SRC}")
 file(GLOB THORVG_SOURCES CONFIGURE_DEPENDS
-    ${THORVG_SRC}/common/*.cpp
-    ${THORVG_SRC}/renderer/*.cpp
-    ${THORVG_SRC}/renderer/cpu_engine/*.cpp
-    ${THORVG_SRC}/loaders/raw/*.cpp
-    ${THORVG_SRC}/loaders/lottie/*.cpp
-    ${THORVG_SRC}/loaders/png/*.cpp
-    ${THORVG_SRC}/loaders/jpg/*.cpp
-    ${THORVG_SRC}/loaders/sfnt/*.cpp
+    ${THORVG_SRC_GLOB}/common/*.cpp
+    ${THORVG_SRC_GLOB}/renderer/*.cpp
+    ${THORVG_SRC_GLOB}/renderer/cpu_engine/*.cpp
+    ${THORVG_SRC_GLOB}/loaders/raw/*.cpp
+    ${THORVG_SRC_GLOB}/loaders/lottie/*.cpp
+    ${THORVG_SRC_GLOB}/loaders/png/*.cpp
+    ${THORVG_SRC_GLOB}/loaders/jpg/*.cpp
+    ${THORVG_SRC_GLOB}/loaders/sfnt/*.cpp
 )
 
 add_library(

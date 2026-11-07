@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::nav {
@@ -41,6 +42,16 @@ namespace jasperengine::nav {
     // stays their area's), so a link's cost needs no virtual query filter
     constexpr int FIRST_LINK_COST_AREA = AREA_COUNT;
     constexpr int MAX_POLY_AREAS = 64;
+
+    // ---- S76 runtime volumes (docs/specs/S76-navigation-gameplay-api.md D4): the bake moves a
+    // walkable span of Recast area r (1-16) inside a runtime volume to r + RUNTIME_VOLUME_AREA_OFFSET,
+    // so regions and polygons split along the volume; built polygons map those ids back to r's
+    // area, so stored areas stay 0-15 (R48). Recast and the collector use none of these ids.
+    constexpr uint8_t RUNTIME_VOLUME_AREA_OFFSET = 32;
+    constexpr uint8_t FIRST_RUNTIME_VOLUME_RECAST_AREA = RUNTIME_VOLUME_AREA_OFFSET + 1;
+    constexpr uint8_t LAST_RUNTIME_VOLUME_RECAST_AREA = RUNTIME_VOLUME_AREA_OFFSET + AREA_COUNT;
+    static_assert(FIRST_RUNTIME_VOLUME_RECAST_AREA > AREA_COUNT && LAST_RUNTIME_VOLUME_RECAST_AREA < RECAST_NOT_WALKABLE,
+                  "the runtime volume ids lie between the areas' Recast ids and Not Walkable's");
 
     // Everything a tile build reads besides geometry. Lengths are in nav units (metres in 3D,
     // scene points on a 2D surface).
@@ -120,6 +131,9 @@ namespace jasperengine::nav {
         uint8_t recastArea = 0;
         float bmin[3] = {0, 0, 0};
         float bmax[3] = {0, 0, 0};
+        // S76: a runtime volume's boundary: spans keep their area, only moved to the runtime
+        // volume ids (recastArea unused); hashed only when true, so other tiles hash as before
+        bool boundaryOnly = false;
     };
 
     // An off-mesh connection (NavMeshLink): baked into the tile holding its start
@@ -158,6 +172,14 @@ namespace jasperengine::nav {
         std::vector<NavLinkInput> links;
         // the cost of each link cost area (index - FIRST_LINK_COST_AREA)
         std::vector<float> linkAreaCosts;
+
+        // S75: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
+        // each triangle, terrain and volume (NULL_ENTITY: one the collector made). Never hashed.
+        std::vector<Entity> triangleSources;
+        std::vector<Entity> terrainSources;
+        std::vector<Entity> volumeSources;
+        // NavCollectStats::excludedEntities, kept with the input the probe is given
+        std::vector<std::pair<Entity, std::string>> excludedEntities;
 
         // nav-space bounds of the surface (the y range bounds every tile's heightfield)
         float bmin[3] = {0, 0, 0};

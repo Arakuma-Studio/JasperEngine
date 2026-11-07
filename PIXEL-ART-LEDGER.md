@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -217,8 +217,47 @@ Per spec, the merged tree passes:
 `build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
 list them. There is no CI.
 
+Every landing set also runs the shared-data suites: editor unit `ShaderNeutralApi*:ReflectParity*:ReflectRegistry*:RuntimeFields*:CookedScene*:ReflectLocators*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`; `python3 tools/mcp/eval/test_grade.py`.
+
 ## Log
 
+- 2026-11-07: S43's review fixes are done (`896a4e77d`; it waits for S41 before its final
+  merge).
+  - S44 landing attempt: the merged tree failed `test_editor_modals` because of two raw ImGui
+    modals in S44 (`AsepriteImporterView.cpp:756`, `AsepriteEditorHooks.cpp:90`, against `main`'s
+    S69 `EditorModal` rule). The unpushed local merge was dropped. S41 had merged that local
+    `main`, so its branch contains S44's commits, and the landing order is now S44, then S41,
+    then S43.
+  - Shared registries on `main` after the Doriax program landed: MESH bits to 44 (S41 `Pxs` moves
+    to 45), GBUFFER 16–18, shader cache v53 (S41 takes v54), cooked scene format 1.5.
+  - The shared-data suites (`ShaderNeutralApi`, `ReflectParity`, `ReflectRegistry`,
+    `RuntimeFields`, `CookedScene`, `ReflectLocators`; `test_reflection`,
+    `test_saved_output_determinism`, `test_editor_modals`; `eval/test_grade.py`) are now part of
+    every landing set.
+  - All three implementers then hit an API weekly limit. The session moved accounts, and S44 and
+    S41 were revived.
+- 2026-11-07: On plain `main` ac10792fb, four MCP tests fail. They are pre-existing, not ours:
+  `test_reflection` (`test_golden_resave`, `test_codegen_golden`,
+  `test_inspector_layout_parity`) and
+  `test_saved_output_determinism::test_fixture_scenes_save_the_same_drawn_or_not` (7 passed,
+  4 failed). Their goldens show mesh fields from other programs' work, and the Doriax lead was
+  told. S44 is approved to land after a final merge of `main` 81ffe9f3d (with the dynamic sprite
+  batching) and a sheet-sprite batching parity test.
+- 2026-11-07: `dc/sprite-batching` landed on origin/main (885cddc46, 81ffe9f3d). The batcher
+  draws pixel-snapped sprites one by one, unbatched, until S41's snap is wired into its batch key.
+  That wiring belongs to the narrowed S52, so S41 lands as is. The S52 worktree was recreated
+  from `main` 81ffe9f3d, and its spec is being re-scoped onto the landed batcher. Shader cache on
+  `main` is v50; S41 took v51 at its final merge.
+- 2026-11-07: S44 review fixes are done at `5e68ac54b` (main `cbc4ee7fb` merged).
+  - Passing: `WERROR` builds; filtered unit tests (core 15, editor 252); 183 MCP tests across 20
+    files; `aseprite_compat.py` against real Aseprite (637/640 pass, 3 skipped where Aseprite's
+    own exports disagree); lints.
+  - `check-changed` was skipped, since its plan would be every test (no-full-suites rule).
+  - `test_reflection` and `test_saved_output_determinism` failed on the merged tree, with
+    differences in non-S44 fields. They're being checked on `main` `ac10792fb` to show whether
+    they already fail there.
+  - Three codec time budgets are over on this loaded host and are recorded in the spec.
+  - Scene/prefab versions are 8/9; `AsepriteSprite = 25` (`main` has `SoundEvent = 28`).
 - 2026-11-06: S41 review: 1 blocker (shader cache not bumped, so stale library shaders read a
   zero post colour) and 7 should-fix issues (shadow maps snapped, uniform size, input mapping in
   Integer Expand, test gaps, Vulkan/GLES3 not run, HiDPI, UI toggles). They were sent back to the

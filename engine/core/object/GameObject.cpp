@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameObject.h"
+#include "component/Transform.h"
 #include "object/environment/WaterVolume.h"
+#include "object/environment/WaterExcluder.h"
+#include "object/environment/WaterWake.h"
 #include "object/physics/Buoyancy.h"
 #include "object/physics/CharacterController.h"
 #include "object/physics/CharacterController2D.h"
@@ -15,6 +18,9 @@
 #include "subsystem/PhysicsSystem.h"
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "Log.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 
@@ -168,7 +174,8 @@ void GameObject::setVisible(bool visible){
     Transform& transform = getComponent<Transform>();
     // Hiding always reaches the children: a parent saved hidden (the editor stores each flag on
     // its own) keeps visible children until it is hidden again. Showing a visible parent stays a
-    // no-op, so a child hidden on its own is not shown again by it.
+    // no-op, so a child hidden on its own is not shown again by it. Only this explicit change
+    // cascades: copies, scene moves and reparenting keep every child's own flag.
     if (transform.visible != visible || !visible){
         transform.visible = visible;
         transform.needUpdateChildVisibility = true;
@@ -305,6 +312,122 @@ void GameObject::removeParent(){
     scene->addEntityChild(NULL_ENTITY, this->entity, false);
 }
 
+namespace {
+    // the direct children of `entity` with a Transform, in Hierarchy order: its branch follows it
+    // in the Transform array (parents before children), children are the ones it parents
+    std::vector<Entity> directChildren(Scene* scene, Entity entity){
+        std::vector<Entity> children;
+        auto transforms = scene->getComponentArray<Transform>();
+        if (!transforms->hasEntity(entity))
+            return children;
+        const size_t start = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        for (size_t i = start + 1; i <= last && i < transforms->size(); i++){
+            if (transforms->getComponentFromIndex(i).parent == entity)
+                children.push_back(transforms->getEntity(i));
+        }
+        return children;
+    }
+
+    // the world matrices of `entity` and its ancestors, root first, as of now (a value set
+    // earlier in the frame is in the local fields only until the transform update)
+    void refreshWorldMatrices(Scene* scene, Entity entity){
+        std::vector<Entity> chain;
+        for (Entity e = entity; e != NULL_ENTITY; ){
+            Transform* transform = scene->findComponent<Transform>(e);
+            if (!transform)
+                break;
+            chain.push_back(e);
+            e = transform->parent;
+        }
+        RenderSystem* render = scene->getSystem<RenderSystem>().get();
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it){
+            render->updateTransform(scene->getComponent<Transform>(*it), *it);
+        }
+    }
+}
+
+std::optional<GameObject> GameObject::getParent() const{
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || transform->parent == NULL_ENTITY)
+        return std::nullopt;
+    return GameObject(scene, transform->parent);
+}
+
+void GameObject::setParent(const EntityHandle* parent, bool worldPositionStays){
+    if (!scene->findComponent<Transform>(entity)){
+        Log::error("setParent: %s has no Transform", scene->getEntityName(entity).c_str());
+        return;
+    }
+    Entity parentEntity = NULL_ENTITY;
+    if (parent && parent->getEntity() != NULL_ENTITY){
+        if (parent->getScene() != scene){
+            Log::error("setParent: the parent of %s must be in its scene", scene->getEntityName(entity).c_str());
+            return;
+        }
+        parentEntity = parent->getEntity();
+        if (parentEntity == entity || scene->isParentOf(entity, parentEntity)){
+            Log::error("setParent: %s can't be a child of itself or of one of its children", scene->getEntityName(entity).c_str());
+            return;
+        }
+        if (!scene->findComponent<Transform>(parentEntity)){
+            Log::error("setParent: the parent of %s has no Transform", scene->getEntityName(entity).c_str());
+            return;
+        }
+    }
+    if (worldPositionStays){
+        refreshWorldMatrices(scene, entity);
+        if (parentEntity != NULL_ENTITY)
+            refreshWorldMatrices(scene, parentEntity);
+    }
+    scene->addEntityChild(parentEntity, entity, worldPositionStays);
+}
+
+size_t GameObject::getChildCount() const{
+    return directChildren(scene, entity).size();
+}
+
+std::optional<GameObject> GameObject::getChild(size_t index) const{
+    const std::vector<Entity> children = directChildren(scene, entity);
+    if (index >= children.size())
+        return std::nullopt;
+    return GameObject(scene, children[index]);
+}
+
+std::vector<GameObject> GameObject::getChildren() const{
+    std::vector<GameObject> objects;
+    for (Entity child : directChildren(scene, entity))
+        objects.emplace_back(scene, child);
+    return objects;
+}
+
+std::optional<GameObject> GameObject::findChild(const std::string& path) const{
+    if (path.empty())
+        return std::nullopt;
+    Entity current = entity;
+    size_t begin = 0;
+    while (begin <= path.size()){
+        const size_t end = std::min(path.find('/', begin), path.size());
+        const std::string name = path.substr(begin, end - begin);
+        if (name.empty())
+            return std::nullopt;
+        Entity found = NULL_ENTITY;
+        for (Entity child : directChildren(scene, current)){
+            if (scene->getEntityName(child) == name){
+                found = child;
+                break;
+            }
+        }
+        if (found == NULL_ENTITY)
+            return std::nullopt;
+        current = found;
+        begin = end + 1;
+        if (end == path.size())
+            break;
+    }
+    return GameObject(scene, current);
+}
+
 void GameObject::moveToTop(){
     scene->moveChildToTop(this->entity);
 }
@@ -385,6 +508,18 @@ WaterVolume GameObject::getWaterVolume(){
     if (!scene->findComponent<WaterVolumeComponent>(entity))
         scene->addComponent<WaterVolumeComponent>(entity, {});
     return WaterVolume(scene, entity);
+}
+
+WaterExcluder GameObject::getWaterExcluder(){
+    if (!scene->findComponent<WaterExcluderComponent>(entity))
+        scene->addComponent<WaterExcluderComponent>(entity, {});
+    return WaterExcluder(scene, entity);
+}
+
+WaterWake GameObject::getWaterWake(){
+    if (!scene->findComponent<WaterWakeComponent>(entity))
+        scene->addComponent<WaterWakeComponent>(entity, {});
+    return WaterWake(scene, entity);
 }
 
 Spline GameObject::getSpline(){

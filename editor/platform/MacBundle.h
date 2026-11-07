@@ -12,6 +12,7 @@
 #include "ShippingTypes.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,10 @@ namespace jasperengine::editor::platform {
         std::filesystem::path iconPng;
         // codesign's identity ("-": ad hoc); JASPER_MACOS_SIGN_IDENTITY overrides
         std::string signIdentity = "-";
+        // Contents/Resources/PrivacyInfo.xcprivacy ("": the runtime's stays)
+        std::string privacyManifest;
+        // the project's Info.plist entries (macos.plist_entries), applied to the written plist
+        std::function<void(std::string& plist)> customizePlist;
     };
 
     std::string infoPlist(const MacBundleSettings& settings);

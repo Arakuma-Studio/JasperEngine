@@ -143,6 +143,13 @@ namespace jasperengine::editor {
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
+        AssetsCreateCppSource,
+        AssetsCreateCppHeader,
+        AssetsCreatePhysicsMaterial,
+        AssetsCreatePhysicsMaterial2D,
+        AssetsDuplicate,
+        ToggleMaximizeOnPlay,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
     };

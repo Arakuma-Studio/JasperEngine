@@ -4,6 +4,7 @@
 // The Hierarchy's and Add Component's searches (S25 R14, AC12)
 
 #include "search/HierarchyFilter.h"
+#include "util/EntityLabels.h"
 #include "graph/Graph.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "Catalog.h"
@@ -120,4 +121,34 @@ TEST(ComponentAddDialogSearch, RanksTypos) {
     for (int i = 0; i < 10; i++) ComponentAddDialog::rank("colider");
     const double each = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 10;
     std::printf("[ bench ] Add Component ranking: %.3f ms (budget 1)\n", each);
+}
+
+// An object a script made without a name is searched by what the Hierarchy shows for it
+// ("GameObject 42", project-window spec D12)
+TEST(HierarchyFilter, UnnamedNodeMatchesItsDisplayName) {
+    struct Unnamed {
+        std::string name;
+        uint32_t id = 0;
+        std::vector<Unnamed> children;
+        bool matchesSearch = false;
+        bool hasMatchingDescendant = false;
+    };
+    Unnamed root{"Root", 1, {}};
+    root.children.push_back({"", 42, {}});
+    root.children.push_back({"Player", 43, {}});
+    auto nameOf = [](const Unnamed& node) { return entityDisplayName(node.name, node.id); };
+    auto noComponents = [](const Unnamed&) { return std::vector<std::string>(); };
+    HierarchyFilter("42", false).markTree(root, noComponents, nameOf);
+    EXPECT_TRUE(root.children[0].matchesSearch);
+    EXPECT_FALSE(root.children[1].matchesSearch);
+    HierarchyFilter("gameobject", false).markTree(root, noComponents, nameOf);
+    EXPECT_TRUE(root.children[0].matchesSearch);
+    EXPECT_FALSE(root.children[1].matchesSearch);
+}
+
+TEST(EntityLabels, EmptyNameReadsGameObjectAndId) {
+    EXPECT_EQ(entityDisplayName("", 42), "GameObject 42");
+    EXPECT_EQ(entityDisplayName("Player", 42), "Player");
+    EXPECT_TRUE(isUnnamedEntity(""));
+    EXPECT_FALSE(isUnnamedEntity("A"));
 }

@@ -107,6 +107,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e0, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -175,6 +176,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e2, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -229,6 +231,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e3, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -297,6 +300,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e5, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -351,6 +355,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e6, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -405,6 +410,7 @@ bool build_prefab_prefabs_Castle(Scene* scene, Entity root, std::vector<Entity>&
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e7, std::move(*meshStorage));
 
         SpriteComponent sprite;

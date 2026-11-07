@@ -132,11 +132,18 @@ namespace jasperengine{
         static DrawBatchStats getDrawBatchStats();
 
         static uint64_t getPipelineCacheMisses();
+        // whether a draw skips the pipeline and bindings its pass applied last (on by default;
+        // off, every draw applies both: diagnostics and the tests comparing the two)
+        static void setRepeatedStateSkipped(bool skipped);
         static uint64_t getPipelineApplies();
         static size_t getPipelineCacheSize();
         // render passes begun while another was open, since start: an engine bug, logged as an
         // error (passes do not nest; see SokolSystem::beginPass)
         static uint64_t getNestedPassCount();
+        // Between frames: returns once the GPU finished every frame committed so far. Metal only
+        // (a frame without passes frees what earlier frames released without waiting for them);
+        // nothing on the other backends, whose releases wait for the GPU themselves
+        static void waitGpuIdle();
         static void shutdown();
 
         // logs "Frame stats (frame N): ..." with the GPU work of the last committed frame and

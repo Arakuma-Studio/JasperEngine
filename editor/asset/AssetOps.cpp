@@ -11,9 +11,11 @@
 #include "util/SafeWrite.h"
 #include "util/Util.h"
 #include "pose/HumanoidMapIO.h"
+#include "project/SceneFileIdentity.h"
 #include "titleart/TitleArtBake.h"
 
 #include <algorithm>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -106,6 +108,60 @@ namespace {
 
 }
 
+namespace {
+
+    bool intoItself(const fs::path& from, const fs::path& to) {
+        std::error_code ec;
+        if (!fs::is_directory(from, ec)) {
+            return false;
+        }
+        // strictly below: the folder's own place is a duplicate beside it (a free name), not into it
+        auto below = [](const fs::path& path, const fs::path& dir) {
+            return safewrite::isAtOrBelow(path, dir) && !safewrite::isAtOrBelow(dir, path);
+        };
+        if (below(to.lexically_normal(), from.lexically_normal())) {
+            return true;
+        }
+        const fs::path fromReal = safewrite::resolvedPath(from);
+        const fs::path toReal = safewrite::resolvedPath(to);
+        return !fromReal.empty() && !toReal.empty() && below(toReal, fromReal);
+    }
+
+    std::string movedName(const fs::path& path) {
+        return "'" + FileUtils::pathToUtf8(path.filename()) + "'";
+    }
+
+}
+
+std::string AssetOps::moveRefusal(const fs::path& from, const fs::path& to) {
+    if (intoItself(from, to)) {
+        return "Can't move " + movedName(from) + " into itself: pick a folder outside it.";
+    }
+    return std::string();
+}
+
+std::string AssetOps::copyRefusal(const fs::path& from, const fs::path& to) {
+    if (intoItself(from, to)) {
+        return "Can't copy " + movedName(from) + " into itself: pick a folder outside it.";
+    }
+    std::error_code ec;
+    if (fs::is_directory(from, ec)) {
+        size_t entries = 0;
+        for (fs::recursive_directory_iterator it(from, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end && entries < 200000; it.increment(ec), entries++) {
+            if (safewrite::isProjectFileName(it->path())) {
+                return "Can't copy " + movedName(from) + ": it holds " + FileUtils::pathToGenericUtf8(it->path().lexically_relative(from.parent_path())) +
+                       ", and a second project.yaml would be another project inside this one.";
+            }
+        }
+    }
+    return std::string();
+}
+
+std::vector<std::pair<fs::path, fs::path>> AssetOps::withCompanions(const fs::path& from, const fs::path& to) {
+    return withMeta(from, to);
+}
+
 fs::path AssetOps::uniqueTrashPath(const fs::path& trashDir, const fs::path& file) {
     std::error_code ec;
     fs::path candidate = trashDir / file.filename();
@@ -151,6 +207,10 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
     std::error_code ec;
     if (!fs::exists(from, ec)) {
         result.error = from.string() + " does not exist";
+        return result;
+    }
+    if (std::string refusal = moveRefusal(from, to); !refusal.empty()) {
+        result.error = std::move(refusal);
         return result;
     }
     if (fs::exists(to, ec)) {
@@ -206,11 +266,109 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
     return result;
 }
 
-Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to, std::map<std::string, std::string>* copyGuids) {
+namespace {
+
+    // Two files with one scene id make the loader renumber one of them; two scenes with one name
+    // clash in the generated code: each copied .scene gets its own of both
+    bool giveCopiedScenesTheirIdentity(Project& project, const fs::path& from, const fs::path& to,
+                                       std::map<std::string, AssetOps::SceneCopy>* copyScenes, AssetOps::Result& result) {
+        std::vector<std::pair<fs::path, fs::path>> scenes;   // (source, copy)
+        std::error_code ec;
+        if (fs::is_directory(to, ec)) {
+            for (fs::recursive_directory_iterator it(to, ec), end; !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file(ec) && Util::isSceneFile(FileUtils::pathToUtf8(it->path()))) {
+                    scenes.emplace_back(from / it->path().lexically_relative(to), it->path());
+                }
+            }
+        } else if (Util::isSceneFile(FileUtils::pathToUtf8(to))) {
+            scenes.emplace_back(from, to);
+        }
+        if (scenes.empty()) {
+            return true;
+        }
+        std::sort(scenes.begin(), scenes.end());
+
+        const fs::path fromRelative = project.normalizeToProjectRelative(from);
+        const bool imported = fromRelative.empty() || fromRelative.is_absolute() || *fromRelative.begin() == "..";
+        std::set<uint32_t> usedIds;
+        std::set<std::string> usedNames;
+        for (const SceneProject& scene : project.getScenes()) {
+            usedIds.insert(scene.id);
+            usedNames.insert(scene.name);
+        }
+        auto uniqueName = [&](const std::string& base) {
+            std::string name = base;
+            for (int n = 1; usedNames.count(name); n++) {
+                name = base + " " + std::to_string(n);
+            }
+            return name;
+        };
+
+        for (const auto& [source, copy] : scenes) {
+            std::string text;
+            uint32_t fileId = 0;
+            std::string fileName;
+            if (!assetio::readFile(copy, text) || !sceneid::readSceneHeader(text, fileId, fileName)) {
+                continue;  // not a scene this editor reads: no id to clash
+            }
+            const std::string relative = project.normalizeToProjectRelative(copy).generic_string();
+            AssetOps::SceneCopy identity;
+            const AssetOps::SceneCopy* recorded = nullptr;
+            if (copyScenes) {
+                const auto it = copyScenes->find(relative);
+                if (it != copyScenes->end()) recorded = &it->second;
+            }
+            if (recorded) {
+                // a redo: the identity the first copy got, when nothing has taken it since
+                identity = *recorded;
+                if (usedIds.count(identity.id)) {
+                    const uint32_t taken = identity.id;
+                    identity.id = project.allocateSceneId();
+                    Out::warning("Scene id %u of the copy %s is taken now: it gets id %u", taken, relative.c_str(), identity.id);
+                }
+                if (usedNames.count(identity.name)) {
+                    identity.name = uniqueName(identity.name);
+                }
+            } else {
+                const bool keepId = imported && fileId != 0 && !usedIds.count(fileId);
+                identity.id = keepId ? fileId : project.allocateSceneId();
+                while (usedIds.count(identity.id)) {
+                    identity.id = project.allocateSceneId();
+                }
+                // a name that followed the file follows the copy's file
+                const std::string sourceStem = FileUtils::pathToUtf8(source.stem());
+                const std::string copyStem = FileUtils::pathToUtf8(copy.stem());
+                identity.name = uniqueName(fileName.empty() || fileName == sourceStem ? copyStem : fileName);
+            }
+            usedIds.insert(identity.id);
+            usedNames.insert(identity.name);
+
+            if (identity.id != fileId || identity.name != fileName) {
+                std::string error;
+                if (!sceneid::rewriteSceneHeader(copy, identity.id, identity.name, &error)) {
+                    result.error = "cannot give the copied scene " + relative + " its own id: " + error;
+                    return false;
+                }
+                FileUtils::reportWritten(copy);
+            }
+            if (copyScenes) (*copyScenes)[relative] = identity;
+            result.copiedScenes.emplace_back(relative, identity);
+        }
+        return true;
+    }
+
+}
+
+Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to, std::map<std::string, std::string>* copyGuids,
+                      std::map<std::string, SceneCopy>* copyScenes) {
     Result result;
     std::error_code ec;
     if (!fs::exists(from, ec)) {
         result.error = from.string() + " does not exist";
+        return result;
+    }
+    if (std::string refusal = copyRefusal(from, to); !refusal.empty()) {
+        result.error = std::move(refusal);
         return result;
     }
     if (fs::exists(to, ec)) {
@@ -234,6 +392,13 @@ Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to
         addWrittenTree(result, project, target);
     }
     result.changes = project.getAssetDatabase().importAssets(to, true, copyGuids);
+    if (!giveCopiedScenesTheirIdentity(project, from, to, copyScenes, result)) {
+        std::error_code ignored;
+        project.getAssetDatabase().removeAssets(to);
+        FileUtils::removeAll(to, ignored);
+        FileUtils::removePath(AssetTypes::metaPathFor(to), ignored);
+        return result;
+    }
     finish(project, result);
     if (isShaderOrDirectory(to)) {
         project.invalidateCustomShaders();

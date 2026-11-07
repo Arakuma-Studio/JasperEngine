@@ -900,7 +900,7 @@ extern "C" void* sgj_mtl_shader_begin(void* slot, const sg_shader_desc* desc){
         job->functions[i] = func;
         if (!func->source || func->bytecode.ptr)
             continue;
-        [_sg.mtl.device newLibraryWithSource:[NSString stringWithUTF8String:func->source] options:nil
+        [_sg.mtl.device newLibraryWithSource:[NSString stringWithUTF8String:func->source] options:_sg_mtl_compile_options()
             completionHandler:^(id<MTLLibrary> library, NSError* err){
                 job->libraries[i] = library;
                 sgjMtlDone(job, err, library == nil);

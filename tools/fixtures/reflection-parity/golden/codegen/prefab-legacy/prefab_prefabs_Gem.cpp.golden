@@ -70,6 +70,7 @@ bool build_prefab_prefabs_Gem(Scene* scene, Entity root, std::vector<Entity>& me
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e0, std::move(*meshStorage));
 
         SpriteComponent sprite;

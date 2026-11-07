@@ -9,8 +9,17 @@ description is `docs/data-safety.md`.
 - Every save is atomic: a crash or a full disk leaves the old file or the new one, never half a
   file. A read-only file (a Git LFS or Perforce lock) is not written over: the save fails and
   says so.
+- A tool call that arrives while a scene save started in the editor runs (a person's Ctrl+S, Save
+  All, Save As) waits for the save and then runs: its result says `waited_for_save_ms`. After 60 s
+  it fails, changing nothing. Read-only calls run at once.
 - Unsaved scenes are lost when the editor closes. Save after each working step (`save_scene`,
   `save_project`); Auto Save only makes crash backups and never writes the scene file.
+
+## Scene files and identity
+
+- A copied folder's scenes are new scenes, each with its own id and name; references between the
+  copies still point at the originals.
+- A scene file that claims another scene's id when it loads gets a fresh id written into it.
 
 ## Files the editor cannot fully read
 

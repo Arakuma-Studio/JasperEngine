@@ -2,6 +2,9 @@
 # cxxStandards in the editor (JASPERENGINE_CXX_STANDARD_LIST); Play plugins read the project
 # setting (editor/Generator.cpp). The first entry is the default.
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEngineToolchain.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEnginePaths.cmake)
+# the engine's own folder in globs (an export's copy of it may sit below any path)
+jasperengine_glob_escape(JASPERENGINE_SOURCE_GLOB "${CMAKE_CURRENT_LIST_DIR}")
 set(JASPERENGINE_CXX_STANDARDS 20 23)
 if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
     set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project")
@@ -21,9 +24,6 @@ option(JE_JOLT_OWN_POOL "Run Jolt physics jobs on Jolt's own thread pool" OFF)
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
 option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
-# The editor export turns it off unless the project enables AdMob for iOS (Android's
-# Gradle build gets the same switch from the export)
-option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
 # Plain http:// to hosts other than localhost (the export sets it from player.allow_insecure_http):
 # App Transport Security of bare macOS executables; Http itself enforces the policy everywhere
 option(JASPERENGINE_ALLOW_INSECURE_HTTP "Allow plain http:// in Apple's App Transport Security" OFF)
@@ -352,15 +352,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/emscripten)
 
         set(EM_PRELOAD_FILES)
+        # quoted (a path with spaces), and emcc splits src@dst at a single @: @@ is a literal one
+        string(REPLACE "@" "@@" EM_PRELOAD_ROOT "${PROJECT_ROOT}")
         if(EXISTS "${PROJECT_ROOT}/assets")
-            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/assets@/")
+            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/assets@/\"")
             # the web loads the web family of the cooked textures only (S14 R9)
             foreach(family desktop mobile android_etc2)
                 set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --exclude-file */je-cooked/${family}")
             endforeach()
         endif()
         if(EXISTS "${PROJECT_ROOT}/lua")
-            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/lua@/")
+            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/lua@/\"")
         endif()
 
         list(APPEND PLATFORM_SOURCE
@@ -419,7 +421,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main','_malloc','_free']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
-                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
+                --pre-js \"${PLATFORM_ROOT}/crash_pre.js\" \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
@@ -595,6 +597,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND PLATFORM_SOURCE
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
+            ${PLATFORM_ROOT}/X11Visibility.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
             ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
@@ -682,8 +685,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/JasperEngineGameController.mm
             )
 
+            # the privacy manifest (Contents/Resources): the engine's, or the export's composed one
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
+                ${JASPERENGINE_ROOT}/workspaces/xcode/macos/PrivacyInfo.xcprivacy
             )
             set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_CONTENT_DIR:${APP_NAME}>/Resources)
 
@@ -777,6 +782,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             # executable left the players-apple job and the packaging without one.
             if(JASPERENGINE_PLAYER)
                 set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+                # the engine's privacy manifest; an export writes the game's over it
+                list(APPEND PLATFORM_RESOURCES ${JASPERENGINE_ROOT}/workspaces/xcode/macos/PrivacyInfo.xcprivacy)
                 list(APPEND PLATFORM_PROPERTIES
                     MACOSX_BUNDLE_BUNDLE_NAME "JasperEnginePlayer"
                     MACOSX_BUNDLE_GUI_IDENTIFIER "com.jaspergameengine.player"
@@ -819,38 +826,32 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineGameController.mm
         )
 
+        # the privacy manifest at the bundle root: the engine's, or the export's composed one
         list(APPEND PLATFORM_RESOURCES
             ${PLATFORM_ROOT}/ios/LaunchScreen.storyboard
             ${PLATFORM_ROOT}/ios/Main.storyboard
+            ${JASPERENGINE_ROOT}/workspaces/xcode/ios/PrivacyInfo.xcprivacy
         )
         set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_DIR:${APP_NAME}>)
 
+        # The system frameworks the engine's code calls into, linked explicitly: the C++ and
+        # Objective-C++ files import no modules, so clang autolinks nothing for them (miniaudio's
+        # AudioUnit calls need AudioToolbox). The same list as the Xcode export's
+        # (Exporter::appleEngineFrameworks, checked by AppleTemplatesTest).
         list(APPEND PLATFORM_LIBS
             -ObjC
-
-            # GameController framework for gamepad input (JasperEngineGameController.mm)
+            "-framework AVFoundation"
+            "-framework AudioToolbox"
+            "-framework CoreGraphics"
+            "-framework CoreMedia"
+            "-framework CoreVideo"
+            "-framework Foundation"
             "-framework GameController"
+            "-framework Metal"
+            "-framework MetalKit"
+            "-framework QuartzCore"
+            "-framework UIKit"
         )
-
-        if(JASPERENGINE_ADMOB)
-            add_definitions("-DJASPERENGINE_ADMOB")
-
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/ios/AdMobAdapter.h
-                ${PLATFORM_ROOT}/ios/AdMobAdapter.m
-            )
-
-            # To run on iOS simulator
-            list(APPEND PLATFORM_LIBS
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
-            )
-        endif()
 
         add_compile_options(-fmodules)
 
@@ -1651,6 +1652,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/environment/WaterVolume.cpp
+    core/object/environment/WaterExcluder.cpp
+    core/object/environment/WaterWake.cpp
     core/object/physics/Buoyancy.cpp
     core/object/spline/Spline.cpp
     core/object/spline/SplineExtrude.cpp
@@ -1713,6 +1716,8 @@ set(JASPERENGINE_SRCS
     core/render/DynamicResolutionController.cpp
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
+    core/render/FrustumCull.cpp
+    core/render/DrawBatcher.cpp
     core/render/LineRibbonBuilder.cpp
     core/render/LodFade.cpp
     core/render/ObjectRender.cpp
@@ -1786,6 +1791,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/subsystem/VideoPlayerSystem.cpp
@@ -1809,9 +1815,11 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
+    core/subsystem/UISystemNavigation.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
@@ -1861,6 +1869,7 @@ set(JASPERENGINE_SRCS
     core/util/Base64.cpp
     core/util/Color.cpp
     core/util/CrashHook.cpp
+    core/util/ContentHash.cpp
     core/util/CubeLut.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
@@ -1881,6 +1890,8 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
+    core/util/WaterExclusion.cpp
+    core/util/WaterWakeMap.cpp
     core/util/XMLUtils.cpp
 )
 
@@ -2167,6 +2178,9 @@ target_compile_definitions(jasperengine
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
         JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        # RenderBackendTime (the graphics backend's share of a frame): the perf tests' alone, an
+        # empty type in every other build (a backend call pays nothing for it)
+        JASPERENGINE_BACKEND_TIME=$<OR:$<BOOL:${JASPERENGINE_TESTS}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
@@ -2256,6 +2270,11 @@ else()
     set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
 endif()
 set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+# the editor's audio analysis (S36) reads clips through these decoders, FFT and meter: without
+# contraction they give it the same samples and numbers on every CPU
+set_source_files_properties(core/audio/AudioMeter.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+set_source_files_properties(libs/soloud/src/audiosource/wav/stb_vorbis.c libs/soloud/src/audiosource/wav/dr_impl.cpp
+    libs/soloud/src/audiosource/wav/soloud_wav.cpp libs/soloud/src/core/soloud_fft.cpp DIRECTORY libs/soloud PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
         set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
@@ -2291,8 +2310,8 @@ endif()
 # compiler. Ahead of shaders/, whose stand-in the Xcode workspace uses.
 set(JASPERENGINE_SHADERLIB_MANIFESTS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib_manifests.h)
 file(GLOB_RECURSE JASPERENGINE_SHADERLIB_LIBRARY_FILES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.frag
+    ${JASPERENGINE_SOURCE_GLOB}/shaderlib/library/*.vert
+    ${JASPERENGINE_SOURCE_GLOB}/shaderlib/library/*.frag
 )
 add_custom_command(
     OUTPUT ${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER}
@@ -2314,9 +2333,9 @@ if(JASPERENGINE_RUNTIME_SHADERS)
     set(JASPERENGINE_SHADERLIB_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib.h)
     set(JASPERENGINE_EMBED_SHADERLIB ${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler/embed_shaderlib.cmake)
     file(GLOB_RECURSE JASPERENGINE_SHADERLIB_FILES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.glsl
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.vert
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.frag
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.glsl
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.vert
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.frag
     )
     add_custom_command(
         OUTPUT ${JASPERENGINE_SHADERLIB_HEADER}
@@ -2409,7 +2428,8 @@ endif()
 # =============================================================
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
-    file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    jasperengine_glob_escape(PROJECT_ROOT_GLOB "${PROJECT_ROOT}")
+    file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT_GLOB}/*.cpp)
     # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
     # export adds); plugins/native/cpp ships as a script root under scripts/
     foreach(native_source IN LISTS PROJECT_SOURCE)
@@ -2470,6 +2490,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         jasperengine_skip_unity_build(
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
@@ -2572,7 +2593,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(EM_PRELOAD_DEPENDS)
         foreach(preloadDir assets lua)
             if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
-                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                jasperengine_glob_escape(preloadGlob "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${preloadGlob}/*")
                 list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
             endif()
         endforeach()

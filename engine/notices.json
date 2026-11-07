@@ -44,6 +44,7 @@
         "tinyxml2": {"dir": "engine/libs/tinyxml2", "when": "always"},
         "tracy": {"dir": "engine/libs/tracy", "when": "tracy"},
         "vhacd": {"dir": "engine/libs/vhacd", "when": "editor"},
+        "xxhash": {"dir": "engine/libs/xxhash", "when": "always"},
         "zstd": {"dir": "engine/libs/zstd", "when": "always"}
     }
 }

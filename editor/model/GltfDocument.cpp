@@ -662,6 +662,36 @@ bool GltfDocument::readIndices(size_t accessor, std::vector<uint32_t>& out, std:
     return true;
 }
 
+
+namespace {
+
+    template <typename T>
+    void decodeOctahedralOf(T* data, size_t count){
+        // meshoptimizer's scalar decodeFilterOct, step for step (this file has no contraction)
+        const float max = float((1 << (sizeof(T) * 8 - 1)) - 1);
+        for (size_t i = 0; i < count; i++){
+            float x = float(data[i * 4 + 0]);
+            float y = float(data[i * 4 + 1]);
+            float z = float(data[i * 4 + 2]) - std::fabs(x) - std::fabs(y);
+            const float t = (z >= 0.0f) ? 0.0f : z;
+            x += (x >= 0.0f) ? t : -t;
+            y += (y >= 0.0f) ? t : -t;
+            const float s = max / std::sqrt(x * x + y * y + z * z);
+            data[i * 4 + 0] = T(int(x * s + (x >= 0.0f ? 0.5f : -0.5f)));
+            data[i * 4 + 1] = T(int(y * s + (y >= 0.0f ? 0.5f : -0.5f)));
+            data[i * 4 + 2] = T(int(z * s + (z >= 0.0f ? 0.5f : -0.5f)));
+        }
+    }
+
+}
+
+void GltfDocument::decodeOctahedral(void* data, size_t count, size_t stride){
+    if (stride == 4)
+        decodeOctahedralOf(static_cast<signed char*>(data), count);
+    else
+        decodeOctahedralOf(static_cast<short*>(data), count);
+}
+
 std::vector<uint8_t> GltfDocument::writeGlb(const Json& json, const std::vector<uint8_t>& bin){
     std::string text = json.dump();
     while (text.size() % 4 != 0)

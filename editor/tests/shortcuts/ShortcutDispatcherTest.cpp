@@ -204,3 +204,36 @@ TEST(ShortcutDispatcher, GatesAndDisabledCommandsDoNotFire) {
     catalog.add(move);
     EXPECT_TRUE(dispatcher.process(FakeKeys::press(chordOf("W")), ShortcutState()).empty());
 }
+
+// Ctrl+S while the game plays did nothing visible (scene-integrity 4.14): a chord whose command
+// cannot run now reports its disabledReason once, and nothing when it gives none
+TEST(ShortcutDispatcher, ADisabledCommandsChordReportsWhy) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    CommandDef save = *catalog.find("file.save");
+    save.enabled = [] { return false; };
+    save.disabledReason = [] { return std::string("Stop Play to save"); };
+    catalog.add(save);
+    ShortcutDispatcher dispatcher(catalog);
+    std::vector<std::pair<std::string, std::string>> reported;
+    dispatcher.setDisabledHandler([&reported](const CommandDef& def, const std::string& reason) {
+        reported.push_back({def.id, reason});
+    });
+
+    EXPECT_TRUE(dispatcher.process(FakeKeys::press(chordOf("Ctrl+S")), ShortcutState()).empty());
+    ASSERT_EQ(reported.size(), 1u);
+    EXPECT_EQ(reported[0].first, "file.save");
+    EXPECT_EQ(reported[0].second, "Stop Play to save");
+
+    // a popup takes the keys: nothing fires and nothing is reported
+    ShortcutState popup;
+    popup.popupOpen = true;
+    dispatcher.process(FakeKeys::press(chordOf("Ctrl+S")), popup);
+    EXPECT_EQ(reported.size(), 1u);
+
+    // no reason given: silent, as before
+    save.disabledReason = [] { return std::string(); };
+    catalog.add(save);
+    dispatcher.process(FakeKeys::press(chordOf("Ctrl+S")), ShortcutState());
+    EXPECT_EQ(reported.size(), 1u);
+}

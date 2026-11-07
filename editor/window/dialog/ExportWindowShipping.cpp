@@ -213,6 +213,21 @@ void ExportWindow::drawPlayerRows() {
         }
     }
 
+    // ---- what of plugins/native the prebuilt build carries, and what only a mock answers
+    if (m_methodChoice.method == BuildMethod::Prebuilt && !m_methodChoice.carried.empty()) {
+        beginRow("Native Plugins");
+        ImGui::TextWrapped("Carried: %s", m_methodChoice.carried.front().c_str());
+        std::string all;
+        for (const std::string& item : m_methodChoice.carried) all += "- " + item + "\n";
+        ImGui::SetItemTooltip("Carried into the prebuilt build:\n%s", all.c_str());
+    }
+    for (const std::string& warning : m_methodChoice.nativeWarnings) {
+        beginRow("");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.65f, 0.2f, 1.0f));
+        ImGui::TextWrapped("%s", warning.c_str());
+        ImGui::PopStyleColor();
+    }
+
     // ---- the player runtime
     if (m_methodChoice.method == BuildMethod::Prebuilt) {
         beginRow("Player Runtime");

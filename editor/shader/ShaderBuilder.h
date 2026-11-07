@@ -47,6 +47,17 @@ namespace jasperengine::editor {
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
         ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend);
 
+        // An export's D3D11 (HLSL 5) variant compiled to bytecode, as sokol_gfx compiles its source at
+        // runtime (vs_5_0 / ps_5_0, column-major matrices, optimization level 3): the game skips
+        // D3DCompile. Windows only (d3dcompiler_47.dll); false when it is not available (the source
+        // stays). Throws with the compiler's messages when a stage does not compile.
+        static bool compileHlslBytecode(ShaderData& shaderData);
+
+        // False when `key` names a project fork whose sources do not resolve (its files are gone or
+        // one of its includes is): what the export's shader build would fail on. True for the
+        // built-in shaders, the library's and the builtin: variants. `error` says why.
+        static bool customShaderResolves(Project* project, ShaderKey key, std::string* error = nullptr);
+
         // Compiles the keys absent from the disk cache, synchronously (buildShader hands
         // async builds to the pool and returns before they land).
         void buildMissingShaders(const std::set<ShaderKey>& shaderKeys, Project* project);

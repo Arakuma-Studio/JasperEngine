@@ -4,11 +4,17 @@
 #include "NavTypes.h"
 #include "NavHash.h"
 
+#include "Log.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <mutex>
 #include <set>
+
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::nav;
@@ -122,6 +128,17 @@ int NavigationSettings::findArea(const std::string& name) const {
     return -1;
 }
 
+int NavigationSettings::effectiveCarveTilesPerTick() const {
+    if (carveTilesPerTick > 0)
+        return std::min(carveTilesPerTick, 64);
+    // Auto: the tile builds a frame of the platform affords next to everything else (spec S74 R14)
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    return 2;
+#else
+    return 4;
+#endif
+}
+
 void NavigationSettings::sanitize() {
     for (int i = 0; i < AREA_COUNT; i++) {
         AreaSettings& area = areas[(size_t)i];
@@ -159,11 +176,13 @@ void NavigationSettings::sanitize() {
         webBakeBudgetMs = 4.0f;
     webBakeBudgetMs = std::clamp(webBakeBudgetMs, 0.5f, 100.0f);
     maxGridSolvesPerTick = std::clamp(maxGridSolvesPerTick, 1, 100000);
+    carveTilesPerTick = std::clamp(carveTilesPerTick, 0, 64);
 }
 
 bool NavigationSettings::operator==(const NavigationSettings& other) const {
     return areas == other.areas && agentTypes == other.agentTypes && crowdMaxAgents == other.crowdMaxAgents &&
-           webBakeBudgetMs == other.webBakeBudgetMs && maxGridSolvesPerTick == other.maxGridSolvesPerTick;
+           webBakeBudgetMs == other.webBakeBudgetMs && maxGridSolvesPerTick == other.maxGridSolvesPerTick &&
+           carveTilesPerTick == other.carveTilesPerTick;
 }
 
 const NavigationSettings& nav::getSettings() {
@@ -204,4 +223,91 @@ const char* nav::pathStatusName(PathStatus status) {
         case PathStatus::Invalid: return "invalid";
     }
     return "invalid";
+}
+
+// ---------------------------------------------------------------- S75: path failures
+
+namespace {
+
+    struct FailureText {
+        PathFailure failure;
+        const char* name;
+        const char* description;
+    };
+
+    // in enum order (NavFailureTest.NamesAreTheContract)
+    constexpr FailureText FAILURES[] = {
+        {PathFailure::None, "none", "The path reaches the end."},
+        {PathFailure::NoSurface, "no_surface", "No enabled NavMesh Surface of this agent type is in the scene."},
+        {PathFailure::NotBaked, "not_baked", "The NavMesh Surfaces of this agent type have no navmesh: bake them."},
+        {PathFailure::StartOffMesh, "start_off_mesh", "The start is not on the navmesh: no polygon is near it."},
+        {PathFailure::EndOffMesh, "end_off_mesh", "The end is not on the navmesh: no polygon is near it."},
+        {PathFailure::StartFiltered, "start_filtered", "The start is on an area the area mask leaves out."},
+        {PathFailure::EndFiltered, "end_filtered", "The end is on an area the area mask leaves out."},
+        {PathFailure::Disconnected, "disconnected",
+         "The start and the end are on parts of the navmesh that do not connect (or only through one-way links)."},
+        {PathFailure::BlockedByArea, "blocked_by_area", "The start and the end connect only through areas the area mask leaves out."},
+        {PathFailure::OutOfNodes, "out_of_nodes",
+         "The search ran out of nodes before reaching the end: the path is longer than 2048 polygons."},
+    };
+
+}
+
+const char* nav::pathFailureName(PathFailure failure) {
+    for (const FailureText& text : FAILURES) {
+        if (text.failure == failure)
+            return text.name;
+    }
+    return "none";
+}
+
+const char* nav::pathFailureDescription(PathFailure failure) {
+    for (const FailureText& text : FAILURES) {
+        if (text.failure == failure)
+            return text.description;
+    }
+    return FAILURES[0].description;
+}
+
+bool nav::pathFailureFromName(const std::string& name, PathFailure& out) {
+    for (const FailureText& text : FAILURES) {
+        if (name == text.name) {
+            out = text.failure;
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------- S76 queries: area costs
+
+float nav::clampAreaCost(float cost) {
+    if (cost >= 1.0f && std::isfinite(cost))
+        return cost;
+    static std::atomic<bool> warned{false};
+    if (!warned.exchange(true))
+        Log::warn("Navigation: an area cost below 1 (%g) is used as 1 (A*'s estimate needs costs >= 1)", (double)cost);
+    return 1.0f;
+}
+
+void QueryFilter::setAreaCost(int area, float cost) {
+    if (area < 0 || area >= AREA_COUNT)
+        return;
+    areaCosts[(size_t)area] = clampAreaCost(cost);
+    costMask = (uint16_t)(costMask | (1u << area));
+}
+
+float QueryFilter::getAreaCost(int area) const {
+    if (area < 0 || area >= AREA_COUNT)
+        return 0.0f;
+    if (costMask & (1u << area))
+        return areaCosts[(size_t)area];
+    return getSettings().areas[(size_t)area].cost;
+}
+
+void QueryFilter::resetAreaCost(int area) {
+    if (area < 0 || area >= AREA_COUNT)
+        return;
+    costMask = (uint16_t)(costMask & ~(1u << area));
+    areaCosts[(size_t)area] = 0.0f;
 }
