@@ -3,18 +3,35 @@ like the mesh's, out of date when the mesh changes, refused in Play."""
 
 from __future__ import annotations
 
+import asyncio
+import sys
+import time
+from pathlib import Path
+
 
 from harness import Editor
 
-import test_foliage as common
+sys.path.insert(0, str(Path(__file__).parent))
+import test_foliage as common  # noqa: E402
 
 CI = True
 EDITOR = {"create": True, "name": "Foliage Impostor"}
 
 
+async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        job = await ed.call("get_job", job_id=job_id)
+        if job["status"] != "running" or time.monotonic() > deadline:
+            return job
+        await asyncio.sleep(0.25)
+
+
 async def bake(ed: Editor, sid: int, terrain: int, **extra) -> dict:
-    return await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 8, "resolution": 128, **extra}],
+    done = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 8, "resolution": 128, **extra}],
                          wait=True, timeout_seconds=120)
+    ed.check_eq(done.get("status"), "succeeded", f"the bake: {done}")
+    return done
 
 
 def coverage(png: bytes) -> tuple[set, tuple[float, float, float]]:
@@ -36,9 +53,9 @@ def coverage(png: bytes) -> tuple[set, tuple[float, float, float]]:
 
 async def test_bake_op_job_and_refuses_in_play(ed: Editor):
     sid, terrain = await common.terrain_scene(ed, "Bake")
-    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 4, "resolution": 64}], wait=False)
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 4, "resolution": 128}], wait=False)
     ed.check("job_id" in started, f"{started}")
-    job = await ed.call("get_job", job_id=started["job_id"], wait_seconds=120)
+    job = await wait_job(ed, started["job_id"], 120)
     ed.check_eq(job["status"], "succeeded", f"{job}")
     got = await ed.call("sample_terrain", scene=sid, entity=terrain, foliage=True, grid=0)
     ed.check_eq(got["foliage"]["trees"][0]["impostor_state"], "baked", f"{got['foliage']}")

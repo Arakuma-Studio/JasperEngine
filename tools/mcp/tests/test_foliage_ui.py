@@ -4,9 +4,13 @@ nothing, Mass Place's job and Cancel, the undo names and the Stats rows."""
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from harness import Editor
 
-import test_foliage as common
+sys.path.insert(0, str(Path(__file__).parent))
+import test_foliage as common  # noqa: E402
 import ui_input
 
 CI = True

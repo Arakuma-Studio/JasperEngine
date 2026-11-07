@@ -3,12 +3,17 @@ the export collected, grass and trees, from the cooked scene and its tree file."
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+import asyncio
 import os
 
 import build_cache
 from harness import Editor, skip
 
-import test_foliage as common
+sys.path.insert(0, str(Path(__file__).parent))
+import test_foliage as common  # noqa: E402
 
 CI = True
 EDITOR = {"create": True, "name": "Foliage Export"}
@@ -35,7 +40,10 @@ async def test_prebuilt_lite_player_draws_foliage(ed: Editor):
     runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-foliage"
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
-    job = r if r["status"] != "running" else await ed.call("get_job", job_id=r["job_id"], wait_seconds=TIMEOUT)
+    job = r
+    while job["status"] == "running":
+        await asyncio.sleep(5.0)
+        job = await ed.call("get_job", job_id=r["job_id"])
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
     ed.check(list(out.rglob("*.jetrees")) or list(out.rglob("*.jpak")), "the tree file ships")
