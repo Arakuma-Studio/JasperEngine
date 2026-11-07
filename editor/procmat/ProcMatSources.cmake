@@ -11,6 +11,7 @@ set(PROCMAT_SOURCES
     ${EDITOR_DIR}/procmat/PassPlanner.cpp
     ${EDITOR_DIR}/procmat/ProceduralSession.cpp
     ${EDITOR_DIR}/procmat/ProceduralGpuEvaluator.cpp
+    ${EDITOR_DIR}/procmat/ProcMatThumbnails.cpp
     ${EDITOR_DIR}/procmat/ProceduralCpuEvaluator.cpp
     ${EDITOR_DIR}/procmat/ProceduralTieredEvaluator.cpp
     ${EDITOR_DIR}/procmat/ProceduralDevice.cpp

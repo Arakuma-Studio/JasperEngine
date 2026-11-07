@@ -542,3 +542,114 @@ TEST_F(ParticlesGpu, ASystemPlaysAgainAfterTheViewComesBack){
     }
     EXPECT_GT(lit, 100) << "its particles are drawn again";
 }
+
+// ---------------------------------------------------------------- S91 (docs/specs/S91-effect-authoring.md)
+
+namespace {
+
+    // upright coloured slabs behind the particles, lit: the scene a distortion bends
+    void stripes(Scene& scene, std::vector<std::unique_ptr<Primitive>>& primitives){
+        for (int i = 0; i < 12; i++){
+            primitives.push_back(std::make_unique<Primitive>(&scene));
+            Primitive& p = *primitives.back();
+            p.createBox(0.5f, 6.0f, 0.2f);
+            p.setPosition(-2.75f + 0.5f * (float)i, 1.0f, -2.0f);
+            if (i % 2) p.setColor(0.9f, 0.85f, 0.2f);
+            else p.setColor(0.15f, 0.3f, 0.9f);
+        }
+    }
+
+}
+
+TEST_F(ParticlesGpu, DistortionBendsTheSceneBehind){
+    JASPER_REQUIRE_GPU();
+    // AC7: two big distorting particles over the stripes (left a plain alpha particle for
+    // comparison): the stripes are bent through the distortion map, tinted where the particle is
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(0.0f, -0.4f, -1.0f);
+    sun.setIntensity(2.0f);
+    sun.setShadows(false);
+    stripes(scene, primitives);
+    const std::string distortion = R"("renderMode": "billboard", "texture": "particles/textures/spark.png", "blend": "alpha",
+        "shader": "library:particles", "shaderFeatures": ["DISTORTION"],
+        "shaderProperties": [{"name": "distortionStrength", "value": [0.08, 0, 0, 0]}],
+        "shaderTextures": [{"name": "u_distortionTexture", "path": "particles/textures/distortion.png"}])";
+    auto one = [](const std::string& color, const std::string& renderer){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 3, "maxParticles": 4, "modules": [
+            {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 2.6, "startColor": [)" + color + R"(], "gravityModifier": 0},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+            {"type": "shape", "enabled": false},
+            {"type": "renderer", )" + renderer + R"(}]})";
+    };
+    system(Vector3(-2.2f, 1.0f, 0.0f), one("1, 1, 1, 1", R"("renderMode": "billboard", "texture": "particles/textures/spark.png", "blend": "alpha")"));
+    system(Vector3(0.4f, 1.0f, 0.0f), one("1, 1, 1, 1", distortion));
+    system(Vector3(2.8f, 1.0f, 0.0f), one("1, 0.6, 0.6, 1", distortion));
+    ASSERT_TRUE(render(0.5));
+    EXPECT_GOLDEN_OPTIONS("particles_distortion", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, RingParticles){
+    JASPER_REQUIRE_GPU();
+    // AC7: the Ring renderer: full rings facing the camera growing over their life with their
+    // colour, a half ring turning with its 3D start rotation, a disc (inner radius 0)
+    auto rings = [](const std::string& renderer, const std::string& extra){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 11, "maxParticles": 10, "modules": [
+            {"type": "main", "startLifetime": 2, "startSpeed": 0, "startSize": 1.2, "startColor": [0.4, 0.9, 1, 1], "gravityModifier": 0)" + extra + R"(},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+            {"type": "shape", "enabled": false},
+            {"type": "sizeOverLifetime", "size": {"mode": "curve", "curve": [[0, 0.5], [1, 1.5]]}},
+            {"type": "renderer", "renderMode": "ring", "blend": "additive", )" + renderer + R"(}]})";
+    };
+    system(Vector3(-2.6f, 1.0f, 0.0f), rings(R"("meshAlignment": "view", "ringOuterRadius": 0.5, "ringInnerRadius": 0.4, "ringSegments": 48)", ""));
+    system(Vector3(0.0f, 1.0f, 0.0f), rings(R"("ringOuterRadius": 0.5, "ringInnerRadius": 0.2, "ringArc": 180)",
+                                            R"(, "startRotation3D": true, "startRotationX": 50, "startRotation": 30)"));
+    system(Vector3(2.6f, 1.0f, 0.0f), rings(R"("meshAlignment": "view", "ringInnerRadius": 0, "ringSegments": 6)", ""));
+    ASSERT_TRUE(render(1.0));
+    EXPECT_GOLDEN_OPTIONS("particles_ring", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(ParticlesGpu, FollowParentChildrenStayOnTheirParents){
+    JASPER_REQUIRE_GPU();
+    // AC7: red parents flying up, each with a green Birth child born beside it: on the left the
+    // children stay where they were born, on the right they follow their parents
+    defineEffect("fx/s91-follow-child.particles", R"({"version": 1, "duration": 5, "looping": false, "maxParticles": 50, "modules": [
+        {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 0.35, "startColor": [0.1, 1, 0.2, 1], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0},
+        {"type": "shape", "shape": "box", "scale": [0, 0, 0], "position": [0.45, 0, 0]},
+        {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square"}]})");
+    auto parent = [](bool follow){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 9, "maxParticles": 10, "simulationSpace": "world",
+            "subEmitters": [{"trigger": "birth", "effect": "fx/s91-follow-child.particles", "emitCount": 1, "followParent": )" +
+            std::string(follow ? "true" : "false") + R"(}],
+            "modules": [
+                {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 0.35, "startColor": [1, 0.1, 0.1, 1], "gravityModifier": 0},
+                {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 3}]},
+                {"type": "shape", "shape": "edge", "radius": 0.8},
+                {"type": "startVelocity", "min": [0, 1.2, 0], "max": [0, 1.2, 0]},
+                {"type": "subEmitters"},
+                {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square"}]})";
+    };
+    system(Vector3(-2.0f, 0.0f, 0.0f), parent(false));
+    system(Vector3(2.0f, 0.0f, 0.0f), parent(true));
+    ASSERT_TRUE(render(1.5));
+    EXPECT_GOLDEN_OPTIONS("particles_follow", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, ATreeSortsOncePerView){
+    JASPER_REQUIRE_GPU();
+    // get_particle_stats' sorted_views: a parent and its child each sorting are one view
+    defineEffect("fx/s91-sorted-child.particles", square("0, 0, 1, 0.5", R"(, "blend": "alpha", "sortMode": "byDistance")"));
+    ParticleSystem& ps = system(Vector3(0.0f, 1.0f, 0.0f), parentOf("fx/s91-sorted-child.particles",
+                                                                    R"("renderMode": "billboard", "blend": "alpha", "sortMode": "byDistance")"));
+    ASSERT_TRUE(render(0.5));
+    EXPECT_NO_ENGINE_ERRORS();
+    const ParticleSystemStats stats = scene.getSystem<ParticleSubsystem>()->getStats(ps.getEntity());
+    EXPECT_EQ(stats.drawnViews, 2u) << "the parent and the child drew";
+    EXPECT_EQ(stats.sortedViews, 1u) << "one camera";
+    particles::ParticleEffectLibrary::clear();
+}

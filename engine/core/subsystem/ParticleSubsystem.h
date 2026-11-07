@@ -119,6 +119,9 @@ namespace jasperengine{
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
+        // the exposed values that changed, written into the running effect (its own copy of it);
+        // false when one needs a compile
+        bool applyExposedValues(ParticleSystemComponent& particles, particles::ParticleSystemState& state);
         particles::CompileEnvironment compileEnvironment(Entity entity);
         // the library moved on since its sub-emitter files were last compared
         bool subEmittersOutOfDate(const ParticleSystemComponent& particles) const;
@@ -128,6 +131,8 @@ namespace jasperengine{
         void gatherFields();
         void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
+        // the Sound Events its bursts, sub-emitters and triggers asked for (S91 R13)
+        void playSounds(particles::EmitterRuntime& runtime, const Vector3& emitterPosition);
         void updateBounds(particles::ParticleSystemState& state);
         float significanceOf(const particles::ParticleSystemState& state, float& cameraDistance) const;
 

@@ -616,6 +616,48 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   can show a human a given graph. A Preset saved from a 32-key graph ramp still reloads as 8 keys
   (the swatch library's gradients are the particles' format); that stays for M4.
 
+### M4 (s90-window): the Procedural Material window
+
+- **The window.** `ProceduralMaterialWindow` is the Graph Editor's kind window (`editor/window/`), opened by a
+  double-click on a `.procmat`, by Assets > Create > Procedural Material (a Perlin noise on a Material Output's Base
+  Color and Roughness, `assets.createProceduralMaterial`) and by `focus_window {window: "graph_editor", path}` on a
+  `.procmat`, which now opens a file in its kind's window as a double-click does (no schema change: core stays at its
+  listing). It has no Window menu entry of its own: it always has a file, so it opens from one.
+- **The window's own fields are graph metadata**, written by a new invertible op `setMetadata {key, value}` in
+  `graph::apply` (so `edit_graph` takes it too; its undo puts a removed key back in place): `seed` (a whole number,
+  0 when absent), `seed_locked` (true, or absent), `exposed` ([{node, param}]) and `presets` ([{name, values:
+  {"<node>/<param>": value}}]). A bake (R15's recipe, R35's default `seed`) reads `seed` from there.
+- **Seed lock.** One lock for the graph's seed: while on, the seed field, Reroll and Variations leave it alone, so a
+  bake repeats. Material Maker's lock is per node; a node's own `seed` parameter stays its own here.
+- **R24, the thumbnails** (`procmat/ProcMatThumbnails`): one evaluator draws every node image and the Variations
+  grid; an LRU of 64 images of 128²; at most one image finished per frame, the selected node first, then the Material
+  Output, the Variations, the visible nodes; a value edit of the image the evaluator holds is a uniform edit. An image
+  of the device stays on it (`ProceduralGpuEvaluator::takeOutputTexture`); the CPU tier's comes as pixels. Tier 2:
+  the selected node and the Material Output only; tier 3: the selected node only, its job cancelled when another is
+  selected; the Variations grid is drawn on every tier once opened.
+- **The cost on a node** is the time its 128² image took on this device, the node and what feeds it, planning and
+  compile included, measured around the evaluator's slices. On tiers 1 and 2 that is the CPU's side of the draws, not
+  the GPU's time (inferred: the draws run asynchronously); R36's `cost` block is the measured one.
+- **The preview.** Its images are read back at 256² (`PREVIEW_SIZE`), so the ball (one `MaterialRender`) has textures
+  on every tier; the 2×2 tile is four quads, since a backend's ImGui sampler need not repeat. A selection's preview is
+  a second session on the node's first output (`ProceduralSession::setRoots`).
+- **Where the GPU work runs.** The window's sessions and images advance in `App::engineRender`
+  (`ProceduralMaterialWindow::processFrame`) and commit what they drew there: a read back waits for the commit of the
+  frame that drew, and an editor whose scenes are idle commits nothing else (the first MCP run found the preview stuck
+  out of date).
+- **The Bake estimate** is the preview's last rebuild (from its debounce to its image, wall clock, so frame pacing is
+  in it) scaled by pixels, `t · (size / 256)²`, shown on tiers 2 and 3 as "about N s" (R25: both tiers scale with
+  pixels). A value edit's redraw is not timed.
+- **Variations** cells take a click only once their image is of their seed (a clock marks the others).
+- **Seams to the bake and the tiers** (`ProceduralMaterialWindow::Services`): the evaluator factory, the device image,
+  the check report (`{checks, fixes: [{check, node, op}]}`: a fix of one op is the row's Fix) and the bake. Until
+  s90-bake and s90-tiers land, the defaults are the GPU evaluator with its tier not claimed (the pane names the
+  device, "tier unknown", and R24's tier 2 budget applies, since the device may be a software renderer), no check rows
+  and no bake (the button says why). A check FAIL does not refuse a bake; the graph's own errors do.
+- **M6's preset finding.** A gradient preset saved from a 32-key ramp reloads with its 32 keys on this base
+  (`SwatchLibrary.AGradientPresetKeepsAGraphRampsKeys` passes without a change): the swatch library's native format
+  is read without `normalize()`, which only the upstream dialect calls. Dropped.
+
 ### M5 (s90-tiers)
 
 What M5 decided and where it differs from the text above. The CPU tier's tests are in

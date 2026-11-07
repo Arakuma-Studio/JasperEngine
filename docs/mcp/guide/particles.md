@@ -40,7 +40,8 @@ for a given seed and frame-rate independent.
     "renderer": {"renderMode": "stretchedBillboard", "texture": "fx/spark.png", "blend": "additive"}
   },
   "subEmitters": [{"trigger": "death", "effect": "fx/pop.particles", "emitCount": 5}],
-  "exposed": [{"name": "Intensity", "path": "emission.rateOverTime", "type": "float"}]
+  "exposed": [{"name": "Intensity", "path": "emission.rateOverTime", "type": "float"}],
+  "triggers": [{"name": "ignite", "action": "play", "soundEvent": "sfx/whoosh.soundevent"}]
 }
 ```
 
@@ -48,6 +49,10 @@ for a given seed and frame-rate independent.
   `{mode: curve, curve: [[time, value(, inTangent, outTangent)], ...], multiplier}` or
   `twoCurves` with `curveMax`; `driver` (normalizedAge, age, speed, emitterTime, random) with
   `driverMin`/`driverMax` and `wrap` picks what the time axis follows.
+- `{mode: ease, ease: quadOut, constant: 0, constantMax: 2}` eases from `constant` to `constantMax`
+  along a preset (linear, quadIn ... bounceInOut, step). It is stored as `mode: curve` with its
+  `curve` and the `ease` preset, so an older engine reads it as that curve; a patch of `ease`,
+  `constant` or `constantMax` makes the curve again.
 - A **colour value** (MinMaxGradient) is `[r, g, b, a]` (sRGB), or `{mode: twoColors | gradient |
   twoGradients, color, colorMax, gradient, gradientMax}`; a gradient is
   `{colorKeys: [[t, r, g, b]], alphaKeys: [[t, a]]}` (at most 8 of each).
@@ -67,6 +72,21 @@ for a given seed and frame-rate independent.
   `octaves`; Texture Sheet `flipU`/`flipV`; burst counts as curves over the emitter's time; the
   gradient mode `randomColor`; Renderer `velocityAligned` billboards, `meshAlignment`
   (simulation, view, world, local, facing, velocity) and `textureTiling` [x, y, offset x, offset y].
+- Renderer `renderMode: ring` draws a flat ring as a mesh particle (`ringOuterRadius`,
+  `ringInnerRadius` (0: a disc), `ringArc` degrees, `ringSegments`; `meshAlignment: view` faces the
+  camera); the particle's size, rotation and colour apply as on any mesh.
+- A sub-emitter entry's `followParent` keeps its children moving with the particle that spawned
+  them (`followRotation`, `followScale` also turn and scale them with it): trails and halos on
+  moving particles.
+- `triggers` name what `sendTrigger(name)` does to the emitter: `action` play (the default),
+  pause, stop, stopAndClear or none. Trigger sub-emitters of that name fire as well, from each live
+  particle or, with none, once from the emitter (a stopped system then runs to spawn them).
+- `soundEvent` (a `.soundevent`) on a burst, a sub-emitter entry or a trigger plays it where that
+  fires (Audio.play's free voices; the event's own cooldown and instance limits apply).
+- Distortion: Renderer `shaderFeatures: ["DISTORTION"]` with a `u_distortionTexture` (red and green,
+  0.5 shifts nothing) and `distortionStrength`. It shows the scene colour, which holds the opaque
+  objects and the sky only, so transparent objects behind it vanish where it is whole; use the
+  alpha blend. A camera without a scene colour copy (reflection probes) draws it undistorted.
 
 ## Editing
 
@@ -85,9 +105,10 @@ for a given seed and frame-rate independent.
 ## Playing and checking
 
 - In Play, a system with `playOnAwake` (create_particles `autoplay`) starts with the scene.
-- `control_particles {entity, action: play|pause|stop|clear|restart|emit|seek|step}` works in
+- `control_particles {entity, action: play|pause|stop|clear|restart|emit|seek|step|trigger}` works in
   Play and in Edit mode, where the Scene view's Particle Effect preview runs the system (the
-  selected systems play there too; the panel's Playback Time slider scrubs).
+  selected systems play there too; the panel's Playback Time slider scrubs). `trigger` takes
+  `name`: the effect's triggers and Trigger sub-emitters of that name.
 - `get_particle_stats` reports particle_count (sub-emitter children included), time, ticks, the world budget, simulate/render µs,
   culled; `capture_particles {entity, time, camera: scene|game}` seeks and returns an image.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
@@ -151,7 +172,9 @@ ps:emit(20, {position = Vector3(0, 1, 0), color = Vector4(1, 0.5, 0.2, 1)})  -- 
 ps:seek(1.5)
 ps:stop(true)                  -- true also clears the particles
 ps:setFloat("Intensity", 3)    -- an exposed parameter of the effect
-ps:sendTrigger("boom")         -- raises the effect's Trigger sub-emitters named "boom"
+ps:sendTrigger("boom")         -- the effect's triggers named "boom" (play, pause, stop) and its Trigger sub-emitters
+ps.main.startSize = MinMaxCurve.ease(0.2, 1.5, EaseType.QUAD_OUT)
+ps.renderer.renderMode = "ring"
 ps:onCollision(function(events)
     for i = 1, #events do
         local e = events[i]    -- position, normal, velocity, particleId, killed
@@ -173,6 +196,10 @@ Properties: `isPlaying`, `isPaused`, `isEmitting`, `particleCount` (with its sub
 `seed` (0: a new seed each play), `playOnAwake`, `effect` (asset path, "" inline),
 `useUnscaledTime` (the GameObject's own Unscaled Time, beside the effect's: it plays at
 `Engine.timeScale` 0; UI particles, jasper://docs/ui).
+`setFloat`, `setVector3` and `setColor` on a curve or colour value (a number, a constant, a
+multiplier, a colour) write into the running effect without compiling it, so they can change
+every frame; one that changes what the effect does (a zero becoming a value that adds a module's
+work, a mode) or a plain number field recompiles, keeping the particles.
 `onCollision`, `onParticleDeath`, `onSubEmit` deliver one batch per frame on the main thread
 (collisions capped by the Collision module's `maxCollisionEvents`). The old setters
 (`rate`, `setLifeInitializer`, `addBurst`, `start()`...) still work on the inline effect and

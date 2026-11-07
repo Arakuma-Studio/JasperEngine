@@ -28,6 +28,7 @@
 #include "object/ui/UIElementInternal.h"
 #include "object/ui/UIEvent.h"
 #include "htmlui/compat/Diagnostics.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
@@ -516,4 +517,25 @@ TEST_F(ParticleSystemElementTest, DrawsTheChildrenOfItsSubEmitters){
     // 20 x 20 red around (160, 160), on the panel's blue
     EXPECT_NEAR((double)screen.countColor({150, 150, 170, 170}, 255, 0, 0, 40), 400.0, 60.0);
     particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticleSystemElementTest, AnUnboundSystemWhoseEffectIsGoneDrawsNothing){
+    // BF23's re-review N1: the view went (Android, a lost context: the runtime unbound) and the
+    // effect's file can no longer be read; the system keeps its last effect, and the element's
+    // read of it draws nothing (it read through the unbound runtime's effect)
+    particles::ParticleEffectDocument d;
+    std::vector<particles::Diagnostic> diagnostics;
+    ASSERT_TRUE(particles::ParticleEffectCodec::read(sparkleEffect("[0, 1, 0, 1]"), d, diagnostics));
+    particles::ParticleEffectLibrary::set("fx/gone.particles", d);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setEffect("fx/gone.particles");
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    for (int i = 0; i < 3; i++) subsystem.update(1.0 / 30.0);
+    ASSERT_EQ(system.getParticleCount(), 1u);
+    subsystem.destroy();
+    particles::ParticleEffectLibrary::clear();
+    std::vector<UIParticleQuad> quads;
+    EXPECT_TRUE(UIParticleSource::read(&scene, system.getEntity(), quads));
+    EXPECT_TRUE(quads.empty());
 }

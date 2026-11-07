@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor::procmat {
 
@@ -33,6 +34,10 @@ namespace jasperengine::editor::procmat {
         void setGraph(const graph::Graph& graph, double now);
         // The same graph at another seed or size: a seed is a value edit, a size rebuilds
         void setOptions(const PlanOptions& options, double now);
+        // What it draws: empty for the Material Output's ports (the default), else these ports (a
+        // node's image in a preview); a change of roots rebuilds
+        void setRoots(const std::vector<PlanRoot>& roots, double now);
+        const std::vector<PlanRoot>& getRoots() const { return roots; }
         // Once per frame: fires a debounced rebuild and gives the evaluator its slice
         void update(double now, double budgetMs);
 
@@ -55,6 +60,7 @@ namespace jasperengine::editor::procmat {
         ProceduralEvaluator& evaluator;
         std::shared_ptr<const NodeLibrary> library;
         PlanOptions options;
+        std::vector<PlanRoot> roots;
         std::optional<graph::Graph> current;
         std::optional<PassPlan> active;
         std::optional<PassPlan> pending;

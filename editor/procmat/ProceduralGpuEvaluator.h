@@ -39,6 +39,9 @@ namespace jasperengine::editor::procmat {
         // The latest RGBA8 image of an output of the plan, for a preview that reads no pixels back: it
         // stays valid, and shows the previous image, until the next evaluation replaces it. Null before.
         TextureRender* outputTexture(const std::string& name) const;
+        // That image, the caller's from now on (a thumbnail cache keeps it after the next plan): the
+        // next evaluation draws into a new one
+        std::unique_ptr<TextureRender> takeOutputTexture(const std::string& name);
 
         // How many passes were compiled since this evaluator was made: a uniform edit adds none (R7)
         uint64_t compileCount() const { return compiles; }
