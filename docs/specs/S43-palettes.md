@@ -1178,16 +1178,33 @@ Recorded while implementing (`feature/s43-palettes`).
 
 - **Dither mixing (R20).** A mix `(A, B, r)` is what the eye averages: `(1 − r)·A + r·B` in linear
   light, measured against the colour in the chosen metric, with Yliluoma's penalty at 0.01 instead
-  of 0.1 (0.1 outweighs a near-white grey's whole OKLab error, so it was never dithered). Each ordered
-  pair of the 8 nearest takes its best r in linear RGB; the 3 pairs closest there are measured at the
-  steps around it. The mix's OKLab uses a float cube root of four Newton steps (basic IEEE
-  operations, deterministic like the rest); the 32³ bake stays within R30 (11.4 ms on the job system
-  here). `PaletteMatcher.DitherMixesInLinearLight` was red before the change (sRGB 128 got 9 or 10
-  white cells of 16; linear light gives 3 or 4).
-- **AC14** is met for the CPU side only: `PaletteSwapCache.BuildTime` and `PaletteQuantize.BakeTimes` print the
-  swap-texture build and the quantize bake (one thread and the job system). This host has no GPU (Mesa
-  llvmpipe/lavapipe), so the GPU budgets (swap ≤ 1.25×, quantize ≤ 0.15 ms) and the headless-Chrome bake time
-  are not measured and no `palette` case is in `tools/perf/gpu_campaign.py` yet: a follow-up for a GPU host.
+  of 0.1 (0.1 outweighs a near-white grey's whole OKLab error, so it was never dithered). Each pair of
+  the 8 nearest takes its best r in linear RGB; the 2 pairs closest there are measured at the two
+  steps around it. The mix's OKLab uses a float cube root of three Newton steps (basic IEEE
+  operations, deterministic like the rest). `PaletteMatcher.DitherMixesInLinearLight` was red before
+  the change (sRGB 128 got 9 or 10 white cells of 16; linear light gives 3 or 4).
+- **AC9** compares through a shared fixture: the editor test `PaletteSwapRemap.TheGpuFixtureIsTheRemap`
+  checks that `engine/tests/core/golden/palette_remap_64.png` is Apply Palette's Remap Indices of
+  `palette_remap_64_input.png` (and writes both with `JASPER_TEST_UPDATE_GOLDEN=1`); the core GPU test
+  `PaletteSwapGpu.MatchesRemap` draws the input through the swap and must give those bytes (the
+  engine's tests cannot link the editor's Apply Palette).
+- **AC13**'s allocation probe is `PaletteSwapGpu.PaletteOffAllocatesNothing` (the swap suite's
+  fixture), not a `RenderGpuTest`: the VRAM tracker's (S15) count and bytes of a library:sprite scene
+  equal those of the same scene with a palette binding and a Palette Quantize palette present but off,
+  with no `PaletteSwapCache` entry.
+- **AC7 and AC12 on three backends.** The GPU suites run on glcore and Vulkan (lavapipe:
+  `GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests`, all 11 pass); the unit-test build
+  has no GLES3 backend (`tools/build.sh` takes glcore or vulkan there). GLES3 is covered by AC21's
+  smoke test with `SMOKE_BACKEND=gles3` (llvmpipe, the `linux-backends` image) and by the web gate
+  (`GATE=palettes`, WebGL2): both draw Palette Swap and Palette Quantize.
+- **AC14**: the bakes are measured, the GPU budgets are not. `PaletteQuantize.BakeTimes` prints the
+  32³ bake (64 colours, Bayer 4×4) at 9.0 ms on the job system and the 64³ one at 47.1 ms (R30: 15 and
+  120 ms); `PaletteSwapCache.BuildTime` the swap data at 0.24 ms (R29: 0.3 ms). On the web the test
+  project `tools/test-projects/palettes` (gate `palettes`, a Release build without threads) bakes the
+  32³ table in 8 ms slices in 56.1 ms (R30: 60 ms) and fails the gate past it; it also checks AC5's
+  hash in WebAssembly. This host has no GPU (Mesa llvmpipe and lavapipe), so the swap's ≤ 1.25× and
+  the quantize pass's ≤ 0.15 ms at 1080p stay a follow-up for a GPU host (`tools/perf/gpu_campaign.py`
+  has no palette case yet).
 - **AC21** ran on a scratch project an MCP script made (three library:sprite heroes whose Palette
   Swap rows a Lua script picks in Play, Palette Quantize on PICO-8 with Bayer 4×4), not a committed
   fixture: `tools/smoke-test.sh` with the default method (a prebuilt glcore release player, the full

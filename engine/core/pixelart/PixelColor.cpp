@@ -92,9 +92,9 @@ namespace {
                    (float)(0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)};
     }
 
-    // A dither mix's cube root (ditherPair measures a few per LUT cell): float Newton steps from
-    // the exponent's third, the same basic operations everywhere (no libm), within 1e-7 of
-    // cbrtFixed over [0, 1]
+    // A dither mix's cube root (ditherPair measures a few per LUT cell): three float Newton steps
+    // from the exponent's third, the same basic operations everywhere (no libm), within 1e-6
+    // (relative) of cbrtFixed over [0, 1]
     float cbrtMix(float x) {
         if (!(x > 0.0f)) return 0.0f;
         uint32_t bits;
@@ -102,7 +102,7 @@ namespace {
         bits = bits / 3u + 709921077u;
         float y;
         std::memcpy(&y, &bits, sizeof(y));
-        for (int i = 0; i < 4; i++) y = (2.0f * y + x / (y * y)) / 3.0f;
+        for (int i = 0; i < 3; i++) y = (2.0f * y + x / (y * y)) / 3.0f;
         return y;
     }
 
@@ -623,20 +623,20 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength, int 
     const int maxSteps = (int)std::floor(std::clamp(std::isfinite(strength) ? strength : 0.0f, 0.0f, 1.0f) * stepCount + 1e-4f);
     if (maxSteps <= 0) return mix;
 
-    // A dither shows (1 - r) A + r B as the eye averages it: in linear light. Each ordered pair of
-    // the nearest gets its best r in linear RGB (the target's projection on the segment); the
-    // three pairs that come closest there are measured in the chosen metric at the steps around
-    // their r, with Yliluoma's penalty against mixing far colours, 0.01 r (1 - r) |A - B| (his
-    // 0.1 outweighs a near-white grey's whole error in OKLab: it would never be dithered).
+    // A dither shows (1 - r) A + r B as the eye averages it: in linear light. Each pair of the
+    // nearest gets its best r in linear RGB (the target's projection on the segment); the two pairs
+    // that come closest there are measured in the chosen metric at the two steps around their r,
+    // with Yliluoma's penalty against mixing far colours, 0.01 r (1 - r) |A - B| (his 0.1
+    // outweighs a near-white grey's whole error in OKLab: it would never be dithered). A step past
+    // the strength's reach is taken from the other side (B with A, 1 - r).
     const SrgbTables& tables = srgbTables();
     const float target[3] = {tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]};
     struct PairFit { float residual; int i; int j; float r; };
-    constexpr int kKept = 3;
+    constexpr int kKept = 2;
     PairFit kept[kKept];
     int keptCount = 0;
     for (int i = 0; i < found; i++) {
-        for (int j = 0; j < found; j++) {
-            if (i == j) continue;
+        for (int j = i + 1; j < found; j++) {
             const std::array<float, 3>& a = linears[nearestList[i].second];
             const std::array<float, 3>& b = linears[nearestList[j].second];
             const float d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
@@ -659,17 +659,25 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength, int 
         const std::array<float, 3>& a = linears[ia];
         const std::array<float, 3>& b = linears[ib];
         const float spread = metricDistance(labs[ia], labs[ib]);
-        const int centre = (int)std::lround(kept[k].r * stepCount);
-        for (int step = centre - 1; step <= centre + 1; step++) {
-            if (step < 1 || step > maxSteps) continue;
+        const int below = (int)std::floor(kept[k].r * stepCount);
+        for (int step = below; step <= below + 1; step++) {
+            // B's share in steps; past the strength, the same mix the other way round
+            int ratio = step;
+            uint16_t first = ia, second = ib;
+            if (ratio < 1 || ratio > maxSteps) {
+                ratio = steps - step;
+                first = ib;
+                second = ia;
+                if (ratio < 1 || ratio > maxSteps) continue;
+            }
             const float r = step / stepCount;
             const float mixed[3] = {a[0] + r * (b[0] - a[0]), a[1] + r * (b[1] - a[1]), a[2] + r * (b[2] - a[2])};
             const float cost = metricDistance(lab, spaceOfLinear(mixed)) + 0.01f * r * (1.0f - r) * spread;
             if (cost < bestCost) {
                 bestCost = cost;
-                mix.a = ia;
-                mix.b = ib;
-                mix.ratio16 = (uint8_t)step;
+                mix.a = first;
+                mix.b = second;
+                mix.ratio16 = (uint8_t)ratio;
             }
         }
     }

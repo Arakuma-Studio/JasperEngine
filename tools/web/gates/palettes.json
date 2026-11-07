@@ -1,5 +1,5 @@
 {
-  "description": "tools/test-projects/palettes (WEB_PROJECT=palettes tools/build.sh web): S43's palette runtime in WebAssembly without pthreads, on WebGL2 (SwiftShader in the web image's headless shell). The colour maths' determinism hash equals the Linux golden (AC5); Palette Quantize's table (32^3, 64 colours, Bayer 4x4) bakes in 8 ms slices within 60 ms (R30, AC14); a sprite drawn with Palette Swap row 1 through Palette Quantize shows the target palette's colour 2, #41a6f6, at the centre (AC21).",
+  "description": "tools/test-projects/palettes (WEB_PROJECT=palettes tools/build.sh web): S43's palette runtime in WebAssembly without pthreads, on WebGL2 (SwiftShader in the web image's headless shell). The colour maths' determinism hash equals the Linux golden (AC5); Palette Quantize's table (32^3, 64 colours, Bayer 4x4) bakes in 8 ms slices within 60 ms (R30, AC14; judged with BUILD_TYPE=Release); a sprite drawn with Palette Swap row 1 through Palette Quantize shows the target palette's colour 2, #41a6f6, at the centre (AC21).",
   "rgb": [
     65,
     166,
