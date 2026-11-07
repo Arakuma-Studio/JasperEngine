@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "Project.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "object/Camera.h"

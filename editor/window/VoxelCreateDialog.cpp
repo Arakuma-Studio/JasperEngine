@@ -8,6 +8,7 @@
 #include "Project.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "object/Camera.h"
 #include "render/SceneRender.h"

@@ -11,6 +11,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "component/VoxelVolumeComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "reflect/Enums.h"
 #include "subsystem/VoxelSystem.h"
