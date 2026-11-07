@@ -163,6 +163,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- Landing risk: `tools/check_fanout.py` caps how many units one header rebuilds at 150. T3's worst is 149 and T5 noted it sits at
+  150 too, so merged streams may exceed it. Check it on every landing merge, and split includes if it fails.
 - Stream findings so far (filtered runs only, nothing is final):
   - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
     now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`
