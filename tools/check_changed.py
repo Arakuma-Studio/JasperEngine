@@ -99,6 +99,10 @@ SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
 CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
 CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
+# an engine event's holder, or the clears that walk them, changes: every event must stay cleared at Stop
+EVENT_CLEARS_LINT = "tools/check_event_clears.py"
+EVENT_CLEARS_TRIGGERS = ("engine/core/component/*.h", "engine/core/subsystem/PhysicsSystem.h", "engine/core/Engine.h",
+                         "engine/core/Engine.cpp", EVENT_CLEARS_LINT)
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
@@ -281,6 +285,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
             plan.self_tests.append(test)
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
             plan.self_tests.append(CI_SUITE_GUARD)
+        if match(f, EVENT_CLEARS_TRIGGERS) and EVENT_CLEARS_LINT not in plan.self_tests:
+            plan.self_tests.append(EVENT_CLEARS_LINT)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
     plan.modules_off = next((f for f in files if f in ("engine/CMakeLists.txt", MODULES_OFF_CHECK)
                              or (f.startswith("engine/core/") and f.endswith(HEADER))), everything[0] if everything else "")

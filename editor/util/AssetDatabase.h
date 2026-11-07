@@ -164,6 +164,8 @@ namespace jasperengine::editor {
         // orphan sweep uses this walk instead of one of its own)
         std::vector<std::filesystem::path> takeTemporaryFiles();
         bool isOpen() const;
+        // the project's volume ignores the case of names (Windows, macOS by default): detected per project at open()
+        bool isCaseInsensitive() const { return caseInsensitive; }
         ~AssetDatabase();
 
         // What changed on disk since the last look (files moved, copied, deleted or edited

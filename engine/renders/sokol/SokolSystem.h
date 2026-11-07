@@ -92,6 +92,8 @@ namespace jasperengine{
         static void commit();
         // the frames committed so far (sokol resets STREAM appends at each)
         static uint64_t getCommitCount();
+        // between frames: returns once the GPU finished what was committed (Metal; nothing elsewhere)
+        static void waitGpuIdle();
         static void shutdown();
         static const RenderFeatures& getFeatures();
         static uint64_t getPipelineCacheMisses();

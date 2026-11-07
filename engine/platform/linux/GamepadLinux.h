@@ -9,6 +9,7 @@
 #include <linux/input.h>
 
 #include <array>
+#include <string>
 
 namespace jasperengine {
 
@@ -24,14 +25,27 @@ namespace jasperengine {
         static constexpr int RAW_BUTTON_COUNT = 32;
         static constexpr int RAW_AXIS_COUNT = 16;
 
+        // devicePattern globs the joystick nodes, sysClassRoot holds their
+        // <node>/device/id/ files (the tests point both at a directory of their own)
+        explicit GamepadLinux(std::string devicePattern = "/dev/input/js*",
+                              std::string sysClassRoot = "/sys/class/input");
+
         void shutdown();
         // now is a monotonic clock in seconds; new devices are scanned for once
         // per second rather than on every frame.
         void poll(double now);
+        // A hidden window's game: held buttons go up and the axes rest (with
+        // their events), and the nodes are closed so nothing is read. The next
+        // poll() reopens them and reports what is still held as new input.
+        void release();
 
     private:
         struct Pad {
+            // connected with fd -1: released, reopened by the next poll()
+            bool connected = false;
             int fd = -1;
+            std::string name;
+            std::string guid;
             std::array<unsigned char, ABS_CNT> axisMap{};
             // js_event.number is a device index, not an input code; the kernel
             // reports the code each index stands for.
@@ -50,6 +64,10 @@ namespace jasperengine {
 
         void scan(double now);
         void connect(int id, const char* path);
+        // false (and a disconnect) when the node is gone or another pad took it
+        bool reopen(int id, Pad& pad);
+        std::string devicePath(int id) const;
+        bool readGuid(int id, std::string& guid) const;
         void disconnect(int id);
         void readEvents(int id, Pad& pad);
 
@@ -58,6 +76,8 @@ namespace jasperengine {
         void updateHat(int id, Pad& pad, bool horizontal, int value);
         void applyMapping(int id, Pad& pad);
 
+        std::string devicePattern;
+        std::string sysClassRoot;
         double nextScan = 0.0;
         std::array<Pad, COUNT> pads;
     };

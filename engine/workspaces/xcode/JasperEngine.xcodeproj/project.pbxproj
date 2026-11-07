@@ -4472,6 +4472,8 @@
 		4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */; };
+		4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D9914C150209E5CB /* ComponentEvents.h */; };
+		4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D02364B83FAFB4BA /* HashRandom.h */; };
 		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
 		4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
 		4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
@@ -8756,6 +8758,8 @@
 		4A534E47C4F45D33EE25F2E9 /* StableArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StableArray.h; sourceTree = "<group>"; };
 		4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SSRProbeSlots.cpp; sourceTree = "<group>"; };
 		4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SSRProbeSlots.h; sourceTree = "<group>"; };
+		4A534E47D9914C150209E5CB /* ComponentEvents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentEvents.h; sourceTree = "<group>"; };
+		4A534E47D02364B83FAFB4BA /* HashRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HashRandom.h; sourceTree = "<group>"; };
 		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
 		4A534E4706670F9B31416A92 /* FrustumCull.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrustumCull.cpp; sourceTree = "<group>"; };
 		4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DrawBatcher.cpp; sourceTree = "<group>"; };
@@ -10972,6 +10976,7 @@
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
+				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11012,6 +11017,7 @@
 				4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */,
 				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 				4A534E472114016401F2D894 /* Noise.h */,
+				4A534E47D02364B83FAFB4BA /* HashRandom.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -15577,6 +15583,8 @@
 				4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */,
 				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
 				4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */,
+				4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */,
+				4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */,
 				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
 				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
 				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,

@@ -862,4 +862,44 @@ and kept compiling by reading the surrounding code; the implementer states it in
 
 ## 14. Deviations
 
-None yet (filled in during implementation).
+1. **The Metal wait's name and declaration.** `sokol.cpp` defines `jasperengine_sg_wait_gpu_idle()` (the
+   prefix of its other extension functions), declared `extern "C"` in `SokolSystem.cpp` as they are; no
+   `sokol_wait.h` and no `PATCHES.md` line (that file lists changes to `sokol_gfx.h`, which is unchanged).
+2. **Generated projects.** `editor/Generator.cpp` lists `linux/X11Visibility.cpp` among the platform sources
+   a project built outside an export compiles (`GeneratedProject.PlatformSourcesListEveryBackendFile`
+   requires every platform source there).
+3. **Editor pacing while a hidden game runs.** Instead of the hidden period as the deadline loop's period,
+   the loop (`EditorFrame::run`, `BackendMac`) sleeps until the hidden clock's next update
+   (`App::hiddenGameSecondsUntilDue`): two independent deadlines a period apart would drop every other
+   update. `runHiddenGameFrame` counts a wake-up up to 1 ms early as due.
+4. **`forwardHostVisibility`** forwards `windowVisible && !simulatedHidden` every loop iteration of a
+   Play session (`Engine::systemVisibilityChanged` is idempotent) instead of tracking a known state as
+   `forwardHostFocus` does; Play start and stop reset the engine's state through
+   `Engine::resetApplicationState`, and the simulation through `Platform::resetPlayRecords` /
+   `endPlaySimulation`.
+5. **A hidden activation of the game** (another scene's view drew last) marks the scene for a view
+   change (`pendingResizeScene`), so the next drawn frame of the game calls `systemViewChanged`.
+6. **Test files.** The Lua test is `PlatformVisibilityTest.VisibilityEventReachesLua` in its own file
+   (`editor/tests/PlatformVisibilityTest.cpp`, on the Lua fixture of `ScriptDataTestSupport.h`), not in
+   `PlatformServicesTest.cpp`, which has no Lua state. The player end-to-end test is its own file,
+   `tools/mcp/tests/test_hidden_player.py` (`JASPER_SLOW_BUILD=1`, `PREBUILT_PLAYERS`), so the editor
+   tests of `test_hidden_window.py` run without a player runtime. The core visibility and lifecycle
+   tests are in `engine/tests/core/platform/EngineLifecycleTest.cpp`, the hidden rate and clock in
+   `engine/tests/core/util/HiddenUpdateTest.cpp`.
+7. **Lean MCP rules** (after this spec): no agent text in the guide or in
+   `docs/mcp/guide/platform-services.md` beyond the new `get_play_state` fields; the `send_input`
+   description gains `hide|show`, with the eval case `bad_app_hide` (`tools/mcp/eval/cases.py`), and the
+   `screenshot` refusal on a hidden editor says what to do in its own error text.
+8. **`WindowLinux::isMaximized`** keeps its own property read (one round trip for both atoms) rather than
+   two `X11Visibility::hasNetWmState` calls.
+9. **Web visibility at project start.** A page hidden while the project waited for its saved files reports
+   `onVisibilityChanged(false)` when the project starts, before `updatePause()`.
+10. **The Gradle guard is local.** The GitHub workflows were removed from `main` after this spec: the
+    deprecation check runs where Gradle runs, in `tools/build.sh android` and
+    `tools/players/android_player.sh` (both fail on a deprecation in our Gradle files), with its own test
+    `tools/ci/test_check_gradle_warnings.py`; no CI job runs it.
+11. **The hidden player test runs glcore only.** `test_hidden_player.py` uses the `glcore-release` runtime;
+    a `vulkan-release` run is left out: it needs a second prebuilt runtime build (about as long as the
+    first) for a loop the two backends share line for line (`JasperEngineLinux.cpp`: the hidden branch never
+    reaches `beginFrame`, where only the Vulkan acquire differs).
+

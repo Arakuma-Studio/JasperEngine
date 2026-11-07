@@ -15,6 +15,7 @@ namespace jasperengine::editor{
         bool& redrawRequested;
         double framePeriod = 1.0 / 60.0;
         bool forceRedraw = false;
+        // the window can't be seen: minimized, unmapped or _NET_WM_STATE_HIDDEN (Linux)
         bool minimized = false;
         bool focused = false;
         int width = 0;

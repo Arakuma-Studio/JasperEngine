@@ -812,7 +812,7 @@ void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
 
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
-        actionPreviewStates.clear();
+        actionPreviewSnapshot.clear();
         releaseActionPreviewOwners();
         actionPreviewing = false;
         actionPreviewPlaying = false;
@@ -1514,7 +1514,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
         // camera entity dragged from the structure window (render to texture)
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             const EntityPayload* entityPayload = reinterpret_cast<const EntityPayload*>(payload->Data);
-            bool sameScene = (entityPayload->entitySceneId == 0 || entityPayload->entitySceneId == sceneProject->id);
+            bool sameScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id).empty();
             if (sameScene && sceneProject->scene->findComponent<CameraComponent>(entityPayload->entity)) {
                 applyCameraTexture(entityPayload->entity, cpType, id, sceneProject, entities, nullptr);
                 finishProperty = true;
@@ -2655,7 +2655,7 @@ bool editor::InspectorWindow::drawSummaryAddButton(const std::string& label, flo
 
 editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityPickerPopup(
         const std::string& popupId, const Signature& filter,
-        SceneProject* owningScene, bool includeChildScenes,
+        SceneProject* owningScene, bool includeRelatedScenes,
         Entity currentValue, uint32_t currentValueSceneId,
         const std::vector<Entity>& excludeEntities) {
 
@@ -2673,31 +2673,38 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
         std::string searchStr = entityPickerSearchBuffer;
         for (char& c : searchStr) c = (char)tolower((unsigned char)c);
 
-        // Build list of (SceneProject*, storedSceneId) to display
-        // storedSceneId = 0 for owning scene entities, actual scene ID for child scene entities
+        // Build list of (SceneProject*, storedSceneId) to display: storedSceneId = 0 for the owning
+        // scene's GameObjects, the scene's id for those of the scenes loaded with it (its parents,
+        // children and siblings: Project::getRelatedScenes), which the runtime resolves together
         std::vector<std::pair<SceneProject*, uint32_t>> scenesToShow;
         scenesToShow.emplace_back(owningScene, (uint32_t)0);
+        std::vector<std::string> notOpen;
 
-        if (includeChildScenes) {
-            std::unordered_set<uint32_t> visited;
-            visited.insert(owningScene->id);
-            std::vector<uint32_t> toVisit;
-            for (uint32_t childId : project->getChildScenes(owningScene->id))
-                toVisit.push_back(childId);
-            while (!toVisit.empty()) {
-                uint32_t sid = toVisit.back(); toVisit.pop_back();
-                if (visited.count(sid)) continue;
-                visited.insert(sid);
-                SceneProject* child = project->getScene(sid);
-                if (child && child->scene)
-                    scenesToShow.emplace_back(child, sid);
-                for (uint32_t childId : project->getChildScenes(sid))
-                    if (!visited.count(childId)) toVisit.push_back(childId);
+        if (includeRelatedScenes) {
+            for (uint32_t sid : project->getRelatedScenes(owningScene->id)) {
+                if (sid == owningScene->id) continue;
+                SceneProject* related = project->getScene(sid);
+                if (!related) continue;
+                if (related->scene) {
+                    scenesToShow.emplace_back(related, sid);
+                } else {
+                    notOpen.push_back(related->name);
+                }
             }
         }
+        const std::vector<uint32_t> ownChildren = project->getChildScenes(owningScene->id);
+        auto relation = [&](uint32_t sid) -> const char* {
+            if (std::find(ownChildren.begin(), ownChildren.end(), sid) != ownChildren.end()) return "child";
+            const std::vector<uint32_t> itsChildren = project->getChildScenes(sid);
+            if (std::find(itsChildren.begin(), itsChildren.end(), owningScene->id) != itsChildren.end()) return "parent";
+            return "related";
+        };
 
         bool anyVisible = false;
         for (auto& [sp, storedSceneId] : scenesToShow) {
+            if (storedSceneId != 0) {
+                ImGui::SeparatorText((std::string(ICON_FA_LAYER_GROUP "  ") + sp->name + " (" + relation(storedSceneId) + ")").c_str());
+            }
             bool sceneMatches = false;
             if (!searchStr.empty() && storedSceneId != 0) {
                 std::string slow = sp->name;
@@ -2731,6 +2738,7 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
                     result.sceneId = storedSceneId;
                     ImGui::CloseCurrentPopup();
                 }
+                UIProbe::item("entityPicker." + std::to_string(sp->id) + "." + std::to_string(e));
                 ImGui::SameLine();
                 if (storedSceneId != 0)
                     ImGui::Text("%s  %s  [%s]  (%u)", eicon.c_str(), ename.c_str(), sp->name.c_str(), static_cast<unsigned int>(e));
@@ -2740,6 +2748,9 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
         }
 
         if (!anyVisible) ImGui::TextDisabled("No GameObjects found");
+        for (const std::string& name : notOpen) {
+            ImGui::TextDisabled("%s  %s (not open)", ICON_FA_LAYER_GROUP, name.c_str());
+        }
     }
     ImGui::EndChild();
     ImGui::EndPopup();
@@ -5621,10 +5632,14 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity droppedEntity = entityPayload->entity;
+                // the id means a GameObject of this scene only
+                const std::string otherScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id);
                 bool excluded = std::find(settings.excludeEntities.begin(), settings.excludeEntities.end(), droppedEntity) != settings.excludeEntities.end();
-                bool valid = sceneProject->scene->isEntityCreated(droppedEntity) && !excluded;
+                bool valid = otherScene.empty() && sceneProject->scene->isEntityCreated(droppedEntity) && !excluded;
 
-                if (!valid && ImGui::IsItemHovered()){
+                if (!otherScene.empty()){
+                    ImGui::SetTooltip("%s", otherScene.c_str());
+                }else if (!valid && ImGui::IsItemHovered()){
                     ImGui::SetTooltip(excluded ? "Cannot reference this GameObject here" : "Invalid GameObject");
                 }
 
@@ -5818,19 +5833,18 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity droppedEntity = entityPayload->entity;
-                uint32_t droppedSceneId = entityPayload->entitySceneId;
+                uint32_t droppedSceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
 
-                bool valid = false;
-                SceneProject* sourceScene = project->getScene(droppedSceneId);
-                if (sourceScene && sourceScene->scene) {
-                    valid = sourceScene->scene->isEntityCreated(droppedEntity);
-                }
+                // a scene loaded with this one (its parents, children and siblings), else the
+                // reference would find nothing when the game runs
+                const std::string problem = referenceDropProblem(*project, *entityPayload, sceneProject->id);
+                const bool valid = problem.empty();
 
                 // Determine sceneId to store: 0 if same scene, source scene ID if cross-scene
                 uint32_t storedSceneId = (droppedSceneId != sceneProject->id) ? droppedSceneId : 0;
 
-                if (!valid && ImGui::IsItemHovered()){
-                    ImGui::SetTooltip("Invalid GameObject");
+                if (!valid){
+                    ImGui::SetTooltip("%s", problem.c_str());
                 }
 
                 if (payload->IsDelivery() && valid) {
@@ -12614,7 +12628,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewEntity = entity;
     actionPreviewSceneId = sceneProject->id;
 
@@ -12625,13 +12639,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !collected.insert(e).second) return;
 
         // Save this entity's state
-        ActionPreviewState state;
-        state.entity = e;
-        if (Transform* transform = scene->findComponent<Transform>(e)) {
-            state.parent = transform->parent;
-        }
-        state.components = Stream::encodeComponents(e, scene, scene->getSignature(e));
-        actionPreviewStates.push_back(state);
+        actionPreviewSnapshot.add(sceneProject->id, scene, e);
 
         // If entity has an ActionComponent with a target, save the target too
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(e)) {
@@ -12682,7 +12690,7 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
@@ -12693,47 +12701,10 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
-    // Update snapshots with current user-editable config values before restoring
-    for (ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        for (ComponentType type : {ComponentType::TweenComponent, ComponentType::PositionTweenComponent, ComponentType::RotationTweenComponent,
-                                   ComponentType::ScaleTweenComponent, ComponentType::ColorTweenComponent, ComponentType::AlphaTweenComponent}) {
-            const reflect::ComponentDesc* desc = reflect::find(type);
-            if (void* comp = desc->find(scene, state.entity)) {
-                state.components[desc->key] = reflect::encode(*desc, comp, reflect::EncodeContext{});
-            }
-        }
-        if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = reflect::encodeValue(ComponentType::ParticleSystemComponent, comp);
-        }
-        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
-            // the keys and their settings (loop, relative) edited during the preview are kept,
-            // the playhead the preview moved (index, interpolation) goes back
-            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
-            YAML::Node encoded = reflect::encodeValue(ComponentType::KeyframeTracksComponent, comp);
-            const YAML::Node originalNode = state.components[componentName];
-            if (originalNode && !originalNode.IsNull()) {
-                for (const char* key : {"index", "interpolation"}) {
-                    if (originalNode[key]) {
-                        encoded[key] = originalNode[key];
-                    }
-                }
-            }
-            state.components[componentName] = encoded;
-        }
-    }
+    // the authored state back, with what commands wrote during the preview
+    actionPreviewSnapshot.restore(scene);
 
-    for (const ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-        ProjectUtils::clearPreviewParticles(scene, state.entity);
-    }
-
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;

@@ -27,6 +27,7 @@
     // Use C headers for POSIX signal and setjmp APIs to get C-level names.
     #include <signal.h>
     #include <setjmp.h>
+    #include <cstring>
 #endif
 
 namespace jasperengine {
@@ -49,6 +50,7 @@ namespace jasperengine {
             case EXCEPTION_INT_DIVIDE_BY_ZERO: return "EXCEPTION_INT_DIVIDE_BY_ZERO";
             case EXCEPTION_ILLEGAL_INSTRUCTION: return "EXCEPTION_ILLEGAL_INSTRUCTION";
             case EXCEPTION_STACK_OVERFLOW: return "EXCEPTION_STACK_OVERFLOW";
+            case 0xE06D7363: return "CXX_EXCEPTION";
             default: return "EXCEPTION_UNKNOWN";
         }
     }
@@ -63,6 +65,8 @@ namespace jasperengine {
             case EXCEPTION_INT_DIVIDE_BY_ZERO: return "Integer divide by zero";
             case EXCEPTION_ILLEGAL_INSTRUCTION: return "Illegal instruction";
             case EXCEPTION_STACK_OVERFLOW: return "Stack overflow";
+            // MSVC's code of a C++ throw (CrashHook::runGuarded catches them before they get here)
+            case 0xE06D7363: return "C++ exception";
             default: return "Unknown structured exception";
         }
     }
@@ -178,37 +182,58 @@ namespace jasperengine {
         };
     } // namespace detail
 
+    namespace detail {
+        // One guard's frame: the thread's previous guard state (an outer guard's jump buffer, a
+        // nesting guard returning hands it back) and the signal handlers before this guard. Put
+        // back when the guard ends however it ends: a normal return, a recovered fault, or a C++
+        // exception a direct caller's fn threw through it.
+        struct GuardFrame {
+            SignalScope scope;
+            sigjmp_buf previousEnv;
+            bool previousActive;
+            int previousSig;
+
+            GuardFrame() : previousActive(g_tls.active), previousSig(g_tls.lastSig) {
+                std::memcpy(&previousEnv, &g_tls.env, sizeof(sigjmp_buf));
+                scope.install();
+            }
+
+            ~GuardFrame() {
+                std::memcpy(&g_tls.env, &previousEnv, sizeof(sigjmp_buf));
+                g_tls.active = previousActive;
+                g_tls.lastSig = previousSig;
+                scope.restore();
+            }
+
+            GuardFrame(const GuardFrame&) = delete;
+            GuardFrame& operator=(const GuardFrame&) = delete;
+        };
+    } // namespace detail
+
     template<typename Fn>
     inline bool callWithCrashGuard(Fn&& fn, CrashInfo* outInfo) {
         using namespace detail;
 
-        SignalScope scope;
-        scope.install();
+        GuardFrame frame;
 
         g_tls.active = true;
         g_tls.lastSig = 0;
 
+        // sigsetjmp stays in this function's own frame: the jump lands here
         if (sigsetjmp(g_tls.env, 1) == 0) {
             // Execute the user function
             fn();
-
-            // Success path
-            g_tls.active = false;
-            scope.restore();
             return true;
-        } else {
-            diag::crash::ringWrite("CrashGuard: recovered a guarded callback crash");
-            // We jumped back from a signal
-            if (outInfo) {
-                outInfo->code = g_tls.lastSig;
-                outInfo->name = sigName(g_tls.lastSig);
-                outInfo->description = sigDesc(g_tls.lastSig);
-            }
-
-            g_tls.active = false;
-            scope.restore();
-            return false;
         }
+
+        diag::crash::ringWrite("CrashGuard: recovered a guarded callback crash");
+        // We jumped back from a signal
+        if (outInfo) {
+            outInfo->code = g_tls.lastSig;
+            outInfo->name = sigName(g_tls.lastSig);
+            outInfo->description = sigDesc(g_tls.lastSig);
+        }
+        return false;
     }
 
 #else

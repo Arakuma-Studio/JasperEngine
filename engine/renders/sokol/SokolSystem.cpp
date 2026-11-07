@@ -71,6 +71,7 @@ static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
 
 // (sokol.cpp, where sokol's state is visible) slots of a resource pool in use and free
 extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
+extern "C" void jasperengine_sg_wait_gpu_idle(void);
 // (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
 extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
 extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
@@ -834,6 +835,10 @@ bool SokolSystem::getVulkanFrameBufferUsage(int which, uint64_t& used, uint64_t&
     used = u;
     size = z;
     return vulkan;
+}
+
+void SokolSystem::waitGpuIdle(){
+    jasperengine_sg_wait_gpu_idle();
 }
 
 void SokolSystem::shutdown(){

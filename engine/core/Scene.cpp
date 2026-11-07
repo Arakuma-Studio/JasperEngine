@@ -9,6 +9,7 @@
 #include "component/ScrollbarComponent.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "component/ComponentEvents.h"
 #include "shader/ShaderGlobals.h"
 #include "script/AsyncOwner.h"
 
@@ -109,15 +110,6 @@ Scene::~Scene(){
     destroy();
 }
 
-template<typename Component, typename Callback>
-static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& substring, Callback callback) {
-    auto components = scene->getComponentArray<Component>();
-
-    for (size_t i = 0; i < components->size(); i++) {
-        callback(components->getComponentFromIndex(i), substring);
-    }
-}
-
 bool Scene::isActivationObserved() const{
     return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
 }
@@ -131,98 +123,8 @@ std::weak_ptr<char> Scene::getLifetime() const{
 }
 
 void Scene::removeSubscriptionsByTag(const std::string& substring) {
-    removeComponentSubscriptionsByTag<ActionComponent>(this, substring, [](ActionComponent& action, const std::string& tag) {
-        action.onStart.removeByTagSubstring(tag);
-        action.onPause.removeByTagSubstring(tag);
-        action.onStop.removeByTagSubstring(tag);
-        action.onStep.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<SplineAnimateComponent>(this, substring, [](SplineAnimateComponent& animate, const std::string& tag) {
-        animate.onComplete.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {
-        sound.onStart.removeByTagSubstring(tag);
-        sound.onPause.removeByTagSubstring(tag);
-        sound.onStop.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<PoseAnimatorComponent>(this, substring, [](PoseAnimatorComponent& animator, const std::string& tag) {
-        animator.onFinish.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
-        player.onEvent.removeByTagSubstring(tag);
-        player.onFinish.removeByTagSubstring(tag);
-        player.onStateEnter.removeByTagSubstring(tag);
-        player.onStateExit.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
-        animator.onEvent.removeByTagSubstring(tag);
-        animator.onFinish.removeByTagSubstring(tag);
-        animator.onInstanceEvent.removeByTagSubstring(tag);
-        animator.onInstanceFinish.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AnimatorComponent>(this, substring, [](AnimatorComponent& animator, const std::string& tag) {
-        animator.onEvent.removeByTagSubstring(tag);
-        animator.onStateEnter.removeByTagSubstring(tag);
-        animator.onStateExit.removeByTagSubstring(tag);
-        animator.onMontageEnded.removeByTagSubstring(tag);
-        animator.onAnimatorMove.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {
-        ui.onGetFocus.removeByTagSubstring(tag);
-        ui.onLostFocus.removeByTagSubstring(tag);
-        ui.onPointerEnter.removeByTagSubstring(tag);
-        ui.onPointerLeave.removeByTagSubstring(tag);
-        ui.onPointerMove.removeByTagSubstring(tag);
-        ui.onPointerDown.removeByTagSubstring(tag);
-        ui.onPointerUp.removeByTagSubstring(tag);
-        ui.onClick.removeByTagSubstring(tag);
-        ui.onDoubleClick.removeByTagSubstring(tag);
-        ui.onDragStart.removeByTagSubstring(tag);
-        ui.onDrag.removeByTagSubstring(tag);
-        ui.onDragEnd.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<ButtonComponent>(this, substring, [](ButtonComponent& button, const std::string& tag) {
-        button.onPress.removeByTagSubstring(tag);
-        button.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<PanelComponent>(this, substring, [](PanelComponent& panel, const std::string& tag) {
-        panel.onMove.removeByTagSubstring(tag);
-        panel.onResize.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<ScrollbarComponent>(this, substring, [](ScrollbarComponent& scrollbar, const std::string& tag) {
-        scrollbar.onChange.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<InputFieldComponent>(this, substring, [](InputFieldComponent& inputField, const std::string& tag) {
-        inputField.onChange.removeByTagSubstring(tag);
-        inputField.onSubmit.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
-        stick.onValueChanged.removeByTagSubstring(tag);
-        stick.onPress.removeByTagSubstring(tag);
-        stick.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
-        button.onPress.removeByTagSubstring(tag);
-        button.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
-        area.onDrag.removeByTagSubstring(tag);
-    });
-
+    // every event of every component (ComponentEvents.h), then the physics system's
+    forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
 }
 

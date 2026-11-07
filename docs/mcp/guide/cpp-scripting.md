@@ -78,7 +78,8 @@ void Spinner::onUpdate() {
     }
     if (Input::isKeyPressed(D_KEY_SPACE) && bullet.isValid()) {
         GameObject go = GameObject::instantiate(bullet, Vector3(0, 5, 0), Quaternion());
-        Log::print("spawned %s", go.getName().c_str());
+        // false when there is none: the prefab missing, or its init destroyed it at once
+        if (go) Log::print("spawned %s", go.getName().c_str());
     }
 }
 ```
@@ -178,8 +179,10 @@ bool pending = isInvoking();   // or isInvoking(id)
 The timers belong to the script: they keep running while it is disabled or its GameObject is
 inactive and are cancelled when the script is deleted (`~ScriptBase`: GameObject destroyed,
 scene unloaded, Play stop). Callbacks run on the main thread after `onUpdate` (with the Lua
-timers, in creation order, at most once a frame; a late repeat is rescheduled from now);
-exceptions are not caught. Code that is not a script: `#include "Timer.h"`,
+timers, in creation order, at most once a frame; a late repeat is rescheduled from now). A C++
+exception a callback (timer or event) throws is caught: in the editor's Play it stops Play like a
+Lua error ("Script crash ... C++ exception <type>: <what>"), in a game it is logged and the game
+goes on (jasper://docs/crash-diagnostics, "A callback that fails"); on the Web it ends the game. Code that is not a script: `#include "Timer.h"`,
 `jasperengine::Timer::after(2.0, fn)`, `Timer::every(0.5, fn, TimeMode::Scaled, owner, count)`,
 `Timer::cancel(id)` (or `ScriptScheduler::after/every` from `"ScriptScheduler.h"`; an `owner`
 pointer makes `ScriptScheduler::cancelOwner(owner)` end them, unowned ones end at Play stop).

@@ -1011,10 +1011,8 @@ void editor::CodeEditor::offsetToLineCol(const std::string& text, size_t offset,
 }
 
 void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entity entity, uint32_t entitySceneId) {
-    SceneProject* sourceSceneProject = project->getScene(entitySceneId);
-    if (!sourceSceneProject || !sourceSceneProject->scene) {
-        sourceSceneProject = project->getSelectedScene();
-    }
+    // the scene the id belongs to (the drag always says), never another one's same number
+    SceneProject* sourceSceneProject = entitySceneId != 0 ? project->getScene(entitySceneId) : project->getSelectedScene();
     if (!sourceSceneProject || !sourceSceneProject->scene) return;
 
     Scene* scene = sourceSceneProject->scene;
@@ -1089,43 +1087,45 @@ void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entit
     instance.propertyInsertUndoIndex = instance.editor->GetUndoIndex();
     updateScriptProperties(instance, instance.editor->GetText());
 
-    SceneProject* selectedScene = project->getSelectedScene();
-    if (!selectedScene || !selectedScene->scene) return;
+    // every instance of the script in the scenes loaded with the GameObject's (its parents,
+    // children and siblings) links it: elsewhere the reference would find nothing at runtime
+    const uint32_t sourceSceneId = sourceSceneProject->id;
+    for (uint32_t sceneId : project->getRelatedScenes(sourceSceneId)) {
+        SceneProject* sceneProject = project->getScene(sceneId);
+        if (!sceneProject || !sceneProject->scene) continue;
+        const uint32_t storedSceneId = sceneId != sourceSceneId ? sourceSceneId : 0;
 
-    uint32_t storedSceneId = (entitySceneId != selectedScene->id) ? entitySceneId : 0;
+        for (Entity sceneEntity : sceneProject->entities) {
+            ScriptComponent* scriptComp = sceneProject->scene->findComponent<ScriptComponent>(sceneEntity);
+            if (!scriptComp) continue;
 
-    for (Entity sceneEntity : selectedScene->entities) {
-        ScriptComponent* scriptComp = selectedScene->scene->findComponent<ScriptComponent>(sceneEntity);
-        if (!scriptComp) continue;
+            for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
+                const ScriptEntry& scriptEntry = scriptComp->scripts[si];
+                if (scriptEntry.type != ScriptType::LUA) continue;
+                if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
 
-        for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
-            const ScriptEntry& scriptEntry = scriptComp->scripts[si];
-            if (scriptEntry.type != ScriptType::LUA) continue;
-            if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
+                // A same-named property of another type is not the one just inserted
+                for (size_t pi = 0; pi < scriptEntry.properties.size(); pi++) {
+                    if (scriptEntry.properties[pi].name != varName ||
+                        scriptEntry.properties[pi].type != ScriptPropertyType::EntityReference) continue;
 
-            // A same-named property of another type is not the one just inserted
-            for (size_t pi = 0; pi < scriptEntry.properties.size(); pi++) {
-                if (scriptEntry.properties[pi].name != varName ||
-                    scriptEntry.properties[pi].type != ScriptPropertyType::EntityReference) continue;
+                    std::vector<ScriptEntry> newScripts = scriptComp->scripts;
+                    newScripts[si].properties[pi].value = EntityReference{entity, storedSceneId};
 
-                std::vector<ScriptEntry> newScripts = scriptComp->scripts;
-                newScripts[si].properties[pi].value = EntityReference{entity, storedSceneId};
-
-                PropertyCmd<std::vector<ScriptEntry>> propCmd(
-                    project, selectedScene->id, sceneEntity,
-                    ComponentType::ScriptComponent, "scripts", newScripts);
-                propCmd.execute();
-                return;
+                    PropertyCmd<std::vector<ScriptEntry>> propCmd(
+                        project, sceneId, sceneEntity,
+                        ComponentType::ScriptComponent, "scripts", newScripts);
+                    propCmd.execute();
+                    break;
+                }
             }
         }
     }
 }
 
 void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entity entity, uint32_t entitySceneId) {
-    SceneProject* sourceSceneProject = project->getScene(entitySceneId);
-    if (!sourceSceneProject || !sourceSceneProject->scene) {
-        sourceSceneProject = project->getSelectedScene();
-    }
+    // the scene the id belongs to (the drag always says), never another one's same number
+    SceneProject* sourceSceneProject = entitySceneId != 0 ? project->getScene(entitySceneId) : project->getSelectedScene();
     if (!sourceSceneProject || !sourceSceneProject->scene) return;
 
     Scene* scene = sourceSceneProject->scene;
@@ -1285,16 +1285,17 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
         }
     }
 
-    SceneProject* selectedScene = project->getSelectedScene();
-    if (!selectedScene || !selectedScene->scene) return;
-
-    uint32_t storedSceneId = (entitySceneId != selectedScene->id) ? entitySceneId : 0;
+    const uint32_t sourceSceneId = sourceSceneProject->id;
+    const std::vector<uint32_t> relatedSceneIds = project->getRelatedScenes(sourceSceneId);
     std::string inMemoryContent = headerInstance ? headerInstance->editor->GetText() : "";
 
     // Refresh every entity referencing this header and link the dropped one
     for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) continue;
+        // linked only where the GameObject's scene is loaded too; the other instances still refresh
+        const bool related = std::find(relatedSceneIds.begin(), relatedSceneIds.end(), sceneProject.id) != relatedSceneIds.end();
+        const uint32_t storedSceneId = sceneProject.id != sourceSceneId ? sourceSceneId : 0;
 
         for (Entity sceneEntity : sceneProject.entities) {
             ScriptComponent* scriptComp = sceneProject.scene->findComponent<ScriptComponent>(sceneEntity);
@@ -1308,7 +1309,7 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
                 project->updateScriptProperties(&sceneProject, sceneEntity, newScripts, inMemoryContent, resolveFilepath(headerPath).string());
 
                 for (ScriptEntry& newScript : newScripts) {
-                    if (newScript.headerPath != headerPath.string()) continue;
+                    if (!related || newScript.headerPath != headerPath.string()) continue;
 
                     for (ScriptProperty& property : newScript.properties) {
                         if (property.name == varName && property.type == ScriptPropertyType::EntityReference) {
