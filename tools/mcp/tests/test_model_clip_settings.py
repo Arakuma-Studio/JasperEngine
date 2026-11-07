@@ -1,4 +1,4 @@
-"""A model's clip settings (S74 R27-R29, R53, AC13): edit_animation on "model#Walk" with wrap and
+"""A model's clip settings (S77 R27-R29, R53, AC13): edit_animation on "model#Walk" with wrap and
 root_motion writes the model's <model>.clips sidecar as one project undo step; get_asset_info and
 get_animation read it back; Play loops a Walk set to Loop where it stopped before; undo puts the
 sidecar's bytes back; an edit of the file on disk reloads; no sidecar is today's clip; unknown keys

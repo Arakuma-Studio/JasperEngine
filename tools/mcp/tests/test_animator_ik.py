@@ -1,6 +1,6 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""S74 R32-R35, R57 (docs/specs/S74-clip-quality.md): the constraint fields soften, hingeAxis, twist
+"""S77 R32-R35, R57 (docs/specs/S77-clip-quality.md): the constraint fields soften, hingeAxis, twist
 and aimOffset through the whole path, on a scratch copy of the pose-animation fixture:
 
 - old data keeps its bytes: at their defaults the fields are not written;

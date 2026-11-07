@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Clip quality (S74 R51, R52, D6): check_animation, what a clip costs and how good it is, and
+// Clip quality (S77 R51, R52, D6): check_animation, what a clip costs and how good it is, and
 // optimize_animation, the key reduction with the bake_vertex_animation shape: without output
 // nothing is written, the same arguments + output write exactly that. Both print the structs of
 // animation/ClipReport and animation/ClipOptimize and calculate nothing.
@@ -68,7 +68,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Calibrated against JasperArcade-Ported (S74's risks table; the numbers are in the spec's Deviations)
+// Calibrated against JasperArcade-Ported (S77's risks table; the numbers are in the spec's Deviations)
 constexpr double LOOP_SEAM_LIMIT_MM = 10.0;
 constexpr double ROOT_DRIFT_LIMIT_MM = 20.0;
 // slower than this, net over the clip, a root that moves is drifting, not walking: a slow walk is 0.5 m/s

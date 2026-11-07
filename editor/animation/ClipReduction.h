@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R20-R23, D5)
+// Contract (S77 R20-R23, D5)
 // - Purpose: removes the keys of a clip that a skeleton does not need. A hierarchical error metric
 //   plus Ramer-Douglas-Peucker decimation, the idea of ozz-animation's AnimationOptimizer, written
 //   for this engine (NOTICE.md); its differences are D5's table:

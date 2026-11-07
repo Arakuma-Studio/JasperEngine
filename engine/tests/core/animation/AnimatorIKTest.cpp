@@ -4,7 +4,7 @@
 // The Animator's IK solvers (docs/specs/S21-animation.md AC5, R11, D11): two-bone reaches within
 // 1 mm with the mid joint on the pole side, straightens toward an unreachable target, FABRIK
 // converges, look-at never passes its clamp, non-uniform scale chains, the spring's half-life.
-// S74 R32-R34: the soft reach, hinge axis and twist, reached, the look-at chain walk with an aim
+// S77 R32-R34: the soft reach, hinge axis and twist, reached, the look-at chain walk with an aim
 // offset, the ankle's height on a slope, and the degenerate cases of each solver.
 
 #include <gtest/gtest.h>
@@ -242,7 +242,7 @@ TEST(AnimatorIK, SpringHalfLife){
     EXPECT_NEAR(std::fabs(half.w), 0.0f, 1e-6f);
 }
 
-// ---- S74 R32: two-bone soften, hinge axis, twist, reached
+// ---- S77 R32: two-bone soften, hinge axis, twist, reached
 
 // The red case: a hard limit moves the knee 2.7 degrees per mm of target just before 0.999 of the
 // reach, then freezes it for good. Softened, the knee is continuous and keeps moving past the reach.
@@ -489,7 +489,7 @@ TEST(AnimatorIK, TwoBoneWeightedTwistTakesTheShortWay){
     EXPECT_NEAR(signedAngle(knee, across(chain.positions[1], axis), axis), -10.0f, 0.5f);
 }
 
-// ---- S74: the edge cases of ozz's two-bone tests (ZeroLength, Aligned, PoleTargetAlignment, ZeroScale)
+// ---- S77: the edge cases of ozz's two-bone tests (ZeroLength, Aligned, PoleTargetAlignment, ZeroScale)
 
 TEST(AnimatorIK, TwoBoneZeroLengthTargetAndBones){
     TwoBoneOptions options;
@@ -582,7 +582,7 @@ TEST(AnimatorIK, TwoBoneNonFiniteInputsLeaveAFinitePose){
     EXPECT_FALSE(r.reached);
 }
 
-// ---- S74 R33: the look-at chain walk
+// ---- S77 R33: the look-at chain walk
 
 // The red case. An upright chain yawing cannot fail (the axis passes through the head); a chain
 // leaning forward can: the parents carry the head off the line the turn was measured from.
@@ -716,7 +716,7 @@ TEST(AnimatorIK, LookAtWeightBlendsTheShortWay){
     EXPECT_EQ(r.error, 0.0f);
 }
 
-// ---- S74: the edge cases of ozz's aim tests (TargetTooClose, Aligned, Forward, ZeroScale)
+// ---- S77: the edge cases of ozz's aim tests (TargetTooClose, Aligned, Forward, ZeroScale)
 
 TEST(AnimatorIK, LookAtEdgeCases){
     const Vector3 forward(0, 0, 1);
@@ -800,7 +800,7 @@ TEST(AnimatorIK, LookAtReachedReportsTheMissAcrossTheRay){
     EXPECT_NEAR(r.error, 2.0f * std::sin(20.0f * 0.0174532925f), 1e-3f);
 }
 
-// ---- S74 R34: the ankle's height on a slope
+// ---- S77 R34: the ankle's height on a slope
 
 TEST(AnimatorIK, FootAnkleHeightKeepsTheSoleOnTheSlope){
     const float h = 0.08f;

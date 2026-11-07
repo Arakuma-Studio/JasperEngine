@@ -15,6 +15,7 @@
 #include "particles/LegacyParticleSystem.h"
 #include "component/ScriptComponent.h"
 #include "component/ScrollbarComponent.h"
+#include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/LightComponent.h"
@@ -31,6 +32,7 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/LineRendererComponent.h"
 #include "render/LodFade.h"
@@ -437,6 +439,12 @@ namespace {
         {v(AnimatorIKType::FootLock), "foot_lock", "Foot Lock", "AnimatorIKType::FootLock"},
     };
 
+    constexpr EnumItem kWaterExcluderShapeItems[] = {
+        {v(WaterExcluderShape::BOX), "box", "Box", "WaterExcluderShape::BOX"},
+        {v(WaterExcluderShape::SPHERE), "sphere", "Sphere", "WaterExcluderShape::SPHERE"},
+        {v(WaterExcluderShape::CONVEX_HULL), "convex_hull", "Convex Hull", "WaterExcluderShape::CONVEX_HULL"},
+    };
+
     constexpr EnumItem kBuoyancyColumnsItems[] = {
         {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
         {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
@@ -608,6 +616,7 @@ namespace {
         {v(PivotPreset::BOTTOM_LEFT), "bottom_left", "Bottom Left", "PivotPreset::BOTTOM_LEFT"},
         {v(PivotPreset::TOP_RIGHT), "top_right", "Top Right", "PivotPreset::TOP_RIGHT"},
         {v(PivotPreset::BOTTOM_RIGHT), "bottom_right", "Bottom Right", "PivotPreset::BOTTOM_RIGHT"},
+        {v(PivotPreset::FRAME), "frame", "From Frame", "PivotPreset::FRAME"},
     };
 
     constexpr EnumItem kPrimitiveTypeItems[] = {
@@ -643,6 +652,22 @@ namespace {
     constexpr EnumItem kScriptTypeItems[] = {
         {v(ScriptType::CPP), "cpp", "C++", "ScriptType::CPP", nullptr, kScriptCppAliases},
         {v(ScriptType::LUA), "lua", "Lua", "ScriptType::LUA", nullptr, kScriptLuaAliases},
+    };
+
+    constexpr EnumItem kButtonTransitionItems[] = {
+        {v(ButtonTransition::NONE), "none", "None", "ButtonTransition::NONE"},
+        {v(ButtonTransition::COLOR_TINT), "color_tint", "Color Tint", "ButtonTransition::COLOR_TINT"},
+        {v(ButtonTransition::SPRITE_SWAP), "sprite_swap", "Sprite Swap", "ButtonTransition::SPRITE_SWAP"},
+        {v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP), "color_tint_and_sprite_swap", "Color Tint + Sprite Swap",
+         "ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP"},
+    };
+
+    constexpr EnumItem kNavigationModeItems[] = {
+        {v(NavigationMode::NONE), "none", "None", "NavigationMode::NONE"},
+        {v(NavigationMode::HORIZONTAL), "horizontal", "Horizontal", "NavigationMode::HORIZONTAL"},
+        {v(NavigationMode::VERTICAL), "vertical", "Vertical", "NavigationMode::VERTICAL"},
+        {v(NavigationMode::AUTOMATIC), "automatic", "Automatic", "NavigationMode::AUTOMATIC"},
+        {v(NavigationMode::EXPLICIT), "explicit", "Explicit", "NavigationMode::EXPLICIT"},
     };
 
     constexpr EnumItem kScrollbarTypeItems[] = {
@@ -749,6 +774,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
     const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
     const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
     const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};
@@ -801,6 +827,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kRigidbodyMotionQuality{"RigidbodyMotionQuality", kRigidbodyMotionQualityItems, v(RigidbodyMotionQuality::DISCRETE), nullptr,
                                            kRigidbodyMotionQualityOrder};
     const EnumDesc kScriptType{"ScriptType", kScriptTypeItems, v(ScriptType::CPP)};
+    const EnumDesc kButtonTransition{"ButtonTransition", kButtonTransitionItems, v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP)};
+    const EnumDesc kNavigationMode{"NavigationMode", kNavigationModeItems, v(NavigationMode::AUTOMATIC)};
     const EnumDesc kScrollbarType{"ScrollbarType", kScrollbarTypeItems, v(ScrollbarType::VERTICAL)};
     const EnumDesc kShadowCaster2DShape{"ShadowCaster2DShape", kShadowCaster2DShapeItems, v(ShadowCaster2DShape::AUTO_QUAD)};
     const EnumDesc kShadowUpdateMode{"ShadowUpdateMode", kShadowUpdateModeItems, v(ShadowUpdateMode::AUTO)};

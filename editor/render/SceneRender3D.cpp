@@ -29,6 +29,10 @@
 
 #include <algorithm>
 #include "util/WaterEditorUtils.h"
+#include "util/WaterExclusion.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -132,6 +136,14 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : waterVolumeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterExcluderLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterWakeLines) {
         delete pair.second;
     }
 
@@ -517,6 +529,79 @@ void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const 
     lines->addLine(p[7], p[4], surfaceColor);
     lines->addLine(p[4], p[6], surfaceColor);
     lines->addLine(p[5], p[7], surfaceColor);
+}
+
+// A Water Excluder: its box, the three circles of its sphere, or its hull's edges (orange: where
+// no water is drawn and nothing floats)
+void editor::SceneRender3D::createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted){
+    LineRenderer* lines = waterExcluderLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = excluder.enabled ? Vector4(1.0f, 0.55f, 0.2f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    auto world = [&](const Vector3& p){ return transform.modelMatrix * p; };
+    std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+    const WaterHull* hull = system ? system->getHull(entity) : nullptr;
+    if (excluder.shape == WaterExcluderShape::CONVEX_HULL){
+        if (!hull) return;
+        // (a hull without planes: a build without 3D physics, its bounds box drawn below)
+        if (!hull->planes.empty()){
+            for (const auto& edge : hull->edges)
+                lines->addLine(world(hull->points[edge.first]), world(hull->points[edge.second]), color);
+            return;
+        }
+    }
+    const AABB box = getWaterExcluderLocalBox(excluder.shape, excluder.center, excluder.size, hull);
+    if (box.isNull()) return;
+    const Vector3 c = box.getCenter();
+    const Vector3 h = box.getHalfSize();
+    if (excluder.shape == WaterExcluderShape::SPHERE){
+        const int segments = 32;
+        for (int axis = 0; axis < 3; axis++){
+            for (int i = 0; i < segments; i++){
+                const float a0 = 6.28318530718f * (float)i / (float)segments;
+                const float a1 = 6.28318530718f * (float)(i + 1) / (float)segments;
+                auto point = [&](float a){
+                    const float u = std::cos(a), v = std::sin(a);
+                    if (axis == 0) return c + Vector3(0.0f, u * h.y, v * h.z);
+                    if (axis == 1) return c + Vector3(u * h.x, 0.0f, v * h.z);
+                    return c + Vector3(u * h.x, v * h.y, 0.0f);
+                };
+                lines->addLine(world(point(a0)), world(point(a1)), color);
+            }
+        }
+        return;
+    }
+    const Vector3 p[8] = {
+        world(c + Vector3(-h.x, -h.y, -h.z)), world(c + Vector3(h.x, -h.y, -h.z)), world(c + Vector3(h.x, -h.y, h.z)), world(c + Vector3(-h.x, -h.y, h.z)),
+        world(c + Vector3(-h.x, h.y, -h.z)), world(c + Vector3(h.x, h.y, -h.z)), world(c + Vector3(h.x, h.y, h.z)), world(c + Vector3(-h.x, h.y, h.z))
+    };
+    const int edges[12][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}};
+    for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], color);
+}
+
+// A selected Water Wake's waterline footprint: the ellipse its wake starts from (cyan), with its
+// length axis
+void editor::SceneRender3D::createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible){
+    LineRenderer* lines = waterWakeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+    if (!transform.visible || !visible || !system) return;
+
+    const WaterInteractionSystem::WakeFootprint shape = system->getWakeFootprint(entity, wake, transform);
+    const WaterWakeFootprint& footprint = shape.footprint;
+    const Vector4 color = wake.enabled ? Vector4(0.3f, 0.85f, 1.0f, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 1.0f);
+    auto point = [&](float a){
+        const Vector2 p = footprint.axisX * (std::cos(a) * footprint.radiusX) + footprint.axisZ * (std::sin(a) * footprint.radiusZ);
+        return Vector3(shape.center.x + p.x, shape.center.y, shape.center.z + p.y);
+    };
+    const int segments = 48;
+    for (int i = 0; i < segments; i++)
+        lines->addLine(point(6.28318530718f * (float)i / (float)segments), point(6.28318530718f * (float)(i + 1) / (float)segments), color);
+    lines->addLine(point(-1.57079632679f), point(1.57079632679f), color);
 }
 
 // A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
@@ -1340,6 +1425,12 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : waterVolumeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : waterExcluderLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : waterWakeLines) {
+        pair.second->setVisible(false);
+    }
     for (auto& pair : buoyancyLines) {
         pair.second->setVisible(false);
     }
@@ -1351,6 +1442,34 @@ void editor::SceneRender3D::hideAllGizmos(){
     }
     for (auto& pair : capsuleShadowLines) {
         pair.second->setVisible(false);
+    }
+}
+
+void editor::SceneRender3D::hideEntityGizmos(Entity entity){
+    SceneRender::hideEntityGizmos(entity);
+
+    auto hide = [entity](std::map<Entity, LineRenderer*>& lines) {
+        auto it = lines.find(entity);
+        if (it != lines.end()) it->second->setVisible(false);
+    };
+    if (auto light = lightObjects.find(entity); light != lightObjects.end()) {
+        light->second.icon->setVisible(false);
+        light->second.lines->setVisible(false);
+    }
+    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
+        cameraObject->second.icon->setVisible(false);
+        cameraObject->second.lines->setVisible(false);
+    }
+    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
+        sound->second.icon->setVisible(false);
+    }
+    if (auto body = bodyObjects.find(entity); body != bodyObjects.end()) {
+        body->second.lines->setVisible(false);
+    }
+    for (auto* lines : {&jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines, &reflectionProbeLines,
+                        &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines,
+                        &capsuleShadowLines}) {
+        hide(*lines);
     }
 }
 
@@ -1487,6 +1606,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentFogVolumes;
     std::set<Entity> currentControllers;
     std::set<Entity> currentWaterVolumes;
+    std::set<Entity> currentWaterExcluders;
+    std::set<Entity> currentWaterWakes;
     std::set<Entity> currentBuoyancies;
     std::set<Entity> currentParticleSystems;
     std::set<Entity> currentForceFields;
@@ -1499,6 +1620,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
+
+        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
+        const bool active = gizmoActive(entity);
 
         if (signature.test(scene->getComponentId<LightComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LightComponent& light = scene->getComponent<LightComponent>(entity);
@@ -1630,6 +1754,23 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             createOrUpdateWaterVolumeLines(entity, transform, volume, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
+        if (signature.test(scene->getComponentId<WaterExcluderComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterExcluderComponent& excluder = scene->getComponent<WaterExcluderComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterExcluders.insert(entity);
+            ensureOverlayLines(waterExcluderLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateWaterExcluderLines(entity, transform, excluder, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<WaterWakeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterWakeComponent& wake = scene->getComponent<WaterWakeComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterWakes.insert(entity);
+            ensureOverlayLines(waterWakeLines, entity);
+            createOrUpdateWaterWakeLines(entity, transform, wake, isDescendantSelected(entity));
+        }
+
         if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -1707,6 +1848,10 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
                 createOrUpdateBoneLines(entity, model, isVisible, isSelected);
             }
+        }
+
+        if (!active) {
+            hideEntityGizmos(entity);
         }
     }
 
@@ -1806,7 +1951,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
-    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
+    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&waterExcluderLines, &currentWaterExcluders),
+                             std::make_pair(&waterWakeLines, &currentWaterWakes),
+                             std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
         for (auto it = pair.first->begin(); it != pair.first->end();) {
             if (pair.second->find(it->first) == pair.second->end()) {
                 delete it->second;

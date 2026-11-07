@@ -6,11 +6,16 @@ shader), the automatic library:underwater pass (on under the surface, off above,
 height and colours written into it), screenshots of the water from above and below
 (screenshots/water_above.png, water_below.png, water_up.png in the scratch project), and that a
 library:water material without textures keeps the flat, grey defaults it had (no ripples:
-the preset's BUILTIN_TEXTURES alone picks the engine's ripples and noise)."""
+the preset's BUILTIN_TEXTURES alone picks the engine's ripples and noise). The water-reflections
+spec: the waves hold while Play is paused or the time scale is 0 and follow a stopped scene's
+Animate water, a fork with @role water (made by hand or by fork_shader source) keeps the
+buoyancy, the queries and the underwater switch, and the planar reflection settings (undoable,
+in get_render_stats, a screenshot of the reflection)."""
 
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from harness import Editor, find_key
 
@@ -21,6 +26,8 @@ CI = True
 TIMEOUT = 900
 
 SCENE = "scenes/Water.scene"
+REPO = Path(__file__).resolve().parents[3]
+
 M = "submeshes[0].material."
 
 
@@ -29,8 +36,10 @@ def passes_of(settings) -> list:
     return found if isinstance(found, list) else []
 
 
-async def lua(ed: Editor, code: str):
-    return (await ed.call("eval_lua", code=code))["values"]
+async def lua(ed: Editor, code: str, edit: bool = False):
+    """Lua's return values; edit=True runs it against the stopped scene."""
+    extra = {"allow_edit_mode": True} if edit else {}
+    return (await ed.call("eval_lua", code=code, **extra))["values"]
 
 
 async def test_menu_entry_creates_water(ed: Editor):
@@ -46,7 +55,7 @@ async def test_menu_entry_creates_water(ed: Editor):
     mesh = entity["components"]["mesh"]
     ed.check_eq(mesh.get(M + "shader"), "library:water", f"water material: {mesh!r}")
     features = mesh.get(M + "shaderFeatures") or []
-    for feature in ("BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
+    for feature in ("BUILTIN_TEXTURES", "WAVES", "GERSTNER", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
         ed.check(feature in features, f"preset feature {feature}: {features!r}")
     ed.check_eq(mesh.get(M + "lighting"), "pixel", "lit per pixel")
 
@@ -106,21 +115,21 @@ async def test_play_floats_and_queries(ed: Editor):
     ed.check(-0.7 < crate_y < 0.7, f"the buoyant crate floats at the surface: y {crate_y}")
     ed.check(anchor_y < -10, f"the other falls through the water: y {anchor_y}")
 
-    # the surface the shader draws: waveHeight 0.1, two waves (at most 1.5 times it)
+    # the surface the shader draws: waveHeight 0.1, four Gerstner waves (at most 1.94 times it)
     height, normal, outside, under, over = await lua(ed, """
         return Water.getHeight(scene, 1.0, 2.0), Water.getNormal(scene, 1.0, 2.0),
                Water.getHeight(scene, 50.0, 0.0), Water.isUnderwater(scene, Vector3(0, -1, 0)),
                Water.isUnderwater(scene, Vector3(0, 1, 0))""")
-    ed.check(isinstance(height, (int, float)) and abs(height) <= 0.15 + 1e-4, f"height within the waves: {height!r}")
-    ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.9, f"normal nearly up: {normal!r}")
+    ed.check(isinstance(height, (int, float)) and abs(height) <= 0.194 + 1e-4, f"height within the waves: {height!r}")
+    ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.8, f"normal nearly up: {normal!r}")
     ed.check(outside is None, f"no water at x 50: {outside!r}")
     ed.check(under is True and over is False, f"isUnderwater: {under!r} {over!r}")
-    # on the shader's clock, latched once a frame (S22 R29): still within a frame, moving over frames
-    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
-                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime()")
-    ed.check_eq(same, time, "one shader time within a frame")
+    # on the scene clock, advanced once a frame: still within a frame, moving over frames
+    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(scene); "
+                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime(scene)")
+    ed.check_eq(same, time, "one water time within a frame")
     await ed.call("wait", frames=20)
-    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime()")
+    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime(scene)")
     ed.check(later > time, f"the clock moves frame to frame: {time} {later}")
     ed.check(first != second, f"the waves move: {first} {second}")
 
@@ -137,7 +146,7 @@ async def test_underwater_pass_switches(ed: Editor):
     on, level, shallow = await lua(ed, "return scene:isPostProcessPassEnabled(0), "
                                        "scene:getPostProcessUniform(0, 'waterLevel').x, scene:getPostProcessUniform(0, 'shallowColor')")
     ed.check_eq(on, True, "under the water: the pass is on")
-    ed.check(abs(level) <= 0.15 + 1e-3, f"the surface height written: {level!r}")
+    ed.check(abs(level) <= 0.194 + 1e-3, f"the surface height written: {level!r}")
     # the water's manifest default (linear), not the pass's own
     ed.check(isinstance(shallow, list) and len(shallow) == 4 and shallow[1] > 0.5 and shallow[3] == 0.5,
              f"the water's shallow colour written: {shallow!r}")
@@ -172,6 +181,223 @@ async def test_caustics_and_absorption_screenshot(ed: Editor):
     ed.check(not errors, f"the water's variant has no check error: {errors!r}")
 
 
+def surface(sample: dict) -> float:
+    return sample["samples"][0]["surface_height"]
+
+
+async def test_transparent_under_water_screenshot(ed: Editor):
+    """A see-through red box under the refracting water shows through it, tinted
+    (screenshots/water_glass_under.png; water-reflections F2, F3)."""
+    made = await ed.call("create_entity", type="cube", name="Glass", position=[1.5, -1.2, 2.0])
+    glass = find_key(made, "entity_id", "id")
+    await ed.call("set_properties", entity=glass, values={"mesh": {
+        M + "shader": "library:unlit", M + "blendMode": "alpha",
+        M + "shaderParams": {"baseColor": [1.0, 0.1, 0.1, 0.5]}}})
+    shot = await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_glass_under.png"})
+    ed.check(shot.images, "screenshot of the box under the water")
+    await ed.call("delete_entities", entities=[glass])
+
+
+async def test_waves_hold_while_paused(ed: Editor):
+    """The waves run on the scene clock: Pause and time scale 0 hold them with the bodies, time
+    scale 0.5 halves them (water-reflections F9)."""
+    point = {"points": [[1.5, 0, 2.5]]}
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", frames=10)
+        await ed.call("play", action="pause")
+        a = await ed.call("sample_water", **point)
+        await ed.call("wait", seconds=0.5)
+        b = await ed.call("sample_water", **point)
+        ed.check(b["shader_time"] > a["shader_time"], f"the editor drew frames meanwhile: {a['shader_time']} {b['shader_time']}")
+        ed.check_eq(surface(b), surface(a), "paused: the surface holds")
+        ed.check_eq(b.get("water_time"), a.get("water_time"), "paused: the water clock holds")
+
+        await ed.call("play", action="resume")
+        await ed.call("wait", frames=20)
+        c = await ed.call("sample_water", **point)
+        ed.check(c["water_time"] > b["water_time"], f"resumed: the clock runs again: {b['water_time']} {c['water_time']}")
+
+        await ed.call("play", action="set", time_scale=0)
+        await ed.call("wait", frames=2)
+        d = await ed.call("sample_water", **point)
+        await ed.call("wait", frames=20)
+        e = await ed.call("sample_water", **point)
+        ed.check_eq(surface(e), surface(d), "time scale 0: the surface holds")
+        ed.check_eq(e["water_time"], d["water_time"], "time scale 0: the water clock holds")
+
+        await ed.call("play", action="set", time_scale=0.5)
+        await ed.call("wait", frames=2)
+        before = await lua(ed, "return Water.getTime(scene), Time.unscaledTime")
+        await ed.call("wait", frames=60)
+        after = await lua(ed, "return Water.getTime(scene), Time.unscaledTime")
+        ratio = (after[0] - before[0]) / max(after[1] - before[1], 1e-6)
+        ed.check(0.4 < ratio < 0.6, f"time scale 0.5: the water clock runs at half speed ({ratio:.3f})")
+    finally:
+        await ed.call("play", action="set", time_scale=1)
+        await ed.call("play", action="stop")
+
+
+async def test_edit_mode_animate_water(ed: Editor):
+    """A stopped scene's clock follows the Scene view's Animate water (on by default), frame by
+    frame of the Scene view (a headless editor draws one for each screenshot)."""
+    async def scene_frames():
+        await ed.call_raw("screenshot", {"view": "scene"})
+        await asyncio.sleep(0.5)
+        await ed.call_raw("screenshot", {"view": "scene"})
+
+    first = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
+    await scene_frames()
+    second = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
+    ed.check(second > first, f"Animate water on: the clock moves in edit mode ({first} {second})")
+    await ed.call("set_scene_camera", display={"animate_water": False})
+    try:
+        held = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
+        await scene_frames()
+        still = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
+        ed.check_eq(still, held, "Animate water off: the clock holds")
+    finally:
+        await ed.call("set_scene_camera", display={"animate_water": True})
+
+
+async def test_play_restarts_scene_clock(ed: Editor):
+    """Play starts the scene clock at 0, as an exported game does, whatever the edit-mode clock
+    ran to (spec 7)."""
+    point = {"points": [[1.5, 0, 2.5]]}
+    edit = (await ed.call("sample_water", **point))["water_time"]
+    for _ in range(30):
+        if edit > 3.0:
+            break
+        await ed.call_raw("screenshot", {"view": "scene"})
+        await asyncio.sleep(0.3)
+        edit = (await ed.call("sample_water", **point))["water_time"]
+    ed.check(edit > 3.0, f"the edit-mode clock ran: {edit}")
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", frames=2)
+        played = (await ed.call("sample_water", **point))["water_time"]
+        ed.check(played < 2.0, f"Play restarts the scene clock: {played} after an edit-mode {edit}")
+    finally:
+        await ed.call("play", action="stop")
+
+
+def with_role(source: str, shader_line: str, role: str) -> str:
+    """A library entry file as a hand-made fork has it, with the @role line (already there in this
+    engine's library)."""
+    if f"@role {role}" in source:
+        return source
+    return source.replace(shader_line, f"{shader_line}\n// @role {role}", 1)
+
+
+async def test_fork_keeps_buoyancy_queries_underwater(ed: Editor):
+    """A copy of library:water and library:underwater with @role (written by hand) keeps the engine's
+    water: the crate floats, Water.getHeight answers, the underwater pass switches (water-reflections F10)."""
+    ed.require_tools("write_file", "set_properties", "set_scene_settings", "play", "eval_lua", "wait")
+    library = REPO / "engine" / "shaderlib" / "library"
+    await ed.call("write_file", path="shaders/HandWater.frag",
+                  content=with_role((library / "water.frag").read_text(), "// @shader mesh", "water"))
+    await ed.call("write_file", path="shaders/HandWater.vert", content=(library / "water.vert").read_text())
+    await ed.call("write_file", path="shaders/HandUnderwater.frag",
+                  content=with_role((library / "underwater.frag").read_text(), "// @shader postprocess", "underwater"))
+    await ed.call("write_file", path="shaders/HandUnderwater.vert",
+                  content=(REPO / "engine" / "shaderlib" / "fullscreen.vert").read_text())
+    chain = passes_of(await ed.call("get_scene_settings", names=["post_process"]))
+    try:
+        await ed.call("set_properties", entity="Water", values={"mesh": {M + "shader": "shaders/HandWater"}})
+        chain[0]["shader"] = "shaders/HandUnderwater"
+        await ed.call("set_scene_settings", settings={"post_process": chain})
+        await ed.call("play", action="start")
+        await ed.call("wait", game_seconds=5)
+        crate = await ed.call("get_runtime_entity", entity="Crate", components=["transform"])
+        crate_y = find_key(crate, "position")[1]
+        ed.check(crate_y > -0.7, f"the crate floats in the fork: y {crate_y}")
+        height = (await lua(ed, "return Water.getHeight(scene, 1.0, 2.0)"))[0]
+        ed.check(isinstance(height, (int, float)), f"Water.getHeight answers over the fork: {height!r}")
+        await lua(ed, "local cam = object('View'); cam.position = Vector3(0, -1.5, 6); cam:setRotation(15, 0, 0); return true")
+        await ed.call("wait", frames=5)
+        on = (await lua(ed, "return scene:isPostProcessPassEnabled(0)"))[0]
+        ed.check_eq(on, True, "the forked underwater pass switches on under the forked water")
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("set_properties", entity="Water", values={"mesh": {M + "shader": "library:water"}})
+        chain[0]["shader"] = "library:underwater"
+        await ed.call("set_scene_settings", settings={"post_process": chain})
+
+
+async def test_fork_shader_from_library(ed: Editor):
+    """fork_shader source=library:water target=material: the files with @role, the material on them,
+    features kept, one undo step; check stays quiet."""
+    before = (await ed.call("get_entity", entity="Water", properties=["submeshes[0].material.*"]))["components"]["mesh"]
+    features = before.get(M + "shaderFeatures") or []
+    ed.check(features, f"the water has features to keep: {before!r}")
+    made = await ed.call("fork_shader", source="library:water", target="material", entity="Water", name="ForkedWater")
+    base = made["custom_shader"]
+    ed.check_eq(made.get("submeshes"), [0], f"the water's submesh: {made!r}")
+    frag = await ed.call_raw("read_file", {"path": made["frag_path"]})
+    ed.check("@role water" in frag.text, f"the fork keeps the role: {frag.text[:300]}")
+    mesh = (await ed.call("get_entity", entity="Water", properties=["submeshes[0].material.*"]))["components"]["mesh"]
+    ed.check_eq(mesh.get(M + "shader"), base, "the material draws with the fork")
+    ed.check_eq(mesh.get(M + "shaderFeatures") or [], features, "its features are kept")
+    found = await ed.call("check_shader", timeout=300)
+    role = [f for f in found.get("findings", []) if f.get("code") == "water-fork-without-role"]
+    ed.check(not role, f"no role warning for the fork: {role!r}")
+    await ed.call("undo")
+    mesh = (await ed.call("get_entity", entity="Water", properties=["submeshes[0].material.*"]))["components"]["mesh"]
+    ed.check_eq(mesh.get(M + "shader"), "library:water", "undo puts the library shader back")
+    await ed.check_error("fork_shader", source="library:underwater", target="material", entity="Water", contains="postprocess")
+
+
+async def test_planar_reflection_settings(ed: Editor):
+    """The scene's Planar Reflections: settable and undoable, a pass per water height in
+    get_render_stats, none with the resolution off; a screenshot of the reflection."""
+    await ed.call("set_properties", entity="Water", values={"mesh": {
+        M + "shaderFeatures": ["BUILTIN_TEXTURES", "WAVES", "GERSTNER", "REFLECTION", "PLANAR_REFLECTION", "UNDERSIDE"]}})
+    defaults = (await ed.call("get_scene_settings", names=["planar_reflection_resolution", "max_planar_reflections",
+                                                             "planar_reflection_layers"]))["settings"]
+    ed.check_eq(defaults["planar_reflection_resolution"], "half", f"half by default: {defaults!r}")
+    ed.check_eq(defaults["planar_reflection_layers"], "everything")
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "quarter", "max_planar_reflections": 1,
+                                                "planar_reflection_far_clip": 60, "planar_reflection_shadows": False})
+    got = (await ed.call("get_scene_settings", names=["planar_reflection_resolution", "max_planar_reflections"]))["settings"]
+    ed.check_eq(got["planar_reflection_resolution"], "quarter")
+    ed.check_eq(got["max_planar_reflections"], 1)
+    await ed.check_error("set_scene_settings", settings={"max_planar_reflections": 9}, contains="1 to 4")
+    await ed.call("undo")
+    got = (await ed.call("get_scene_settings", names=["planar_reflection_resolution"]))["settings"]
+    ed.check_eq(got["planar_reflection_resolution"], "half", "undo restores the resolution")
+    await ed.call("redo")
+    # the same settings in Lua
+    lua_values = await lua(ed, "return scene.planarReflectionResolution == PlanarReflectionResolution.QUARTER, "
+                               "scene.maxPlanarReflections, scene.planarReflectionShadows", edit=True)
+    ed.check_eq(lua_values, [True, 1, False], "Scene's Lua properties read the settings")
+
+    # drawn: a pass for the water's height, at a quarter of the view
+    stats = {}
+    for _ in range(40):
+        await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_planar.png"})
+        stats = await ed.call("get_render_stats")
+        if stats.get("planar_reflections", {}).get("passes"):
+            break
+        await asyncio.sleep(0.5)
+    ed.check_eq(stats.get("planar_reflections", {}).get("passes"), 1, f"one reflection pass: {stats.get('planar_reflections')!r}")
+    in_use = (await ed.call("get_scene_settings"))["planar_reflections_in_use"]
+    ed.check(in_use["passes"] == 1 and in_use["width"] > 0, f"in use: {in_use!r}")
+
+    scene_shot = await ed.call_raw("screenshot", {"view": "scene", "save_path": "screenshots/water_planar_scene_view.png"})
+    ed.check(scene_shot.images, "Scene view screenshot of the reflection")
+
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "off"})
+    await ed.call_raw("screenshot", {"view": "game"})
+    await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_planar_off.png"})
+    stats = await ed.call("get_render_stats")
+    ed.check(not stats.get("planar_reflections", {}).get("passes"), f"off: no pass: {stats.get('planar_reflections')!r}")
+    shaders = (await ed.call("list_shaders", name="water"))["shaders"][0]
+    ed.check_eq(shaders.get("role"), "water", "list_shaders names the role")
+    ed.check("planar reflection" in shaders.get("cost_note", ""), f"and the planar reflection cost: {shaders.get('cost_note')!r}")
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "half", "max_planar_reflections": 2,
+                                                "planar_reflection_far_clip": 0, "planar_reflection_shadows": True})
+
+
 def roughness(png: bytes) -> int:
     """How many horizontal neighbours (green) in the middle half of an image differ by more than 4
     (a smooth gradient: almost none)."""
@@ -181,6 +407,26 @@ def roughness(png: bytes) -> int:
         for x in range(w // 4, 3 * w // 4):
             steps += abs(row[x * channels + 1] - row[(x + 1) * channels + 1]) > 4
     return steps
+
+
+async def test_planar_reflection_not_flat_check(ed: Editor):
+    """check_shader warns about a planar reflection on sloped water (it mirrors about the top of
+    its bounds), not on the flat one."""
+    await ed.call("set_properties", entity="Water", values={"mesh": {
+        M + "shaderFeatures": ["BUILTIN_TEXTURES", "WAVES", "REFLECTION", "PLANAR_REFLECTION"]}})
+
+    async def not_flat():
+        found = await ed.call("check_shader", timeout=300)
+        return [f for f in found.get("findings", []) if f.get("code") == "planar-reflection-not-flat"]
+
+    ed.check(not await not_flat(), "flat water: no warning")
+    await ed.call("set_transform", entity="Water", rotation={"euler": [20, 0, 0]})
+    try:
+        sloped = await not_flat()
+        ed.check(len(sloped) == 1 and "Water" in sloped[0].get("message", ""), f"sloped water: one warning: {sloped!r}")
+    finally:
+        await ed.call("set_transform", entity="Water", rotation={"euler": [0, 0, 0]})
+    ed.check(not await not_flat(), "flat again: no warning")
 
 
 async def test_old_materials_keep_flat_defaults(ed: Editor):

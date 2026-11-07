@@ -78,7 +78,8 @@ void Spinner::onUpdate() {
     }
     if (Input::isKeyPressed(D_KEY_SPACE) && bullet.isValid()) {
         GameObject go = GameObject::instantiate(bullet, Vector3(0, 5, 0), Quaternion());
-        Log::print("spawned %s", go.getName().c_str());
+        // false when there is none: the prefab missing, or its init destroyed it at once
+        if (go) Log::print("spawned %s", go.getName().c_str());
     }
 }
 ```
@@ -148,7 +149,8 @@ member types: `bool`, `int`, `float`, `std::string`, `Vector2`, `Vector3`, `Vect
 |---|---|---|
 | `REGISTER_ENGINE_EVENT(onUpdate)` | `UNREGISTER_ENGINE_EVENT(onUpdate)` | every frame |
 | `REGISTER_ENGINE_EVENT(onFixedUpdate)` | `UNREGISTER_ENGINE_EVENT(onFixedUpdate)` | every physics step |
-| `REGISTER_BUTTON_EVENT(onPress, method)` | `UNREGISTER_BUTTON_EVENT(onPress, method)` | Button events |
+| `REGISTER_UI_EVENT(onClick, method)` | `UNREGISTER_UI_EVENT(onClick, method)` | a click: released over the element |
+| `REGISTER_BUTTON_EVENT(onPress, method)` | `UNREGISTER_BUTTON_EVENT(onPress, method)` | Button events: `onClick` is the button's click (released over it, or a Submit while selected); `onPress` its pressed state; `onRelease` fires on every release, wherever the pointer is, so it is not a click |
 | `REGISTER_UI_EVENT(event, method)`, `REGISTER_SCROLLBAR_EVENT`, `REGISTER_PANEL_EVENT` | `UNREGISTER_...` | UI component events |
 | `REGISTER_COMPONENT_EVENT(Component, event, method)` | `UNREGISTER_COMPONENT_EVENT(...)` | any component's event |
 
@@ -159,6 +161,17 @@ disabled entry) are skipped. Registering in the constructor or in `init()` both 
 `onCharInput` passes one whole typed character: declare it `void onCharInput(char32_t character)`.
 The older form `void onCharInput(wchar_t)` still compiles but is deprecated: on Windows `wchar_t` is
 16 bits, so a character beyond U+FFFF (an emoji) arrives cut to its low 16 bits there.
+
+## Choosing Lua or C++
+
+Keep the language of the project's existing scripts. A project without scripts gets Lua unless the
+user asks for C++: Lua runs in the prebuilt players with no compiler, C++ makes every export a
+compiled build (`jasper://docs/shipping`). Before the first C++ script read `get_build_info`
+`cpp_scripts`: `can_build` is the toolchain check Play runs (on Windows, a compiler compatible with
+this editor), `missing_tools` says what is missing. Switch to Lua, and tell the user why, when the
+tools are missing, when a build fails for reasons outside your code (CMake does not configure, the
+compiler or linker does not run, the editor's compatibility check fails), or when your code still
+does not compile after two fixes.
 
 ## Timers and time (Invoke)
 
@@ -178,8 +191,10 @@ bool pending = isInvoking();   // or isInvoking(id)
 The timers belong to the script: they keep running while it is disabled or its GameObject is
 inactive and are cancelled when the script is deleted (`~ScriptBase`: GameObject destroyed,
 scene unloaded, Play stop). Callbacks run on the main thread after `onUpdate` (with the Lua
-timers, in creation order, at most once a frame; a late repeat is rescheduled from now);
-exceptions are not caught. Code that is not a script: `#include "Timer.h"`,
+timers, in creation order, at most once a frame; a late repeat is rescheduled from now). A C++
+exception a callback (timer or event) throws is caught: in the editor's Play it stops Play like a
+Lua error ("Script crash ... C++ exception <type>: <what>"), in a game it is logged and the game
+goes on (jasper://docs/crash-diagnostics, "A callback that fails"); on the Web it ends the game. Code that is not a script: `#include "Timer.h"`,
 `jasperengine::Timer::after(2.0, fn)`, `Timer::every(0.5, fn, TimeMode::Scaled, owner, count)`,
 `Timer::cancel(id)` (or `ScriptScheduler::after/every` from `"ScriptScheduler.h"`; an `owner`
 pointer makes `ScriptScheduler::cancelOwner(owner)` end them, unowned ones end at Play stop).

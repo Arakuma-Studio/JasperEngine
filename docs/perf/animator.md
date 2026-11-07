@@ -33,7 +33,7 @@ tools/perf/bench-anim-wasm.sh                  # the same program as WebAssembly
   (`AnimatorInstance::runtimeStateBytes`: the instance, parameters, layer / montage / IK runs and
   output buffers; the rig, poses and clip bindings scale with bones and clips and are part of
   the crowd's cost instead, spec deviation 8); one Look At solve over 3 bones of a chain leaning 30
-  degrees, from its animated pose each call (S74 R33, information).
+  degrees, from its animated pose each call (S77 R33, information).
 
 ## Results
 
@@ -86,9 +86,9 @@ root-motion lap of a looping clip (its root at 0 and at its length) is sampled o
 instead of every frame. A handled clip event builds no string (the "no handler" warning's key is
 hashed in place): before, each event cost two allocations.
 
-## S74: clip rows, the hot paths, WebAssembly
+## S77: clip rows, the hot paths, WebAssembly
 
-The rows of [S74](../specs/S74-clip-quality.md) (R10) are information in `check_bench.py`, except the
+The rows of [S77](../specs/S77-clip-quality.md) (R10) are information in `check_bench.py`, except the
 owner's two budgets of R44 (`web30_serial_p95_ms`, `web30_clip_heap_bytes`). `--clip <file.anim>` adds
 `real_<name>_*` rows for clips kept out of the repository; `clip_dense` and `clip_reduced` are
 generated shapes (201 tracks, 8,241 keys; 132 tracks, 911 keys).
@@ -103,7 +103,7 @@ after). **ARM is unmeasured (the owner's decision): no number here says anything
 
 `je-bench-anim --workers 3 --count-allocs`, core-tests build (RelWithDebInfo, GCC 11, SSE2), five runs of
 each binary interleaved, medians with the range. Both binaries are the same bench on the tree of `66322d571`
-(origin/main `f2fa788c7` and S74 step 1 merged); "before" has the engine sources step 2 changed put back to
+(origin/main `f2fa788c7` and S77 step 1 merged); "before" has the engine sources step 2 changed put back to
 that base's.
 
 | Metric | Before | After | Change |
@@ -146,7 +146,7 @@ Single-run noise on these rows is several percent. A clip whose segments are mos
 the extra dot product (the 60 degree row above) and gains nothing; a clip of nothing else would get slower.
 The real clips are ozz samples, a Quaternius clip and an earlier Python reduction of them at 1 mm (not `ClipReduction`), kept out of the repository.
 Parse + build of a `.anim` costs about 50 ms per MB here (`real_pab_atlas`: 4.3 MB, 219 ms), unchanged by
-S74; with async loading a file of 64 KB or more now does this on a worker where there are threads.
+S77; with async loading a file of 64 KB or more now does this on a worker where there are threads.
 
 ### WebAssembly
 
@@ -187,10 +187,10 @@ What these numbers do not say:
 - A `.anim` parses about 2.8 x slower here than natively, about 150 ms per MB. Without threads that happens in
   the call (R16).
 
-### S74's IK solvers: an A/B on this repository's host
+### S77's IK solvers: an A/B on this repository's host
 
 The chain-walk Look At, the slope-corrected Foot IK and the `reached` measurement against the same
-tree without them (`feat/s74-clip-quality`'s `engine/core`), in one build, on the S74 host (AMD
+tree without them (`feat/s74-clip-quality`'s `engine/core`), in one build, on the S77 host (AMD
 EPYC-Genoa, 8 vCPUs, shared, the linux image's RelWithDebInfo core-tests build, `--workers 3
 --count-allocs`; three runs each, the median with the range). This host is about twice as slow as
 E: the same five budgets miss with and without the change, so only the difference counts here.

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R27, R28, D4: a model's "<model>.clips" sidecar sets its clips' Wrap Mode and Root Motion
+// S77 R27, R28, D4: a model's "<model>.clips" sidecar sets its clips' Wrap Mode and Root Motion
 // where buildModelSubClip makes them (what the editor and a player both load), no sidecar or no
 // entry means today's clip byte for byte, unknown keys survive a write, and the pool reads a
 // changed sidecar again once the model is invalidated.

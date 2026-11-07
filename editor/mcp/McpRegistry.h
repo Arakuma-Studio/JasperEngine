@@ -152,6 +152,9 @@ namespace jasperengine::editor::mcp {
         // A static resource with this uri, or else the first template matching it (vars filled).
         const ResourceDef* findResource(const std::string& uri) const;
         const ResourceTemplateDef* matchResourceTemplate(const std::string& uri, std::map<std::string, std::string>& vars) const;
+        // Reads a resource or template by uri (resources/read and read_file). found is false when nothing
+        // matches the uri; a reader's exception becomes a failed result.
+        ResourceResult readResource(const std::string& uri, bool& found) const;
 
         static bool matchUriTemplate(const std::string& uriTemplate, const std::string& uri, std::map<std::string, std::string>& vars);
 

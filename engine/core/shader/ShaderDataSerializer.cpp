@@ -111,7 +111,8 @@ void writeShaderData(std::vector<unsigned char>& out, ShaderKey shaderKey, const
         writeString(out, stage.name);
         writeString(out, stage.source);
 
-        // Bytecode is only present for SPIRV (Vulkan); source-based languages write 0
+        // Bytecode: SPIR-V (Vulkan), and DXBC for D3D11 exports built on Windows (the source is
+        // then empty); the other languages write 0
         if (stage.bytecode.data && stage.bytecode.size > 0) {
             writeU32(out, stage.bytecode.size);
             out.insert(out.end(), stage.bytecode.data, stage.bytecode.data + stage.bytecode.size);

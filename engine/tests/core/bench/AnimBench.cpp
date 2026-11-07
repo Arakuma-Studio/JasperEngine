@@ -16,10 +16,10 @@
 // steady-state frames.
 // AnimBench.Micro*: a two-pose blend at 128 bones (Native and Scalar), one 65-bone clip sample,
 // a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state, a
-// Look At solve over 3 bones of a leaning chain (S74 R33, information).
+// Look At solve over 3 bones of a leaning chain (S77 R33, information).
 // Each is the median of N runs. tools/perf/check_bench.py gates the JSON with
 // tools/perf/bench-thresholds.json.
-// S74 R10, information unless the thresholds name them (docs/perf/animator.md): Web30 (30 of the
+// S77 R10, information unless the thresholds name them (docs/perf/animator.md): Web30 (30 of the
 // same characters, one thread), an Animation Player crowd, a retargeted crowd, rig space and skin
 // matrices alone, key groups with different times, sampleQuaternion against Quaternion::slerp per
 // tier, and for the dense and reduced clip shapes (generated here) and each --clip file (real
@@ -511,7 +511,7 @@ namespace {
     }
 
 
-    // ---- S74 R10: clips, as bytes and as sampling cost
+    // ---- S77 R10: clips, as bytes and as sampling cost
 
     // A rig made from a clip's own paths ("A/B/C" under a root), the clip bound to it
     struct ClipRig{
@@ -668,7 +668,7 @@ namespace {
         return m;
     }
 
-    // pairs of keys `degrees` apart (random axes): one tier of S74 R12 each
+    // pairs of keys `degrees` apart (random axes): one tier of S77 R12 each
     std::vector<std::pair<Quaternion, Quaternion>> keyPairs(float degrees){
         std::mt19937 rng(5);
         std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
@@ -703,7 +703,7 @@ namespace {
         }, 200000);
     }
 
-    // ---- S74 R10: the crowds no Animator row covers
+    // ---- S77 R10: the crowds no Animator row covers
 
     // characters with the humanoid hierarchy and an Animation Player (playing `clip`, or idle)
     struct PlayerCrowd{
@@ -871,7 +871,7 @@ int main(int argc, char** argv){
         }
         const AnimatorInstance* instance = crowd->scene->getComponent<AnimatorComponent>(crowd->roots[0]).runtime.get();
         results.add("micro_instance_state_bytes", (double)instance->runtimeStateBytes(), "B");
-        // rig space and skin matrices alone, of a pose the crowd evaluated (S74 R10)
+        // rig space and skin matrices alone, of a pose the crowd evaluated (S77 R10)
         {
             const AnimatorRig& rig = instance->rig;
             std::vector<Affine> world(rig.bones.size());
@@ -966,7 +966,7 @@ int main(int argc, char** argv){
         results.add("micro_sample65_us", sample, "us");
     }
 
-    // ---- S74 R10: Web30, 30 of the crowd's characters on one thread (the owner's web budget, R44)
+    // ---- S77 R10: Web30, 30 of the crowd's characters on one thread (the owner's web budget, R44)
     {
         std::unique_ptr<Crowd> crowd = buildCrowd(assets, bones, 30);
         const CrowdTimes serial = runCrowd(*crowd, false, kFrames, countAllocs);
@@ -988,7 +988,7 @@ int main(int argc, char** argv){
         results.add("web30_clip_heap_bytes", (double)total, "B");
     }
 
-    // ---- S74 R10: key groups with different times (one key search per group), then each tier of
+    // ---- S77 R10: key groups with different times (one key search per group), then each tier of
     // the rotation sampler against the exact slerp it replaces
     {
         const std::vector<std::string> paths = bonePaths(bones);
@@ -1007,7 +1007,7 @@ int main(int argc, char** argv){
         }
     }
 
-    // ---- S74 R10: the dense and reduced shapes of R42, generated, and real clips from --clip
+    // ---- S77 R10: the dense and reduced shapes of R42, generated, and real clips from --clip
     clipRows(results, "clip_dense", anim::writeClip(shapedClip(67, 8241, true)));
     clipRows(results, "clip_reduced", anim::writeClip(shapedClip(44, 911, false)));
     for (const std::string& file : clipFiles){
@@ -1023,7 +1023,7 @@ int main(int argc, char** argv){
         clipRows(results, "real_" + stem, text.str());
     }
 
-    // ---- S74 R10: an Animation Player crowd, playing and idle, and a retargeted Animator crowd
+    // ---- S77 R10: an Animation Player crowd, playing and idle, and a retargeted Animator crowd
     {
         const std::string fwd = (assetDir / "fwd.anim").generic_string();
         playerCrowdRows(results, "player_crowd200", *buildPlayerCrowd(bones, fwd, kCharacters, true), std::max(120, kFrames / 3), countAllocs);

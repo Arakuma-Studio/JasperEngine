@@ -1729,7 +1729,7 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
     drawAssetHeader(ICON_FA_CUBE, asset, "Model");
     const std::vector<anim::ModelClipInfo> clips = modelClipsOf(project, state, model);
 
-    // the clip list with its import settings (S74 R48); the first selected clip shows below
+    // the clip list with its import settings (S77 R48); the first selected clip shows below
     if (!state.modelClipSettings) state.modelClipSettings = std::make_unique<ModelClipSettingsView>(project);
     state.modelClipSettings->draw(asset, model, clips);
     const std::string shown = state.modelClipSettings->shownClip();

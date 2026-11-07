@@ -12,6 +12,9 @@
 #endif
 #undef SURFACE_COLOR
 
+// the waves on the scene clock (library/water_vs.glsl)
+#define WATER_SCENE_CLOCK
+
 #ifdef WAVES
     #define SURFACE_DISPLACE
 #endif

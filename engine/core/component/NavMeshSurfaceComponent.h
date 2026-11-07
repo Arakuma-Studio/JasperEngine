@@ -56,11 +56,16 @@ namespace jasperengine{
         nav::NavPlane plane = nav::NavPlane::XZ;
         // keep tile-cache layers, so carving NavMeshObstacles cut the navmesh at runtime
         bool runtimeCarving = false;
+        // the carving obstacles the navmesh holds at once (1-4096; more are avoided instead)
+        int maxCarvingObstacles = 128;
         // the baked .navmesh
         AssetRef navMeshData;
 
         // fired after bakeAsync/updateTiles land (Lua surf.onBakeCompleted)
         FunctionSubscribe<void(NavMeshSurface)> onBakeCompleted;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onBakeCompleted); }
     };
 
 }

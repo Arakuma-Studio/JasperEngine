@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R19-R24, D5 (AC9, AC10): every row of D5's table, on curves planted here. The reducer's
+// S77 R19-R24, D5 (AC9, AC10): every row of D5's table, on curves planted here. The reducer's
 // output is measured with measureClipError, the error the tools report, never read off the reducer.
 
 #include <gtest/gtest.h>

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R18, D3: the numbers of a clip come from analyzeClip and the field table and the report's
+// S77 R18, D3: the numbers of a clip come from analyzeClip and the field table and the report's
 // JSON hold the same keys.
 
 #include <gtest/gtest.h>

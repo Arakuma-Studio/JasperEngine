@@ -1,11 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R1-R5, R42: what a built clip keeps on the heap. Tracks hold no slack, identical key times
+// S77 R1-R5, R42: what a built clip keeps on the heap. Tracks hold no slack, identical key times
 // share one range, all-linear tracks have no easings, and none of it changes what the clip samples
 // or what it writes back. memoryBytes() is checked against an independent count, and the pool's
 // "Animation.Clips" record follows every way an entry comes and goes. The two shapes are generated
-// here with the track and key counts and the path lengths of the real clips S74 measured.
+// here with the track and key counts and the path lengths of the real clips S77 measured.
 
 #include <gtest/gtest.h>
 

@@ -4054,7 +4054,9 @@
    "key": "action",
    "known_keys": [
     "ownedTarget",
+    "randomStart",
     "speed",
+    "startOffset",
     "state",
     "target"
    ],
@@ -4065,7 +4067,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -4087,7 +4099,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -4994,6 +5016,11 @@
      131072,
      true
     ],
+    "colliders[].slice": [
+     1,
+     131072,
+     true
+    ],
     "colliders[].type": [
      13,
      131072,
@@ -5673,7 +5700,57 @@
   },
   {
    "display_name": "Button",
-   "enum_options": {},
+   "enum_options": {
+    "navigationMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "horizontal",
+      "Horizontal"
+     ],
+     [
+      2,
+      "vertical",
+      "Vertical"
+     ],
+     [
+      3,
+      "automatic",
+      "Automatic"
+     ],
+     [
+      4,
+      "explicit",
+      "Explicit"
+     ]
+    ],
+    "transition": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "color_tint",
+      "Color Tint"
+     ],
+     [
+      2,
+      "sprite_swap",
+      "Sprite Swap"
+     ],
+     [
+      3,
+      "color_tint_and_sprite_swap",
+      "Color Tint + Sprite Swap"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef858a",
    "key": "button",
@@ -5682,115 +5759,269 @@
     "colorHovered",
     "colorNormal",
     "colorPressed",
+    "colorSelected",
     "disabled",
+    "fadeDuration",
     "label",
+    "navigationMode",
+    "scaleHovered",
+    "scalePressed",
+    "scaleSelected",
+    "selectOnDown",
+    "selectOnEnable",
+    "selectOnLeft",
+    "selectOnRight",
+    "selectOnUp",
     "textureDisabled",
     "textureHovered",
     "textureNormal",
-    "texturePressed"
+    "texturePressed",
+    "textureSelected",
+    "transition",
+    "wrapAround"
    ],
    "name": "ButtonComponent",
    "properties_of_default": {
     "colorDisabled": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorHovered": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorNormal": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorPressed": [
      6,
-     0,
+     72057594037927936,
+     true
+    ],
+    "colorSelected": [
+     6,
+     72057594037927936,
      true
     ],
     "disabled": [
      0,
-     0,
+     72057594037927936,
+     true
+    ],
+    "fadeDuration": [
+     2,
+     72057594037927936,
      true
     ],
     "label": [
      16,
+     72057594037927936,
+     true
+    ],
+    "navigationMode": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "scaleHovered": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scalePressed": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scaleSelected": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "selectOnDown": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnEnable": [
      0,
+     72057594037927936,
+     true
+    ],
+    "selectOnLeft": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnRight": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnUp": [
+     16,
+     72057594037927936,
      true
     ],
     "textureDisabled": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureHovered": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureNormal": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "texturePressed": [
      11,
+     72057594037927936,
+     true
+    ],
+    "textureSelected": [
+     11,
+     72057594037927936,
+     true
+    ],
+    "transition": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "wrapAround": [
      0,
+     72057594037927936,
      true
     ]
    },
    "properties_without_component": {
     "colorDisabled": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorHovered": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorNormal": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorPressed": [
      6,
-     0,
+     72057594037927936,
+     true
+    ],
+    "colorSelected": [
+     6,
+     72057594037927936,
      true
     ],
     "disabled": [
      0,
-     0,
+     72057594037927936,
+     true
+    ],
+    "fadeDuration": [
+     2,
+     72057594037927936,
      true
     ],
     "label": [
      16,
+     72057594037927936,
+     true
+    ],
+    "navigationMode": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "scaleHovered": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scalePressed": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scaleSelected": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "selectOnDown": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnEnable": [
      0,
+     72057594037927936,
+     true
+    ],
+    "selectOnLeft": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnRight": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnUp": [
+     16,
+     72057594037927936,
      true
     ],
     "textureDisabled": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureHovered": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureNormal": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "texturePressed": [
      11,
+     72057594037927936,
+     true
+    ],
+    "textureSelected": [
+     11,
+     72057594037927936,
+     true
+    ],
+    "transition": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "wrapAround": [
      0,
+     72057594037927936,
      true
     ]
    },
@@ -9590,6 +9821,11 @@
       8,
       "bottom_right",
       "Bottom Right"
+     ],
+     [
+      9,
+      "frame",
+      "From Frame"
      ]
     ]
    },
@@ -9600,9 +9836,13 @@
     "automaticFlipY",
     "enabled",
     "flipY",
+    "frame",
+    "frameName",
     "framesRect",
     "height",
     "pivotPreset",
+    "sheet",
+    "sheetGuid",
     "textureScaleFactor",
     "width"
    ],
@@ -9623,6 +9863,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -9635,6 +9885,11 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -9665,6 +9920,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -9677,6 +9942,11 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -14358,6 +14628,7 @@
     "defaultArea",
     "enabled",
     "includeLayers",
+    "maxCarvingObstacles",
     "minRegionArea",
     "navMeshData",
     "navMeshDataGuid",
@@ -14399,6 +14670,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -14481,6 +14757,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -14611,8 +14892,12 @@
     "height",
     "obstacleAvoidance",
     "radius",
+    "repathWhenStuck",
     "speed",
     "stoppingDistance",
+    "stuckDetection",
+    "stuckSpeedRatio",
+    "stuckTimeout",
     "surface",
     "updatePosition",
     "updateRotation"
@@ -14689,12 +14974,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -14786,12 +15091,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -14965,6 +15290,7 @@
    "icon": "ee9388",
    "key": "navmeshlink",
    "known_keys": [
+    "activated",
     "agentType",
     "area",
     "autoUpdatePosition",
@@ -14977,6 +15303,11 @@
    ],
    "name": "NavMeshLinkComponent",
    "properties_of_default": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -15024,6 +15355,11 @@
     ]
    },
    "properties_without_component": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -15082,7 +15418,7 @@
      [
       0,
       "auto",
-      "Remove Object"
+      "Surface Policy"
      ],
      [
       1,
@@ -15092,7 +15428,7 @@
      [
       2,
       "exclude",
-      "Remove Object (always)"
+      "Remove Object"
      ]
     ]
    },
@@ -15100,6 +15436,7 @@
    "icon": "ef97ae",
    "key": "navmeshmodifier",
    "known_keys": [
+    "applyAtRuntime",
     "applyToChildren",
     "area",
     "enabled",
@@ -15111,6 +15448,11 @@
    ],
    "name": "NavMeshModifierComponent",
    "properties_of_default": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -15153,6 +15495,11 @@
     ]
    },
    "properties_without_component": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -20764,6 +21111,159 @@
    "type": 91,
    "type_of_key": 91,
    "type_of_name": 91
+  },
+  {
+   "display_name": "Water Excluder",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ],
+     [
+      2,
+      "convex_hull",
+      "Convex Hull"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef889a",
+   "key": "waterexcluder",
+   "known_keys": [
+    "center",
+    "enabled",
+    "shape",
+    "size"
+   ],
+   "name": "WaterExcluderComponent",
+   "properties_of_default": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 92,
+   "type_of_key": 92,
+   "type_of_name": 92
+  },
+  {
+   "display_name": "Water Wake",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9db3",
+   "key": "waterwake",
+   "known_keys": [
+    "enabled",
+    "foam",
+    "length",
+    "waves",
+    "width"
+   ],
+   "name": "WaterWakeComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 93,
+   "type_of_key": 93,
+   "type_of_name": 93
   }
  ],
  "ease_options": [
@@ -20940,7 +21440,17 @@
     0,
     true
    ],
+   "randomStart": [
+    0,
+    0,
+    true
+   ],
    "speed": [
+    2,
+    0,
+    true
+   ],
+   "startOffset": [
     2,
     0,
     true
@@ -21550,52 +22060,122 @@
   "ButtonComponent": {
    "colorDisabled": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorHovered": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorNormal": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorPressed": [
     6,
-    0,
+    72057594037927936,
+    true
+   ],
+   "colorSelected": [
+    6,
+    72057594037927936,
     true
    ],
    "disabled": [
     0,
-    0,
+    72057594037927936,
+    true
+   ],
+   "fadeDuration": [
+    2,
+    72057594037927936,
     true
    ],
    "label": [
     16,
+    72057594037927936,
+    true
+   ],
+   "navigationMode": [
+    13,
+    72057594037927936,
+    true
+   ],
+   "scaleHovered": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "scalePressed": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "scaleSelected": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "selectOnDown": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnEnable": [
     0,
+    72057594037927936,
+    true
+   ],
+   "selectOnLeft": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnRight": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnUp": [
+    16,
+    72057594037927936,
     true
    ],
    "textureDisabled": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "textureHovered": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "textureNormal": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "texturePressed": [
     11,
+    72057594037927936,
+    true
+   ],
+   "textureSelected": [
+    11,
+    72057594037927936,
+    true
+   ],
+   "transition": [
+    13,
+    72057594037927936,
+    true
+   ],
+   "wrapAround": [
     0,
+    72057594037927936,
     true
    ]
   },
@@ -25164,12 +25744,32 @@
     0,
     true
    ],
+   "repathWhenStuck": [
+    0,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
     true
    ],
    "stoppingDistance": [
+    2,
+    0,
+    true
+   ],
+   "stuckDetection": [
+    0,
+    0,
+    true
+   ],
+   "stuckSpeedRatio": [
+    2,
+    0,
+    true
+   ],
+   "stuckTimeout": [
     2,
     0,
     true
@@ -25191,6 +25791,11 @@
    ]
   },
   "NavMeshLinkComponent": {
+   "activated": [
+    0,
+    0,
+    true
+   ],
    "agentType": [
     8,
     0,
@@ -25238,6 +25843,11 @@
    ]
   },
   "NavMeshModifierComponent": {
+   "applyAtRuntime": [
+    0,
+    0,
+    true
+   ],
    "applyToChildren": [
     0,
     0,
@@ -25359,6 +25969,11 @@
    ],
    "includeLayers": [
     9,
+    0,
+    true
+   ],
+   "maxCarvingObstacles": [
+    8,
     0,
     true
    ],
@@ -27192,6 +27807,16 @@
     1024,
     true
    ],
+   "frame": [
+    8,
+    1024,
+    true
+   ],
+   "frameName": [
+    1,
+    0,
+    true
+   ],
    "height": [
     9,
     1024,
@@ -27204,6 +27829,11 @@
    ],
    "pivotPreset": [
     13,
+    1024,
+    true
+   ],
+   "sheet": [
+    18,
     1024,
     true
    ],
@@ -28351,6 +28981,28 @@
     true
    ]
   },
+  "WaterExcluderComponent": {
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ]
+  },
   "WaterVolumeComponent": {
    "angularDrag": [
     2,
@@ -28394,6 +29046,33 @@
    ],
    "waves": [
     13,
+    0,
+    true
+   ]
+  },
+  "WaterWakeComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "foam": [
+    2,
+    0,
+    true
+   ],
+   "length": [
+    2,
+    0,
+    true
+   ],
+   "waves": [
+    2,
+    0,
+    true
+   ],
+   "width": [
+    2,
     0,
     true
    ]
@@ -28765,7 +29444,8 @@
     "top_left",
     "bottom_left",
     "top_right",
-    "bottom_right"
+    "bottom_right",
+    "frame"
    ]
   },
   "PrimitiveType": {

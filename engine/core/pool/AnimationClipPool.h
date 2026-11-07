@@ -85,7 +85,7 @@ namespace jasperengine{
         static std::shared_ptr<const AnimationClip> getOrLoad(const std::string& path, std::string* error = nullptr,
                                                               std::vector<ClipWarning>* warnings = nullptr);
 
-        // getOrLoad that never waits for a build (final review M1, S74 R16): in async loading mode
+        // getOrLoad that never waits for a build (final review M1, S77 R16): in async loading mode
         // (Engine::isAsyncLoading) a clip not cached yet builds on the thread pool, since a model
         // sub-clip's builder may wait for the pooled-glTF mutex a model loading on another thread
         // holds for its whole build, or parse the file, and a .anim parses about 50 ms per MB: null

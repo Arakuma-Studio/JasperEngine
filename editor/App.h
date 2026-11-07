@@ -16,6 +16,7 @@
 #include "shortcuts/ShortcutDispatcher.h"
 #include "util/SystemFonts.h"
 
+#include "util/FrameLimiter.h"
 
 #include "window/EditorModal.h"
 #include "hub/ProjectHubWindow.h"
@@ -81,6 +82,7 @@ namespace jasperengine::editor{
     class PhysicsPlacementWindow;
     class SystemsWindow;
     class SpriteNormalsWindow;
+    class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
     class StatusBar;
@@ -131,7 +133,7 @@ namespace jasperengine::editor{
     struct SaveDialogQueueItem {
         SaveDialogType type;
         uint32_t sceneId;  // Only used for Scene dialogs
-        std::function<void()> callback = nullptr;
+        std::function<void(bool)> callback = nullptr;
     };
 
     class App : public EditorHost{
@@ -259,6 +261,7 @@ namespace jasperengine::editor{
         SpriteNormalsWindow* spriteNormalsWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
+        SpritePreviewWindow* spritePreviewWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         SystemsWindow* systemsWindow;
         MissingAssetsWindow* missingAssetsWindow;
@@ -374,6 +377,10 @@ namespace jasperengine::editor{
         uint32_t lastActivatedScene;
         // lastActivatedScene was activated for the running game (Game view target), not its Scene view
         bool lastActivatedGame = false;
+        // the editor window can be seen (EditorFrame / BackendMac, every loop iteration)
+        bool windowVisible = true;
+        // the running game's update-only frames while it is hidden (Engine::getHiddenUpdateFps)
+        FrameLimiter hiddenGameClock;
         uint32_t pendingResizeScene = NULL_PROJECT_SCENE;
 
         enum class LastFocusedWindow {
@@ -395,7 +402,8 @@ namespace jasperengine::editor{
         } lastFocusedWindow;
 
         void saveFunc();
-        void saveAllFunc(std::function<void(bool)> callback = nullptr);
+        // includeUntitled: File > Save All asks where to save the scenes never saved too
+        void saveAllFunc(std::function<void(bool)> callback = nullptr, bool includeUntitled = false);
         void saveAllAndProject(std::function<void()> onSuccess);
         void openProjectFunc();
         bool canEditSelection(bool duplicate);
@@ -484,6 +492,11 @@ namespace jasperengine::editor{
         void renderGameViewPass(SceneProject& sceneProject);
         void renderGameViewSecondary(SceneProject& sceneProject);
         void renderRunningScene(SceneProject& sceneProject);
+        // The Engine's scene stack made the running game's (its framebuffer, layers, a scene a load
+        // put in place of the played one); true when it was not already: the view changed
+        bool activateRunningGame(SceneProject& sceneProject);
+        // the play session's scene while it runs (PLAYING, the simulation not held), else nullptr
+        const SceneProject* runningGameScene() const;
         void pollExternalChanges();
         // main-thread time for the file watcher's batches per loop iteration (S05 R22)
         static constexpr double PUMP_BUDGET_MS = 1.0;
@@ -604,16 +617,32 @@ namespace jasperengine::editor{
         void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
         void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
         void openInputActions(const std::filesystem::path& path) override;
-        void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
+        void registerSaveSceneDialog(uint32_t sceneId, std::function<void(bool)> callback = nullptr) override;
         DegradedSavePolicy confirmDegradedSave(const DegradedSaveRequest& request) override;
         RecoveryChoice resolveSceneRecovery(const SceneBackupInfo& backup) override;
         bool confirmOpenLockedProject(const ProjectLockInfo& info) override;
-        void registerProjectSaveDialog(std::function<void()> callback = nullptr) override;
+        void registerProjectSaveDialog(std::function<void(bool)> callback = nullptr) override;
+        // Closes the save dialogs and drops the queued ones, each waiting caller answered false
+        // (the project they save into is closing)
+        void cancelSaveDialogs();
 
         // Thread-safe: schedules a task to run on the main/GL thread during the next frame.
         void enqueueMainThreadTask(std::function<void()> task) override;
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
+        // The editor window can (not) be seen: minimized, unmapped or hidden by the window manager,
+        // fully covered on macOS
+        void setWindowVisible(bool visible) { windowVisible = visible; }
+        bool isWindowVisible() const { return windowVisible; }
+        // The running game while nothing of it can be seen (the window hidden, or send_input app
+        // hide): one update without drawing when its hidden clock is due, as an exported game
+        // runs minimized. False when there was no game to update or no update due
+        bool runHiddenGameFrame();
+        // a running game updates without drawing now (the window hidden or the game hidden by
+        // send_input)
+        bool isHiddenGameRunning() const;
+        // seconds until the hidden game's next update (0: due)
+        double hiddenGameSecondsUntilDue() const { return hiddenGameClock.secondsUntilDue(); }
         bool hasPendingMainThreadTasks();
         // How long the idle backend loop may sleep: until the editor scheduler's next timer,
         // at most maxSeconds
@@ -683,6 +712,7 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
+        SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
         MainToolbar* getMainToolbar() const;

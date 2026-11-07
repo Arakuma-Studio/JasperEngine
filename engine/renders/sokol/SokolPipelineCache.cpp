@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "SokolAsyncCreate.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "memory/MemoryStats.h"
 
 #include <atomic>
@@ -101,8 +102,6 @@ namespace {
 
     uint64_t missCount = 0;
     uint64_t applyCount = 0;
-    uint32_t lastApplied = SG_INVALID_ID;
-    uint32_t lastAppliedEpoch = 1;
     std::atomic<uint32_t> pipelineGeneration{1};
 
     uint64_t fnv(uint64_t h, const void* data, size_t size){
@@ -553,8 +552,8 @@ void SokolPipelineCache::collect(){
             continue;
         }
         pipelineGeneration++;
-        if (item.pipeline == lastApplied)
-            lastApplied = SG_INVALID_ID;
+        if (item.pipeline == SokolSystem::appliedPipeline())
+            SokolSystem::forgetAppliedState();
         destroyCachedPipeline(it->second.pipeline);
         internedKeys().erase(item.pipeline);
         map.erase(it);
@@ -646,8 +645,8 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
     auto& internMap = interned();
     for (auto it = internMap.begin(); it != internMap.end();){
         if (it->second.desc.shader.id == shader.id){
-            if (it->second.pipeline.id == lastApplied)
-                lastApplied = SG_INVALID_ID;
+            if (it->second.pipeline.id == SokolSystem::appliedPipeline())
+                SokolSystem::forgetAppliedState();
             destroyCachedPipeline(it->second.pipeline);
             internedKeys().erase(it->second.pipeline.id);
             variantRefs().erase(it->second.pipeline.id);
@@ -659,8 +658,8 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
     auto& map = entries();
     for (auto it = map.begin(); it != map.end();){
         if (it->second.shader.id == shader.id){
-            if (it->second.pipeline.id == lastApplied)
-                lastApplied = SG_INVALID_ID;
+            if (it->second.pipeline.id == SokolSystem::appliedPipeline())
+                SokolSystem::forgetAppliedState();
             destroyCachedPipeline(it->second.pipeline);
             it = map.erase(it);
         }else{
@@ -684,7 +683,7 @@ void SokolPipelineCache::clear(){
     internedKeys().clear();
     retiring().clear();
     variantRefs().clear();
-    lastApplied = SG_INVALID_ID;
+    SokolSystem::forgetAppliedState();
 }
 
 // The variants are interned pipelines like SokolObject's own (spec S32 R3): made through the
@@ -735,26 +734,10 @@ size_t SokolPipelineCache::size(){
 }
 
 bool SokolPipelineCache::apply(sg_pipeline pipeline){
-    if (pipeline.id == lastApplied)
+    if (!SokolSystem::applyPipeline(pipeline.id))
         return false;
-    sg_apply_pipeline(pipeline);
-    lastApplied = pipeline.id;
-    lastAppliedEpoch++;
     applyCount++;
     return true;
-}
-
-void SokolPipelineCache::invalidateApplied(){
-    lastApplied = SG_INVALID_ID;
-    lastAppliedEpoch++;
-}
-
-uint32_t SokolPipelineCache::appliedEpoch(){
-    return lastAppliedEpoch;
-}
-
-uint32_t SokolPipelineCache::appliedPipeline(){
-    return lastApplied;
 }
 
 uint64_t SokolPipelineCache::getMissCount(){

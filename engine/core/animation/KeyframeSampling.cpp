@@ -128,7 +128,7 @@ Vector3 anim::sampleVector3(const KeyLocation& at, const Vector3* values, const 
 namespace {
 
     // The rotation between two keys for less than Quaternion::slerp's acos and three sin, within
-    // 0.01 mm at 1 m of it up to 30 degrees between keys (S74 R12, R13).
+    // 0.01 mm at 1 m of it up to 30 degrees between keys (S77 R12, R13).
     //
     // A normalised lerp of a and b with parameter u lies on the arc where
     // u / (1 - u) = sin(t th) / sin((1 - t) th), th the angle between the quaternions (half the

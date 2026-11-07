@@ -1,4 +1,4 @@
-"""S74 R45-R47 (AC18), with real input in an isolated editor: the .anim Inspector's info line holds what
+"""S77 R45-R47 (AC18), with real input in an isolated editor: the .anim Inspector's info line holds what
 get_animation.stats says; each Root Motion toggle is one undo step; Reduce Keys... previews without
 writing, and what it writes passes check_animation compare_to with the number it showed; Animation
 Statistics' rows equal the tools'. Screenshots go to JE_EVIDENCE_DIR, else the test's scratch folder.

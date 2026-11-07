@@ -1111,9 +1111,9 @@ async def test_guide_names_exist(ed: Editor):
               "left_foot", "right_foot",
               # audio cues (S40): the .anim audio item's keys, which edit_animation takes (its lean schema leaves them out)
               "follow_speed", "pitch_semitones", "state_exit", "volume_db",
-              # root_motion's members (S74 R53): a free-form object in edit_animation's lean schema
+              # root_motion's members (S77 R53): a free-form object in edit_animation's lean schema
               "bake_rotation", "bake_position_y", "bake_position_xz",
-              # clip quality (S74, test_animation_quality): optimize_animation's and check_animation's result fields and
+              # clip quality (S77, test_animation_quality): optimize_animation's and check_animation's result fields and
               # error kinds, which this test does not call (the animation group)
               "bytes_after", "bytes_before", "effective_tolerance_mm", "kept_all_keys", "keys_after", "keys_before", "max_error_mm",
               "no_gain", "no_rig", "not_available", "skipped_tracks", "within_tolerance", "worst_joint"}

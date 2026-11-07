@@ -1,4 +1,4 @@
-"""The Inspector's model clip settings with real input (S74 R30, R31, R48, AC14): clicking a model in
+"""The Inspector's model clip settings with real input (S77 R30, R31, R48, AC14): clicking a model in
 the Project window and its Animation tab shows its clips' rows, whose values are get_asset_info's;
 the loop suggestion shows and changes nothing until Use, and Use changes only the working copy
 until Apply; a multi-selection shows a mixed Wrap Mode, and one Apply over it is one undo step.

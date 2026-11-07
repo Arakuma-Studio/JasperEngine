@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::nav;
@@ -79,9 +80,43 @@ struct NavCrowd::Impl {
     std::vector<const dtCrowdAgent*> obstacleScratch;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
-    // the area masks of the 16 query filters (0: unused)
-    std::vector<uint16_t> filterMasks;
+    // ---- S76 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
+    // project's), reference-counted; filter 0 (every area, the project's costs) is never freed
+    struct FilterSlot {
+        uint16_t mask = 0;
+        float costs[AREA_COUNT] = {};
+        int refs = 0;
+        bool used = false;
+    };
+    std::vector<FilterSlot> filters;
+    // each agent's filter (-1: none) and whether it is a fallback (no filter of its own was free)
+    std::vector<int> agentFilter;
+    std::vector<uint8_t> agentFallback;
+    int fallbackCount = 0;
     std::vector<dtCrowdAgent*> active;
+    // ---- S76 agents: corridors a script set (followed without the crowd's shortcuts until a
+    // request or replan) and this update's velocity overrides (spec S76 R20, R22)
+    std::vector<uint8_t> scripted;
+    int scriptedCount = 0;
+    struct VelocityOverride {
+        int agent = -1;
+        float velocity[3] = {0.0f, 0.0f, 0.0f};
+        float dt = 0.0f;
+        float start[3] = {0.0f, 0.0f, 0.0f};
+    };
+    std::vector<VelocityOverride> overrides;
+
+    // the crowd's own path again: its corridor shortcuts come back
+    void unscript(int index) {
+        if (index < 0 || index >= capacity || !scripted[(size_t)index])
+            return;
+        scripted[(size_t)index] = 0;
+        scriptedCount--;
+        if (!params[(size_t)index].obstacle)
+            crowd->getEditableAgent(index)->params.updateFlags |= DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO;
+    }
+    // the mesh revision the corridors were last checked against
+    uint64_t meshRevision = 0;
 
     ~Impl() { release(); }
 
@@ -95,45 +130,108 @@ struct NavCrowd::Impl {
         params.clear();
         onLink.clear();
         detourLink.clear();
-        filterMasks.clear();
+        filters.clear();
+        agentFilter.clear();
+        agentFallback.clear();
+        fallbackCount = 0;
     }
 
     const dtNavMeshQuery* query() const { return crowd->getNavMeshQuery(); }
     dtNavMeshQuery* editableQuery() const { return const_cast<dtNavMeshQuery*>(crowd->getNavMeshQuery()); }
 
-    unsigned char filterFor(uint16_t mask) {
-        for (size_t i = 0; i < filterMasks.size(); i++) {
-            if (filterMasks[i] == mask)
-                return (unsigned char)i;
+    static bool sameKey(const FilterSlot& slot, const NavCrowdAgentParams& p) {
+        return slot.mask == p.areaMask && std::memcmp(slot.costs, p.areaCosts, sizeof(slot.costs)) == 0;
+    }
+
+    // The filter of an agent's mask and costs: its own (shared with the same key), else a free
+    // one, else (a fallback) one with its mask (its areas kept, other costs), else every area
+    int acquireFilter(const NavCrowdAgentParams& p, bool& fallback) {
+        fallback = false;
+        int chosen = -1;
+        for (size_t i = 0; i < filters.size() && chosen < 0; i++) {
+            if (filters[i].used && sameKey(filters[i], p))
+                chosen = (int)i;
         }
-        for (size_t i = 0; i < filterMasks.size(); i++) {
-            if (filterMasks[i] == 0) {
-                filterMasks[i] = mask;
+        for (size_t i = 1; i < filters.size() && chosen < 0; i++) {
+            if (!filters[i].used) {
+                FilterSlot& slot = filters[i];
+                slot.used = true;
+                slot.mask = p.areaMask;
+                std::memcpy(slot.costs, p.areaCosts, sizeof(slot.costs));
+                slot.refs = 0;
                 fillFilter((int)i);
-                return (unsigned char)i;
+                chosen = (int)i;
             }
         }
-        // Detour holds 16 filters per crowd: an extra mask shares the all-areas filter
-        static std::atomic<bool> warned{false};
-        if (!warned.exchange(true))
-            Log::warn("Navigation: more than %d distinct area masks in one crowd; the extra agents walk every area",
-                      DT_CROWD_MAX_QUERY_FILTER_TYPE);
-        return 0;
+        for (size_t i = 0; i < filters.size() && chosen < 0; i++) {
+            if (filters[i].used && filters[i].mask == p.areaMask) {
+                chosen = (int)i;
+                fallback = true;
+            }
+        }
+        if (chosen < 0) {
+            chosen = 0;
+            fallback = true;
+        }
+        filters[(size_t)chosen].refs++;
+        return chosen;
+    }
+
+    void assignFilter(int agent, int slot, bool fallback) {
+        agentFilter[(size_t)agent] = slot;
+        agentFallback[(size_t)agent] = fallback ? 1 : 0;
+        if (fallback)
+            fallbackCount++;
+    }
+
+    // drops the agent's hold on its filter; true when that freed the filter
+    bool releaseFilter(int agent) {
+        const int slot = agentFilter[(size_t)agent];
+        if (slot < 0)
+            return false;
+        if (agentFallback[(size_t)agent])
+            fallbackCount--;
+        agentFilter[(size_t)agent] = -1;
+        agentFallback[(size_t)agent] = 0;
+        FilterSlot& filter = filters[(size_t)slot];
+        filter.refs--;
+        if (filter.refs > 0 || slot == 0)
+            return false;
+        filter = FilterSlot();
+        return true;
+    }
+
+    // a freed filter goes to the agents on a fallback (ascending index: the same every run)
+    void promoteFallbacks() {
+        for (int i = 0; i < capacity && fallbackCount > 0; i++) {
+            if (!agentFallback[(size_t)i] || !agent(i)->active)
+                continue;
+            bool fallback = false;
+            const int previous = agentFilter[(size_t)i];
+            releaseFilter(i);
+            const int slot = acquireFilter(params[(size_t)i], fallback);
+            assignFilter(i, slot, fallback);
+            if (slot != previous) {
+                dtCrowdAgentParams detourParams = toDetour(params[(size_t)i], slot);
+                crowd->updateAgentParameters(i, &detourParams);
+            }
+        }
     }
 
     void fillFilter(int index) {
         dtQueryFilter* filter = crowd->getEditableFilter(index);
-        const NavFilter source = NavFilter::fromSettings(filterMasks[(size_t)index]);
+        const FilterSlot& slot = filters[(size_t)index];
+        const NavFilter source = NavFilter::fromSettings(slot.mask);
         filter->setIncludeFlags(source.areaMask);
         filter->setExcludeFlags(0);
         for (int a = 0; a < AREA_COUNT; a++)
-            filter->setAreaCost(a, source.areaCosts[a]);
+            filter->setAreaCost(a, slot.costs[a] > 0.0f ? std::max(1.0f, slot.costs[a]) : source.areaCosts[a]);
         const std::vector<float>& linkCosts = mesh->getHeader().linkAreaCosts;
         for (size_t i = 0; i < linkCosts.size() && FIRST_LINK_COST_AREA + (int)i < MAX_POLY_AREAS; i++)
             filter->setAreaCost(FIRST_LINK_COST_AREA + (int)i, std::max(0.0f, linkCosts[i]));
     }
 
-    dtCrowdAgentParams toDetour(const NavCrowdAgentParams& p) {
+    dtCrowdAgentParams toDetour(const NavCrowdAgentParams& p, int filter) {
         dtCrowdAgentParams out;
         std::memset(&out, 0, sizeof(out));
         out.radius = std::max(p.radius, 1e-4f);
@@ -144,13 +242,17 @@ struct NavCrowd::Impl {
         out.pathOptimizationRange = out.radius * 30.0f;
         out.separationWeight = 2.0f;
         out.avoidancePriority = p.obstacle ? 0 : std::min<uint8_t>(p.priority, 99);
-        out.queryFilterType = filterFor(p.areaMask);
+        out.queryFilterType = (unsigned char)filter;
         if (p.obstacle) {
             out.updateFlags = 0;
             out.maxSpeed = 0.0f;
             out.maxAcceleration = 0.0f;
         } else {
-            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO;
+            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_TOPO;
+            // Detour's visibility shortcut raycasts without costs: it would cut an agent's own
+            // costly areas (spec S76 R9) straight through, so agents with costs of their own skip it
+            if (std::none_of(std::begin(p.areaCosts), std::end(p.areaCosts), [](float cost) { return cost > 0.0f; }))
+                out.updateFlags |= DT_CROWD_OPTIMIZE_VIS;
             if (p.quality != AvoidanceQuality::None) {
                 out.updateFlags |= DT_CROWD_OBSTACLE_AVOIDANCE | DT_CROWD_SEPARATION;
                 out.obstacleAvoidanceType = (unsigned char)((int)p.quality - 1);
@@ -178,16 +280,25 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
         return false;
     }
     impl->mesh = &mesh;
+    impl->meshRevision = mesh.getRevision();
     impl->capacity = std::max(1, maxAgents);
     impl->params.assign((size_t)impl->capacity, NavCrowdAgentParams());
     impl->onLink.assign((size_t)impl->capacity, 0);
     impl->pinned.assign((size_t)impl->capacity, std::array<float, 3>{0.0f, 0.0f, 0.0f});
     impl->obstacleScratch.reserve((size_t)impl->capacity);
     impl->detourLink.assign((size_t)impl->capacity, 0);
-    impl->filterMasks.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, 0);
-    impl->filterMasks[0] = ALL_AREAS;
+    impl->filters.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, Impl::FilterSlot());
+    impl->filters[0].used = true;
+    impl->filters[0].mask = ALL_AREAS;
     impl->fillFilter(0);
+    impl->agentFilter.assign((size_t)impl->capacity, -1);
+    impl->agentFallback.assign((size_t)impl->capacity, 0);
+    impl->fallbackCount = 0;
     impl->active.resize((size_t)impl->capacity);
+    impl->scripted.assign((size_t)impl->capacity, 0);
+    impl->scriptedCount = 0;
+    impl->overrides.clear();
+    impl->overrides.reserve((size_t)impl->capacity);
     setAvoidancePresets(impl->crowd);
     return true;
 }
@@ -215,11 +326,19 @@ const NavMesh* NavCrowd::getMesh() const {
 int NavCrowd::addAgent(const Vector3& position, const NavCrowdAgentParams& params) {
     if (!impl->crowd)
         return -1;
-    const dtCrowdAgentParams detourParams = impl->toDetour(params);
+    bool fallback = false;
+    const int filter = impl->acquireFilter(params, fallback);
+    const dtCrowdAgentParams detourParams = impl->toDetour(params, filter);
     const float p[3] = {position.x, position.y, position.z};
     const int index = impl->crowd->addAgent(p, &detourParams);
-    if (index < 0)
+    if (index < 0) {
+        // the filter's hold goes back (a filter made for it alone is freed)
+        Impl::FilterSlot& slot = impl->filters[(size_t)filter];
+        if (--slot.refs <= 0 && filter != 0)
+            slot = Impl::FilterSlot();
         return -1;
+    }
+    impl->assignFilter(index, filter, fallback);
     impl->params[(size_t)index] = params;
     impl->onLink[(size_t)index] = 0;
     impl->detourLink[(size_t)index] = 0;
@@ -230,18 +349,31 @@ int NavCrowd::addAgent(const Vector3& position, const NavCrowdAgentParams& param
 void NavCrowd::removeAgent(int agent) {
     if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->agent(agent)->active)
         return;
+    impl->unscript(agent);
     impl->crowd->removeAgent(agent);
     impl->onLink[(size_t)agent] = 0;
     impl->detourLink[(size_t)agent] = 0;
     impl->count--;
+    if (impl->releaseFilter(agent))
+        impl->promoteFallbacks();
 }
 
 void NavCrowd::setParams(int agent, const NavCrowdAgentParams& params) {
     if (!impl->crowd || agent < 0 || agent >= impl->capacity)
         return;
-    const dtCrowdAgentParams detourParams = impl->toDetour(params);
+    int filter = impl->agentFilter[(size_t)agent];
+    bool freed = false;
+    if (filter < 0 || impl->agentFallback[(size_t)agent] || !Impl::sameKey(impl->filters[(size_t)filter], params)) {
+        freed = impl->releaseFilter(agent);
+        bool fallback = false;
+        filter = impl->acquireFilter(params, fallback);
+        impl->assignFilter(agent, filter, fallback);
+    }
+    const dtCrowdAgentParams detourParams = impl->toDetour(params, filter);
     impl->crowd->updateAgentParameters(agent, &detourParams);
     impl->params[(size_t)agent] = params;
+    if (freed)
+        impl->promoteFallbacks();
 }
 
 const NavCrowdAgentParams& NavCrowd::getParams(int agent) const {
@@ -251,6 +383,7 @@ const NavCrowdAgentParams& NavCrowd::getParams(int agent) const {
 bool NavCrowd::requestMoveTarget(int agent, const Vector3& target) {
     if (!impl->crowd)
         return false;
+    impl->unscript(agent);
     const dtCrowdAgent* ag = impl->agent(agent);
     const float p[3] = {target.x, target.y, target.z};
     dtPolyRef ref = 0;
@@ -261,8 +394,10 @@ bool NavCrowd::requestMoveTarget(int agent, const Vector3& target) {
 }
 
 void NavCrowd::resetMoveTarget(int agent) {
-    if (impl->crowd)
-        impl->crowd->resetMoveTarget(agent);
+    if (!impl->crowd)
+        return;
+    impl->unscript(agent);
+    impl->crowd->resetMoveTarget(agent);
 }
 
 NavCrowdTarget NavCrowd::getTargetState(int agent) const {
@@ -284,6 +419,20 @@ bool NavCrowd::isPathPartial(int agent) const {
     return impl->agent(agent)->partial;
 }
 
+NavCrowdPath NavCrowd::getPathState(int agent) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (ag->partial)
+        return NavCrowdPath::Partial;
+    // not partial, so the search reached the target (DT_PARTIAL_RESULT unset): a corridor
+    // ending elsewhere holds the path's first polygons only (spec S74 D5)
+    return ag->corridor.getPathCount() > 0 && ag->corridor.getLastPoly() == ag->targetRef ? NavCrowdPath::Complete
+                                                                                          : NavCrowdPath::Truncated;
+}
+
+int NavCrowd::getCorridorSize(int agent) const {
+    return impl->agent(agent)->corridor.getPathCount();
+}
+
 Vector3 NavCrowd::getTargetPosition(int agent) const {
     return vec(impl->agent(agent)->targetPos);
 }
@@ -291,7 +440,63 @@ Vector3 NavCrowd::getTargetPosition(int agent) const {
 void NavCrowd::update(float dt) {
     if (!impl->crowd || impl->count == 0)
         return;
+    // Tiles changed (a cut, a rebuilt or patched tile): dtCrowd checks only the next 10 polygons
+    // of a corridor, so a change further along would leave the path, and its status, stale until
+    // the agent got there. A corridor holding a polygon that is gone is planned again now, so
+    // pathStatus follows the mesh (spec S74 R6).
+    const uint64_t revision = impl->mesh->getRevision();
+    if (revision != impl->meshRevision) {
+        impl->meshRevision = revision;
+        for (int index = 0; index < impl->capacity; index++) {
+            dtCrowdAgent* ag = impl->editable(index);
+            if (!ag->active || impl->params[(size_t)index].obstacle || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+                ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+                continue;
+            const dtQueryFilter* filter = impl->filterOf(ag);
+            // a target that is gone dtCrowd moves itself, and plans again from there
+            if (!impl->query()->isValidPolyRef(ag->targetRef, filter) ||
+                ag->corridor.isValid(ag->corridor.getPathCount(), impl->editableQuery(), filter))
+                continue;
+            float target[3];
+            dtVcopy(target, ag->targetPos);
+            impl->crowd->requestMoveTarget(index, ag->targetRef, target);
+        }
+    }
+    // ---- S76 agents: a script's corridor is followed as given, until a request for a new path
+    // (a replan since the last update included); velocity overrides start here
+    if (impl->scriptedCount > 0) {
+        for (int i = 0; i < impl->capacity; i++) {
+            if (!impl->scripted[(size_t)i])
+                continue;
+            if (impl->agent(i)->targetState != DT_CROWDAGENT_TARGET_VALID)
+                impl->unscript(i);
+            else
+                impl->editable(i)->params.updateFlags &= (unsigned char)~(DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO);
+        }
+    }
+    for (Impl::VelocityOverride& entry : impl->overrides)
+        dtVcopy(entry.start, impl->agent(entry.agent)->npos);
+
     impl->crowd->update(dt, nullptr);
+
+    if (impl->scriptedCount > 0) {
+        // a replan (an invalid corridor, the far end of a long path) plans the crowd's own way
+        for (int i = 0; i < impl->capacity; i++) {
+            if (impl->scripted[(size_t)i] && impl->agent(i)->targetState != DT_CROWDAGENT_TARGET_VALID)
+                impl->unscript(i);
+        }
+    }
+    for (const Impl::VelocityOverride& entry : impl->overrides) {
+        dtCrowdAgent* ag = impl->editable(entry.agent);
+        if (!ag->active || ag->state != DT_CROWDAGENT_STATE_WALKING)
+            continue;
+        float target[3];
+        dtVmad(target, entry.start, entry.velocity, entry.dt);
+        ag->corridor.movePosition(target, impl->editableQuery(), impl->filterOf(ag));
+        dtVcopy(ag->npos, ag->corridor.getPos());
+        dtVcopy(ag->vel, entry.velocity);
+    }
+    impl->overrides.clear();
 
     // obstacles stand where their transforms put them
     const int count = impl->crowd->getActiveAgents(impl->active.data(), impl->capacity);
@@ -398,6 +603,7 @@ bool NavCrowd::teleport(int agent, const Vector3& position) {
     dtPolyRef ref = 0;
     float nearest[3] = {p[0], p[1], p[2]};
     impl->query()->findNearestPoly(p, impl->crowd->getQueryHalfExtents(), impl->filterOf(ag), &ref, nearest);
+    impl->unscript(agent);
     impl->onLink[(size_t)agent] = 0;
     impl->detourLink[(size_t)agent] = 0;
     if (!ref) {
@@ -505,11 +711,19 @@ float NavCrowd::getSteeringRemaining(int agent, bool& reachedEnd) const {
     reachedEnd = false;
     if (!ag->active || ag->corridor.getPathCount() == 0)
         return 0.0f;
-    if (ag->ncorners == 0)
-        return dtVdist(ag->npos, ag->corridor.getTarget());
-    float distance = getSteeringDistance(agent, reachedEnd);
-    if (!reachedEnd)
-        distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    float distance = 0.0f;
+    if (ag->ncorners == 0) {
+        distance = dtVdist(ag->npos, ag->corridor.getTarget());
+    } else {
+        distance = getSteeringDistance(agent, reachedEnd);
+        if (!reachedEnd)
+            distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    }
+    // a truncated corridor: on to the target as the crow flies (a lower bound, spec S74 R7)
+    if (getPathState(agent) == NavCrowdPath::Truncated) {
+        distance += dtVdist(ag->corridor.getTarget(), ag->targetPos);
+        reachedEnd = false;
+    }
     return distance;
 }
 
@@ -611,10 +825,25 @@ void NavCrowd::completeOffMeshLink(int agent, const Vector3& end) {
 void NavCrowd::refreshFilters() {
     if (!impl->crowd)
         return;
-    for (size_t i = 0; i < impl->filterMasks.size(); i++) {
-        if (impl->filterMasks[i] != 0 || i == 0)
+    for (size_t i = 0; i < impl->filters.size(); i++) {
+        if (impl->filters[i].used)
             impl->fillFilter((int)i);
     }
+}
+
+int NavCrowd::getFilterCount() const {
+    int count = 0;
+    for (const Impl::FilterSlot& slot : impl->filters)
+        count += slot.used ? 1 : 0;
+    return count;
+}
+
+int NavCrowd::getFilterOverflowCount() const {
+    return impl->fallbackCount;
+}
+
+bool NavCrowd::isFilterFallback(int agent) const {
+    return impl->crowd && agent >= 0 && agent < impl->capacity && impl->agentFallback[(size_t)agent] != 0;
 }
 
 size_t NavCrowd::getMemoryBytes() const {
@@ -624,6 +853,244 @@ size_t NavCrowd::getMemoryBytes() const {
     // path queue's node pool
     return sizeof(dtCrowd) + (size_t)impl->capacity * (sizeof(dtCrowdAgent) + 256 * sizeof(dtPolyRef) + sizeof(dtCrowdAgentAnimation)) +
            (size_t)impl->capacity * 4 * sizeof(unsigned short) + 4096 * 48 + impl->params.capacity() * sizeof(NavCrowdAgentParams);
+}
+
+void NavCrowd::replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned) {
+    replanned.clear();
+    if (!impl->crowd || changedPolys.empty())
+        return;
+    for (int index = 0; index < impl->capacity; index++) {
+        const dtCrowdAgent* ag = impl->agent(index);
+        if (!ag->active || impl->params[(size_t)index].obstacle || impl->onLink[(size_t)index] || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+            ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+            continue;
+        const dtPolyRef* path = ag->corridor.getPath();
+        const int count = ag->corridor.getPathCount();
+        for (int i = 0; i < count; i++) {
+            if (std::binary_search(changedPolys.begin(), changedPolys.end(), (uint32_t)path[i])) {
+                impl->crowd->requestMoveTarget(index, ag->targetRef, ag->targetPos);
+                replanned.push_back(index);
+                break;
+            }
+        }
+    }
+}
+
+// ---- S76 agents
+
+namespace {
+
+    // dtCrowd's corridor capacity (DetourCrowd.cpp: m_maxPathResult)
+    constexpr int CROWD_CORRIDOR_POLYS = 256;
+    // setPath: the agent's polygon among the path's first ones (spec S76 R20)
+    constexpr int CORRIDOR_START_SEARCH = 16;
+
+    // the area a polygon reports: the index of its flag bit (links report their area; flags 0,
+    // a runtime Not Walkable, reports Not Walkable)
+    uint8_t crowdPolyArea(const dtNavMesh* mesh, dtPolyRef ref) {
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        if (!ref || dtStatusFailed(mesh->getTileAndPolyByRef(ref, &tile, &poly)) || poly->flags == 0)
+            return AREA_NOT_WALKABLE;
+        uint8_t area = 0;
+        while (area < AREA_COUNT - 1 && !(poly->flags & (1u << area)))
+            area++;
+        return area;
+    }
+
+}
+
+bool NavCrowd::setCorridor(int agent, const std::vector<uint32_t>& polys, const Vector3& target) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || polys.empty())
+        return false;
+    dtCrowdAgent* ag = impl->editable(agent);
+    if (!ag->active || ag->state != DT_CROWDAGENT_STATE_WALKING || impl->params[(size_t)agent].obstacle)
+        return false;
+    const dtPolyRef current = ag->corridor.getFirstPoly();
+    size_t first = polys.size();
+    for (size_t i = 0; i < polys.size() && i < (size_t)CORRIDOR_START_SEARCH; i++) {
+        if (polys[i] == current) {
+            first = i;
+            break;
+        }
+    }
+    if (first == polys.size())
+        return false;
+    const int count = (int)std::min(polys.size() - first, (size_t)CROWD_CORRIDOR_POLYS);
+    const dtQueryFilter* filter = impl->filterOf(ag);
+    dtPolyRef refs[CROWD_CORRIDOR_POLYS];
+    for (int i = 0; i < count; i++) {
+        refs[i] = (dtPolyRef)polys[first + (size_t)i];
+        if (!impl->query()->isValidPolyRef(refs[i], filter))
+            return false;
+    }
+    const float end[3] = {target.x, target.y, target.z};
+    const dtPolyRef last = refs[count - 1];
+    const dtPolyRef endRef = (dtPolyRef)polys.back();
+    // a longer path keeps its real end as the target: the corridor ends at the point of its last
+    // polygon nearest it, and dtCrowd plans on from there when fewer than 10 polygons remain
+    float corridorEnd[3];
+    dtVcopy(corridorEnd, end);
+    if (last != endRef && dtStatusFailed(impl->query()->closestPointOnPoly(last, end, corridorEnd, nullptr)))
+        return false;
+    ag->corridor.setCorridor(corridorEnd, refs, count);
+    ag->boundary.reset();
+    ag->partial = false;
+    ag->ncorners = 0;
+    ag->targetRef = endRef;
+    dtVcopy(ag->targetPos, end);
+    ag->targetPathqRef = DT_PATHQ_INVALID;
+    ag->targetReplan = false;
+    ag->targetReplanTime = 0.0f;
+    ag->targetState = DT_CROWDAGENT_TARGET_VALID;
+    if (!impl->scripted[(size_t)agent]) {
+        impl->scripted[(size_t)agent] = 1;
+        impl->scriptedCount++;
+    }
+    return true;
+}
+
+void NavCrowd::getCorridor(int agent, std::vector<uint32_t>& polys) const {
+    polys.clear();
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active)
+        return;
+    const dtPolyRef* path = ag->corridor.getPath();
+    polys.assign(path, path + ag->corridor.getPathCount());
+}
+
+bool NavCrowd::isCorridorValid(int agent) const {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return false;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active)
+        return false;
+    dtPathCorridor& corridor = const_cast<dtPathCorridor&>(ag->corridor);
+    return corridor.isValid(corridor.getPathCount(), impl->editableQuery(), impl->filterOf(ag));
+}
+
+void NavCrowd::overrideVelocity(int agent, const Vector3& velocity, float dt) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->agent(agent)->active)
+        return;
+    for (Impl::VelocityOverride& entry : impl->overrides) {
+        if (entry.agent == agent) {
+            entry.velocity[0] = velocity.x;
+            entry.velocity[1] = velocity.y;
+            entry.velocity[2] = velocity.z;
+            entry.dt = dt;
+            return;
+        }
+    }
+    Impl::VelocityOverride entry;
+    entry.agent = agent;
+    entry.velocity[0] = velocity.x;
+    entry.velocity[1] = velocity.y;
+    entry.velocity[2] = velocity.z;
+    entry.dt = dt;
+    impl->overrides.push_back(entry);
+}
+
+void NavCrowd::requestMoveVelocity(int agent, const Vector3& velocity) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    impl->unscript(agent);
+    const float v[3] = {velocity.x, velocity.y, velocity.z};
+    impl->crowd->requestMoveVelocity(agent, v);
+}
+
+Vector3 NavCrowd::getSteeringTarget(int agent) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active || ag->ncorners == 0)
+        return vec(ag->npos);
+    return vec(ag->cornerVerts);
+}
+
+void NavCrowd::getCorridorPath(int agent, NavPath& out, bool areaCrossings) const {
+    out = NavPath();
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    const int count = ag->corridor.getPathCount();
+    if (!ag->active || count == 0)
+        return;
+    const dtPolyRef* path = ag->corridor.getPath();
+    out.polys.assign(path, path + count);
+    out.meshRevision = impl->mesh->getRevision();
+    const dtNavMesh* mesh = static_cast<const dtNavMesh*>(impl->mesh->detourNavMesh());
+    const dtQueryFilter* filter = impl->filterOf(ag);
+    // a corner per polygon crossing at most, and the two ends
+    const int capacity = count * 2 + 2;
+    std::vector<float> verts((size_t)capacity * 3);
+    std::vector<unsigned char> flags((size_t)capacity);
+    std::vector<dtPolyRef> refs((size_t)capacity);
+    int corners = 0;
+    if (dtStatusFailed(impl->query()->findStraightPath(ag->npos, ag->corridor.getTarget(), path, count, verts.data(), flags.data(), refs.data(),
+                                                       &corners, capacity, areaCrossings ? DT_STRAIGHTPATH_AREA_CROSSINGS : 0)) ||
+        corners == 0) {
+        out.polys.clear();
+        return;
+    }
+    out.status = PathStatus::Complete;
+    out.failure = PathFailure::None;
+    out.corners.reserve((size_t)corners);
+    for (int i = 0; i < corners; i++) {
+        out.corners.push_back(vec(&verts[(size_t)i * 3]));
+        out.cornerFlags.push_back(flags[(size_t)i]);
+        // a stretch has the area of the polygon it starts in; the last corner the area at the end
+        out.cornerAreas.push_back(crowdPolyArea(mesh, i + 1 < corners ? refs[(size_t)i] : path[count - 1]));
+        if (i > 0) {
+            const float length = dtVdist(&verts[(size_t)(i - 1) * 3], &verts[(size_t)i * 3]);
+            out.length += length;
+            const dtMeshTile* tile = nullptr;
+            const dtPoly* poly = nullptr;
+            const dtPolyRef from = refs[(size_t)i - 1];
+            const float cost = from && dtStatusSucceed(mesh->getTileAndPolyByRef(from, &tile, &poly)) ? filter->getAreaCost(poly->getArea()) : 1.0f;
+            out.cost += length * cost;
+            out.areaLengths[out.cornerAreas[(size_t)i - 1]] += length;
+        }
+    }
+    out.start = out.corners.front();
+    out.end = out.closestPoint = out.corners.back();
+}
+
+bool NavCrowd::getNextOffMeshLink(int agent, Vector3& start, Vector3& end, uint32_t& userId, int maxCorners) const {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->mesh->hasOffMeshConnections())
+        return false;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active || ag->corridor.getPathCount() == 0)
+        return false;
+    const int capacity = std::max(1, maxCorners);
+    std::vector<float> verts((size_t)capacity * 3);
+    std::vector<unsigned char> flags((size_t)capacity);
+    std::vector<dtPolyRef> polys((size_t)capacity);
+    dtPathCorridor& corridor = const_cast<dtPathCorridor&>(ag->corridor);
+    // the corners stop at the first link (its start carries the flag)
+    const int count = corridor.findCorners(verts.data(), flags.data(), polys.data(), capacity, impl->editableQuery(), impl->filterOf(ag));
+    if (count == 0 || !(flags[(size_t)count - 1] & DT_STRAIGHTPATH_OFFMESH_CONNECTION))
+        return false;
+    const dtPolyRef link = polys[(size_t)count - 1];
+    const dtNavMesh* mesh = static_cast<const dtNavMesh*>(impl->mesh->detourNavMesh());
+    const dtOffMeshConnection* connection = mesh->getOffMeshConnectionByRef(link);
+    if (!connection)
+        return false;
+    // the link's polygon follows the one before it in the corridor: that fixes its direction
+    const dtPolyRef* path = ag->corridor.getPath();
+    dtPolyRef previous = 0;
+    for (int i = 1; i < ag->corridor.getPathCount(); i++) {
+        if (path[i] == link) {
+            previous = path[i - 1];
+            break;
+        }
+    }
+    float a[3], b[3];
+    if (dtStatusFailed(mesh->getOffMeshConnectionPolyEndPoints(previous, link, a, b)))
+        return false;
+    start = vec(a);
+    end = vec(b);
+    userId = connection->userId;
+    return true;
 }
 
 #else // JASPERENGINE_NAVIGATION
@@ -655,6 +1122,8 @@ bool NavCrowd::requestMoveTarget(int, const Vector3&) { return false; }
 void NavCrowd::resetMoveTarget(int) {}
 NavCrowdTarget NavCrowd::getTargetState(int) const { return NavCrowdTarget::Failed; }
 bool NavCrowd::isPathPartial(int) const { return false; }
+NavCrowdPath NavCrowd::getPathState(int) const { return NavCrowdPath::Partial; }
+int NavCrowd::getCorridorSize(int) const { return 0; }
 Vector3 NavCrowd::getTargetPosition(int) const { return Vector3(); }
 void NavCrowd::update(float) {}
 Vector3 NavCrowd::getPosition(int) const { return Vector3(); }
@@ -676,6 +1145,19 @@ bool NavCrowd::isTraversingLink(int) const { return false; }
 void NavCrowd::setLinkPosition(int, const Vector3&, const Vector3&) {}
 void NavCrowd::completeOffMeshLink(int, const Vector3&) {}
 void NavCrowd::refreshFilters() {}
+int NavCrowd::getFilterCount() const { return 0; }
+int NavCrowd::getFilterOverflowCount() const { return 0; }
+bool NavCrowd::isFilterFallback(int) const { return false; }
 size_t NavCrowd::getMemoryBytes() const { return 0; }
+void NavCrowd::replanCrossing(const std::vector<uint32_t>&, std::vector<int>& replanned) { replanned.clear(); }
+
+bool NavCrowd::setCorridor(int, const std::vector<uint32_t>&, const Vector3&) { return false; }
+void NavCrowd::getCorridor(int, std::vector<uint32_t>& polys) const { polys.clear(); }
+bool NavCrowd::isCorridorValid(int) const { return false; }
+void NavCrowd::overrideVelocity(int, const Vector3&, float) {}
+void NavCrowd::requestMoveVelocity(int, const Vector3&) {}
+Vector3 NavCrowd::getSteeringTarget(int) const { return Vector3(); }
+void NavCrowd::getCorridorPath(int, NavPath& out, bool) const { out = NavPath(); }
+bool NavCrowd::getNextOffMeshLink(int, Vector3&, Vector3&, uint32_t&, int) const { return false; }
 
 #endif // JASPERENGINE_NAVIGATION

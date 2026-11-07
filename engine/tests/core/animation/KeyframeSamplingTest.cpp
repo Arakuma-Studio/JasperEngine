@@ -142,7 +142,7 @@ namespace {
                 value = (interpolation < 0.5f) ? previousRotation : values[index];
             }
         }else{
-            // the tiers of S74 R12 written out, Quaternion::slerp beyond them
+            // the tiers of S77 R12 written out, Quaternion::slerp beyond them
             const Quaternion& next = values[index];
             const float d = previousRotation.w * next.w + previousRotation.x * next.x + previousRotation.y * next.y + previousRotation.z * next.z;
             const float absDot = std::fabs(d);
@@ -644,7 +644,7 @@ namespace {
 
 }
 
-// S74 R12, R13, AC5: the tiered slerp against true slerp: the bound per segment angle, the tier
+// S77 R12, R13, AC5: the tiered slerp against true slerp: the bound per segment angle, the tier
 // boundaries, the end keys, the shortest arc, and the exact path where the tiers do not apply
 TEST(KeyframeSampling, TieredSlerpMatchesSlerp){
     std::mt19937 random(7);

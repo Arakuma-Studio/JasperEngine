@@ -55,7 +55,7 @@ namespace jasperengine::anim{
     constexpr size_t MAX_MONTAGE_SECTIONS = 64;
     constexpr size_t MAX_MONTAGE_EVENTS = 256;
     // .anim top-level members of this stream that AnimationClipIO keeps as unknown keys without a
-    // warning ("root_motion", "editor", S74's "optimize")
+    // warning ("root_motion", "editor", S77's "optimize")
     JASPERENGINE_API bool isClipExtensionKey(const std::string& key);
 
     // A failed parse: where (1-based line:col, 0 when not at a text position) and why

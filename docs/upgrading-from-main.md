@@ -57,7 +57,7 @@ exact: a GameObject's Transform is drawn between the last two fixed steps (physi
 as far as the frame's leftover time, which a frame spent loading changes. That is so on origin/main
 too.
 
-### IK solvers (S74)
+### IK solvers (S77)
 
 Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones
 missed. No stored field changes meaning and nothing is migrated: scenes and prefabs load as they

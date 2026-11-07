@@ -116,7 +116,7 @@ namespace jasperengine::anim{
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
-        // weight 0 and nothing that needs the pose: `output` was not sampled (S74 R14). An
+        // weight 0 and nothing that needs the pose: `output` was not sampled (S77 R14). An
         // interruption before the next evaluation freezes what the layer would have shown, the
         // state as it was then: sampled into snapshotPose by the next evaluateLayer
         bool outputSkipped = false;

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Reduce Keys... (S74 R46): the dialog the clip asset Inspector opens. Error Tolerance and Skin
+// Reduce Keys... (S77 R46): the dialog the clip asset Inspector opens. Error Tolerance and Skin
 // Distance run animation/ClipOptimize on a worker as they change; the numbers shown, before and after
 // Memory and Keys, Max Error, Mean Error and Worst Joint, are its measurements, under the field table's
 // labels (the same ones optimize_animation returns). The preview writes nothing. Reduce writes

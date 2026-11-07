@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R6, R7: the Animator's and the Animation Players' time lands in the profiler's Animation
+// S77 R6, R7: the Animator's and the Animation Players' time lands in the profiler's Animation
 // band and leaves Scripts and Physics, and the monitors read the Animators' stats.
 
 #include <gtest/gtest.h>

@@ -3,6 +3,7 @@
 
 #include "AnimationClipDocument.h"
 #include "component/AnimationPlayerComponent.h"
+#include "sprite/SpriteSheetPool.h"
 #include "AnimatorAssetDocument.h"
 
 #include "animation/AnimatorAssetIO.h"
@@ -127,7 +128,9 @@ namespace {
         if (!isInside(root, out.absolute, &rel)){
             return fail(error, "'" + path + "' is outside the project");
         }
-        if (out.subClip ? !Util::isModelFile(out.absolute.string()) : !Util::isAnimationClipFile(out.absolute.string())){
+        // a sub-clip of a model or of an .aseprite file's tags (S44)
+        const bool container = Util::isModelFile(out.absolute.string()) || SpriteSheetPool::isAsepritePath(out.absolute.string());
+        if (out.subClip ? !container : !Util::isAnimationClipFile(out.absolute.string())){
             return fail(error, "'" + path + "' is not an .anim file or a model sub-clip (\"<model>#<clip>\")");
         }
         out.fileRelative = rel.generic_string();
@@ -918,7 +921,7 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
     }
     // a changed .humanoid sidecar (the model's Avatar, anim-retarget 7.4): the model's clips and its
     // humanoid rig are built again (a humanoid model's clips, clips retargeted from it). A changed
-    // .clips sidecar (the clips' Wrap Mode and Root Motion, S74 R29) too, and the model's clip
+    // .clips sidecar (the clips' Wrap Mode and Root Motion, S77 R29) too, and the model's clip
     // documents and players reload as for the model itself, without dropping its parse
     std::vector<fs::path> settingsModels;
     for (const fs::path& path : paths){

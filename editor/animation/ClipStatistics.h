@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R47)
+// Contract (S77 R47)
 // - Purpose: the rows of Window > Analysis > Animation Statistics: every clip of a project, each row
 //   printed from analyzeClip (the one producer, so a row equals what check_animation says of the clip)
 //   and the `optimize` record its file keeps. Also lists the project's clips for check_animation.

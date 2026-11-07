@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (S74 R18, D2, D3)
+// Contract (S77 R18, D2, D3)
 // - Purpose: the one producer of a clip's numbers in the editor. analyzeClip fills a ClipReport;
 //   panels and tools print its struct and never calculate. kClipReportFields names every number
 //   once (the JSON key agents read, the label people read, its unit and how it prints), so the

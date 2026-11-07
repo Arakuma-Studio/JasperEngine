@@ -14,7 +14,7 @@ namespace jasperengine::editor {
 
     class Project;
 
-    // Window > Analysis > Animation Statistics (S74 R47): what every clip costs. Scans the project,
+    // Window > Analysis > Animation Statistics (S77 R47): what every clip costs. Scans the project,
     // or the clips the open scenes' Animation Players list, on a worker; each row prints
     // animation/ClipStatistics (so ClipReport, the numbers check_animation gives). Filters All,
     // Loaded, Unused, Over budget, with an editable per-clip budget. Double-click selects the

@@ -74,6 +74,7 @@ DebugStatsSnapshot DebugStats::sample(){
 
     const Engine::FrameStats& frame = Engine::getFrameStats();
     s.drawCalls = frame.drawCalls;
+    s.setPassCalls = frame.setPassCalls;
     s.instances = frame.instances;
     s.triangles = frame.triangles;
 

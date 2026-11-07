@@ -14,6 +14,8 @@
 #include "texture/Material.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
+#include "component/WaterExcluderComponent.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
 #endif
@@ -64,23 +66,51 @@ float WaterSurface::getBottom() const{
     return buoyancyDepth > 0.0f ? level - buoyancyDepth : -std::numeric_limits<float>::infinity();
 }
 
+WaterWaveSample WaterSurface::getWaves(float x, float z, float time) const{
+    return waterSurfaceAt(waves, Vector2(x, z), time);
+}
+
 float WaterSurface::getHeight(float x, float z, float time) const{
-    if (!waves)
+    if (!waves.waves)
         return level;
-    return level + Water::getWaves(x, z, time, waveDirection, waveHeight, waveLength, waveSpeed).x;
+    return level + getWaves(x, z, time).height;
 }
 
 Vector3 WaterSurface::getNormal(float x, float z, float time) const{
-    if (!waves)
+    if (!waves.waves)
         return Vector3(0.0f, 1.0f, 0.0f);
-    const Vector3 wave = Water::getWaves(x, z, time, waveDirection, waveHeight, waveLength, waveSpeed);
-    // as water.frag bends the flat surface's normal: (0, 1, 0) - (slope x, 0, slope z)
-    return Vector3(-wave.y, 1.0f, -wave.z).normalized();
+    return getWaves(x, z, time).normal;
 }
 
-float Water::getTime(){
-    // the frame's shader clock (Engine::latchShaderTime), which RenderSystem writes into frame.time.x
-    return Engine::getShaderTime();
+bool Water::isWaterShader(const std::string& reference){
+    if (reference.empty())
+        return false;
+    const std::string base = ShaderReference::getBase(reference);
+    if (base == SHADER)
+        return true;
+    if (ShaderReference::isLibrary(base) || ShaderReference::isBuiltin(base))
+        return false;
+    std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base);
+    return manifest && manifest->role == ShaderRole::WATER;
+}
+
+bool Water::isUnderwaterShader(const std::string& reference){
+    if (reference.empty())
+        return false;
+    const std::string base = ShaderReference::getBase(reference);
+    if (base == UNDERWATER_SHADER)
+        return true;
+    if (ShaderReference::isLibrary(base) || ShaderReference::isBuiltin(base))
+        return false;
+    std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base);
+    return manifest && manifest->role == ShaderRole::UNDERWATER;
+}
+
+float Water::getTime(Scene* scene){
+    // the scene clock, which RenderSystem writes into library:water's sceneTime
+    if (!scene)
+        scene = Engine::getMainScene();
+    return scene ? (float)scene->getSceneTime() : 0.0f;
 }
 
 Vector3 Water::getWaves(float x, float z, float time, const Vector2& direction, float height, float waveLength, float speed){
@@ -89,22 +119,36 @@ Vector3 Water::getWaves(float x, float z, float time, const Vector2& direction, 
     return Vector3(wave.height, wave.slope.x, wave.slope.y);
 }
 
-bool Water::readMaterial(const Material& material, WaterSurface& surface){
-    if (ShaderReference::getBase(material.shader) != SHADER)
+bool Water::readWaves(const Material& material, WaterWaveParams& waves){
+    const std::string& shader = material.shader;
+    if (!isWaterShader(shader))
         return false;
 
+    // a fork's own manifest gives its defaults
     const ShaderUniformValues& values = material.shaderParams;
-    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(material.shader, material.shaderFeatures);
-    surface.waves = std::find(features.begin(), features.end(), "WAVES") != features.end();
-    const Vector4 direction = ShaderLibraryValues::getParam(values, SHADER, "waveDirection");
-    surface.waveDirection = Vector2(direction.x, direction.y);
-    surface.waveHeight = ShaderLibraryValues::getParam(values, SHADER, "waveHeight").x;
-    surface.waveLength = ShaderLibraryValues::getParam(values, SHADER, "waveLength").x;
-    surface.waveSpeed = ShaderLibraryValues::getParam(values, SHADER, "waveSpeed").x;
-    surface.buoyancy = ShaderLibraryValues::getParam(values, SHADER, "buoyancy").x > 0.5f;
-    surface.buoyancyDepth = ShaderLibraryValues::getParam(values, SHADER, "buoyancyDepth").x;
-    surface.shallowColor = ShaderLibraryValues::getParam(values, SHADER, "shallowColor");
-    surface.deepColor = ShaderLibraryValues::getParam(values, SHADER, "deepColor");
+    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
+    waves = WaterWaveParams();
+    waves.waves = std::find(features.begin(), features.end(), "WAVES") != features.end();
+    waves.gerstner = waves.waves && std::find(features.begin(), features.end(), "GERSTNER") != features.end();
+    const Vector4 direction = ShaderLibraryValues::getParam(values, shader, "waveDirection");
+    waves.direction = Vector2(direction.x, direction.y);
+    waves.height = ShaderLibraryValues::getParam(values, shader, "waveHeight").x;
+    waves.length = ShaderLibraryValues::getParam(values, shader, "waveLength").x;
+    waves.speed = ShaderLibraryValues::getParam(values, shader, "waveSpeed").x;
+    waves.steepness = ShaderLibraryValues::getParam(values, shader, "waveSteepness").x;
+    return true;
+}
+
+bool Water::readMaterial(const Material& material, WaterSurface& surface){
+    if (!readWaves(material, surface.waves))
+        return false;
+
+    const std::string& shader = material.shader;
+    const ShaderUniformValues& values = material.shaderParams;
+    surface.buoyancy = ShaderLibraryValues::getParam(values, shader, "buoyancy").x > 0.5f;
+    surface.buoyancyDepth = ShaderLibraryValues::getParam(values, shader, "buoyancyDepth").x;
+    surface.shallowColor = ShaderLibraryValues::getParam(values, shader, "shallowColor");
+    surface.deepColor = ShaderLibraryValues::getParam(values, shader, "deepColor");
     return true;
 }
 
@@ -181,7 +225,7 @@ std::optional<float> Water::getHeight(Scene* scene, float x, float z){
     const WaterSurface* surface = findSurface(surfaces, Vector3(x, std::numeric_limits<float>::infinity(), z));
     if (!surface)
         return std::nullopt;
-    return surface->getHeight(x, z, getTime());
+    return surface->getHeight(x, z, getTime(scene));
 }
 
 std::optional<Vector3> Water::getNormal(Scene* scene, float x, float z){
@@ -192,16 +236,26 @@ std::optional<Vector3> Water::getNormal(Scene* scene, float x, float z){
     const WaterSurface* surface = findSurface(surfaces, Vector3(x, std::numeric_limits<float>::infinity(), z));
     if (!surface)
         return std::nullopt;
-    return surface->getNormal(x, z, getTime());
+    return surface->getNormal(x, z, getTime(scene));
+}
+
+// inside an active Water Excluder (a boat, a cabin): no water there
+static bool waterKeptDry(Scene* scene, const Vector3& point){
+    if (!scene || scene->getComponentArray<WaterExcluderComponent>()->size() == 0)
+        return false;
+    std::shared_ptr<WaterInteractionSystem> interaction = scene->findSystem<WaterInteractionSystem>();
+    return interaction && interaction->findExcluder(point) != NULL_ENTITY;
 }
 
 bool Water::isUnderwater(Scene* scene, const Vector3& point){
+    if (waterKeptDry(scene, point))
+        return false;
     const SplineWaterSample water = splineWater(scene, point.x, point.z);
     if (water.hit)
         return point.y < water.height;
     const std::vector<WaterSurface> surfaces = getSurfaces(scene);
     const WaterSurface* surface = findSurface(surfaces, point);
-    return surface && point.y < surface->getHeight(point.x, point.z, getTime());
+    return surface && point.y < surface->getHeight(point.x, point.z, getTime(scene));
 }
 
 WaterSample Water::sample(Scene* scene, const Vector3& point){
@@ -226,6 +280,7 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
     std::vector<WaterSurface> surfaces;
     bool surfacesRead = false;
     float time = 0.0f;
+    std::shared_ptr<WaterInteractionSystem> excluders;
     PhysicsSystem* physics = scene->getSystem<PhysicsSystem>().get();
 
     for (int i = 0; i < (int)bodies->size(); i++){
@@ -247,7 +302,9 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
         if (!surfacesRead){
             surfacesRead = true;
             surfaces = getSurfaces(scene);
-            time = getTime();
+            time = getTime(scene);
+            if (scene->getComponentArray<WaterExcluderComponent>()->size() > 0)
+                excluders = scene->findSystem<WaterInteractionSystem>();
         }
         if (surfaces.empty())
             return;
@@ -260,6 +317,9 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
         const Vector3 point((float)center.GetX(), (float)center.GetY(), (float)center.GetZ());
         const WaterSurface* surface = findSurface(surfaces, point, true);
         if (!surface)
+            continue;
+        // inside a Water Excluder it does not own (cargo in a boat): dry
+        if (excluders && excluders->findExcluder(point, bodies->getEntity(i)) != NULL_ENTITY)
             continue;
 
         // the surface over the centre of mass, with the waves of the frame about to be drawn
@@ -281,7 +341,7 @@ void Water::updateUnderwater(Scene* scene){
     bool hasPass = false;
     bool wasUnder = false;
     for (const PostProcessPass& pass : scene->getPostProcessPasses()){
-        if (ShaderReference::getBase(pass.shader) == UNDERWATER_SHADER){
+        if (isUnderwaterShader(pass.shader)){
             hasPass = true;
             wasUnder = wasUnder || pass.enabled;
         }
@@ -295,18 +355,19 @@ void Water::updateUnderwater(Scene* scene){
     const WaterSurface* surface = nullptr;
     float height = 0.0f;
     bool under = false;
-    if (camera){
+    // a camera inside a Water Excluder (a cabin below the waterline) sees no water around it
+    if (camera && !waterKeptDry(scene, camera->worldPosition)){
         const Vector3& eye = camera->worldPosition;
         surface = findSurface(surfaces, eye);
         if (surface){
-            height = surface->getHeight(eye.x, eye.z, getTime());
+            height = surface->getHeight(eye.x, eye.z, getTime(scene));
             under = eye.y < height + (wasUnder ? UNDERWATER_HYSTERESIS : 0.0f);
         }
     }
 
     for (unsigned int i = 0; i < (unsigned int)scene->getPostProcessPasses().size(); i++){
         const PostProcessPass& pass = scene->getPostProcessPasses()[i];
-        if (ShaderReference::getBase(pass.shader) != UNDERWATER_SHADER)
+        if (!isUnderwaterShader(pass.shader))
             continue;
 
         if (under){
@@ -316,7 +377,7 @@ void Water::updateUnderwater(Scene* scene){
                     scene->setPostProcessUniform(i, name, value);
             };
             set("waterLevel", Vector4(height, 0.0f, 0.0f, 0.0f));
-            if (ShaderLibraryValues::getParam(pass.uniforms, UNDERWATER_SHADER, "followWater").x > 0.5f){
+            if (ShaderLibraryValues::getParam(pass.uniforms, pass.shader, "followWater").x > 0.5f){
                 set("shallowColor", surface->shallowColor);
                 set("deepColor", surface->deepColor);
             }

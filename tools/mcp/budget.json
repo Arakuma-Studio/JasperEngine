@@ -11,7 +11,8 @@
         "generated tool groups section, and each '## ' section (the text before the first one counts as a section);",
         "sections names a section's own limit. headroom_bytes: the whole text must stay that far under bytes, room",
         "for the tool groups and digest lines later specs add. Area detail goes to docs/mcp/guide/<area>.md, never",
-        "into a raised limit or a smaller headroom."
+        "into a raised limit or a smaller headroom. client_cut: the sections a client that keeps only the first chars",
+        "characters must still get whole (UTF-16 code units, as JavaScript counts), and the pointer the intro must carry."
     ],
     "default_listing": {
         "chars": 99000,
@@ -26,7 +27,19 @@
         "bytes": 8192,
         "headroom_bytes": 1500,
         "section_bytes": 1500,
-        "sections": {}
+        "sections": {},
+        "client_cut": {
+            "chars": 4096,
+            "sections": [
+                "(intro)",
+                "Addressing",
+                "The loop",
+                "Building scenes",
+                "Tool groups"
+            ],
+            "pointer": "read_file jasper://guide",
+            "reason": "Claude Code keeps the first 4096 characters of server instructions (CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH default, agent-authoring)"
+        }
     },
     "groups": {
         "diagnostics": {
@@ -57,7 +70,7 @@
         "animation": {
             "chars": 16000,
             "tools": 13,
-            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S74's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
         },
         "editor_ux": {
             "chars": 24000,
@@ -66,6 +79,10 @@
         }
     },
     "exceptions": {
+        "visualize_navigation": {
+            "limit": 1725,
+            "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
+        },
         "set_scene_camera": {
             "limit": 1960,
             "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"
@@ -80,7 +97,7 @@
         },
         "edit_animation": {
             "limit": 3566,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S74's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left)"
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left)"
         },
         "sculpt_terrain": {
             "limit": 2699,
@@ -107,16 +124,16 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1980,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units)"
+            "limit": 1990,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
         },
         "create_particles": {
             "limit": 1888,
             "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
         },
         "set_terrain_maps": {
-            "limit": 2369,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them"
+            "limit": 2719,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors)"
         },
         "inspect_ui": {
             "limit": 1792,

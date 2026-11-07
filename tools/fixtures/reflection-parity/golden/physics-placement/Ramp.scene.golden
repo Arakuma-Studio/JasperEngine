@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 815356118a9741500cbe8a3a12d6acc1
 id: 1505940115
 name: Ramp
@@ -51,9 +51,25 @@ shaderKeys:
   - type: mesh
     properties: 8589935704
   - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
     properties: 2199023256664
   - type: mesh
     properties: 2207613191256
+  - type: mesh
+    properties: 2267742733400
+  - type: mesh
+    properties: 2276332667992
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 19791209301080
+  - type: mesh
+    properties: 19799799235672
   - type: sky
   - type: depth
   - type: depth

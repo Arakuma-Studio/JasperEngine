@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S74 R26, AC12: under Write Bones: Exposed the overlay draws the Animator's pose, not the Transforms
+// S77 R26, AC12: under Write Bones: Exposed the overlay draws the Animator's pose, not the Transforms
 // the Animator does not write; a root whose parent is no bone still gets its marker.
 
 #include <gtest/gtest.h>

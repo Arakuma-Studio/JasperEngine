@@ -117,7 +117,9 @@ dynamic casters alone changed gets its static casters' depths copied back from t
 inside the rect those casters covered (before and after) and only them redrawn; one whose static
 casters changed redraws its static layer. Casters drawn per camera (a terrain's cut, turned
 billboards, culled instances) keep their slots uncached. With a still scene and camera the shadow
-passes are skipped entirely.
+passes are skipped entirely. Casters are culled against each slot's light frustum only, not against
+the camera's receivers: a cached slot outlives the view it was drawn for, and the frame's atlas is
+also read by reflection probes, render-to-texture cameras and other views.
 
 Invalidation: a light's slots are redrawn when its type, direction, position, range, cone, near
 plane, resolution, cascades, splits, shadow distance, culling mask, update mode or enable change,

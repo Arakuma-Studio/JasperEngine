@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "component/BuoyancyComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "math/AABB.h"
 #include "math/Vector3.h"
 
 #include <vector>
@@ -32,6 +33,17 @@ namespace jasperengine::editor {
         float meshVertexSpacing(Scene* scene, Entity entity);
         // The largest waveLength of its library:water material (WAVES), 0 without waves
         float materialWaveLength(Scene* scene, Entity entity);
+
+        // Water Excluders and Water Wakes (docs/superpowers/specs/2026-11-04-water-boats-design.md)
+        // The local bounds of the meshes a Convex Hull reads (the GameObject's mesh, or its
+        // model's mesh nodes); null without
+        AABB meshSourceLocalBounds(Scene* scene, Entity entity);
+        // whether a mesh of the scene draws with a shader asking for waterexclusion (or waterwake)
+        bool sceneDrawsWaterInteraction(Scene* scene, bool wake);
+        // whether a floating dynamic Rigidbody (a buoyancy factor or a Buoyancy) is at or under an
+        // excluder that belongs to no Rigidbody (WaterInteractionSystem::getExcluderOwner): kept dry
+        // by it, it would never float
+        bool excluderDriesItsOwnBodies(Scene* scene, Entity excluder);
     }
 
 }

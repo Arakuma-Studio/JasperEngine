@@ -86,7 +86,7 @@ const std::vector<ScriptEvent>& eventList() {
         {S::Input, "onGamepadButtonUp", "Gamepad", "A gamepad button is released", gamepadButton},
         {S::Input, "onGamepadAxisMove", "Gamepad", "A gamepad axis moves, from -1 to 1", {{"int", "gamepad"}, {"int", "axis"}, {"float", "value"}}},
 
-        {S::UI, "onClick", "Pointer", "The element is clicked", pointer},
+        {S::UI, "onClick", "Pointer", "Released over the element: a button's click", pointer},
         {S::UI, "onDoubleClick", "Pointer", "The element is double-clicked", pointer},
         {S::UI, "onPointerDown", "Pointer", "The pointer is pressed on the element", pointer},
         {S::UI, "onPointerUp", "Pointer", "The pointer is released on the element", pointer},
@@ -100,7 +100,8 @@ const std::vector<ScriptEvent>& eventList() {
         {S::UI, "onLostFocus", "Focus", "The element loses the focus", {}},
 
         {S::Button, "onPress", nullptr, "The button is pressed", {}},
-        {S::Button, "onRelease", nullptr, "The button is released", {}},
+        {S::Button, "onRelease", nullptr, "The button is released, wherever the pointer is (the click is onClick)", {}},
+        {S::Button, "onClick", nullptr, "The button is clicked: released over it, or submitted (Enter, Space, gamepad A) while selected", {}},
 
         {S::Scrollbar, "onChange", nullptr, "The bar moves", {{"float", "step"}}},
 
