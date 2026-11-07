@@ -10,6 +10,10 @@
 #include "Workspace.h"
 #include "yaml-cpp/yaml.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
+#include "command/CommandHistory.h"
+#include "command/UndoOrigin.h"
+#include "settings/SettingsRegistry.h"
+#include "../command/UndoFakeCommand.h"
 
 #include <gtest/gtest.h>
 
@@ -62,3 +66,43 @@ TEST(ApplePrivacySettings, CommandAppliesAndUndoes) {
     EXPECT_TRUE(project.getApplePrivacy().empty());
     EXPECT_EQ(command.describe(), "Change Privacy Manifest");
 }
+
+// AC7 (red before the review fix: one undo step per key): the apple.privacy_* keys of one agent
+// call are one step; a user's edits stay apart
+TEST(ApplePrivacySettings, OneAgentCallIsOneUndoStep) {
+    jasperengine::editor::test::UndoStatics statics;
+    Project project;
+    SettingsContext ctx;
+    ctx.projectPtr = &project;
+    const SettingsRegistry& registry = SettingsRegistry::get();
+    auto set = [&](const char* key, const jasperengine::editor::mcp::Json& value) {
+        const SettingRow* row = registry.find(key);
+        ASSERT_NE(row, nullptr) << key;
+        std::string error;
+        ASSERT_TRUE(row->set(ctx, value, true, error)) << key << ": " << error;
+    };
+    CommandHistory* history = project.getProjectCommandHistory();
+    UndoOrigin agent;
+    agent.kind = UndoOriginKind::Agent;
+    agent.call = 41;
+    {
+        UndoOriginScope scope(agent);
+        set("apple.privacy_tracking", true);
+        set("apple.privacy_tracking_domains", jasperengine::editor::mcp::Json::array({"ads.example.com"}));
+        set("apple.privacy_accessed_apis", jasperengine::editor::mcp::Json::parse(R"([{"type": "DiskSpace", "reasons": ["E174.1"]}])"));
+    }
+    EXPECT_EQ(history->entries().size(), 1u);
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(project.getApplePrivacy().empty()) << "one undo takes the whole call back";
+
+    set("apple.privacy_tracking", true);
+    set("apple.privacy_tracking_domains", jasperengine::editor::mcp::Json::array({"ads.example.com"}));
+    EXPECT_EQ(history->entries().size(), 2u) << "a user's edits are separate steps";
+
+    // the macOS page lists the same rows in search
+    const SettingRow* mac = registry.find("macos.privacy_tracking_domains");
+    ASSERT_NE(mac, nullptr);
+    EXPECT_EQ(mac->section, "macOS");
+    EXPECT_EQ(mac->get(ctx), jasperengine::editor::mcp::Json::array({"ads.example.com"}));
+}
+

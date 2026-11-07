@@ -104,6 +104,21 @@ void editor::Exporter::warn(const std::string& code, const std::string& message)
     Out::warning("%s: %s", code.c_str(), message.c_str());
 }
 
+void editor::Exporter::warnPrivacy(const std::string& platform, const std::vector<std::string>& warnings) {
+    for (const std::string& warning : warnings) {
+        const size_t colon = warning.find(": ");
+        const bool coded = warning.compare(0, 2, "W-") == 0 && colon != std::string::npos;
+        warn(coded ? warning.substr(0, colon) : "W-PRIVACY-PLUGIN", platform + " privacy manifest: " + (coded ? warning.substr(colon + 2) : warning));
+    }
+}
+
+bool editor::Exporter::iosDeclaresTrackingUsage() const {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    std::vector<std::string> keys;
+    for (const auto& [key, value] : ios.plistEntries) keys.push_back(key);
+    return ApplePrivacy::declaresTrackingUsage(keys, ios.plistXml);
+}
+
 std::string editor::Exporter::playerIdFor(const ExportConfig& cfg, bool development) {
     std::string backend = normalizeBackend(cfg.graphicBackend);
     if (backend.empty()) backend = platformBackends(cfg.platform).front();
@@ -254,7 +269,10 @@ void editor::Exporter::runPlayerBuild() {
         if (!hostDesktop && config.platform != BuildPlatform::Web) {
             setError(std::string("needs to compile native code (") + choice.reasons.front() + "): a " + buildPlatformName(config.platform) +
                      " build with native code is made from the source project (File > Build Settings > Export source, then " +
-                     (config.platform == BuildPlatform::Android ? "Android Studio" : config.platform == BuildPlatform::IOS ? "Xcode" : "CMake") + ")");
+                     (config.platform == BuildPlatform::Android ? "Android Studio"
+                      : config.platform == BuildPlatform::IOS ? "Xcode"
+                      // Objective-C and Swift plugins build in the Xcode project
+                      : config.platform == BuildPlatform::MacOS ? "Xcode on a Mac" : "CMake") + ")");
             return;
         }
         if (config.platform != BuildPlatform::Web) {
@@ -984,11 +1002,7 @@ bool editor::Exporter::finalizeMacOS() {
     settings.iconPng = icon;
     // the privacy manifest and Info.plist entries (macos.plist_entries) the source export has too
     const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "macos");
-    for (const std::string& warning : privacy.warnings) {
-        const size_t colon = warning.find(": ");
-        const bool coded = warning.compare(0, 2, "W-") == 0 && colon != std::string::npos;
-        warn(coded ? warning.substr(0, colon) : "W-PRIVACY-PLUGIN", coded ? warning.substr(colon + 2) : warning);
-    }
+    warnPrivacy("macOS", privacy.warnings);
     settings.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
     if (!mac.plistEntries.empty()) {
         settings.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };

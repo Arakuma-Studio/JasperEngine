@@ -219,7 +219,8 @@ with a reason that names the files:
 The prebuilt iOS build is an Xcode project, so the game's Objective-C and Swift plugins are added
 to it as the source export adds them. Android and macOS players are finished packages: their
 native code needs Gradle or a compiler, so an Android or iOS build that must compile says to
-export the source project (File > Build Settings > Export source, then Android Studio or Xcode).
+export the source project (File > Build Settings > Export source, then Android Studio or Xcode;
+Xcode on a Mac for macOS plugins).
 
 A Lua mock (`native_mocks/<Plugin>.lua`) answers where a plugin has no code. When a build would
 ship one in place of real code (an Android-only ads plugin in a Windows build), the build warns
@@ -235,7 +236,7 @@ API without declaring it. The manifest is made at each build from three parts:
 1. **The engine's entries**, always there: UserDefaults `CA92.1` (UserSettings: only the game
    reads what it saves), file timestamps `C617.1` (the game's own files), system boot time
    `35F9.1` (frame and physics timers). The engine tracks nobody and collects no data.
-   `tools/check_apple_privacy.py` (CI and `tools/check-changed`) fails when engine code starts to
+   `tools/check_apple_privacy.py` (run by `tools/check-changed`) fails when engine code starts to
    use a category the manifest does not declare.
 2. **The project's additions**, in Project Settings > Player > iOS (or macOS) > Privacy Manifest,
    shared by both platforms: Tracking, Tracking Domains, Collected Data (type, linked, tracking,
@@ -243,18 +244,19 @@ API without declaring it. The manifest is made at each build from three parts:
    Agents: `set_project_settings` `apple.privacy_tracking`, `apple.privacy_tracking_domains`,
    `apple.privacy_collected_data`, `apple.privacy_accessed_apis`.
 3. **The plugins' manifests**: every `PrivacyInfo.xcprivacy` in `plugins/native/apple` and
-   `plugins/native/ios` (or `macos`), and the one inside a static `.framework` or `.xcframework`.
-   A dynamic framework is embedded with its own manifest and is left alone.
+   `plugins/native/ios` (or `macos`), the one inside a static `.framework` or `.xcframework`, and
+   the one inside an SDK's resource `.bundle` (the bundle is copied into the app). A dynamic
+   framework is embedded with its own manifest and is left alone.
 
 Lists are joined: tracking is on when any part tracks, and domains, data types, purposes and
 reasons are merged. Preview shows the result; `native_plugins {action: "privacy_manifest"}` gives
 it to agents with where each entry came from. The build warns `W-PRIVACY-DOMAINS` when tracking is
 on without a domain, and `W-PRIVACY-ATT` when iOS tracks without `NSUserTrackingUsageDescription`
-in Project Settings > Native Plugins > iOS > Info.plist Entries. Apple names iOS, iPadOS, tvOS,
+in Project Settings > Native Plugins > iOS > Info.plist Entries or Info.plist XML. Apple names iOS, iPadOS, tvOS,
 visionOS and watchOS for the required-reason rule; macOS builds ship the manifest too.
 
 Ads and in-app purchases go through the native bridge: docs/mcp/guide/native-bridge.md, section
-10, has a complete interstitial ads example.
+10, has a complete ads example.
 
 ## Running a player from scripts and CI
 

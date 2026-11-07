@@ -821,8 +821,12 @@ Recorded during implementation (branch `dc/mobile-shipping`).
    success-message channel. Repeating an engine entry is accepted and the composed manifest holds
    it once.
 7. **AC1's grep** also lists the tests and the Lua API test that assert AdMob's absence
-   (`test_build.py::test_no_admob`, `AppleTemplatesTest.NoAdMobLeft`, `test_lua_api.py`), the
-   glossary row pointing to the native bridge, and the native-bridge worked example.
+   (`test_build.py::test_no_admob`, `AppleTemplatesTest.NoAdMobLeft`, `BuildMethodTest.cpp`,
+   `test_lua_api.py` and its `regex_symbols.txt` fixture, deviation 4), the glossary row pointing
+   to the native bridge, the native-bridge worked example, the lead's `FOLLOWUPS-LEDGER.md`, and
+   `docs/specs/S01-cxx20.md`, a historical spec that is not rewritten. `NoAdMobLeft` walks every
+   source and template file below `engine/` and `editor/` (spec 10.1) with the two tests as its
+   allowlist.
 8. **No agent-guide line** (lead decision: only agent-authoring restructures the guide). The
    detail is in `docs/mcp/guide/shipping.md` and `native-bridge.md`; the new tool text has the
    eval case `bad_privacy_manifest_by_hand`.
@@ -839,3 +843,13 @@ Recorded during implementation (branch `dc/mobile-shipping`).
     checks that the option is gone and that the template ships `PrivacyInfo.xcprivacy`,
     `IosBuild.WithoutAMacTheXcodeProjectIsTheResult` stages before it builds (the split of
     deviation 1), and `tools/ci/ios_packaging.sh` checks the manifest in the simulator and device apps.
+13. **Review round.** An SDK's resource `.bundle` in `plugins/native/{apple,ios,macos}` is copied
+    whole into the app (a Resources build phase entry in the source export's targets and the
+    prebuilt iOS template), and its `PrivacyInfo.xcprivacy` joins the composed manifest; the
+    macOS CMake build still copies no plugin bundle (it builds Objective-C sources only, as
+    before). Merging one call's `apple.privacy_*` keys into one undo step is limited to agent
+    calls: the dialog's OK is one command already, and two user edits stay two steps. The
+    privacy rows show on Player > macOS in search through display-only rows `macos.privacy_*`
+    (MCP sets the `apple.privacy_*` keys). An Android plugin folder forces a compile only for
+    what the export's Gradle module reads (`.java`, `.kt`, `.aar`, `.jar`, `res/`,
+    `AndroidManifest.xml`, `proguard-rules.pro`), so notes and READMEs ride along.

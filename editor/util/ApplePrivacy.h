@@ -96,11 +96,15 @@ namespace jasperengine::editor::ApplePrivacy {
 
     // The app's manifest for `platform` ("ios" or "macos"): the engine's, the project's
     // additions and the static plugin manifests below plugins/native/apple and
-    // plugins/native/<platform> (loose PrivacyInfo.xcprivacy files, and those of frameworks
-    // whose binary is a static archive); the warnings say what was skipped and what is missing
+    // plugins/native/<platform> (loose PrivacyInfo.xcprivacy files, those of frameworks whose
+    // binary is a static archive and those of resource bundles); the warnings say what was skipped and what is missing
     // (tracking without domains; iOS tracking without NSUserTrackingUsageDescription when
     // `hasTrackingUsageDescription` is false)
     Composed compose(const fs::path& projectPath, const Manifest& project, const std::string& platform,
                      bool hasTrackingUsageDescription = true);
+
+    // NSUserTrackingUsageDescription is among the iOS Info.plist entries' keys or in the raw
+    // Info.plist XML (ios.plist_entries, ios.plist_xml)
+    bool declaresTrackingUsage(const std::vector<std::string>& plistKeys, const std::string& plistXml);
 
 }

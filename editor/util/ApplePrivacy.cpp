@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <regex>
 #include <set>
 
 using namespace jasperengine::editor;
@@ -26,7 +27,7 @@ namespace {
 
     // Apple's required reason API categories and reasons (developer.apple.com, "Describing use of
     // required reason API", NSPrivacyAccessedAPITypeReasons)
-    const std::map<std::string, std::vector<std::string>>& apiReasons() {
+    const std::map<std::string, std::vector<std::string>>& privacyApiReasons() {
         static const std::map<std::string, std::vector<std::string>> reasons = {
             {"ActiveKeyboards", {"3EC4.1", "54BD.1"}},
             {"DiskSpace", {"7D9E.1", "85F4.1", "B728.1", "E174.1"}},
@@ -37,18 +38,18 @@ namespace {
         return reasons;
     }
 
-    std::string shortName(const std::string& name, const char* prefix, const std::vector<std::string>& names) {
+    std::string privacyShortName(const std::string& name, const char* prefix, const std::vector<std::string>& names) {
         const std::string longPrefix = prefix;
         const std::string bare = name.compare(0, longPrefix.size(), longPrefix) == 0 ? name.substr(longPrefix.size()) : name;
         return std::find(names.begin(), names.end(), bare) != names.end() ? bare : std::string();
     }
 
-    void sortUnique(std::vector<std::string>& values) {
+    void privacySortUnique(std::vector<std::string>& values) {
         std::sort(values.begin(), values.end());
         values.erase(std::unique(values.begin(), values.end()), values.end());
     }
 
-    std::string escape(const std::string& value) {
+    std::string privacyEscape(const std::string& value) {
         std::string out;
         for (char c : value) {
             switch (c) {
@@ -61,23 +62,23 @@ namespace {
         return out;
     }
 
-    std::string toUtf8(const fs::path& path) {
+    std::string privacyToUtf8(const fs::path& path) {
         const auto text = path.generic_u8string();
         return std::string(text.begin(), text.end());
     }
 
-    const tinyxml2::XMLElement* valueOf(const tinyxml2::XMLElement* dict, const char* key) {
+    const tinyxml2::XMLElement* privacyValueOf(const tinyxml2::XMLElement* dict, const char* key) {
         for (const tinyxml2::XMLElement* e = dict ? dict->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")) {
             if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
         }
         return nullptr;
     }
 
-    bool boolOf(const tinyxml2::XMLElement* value) {
+    bool privacyBoolOf(const tinyxml2::XMLElement* value) {
         return value && std::string(value->Name()) == "true";
     }
 
-    std::vector<std::string> stringsOf(const tinyxml2::XMLElement* array) {
+    std::vector<std::string> privacyStringsOf(const tinyxml2::XMLElement* array) {
         std::vector<std::string> out;
         if (!array || std::string(array->Name()) != "array") return out;
         for (const tinyxml2::XMLElement* e = array->FirstChildElement("string"); e; e = e->NextSiblingElement("string")) {
@@ -88,7 +89,7 @@ namespace {
 
     // The PrivacyInfo.xcprivacy of an SDK bundle, wherever in it (a framework's root or
     // Resources/, an xcframework's library folders): the first one in path order
-    fs::path bundleManifest(const fs::path& bundle) {
+    fs::path privacyBundleManifest(const fs::path& bundle) {
         std::vector<fs::path> found;
         std::error_code ec;
         for (auto it = fs::recursive_directory_iterator(bundle, fs::directory_options::skip_permission_denied, ec);
@@ -99,7 +100,7 @@ namespace {
         return found.empty() ? fs::path() : found.front();
     }
 
-    bool readText(const fs::path& path, std::string& out) {
+    bool privacyReadText(const fs::path& path, std::string& out) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
@@ -128,8 +129,8 @@ const std::vector<std::string>& ApplePrivacy::apiTypes() {
 
 const std::vector<std::string>& ApplePrivacy::reasonsOf(const std::string& apiType) {
     static const std::vector<std::string> none;
-    auto it = apiReasons().find(apiTypeName(apiType));
-    return it == apiReasons().end() ? none : it->second;
+    auto it = privacyApiReasons().find(apiTypeName(apiType));
+    return it == privacyApiReasons().end() ? none : it->second;
 }
 
 std::string ApplePrivacy::reasonText(const std::string& reason) {
@@ -166,17 +167,17 @@ const std::vector<std::string>& ApplePrivacy::purposes() {
 }
 
 std::string ApplePrivacy::apiTypeName(const std::string& name) {
-    return shortName(name, API_PREFIX, apiTypes());
+    return privacyShortName(name, API_PREFIX, apiTypes());
 }
 
 std::string ApplePrivacy::dataTypeName(const std::string& name) {
     // NSPrivacyCollectedDataTypePurpose... is no data type
     if (name.compare(0, std::string(PURPOSE_PREFIX).size(), PURPOSE_PREFIX) == 0) return {};
-    return shortName(name, DATA_PREFIX, dataTypes());
+    return privacyShortName(name, DATA_PREFIX, dataTypes());
 }
 
 std::string ApplePrivacy::purposeName(const std::string& name) {
-    return shortName(name, PURPOSE_PREFIX, purposes());
+    return privacyShortName(name, PURPOSE_PREFIX, purposes());
 }
 
 bool ApplePrivacy::isDomain(const std::string& text) {
@@ -238,10 +239,10 @@ std::string ApplePrivacy::validate(const Manifest& manifest) {
 }
 
 ApplePrivacy::Manifest ApplePrivacy::normalized(Manifest m) {
-    sortUnique(m.trackingDomains);
+    privacySortUnique(m.trackingDomains);
     for (AccessedApi& api : m.accessedApis) {
         if (!apiTypeName(api.type).empty()) api.type = apiTypeName(api.type);
-        sortUnique(api.reasons);
+        privacySortUnique(api.reasons);
     }
     std::sort(m.accessedApis.begin(), m.accessedApis.end(), [](const AccessedApi& a, const AccessedApi& b) { return a.type < b.type; });
     for (CollectedData& data : m.collectedData) {
@@ -249,7 +250,7 @@ ApplePrivacy::Manifest ApplePrivacy::normalized(Manifest m) {
         for (std::string& purpose : data.purposes) {
             if (!purposeName(purpose).empty()) purpose = purposeName(purpose);
         }
-        sortUnique(data.purposes);
+        privacySortUnique(data.purposes);
     }
     std::sort(m.collectedData.begin(), m.collectedData.end(), [](const CollectedData& a, const CollectedData& b) { return a.type < b.type; });
     return m;
@@ -290,9 +291,9 @@ std::string ApplePrivacy::toXml(const Manifest& input) {
     } else {
         xml += "\t<array>\n";
         for (const AccessedApi& api : m.accessedApis) {
-            xml += "\t\t<dict>\n\t\t\t<key>NSPrivacyAccessedAPIType</key>\n\t\t\t<string>" + std::string(API_PREFIX) + escape(api.type) +
+            xml += "\t\t<dict>\n\t\t\t<key>NSPrivacyAccessedAPIType</key>\n\t\t\t<string>" + std::string(API_PREFIX) + privacyEscape(api.type) +
                    "</string>\n\t\t\t<key>NSPrivacyAccessedAPITypeReasons</key>\n\t\t\t<array>\n";
-            for (const std::string& reason : api.reasons) xml += "\t\t\t\t<string>" + escape(reason) + "</string>\n";
+            for (const std::string& reason : api.reasons) xml += "\t\t\t\t<string>" + privacyEscape(reason) + "</string>\n";
             xml += "\t\t\t</array>\n\t\t</dict>\n";
         }
         xml += "\t</array>\n";
@@ -303,11 +304,11 @@ std::string ApplePrivacy::toXml(const Manifest& input) {
     } else {
         xml += "\t<array>\n";
         for (const CollectedData& data : m.collectedData) {
-            xml += "\t\t<dict>\n\t\t\t<key>NSPrivacyCollectedDataType</key>\n\t\t\t<string>" + std::string(DATA_PREFIX) + escape(data.type) + "</string>\n";
+            xml += "\t\t<dict>\n\t\t\t<key>NSPrivacyCollectedDataType</key>\n\t\t\t<string>" + std::string(DATA_PREFIX) + privacyEscape(data.type) + "</string>\n";
             xml += std::string("\t\t\t<key>NSPrivacyCollectedDataTypeLinked</key>\n\t\t\t") + (data.linked ? "<true/>" : "<false/>") + "\n";
             xml += "\t\t\t<key>NSPrivacyCollectedDataTypePurposes</key>\n\t\t\t<array>\n";
             for (const std::string& purpose : data.purposes) {
-                xml += "\t\t\t\t<string>" + std::string(PURPOSE_PREFIX) + escape(purpose) + "</string>\n";
+                xml += "\t\t\t\t<string>" + std::string(PURPOSE_PREFIX) + privacyEscape(purpose) + "</string>\n";
             }
             xml += "\t\t\t</array>\n";
             xml += std::string("\t\t\t<key>NSPrivacyCollectedDataTypeTracking</key>\n\t\t\t") + (data.tracking ? "<true/>" : "<false/>") + "\n";
@@ -321,7 +322,7 @@ std::string ApplePrivacy::toXml(const Manifest& input) {
         xml += "\t<array/>\n";
     } else {
         xml += "\t<array>\n";
-        for (const std::string& domain : m.trackingDomains) xml += "\t\t<string>" + escape(domain) + "</string>\n";
+        for (const std::string& domain : m.trackingDomains) xml += "\t\t<string>" + privacyEscape(domain) + "</string>\n";
         xml += "\t</array>\n";
     }
     xml += "</dict>\n</plist>\n";
@@ -347,15 +348,15 @@ bool ApplePrivacy::parse(const std::string& xml, Manifest& out, std::vector<std:
         const std::string name = key->GetText() ? key->GetText() : "";
         if (!known.count(name)) warnings.push_back("unknown key " + name + " (left out)");
     }
-    out.tracking = boolOf(valueOf(dict, "NSPrivacyTracking"));
-    out.trackingDomains = stringsOf(valueOf(dict, "NSPrivacyTrackingDomains"));
-    if (const tinyxml2::XMLElement* apis = valueOf(dict, "NSPrivacyAccessedAPITypes")) {
+    out.tracking = privacyBoolOf(privacyValueOf(dict, "NSPrivacyTracking"));
+    out.trackingDomains = privacyStringsOf(privacyValueOf(dict, "NSPrivacyTrackingDomains"));
+    if (const tinyxml2::XMLElement* apis = privacyValueOf(dict, "NSPrivacyAccessedAPITypes")) {
         for (const tinyxml2::XMLElement* item = apis->FirstChildElement("dict"); item; item = item->NextSiblingElement("dict")) {
-            const tinyxml2::XMLElement* type = valueOf(item, "NSPrivacyAccessedAPIType");
+            const tinyxml2::XMLElement* type = privacyValueOf(item, "NSPrivacyAccessedAPIType");
             const std::string name = type && type->GetText() ? type->GetText() : "";
             AccessedApi api;
             api.type = apiTypeName(name);
-            api.reasons = stringsOf(valueOf(item, "NSPrivacyAccessedAPITypeReasons"));
+            api.reasons = privacyStringsOf(privacyValueOf(item, "NSPrivacyAccessedAPITypeReasons"));
             if (api.type.empty()) {
                 warnings.push_back("unknown API type " + name + " (left out)");
                 continue;
@@ -370,9 +371,9 @@ bool ApplePrivacy::parse(const std::string& xml, Manifest& out, std::vector<std:
             if (!api.reasons.empty()) out.accessedApis.push_back(api);
         }
     }
-    if (const tinyxml2::XMLElement* collected = valueOf(dict, "NSPrivacyCollectedDataTypes")) {
+    if (const tinyxml2::XMLElement* collected = privacyValueOf(dict, "NSPrivacyCollectedDataTypes")) {
         for (const tinyxml2::XMLElement* item = collected->FirstChildElement("dict"); item; item = item->NextSiblingElement("dict")) {
-            const tinyxml2::XMLElement* type = valueOf(item, "NSPrivacyCollectedDataType");
+            const tinyxml2::XMLElement* type = privacyValueOf(item, "NSPrivacyCollectedDataType");
             const std::string name = type && type->GetText() ? type->GetText() : "";
             CollectedData data;
             data.type = dataTypeName(name);
@@ -380,9 +381,9 @@ bool ApplePrivacy::parse(const std::string& xml, Manifest& out, std::vector<std:
                 warnings.push_back("unknown data type " + name + " (left out)");
                 continue;
             }
-            data.linked = boolOf(valueOf(item, "NSPrivacyCollectedDataTypeLinked"));
-            data.tracking = boolOf(valueOf(item, "NSPrivacyCollectedDataTypeTracking"));
-            for (const std::string& purpose : stringsOf(valueOf(item, "NSPrivacyCollectedDataTypePurposes"))) {
+            data.linked = privacyBoolOf(privacyValueOf(item, "NSPrivacyCollectedDataTypeLinked"));
+            data.tracking = privacyBoolOf(privacyValueOf(item, "NSPrivacyCollectedDataTypeTracking"));
+            for (const std::string& purpose : privacyStringsOf(privacyValueOf(item, "NSPrivacyCollectedDataTypePurposes"))) {
                 if (purposeName(purpose).empty()) warnings.push_back("unknown purpose " + purpose + " (left out)");
                 else data.purposes.push_back(purposeName(purpose));
             }
@@ -410,7 +411,7 @@ ApplePrivacy::Composed ApplePrivacy::compose(const fs::path& projectPath, const 
     record(additions, "project");
     composed.manifest = merge(composed.manifest, additions);
 
-    // the plugin manifests: loose files, and those of static SDK bundles
+    // the plugin manifests: loose files, and those of static SDKs and resource bundles
     const NativePlugins::Scan scan = NativePlugins::scan(projectPath);
     std::vector<std::pair<std::string, fs::path>> manifests;   // project-relative name, file
     for (const std::string& folder : {std::string("apple"), platform}) {
@@ -424,12 +425,15 @@ ApplePrivacy::Composed ApplePrivacy::compose(const fs::path& projectPath, const 
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (name == "PrivacyInfo.xcprivacy") {
                 manifests.push_back({relative, path});
-            } else if (ext == ".framework" || ext == ".xcframework") {
-                const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(path) : NativePlugins::xcframeworkBinary(path);
-                // a dynamic one is embedded and keeps its own
-                if (binary.empty() || !NativePlugins::isStaticArchive(binary)) continue;
-                const fs::path inside = bundleManifest(path);
-                if (!inside.empty()) manifests.push_back({"plugins/native/" + folder + "/" + toUtf8(fs::path(file) / inside.lexically_relative(path)), inside});
+            } else if (ext == ".framework" || ext == ".xcframework" || ext == ".bundle") {
+                // a dynamic framework is embedded and keeps its own; a static SDK's is in the
+                // framework or in its resource bundle (Foo_Privacy.bundle), copied into the app
+                if (ext != ".bundle") {
+                    const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(path) : NativePlugins::xcframeworkBinary(path);
+                    if (binary.empty() || !NativePlugins::isStaticArchive(binary)) continue;
+                }
+                const fs::path inside = privacyBundleManifest(path);
+                if (!inside.empty()) manifests.push_back({"plugins/native/" + folder + "/" + privacyToUtf8(fs::path(file) / inside.lexically_relative(path)), inside});
             }
         }
     }
@@ -438,7 +442,7 @@ ApplePrivacy::Composed ApplePrivacy::compose(const fs::path& projectPath, const 
         std::string text, error;
         std::vector<std::string> warnings;
         Manifest layer;
-        if (!readText(path, text) || !parse(text, layer, warnings, error)) {
+        if (!privacyReadText(path, text) || !parse(text, layer, warnings, error)) {
             composed.warnings.push_back(relative + " does not parse (" + (error.empty() ? std::string("unreadable") : error) + "): left out");
             continue;
         }
@@ -457,4 +461,10 @@ ApplePrivacy::Composed ApplePrivacy::compose(const fs::path& projectPath, const 
                                     "NSUserTrackingUsageDescription, which App Tracking Transparency needs");
     }
     return composed;
+}
+
+bool ApplePrivacy::declaresTrackingUsage(const std::vector<std::string>& plistKeys, const std::string& plistXml) {
+    if (std::find(plistKeys.begin(), plistKeys.end(), "NSUserTrackingUsageDescription") != plistKeys.end()) return true;
+    static const std::regex key(R"(<key>\s*NSUserTrackingUsageDescription\s*</key>)");
+    return std::regex_search(plistXml, key);
 }

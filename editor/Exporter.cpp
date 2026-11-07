@@ -4836,11 +4836,18 @@ bool editor::Exporter::writeAppleProjectSettings() {
     // the privacy manifests (the template's resources): the engine's, the project's and the plugins'
     for (const char* platform : {"ios", "macos"}) {
         const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), platform,
-                                                                      ios.plistEntries.count("NSUserTrackingUsageDescription") > 0);
-        for (const std::string& warning : composed.warnings) Out::warning("%s privacy manifest: %s", platform, warning.c_str());
-        FileUtils::writeIfChanged(config.targetDir / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy", ApplePrivacy::toXml(composed.manifest));
+                                                                      iosDeclaresTrackingUsage());
+        warnPrivacy(std::string(platform) == "ios" ? "iOS" : "macOS", composed.warnings);
+        const fs::path manifest = config.targetDir / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy";
+        if (!FileUtils::writeIfChanged(manifest, ApplePrivacy::toXml(composed.manifest))) {
+            setError("Cannot write " + manifest.string());
+            return false;
+        }
     }
-    FileUtils::writeIfChanged(projectFile, xcodeProject);
+    if (!FileUtils::writeIfChanged(projectFile, xcodeProject)) {
+        setError("Cannot write " + projectFile.string());
+        return false;
+    }
     std::string iosPlist;
     if (!readText(iosPlistPath, iosPlist)) {
         return false;
@@ -5225,7 +5232,8 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
                 continue;
             }
             const std::string ext = lowerExtension(it->path());
-            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework");
+            // an SDK's resource bundle (Foo_Privacy.bundle) is copied into the app whole
+            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework" || ext == ".bundle");
             if (bundle) it.disable_recursion_pending();
             if (bundle || (!directory && it->is_regular_file(ec))) {
                 list.push_back(std::string(folder) + "/" + genericUtf8Path(it->path().lexically_relative(dir)));
@@ -5250,11 +5258,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
 
     struct AppTarget {
         std::string name;
-        std::string sourcesPhaseId, frameworksPhaseId;
+        std::string sourcesPhaseId, frameworksPhaseId, resourcesPhaseId;
         std::vector<std::string> configurationIds;
         std::vector<std::string> folders;         // its plugin folders
         const std::vector<std::string>* systemFrameworks = nullptr;
-        std::vector<std::string> sources, frameworks, embedded;
+        std::vector<std::string> sources, frameworks, embedded, resources;
         std::set<std::string> frameworkDirs, libraryDirs, headerDirs;
         bool swift = false;
         bool ios = true;
@@ -5285,6 +5293,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
         for (const std::string& phaseId : pbxListIds(xcodeProject, object, "buildPhases")) {
             const PbxRange phase = findPbxObject(xcodeProject, phaseId);
             if (phase.found() && xcodeProject.find("\t\t\tisa = PBXFrameworksBuildPhase;\n", phase.start) < phase.end) target.frameworksPhaseId = phaseId;
+            if (phase.found() && xcodeProject.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) target.resourcesPhaseId = phaseId;
         }
         if (target.frameworksPhaseId.empty()) {
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
@@ -5329,7 +5338,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
             const std::string name = baseName(path);
             const std::string ext = lowerExtension(FileUtils::pathFromUtf8(name));
             std::string type;
-            bool source = true, linked = false;
+            bool source = true, linked = false, resource = false;
             if (ext == ".m") type = "sourcecode.c.objc";
             else if (ext == ".mm") type = "sourcecode.cpp.objcpp";
             else if (ext == ".swift") type = "sourcecode.swift";
@@ -5349,9 +5358,10 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
             else if (ext == ".framework") { type = "wrapper.framework"; source = false; linked = true; }
             else if (ext == ".xcframework") { type = "wrapper.xcframework"; source = false; linked = true; }
             else if (ext == ".a") { type = "archive.ar"; source = false; linked = true; }
+            else if (ext == ".bundle") { type = "wrapper.plug-in"; source = false; resource = true; }
             else continue;
             const std::string fileId = addObject("file:" + path, fileReferences, [&](const std::string& id) {
-                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked ? "" : "fileEncoding = 4; ") +
+                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked || resource ? "" : "fileEncoding = 4; ") +
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
@@ -5364,10 +5374,14 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
             }
             for (AppTarget& target : targets) {
                 if (std::find(target.folders.begin(), target.folders.end(), folder) == target.folders.end()) continue;
-                const std::string phase = source ? "Sources" : "Frameworks";
+                const std::string phase = resource ? "Resources" : source ? "Sources" : "Frameworks";
                 const std::string buildId = addObject("build:" + target.name + ":" + path, buildFiles, [&](const std::string& id) {
                     return "\t\t" + id + " /* " + name + " in " + phase + " */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " + name + " */; };\n";
                 });
+                if (resource) {
+                    target.resources.push_back(buildId + " /* " + name + " in Resources */");
+                    continue;
+                }
                 if (source) {
                     target.sources.push_back(buildId + " /* " + name + " in Sources */");
                     if (ext == ".swift") target.swift = true;
@@ -5577,6 +5591,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
             return false;
         }
+        if (!target.resources.empty() &&
+            (target.resourcesPhaseId.empty() || !addPbxListEntries(xcodeProject, findPbxObject(xcodeProject, target.resourcesPhaseId), "files", target.resources))) {
+            setError("Apple export template has no Resources phase in \"" + target.name + "\"");
+            return false;
+        }
         if (!target.embedded.empty()) {
             addPbxListEntries(xcodeProject, findPbxObjectContaining(xcodeProject, "PBXNativeTarget", "\n\t\t\tname = " + pbxString(target.name) + ";\n"),
                               "buildPhases", target.embedded);
@@ -5705,12 +5724,8 @@ bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
 
     // the privacy manifest: the engine's, the project's and the plugins'
     const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "ios",
-                                                                  ios.plistEntries.count("NSUserTrackingUsageDescription") > 0);
-    for (const std::string& warning : composed.warnings) {
-        const size_t colon = warning.find(": ");
-        const bool coded = warning.compare(0, 2, "W-") == 0 && colon != std::string::npos;
-        warn(coded ? warning.substr(0, colon) : "W-PRIVACY-PLUGIN", coded ? warning.substr(colon + 2) : warning);
-    }
+                                                                  iosDeclaresTrackingUsage());
+    warnPrivacy("iOS", composed.warnings);
     if (FileUtils::writeFile(projectDir / "PrivacyInfo.xcprivacy", ApplePrivacy::toXml(composed.manifest)) == FileUtils::WriteResult::Failed) {
         setError("Cannot write the iOS privacy manifest");
         return false;

@@ -88,8 +88,8 @@ Steam Deck.
   COOP/COEP solution.
 - **Android** builds with Gradle plus NDK/CMake.
   - Template: `engine/workspaces/androidstudio/app/build.gradle`. It has 4 ABIs, R8, namespace
-    `com.jaspergameengine.jasperengine`, and GameActivity dependencies (built-in AdMob was retired
-    on 2026-11-04: ads go through the native bridge).
+    `com.jaspergameengine.jasperengine`, and GameActivity dependencies (the built-in ads SDK was
+    retired on 2026-11-04: ads go through the native bridge).
   - Settings: `AndroidProjectSettings` (`editor/Project.h:539`), which `writeAndroidProjectSettings`
     patches into Gradle text.
 - **Runs.**

@@ -25,6 +25,10 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+        // the keys of one set_project_settings call are one step (the history merges a call's
+        // commands only); the dialog's OK is one command already
+        bool mergeWith(Command* otherCommand) override;
+        bool isNoOp() const override { return before == after; }
 
         std::vector<Touched> touchedPaths(bool undo) const override;
         bool affectsStructure() const override { return false; }

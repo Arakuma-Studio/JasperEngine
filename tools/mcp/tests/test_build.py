@@ -302,16 +302,17 @@ async def test_no_admob(ed: Editor):
 async def test_privacy_manifest_export(ed: Editor):
     """mobile-shipping: every Apple app of a source export ships PrivacyInfo.xcprivacy (before: none):
     the engine's required-reason APIs, the project's apple.privacy_* additions (undoable) and the
-    static plugins' manifests of that platform."""
+    static plugins' manifests of that platform. One call's apple.privacy_* keys are one undo step,
+    and the composition's warnings are the build's (before: the log's only)."""
     import plistlib
     await ed.call("save_project", untitled_scene_dir="scenes")
     msg = await ed.call("set_project_settings", values={"apple.privacy_accessed_apis": [{"type": "FileTimestamp", "reasons": ["CA92.1"]}]},
                         expect_error=True)
     ed.check_in("C617.1", msg, "a wrong reason lists the valid ones")
+    await ed.call("set_project_settings", values={"apple.privacy_tracking_domains": ["ads.example.com"]})
     await ed.call("set_project_settings", values={
-        "apple.privacy_tracking": True, "apple.privacy_tracking_domains": ["ads.example.com"],
+        "apple.privacy_tracking": True, "apple.privacy_accessed_apis": [{"type": "DiskSpace", "reasons": ["E174.1"]}],
         "apple.privacy_collected_data": [{"type": "DeviceID", "linked": True, "tracking": True, "purposes": ["ThirdPartyAdvertising"]}]})
-    await ed.call("set_project_settings", values={"apple.privacy_accessed_apis": [{"type": "DiskSpace", "reasons": ["E174.1"]}]})
     plugin = ed.project / "plugins" / "native" / "ios" / "Ads" / "PrivacyInfo.xcprivacy"
     plugin.parent.mkdir(parents=True, exist_ok=True)
     plugin.write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [{"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryActiveKeyboards",
@@ -320,6 +321,8 @@ async def test_privacy_manifest_export(ed: Editor):
     try:
         r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
         ed.check_eq(r["status"], "succeeded", f"{r}")
+        codes = [w["code"] for w in r["result"].get("warnings", []) if isinstance(w, dict) and "code" in w]
+        ed.check_in("W-PRIVACY-ATT", codes, "tracking without NSUserTrackingUsageDescription is a build warning")
         manifests = {}
         for platform in ("ios", "macos"):
             data = plistlib.loads((out / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy").read_bytes())
@@ -338,14 +341,22 @@ async def test_privacy_manifest_export(ed: Editor):
             resources = [objects[objects[b]["fileRef"]].get("path") for phase in pbxproj.target(root, target_name)["buildPhases"]
                          if objects[phase]["isa"] == "PBXResourcesBuildPhase" for b in objects[phase]["files"]]
             ed.check_in(path, resources, target_name)
-        # one undo of the project history takes the last call's change back
+        # the usage description in the raw Info.plist XML counts too
+        await ed.call("set_project_settings", values={"ios.plist_xml": "<key>NSUserTrackingUsageDescription</key><string>Ads</string>"})
+        composed = await ed.call("native_plugins", action="privacy_manifest", platform="ios")
+        ed.check(not any("W-PRIVACY-ATT" in w for w in composed["warnings"]), f"{composed['warnings']}")
+        # one undo takes the whole call back (ios.plist_xml is no undo step)
         await ed.call("undo", scope="project")
-        back = (await ed.call("get_project_settings", keys=["apple.privacy_accessed_apis", "apple.privacy_tracking"]))["settings"]
+        keys = ["apple.privacy_accessed_apis", "apple.privacy_collected_data", "apple.privacy_tracking", "apple.privacy_tracking_domains"]
+        back = (await ed.call("get_project_settings", keys=keys))["settings"]
         ed.check_eq(back["apple.privacy_accessed_apis"], [], "undone")
-        ed.check_eq(back["apple.privacy_tracking"], True, "the earlier steps stay")
+        ed.check_eq(back["apple.privacy_collected_data"], [], "undone with it")
+        ed.check_eq(back["apple.privacy_tracking"], False, "undone with it")
+        ed.check_eq(back["apple.privacy_tracking_domains"], ["ads.example.com"], "the earlier call stays")
     finally:
         await ed.call("set_project_settings", values={"apple.privacy_tracking": False, "apple.privacy_tracking_domains": [],
-                                                      "apple.privacy_collected_data": [], "apple.privacy_accessed_apis": []})
+                                                      "apple.privacy_collected_data": [], "apple.privacy_accessed_apis": [],
+                                                      "ios.plist_xml": ""})
         shutil.rmtree(ed.project / "plugins", ignore_errors=True)
 
 

@@ -122,6 +122,26 @@ TEST(ApplePrivacy, ProjectAndPluginLayersMerge) {
     EXPECT_EQ(mac.manifest.trackingDomains, std::vector<std::string>{"ads.example.com"});
 }
 
+// red before the review fix: a static SDK's resource bundle (Foo_Privacy.bundle) was carried
+// without its manifest's reasons
+TEST(ApplePrivacy, ResourceBundleManifestsMerge) {
+    TestTempDir dir("apple-privacy");
+    TestTempDir::write(dir / "plugins/native/ios/sdk/Ads_Privacy.bundle/PrivacyInfo.xcprivacy",
+                       ApplePrivacy::toXml(ApplePrivacy::Manifest{false, {}, {}, {{"DiskSpace", {"E174.1"}}}}));
+    const ApplePrivacy::Composed ios = ApplePrivacy::compose(dir.path(), {}, "ios");
+    EXPECT_NE(api(ios.manifest, "DiskSpace"), nullptr) << "the bundle's manifest is the app's";
+    EXPECT_EQ(ios.pluginManifests, std::vector<std::string>{"plugins/native/ios/sdk/Ads_Privacy.bundle/PrivacyInfo.xcprivacy"});
+    EXPECT_EQ(api(ApplePrivacy::compose(dir.path(), {}, "macos").manifest, "DiskSpace"), nullptr);
+}
+
+// red before the review fix: only ios.plist_entries counted
+TEST(ApplePrivacy, TrackingUsageFromEntriesOrRawXml) {
+    EXPECT_TRUE(ApplePrivacy::declaresTrackingUsage({"NSUserTrackingUsageDescription"}, ""));
+    EXPECT_TRUE(ApplePrivacy::declaresTrackingUsage({}, "<key>NSUserTrackingUsageDescription</key>\n<string>Ads</string>"));
+    EXPECT_TRUE(ApplePrivacy::declaresTrackingUsage({}, "<key> NSUserTrackingUsageDescription </key><string>Ads</string>"));
+    EXPECT_FALSE(ApplePrivacy::declaresTrackingUsage({"NSCameraUsageDescription"}, "<key>NSCameraUsageDescription</key><string>x</string>"));
+}
+
 TEST(ApplePrivacy, TrackingWarnings) {
     TestTempDir dir("apple-privacy");
     ApplePrivacy::Manifest project;

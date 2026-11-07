@@ -1313,7 +1313,9 @@ void nativePluginsTool(const CallPtr& call) {
             call->fail("platform must be \"ios\" or \"macos\".");
             return;
         }
-        bool trackingUsage = project->getIOSProjectSettings().plistEntries.count("NSUserTrackingUsageDescription") > 0;
+        std::vector<std::string> plistKeys;
+        for (const auto& [key, value] : project->getIOSProjectSettings().plistEntries) plistKeys.push_back(key);
+        const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, project->getIOSProjectSettings().plistXml);
         const ApplePrivacy::Composed composed = ApplePrivacy::compose(projectPath, project->getApplePrivacy(), platform, trackingUsage);
         const ApplePrivacy::Manifest& m = composed.manifest;
         Json data;

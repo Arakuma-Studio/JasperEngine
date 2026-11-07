@@ -1241,7 +1241,8 @@ void ProjectSettingsWindow::drawSettings() {
     const std::string tagsAndLayersProblem = tagsAndLayersError();
     const std::string inputProblem = inputError();
     const std::string shaderGlobalsProblem = m_globalsEdit.error();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
+    const std::string privacyProblem = applePrivacyError();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty() && privacyProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
     if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
@@ -1258,8 +1259,10 @@ void ProjectSettingsWindow::drawSettings() {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
         } else if (!inputProblem.empty()) {
             ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
-        } else {
+        } else if (!shaderGlobalsProblem.empty()) {
             ImGui::SetTooltip("%s (Graphics > Shader Globals).", shaderGlobalsProblem.c_str());
+        } else {
+            ImGui::SetTooltip("Privacy manifest: %s (Player > iOS or macOS > Privacy Manifest).", privacyProblem.c_str());
         }
     }
 
@@ -4134,9 +4137,26 @@ namespace {
 
 }
 
+ApplePrivacy::Manifest ProjectSettingsWindow::editedApplePrivacy() const {
+    ApplePrivacy::Manifest privacy = m_applePrivacy;
+    privacy.trackingDomains.clear();
+    for (const std::string& domain : m_applePrivacy.trackingDomains) {
+        if (!trimmed(domain).empty()) privacy.trackingDomains.push_back(trimmed(domain));
+    }
+    std::erase_if(privacy.collectedData, [](const ApplePrivacy::CollectedData& data) { return data.type.empty(); });
+    std::erase_if(privacy.accessedApis, [](const ApplePrivacy::AccessedApi& api) { return api.type.empty(); });
+    return ApplePrivacy::normalized(privacy);
+}
+
+std::string ProjectSettingsWindow::applePrivacyError() const {
+    return ApplePrivacy::validate(editedApplePrivacy());
+}
+
 void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
     ImGui::PushID(platform);
     const bool ios = std::string(platform) == "ios";
+    // the search rows: apple.privacy_* on iOS, their macos.privacy_* copies on macOS
+    auto rowKey = [ios](const char* name) { return std::string(ios ? "apple." : "macos.") + name; };
 
     projectBeginSettingsRow("Privacy Manifest");
     ImGui::TextDisabled("iOS and macOS");
@@ -4153,13 +4173,13 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
     endSettingsRow("What the engine itself uses: UserSettings (UserDefaults), the timestamps of the game's own files, and timers. "
                    "Always included; no tracking, no collected data.");
 
-    if (settingsui::beginRow("apple.privacy_tracking")) {
+    if (settingsui::beginRow(rowKey("privacy_tracking").c_str())) {
         if (projectBeginSettingsRow("Tracking", m_applePrivacy.tracking)) m_applePrivacy.tracking = false;
         ImGui::Checkbox("##PrivacyTracking", &m_applePrivacy.tracking);
         endSettingsRow("NSPrivacyTracking: the game or one of its SDKs tracks users (most ads SDKs do). iOS also needs "
                        "NSUserTrackingUsageDescription in Native Plugins > iOS > Info.plist Entries.");
     }
-    if (settingsui::beginRow("apple.privacy_tracking_domains")) {
+    if (settingsui::beginRow(rowKey("privacy_tracking_domains").c_str())) {
         drawStringList("Tracking Domains", "##PrivacyDomains", m_applePrivacy.trackingDomains, "ads.example.com",
                        "NSPrivacyTrackingDomains: host names the SDKs use for tracking; iOS blocks them until the user allows tracking.");
         for (const std::string& domain : m_applePrivacy.trackingDomains) {
@@ -4168,7 +4188,7 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
             }
         }
     }
-    if (settingsui::beginRow("apple.privacy_collected_data")) {
+    if (settingsui::beginRow(rowKey("privacy_collected_data").c_str())) {
         projectBeginSettingsRow("Collected Data");
         int remove = -1;
         for (size_t i = 0; i < m_applePrivacy.collectedData.size(); i++) {
@@ -4194,7 +4214,7 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
         endSettingsRow("NSPrivacyCollectedDataTypes: what the game or its SDKs collect, whether it is linked to the user, used for "
                        "tracking, and why. Match what you declare in App Store Connect's App Privacy.");
     }
-    if (settingsui::beginRow("apple.privacy_accessed_apis")) {
+    if (settingsui::beginRow(rowKey("privacy_accessed_apis").c_str())) {
         projectBeginSettingsRow("Required Reason APIs");
         int remove = -1;
         for (size_t i = 0; i < m_applePrivacy.accessedApis.size(); i++) {
@@ -4217,21 +4237,15 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
     }
 
     // what is wrong, and what the export will warn about
-    std::vector<std::string> domains;
-    for (const std::string& domain : m_applePrivacy.trackingDomains) {
-        if (!trimmed(domain).empty()) domains.push_back(trimmed(domain));
-    }
-    ApplePrivacy::Manifest edited = m_applePrivacy;
-    edited.trackingDomains = domains;
-    std::erase_if(edited.collectedData, [](const ApplePrivacy::CollectedData& data) { return data.type.empty(); });
-    std::erase_if(edited.accessedApis, [](const ApplePrivacy::AccessedApi& api) { return api.type.empty(); });
-    const std::string problem = ApplePrivacy::validate(ApplePrivacy::normalized(edited));
-    bool trackingUsage = false;
-    for (const auto& [key, value] : m_iosPlistEntries) trackingUsage = trackingUsage || trimmed(key) == "NSUserTrackingUsageDescription";
+    const ApplePrivacy::Manifest edited = editedApplePrivacy();
+    const std::string problem = applePrivacyError();
+    std::vector<std::string> plistKeys;
+    for (const auto& [key, value] : m_iosPlistEntries) plistKeys.push_back(trimmed(key));
+    const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, m_iosPlistXml);
 
     projectBeginSettingsRow("Composed");
     if (!problem.empty()) {
-        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (OK keeps the saved manifest)", problem.c_str());
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (fix it to save)", problem.c_str());
     }
     if (ImGui::Button(ios ? ICON_FA_EYE " Preview iOS##PrivacyPreview" : ICON_FA_EYE " Preview macOS##PrivacyPreview")) {
         const ApplePrivacy::Composed composed = ApplePrivacy::compose(m_project->getProjectPath(), problem.empty() ? edited : m_project->getApplePrivacy(),
@@ -4244,7 +4258,7 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
         m_privacyPreviewTitle = ios ? "iOS PrivacyInfo.xcprivacy" : "macOS PrivacyInfo.xcprivacy";
         m_openPrivacyPreview = true;
     }
-    if (m_applePrivacy.tracking && domains.empty()) {
+    if (m_applePrivacy.tracking && edited.trackingDomains.empty()) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Tracking is on with no tracking domain.");
     }
     if (ios && m_applePrivacy.tracking && !trackingUsage) {
@@ -5225,18 +5239,12 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->getLoadingSettings() = m_loadingSettings;
     // undoable: the next Apple export composes its privacy manifest from them
     {
-        // rows left empty are no entries; an invalid manifest keeps the saved one (the section shows why)
-        ApplePrivacy::Manifest privacy = m_applePrivacy;
-        std::vector<std::string> domains;
-        for (const std::string& domain : privacy.trackingDomains) {
-            if (!trimmed(domain).empty()) domains.push_back(trimmed(domain));
-        }
-        privacy.trackingDomains = domains;
-        std::erase_if(privacy.collectedData, [](const ApplePrivacy::CollectedData& data) { return data.type.empty(); });
-        std::erase_if(privacy.accessedApis, [](const ApplePrivacy::AccessedApi& api) { return api.type.empty(); });
-        privacy = ApplePrivacy::normalized(privacy);
+        // OK stays disabled while the manifest is invalid (applePrivacyError)
+        const ApplePrivacy::Manifest privacy = editedApplePrivacy();
         if (privacy != m_project->getApplePrivacy() && ApplePrivacy::validate(privacy).empty()) {
-            m_project->getProjectCommandHistory()->addCommand(new ApplePrivacySettingsCmd(m_project, privacy));
+            ApplePrivacySettingsCmd* command = new ApplePrivacySettingsCmd(m_project, privacy);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
         }
     }
     // undoable: the reserve applies to the editor's job system at once

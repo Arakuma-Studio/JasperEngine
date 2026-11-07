@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import plistlib
 from pathlib import Path
 
 import pbxproj
@@ -304,6 +305,11 @@ async def test_source_export(ed: Editor):
                                                 "    @objc public static func price(_ args: [Any]) -> Any? { return 0.99 }\n}\n")
     write_stub_xcframework(native / "ios" / "sdk", "StaticSdk", static=True)
     write_stub_xcframework(native / "ios" / "sdk", "DynamicSdk", static=False)
+    # a static SDK's resource bundle, its privacy manifest inside (mobile-shipping review)
+    privacy_bundle = native / "ios" / "sdk" / "StaticSdk_Privacy.bundle"
+    privacy_bundle.mkdir(parents=True, exist_ok=True)
+    (privacy_bundle / "PrivacyInfo.xcprivacy").write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [
+        {"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryActiveKeyboards", "NSPrivacyAccessedAPITypeReasons": ["54BD.1"]}]}))
     (native / "macos").mkdir(parents=True, exist_ok=True)
     (native / "macos" / "MacOnly.m").write_text("#import <Foundation/Foundation.h>\n@interface MacOnly : NSObject\n@end\n@implementation MacOnly\n@end\n")
     # a framework with its version links (kept as links), a link out of the project (left out), a
@@ -402,6 +408,17 @@ async def test_source_export(ed: Editor):
     embedded = [objects[objects[b]["fileRef"]]["path"] for b in embed[0]["files"]]
     ed.check_eq(sorted(embedded), ["DynamicSdk.xcframework", "Linked.framework"], "only the dynamic SDKs are embedded")
     ed.check_eq(embed[0]["dstSubfolderSpec"], "10")
+    # the resource bundle is copied into the iOS app, and its manifest is the app's
+    def resources(target: str) -> list:
+        return [objects[objects[b]["fileRef"]].get("path") for p in pbxproj.target(root, target)["buildPhases"]
+                if objects[p]["isa"] == "PBXResourcesBuildPhase" for b in objects[p]["files"]]
+    ed.check_in("StaticSdk_Privacy.bundle", resources("JasperEngine iOS"), "the SDK's resource bundle is in the app")
+    ed.check("StaticSdk_Privacy.bundle" not in resources("JasperEngine macOS"), "ios/ stays out of macOS")
+    ed.check("StaticSdk_Privacy.bundle" not in linked, "a resource bundle is not linked")
+    ed.check((out / "project" / "plugins" / "native" / "ios" / "sdk" / "StaticSdk_Privacy.bundle" / "PrivacyInfo.xcprivacy").is_file(),
+             "the bundle is exported")
+    apis = [a["NSPrivacyAccessedAPIType"] for a in plistlib.loads((xcode / "ios" / "PrivacyInfo.xcprivacy").read_bytes())["NSPrivacyAccessedAPITypes"]]
+    ed.check_in("NSPrivacyAccessedAPICategoryActiveKeyboards", apis, "the bundle's manifest is merged")
     packages = [o for o in objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"]
     ed.check_eq([(p["repositoryURL"], p["requirement"]["kind"], p["requirement"]["minimumVersion"]) for p in packages],
                 [("https://github.com/RevenueCat/purchases-ios", "upToNextMajorVersion", "4.0.0")])  # "4" padded

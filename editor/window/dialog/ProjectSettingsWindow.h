@@ -186,6 +186,10 @@ namespace jasperengine::editor {
         std::string m_privacyPreviewTitle;
         bool m_openPrivacyPreview = false;
         void drawApplePrivacySection(const char* platform);
+        // The edited additions as OK saves them: empty rows dropped, domains trimmed, normalized
+        ApplePrivacy::Manifest editedApplePrivacy() const;
+        // Why the edited privacy manifest blocks OK, "" when it does not
+        std::string applePrivacyError() const;
 
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)

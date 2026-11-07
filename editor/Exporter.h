@@ -278,6 +278,10 @@ namespace jasperengine::editor {
         bool swapStagingIntoPlace();
         void discardStaging();
         void warn(const std::string& code, const std::string& message);
+        // ApplePrivacy::compose's warnings ("W-PRIVACY-...: message", else a plugin manifest's) as build warnings
+        void warnPrivacy(const std::string& platform, const std::vector<std::string>& warnings);
+        // NSUserTrackingUsageDescription in ios.plist_entries or ios.plist_xml
+        bool iosDeclaresTrackingUsage() const;
         // where the content steps' shaderlib notices come from (copyEngine's copy, else the editor's)
         fs::path shaderlibSourceDir() const;
         // the engine sources a build's notices come from (the export's engine copy, or the editor's)

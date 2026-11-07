@@ -186,6 +186,24 @@ TEST(BuildMethod, AndroidCodePluginsCompile) {
     EXPECT_TRUE(hasReason(choice, "Gradle dependencies (android.gradle_dependencies) (com.example:sdk:1.0)"));
 }
 
+// red before the review fix: any file of plugins/native/android forced a compile
+TEST(BuildMethod, AndroidNotesCompileNothing) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/android/README.md", "How the ads plugin is set up.\n");
+    TestTempDir::write(dir / "plugins/native/android/notes/setup.txt", "keys\n");
+    auto project = projectIn(dir.path());
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    // what the export's Gradle module reads does
+    for (const char* file : {"res/values/strings.xml", "AndroidManifest.xml", "proguard-rules.pro"}) {
+        TestTempDir::write(dir / "plugins/native/android" / file, "<x/>\n");
+        choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+        EXPECT_EQ(choice.method, BuildMethod::Compile) << file;
+        EXPECT_TRUE(hasReason(choice, std::string("plugins/native/android/") + file)) << file;
+        fs::remove(dir / "plugins/native/android" / file);
+    }
+}
+
 TEST(BuildMethod, AndroidManifestSettingsAreCarried) {
     TestTempDir dir("build-method-native");
     auto project = projectIn(dir.path());

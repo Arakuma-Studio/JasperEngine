@@ -24,6 +24,7 @@
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
+#include "command/UndoOrigin.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -507,7 +508,10 @@ bool applyApplePrivacy(SettingsContext& ctx, ApplePrivacy::Manifest privacy, boo
     error = ApplePrivacy::validate(privacy);
     if (!error.empty()) return false;
     if (!apply || privacy == ctx.project()->getApplePrivacy()) return true;
-    if (!ctx.project()->getProjectCommandHistory()->addCommand(new ApplePrivacySettingsCmd(ctx.project(), privacy))) {
+    ApplePrivacySettingsCmd* command = new ApplePrivacySettingsCmd(ctx.project(), privacy);
+    // the apple.privacy_* keys of one agent call are one undo step (the history merges a call's own commands)
+    if (UndoOriginScope::current().kind != UndoOriginKind::Agent) command->setNoMerge();
+    if (!ctx.project()->getProjectCommandHistory()->addCommand(command)) {
         error = "the privacy manifest settings could not be applied";
         return false;
     }
@@ -3499,10 +3503,10 @@ const Placement placements[] = {
     {"android.manifest_application_xml", "Native Plugins", "Android", "Application XML", "android manifest application xml meta-data activity provider"},
     {"ios.plist_entries", "Native Plugins", "iOS", "Info.plist Entries", "ios info.plist plist keys"},
     {"ios.plist_xml", "Native Plugins", "iOS", "Info.plist XML", "ios info.plist plist xml skadnetwork"},
-    {"apple.privacy_tracking", "Player", "iOS", "Privacy Tracking", "privacy manifest xcprivacy tracking att app store macos"},
-    {"apple.privacy_tracking_domains", "Player", "iOS", "Privacy Tracking Domains", "privacy manifest xcprivacy tracking domains macos"},
-    {"apple.privacy_collected_data", "Player", "iOS", "Privacy Collected Data", "privacy manifest xcprivacy collected data nutrition label macos"},
-    {"apple.privacy_accessed_apis", "Player", "iOS", "Privacy Required Reason APIs", "privacy manifest xcprivacy required reason api macos"},
+    {"apple.privacy_tracking", "Player", "iOS", "Privacy Tracking", "privacy manifest xcprivacy tracking att app store ios"},
+    {"apple.privacy_tracking_domains", "Player", "iOS", "Privacy Tracking Domains", "privacy manifest xcprivacy tracking domains ios"},
+    {"apple.privacy_collected_data", "Player", "iOS", "Privacy Collected Data", "privacy manifest xcprivacy collected data nutrition label ios"},
+    {"apple.privacy_accessed_apis", "Player", "iOS", "Privacy Required Reason APIs", "privacy manifest xcprivacy required reason api ios"},
     {"ios.frameworks", "Native Plugins", "iOS", "Frameworks", "ios frameworks link weak storekit"},
     {"ios.cocoapods", "Native Plugins", "iOS", "CocoaPods", "ios cocoapods pods podfile"},
     {"ios.swift_packages", "Native Plugins", "iOS", "Swift Packages", "ios swift packages spm"},
@@ -3779,6 +3783,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     }
 
     // ---- Project Settings rows MCP does not set
+    // the privacy manifest's section is on Player > macOS too (the same additions as iOS)
+    for (const char* key : {"apple.privacy_tracking", "apple.privacy_tracking_domains", "apple.privacy_collected_data", "apple.privacy_accessed_apis"}) {
+        const SettingRow* ios = registry.find(key);
+        if (!ios) continue;
+        SettingRow mac = uiRow("", "Player", "macOS", "", "", ios->get, "");
+        mac.key = "macos." + std::string(key).substr(std::string("apple.").size());
+        mac.label = ios->label;
+        mac.keywords = ios->keywords.substr(0, ios->keywords.rfind(" ios")) + " macos mac";
+        mac.tooltip = ios->tooltip;
+        addOrAbort(registry, std::move(mac));
+    }
     addOrAbort(registry, uiRow("shader_creation.warmup_entries", "Graphics", "Shader Warm-up", "Warm-up List",
         "shader warm-up warmup list entries clear recorded variants pipelines",
         [](SettingsContext& ctx) {

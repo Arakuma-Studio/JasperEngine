@@ -262,48 +262,99 @@ async def test_prebuilt_web_carries_plugins(ed: Editor):
         shutil.rmtree(ed.project / "plugins", ignore_errors=True)
 
 
-async def test_prebuilt_ios_carries_plugins(ed: Editor):
-    """mobile-shipping: the prebuilt iOS build is an Xcode project, so the game's Objective-C
-    plugins, Info.plist entries and privacy manifest go into it (before: all left out). Here, with
-    no Xcode, the staged project is the result."""
-    await ed.call("save_project", untitled_scene_dir="scenes")
+async def install_ios_runtime(ed: Editor, name: str, with_manifest: bool = True) -> None:
+    """A fake iOS runtime of the committed player template; without_manifest: one packaged before
+    privacy manifests (no PrivacyInfo.xcprivacy in the template or its project)."""
     info = await ed.call("get_build_info")
     template = REPO / "engine" / "platform" / "apple" / "ios" / "player-template"
     files = {f"ios/template/{p.relative_to(template).as_posix()}": p.read_bytes() for p in template.rglob("*") if p.is_file()}
     files["ios/template/include/JasperNative.h"] = (REPO / "engine" / "platform" / "apple" / "JasperNative.h").read_bytes()
     files["ios/JasperEnginePlayer.xcframework/Info.plist"] = b"<plist version=\"1.0\"><dict/></plist>\n"
-    await install(ed, fake_runtime(ed.scratch.root / "ios-runtime.zip", info["editor_version"], "ios-arm64-metal-release", "ios", "arm64",
+    if not with_manifest:
+        del files["ios/template/PrivacyInfo.xcprivacy"]
+        pbx_key = "ios/template/JasperEnginePlayer.xcodeproj/project.pbxproj"
+        files[pbx_key] = b"".join(line for line in files[pbx_key].splitlines(keepends=True) if b"PrivacyInfo.xcprivacy" not in line)
+    await install(ed, fake_runtime(ed.scratch.root / name, info["editor_version"], "ios-arm64-metal-release", "ios", "arm64",
                                    "metal", files, ["nativeplugins"]))
+
+
+async def build_ios(ed: Editor, name: str) -> tuple[dict, Path]:
+    """A prebuilt iOS build; with no Xcode here, the staged Xcode project is the result."""
+    platform = (await ed.call("get_build_info"))["platforms"]["ios"]
+    ed.check_eq(platform["method"], "prebuilt", f"{platform}")
+    out = ed.scratch.root / name
+    r = await ed.call("build_project", mode="player", platform="ios", output_dir=str(out), timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    project_dirs = [p for p in out.iterdir() if (p / "JasperEnginePlayer.xcodeproj").is_dir()]
+    ed.check_eq(len(project_dirs), 1, f"{list(out.iterdir())}")
+    return r, project_dirs[0]
+
+
+def warning_codes(r: dict) -> list:
+    return [w["code"] for w in r["result"].get("warnings", []) if isinstance(w, dict) and "code" in w]
+
+
+async def test_prebuilt_ios_carries_plugins(ed: Editor):
+    """mobile-shipping: the prebuilt iOS build is an Xcode project, so the game's Objective-C
+    plugins, SDK resource bundles and Info.plist entries go into it (before: the build compiled,
+    which an iOS build cannot do here). No privacy keys are set: the plugins alone decide."""
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    await install_ios_runtime(ed, "ios-runtime.zip")
     write(ed.project / "plugins" / "native" / "ios" / "Device.h", "#import \"JasperNative.h\"\n@interface Device : NSObject <JasperNativePlugin>\n@end\n")
     write(ed.project / "plugins" / "native" / "ios" / "Device.m", "#import \"Device.h\"\n@implementation Device\n@end\n")
-    await ed.call("set_project_settings", values={"ios.plist_entries": {"NSCameraUsageDescription": "Scans codes"},
-                                                  "apple.privacy_tracking": True, "apple.privacy_tracking_domains": ["ads.example.com"]})
+    bundle = ed.project / "plugins" / "native" / "ios" / "sdk" / "Ads_Privacy.bundle" / "PrivacyInfo.xcprivacy"
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    bundle.write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [{"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+                                                                     "NSPrivacyAccessedAPITypeReasons": ["E174.1"]}]}))
+    await ed.call("set_project_settings", values={"ios.plist_entries": {"NSCameraUsageDescription": "Scans codes"}})
     try:
-        platform = (await ed.call("get_build_info"))["platforms"]["ios"]
-        ed.check_eq(platform["method"], "prebuilt", f"{platform}")
-        out = ed.scratch.root / "game-ios"
-        r = await ed.call("build_project", mode="player", platform="ios", output_dir=str(out), timeout_seconds=600)
-        ed.check_eq(r["status"], "succeeded", f"{r}")
-        project_dirs = [p for p in out.iterdir() if (p / "JasperEnginePlayer.xcodeproj").is_dir()]
-        ed.check_eq(len(project_dirs), 1, f"{list(out.iterdir())}")
-        staged = project_dirs[0]
+        r, staged = await build_ios(ed, "game-ios")
         root = pbxproj.parse((staged / "JasperEnginePlayer.xcodeproj" / "project.pbxproj").read_text())
         ed.check_eq(pbxproj.dangling_references(root), [])
         ed.check_in("Device.m", [Path(s).name for s in pbxproj.target_sources(root, "JasperEnginePlayer")])
         for settings in pbxproj.target_settings(root, "JasperEnginePlayer"):
             ed.check_in("$(SRCROOT)/include", settings["HEADER_SEARCH_PATHS"], "the plugin finds JasperNative.h")
         ed.check((staged / "plugins" / "native" / "ios" / "Device.m").is_file(), "the plugin next to the project")
+        objects = root["objects"]
+        resources = [objects[objects[b]["fileRef"]].get("path") for p in pbxproj.target(root, "JasperEnginePlayer")["buildPhases"]
+                     if objects[p]["isa"] == "PBXResourcesBuildPhase" for b in objects[p]["files"]]
+        ed.check_in("Ads_Privacy.bundle", resources, "the SDK's resource bundle is copied into the app")
+        ed.check((staged / "plugins" / "native" / "ios" / "sdk" / "Ads_Privacy.bundle" / "PrivacyInfo.xcprivacy").is_file())
         ed.check_in("<key>NSCameraUsageDescription</key>", (staged / "Info.plist").read_text())
+        privacy = plistlib.loads((staged / "PrivacyInfo.xcprivacy").read_bytes())
+        apis = [a["NSPrivacyAccessedAPIType"] for a in privacy["NSPrivacyAccessedAPITypes"]]
+        ed.check_in("NSPrivacyAccessedAPICategoryUserDefaults", apis, "the engine's entries")
+        ed.check_in("NSPrivacyAccessedAPICategoryDiskSpace", apis, "the bundle's manifest is merged")
+        ed.check("W-IOS-PRIVACY-RUNTIME" not in warning_codes(r), "the runtime's template has the manifest")
+    finally:
+        await ed.call("set_project_settings", values={"ios.plist_entries": {}})
+        shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+
+
+async def test_prebuilt_ios_old_runtime_privacy(ed: Editor):
+    """mobile-shipping: an iOS runtime packaged before privacy manifests still ships one: the
+    build adds the file and its resource, and warns W-IOS-PRIVACY-RUNTIME. Tracking without
+    NSUserTrackingUsageDescription is W-PRIVACY-ATT."""
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    await install_ios_runtime(ed, "ios-runtime-old.zip", with_manifest=False)
+    await ed.call("set_project_settings", values={"apple.privacy_tracking": True, "apple.privacy_tracking_domains": ["ads.example.com"]})
+    try:
+        r, staged = await build_ios(ed, "game-ios-old")
+        codes = warning_codes(r)
+        ed.check_in("W-IOS-PRIVACY-RUNTIME", codes, "the old runtime is named")
+        ed.check_in("W-PRIVACY-ATT", codes, "tracking without NSUserTrackingUsageDescription")
+        root = pbxproj.parse((staged / "JasperEnginePlayer.xcodeproj" / "project.pbxproj").read_text())
+        ed.check_eq(pbxproj.dangling_references(root), [])
+        objects = root["objects"]
+        resources = [objects[objects[b]["fileRef"]].get("path") for p in pbxproj.target(root, "JasperEnginePlayer")["buildPhases"]
+                     if objects[p]["isa"] == "PBXResourcesBuildPhase" for b in objects[p]["files"]]
+        ed.check_eq(resources.count("PrivacyInfo.xcprivacy"), 1, f"{resources}")
         privacy = plistlib.loads((staged / "PrivacyInfo.xcprivacy").read_bytes())
         ed.check_eq(privacy["NSPrivacyTracking"], True)
         ed.check_eq(privacy["NSPrivacyTrackingDomains"], ["ads.example.com"])
-        ed.check_in("NSPrivacyAccessedAPICategoryUserDefaults", [a["NSPrivacyAccessedAPIType"] for a in privacy["NSPrivacyAccessedAPITypes"]])
-        codes = [w["code"] for w in r["result"].get("warnings", []) if isinstance(w, dict) and "code" in w]
-        ed.check_in("W-PRIVACY-ATT", codes, "tracking without NSUserTrackingUsageDescription")
     finally:
-        await ed.call("set_project_settings", values={"ios.plist_entries": {}, "apple.privacy_tracking": False,
-                                                      "apple.privacy_tracking_domains": []})
-        shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+        await ed.call("set_project_settings", values={"apple.privacy_tracking": False, "apple.privacy_tracking_domains": []})
+        await install_ios_runtime(ed, "ios-runtime.zip")
 
 
 async def test_prebuilt_mock_warning(ed: Editor):

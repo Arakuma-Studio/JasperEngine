@@ -10,9 +10,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iterator>
 #include <regex>
+#include <set>
 
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
@@ -114,19 +117,42 @@ TEST(AppleTemplates, EveryAppleBundleShipsThePrivacyManifest) {
 }
 
 // red before mobile-shipping: the templates linked and declared Google Mobile Ads (owner decision
-// 2026-11-04: built-in AdMob retired; ads go through the native bridge)
+// 2026-11-04: built-in AdMob retired; ads go through the native bridge). Every source and
+// template file below engine/ and editor/ (spec 10.1); only the tests that assert the absence
+// name it.
 TEST(AppleTemplates, NoAdMobLeft) {
-    const std::regex admob(R"(admob|GoogleMobileAds|GADApplicationIdentifier|play-services-ads|SKAdNetworkItems)", std::regex::icase);
-    for (const char* file : {"engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj", "engine/workspaces/xcode/ios/Info.plist",
-                             "engine/workspaces/androidstudio/app/build.gradle", "engine/workspaces/androidstudio/app/src/main/AndroidManifest.xml",
-                             "engine/CMakeLists.txt", "engine/core/System.h", "engine/core/script/binding/CoreClassesLua.cpp",
-                             "engine/platform/apple/JasperEngineApple.mm", "engine/platform/android/JasperEngineAndroid.cpp",
-                             "engine/platform/android/java/com/jaspergameengine/jasperengine/MainActivity.java", "editor/Project.h",
-                             "editor/Exporter.cpp"}) {
+    const std::set<std::string> allowed = {"editor/tests/export/AppleTemplatesTest.cpp", "editor/tests/export/BuildMethodTest.cpp"};
+    const std::set<std::string> textExtensions = {".c", ".cc", ".cpp", ".h", ".hpp", ".inl", ".m", ".mm", ".swift", ".java", ".kt",
+                                                  ".gradle", ".pro", ".properties", ".xml", ".plist", ".pbxproj", ".xcprivacy",
+                                                  ".entitlements", ".cmake", ".txt", ".in", ".py", ".sh", ".md", ".yaml", ".yml",
+                                                  ".json", ".lua", ".js", ".html"};
+    const char* const needles[] = {"admob", "googlemobileads", "gadapplicationidentifier", "play-services-ads"};
+    size_t scanned = 0;
+    for (const char* top : {"engine", "editor"}) {
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(repo / top, fs::directory_options::skip_permission_denied, ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            std::string ext = it->path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (!textExtensions.count(ext)) continue;
+            const std::string relative = it->path().lexically_relative(repo).generic_string();
+            if (allowed.count(relative)) continue;
+            std::string text = readFile(it->path());
+            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            scanned++;
+            for (const char* needle : needles) EXPECT_EQ(text.find(needle), std::string::npos) << relative << ": " << needle;
+        }
+        ASSERT_FALSE(ec) << top << ": " << ec.message();
+    }
+    EXPECT_GT(scanned, 1000u) << "the walk found the sources";
+    // the templates' ad network list went with the SDK
+    const std::regex adNetworks(R"(SKAdNetworkItems|GADApplicationIdentifier)");
+    for (const char* file : {"engine/workspaces/xcode/ios/Info.plist", "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj",
+                             "engine/workspaces/androidstudio/app/src/main/AndroidManifest.xml"}) {
         const std::string text = readFile(repo / file);
         ASSERT_FALSE(text.empty()) << file;
-        std::smatch found;
-        EXPECT_FALSE(std::regex_search(text, found, admob)) << file << ": " << found.str();
+        EXPECT_FALSE(std::regex_search(text, adNetworks)) << file;
     }
     EXPECT_FALSE(fs::exists(repo / "engine/platform/apple/GoogleMobileAdsSdkiOS-10.14.0"));
     EXPECT_FALSE(fs::exists(repo / "engine/platform/android/java-admob"));
