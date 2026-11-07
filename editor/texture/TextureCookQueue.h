@@ -206,6 +206,9 @@ namespace jasperengine::editor {
         void scanProject();
         std::filesystem::path absoluteOf(const std::string& assetPath) const;
         std::string assetPathOf(const std::filesystem::path& absolute) const;
+        // a file the editor derived into .jasperengine (an .aseprite import's pages): its owner decides
+        // how it is compressed, so the view never cooks it
+        bool isEditorDerived(const std::string& assetPath) const;
         void cancelJobs(bool wait);
     };
 

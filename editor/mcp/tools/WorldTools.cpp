@@ -14,6 +14,8 @@
 #include "AnimatorTools.h"
 #include "AnimationKeys.h"
 
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -341,10 +343,10 @@ public:
     }
     // Rolls back and fails the call; when something had been applied, the error says it is
     // all gone (it may name a GameObject the call made)
-    void fail(const CallPtr& call, const std::string& error) {
+    void fail(const CallPtr& call, const std::string& error, Json structured = nullptr) {
         const bool undone = changed();
         rollback();
-        call->fail(undone ? "Nothing was created or changed (the call was rolled back): " + error : error);
+        call->fail(undone ? "Nothing was created or changed (the call was rolled back): " + error : error, std::move(structured));
     }
 
 private:
@@ -1296,6 +1298,7 @@ bool bounds2D(Scene* scene, Entity entity, Vector2& minOut, Vector2& maxOut, std
                 case PivotPreset::BOTTOM_LEFT: break;
                 case PivotPreset::TOP_RIGHT: px = w; py = h; break;
                 case PivotPreset::BOTTOM_RIGHT: px = w; break;
+                case PivotPreset::FRAME: px = w * 0.5f; py = h * 0.5f; break;   // a legacy sprite's From Frame is its centre
             }
             minOut = Vector2(-px, -py);
             maxOut = Vector2(w - px, h - py);
@@ -3136,11 +3139,147 @@ const std::vector<std::pair<const char*, PivotPreset>>& pivotPresets() {
     static const std::vector<std::pair<const char*, PivotPreset>> table = {
         {"center", PivotPreset::CENTER}, {"top_center", PivotPreset::TOP_CENTER}, {"bottom_center", PivotPreset::BOTTOM_CENTER},
         {"left_center", PivotPreset::LEFT_CENTER}, {"right_center", PivotPreset::RIGHT_CENTER}, {"top_left", PivotPreset::TOP_LEFT},
-        {"bottom_left", PivotPreset::BOTTOM_LEFT}, {"top_right", PivotPreset::TOP_RIGHT}, {"bottom_right", PivotPreset::BOTTOM_RIGHT}};
+        {"bottom_left", PivotPreset::BOTTOM_LEFT}, {"top_right", PivotPreset::TOP_RIGHT}, {"bottom_right", PivotPreset::BOTTOM_RIGHT},
+        {"frame", PivotPreset::FRAME}};
     return table;
 }
 
+// set_sprite_frames with a sheet (S44 R36): the Sprite shows a sheet's frame by index or name,
+// and an .aseprite sheet's tag clips are listed by its Animation Player (clips, default true)
+void setSheetSpriteFrames(const CallPtr& call, Target& target, UndoStep& step, bool created) {
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    const SpriteComponent& sprite = scene->getComponent<SpriteComponent>(target.entity);
+    if (has(args, "texture") || has(args, "slice") || has(args, "frames")) {
+        step.fail(call, "sheet replaces texture, slice and frames: a sheet sprite takes its frames from the sheet.");
+        return;
+    }
+    pixelart::aseprite::SheetSpriteRequest request;
+    std::string error;
+    if (has(args, "sheet")) {
+        if (!args["sheet"].is_string() || !McpValues::assetPathFromJson(target.project, args["sheet"].get<std::string>(), request.sheet, error)) {
+            step.fail(call, "sheet: " + (error.empty() ? std::string("a path to an .aseprite file or a texture") : error));
+            return;
+        }
+    } else {
+        request.sheet = sprite.sheet.path;
+    }
+    if (has(args, "frame")) {
+        if (args["frame"].is_string()) {
+            request.frameName = args["frame"].get<std::string>();
+        } else if (args["frame"].is_number_integer()) {
+            request.frame = args["frame"].get<int>();
+        } else {
+            step.fail(call, "frame is a frame index or a frame name.");
+            return;
+        }
+    } else if (request.sheet == sprite.sheet.path) {
+        request.frame = sprite.frame;
+    }
+    request.clips = boolOr(args, "clips", true);
+    request.resize = boolOr(args, "resize", true) && !has(args, "size");
+
+    std::vector<Command*> commands;
+    pixelart::aseprite::SheetSpriteResult result;
+    pixelart::PixelProblem problem;
+    if (!pixelart::aseprite::sheetSpriteCommands(target.project, target.sceneId(), target.entity, request, commands, result, problem)) {
+        for (Command* command : commands) delete command;
+        const Json typed = {{"kind", problem.kind}, {"field", problem.field}, {"message", problem.message}, {"fix", problem.fix}};
+        step.fail(call, problem.kind + ": " + problem.message + (problem.fix.empty() ? "" : ". Fix: " + problem.fix),
+                  Json{{"error", typed}, {"errors", Json::array({typed})}});
+        return;
+    }
+    auto* multi = new MultiPropertyCmd();
+    const ComponentType cp = ComponentType::SpriteComponent;
+    if (has(args, "size")) {
+        Vector2 size;
+        if (!readVec2(args, "size", size, error) || size.x < 1.0f || size.y < 1.0f) {
+            for (Command* command : commands) delete command;
+            delete multi;
+            step.fail(call, "size must be [width, height] pixels.");
+            return;
+        }
+        addProp<unsigned int>(*multi, target, target.entity, cp, "width", static_cast<unsigned int>(size.x));
+        addProp<unsigned int>(*multi, target, target.entity, cp, "height", static_cast<unsigned int>(size.y));
+    }
+    if (has(args, "pivot")) {
+        PivotPreset pivot;
+        if (!pickName(pivotPresets(), stringOr(args, "pivot", ""), pivot, "pivot", error)) {
+            for (Command* command : commands) delete command;
+            delete multi;
+            step.fail(call, error);
+            return;
+        }
+        addProp<PivotPreset>(*multi, target, target.entity, cp, "pivotPreset", pivot);
+    } else if (has(args, "sheet") && sprite.sheet.empty()) {
+        // a sprite turning into a sheet sprite takes the frame's pivot (Aseprite slices, the import)
+        addProp<PivotPreset>(*multi, target, target.entity, cp, "pivotPreset", PivotPreset::FRAME);
+    }
+    // the player's AddComponentCmd first: the clip list and Default Clip need the component
+    for (size_t i = 0; i < commands.size(); i++) {
+        if (!step.add(commands[i])) {
+            // the history deleted the refused command; the rest never ran
+            for (size_t j = i + 1; j < commands.size(); j++) delete commands[j];
+            delete multi;
+            step.fail(call, "The editor rejected the sprite edit.");
+            return;
+        }
+    }
+    if (!multi->empty() && !step.add(multi)) {
+        step.fail(call, "The editor rejected the sprite edit.");
+        return;
+    }
+    if (multi->empty()) delete multi;
+    // a Sprite made from an .aseprite file gets what a drop gives it: the file's sprite properties
+    std::vector<std::string> applied;
+    if (created && result.record) {
+        std::vector<pixelart::PixelProblem> problems;
+        if (!pixelart::aseprite::applySpriteProperties(target.project, target.sceneId(), target.entity, *result.sheet,
+                                                       [&step](Command* command) { return step.add(command); }, applied, problems)) {
+            step.fail(call, problems.empty() ? std::string("a sprite property could not be applied") : problems.back().message);
+            return;
+        }
+    }
+    step.commit();
+
+    const SpriteComponent& after = scene->getComponent<SpriteComponent>(target.entity);
+    Json data = {{"sprite", entityJson(target, target.entity)}, {"created", created},
+                 {"sheet", McpValues::assetPathToJson(target.project, request.sheet)},
+                 {"frame", result.frame}, {"frame_name", result.frameName},
+                 {"frame_count", result.sheet->frames.size()}, {"pivot", nameOf(pivotPresets(), after.pivotPreset)}};
+    std::string summary = "Sprite \"" + scene->getEntityName(target.entity) + "\" shows frame " + std::to_string(result.frame) +
+                          " (\"" + result.frameName + "\") of " + request.sheet + " (" + std::to_string(result.sheet->frames.size()) + " frames)";
+    if (!applied.empty()) data["applied_properties"] = applied;
+    if (!result.clips.empty()) {
+        data["clips"] = result.clips;
+        data["added_player"] = result.addedPlayer;
+        if (!result.defaultClip.empty()) data["default_clip"] = result.defaultClip;
+        summary += "; its Animation Player lists " + std::to_string(result.clips.size()) + " tag clip(s)" +
+                   (result.defaultClip.empty() ? std::string() : ", Default Clip " + result.defaultClip);
+    }
+    call->ok(summary + ".", data);
+}
+
 void setSpriteFramesTool(const CallPtr& call) {
+    // an .aseprite sheet being imported: the call waits for it (the editor keeps running) and
+    // then runs as if it had just come
+    if (has(call->args(), "sheet") && call->args()["sheet"].is_string()) {
+        std::string sheet, error;
+        if (McpValues::assetPathFromJson(call->ctx().project(), call->args()["sheet"].get<std::string>(), sheet, error) &&
+            SpriteSheetPool::isAsepritePath(sheet) && !pixelart::aseprite::AsepriteImporter::get().ensureImport(sheet)) {
+            call->waitUntil([sheet]() { return pixelart::aseprite::AsepriteImporter::get().ensureImport(sheet); }, 60000,
+                            [call](bool timedOut) {
+                if (timedOut) {
+                    const Json problem = {{"kind", "import_failed"}, {"field", "sheet"}, {"message", "the sheet's import did not finish within 60 s"},
+                                          {"fix", "call again once get_asset_info's import_state is imported"}};
+                    call->fail("import_failed: the sheet's import did not finish within 60 s", Json{{"error", problem}, {"errors", Json::array({problem})}});
+                    return;
+                }
+                setSpriteFramesTool(call);
+            });
+            return;
+        }
+    }
     Target target;
     if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
     const Json& args = call->args();
@@ -3160,8 +3299,28 @@ void setSpriteFramesTool(const CallPtr& call) {
         failWith("\"" + scene->getEntityName(target.entity) + "\" is not a Sprite.");
         return;
     }
+    // a sheet sprite (S44): its frames come from the sheet, the inline frames are not used
+    if (has(args, "sheet") || (!sprite->sheet.empty() && !has(args, "texture") && !has(args, "slice") && !has(args, "frames"))) {
+        setSheetSpriteFrames(call, target, step, created);
+        return;
+    }
+    if (has(args, "clips")) {
+        failWith("clips needs an .aseprite sheet: pass sheet.");
+        return;
+    }
+    if (!sprite->sheet.empty() && !has(args, "texture")) {
+        // the mesh's texture is the sheet's page: slicing it would save the import cache's file
+        failWith("\"" + scene->getEntityName(target.entity) + "\" shows " + sprite->sheet.path +
+                 ": pass texture with slice or frames to go back to inline frames, or frame to pick a frame of the sheet.");
+        return;
+    }
 
     auto* multi = new MultiPropertyCmd();
+    // texture, slice or frames on a sheet sprite: it goes back to inline frames, in the same step
+    const std::string clearedSheet = sprite->sheet.path;
+    if (!clearedSheet.empty()) {
+        addProp<AssetRef>(*multi, target, target.entity, ComponentType::SpriteComponent, "sheet", AssetRef());
+    }
     std::string stored = meshTexturePath(scene, target.entity, 0);
     if (has(args, "texture")) {
         if (!addMeshTexture(target, target.entity, 0, args["texture"], *multi, error) ||
@@ -3223,7 +3382,18 @@ void setSpriteFramesTool(const CallPtr& call) {
     }
 
     // The frame shown in the editor (and the sprite's size)
-    const int shown = intOr(args, "frame", 0);
+    int shown = intOr(args, "frame", 0);
+    if (has(args, "frame") && args["frame"].is_string()) {
+        shown = -1;
+        for (size_t i = 0; i < frames.size(); i++) {
+            if (frames[i].name == args["frame"].get<std::string>()) shown = static_cast<int>(i);
+        }
+        if (shown < 0) {
+            delete multi;
+            failWith("frame: the sprite has no frame named \"" + args["frame"].get<std::string>() + "\".");
+            return;
+        }
+    }
     if (!frames.empty() && (shown < 0 || shown >= static_cast<int>(frames.size()))) {
         delete multi;
         failWith("frame " + std::to_string(shown) + " is out of range (" + std::to_string(frames.size()) + " frames).");
@@ -3273,9 +3443,13 @@ void setSpriteFramesTool(const CallPtr& call) {
         list.push_back({{"index", i}, {"name", result.framesRect[i].name}, {"rect", rectJson(result.framesRect[i].rect)}});
     }
     call->ok("Sprite \"" + scene->getEntityName(target.entity) + "\" has " + std::to_string(result.numFramesRect) + " frame(s).",
-             Json{{"sprite", entityJson(target, target.entity)}, {"created", created}, {"frames", list},
-                  {"texture", McpValues::assetPathToJson(target.project, stored)},
-                  {"size", {result.width, result.height}}, {"pivot", nameOf(pivotPresets(), result.pivotPreset)}});
+             [&]() {
+                 Json data = {{"sprite", entityJson(target, target.entity)}, {"created", created}, {"frames", list},
+                              {"texture", McpValues::assetPathToJson(target.project, stored)},
+                              {"size", {result.width, result.height}}, {"pivot", nameOf(pivotPresets(), result.pivotPreset)}};
+                 if (!clearedSheet.empty()) data["cleared_sheet"] = McpValues::assetPathToJson(target.project, clearedSheet);
+                 return data;
+             }());
 }
 
 void setSpriteAnimationTool(const CallPtr& call) {
@@ -3289,7 +3463,24 @@ void setSpriteAnimationTool(const CallPtr& call) {
         call->fail("\"" + scene->getEntityName(target.entity) + "\" is not a Sprite (set_sprite_frames makes one).");
         return;
     }
-    if (sprite->numFramesRect == 0) {
+    // a sheet sprite's frames are its sheet's (S44 R50): indices and names of the sheet
+    std::vector<std::string> frameNames;
+    if (!sprite->sheet.empty()) {
+        pixelart::PixelProblem problem;
+        if (SpriteSheetPool::isAsepritePath(sprite->sheet.path) && !pixelart::aseprite::importedRecord(sprite->sheet.path, problem)) {
+            call->fail(problem.kind + ": " + problem.message + ". Fix: " + problem.fix);
+            return;
+        }
+        std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite->sheet.path);
+        if (!sheet || sheet->frames.empty()) {
+            call->fail("The sprite's sheet " + sprite->sheet.path + " has no frames.");
+            return;
+        }
+        for (const SpriteFrame& f : sheet->frames) frameNames.push_back(f.name);
+    } else {
+        for (unsigned i = 0; i < sprite->numFramesRect; i++) frameNames.push_back(sprite->framesRect[i].name);
+    }
+    if (frameNames.empty()) {
         call->fail("The sprite has no frames yet: slice its sheet with set_sprite_frames first.");
         return;
     }
@@ -3304,24 +3495,30 @@ void setSpriteAnimationTool(const CallPtr& call) {
             int index = -1;
             if (f.is_number_integer()) index = f.get<int>();
             else if (f.is_string()) {
-                for (unsigned i = 0; i < sprite->numFramesRect; i++) {
-                    if (sprite->framesRect[i].name == f.get<std::string>()) index = static_cast<int>(i);
+                for (size_t i = 0; i < frameNames.size(); i++) {
+                    if (frameNames[i] == f.get<std::string>()) index = static_cast<int>(i);
                 }
             }
-            if (index < 0 || index >= static_cast<int>(sprite->numFramesRect)) {
-                call->fail("frame " + f.dump() + " is not one of the sprite's " + std::to_string(sprite->numFramesRect) + " frames (index or name).");
+            if (index < 0 || index >= static_cast<int>(frameNames.size())) {
+                call->fail("frame " + f.dump() + " is not one of the sprite's " + std::to_string(frameNames.size()) + " frames (index or name).");
                 return;
             }
             frames.push_back(index);
         }
     } else {
-        for (unsigned i = 0; i < sprite->numFramesRect; i++) frames.push_back(static_cast<int>(i));
+        for (size_t i = 0; i < frameNames.size(); i++) frames.push_back(static_cast<int>(i));
     }
     if (frames.size() > ARRAY_INDEX_LIMIT) {
         call->fail("At most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
         return;
     }
     std::vector<int> times(frames.size(), static_cast<int>(std::lround(1000.0f / std::max(0.1f, numberOr(args, "fps", 10.0f)))));
+    if (!sprite->sheet.empty() && !has(args, "fps") && !has(args, "frame_ms")) {
+        // a sheet's frames keep their own durations (Aseprite's)
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite->sheet.path)) {
+            for (size_t i = 0; i < frames.size(); i++) times[i] = std::max(1, static_cast<int>(sheet->frames[static_cast<size_t>(frames[i])].durationMs));
+        }
+    }
     if (has(args, "frame_ms")) {
         if (args["frame_ms"].is_number()) {
             std::fill(times.begin(), times.end(), std::max(1, args["frame_ms"].get<int>()));
@@ -6246,25 +6443,27 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
-        "Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or "
-        "frames lists pixel rects (top-left origin). It shows frame (sized to it with resize). create instead "
-        "of entity makes one. Animate: set_sprite_animation; scripts: Sprite:setFrame(index or name).",
+        "Give a Sprite its frames: sheet (.aseprite or texture, with its tag clips), or texture with slice "
+        "(row-major cells) or frames (pixel rects); frame picks the shown one. Animate: set_sprite_animation "
+        "(jasper://docs/sprites).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"create", createSpec},
+            {"sheet", string("")},
             {"texture", assetPath("")},
             {"slice", object({
-                {"tile_size", vec2("Pixels.")}, {"columns", integer("")}, {"rows", integer("")},
+                {"tile_size", vec2("")}, {"columns", integer("")}, {"rows", integer("")},
                 {"offset", vec2("")}, {"padding", vec2("")},
                 {"count", integer("")}, {"names", array(string(""), "")},
-                {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("If unreadable.")}})},
-            {"frames", array(object({{"name", string("")}, {"rect", vec4("[x, y, w, h] px.")}}, {"rect"}), "")},
-            {"frame", withDefault(integer(""), 0)},
+                {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("")}})},
+            {"frames", array(object({{"name", string("")}, {"rect", vec4("")}}, {"rect"}), "")},
+            {"frame", Json{{"type", {"integer", "string"}}, {"default", 0}}},
+            {"clips", withDefault(boolean(""), true)},
             {"resize", withDefault(boolean(""), true)},
             {"size", vec2("")},
             {"pivot", stringEnum("", {"center", "top_center", "bottom_center", "left_center", "right_center",
-                                      "top_left", "bottom_left", "top_right", "bottom_right"})}
+                                      "top_left", "bottom_left", "top_right", "bottom_right", "frame"})}
         }),
         setSpriteFramesTool, false, false);
 

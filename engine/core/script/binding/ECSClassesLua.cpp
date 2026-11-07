@@ -282,6 +282,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("BOTTOM_LEFT", PivotPreset::BOTTOM_LEFT)
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
+        .addVariable("FRAME", PivotPreset::FRAME)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
