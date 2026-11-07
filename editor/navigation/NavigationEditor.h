@@ -9,7 +9,10 @@
 //   the default location (assets/<scene dir>/<SceneName>/NavMesh-<Entity>.navmesh), with an
 //   S04 GUID, and points the surface's navMeshData at it;
 // - a scene save first writes the .navgrid of every grid whose cells changed;
-// - the Inspector, the Navigation window and the MCP tools start, cancel and clear bakes here.
+// - the Inspector, the Navigation window and the MCP tools start, cancel and clear bakes here;
+//   every bake that ends neither ok nor cancelled logs one Console error naming its surface
+//   (a refused start too: callers do not log), and its result is kept for the session
+//   (lastBake: the Inspector's "Bake failed" line, the Surfaces tab, get_navigation_info).
 
 #include "Scene.h"
 #include "subsystem/NavigationSystem.h"
@@ -46,14 +49,29 @@ namespace jasperengine::editor {
         static NavigationSystem* systemOf(SceneProject& sceneProject);
 
         // Starts a bake (Not baked / Dirty: the changed tiles; FULL: every tile; CLEAR: none,
-        // the asset removed). onDone runs on the main thread once it ended (saved or not).
+        // the asset removed). onDone runs on the main thread once it ended (saved or not). A
+        // refused start is logged and recorded here (onDone does not run for it).
         bool bake(Project* project, uint32_t sceneId, Entity surface, NavBakeMode mode, std::string& error,
                   BakeCallback onDone = nullptr);
         // Every surface of the scene (Bake All)
         int bakeAll(Project* project, uint32_t sceneId, NavBakeMode mode, std::string& error);
         bool cancel(Project* project, uint32_t sceneId, Entity surface);
-        // Removes the navmesh and its asset (Unity's Clear)
+        // Removes the navmesh and its asset (Unity's Clear); a failure is logged and recorded
         bool clear(Project* project, uint32_t sceneId, Entity surface, std::string& error);
+
+        // The last bake of a surface this session (spec S53 R3): a refused start and an
+        // editor-side failure (the save, the scene closed) count. Null when the surface has
+        // none (never baked here, or cleared since); entries of closed scenes are dropped.
+        struct LastBake {
+            bool ok = false;
+            bool cancelled = false;
+            std::string error;
+            std::vector<std::string> warnings;
+            int tilesBuilt = 0;
+            int polys = 0;
+            double ms = 0.0;
+        };
+        const LastBake* lastBake(uint32_t sceneId, Entity surface) const;
 
         // Every frame: pumps the bakes, saves the finished ones
         void update(Project* project);
@@ -139,10 +157,13 @@ namespace jasperengine::editor {
         struct Pending {
             uint32_t sceneId = 0;
             Entity surface = NULL_ENTITY;
+            // for the error line once the scene closed under the bake
+            std::string surfaceName;
             NavBakeMode mode = NavBakeMode::DIRTY;
             std::vector<BakeCallback> callbacks;
         };
         std::vector<Pending> pending;
+        std::map<std::pair<uint32_t, Entity>, LastBake> lastBakes;
 
         struct InputCache {
             uint32_t sceneId = 0;
@@ -177,6 +198,10 @@ namespace jasperengine::editor {
         void strokeTo(Scene* scene, nav::GridCell cell);
 
         void finish(Project* project, Pending& entry, const NavBakeResult& result);
+        // the one Console line of a result (unless the engine logged it) and its LastBake
+        void report(uint32_t sceneId, Entity surface, const std::string& surfaceName, const NavBakeResult& result);
+        // a refused start or clear: logged and recorded as a failed bake
+        void refuse(uint32_t sceneId, Entity surface, const std::string& surfaceName, const std::string& error);
     };
 
 }

@@ -711,6 +711,33 @@ P2 order:
   NOTICE.md and README.jasper.md count five patches.
 - S53 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
   Android test's project), with two gate lines.
+- S53 P2: R21 held already, so §3's item 8 is wrong there: the brush keys' enable predicate
+  `dyePainting()` is `SceneRender::isFluidPainting()`, which counts the nav-grid brush
+  (`SceneRender.cpp:2579-2581`). The red run of AC24 on the base editor saw `run_command
+  terrain.brushLarger` succeed once Paint was clicked, so no fix was made and `AppCommands.cpp`
+  is unchanged; `test_navigation_ui.py::test_brush_size_keys` stays as a guard without a red
+  control. It reads the brush size from a UIProbe item the
+  Inspector's brush slider names (`inspector.navBrushSize.<n>`): `find_ui_item` reports where a
+  control is, not its value.
+- S53 P2: R28 "CI runs it": the repository has no CI any more (origin/main removed the
+  workflows). `tools/check-changed` plans `navigation-off` for the paths R28 lists, plus
+  `engine/tests/core/navigation/**` (the NavStubTest source itself) and the script.
+- S53 P2: AC29's tool `navigation` finding comes from `jasperengine-editor check` (findings with
+  a tool name exist only there); the build's preflight logs the same out-of-date warning, which
+  the test reads from the build's warnings and log.
+- S53 P2: R3 details the spec leaves open: a cancel does not replace a standing failure (it shows
+  until a bake succeeds), a successful Clear drops the editor's record of the surface (S54's
+  engine report, merged into `last_bake`, then speaks alone), and an Inspector
+  Shift-click starts only the full bake (it started a dirty bake too on release, which logged a
+  refusal twice).
+- S53 P2: `bake_navigation` set its job's progress text after the loop that starts the bakes, so
+  when every start was refused the job's failure message read "baking" (found by AC5's red run);
+  the progress is set before the loop.
+- S53 P2: R24's new text follows the lean MCP rules that landed meanwhile: no description grew
+  (`last_bake` and the path's `agent_type`/`area_mask` speak through their names, schemas and
+  results), `carve_tiles_per_tick` says only "0: Auto."; `tools/mcp/eval/cases.py` has
+  `guard_nav_carve_tiles_per_tick` and `guard_nav_visualize_agent_type` for them (offline
+  `test_grade.py` only; the live eval is the integrator's call).
 
 ## Progress
 
@@ -729,3 +756,22 @@ P2 order:
 - AC25: `NavGridTest.ReservedCellsReported` (P1's `getGridReservedCells`); the overlay tint is P2's.
 - Not run by P1 at the integrator's request (light gate only): the web and Android builds and the
   navigation web gate (AC21), and je-bench-nav's thresholds on the timing server (AC22, second half).
+- S53 P2 (editor, MCP, test infrastructure), branch `nav/s41-p2`:
+  - Done: R24 play policy and annotations, `visualize_navigation` on the running scene with the
+    path's `agent_type`/`area_mask` (AC27); R28 golden (AC28 first half); R20 labels and the
+    regenerated catalog snapshot (AC23); R21 (no fix needed, guard AC24); R2/R3 in
+    `NavigationEditor`, the Inspector, the Surfaces tab and `last_bake` (AC5, AC6); R17/R23/R27
+    serialization, reflection, codegen, rows and `carve_tiles_per_tick` (AC23, AC26); R22
+    `gridCellColors` and the tint in play (AC25 editor half); the OFF gate and its check-changed
+    plan (AC28); the prebuilt-player export test (AC29); docs (`docs/mcp/guide/navigation.md`,
+    `docs/testing.md`, `docs/navigation.md` bake failures and brush keys, S19 Deviations).
+  - Red controls (base editor of `e14f0f55e`): `test_tool_play_policy` (not destructive),
+    `test_bake_failures_reported` (0 Console lines for a refused start), `test_carving_settings_undo`
+    (no field), `test_bake_failure_shown` (no `last_bake`), the old `test_overlay_golden` passing
+    and writing a missing golden, `test_check_changed.py` against the old `check_changed.py`.
+  - With P1's runtime and S54 merged, the gate passes: the editor's Nav*/Navigation*/
+    ReflectRegistry* unit tests, `test_navigation.py`, `test_navigation_ui.py`,
+    `test_navigation_export.py` (prebuilt glcore player), `test_protocol.py`, `test_docs.py`,
+    `test_tool_budget.py`, `tools/check-navigation-off.sh` (3 NavStubTest tests). After the S54
+    merge `last_bake` is S54's engine report overlaid with the editor's session outcome, and the
+    Inspector shows a failure once ("Bake failed: ..." plus S54's hint).

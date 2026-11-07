@@ -129,16 +129,55 @@ bool NavigationEditor::writeAsset(Project* project, const fs::path& file, const 
     return true;
 }
 
+const NavigationEditor::LastBake* NavigationEditor::lastBake(uint32_t sceneId, Entity surface) const {
+    auto it = lastBakes.find({sceneId, surface});
+    return it != lastBakes.end() ? &it->second : nullptr;
+}
+
+void NavigationEditor::report(uint32_t sceneId, Entity surface, const std::string& surfaceName, const NavBakeResult& result) {
+    if (result.ok) {
+        Out::info("NavMeshSurface '%s' baked: %d of %d tiles built, %d polys, %.0f ms", surfaceName.c_str(), result.tilesBuilt,
+                  result.tilesTotal, result.polys, result.milliseconds);
+    } else if (result.cancelled) {
+        Out::info("NavMeshSurface '%s': bake cancelled", surfaceName.c_str());
+    } else if (!result.logged) {
+        // the engine logs its own failures (a game's log needs them): one line either way
+        Out::error("NavMeshSurface '%s': %s", surfaceName.c_str(), result.error.c_str());
+    }
+    if (!result.cancelled) {
+        for (const std::string& warning : result.warnings) Out::warning("NavMeshSurface '%s': %s", surfaceName.c_str(), warning.c_str());
+    }
+
+    LastBake& last = lastBakes[{sceneId, surface}];
+    // a cancel leaves a failure standing: it shows until a bake succeeds
+    if (result.cancelled && !last.ok && !last.cancelled && !last.error.empty()) return;
+    last.ok = result.ok;
+    last.cancelled = result.cancelled;
+    last.error = result.ok || result.cancelled ? std::string() : result.error;
+    last.warnings = result.warnings;
+    last.tilesBuilt = result.tilesBuilt;
+    last.polys = result.polys;
+    last.ms = result.milliseconds;
+}
+
+void NavigationEditor::refuse(uint32_t sceneId, Entity surface, const std::string& surfaceName, const std::string& error) {
+    NavBakeResult refused;
+    refused.error = error;
+    report(sceneId, surface, surfaceName, refused);
+}
+
 bool NavigationEditor::bake(Project* project, uint32_t sceneId, Entity surface, NavBakeMode mode, std::string& error,
                             BakeCallback onDone) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     NavigationSystem* system = sceneProject ? systemOf(*sceneProject) : nullptr;
     if (!system) {
         error = "no scene " + std::to_string(sceneId);
+        Out::error("Bake: %s", error.c_str());
         return false;
     }
     if (!sceneProject->scene->findComponent<NavMeshSurfaceComponent>(surface)) {
         error = "entity " + std::to_string(surface) + " has no NavMeshSurface";
+        Out::error("Bake: %s", error.c_str());
         return false;
     }
     // a second request for a running bake waits for it
@@ -158,10 +197,15 @@ bool NavigationEditor::bake(Project* project, uint32_t sceneId, Entity surface, 
         }
         return ok;
     }
-    if (!system->bake(surface, mode, error)) return false;
+    const std::string name = sceneProject->scene->getEntityName(surface);
+    if (!system->bake(surface, mode, error)) {
+        refuse(sceneId, surface, name, error);
+        return false;
+    }
     Pending entry;
     entry.sceneId = sceneId;
     entry.surface = surface;
+    entry.surfaceName = name;
     entry.mode = mode;
     if (onDone) entry.callbacks.push_back(std::move(onDone));
     pending.push_back(std::move(entry));
@@ -173,8 +217,10 @@ int NavigationEditor::bakeAll(Project* project, uint32_t sceneId, NavBakeMode mo
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     if (!sceneProject || !sceneProject->scene) {
         error = "no scene " + std::to_string(sceneId);
+        Out::error("Bake All: %s", error.c_str());
         return 0;
     }
+    // (each refusal is logged by bake())
     int started = 0;
     std::vector<Entity> surfaces;
     auto array = sceneProject->scene->getComponentArray<NavMeshSurfaceComponent>();
@@ -203,14 +249,18 @@ bool NavigationEditor::clear(Project* project, uint32_t sceneId, Entity surface,
     NavMeshSurfaceComponent* component = system ? sceneProject->scene->findComponent<NavMeshSurfaceComponent>(surface) : nullptr;
     if (!component) {
         error = "entity " + std::to_string(surface) + " has no NavMeshSurface";
+        Out::error("Clear: %s", error.c_str());
         return false;
     }
     system->cancelBake(surface);
     NavBakeResult result = system->bakeNow(surface, NavBakeMode::CLEAR);
     if (!result.ok && !result.error.empty()) {
         error = result.error;
+        report(sceneId, surface, sceneProject->scene->getEntityName(surface), result);
         return false;
     }
+    // nothing baked any more: no last bake to show
+    lastBakes.erase({sceneId, surface});
     if (!component->navMeshData.path.empty()) {
         const fs::path file = (project->getAssetsPath() / component->navMeshData.path).lexically_normal();
         std::error_code ec;
@@ -237,6 +287,10 @@ bool NavigationEditor::isBaking(uint32_t sceneId, Entity surface) const {
 
 void NavigationEditor::update(Project* project) {
     if (!project) return;
+    for (auto it = lastBakes.begin(); it != lastBakes.end();) {
+        const SceneProject* sceneProject = project->getScene(it->first.first);
+        it = sceneProject && sceneProject->scene ? std::next(it) : lastBakes.erase(it);
+    }
     // Play lands its own bakes in fixedUpdate; the stopped scenes' bakes land here
     for (SceneProject& sceneProject : project->getScenes()) {
         if (!sceneProject.scene || sceneProject.playState != ScenePlayState::STOPPED) continue;
@@ -261,6 +315,8 @@ void NavigationEditor::update(Project* project) {
             gone.error = "the scene closed";
             Pending done = std::move(entry);
             pending.erase(pending.begin() + (long)i);
+            // (its LastBake would be dropped with the scene: only the line)
+            Out::error("NavMeshSurface '%s': %s", done.surfaceName.c_str(), gone.error.c_str());
             for (BakeCallback& callback : done.callbacks) callback(gone);
             continue;
         }
@@ -296,6 +352,7 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
         if (bytes.empty()) {
             result.ok = false;
             result.error = "the bake produced no navmesh";
+            result.logged = false;
             result.errorCode = nav::NavBakeError::NavMeshFailed;
             result.hint = nav::bakeErrorHint(result.errorCode);
         } else {
@@ -310,9 +367,9 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
             } else {
                 result.ok = false;
                 result.error = "the navmesh was baked but not saved: " + error;
+                result.logged = false;
                 result.errorCode = nav::NavBakeError::SaveFailed;
                 result.hint = nav::bakeErrorHint(result.errorCode);
-                Out::error("NavMeshSurface '%s': %s", sceneProject->scene->getEntityName(entry.surface).c_str(), result.error.c_str());
             }
         }
         inputCache.erase(std::remove_if(inputCache.begin(), inputCache.end(), [&](const InputCache& cache) {
@@ -320,14 +377,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
         }), inputCache.end());
         sceneProject->needUpdateRender = true;
     }
-    if (sceneProject && sceneProject->scene && !result.cancelled) {
-        const std::string name = sceneProject->scene->getEntityName(entry.surface);
-        if (result.ok) {
-            Out::info("NavMeshSurface '%s' baked: %d of %d tiles built, %d polys, %.0f ms", name.c_str(), result.tilesBuilt,
-                      result.tilesTotal, result.polys, result.milliseconds);
-        }
-        for (const std::string& warning : result.warnings) Out::warning("NavMeshSurface '%s': %s", name.c_str(), warning.c_str());
-    }
+    const std::string name = sceneProject && sceneProject->scene ? sceneProject->scene->getEntityName(entry.surface) : entry.surfaceName;
+    report(entry.sceneId, entry.surface, name, result);
     for (BakeCallback& callback : entry.callbacks) callback(result);
 }
 

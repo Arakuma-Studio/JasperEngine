@@ -60,6 +60,13 @@ frame by default). The same inputs give byte-identical `.navmesh` files whatever
 A surface too large for Detour's 32-bit polygon references is refused before anything runs:
 "Surface too large: N tiles x M polys; increase cell/tile size or split the surface".
 
+A bake that fails (refused, a tile that fails, or a `.navmesh` that cannot be saved) logs one
+Console error, `NavMeshSurface '<name>': <reason>`. Until a bake of that surface succeeds, the
+Inspector shows **Bake failed: <reason>** under Bake and Clear, and the Navigation window's
+Surfaces tab says **Bake failed** (the reason in its tooltip). A bake that succeeds with warnings
+says **Baked with N warning(s); see the Console**. Cancel logs `bake cancelled` and keeps the
+previous navmesh. Agents read the same through `get_navigation_info` (`last_bake`).
+
 ### Bake warnings
 
 A bake reports Recast's own warnings next to its result (the editor's Console, MCP
@@ -435,8 +442,8 @@ Penalty* there, so a group spreads over parallel lanes. All the grid requests of
 solved together on the job system; the result does not depend on the thread count.
 
 - **Paint** (in the Inspector) arms the nav-grid brush in the Scene view: Paint Area, Erase
-  (to Walkable) or Fill, circle or square, `[` and `]` resize, Shift-click draws a line from the
-  last stroke. One stroke is one undo step ("Paint Nav Grid"). The cells are saved to a `.navgrid`
+  (to Walkable) or Fill, circle or square, `[` and `]` make it a cell larger or smaller (1-64
+  cells), Shift-click draws a line from the last stroke. One stroke is one undo step ("Paint Nav Grid"). The cells are saved to a `.navgrid`
   with the scene.
 - **Source Tilemap**: one row per tile rect gives its area; cells without tiles take *Cells
   Without Tiles* (Not Walkable). Static Collider2D footprints can block cells. With *Auto

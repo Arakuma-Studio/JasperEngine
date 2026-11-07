@@ -1794,12 +1794,14 @@ std::vector<Setting> mcpSettingsTable() {
             struct NavCount {
                 const char* key;
                 const char* description;
+                int minimum;
                 int maximum;
                 int nav::NavigationSettings::*field;
             };
             const NavCount counts[] = {
-                {"navigation.crowd_max_agents", "Agents per crowd (one per surface and agent type) before it grows, with a warning (1-4096).", 4096, &nav::NavigationSettings::crowdMaxAgents},
-                {"navigation.max_grid_solves_per_tick", "Grid path requests solved per fixed tick; the rest wait (1-4096).", 4096, &nav::NavigationSettings::maxGridSolvesPerTick},
+                {"navigation.crowd_max_agents", "Agents per crowd (one per surface and agent type) before it grows, with a warning (1-4096).", 1, 4096, &nav::NavigationSettings::crowdMaxAgents},
+                {"navigation.max_grid_solves_per_tick", "Grid path requests solved per fixed tick; the rest wait (1-4096).", 1, 4096, &nav::NavigationSettings::maxGridSolvesPerTick},
+                {"navigation.carve_tiles_per_tick", "Carved tiles each NavMesh Surface rebuilds per fixed tick; 0: Auto (4 on desktop, 2 on Android, iOS and web) (0-64).", 0, 64, &nav::NavigationSettings::carveTilesPerTick},
             };
             for (const NavCount& count : counts) {
                 Setting s;
@@ -1807,11 +1809,12 @@ std::vector<Setting> mcpSettingsTable() {
                 s.type = "int";
                 s.description = count.description;
                 const auto field = count.field;
+                const int minimum = count.minimum;
                 const int maximum = count.maximum;
                 s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getNavigationSettings().settings.*field); };
-                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                     long long v;
-                    if (!readInt(value, 1, maximum, v, error)) return false;
+                    if (!readInt(value, minimum, maximum, v, error)) return false;
                     if (apply) {
                         NavigationProjectSettings n = ctx.project()->getNavigationSettings();
                         n.settings.*field = static_cast<int>(v);
@@ -2753,6 +2756,7 @@ const Placement placements[] = {
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
     {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
+    {"navigation.carve_tiles_per_tick", "Navigation", "", "Carve Tiles Per Tick", "navmesh obstacle carving budget tile cache"},
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},

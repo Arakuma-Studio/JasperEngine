@@ -252,7 +252,7 @@ async def test_overlay_golden(ed: Editor):
         GOLDEN.write_bytes(shot)
         print(f"     [golden] wrote {GOLDEN}")
     else:
-        # a missing golden is a failure, never a silent rewrite (S41 R28)
+        # a missing golden is a failure, never a silent rewrite (S53 R28)
         ed.check(GOLDEN.exists(), f"{GOLDEN} is missing: JASPER_UPDATE_GOLDEN=1 writes it")
         ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
         if not ok and ed.scratch:
@@ -261,7 +261,7 @@ async def test_overlay_golden(ed: Editor):
 
 
 async def test_tool_play_policy(ed: Editor):
-    """S41 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
+    """S53 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
     resolves the running scene (after a scene load too) and its path takes agent_type and area_mask.
     bake_navigation is listed as destructive (clear deletes the .navmesh)."""
     s = await setup(ed)
@@ -309,3 +309,105 @@ async def test_tool_play_policy(ed: Editor):
     finally:
         await ed.call("play", action="stop")
         await ed.call("undo", scope="project")
+
+
+async def errors_since(ed: Editor) -> list[str]:
+    return [e["message"] for e in await ed.console_since(types=["error"], limit=1000)]
+
+
+async def test_bake_failures_reported(ed: Editor):
+    """S53 AC5: (a) a refused start (Surface too large), (b) a tile failure (Runtime Carving with Tile
+    Size 300) and (c) a save failure (the .navmesh path is a directory) each log exactly one Console
+    error naming the surface, and get_navigation_info's last_bake says ok false with the reason. A
+    good bake then reports ok true."""
+    made = await ed.call("create_scene", name="NavFail", type="3D", path="scenes/NavFail")
+    scene = made["scene"]["id"]
+    ground = (await ed.call("create_entity", scene=scene, type="plane", name="Ground", scale=[2, 1, 2]))["entity_id"]
+    await ed.call("add_component", scene=scene, entity=ground, component="navmeshsurface")
+
+    async def surface() -> dict:
+        return (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]
+
+    async def fails(case: str, reason: str) -> None:
+        await ed.console_since(None, limit=1)
+        message = await ed.call("bake_navigation", scene=scene, mode="full", expect_error=True)
+        errors = await errors_since(ed)
+        ed.check_eq(len(errors), 1, f"({case}) one Console error: {errors}")
+        ed.check("NavMeshSurface 'Ground'" in errors[0] and reason in errors[0], f"({case}) it names the surface: {errors}")
+        ed.check(reason in message, f"({case}) the tool says why: {message}")
+        last = (await surface()).get("last_bake")
+        ed.check(last is not None and last["ok"] is False and not last["cancelled"] and reason in last.get("error", ""),
+                 f"({case}) last_bake: {last}")
+
+    # a good bake first: the asset (c) blocks
+    await ed.call("bake_navigation", scene=scene, mode="full")
+    asset = (await surface())["asset"]
+    ed.check(asset.endswith(".navmesh"), f"{asset}")
+    file = ed.project / "assets" / asset
+    if not file.exists():
+        file = ed.project / asset
+    ed.check(file.is_file(), f"the .navmesh on disk: {file}")
+
+    # (a) 2 km at 5 cm voxels on 16-voxel tiles: more tiles than a polygon reference holds
+    await ed.call("set_transform", scene=scene, entity=ground, scale=[200, 1, 200])
+    await ed.call("set_properties", scene=scene, entity=ground, values={"navmeshsurface": {
+        "overrideCellSize": True, "cellSize": 0.05, "overrideTileSize": True, "tileSize": 16}})
+    await fails("a", "Surface too large")
+
+    # (b) carving tiles hold at most 255 voxels a side: the tile build fails
+    await ed.call("set_transform", scene=scene, entity=ground, scale=[2, 1, 2])
+    await ed.call("set_properties", scene=scene, entity=ground, values={"navmeshsurface": {
+        "overrideCellSize": False, "tileSize": 300, "runtimeCarving": True}})
+    await fails("b", "runtime carving needs a tile size of at most 255 cells")
+
+    # (c) the bake succeeds, its save does not
+    await ed.call("set_properties", scene=scene, entity=ground, values={"navmeshsurface": {
+        "overrideTileSize": False, "runtimeCarving": False}})
+    file.unlink()
+    file.mkdir()
+    try:
+        await fails("c", "baked but not saved")
+    finally:
+        file.rmdir()
+
+    good = await ed.call("bake_navigation", scene=scene, mode="full")
+    ed.check(good["polys"] > 0, f"{good}")
+    last = (await surface()).get("last_bake")
+    ed.check(last is not None and last["ok"] is True and "error" not in last, f"a good bake: {last}")
+
+
+async def test_bake_warnings(ed: Editor):
+    """S53 AC7: 70 stacked 3 x 3 m slabs, 2.5 m apart, are more spans than a compact heightfield
+    column holds: the static bake succeeds and bake_navigation returns Recast's warning (and
+    get_navigation_info's last_bake keeps it)."""
+    made = await ed.call("create_scene", name="NavLayers", type="3D", path="scenes/NavLayers")
+    scene = made["scene"]["id"]
+    root = (await ed.call("create_entity", scene=scene, type="empty", name="Stack"))["entity_id"]
+    await ed.call("add_component", scene=scene, entity=root, component="navmeshsurface")
+    await ed.batch([("create_entity", {"scene": scene, "type": "cube", "name": f"Slab{i}", "position": [0, 2.5 * i, 0],
+                                       "scale": [3, 0.2, 3]}) for i in range(70)])
+    baked = await ed.call("bake_navigation", scene=scene, mode="full")
+    warnings = baked["surfaces"][0]["warnings"]
+    ed.check(any("Heightfield has too many layers" in w for w in warnings), f"Recast's warning: {warnings}")
+    last = (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]["last_bake"]
+    ed.check(last["ok"] and last["warnings"] == warnings, f"last_bake keeps them: {last}")
+
+
+async def test_carving_settings_undo(ed: Editor):
+    """S53 AC26: Max Carving Obstacles (a surface property) and Carve Tiles Per Tick (a project
+    setting) are set, shown by get_navigation_info and undone."""
+    s = await setup(ed)
+    info = await ed.call("get_navigation_info", scene=s["scene"])
+    ed.check_eq(info["surfaces"][0]["max_carving_obstacles"], 128, f"the default: {info['surfaces'][0]}")
+    ed.check_eq(info["settings"]["carve_tiles_per_tick"], 0, f"Auto: {info['settings']}")
+    await ed.call("set_properties", scene=s["scene"], entity=s["floor"], values={"navmeshsurface": {"maxCarvingObstacles": 16}})
+    changed = await ed.call("set_navigation_settings", carve_tiles_per_tick=1)
+    ed.check_eq(changed["carve_tiles_per_tick"], 1, f"{changed}")
+    await ed.call("set_navigation_settings", carve_tiles_per_tick=65, expect_error=True)
+    info = await ed.call("get_navigation_info", scene=s["scene"])
+    ed.check_eq((info["surfaces"][0]["max_carving_obstacles"], info["settings"]["carve_tiles_per_tick"]), (16, 1), f"{info}")
+    await ed.call("undo", scope="project")
+    await ed.call("undo", scope="scene", scene=s["scene"])
+    info = await ed.call("get_navigation_info", scene=s["scene"])
+    ed.check_eq((info["surfaces"][0]["max_carving_obstacles"], info["settings"]["carve_tiles_per_tick"]), (128, 0),
+                f"both undone: {info}")

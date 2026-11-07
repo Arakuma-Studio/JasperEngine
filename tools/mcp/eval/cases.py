@@ -800,6 +800,66 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_nav_carve_tiles_per_tick",
+        "kind": "guard",
+        "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "
+                         "parameter; without it an agent hand-edits project.yaml or reports it cannot be changed.",
+        "text_at_issue": "set_navigation_settings carve_tiles_per_tick: '0: Auto.'",
+        "source": "S53 R14, R24 (new parameter); no failure on record",
+        "prompt": "Carving NavMesh Obstacles make my web build hitch when they move. Limit runtime carving to one tile "
+                  "rebuild per surface per fixed tick.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  0 link(s), 2 agent(s)",
+                {"scene_id": 1, "playing": False, "settings": {"crowd_max_agents": 128, "max_grid_solves_per_tick": 64,
+                                                               "carve_tiles_per_tick": 0, "include_in_builds": True},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "state": "baked", "carving": True,
+                               "max_carving_obstacles": 128}]})},
+            {"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}, "result": ok(
+                "Navigation settings changed (one undo step). Surfaces of a changed agent type need a bake.",
+                {"carve_tiles_per_tick": 1, "undo_name": "Change Navigation Settings"})},
+            {"tool": "set_project_settings", "args": {"values": {"navigation.carve_tiles_per_tick": 1}}, "result": ok(
+                "Set 1 project setting (one undo step).", {"changed": ["navigation.carve_tiles_per_tick"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}}]},
+                              {"calls": [{"tool": "set_project_settings",
+                                          "args": {"values": {"navigation.carve_tiles_per_tick": 1}}}]}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_nav_visualize_agent_type",
+        "kind": "guard",
+        "what_happened": "visualize_navigation drew its query path for the first agent type only; asked for another type's "
+                         "path, an agent must pass that agent type to the drawn path, not only to query_navigation.",
+        "text_at_issue": "visualize_navigation path {from, to, agent_type, area_mask} (agent_type: 'Name or id. Default: "
+                         "the first.')",
+        "source": "S53 R24 (new parameters); no failure on record",
+        "prompt": "Show me in the Scene view the path a Giant (the agent type) takes from (-10, 0, 0) to (10, 0, 5).",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  surface Ground Giant: baked, 4 tiles, 96 polys",
+                {"scene_id": 1, "settings": {"agents": [{"id": 0, "name": "Humanoid"}, {"id": 1, "name": "Giant"}]},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "agent_type": 0},
+                              {"entity": {"id": 9, "path": "Ground Giant"}, "agent_type": 1}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path complete: 4 corners, 23.4 long", {"target": "navmesh", "op": "path", "agent_type": 1, "status": "complete"})},
+            *[{"tool": "visualize_navigation", "args": {"path": {"agent_type": giant}}, "result": ok(
+                "AI Navigation overlay on. Path complete, 23.4 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 4, "length": 23.4, "agent_type": 1}})}
+              for giant in ("re:(?i)^giant$", 1)],
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Path complete, 21.0 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 3, "length": 21.0, "agent_type": 0}})},
+            {"tool": "screenshot", "result": ok("Scene view 1024x576.", {"view": "scene", "width": 1024, "height": 576})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": "re:(?i)^giant$"}}}]},
+                              {"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": 1}}}]}]},
+        "max_turns": 10,
+    },
 
     # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {

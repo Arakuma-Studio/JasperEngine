@@ -130,6 +130,8 @@ namespace {
         JE_FIELD(NavMeshSurfaceComponent, minRegionArea, .label = "Minimum Region Area", .tooltip = "Islands smaller than this (square metres) are dropped."),
         JE_FIELD(NavMeshSurfaceComponent, plane, .enumDesc = &enums::kNavPlane, .tooltip = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane."),
         JE_FIELD(NavMeshSurfaceComponent, runtimeCarving, .tooltip = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)."),
+        JE_FIELD(NavMeshSurfaceComponent, maxCarvingObstacles, .min = 1.0f, .max = 4096.0f,
+                 .tooltip = "Carving NavMesh Obstacles it cuts at once (Runtime Carving); more are avoided instead, with a warning. Read when the navmesh is created."),
         JE_FIELD(NavMeshSurfaceComponent, navMeshData, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
     };
 
@@ -137,7 +139,7 @@ namespace {
                                                                 decodeNavMeshSurfaceComponent);
 
     constexpr const char* kNavMeshSurfaceKnownKeys[] = {"agentType", "cellSize", "collectObjects", "defaultArea", "enabled", "includeLayers",
-        "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize",
+        "maxCarvingObstacles", "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize",
         "useGeometry", "volumeCenter", "volumeSize"};
 
     // ---------------------------------------------------------------- NavMesh Agent

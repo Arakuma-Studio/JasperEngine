@@ -8,6 +8,8 @@
 // NavigationOverlayTest.cpp.)
 // S55 (docs/specs/S55-navigation-gameplay-api.md R40, R41, R47): the Link and Modifier fields of
 // old scenes, their Inspector rows' undo, and the overlay's area override boxes.
+// S53 (docs/specs/S53-navigation-fixes.md R17, R22, R27): Max Carving Obstacles and Carve Tiles Per
+// Tick default when missing, and the overlay's reservation tint.
 
 #include "Project.h"
 #include "Stream.h"
@@ -15,6 +17,7 @@
 #include "command/UndoFakeCommand.h"
 #include "command/type/PropertyCmd.h"
 #include "navigation/NavGridBrush.h"
+#include "navigation/NavigationOverlay.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "object/Primitive.h"
 #include "subsystem/NavigationSystem.h"
@@ -27,6 +30,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <functional>
 
@@ -60,7 +64,8 @@ NAV_STABLE(NavMeshSurfaceComponent, component.agentType = 2; component.collectOb
            component.useGeometry = NavUseGeometry::BOTH; component.includeLayers = 0x5u; component.defaultArea = 3;
            component.volumeSize = Vector3(4, 5, 6); component.overrideCellSize = true; component.cellSize = 0.25f;
            component.overrideTileSize = true; component.tileSize = 48; component.plane = nav::NavPlane::XY;
-           component.runtimeCarving = true; component.navMeshData = AssetRef("Level/NavMesh-Floor.navmesh"))
+           component.runtimeCarving = true; component.maxCarvingObstacles = 64;
+           component.navMeshData = AssetRef("Level/NavMesh-Floor.navmesh"))
 NAV_STABLE(NavMeshAgentComponent, component.speed = 5.0f; component.autoBraking = false; component.avoidancePriority = 10;
            component.obstacleAvoidance = nav::AvoidanceQuality::Low; component.areaMask = 0x1D;
            component.driver = NavAgentDriver::CHARACTER_CONTROLLER; component.baseOffset = 1.0f)
@@ -76,9 +81,33 @@ NAV_STABLE(NavGridComponent, component.layout = nav::GridLayout::Hex; component.
            component.tileAreas = {{"water", 3}, {"wall", 1}}; component.collidersBlock = true;
            component.gridData = AssetRef("Level/NavGrid-Grid.navgrid"))
 
+// S53 R27: a surface saved before Max Carving Obstacles existed loads with 128 and writes it back
+TEST(NavigationStream, OldSurfaceLoadsDefaults){
+    const YAML::Node s19 = YAML::Load("enabled: true\nagentType: 0\ncollectObjects: all\nuseGeometry: render_meshes\n"
+                                      "includeLayers: 4294967295\ndefaultArea: 0\nruntimeCarving: true\ntileSize: 64\n");
+    const NavMeshSurfaceComponent surface = Stream::decodeNavMeshSurfaceComponent(s19);
+    EXPECT_TRUE(surface.runtimeCarving);
+    EXPECT_EQ(surface.maxCarvingObstacles, 128);
+    EXPECT_EQ(Stream::encodeNavMeshSurfaceComponent(surface)["maxCarvingObstacles"].as<int>(), 128);
+    // out of range values are put back in 1-4096
+    EXPECT_EQ(Stream::decodeNavMeshSurfaceComponent(YAML::Load("maxCarvingObstacles: 0")).maxCarvingObstacles, 1);
+    EXPECT_EQ(Stream::decodeNavMeshSurfaceComponent(YAML::Load("maxCarvingObstacles: 9000")).maxCarvingObstacles, 4096);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST(NavigationProjectSettings, DefaultsWriteNothing){
     EXPECT_EQ(encodeNavigationProjectSettings(NavigationProjectSettings()).size(), 0u);
     EXPECT_EQ(decodeNavigationProjectSettings(YAML::Node()), NavigationProjectSettings());
+    // Carve Tiles Per Tick: 0 (Auto) by default, written only when set
+    EXPECT_EQ(NavigationProjectSettings().settings.carveTilesPerTick, 0);
+    EXPECT_FALSE(encodeNavigationProjectSettings(NavigationProjectSettings())["carveTilesPerTick"].IsDefined());
+    NavigationProjectSettings carving;
+    carving.settings.carveTilesPerTick = 3;
+    const YAML::Node node = YAML::Load(YAML::Dump(encodeNavigationProjectSettings(carving)));
+    EXPECT_EQ(node["carveTilesPerTick"].as<int>(), 3);
+    EXPECT_EQ(decodeNavigationProjectSettings(node), carving);
+    EXPECT_EQ(decodeNavigationProjectSettings(YAML::Load("carveTilesPerTick: 99")).settings.carveTilesPerTick, 64);
+    EXPECT_EQ(decodeNavigationProjectSettings(YAML::Load("carveTilesPerTick: -2")).settings.carveTilesPerTick, 0);
 }
 
 TEST(NavigationProjectSettings, RoundTripAndSanitize){
@@ -118,6 +147,45 @@ TEST(NavigationProjectSettings, GeneratedCodeSetsThem){
     EXPECT_NE(code.find("navigation.crowdMaxAgents = 300;"), std::string::npos) << code;
     EXPECT_NE(code.find("navigation.areas[6] = {\"Ice \\\"slippery\\\"\""), std::string::npos) << code;
     EXPECT_NE(code.find("nav::setSettings(navigation);"), std::string::npos) << code;
+    EXPECT_EQ(code.find("carveTilesPerTick"), std::string::npos) << "Auto is the default: " << code;
+    settings.carveTilesPerTick = 2;
+    const std::string carving = generateNavigationSettingsCode(settings, "    ");
+    EXPECT_NE(carving.find("navigation.carveTilesPerTick = 2;"), std::string::npos) << carving;
+    nav::NavigationSettings onlyCarving;
+    onlyCarving.carveTilesPerTick = 1;
+    EXPECT_NE(generateNavigationSettingsCode(onlyCarving, "").find("navigation.carveTilesPerTick = 1;"), std::string::npos);
+}
+
+// S53 R22: in play the cells agents reserved are tinted halfway to the agent-path colour; the
+// others keep their area's colour (overrides more opaque)
+TEST(NavigationOverlay, ReservationTint){
+    nav::NavGridMap map;
+    map.reset(4, 3);
+    map.setArea(GridCell{1, 0}, 3);
+    map.setOverride(GridCell{2, 1}, true);
+    std::array<Vector4, nav::AREA_COUNT> areaColors{};
+    for (int a = 0; a < nav::AREA_COUNT; a++) areaColors[(size_t)a] = Vector4(0.0f, (float)a / 16.0f, 1.0f, 1.0f);
+    std::vector<Vector4> plain;
+    NavigationOverlay::gridCellColors(map, areaColors, {}, plain);
+    ASSERT_EQ(plain.size(), 12u);
+    EXPECT_EQ(plain[0], Vector4(0.0f, 0.0f, 1.0f, NavigationOverlay::CELL_ALPHA));
+    EXPECT_EQ(plain[1], Vector4(0.0f, 3.0f / 16.0f, 1.0f, NavigationOverlay::CELL_ALPHA));
+    EXPECT_EQ(plain[6], Vector4(0.0f, 0.0f, 1.0f, NavigationOverlay::OVERRIDE_CELL_ALPHA));
+
+    // cells 1 and 6 reserved (6 twice: two agents), and one index outside the grid
+    std::vector<Vector4> tinted;
+    NavigationOverlay::gridCellColors(map, areaColors, {6, 1, 6, 40}, tinted);
+    ASSERT_EQ(tinted.size(), 12u);
+    const Vector4 path = NavigationOverlay::AGENT_PATH_COLOR;
+    for (int i = 0; i < 12; i++) {
+        if (i == 1 || i == 6) {
+            const Vector4& base = plain[(size_t)i];
+            const Vector4 expected((base.x + path.x) * 0.5f, (base.y + path.y) * 0.5f, (base.z + path.z) * 0.5f, base.w);
+            EXPECT_EQ(tinted[(size_t)i], expected) << "cell " << i;
+        } else {
+            EXPECT_EQ(tinted[(size_t)i], plain[(size_t)i]) << "cell " << i;
+        }
+    }
 }
 
 TEST(NavGridBrush, StampsLinesAndFills){
