@@ -188,3 +188,44 @@ async def test_navmesh_goes_stale(ed: Editor):
     await ed.call("bake_navigation", scene=sid, mode="dirty")
     issues = (await ed.call("sample_terrain", scene=sid, entity=terrain, issues=True))["issues"]
     ed.check(not any(i["code"] == "navmesh_stale" for i in issues), f"a bake clears it: {issues}")
+
+
+async def big_terrain(ed: Editor, name: str):
+    sid = (await ed.call("create_scene", name=name, type="3d"))["scene"]["id"]
+    terrain = (await ed.call("create_entity", scene=sid, name=name, type="terrain"))["entity_id"]
+    # 2049 squared is past the 4 M texels of R69
+    await ed.call("edit_terrain", scene=sid, entity=terrain, create="test_patch", map_resolution=2049)
+    return sid, terrain
+
+
+async def wait_job(ed: Editor, job_id: str) -> dict:
+    for _ in range(600):
+        job = await ed.call("get_job", job_id=job_id)
+        if job["status"] != "running":
+            return job
+        await ed.call("wait", frames=5)
+    raise AssertionError(f"job {job_id} never finished")
+
+
+async def test_large_edit_is_a_job(ed: Editor):
+    """AC54 (R69): past 4 M texels the edit runs as a job on a copy and lands as one undo step."""
+    sid, terrain = await big_terrain(ed, "Big")
+    before = await hashes(ed, sid, terrain)
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 2}], wait=False)
+    ed.check("job_id" in started and started["status"] in ("running", "succeeded"), f"a job: {started}")
+    job = await wait_job(ed, started["job_id"])
+    ed.check_eq(job["status"], "succeeded", f"the job: {job}")
+    ed.check(job["result"]["changed"][0]["texels"] > 4_000_000, f"the whole map changed: {job['result']['changed']}")
+    after = await hashes(ed, sid, terrain)
+    ed.check(after["height"] != before["height"], "the job's edit reached the map")
+    await ed.call("undo", scene=sid)
+    ed.check_eq((await hashes(ed, sid, terrain))["height"], before["height"], "one undo takes it back")
+
+
+async def test_job_conflict_fails(ed: Editor):
+    """AC54 (R69): a second call on a terrain a job is editing fails, naming get_job."""
+    sid, terrain = await big_terrain(ed, "Busy")
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "smooth", "iterations": 4}], wait=False)
+    ed.check_eq(started["status"], "running", "four smoothing passes over 4 M texels outlast the call")
+    await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 1}], contains="get_job")
+    await wait_job(ed, started["job_id"])

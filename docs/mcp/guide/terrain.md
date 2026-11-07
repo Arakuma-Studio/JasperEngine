@@ -150,7 +150,9 @@ The result: `changed` per map (`rect` in texels, `local` box in the call's space
 op (`changed_texels`, `clipped_low`, `clipped_high`, `filtered_out`, `outside`, `seed`), `stats`
 (heights before and after), `warnings` and `next`. Warnings: `clipped_high` and `clipped_low` (heights hit
 0 or Max Height), `filter_excluded_all`, `outside_terrain`, `no_change`, `map_created`, `rotated_terrain`.
-Act on `next`.
+Act on `next`. An edit over more than 4 M texels runs as a job: `wait` (default true) waits up to
+`timeout_seconds`, else the result is a `job_id` to poll with `get_job`; the terrain takes no other
+edit until it ends.
 
 ## Import and export
 

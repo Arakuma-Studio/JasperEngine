@@ -9,9 +9,14 @@
 // history before and groups the steps after (CommandHistory::mark, groupSince).
 
 #include "ecs/Entity.h"
+#include "terrain/OverlayMapStore.h"
+#include "terrain/RawMapStore.h"
 #include "terrain/TerrainOps.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -29,5 +34,20 @@ namespace jasperengine::editor {
     bool applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Entity entity, const std::vector<terrain::Op>& ops,
                                  const terrain::OpOptions& options, const terrain::TerrainOpResult& preview, const std::string& stepName,
                                  terrain::TerrainOpResult& reported, std::string& error);
+
+    // R69: a copy of a terrain's maps a job edits off the main thread, with the hash of each map
+    // when it was taken (the commit refuses when the terrain changed meanwhile). The overlay over
+    // the copy holds the job's changes.
+    struct TerrainOpsSnapshot {
+        std::unique_ptr<terrain::RawMapStore> store;
+        std::unique_ptr<terrain::OverlayMapStore> overlay;
+        std::vector<std::pair<terrain::MapId, uint64_t>> hashes;
+    };
+    std::shared_ptr<TerrainOpsSnapshot> snapshotTerrainMaps(Project* project, SceneProject* scene, Entity entity);
+
+    // The job's changes as the same undo steps applyTerrainOpsWithUndo makes; false with error
+    // when the terrain is gone or a map changed since the snapshot (nothing is applied then)
+    bool commitTerrainOpsWithUndo(Project* project, SceneProject* scene, Entity entity, const TerrainOpsSnapshot& snapshot,
+                                  const terrain::TerrainOpResult& result, const std::string& stepName, std::string& error);
 
 }
