@@ -1163,6 +1163,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/BookmarksWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
+    ${EDITOR_DIR}/window/ParticleEffectWindow.cpp
+    ${EDITOR_DIR}/window/ParticleModuleRows.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/DeviceProfiles.cpp

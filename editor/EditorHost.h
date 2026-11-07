@@ -127,6 +127,10 @@ namespace jasperengine::editor {
         virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);
         // Window > Audio > Audio Mixer with a .mixer (empty: the project's mixer, made on first use)
         virtual void openAudioMixerWindow(const std::filesystem::path& mixer = {});
+        // Window > Visual Effects > Particle Effect on a .particles (assets-relative), or on a
+        // GameObject's subtree (Open in Particle Effect)
+        virtual void openParticleEffect(const std::string& assetPath);
+        virtual void openParticleEffectSubtree(uint32_t sceneId, uint32_t root);
         // Window > Analysis > Build Report with an export's build-report.json (S53 R21)
         virtual void openBuildReport(const std::filesystem::path& report);
         // Window > Analysis > Mesh Optimization Audit (S53 R20)

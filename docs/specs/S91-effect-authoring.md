@@ -280,3 +280,39 @@ Effort in person-weeks, estimates at ±50%.
 - **M6 (about 1).** Budgets, docs, guide, final gate. AC16.
 
 ## Deviations
+
+The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-window`):
+
+- **The eye and the Overdraw view work on copies, not on the renderer.** The stage plays copies of
+  the documents under its own effect-library keys (`particle-effect-window/<node>.particles`), each
+  copy's sub-emitter entries naming its children's copies. A hidden node's copy has Render Mode None
+  and its trails off; it still simulates, so its children play as before. Overdraw makes every copy
+  additive, untextured, unlit and one constant heat colour, on black. The per-module random streams
+  keep the simulation identical. No runtime or shader code changed for either, so the eye cannot
+  reach a file or an export (R18). The Overdraw view is a heat of quad coverage, not the GPU heat row
+  of `overdraw_map` (R27, s91-preview).
+- **R17's checkpoints after an edit.** An edit invalidates the stage's checkpoints, because they hold
+  runs of the old effect, so the re-simulation after an edit starts from 0, at most 4 ms a frame
+  with its progress shown. Scrubs and loops use the checkpoints. With the moving emitter on, a seek
+  replays the motion tick by tick from 0, because a checkpoint does not hold the emitter's path.
+- **R20's per-loop seed** applies to the window's own loops (the Loop Range, or a one-shot effect
+  starting again). It does not apply to a looping effect's internal Duration cycles, which the
+  runtime keeps on one seed.
+- **R19's timing for MCP** is `ParticleEffectTiming::compute` and `toJson`
+  (`editor/util/ParticleEffectTiming.h`). The tool that returns it, and the Filmstrip and Checks rows
+  (R24), belong to `feature/s91-preview`. The window draws that panel through
+  `ParticleEffectWindow::setChecksPanel`, in a "Filmstrip and Checks" section under Exposed
+  Parameters, and draws nothing there until the panel is registered.
+- **R25's sliders are drag fields.** An exposed parameter has no range in the format, so a slider
+  would have to invent one. Trigger buttons list the Trigger sub-emitters' names. R9's declared
+  triggers and R10's cheap updates come from `feature/s91-runtime`, and `triggerNames()` and
+  `setExposedValue()` are where they plug in.
+- **R23's playhead** is the window's clock as a fraction of the selected system's Duration (the axis
+  of curves over the emitter's time). It shows only while the Curve window edits a field of this
+  window. Smooth is Unity's SmoothTangents (Free, joined, the neighbours' mean slope), since Clamped
+  Auto already has its own menu entry.
+- **R22's help links** open `docs/editor/particle-effect.md#<module>` on GitHub.
+- **A `.particles` double-click opens the window** instead of BF23's interim Inspector routing. A
+  single click still shows the file in the Inspector. `test_project_window_open.py` changed with it.
+- **The window's settings** (background, seed, loop range, eye) are not saved with the layout or the
+  project. They are preview state, reset when another effect opens.

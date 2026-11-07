@@ -6,6 +6,7 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
@@ -1536,6 +1537,10 @@ void focusWindowTool(const CallPtr& call) {
         // it shows the selected GameObject's controller (or the .controller opened last)
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
+    } else if (window == "particle_effect") {
+        // it shows the .particles or the subtree opened last
+        app.getParticleEffectWindow()->setOpen(true);
+        imguiName = ParticleEffectWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1584,7 +1589,7 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals.");
         return;
@@ -2060,7 +2065,7 @@ void registerViewTools(McpRegistry& registry) {
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
             "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
