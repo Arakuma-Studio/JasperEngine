@@ -425,7 +425,6 @@ Json previewQueueJson() {
                 {"alone_frames", stats.aloneFrames},
                 {"p95_ms", ms(queue.p95FrameMs())},
                 {"p95_frames", queue.windowFrames()},
-                {"p95_working_ms", ms(queue.p95WorkingFrameMs())},
                 {"worst_frame_ms", ms(stats.maxFrameMs)},
                 {"worst_step", Json{{"label", stats.worstStepLabel}, {"ms", ms(stats.worstStepMs)}}},
                 {"side_work_ms", ms(stats.sideWorkMs)},

@@ -21,10 +21,9 @@
 //   frame; runFrame spends only what is left, and frameLeftMs() tells a submitter whether to start
 //   more side work this frame.
 // - Stats (R45 reporting): working frames, frames over budget (the last OVERRUNS with their longest
-//   piece), the worst frame and step (its label), and two p95s: over the last WINDOW frames with
-//   previews pending (R45's measure: idle frames after an overrun count, as the editor's frames
-//   they are) and over the last WINDOW working frames; for get_title's `previews` and S82's
-//   performance readout.
+//   piece), the worst frame and step (its label), and the p95 of the last WINDOW working frames
+//   (idle frames, the rests after an overrun among them, are left out: they would hide what the
+//   working ones cost), for get_title's `previews` and S82's performance readout.
 // - Requests: request() takes a content key (submitters key by GUID, size, source hash and bake
 //   version; requests with the same key share one job), an owner (a window: cancelAll(owner) when
 //   it closes) and a factory that makes the job, so device loss (a new context id) drops every
@@ -124,14 +123,11 @@ namespace jasperengine::editor {
         void deviceLost();
 
         const TitlePreviewStats& stats() const { return counters; }
-        // the p95 of the previews' time in the last WINDOW frames that had previews pending, and in
-        // the last WINDOW working frames (0 before the first)
+        // the p95 of the last WINDOW working frames' times (0 before the first)
         static constexpr size_t WINDOW = 200;
         static constexpr size_t OVERRUNS = 8;
-        double p95FrameMs() const { return recentPending.p95(); }
-        size_t windowFrames() const { return recentPending.values.size(); }
-        double p95WorkingFrameMs() const { return recentWorking.p95(); }
-        size_t workingWindowFrames() const { return recentWorking.values.size(); }
+        double p95FrameMs() const;
+        size_t windowFrames() const { return recent.size(); }
         void resetStats();
 
     private:
@@ -156,15 +152,8 @@ namespace jasperengine::editor {
         int restFrames = 0;
         double charged = 0;
         TitlePreviewStats counters;
-        struct Ring {
-            std::vector<double> values;
-            size_t next = 0;
-            void add(double value);
-            double p95() const;
-            void clear();
-        };
-        Ring recentPending;     // frames with previews pending
-        Ring recentWorking;     // frames that worked
+        std::vector<double> recent;     // working frames' times, a ring of WINDOW
+        size_t recentNext = 0;
 
         Item* pick() const;
         void drop(Item* item);

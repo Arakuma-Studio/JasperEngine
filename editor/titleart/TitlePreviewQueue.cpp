@@ -125,8 +125,8 @@ void TitlePreviewQueue::resetStats() {
     counters = TitlePreviewStats();
     counters.queued = queued;
     counters.done = done;
-    recentPending.clear();
-    recentWorking.clear();
+    recent.clear();
+    recentNext = 0;
 }
 
 void TitlePreviewQueue::refreshCounts() {
@@ -158,27 +158,13 @@ void TitlePreviewQueue::charge(double ms) {
     counters.sideWorkMs += ms;
 }
 
-void TitlePreviewQueue::Ring::add(double value) {
-    if (values.size() < WINDOW) {
-        values.push_back(value);
-    } else {
-        values[next] = value;
-        next = (next + 1) % WINDOW;
-    }
-}
-
-double TitlePreviewQueue::Ring::p95() const {
-    if (values.empty()) return 0.0;
-    std::vector<double> sorted = values;
+double TitlePreviewQueue::p95FrameMs() const {
+    if (recent.empty()) return 0.0;
+    std::vector<double> sorted = recent;
     std::sort(sorted.begin(), sorted.end());
     // nearest rank
     const size_t rank = (size_t)std::ceil(0.95 * (double)sorted.size());
     return sorted[std::clamp<size_t>(rank, 1, sorted.size()) - 1];
-}
-
-void TitlePreviewQueue::Ring::clear() {
-    values.clear();
-    next = 0;
 }
 
 void TitlePreviewQueue::runFrame(double budgetMs) {
@@ -191,7 +177,6 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             deviceLost();
         }
     }
-    const bool pending = counters.queued > 0;
     // the side work charged since the last frame belongs to this one
     const double side = charged;
     charged = 0;
@@ -264,8 +249,12 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             // idle frames that bring the average back within the budget
             restFrames = std::max(restFrames, (int)std::ceil(total / std::max(budgetMs, 1e-6)) - 1);
         }
-        recentWorking.add(total);
+        if (recent.size() < WINDOW) {
+            recent.push_back(total);
+        } else {
+            recent[recentNext] = total;
+            recentNext = (recentNext + 1) % WINDOW;
+        }
     }
-    if (pending || ran || side > 0) recentPending.add(total);
     refreshCounts();
 }

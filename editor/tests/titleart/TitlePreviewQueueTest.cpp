@@ -174,9 +174,8 @@ TEST_F(TitlePreviewQueueTest, AnOverrunIsCountedAndRested) {
     EXPECT_EQ(queue.stats().restFrames, 1u);
     EXPECT_GT(frame(), 0.0);
     EXPECT_EQ(queue.stats().workingFrames, 2u);
-    EXPECT_EQ(queue.windowFrames(), 3u) << "the rest frame had previews pending";
-    EXPECT_EQ(queue.workingWindowFrames(), 2u);
-    EXPECT_DOUBLE_EQ(queue.p95WorkingFrameMs(), 6.0);
+    EXPECT_EQ(queue.windowFrames(), 2u) << "the rest frame is no working frame";
+    EXPECT_DOUBLE_EQ(queue.p95FrameMs(), 6.0);
     EXPECT_DOUBLE_EQ(queue.stats().maxFrameMs, 6.0);
     queue.resetStats();
     EXPECT_EQ(queue.windowFrames(), 0u);

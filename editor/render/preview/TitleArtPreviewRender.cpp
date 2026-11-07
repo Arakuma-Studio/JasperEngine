@@ -6,10 +6,14 @@
 #include "Project.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtDocument.h"
+#include "titleart/TitleArtIO.h"
 #include "titleart/TitleEffectRegistry.h"
+#include "asset/AssetFileWrite.h"
 #include "util/FileUtils.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 using namespace jasperengine;
@@ -158,6 +162,21 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
     return true;
 }
 
+std::string editor::titleArtPreviewKey(const titleart::TitleArtDoc& doc, int side) {
+    return doc.guid() + ":" + std::to_string(side) + ":" + titleArtSourceHash(doc) + ":" + std::to_string(titleart::titleArtBakeVersion(doc));
+}
+
+uint64_t editor::requestTitleArtPreview(Project* project, std::shared_ptr<const titleart::TitleArtDoc> doc, const std::string& key, int side,
+                                        TitlePreviewPriority priority, TitlePreviewOwner owner, bool visible) {
+    titleart::RenderRequest request;
+    const int larger = std::max(doc->canvasWidth(), doc->canvasHeight());
+    request.pxScale = std::min(1.0f, static_cast<float>(side) / static_cast<float>(std::max(1, larger)));
+    request.doc = std::move(doc);
+    return TitlePreviewQueue::editor().request(priority, key, [project, request]() {
+        return std::make_unique<TitleArtPreviewJob>(project, request);
+    }, owner, visible);
+}
+
 uint64_t editor::requestTitleArtPreview(Project* project, const fs::path& document, int side, TitlePreviewPriority priority,
                                         TitlePreviewOwner owner, bool visible, std::string& error) {
     // the document load and hash the key needs are the preview's main-thread work too
@@ -165,27 +184,52 @@ uint64_t editor::requestTitleArtPreview(Project* project, const fs::path& docume
     titleart::TitleArtDoc doc;
     std::string code;
     if (!loadTitleArtForBake(project, document, doc, code, error)) return 0;
-    auto snapshot = std::make_shared<titleart::TitleArtDoc>(std::move(doc));
-    const std::string key = snapshot->guid() + ":" + std::to_string(side) + ":" + titleArtSourceHash(*snapshot) + ":" +
-                            std::to_string(titleart::titleArtBakeVersion(*snapshot));
-    titleart::RenderRequest request;
-    request.doc = snapshot;
-    const int larger = std::max(snapshot->canvasWidth(), snapshot->canvasHeight());
-    request.pxScale = std::min(1.0f, static_cast<float>(side) / static_cast<float>(std::max(1, larger)));
-    return TitlePreviewQueue::editor().request(priority, key, [project, request]() {
-        return std::make_unique<TitleArtPreviewJob>(project, request);
-    }, owner, visible);
+    auto snapshot = std::make_shared<const titleart::TitleArtDoc>(std::move(doc));
+    const std::string key = titleArtPreviewKey(*snapshot, side);
+    return requestTitleArtPreview(project, snapshot, key, side, priority, owner, visible);
+}
+
+namespace {
+
+    // the main output's PNG is on disk (else it cannot be fresh, and its status is not worth
+    // hashing every font and image the document reads)
+    bool mainOutputExists(const fs::path& document, const titleart::TitleArtDoc& doc) {
+        auto outputs = doc.root.find("outputs");
+        if (outputs == doc.root.end() || !outputs->is_array() || outputs->empty()) return false;
+        std::error_code ec;
+        return fs::is_regular_file(titleArtOutputPath(document, outputs->front()), ec);
+    }
+
+    // a worker's part of a thumbnail: the document parsed (unless it was open) and its preview key
+    TitleArtThumbnailer::Prepared prepareThumbnail(fs::path document, std::shared_ptr<const titleart::TitleArtDoc> open, int side) {
+        TitleArtThumbnailer::Prepared out;
+        if (!open) {
+            std::string text;
+            if (!assetio::readFile(document, text)) return out;
+            titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
+            if (!parsed.ok) return out;
+            open = std::make_shared<const titleart::TitleArtDoc>(std::move(parsed.doc));
+        }
+        out.doc = open;
+        out.mayBeFresh = mainOutputExists(document, *open);
+        if (!out.mayBeFresh) out.key = titleArtPreviewKey(*open, side);
+        return out;
+    }
+
+    bool writeThumbnail(const texsynth::Image& image, const fs::path& thumbnail) {
+        std::vector<uint8_t> png;
+        std::error_code ec;
+        FileUtils::createDirectories(thumbnail.parent_path(), ec);
+        return texsynth::encodePng(image, png) && FileUtils::writeFileReplacing(thumbnail, std::string(png.begin(), png.end()));
+    }
+
 }
 
 bool editor::titleArtFreshOutputImage(Project* project, const fs::path& document, int side, texsynth::Image& out) {
     titleart::TitleArtDoc doc;
     std::string code, error;
     if (!loadTitleArtForBake(project, document, doc, code, error)) return false;
-    // an unbaked main output is not fresh: the status (which hashes every font and image the
-    // document reads) is only worth its main-thread time when the PNG is there
-    const titleart::Json& outputs = doc.root.contains("outputs") ? doc.root["outputs"] : titleart::Json::array();
-    std::error_code ec;
-    if (outputs.empty() || !fs::is_regular_file(titleArtOutputPath(document, outputs.front()), ec)) return false;
+    if (!mainOutputExists(document, doc)) return false;
     const TitleBakeStatus status = titleArtStatusOf(project, document, doc);
     if (status.outputs.empty() || status.outputs.front().status != TitleOutputStatus::Fresh) return false;
     texsynth::Image png;
@@ -209,56 +253,78 @@ void TitleArtThumbnailer::request(Project* forProject, const fs::path& document,
 }
 
 void TitleArtThumbnailer::process() {
-    TitlePreviewQueue& queue = TitlePreviewQueue::editor();
     for (size_t i = 0; i < pending.size();) {
         Pending& item = pending[i];
         bool finished = false, ok = false;
-        texsynth::Image image;
-        if (item.id == 0) {
-            // a new item's document loads on the main thread: only while the frame has budget left
-            if (queue.frameLeftMs() <= 0) {
-                i++;
-                continue;
+        if (item.state == Pending::State::New) {
+            // the parse and the key's hash run on a worker; an open document is copied here (the
+            // open documents are the main thread's)
+            std::shared_ptr<const titleart::TitleArtDoc> open;
+            std::shared_ptr<TitleArtDocument> document = TitleArtDocument::find(item.document);
+            if (document && (!document->editable() || !document->loadError().empty())) {
+                finished = true;
+            } else {
+                if (document) {
+                    SideWork charge;
+                    open = std::make_shared<const titleart::TitleArtDoc>(document->doc());
+                }
+                item.preparing = std::async(std::launch::async, prepareThumbnail, item.document, open, item.side);
+                item.state = Pending::State::Preparing;
             }
+        }
+        if (item.state == Pending::State::Preparing && item.preparing.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            item.prepared = item.preparing.get();
+            if (item.prepared.doc) item.state = Pending::State::Prepared;
+            else finished = true;
+        }
+        // a baked document's status and PNG load on the main thread, charged to the frame and only
+        // while it has budget left
+        if (item.state == Pending::State::Prepared && item.prepared.mayBeFresh && TitlePreviewQueue::editor().frameLeftMs() > 0) {
+            texsynth::Image image;
             bool fresh = false;
             {
                 SideWork charge;
-                // the fresh main output, thumbnailed like an image (a worker-free CPU downscale)
                 fresh = titleArtFreshOutputImage(project, item.document, item.side, image);
+                if (!fresh) item.prepared.key = titleArtPreviewKey(*item.prepared.doc, item.side);
             }
+            item.prepared.mayBeFresh = false;
             if (fresh) {
-                finished = true;
-                ok = true;
-            } else {
-                std::string error;
-                item.id = requestTitleArtPreview(project, item.document, item.side, TitlePreviewPriority::Thumbnails, owner, true, error);
-                if (item.id == 0) finished = true;
+                item.writing = std::async(std::launch::async, writeThumbnail, std::move(image), item.thumbnail);
+                item.state = Pending::State::Writing;
             }
         }
-        if (!finished && item.id != 0) {
+        if (item.state == Pending::State::Prepared && !item.prepared.mayBeFresh) {
+            item.id = requestTitleArtPreview(project, item.prepared.doc, item.prepared.key, item.side, TitlePreviewPriority::Thumbnails, owner, true);
+            item.state = Pending::State::Rendering;
+        }
+        if (item.state == Pending::State::Rendering) {
             const TitlePreviewState state = TitlePreviewQueue::editor().state(item.id);
             if (state == TitlePreviewState::Done) {
-                if (auto* job = dynamic_cast<TitleArtPreviewJob*>(TitlePreviewQueue::editor().result(item.id))) {
-                    image = job->image().image;
-                    ok = !image.empty();
+                texsynth::Image image;
+                if (auto* job = dynamic_cast<TitleArtPreviewJob*>(TitlePreviewQueue::editor().result(item.id))) image = job->image().image;
+                TitlePreviewQueue::editor().cancel(item.id);
+                item.id = 0;
+                if (image.empty()) {
+                    finished = true;
+                } else {
+                    // the PNG encode and write on a worker
+                    item.writing = std::async(std::launch::async, writeThumbnail, std::move(image), item.thumbnail);
+                    item.state = Pending::State::Writing;
                 }
-                finished = true;
             } else if (state == TitlePreviewState::Failed || state == TitlePreviewState::Unknown) {
+                TitlePreviewQueue::editor().cancel(item.id);
+                item.id = 0;
                 finished = true;
             }
+        }
+        if (item.state == Pending::State::Writing && item.writing.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            ok = item.writing.get();
+            finished = true;
         }
         if (!finished) {
             i++;
             continue;
         }
-        if (ok) {
-            SideWork charge;
-            std::vector<uint8_t> png;
-            std::error_code ec;
-            FileUtils::createDirectories(item.thumbnail.parent_path(), ec);
-            ok = texsynth::encodePng(image, png) && FileUtils::writeFileReplacing(item.thumbnail, std::string(png.begin(), png.end()));
-        }
-        if (item.id) TitlePreviewQueue::editor().cancel(item.id);
         std::function<void(bool)> done = std::move(item.done);
         pending.erase(pending.begin() + static_cast<long>(i));
         if (done) done(ok);

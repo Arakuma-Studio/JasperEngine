@@ -13,11 +13,12 @@
 // - Budget (R45): a preview's work is three kinds of pieces: building the job, its render steps
 //   and the readback. Each is measured on the main thread and teaches one model
 //   (titleArtPreviewCosts) that predicts the next piece, and a step() starts a piece only while it
-//   fits what is left of its budget (the first piece of a call always runs). The work a request
-//   does before its job exists (loading the document its key needs) and the thumbnailer's PNG
-//   encode are charged to the queue's frame; the thumbnailer starts such work only while the frame
-//   has budget left.
-// - Thread-safety: main thread.
+//   fits what is left of its budget (the first piece of a call always runs). The thumbnailer parses
+//   documents, hashes their keys and encodes and writes the PNGs on workers (std::async); what
+//   stays on the main thread outside the jobs (a request's own document load, a baked document's
+//   status and PNG) is charged to the queue's frame, the thumbnailer's only while it has budget left.
+// - Thread-safety: main thread, but for the thumbnailer's worker functions (they touch no editor
+//   state: the file, the parse, the hashes, the effect registry's read-only tables).
 
 #pragma once
 
@@ -26,6 +27,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -69,10 +71,23 @@ namespace jasperengine::editor {
     // document does not load (or the renderer is unavailable)
     uint64_t requestTitleArtPreview(Project* project, const std::filesystem::path& document, int side, TitlePreviewPriority priority,
                                     TitlePreviewOwner owner, bool visible, std::string& error);
+    // the same for a document already loaded, under its titleArtPreviewKey
+    uint64_t requestTitleArtPreview(Project* project, std::shared_ptr<const titleart::TitleArtDoc> doc, const std::string& key, int side,
+                                    TitlePreviewPriority priority, TitlePreviewOwner owner, bool visible);
+    // GUID, size, source hash and bake version (any thread)
+    std::string titleArtPreviewKey(const titleart::TitleArtDoc& doc, int side);
 
     // the Project window's Title Art thumbnails
     class TitleArtThumbnailer {
     public:
+        // what a worker prepares for one thumbnail: the document (null when it does not load) and,
+        // unless its main output may be fresh, its preview key
+        struct Prepared {
+            std::shared_ptr<const titleart::TitleArtDoc> doc;
+            std::string key;
+            bool mayBeFresh = false;
+        };
+
         explicit TitleArtThumbnailer(TitlePreviewOwner owner) : owner(owner) {}
         ~TitleArtThumbnailer();
         // `done(ok)` once the PNG at `thumbnail` is written (or could not be)
@@ -85,10 +100,15 @@ namespace jasperengine::editor {
 
     private:
         struct Pending {
+            enum class State : uint8_t { New, Preparing, Prepared, Rendering, Writing };
             std::filesystem::path document;
             std::filesystem::path thumbnail;
             int side = 128;
+            State state = State::New;
+            std::future<Prepared> preparing;
+            Prepared prepared;
             uint64_t id = 0;
+            std::future<bool> writing;      // the PNG encode and write
             std::function<void(bool)> done;
         };
         TitlePreviewOwner owner;
