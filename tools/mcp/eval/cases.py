@@ -771,7 +771,7 @@ CASES = [
         "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
                          "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
                          "animation frame by frame; the editor imports .aseprite files itself (S44).",
-        "text_at_issue": "guide Other areas: 'sprites and .aseprite files (set_sprite_frames sheet)'; set_sprite_frames "
+        "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
                          "description: 'sheet (.aseprite or texture, with its tag clips)'",
         "source": "S44 design review (pixel-art trial sessions, paraphrased)",
         "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
