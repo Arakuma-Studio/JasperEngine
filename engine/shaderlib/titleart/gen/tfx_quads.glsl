@@ -13,6 +13,9 @@
 
 #if TA_PROGRAM == TA_GEN_QUADS_PARTICLES
     #define TFX_QUAD_MOTION 1
+#ifndef TITLEART_GEN_TFX_QUADS_GLSL
+#define TITLEART_GEN_TFX_QUADS_GLSL
+
 uniform u_vs_titleart {
     vec4 p[16];
 } tv;
@@ -102,3 +105,5 @@ void main() {
     v_more = vec3(0.0);
 #endif
 }
+
+#endif // TITLEART_GEN_TFX_QUADS_GLSL

@@ -67,8 +67,8 @@ namespace {
         for (const TitleFollowProblem& p : problems) {
             list.push_back(TJson{{"layer", p.layerId}, {"follow", p.follow}});
             const std::string nearest = nearestFollowable(context.doc.root, p.layerId);
-            if (!nearest.empty()) ops.push_back(TJson{{"op", "set"}, {"layer", p.layerId}, {"values", TJson{{"follow", nearest}}}});
-            else ops.push_back(TJson{{"op", "remove_layer"}, {"layer", p.layerId}});
+            if (!nearest.empty()) ops.push_back(TJson{{"op", "set"}, {"layer", "id:" + p.layerId}, {"values", TJson{{"follow", nearest}}}});
+            else ops.push_back(TJson{{"op", "remove_layer"}, {"layer", "id:" + p.layerId}});
         }
         r.measured = TJson{{"generators", list}};
         r.message = std::to_string(problems.size()) + " generator layer(s) follow a deleted layer or none: they draw nothing";

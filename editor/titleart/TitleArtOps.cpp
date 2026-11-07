@@ -483,7 +483,7 @@ namespace {
             const bool belowOthers = std::min(followedSlot.index, addedSlot.index) > 0;
             if (mode == "auto" && (str(*added, "blend") == "normal" || !belowOthers)) return true;
             const Json* followed = titleart::findLayer(doc().root, followedId);
-            return group(Json{{"layers", Json::array({followedId, addedId})}, {"name", layerName(*followed) + " FX"}});
+            return group(Json{{"layers", Json::array({"id:" + followedId, "id:" + addedId})}, {"name", layerName(*followed) + " FX"}});
         }
 
         bool addLayer(const Json& op) {
