@@ -550,10 +550,12 @@ void VoxelSystem::pumpJobs(){
 }
 
 Entity VoxelSystem::acquireChunk(VolumeState& state, const VoxelVolumeComponent&){
-    if (!state.chunkPool.empty()){
+    // a pooled chunk something else destroyed (a script's destroy on a raycast hit) is not reused
+    while (!state.chunkPool.empty()){
         const Entity chunk = state.chunkPool.back();
         state.chunkPool.pop_back();
-        return chunk;
+        if (scene->isEntityCreated(chunk) && scene->findComponent<Transform>(chunk) && scene->findComponent<MeshComponent>(chunk)) return chunk;
+        generatedOwners.erase(chunk);
     }
     const Entity chunk = scene->createEntity();
     scene->addComponent<Transform>(chunk);
@@ -565,21 +567,26 @@ Entity VoxelSystem::acquireChunk(VolumeState& state, const VoxelVolumeComponent&
 }
 
 void VoxelSystem::releaseChunk(VolumeState& state, Entity chunk){
-    if (!scene->isEntityCreated(chunk)) return;
-    scene->getComponent<Transform>(chunk).visible = false;
+    Transform* transform = scene->isEntityCreated(chunk) ? scene->findComponent<Transform>(chunk) : nullptr;
+    if (!transform){
+        generatedOwners.erase(chunk);
+        return;
+    }
+    transform->visible = false;
     state.chunkPool.push_back(chunk);
 }
 
 void VoxelSystem::applyOwnerTransform(VolumeState& state, Entity chunk){
-    Transform& transform = scene->getComponent<Transform>(chunk);
-    transform.parent = NULL_ENTITY;
-    transform.position = state.worldPosition;
-    transform.rotation = state.worldRotation;
-    transform.scale = Vector3(1.0f, 1.0f, 1.0f);
-    transform.worldPosition = state.worldPosition;
-    transform.worldRotation = state.worldRotation;
-    transform.modelMatrix = state.model;
-    transform.needUpdate = true;
+    Transform* transform = scene->isEntityCreated(chunk) ? scene->findComponent<Transform>(chunk) : nullptr;
+    if (!transform) return;
+    transform->parent = NULL_ENTITY;
+    transform->position = state.worldPosition;
+    transform->rotation = state.worldRotation;
+    transform->scale = Vector3(1.0f, 1.0f, 1.0f);
+    transform->worldPosition = state.worldPosition;
+    transform->worldRotation = state.worldRotation;
+    transform->modelMatrix = state.model;
+    transform->needUpdate = true;
 }
 
 void VoxelSystem::writeChunk(VolumeState& state, const VoxelVolumeComponent& component, Entity chunk, const MeshId& id, const MeshOut& mesh){
@@ -667,8 +674,8 @@ void VoxelSystem::uploadChunks(VolumeState& state, const VoxelVolumeComponent& c
         const auto found = state.chunks.find(id);
         bool done = found == state.chunks.end() || !viewLoaded;
         if (!done){
-            const MeshComponent& mesh = scene->getComponent<MeshComponent>(found->second);
-            done = mesh.loaded && !mesh.needReload;
+            const MeshComponent* mesh = scene->isEntityCreated(found->second) ? scene->findComponent<MeshComponent>(found->second) : nullptr;
+            done = !mesh || (mesh->loaded && !mesh->needReload);
         }
         if (!done){
             i++;
@@ -699,7 +706,8 @@ void VoxelSystem::pollActivations(VolumeState& state){
         for (const auto& shown : activation.show){
             if (!shown.second || shown.second->empty()) continue;
             const auto chunk = state.chunks.find(shown.first);
-            if (chunk != state.chunks.end()) scene->getComponent<Transform>(chunk->second).visible = true;
+            Transform* transform = chunk != state.chunks.end() && scene->isEntityCreated(chunk->second) ? scene->findComponent<Transform>(chunk->second) : nullptr;
+            if (transform) transform->visible = true;
             state.onScreen[shown.first] = shown.second;
             state.meshBytes += static_cast<int64_t>(shown.second->byteSize());
             state.triangles += shown.second->triangleCount;

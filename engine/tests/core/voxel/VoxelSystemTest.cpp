@@ -10,6 +10,7 @@
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
+#include "object/voxel/GroundQuery.h"
 #include "subsystem/VoxelSystem.h"
 #include "support/AllocationCounter.h"
 #include "../ecs/EcsTestUtil.h"
@@ -205,4 +206,45 @@ TEST_F(VoxelSystemFixture, FailedLoadSurfacesTheErrorAndGoesOn) {
     int reported = 0;
     system->forEachLoading([&](Entity) { reported++; });
     EXPECT_EQ(reported, 0);
+}
+
+TEST_F(VoxelSystemFixture, GroundQueryTakesTheHighestVolume) {
+    // R45: two volumes over one column, the lower one first in the scene; the ray from above meets
+    // the higher surface
+    volume(desc(32, 64, 32), "mem://ground-low");
+    asset->store->setBase(makeSolidGroundBase(10.0, 1.0, 0));
+    volume(desc(32, 64, 32), "mem://ground-high");
+    asset->store->setBase(makeSolidGroundBase(20.0, 1.0, 0));
+    scene->update(1.0 / 60.0);
+    system->finishPendingWork();
+    const voxel::GroundSample ground = voxel::sampleGround(scene.get(), 16.0f, 16.0f, 60.0f);
+    EXPECT_EQ(ground.source, voxel::GroundSource::Voxel);
+    EXPECT_NEAR(ground.height, 20.0f, 0.05f);
+    EXPECT_NEAR(ground.normal.y, 1.0f, 1e-3f);
+}
+
+TEST_F(VoxelSystemFixture, DestroyedChunksAreNotReused) {
+    // Something else destroys the chunks (the editor's Stop, a script's destroy on a raycast hit):
+    // the next edit builds new ones instead of writing to entities that are gone
+    const Entity owner = volume(desc(64, 64, 64, 2), "mem://destroyed");
+    const auto settle = [this]() {
+        for (int i = 0; i < 4; i++) {
+            system->finishPendingWork();
+            scene->update(1.0 / 60.0);
+        }
+    };
+    settle();
+    // an edit replaces chunks, so the pool holds hidden ones
+    const EditOp first = digOp(sphereShape(16.0, 32.0, 16.0, 5.0));
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&first, 1), EditOptions{}).ok);
+    settle();
+    const std::vector<Entity> before = system->getGeneratedEntities(owner);
+    ASSERT_FALSE(before.empty());
+    for (Entity chunk : before) scene->destroyEntity(chunk);
+    const EditOp op = digOp(sphereShape(32.0, 32.0, 32.0, 6.0));
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&op, 1), EditOptions{}).ok);
+    EXPECT_NO_THROW(settle());
+    int alive = 0;
+    for (Entity chunk : system->getGeneratedEntities(owner)) alive += scene->isEntityCreated(chunk) ? 1 : 0;
+    EXPECT_GT(alive, 0);
 }

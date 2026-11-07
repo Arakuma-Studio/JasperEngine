@@ -139,6 +139,7 @@
 #include "model/ModelCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "Engine.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
@@ -5978,6 +5979,14 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
         for (size_t i = 0; i < splineArray->size(); i++) {
             const std::vector<Entity> generated = splines->getGeneratedEntities(splineArray->getEntity(i));
             keep.insert(generated.begin(), generated.end());
+        }
+    }
+    // and a Voxel Volume's chunks are VoxelSystem's, which keeps them across Play (T6 R6)
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+        auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+        for (size_t i = 0; i < volumes->size(); i++) {
+            const std::vector<Entity> chunks = voxels->getGeneratedEntities(volumes->getEntity(i));
+            keep.insert(chunks.begin(), chunks.end());
         }
     }
 
