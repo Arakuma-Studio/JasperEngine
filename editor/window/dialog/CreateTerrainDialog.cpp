@@ -59,24 +59,48 @@ void editor::CreateTerrainDialog::applyNoisePreset(const std::string& id){
     settings.height = preset.maxHeight;
 }
 
-bool editor::CreateTerrainDialog::generate(Project* project, uint32_t sceneId, Entity entity, const std::string& presetId, uint32_t seed,
-                                           std::function<void(const GenerationResult&)> done, std::string& error){
+namespace {
+
+    bool startTerrainPreset(Project* project, uint32_t sceneId, Entity entity, const std::string& presetId, uint32_t seed,
+                            TerrainGeneration::Done done, std::string& error){
+        TerrainPreset preset;
+        if (!TerrainPresets::find(presetId, preset)){
+            error = "No Noise Graph preset '" + presetId + "'.";
+            return false;
+        }
+        graph::LoadReport report;
+        GenerationRequest request;
+        request.graph = graph::load(TerrainPresets::json(presetId), report);
+        if (!report.ok){
+            error = report.error;
+            return false;
+        }
+        request.displayName = preset.name;
+        request.seed = seed;
+        TerrainGeneration::start(project, sceneId, entity, std::move(request), std::move(done));
+        return true;
+    }
+
+}
+
+Entity editor::CreateTerrainDialog::createGenerated(Project* project, uint32_t sceneId, Entity parent, const Settings& settings,
+                                                    std::function<void(const GenerationResult&)> done, std::string& error){
+    CommandHistory* history = project ? CommandHandle::get(sceneId) : nullptr;
+    const size_t before = history ? history->position() : 0;
+    const Entity entity = create(project, sceneId, parent, settings, error);
+    if (entity == NULL_ENTITY || settings.noisePreset.empty()) return entity;
+    const size_t created = history->position();
     TerrainPreset preset;
-    if (!TerrainPresets::find(presetId, preset)){
-        error = "No Noise Graph preset '" + presetId + "'.";
-        return false;
-    }
-    graph::LoadReport report;
-    GenerationRequest request;
-    request.graph = graph::load(TerrainPresets::json(presetId), report);
-    if (!report.ok){
-        error = report.error;
-        return false;
-    }
-    request.displayName = preset.name;
-    request.seed = seed;
-    TerrainGeneration::start(project, sceneId, entity, std::move(request), std::move(done));
-    return true;
+    TerrainPresets::find(settings.noisePreset, preset);
+    const std::string label = "Create Terrain (" + preset.name + ")";
+    // one click, one step: a first undo after a preset must not leave a flat terrain. Only when nothing else
+    // came between, which the step would otherwise swallow.
+    startTerrainPreset(project, sceneId, entity, settings.noisePreset, settings.seed, [sceneId, before, created, label, done](const GenerationResult& result){
+        CommandHistory* now = CommandHandle::get(sceneId);
+        if (result.ok && now->position() == created + 1) now->groupSince(before, label);
+        if (done) done(result);
+    }, error);
+    return entity;
 }
 
 void editor::CreateTerrainDialog::open(Project* project, uint32_t sceneId, Entity parent){
@@ -262,15 +286,12 @@ void editor::CreateTerrainDialog::show(){
 
     ImGui::Separator();
     if (EditorModal::button("Create", "ok", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
-        const Entity made = create(project, sceneId, parent, settings, error);
+        error.clear();
+        const Entity made = createGenerated(project, sceneId, parent, settings, [](const GenerationResult& result){
+            if (!result.ok && !result.cancelled) Out::error("Create Terrain: " + result.error);
+        }, error);
+        if (made != NULL_ENTITY && !error.empty()) Out::error("Create Terrain: " + error);
         if (made != NULL_ENTITY){
-            if (!settings.noisePreset.empty()){
-                std::string failed;
-                const bool started = generate(project, sceneId, made, settings.noisePreset, settings.seed, [](const GenerationResult& result){
-                    if (!result.ok && !result.cancelled) Out::error("Create Terrain: " + result.error);
-                }, failed);
-                if (!started) Out::error("Create Terrain: " + failed);
-            }
             isOpen = false;
             ImGui::CloseCurrentPopup();
         }

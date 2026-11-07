@@ -242,6 +242,16 @@ async def test_create_dialog_preset_is_generate_terrain(ed: Editor):
         await ui.frames(2)
     ed.check(want["grid"] != flat["grid"], "generate_terrain shaped the plain terrain")
     ed.check_eq(got["grid"], want["grid"], "the dialog's preset gives generate_terrain's heights")
+    # one click, one step: past Plain's two steps, one undo takes Dunes away whole and one redo brings it back shaped
+    await ed.call("undo", scene=sid)
+    await ed.call("undo", scene=sid)
+    await ed.call("undo", scene=sid)
+    ed.check_eq((await ed.call("find_entities", scene=sid, name="Dunes"))["entities"], [], "one undo removes the preset's terrain")
+    await ed.call("redo", scene=sid)
+    back = (await ed.call("find_entities", scene=sid, name="Dunes"))["entities"]
+    ed.check(back, "one redo brings it back")
+    redone = await ed.call("sample_terrain", scene=sid, entity=back[0]["id"], grid=16)
+    ed.check_eq(redone["grid"], want["grid"], "with the generated heights")
 
 
 async def test_stream_keys_lint(ed: Editor):

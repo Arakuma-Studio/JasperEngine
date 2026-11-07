@@ -21,6 +21,7 @@
 #include "noise/NoiseGraphRuntime.h"
 #include "noise/TerrainGeneration.h"
 #include "noise/TerrainPresets.h"
+#include "object/TerrainEdit.h"
 #include "window/dialog/CreateTerrainDialog.h"
 
 #include <unistd.h>
@@ -150,29 +151,52 @@ TEST(TerrainGeneration, CreateDialogSeam) {
     settings.noisePreset = chosen.id;
     settings.seed = 7;
     std::string error;
-    const Entity entity = CreateTerrainDialog::create(project, sceneId, NULL_ENTITY, settings, error);
-    ASSERT_NE(entity, NULL_ENTITY) << error;
     CommandHistory* history = CommandHandle::get(sceneId);
-    const size_t created = history->position();
+    const size_t before = history->position();
 
     LoopHost host;
     HostScope scope(host);
     bool called = false;
     GenerationResult got;
-    ASSERT_TRUE(CreateTerrainDialog::generate(project, sceneId, entity, settings.noisePreset, settings.seed, [&](const GenerationResult& result) {
+    const Entity entity = CreateTerrainDialog::createGenerated(project, sceneId, NULL_ENTITY, settings, [&](const GenerationResult& result) {
         called = true;
         got = result;
-    }, error)) << error;
+    }, error);
+    ASSERT_NE(entity, NULL_ENTITY) << error;
+    EXPECT_TRUE(error.empty()) << error;
     runFramesUntil(host, called, 120);
     ASSERT_TRUE(called);
     EXPECT_TRUE(got.ok) << got.error;
     EXPECT_NE(got.undoName.find(chosen.name), std::string::npos) << got.undoName;
     EXPECT_NE(got.undoName.find("seed 7"), std::string::npos) << got.undoName;
-    EXPECT_EQ(history->position(), created + 1) << "the generation is one undo step after Create's";
     EXPECT_LT(got.stats.heightMin, got.stats.heightMax) << "the preset shaped the flat map";
-    const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-    EXPECT_EQ(terrain.terrainSize, chosen.terrainSize);
-    EXPECT_EQ(terrain.maxHeight, chosen.maxHeight);
+    {
+        const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+        EXPECT_EQ(terrain.terrainSize, chosen.terrainSize);
+        EXPECT_EQ(terrain.maxHeight, chosen.maxHeight);
+    }
+    const auto heightBytes = [&]() {
+        TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+        TerrainComponentStore store(scene, entity, terrain);
+        const terrain::MapId height{terrain::MapKind::Height, 0};
+        const terrain::MapFormat format = store.format(height);
+        std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * static_cast<size_t>(format.channels) *
+                                   static_cast<size_t>(format.bitsPerChannel / 8));
+        EXPECT_TRUE(store.readBytes(height, format.bounds, bytes));
+        return bytes;
+    };
+    const std::vector<uint8_t> generated = heightBytes();
+
+    // one click, one step: Create and the preset's generation, under the preset's name
+    EXPECT_EQ(history->position(), before + 1) << "Create Terrain with a preset is one undo step";
+    ASSERT_NE(history->undoCommand(), nullptr);
+    EXPECT_EQ(history->undoCommand()->name(), "Create Terrain (" + chosen.name + ")");
+    EXPECT_TRUE(history->undo());
+    EXPECT_EQ(history->position(), before);
+    EXPECT_FALSE(scene->isEntityCreated(entity) && scene->findComponent<TerrainComponent>(entity)) << "one undo removes the terrain";
+    EXPECT_TRUE(history->redo());
+    ASSERT_TRUE(scene->isEntityCreated(entity) && scene->findComponent<TerrainComponent>(entity)) << "one redo brings it back";
+    EXPECT_EQ(heightBytes(), generated) << "with the generated heights";
 }
 
 // The Generate section's Preview in an editor that draws nothing else: its result comes back through the editor's
