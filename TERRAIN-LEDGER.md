@@ -157,6 +157,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   (29bb7a78b) 162/162 with WERROR; T6 voxel core 144/144 on its merged tree; T2 Lua API 12/12. T2 found and fixed a vacuous MCP
   test and moved the graph-shipping rule into `Exporter::shipsForNoise` with unit tests; its player-level test runs at the end.
 - NoiseGraph is asset type 32 (upstream's SoundEvent took 28).
+- T1 has become the bottleneck: its unlanded work (101 files) conflicts with T2 (a duplicate `TerrainMapDeltaCmd`,
+  `TerrainNoise.h`, `TerrainMaps.cpp`) and T3 (holes across the operation engine). Decision: T1 lands a stable, tested checkpoint
+  in integration soon; T2, T3 and T6 then merge integration once and resolve against it. T1's delta command wins over T2's.
+  T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
+- Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
+  while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
 - Stream findings so far (filtered runs only, nothing is final):
   - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
     now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`
