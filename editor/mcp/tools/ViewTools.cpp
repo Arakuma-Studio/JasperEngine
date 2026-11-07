@@ -2125,7 +2125,7 @@ void registerViewTools(McpRegistry& registry) {
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
-            {"path", string("graph_editor: a graph file to open.")},
+            {"path", string("graph_editor: file to open")},
             {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;

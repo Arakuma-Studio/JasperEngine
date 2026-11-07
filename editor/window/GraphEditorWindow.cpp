@@ -280,6 +280,31 @@ bool GraphEditorWindow::inspectorShowsSelection() const{
     return inspectorFrame >= ImGui::GetFrameCount() - 1;
 }
 
+void GraphEditorWindow::showAll(){
+    // (a window may open another: the list as it is now)
+    const std::vector<GraphEditorWindow*> all = instances();
+    for (GraphEditorWindow* window : all) window->show();
+}
+
+void GraphEditorWindow::prepareAllForProjectSwitch(){
+    const std::vector<GraphEditorWindow*> all = instances();
+    for (GraphEditorWindow* window : all) window->prepareForProjectSwitch();
+}
+
+GraphEditorWindow* GraphEditorWindow::focused(){
+    for (GraphEditorWindow* window : instances()){
+        if (window->isFocused()) return window;
+    }
+    return nullptr;
+}
+
+bool GraphEditorWindow::anyInspectorShowsSelection(){
+    for (GraphEditorWindow* window : instances()){
+        if (window->inspectorShowsSelection()) return true;
+    }
+    return false;
+}
+
 bool GraphEditorWindow::drawClaimedInspector(){
     for (GraphEditorWindow* window : instances()){
         if (window->drawSelectionInspector()) return true;

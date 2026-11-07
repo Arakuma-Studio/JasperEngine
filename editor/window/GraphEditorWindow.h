@@ -39,8 +39,9 @@
 //                                         from the base destructor, so a subclass's own does the same):
 //                                         cancel what was started for it and drop its images;
 //                                         getDocument() is still the old one
-// App calls prepareForProjectSwitch on every graph window, a kind's too, so none keeps a document of the
-// project that closes.
+// App reaches every graph window, a kind's too, through the statics below (the windows register
+// themselves as they are made): each is shown, takes the edit verbs while focused, and hears a
+// project switch or close, so none keeps a document of the project that closes.
 
 #pragma once
 
@@ -100,6 +101,14 @@ namespace jasperengine::editor{
         const std::string& kindId() const { return kindFilter; }
         // a project closes: the document and the selection go (documentClosed, selectionChanged)
         void prepareForProjectSwitch();
+
+        // every graph window made (the generic one and each kind's): what App does once a frame,
+        // on a project switch or close, and for the edit verbs
+        static void showAll();
+        static void prepareAllForProjectSwitch();
+        // the graph window with the keyboard focus; null for none
+        static GraphEditorWindow* focused();
+        static bool anyInspectorShowsSelection();
 
         // the window on a graph file; false + status when it is not one of its kind or does not load
         bool openGraph(const std::string& path);

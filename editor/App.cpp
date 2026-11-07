@@ -2829,9 +2829,9 @@ void editor::App::show(){
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator and Graph Editor windows edit project assets (their selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || graphEditorWindow->isFocused() ||
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || GraphEditorWindow::focused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
-                 (animatorWindow->inspectorShowsSelection() || graphEditorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
+                 (animatorWindow->inspectorShowsSelection() || GraphEditorWindow::anyInspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2938,7 +2938,8 @@ void editor::App::show(){
     audioMixerWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
-    graphEditorWindow->show();
+    // the Graph Editor and every graph kind's own window
+    GraphEditorWindow::showAll();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -5161,7 +5162,7 @@ void editor::App::prepareForProjectSwitch() {
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
-    graphEditorWindow->prepareForProjectSwitch();
+    GraphEditorWindow::prepareAllForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();

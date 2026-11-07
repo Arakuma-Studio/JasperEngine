@@ -750,3 +750,15 @@ TEST(GraphParamValues, AFilesRampOverTheLimitEditsDownAndMissingBoundsAreNoBound
     EXPECT_EQ(lo, -3.0);
     EXPECT_GT(hi, 1e9);
 }
+
+// re-review I7: a project switch or close reaches every graph window, a kind's too
+TEST_F(GraphEditorWindowTest, AProjectSwitchReachesEveryGraphWindow) {
+    GraphEditorWindow generic(project());
+    ImageWindow kindWindow(project(), "Image Graph", "window_test");
+    ASSERT_TRUE(generic.openGraph(writeGraph("switch1")));
+    ASSERT_TRUE(kindWindow.openGraph(writeGraph("switch2")));
+    GraphEditorWindow::prepareAllForProjectSwitch();
+    EXPECT_FALSE(generic.getDocument());
+    EXPECT_FALSE(kindWindow.getDocument()) << "the kind's window lets its graph go too";
+    EXPECT_EQ(kindWindow.closed, 1);
+}
