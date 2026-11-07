@@ -40,15 +40,14 @@ namespace {
     }
 
     // the classic-style fixture: a gold face with bevel, finish, inner glow and gloss; four
-    // rims, three bevelled; a glow and a drop shadow (the tests' stand-ins of Outer Glow and
-    // Drop Shadow)
+    // rims, three bevelled; Outer Glow and Drop Shadow at their defaults (§7)
     Json classicLayer(const char* id = "00000001", Json position = Json::array({0, 0})) {
         Json layer{{"id", id}, {"type", "text"}, {"name", "Title"}, {"text", "FFFF"}, {"size", 200},
                    {"transform", {{"position", position}}},
                    {"style", {{"face", goldMaterial()},
                               {"rims", Json::array({rim("00000011", 4, "#7a2a00", true), rim("00000012", 3, "#ffe080", true),
                                                     rim("00000013", 5, "#3a0a00", true), rim("00000014", 3, "#000000", false)})}}},
-                   {"effects", Json::array({effect("00000021", "test_glow", {{"size", 30}}), effect("00000022", "test_shadow", {{"distance", 12}, {"size", 10}})})}};
+                   {"effects", Json::array({effect("00000021", "outer_glow", Json::object()), effect("00000022", "drop_shadow", Json::object())})}};
         return layer;
     }
 
@@ -220,6 +219,10 @@ TEST_F(TitleArtRendererGpu, CacheCascade) {
     Pixels colour;
     const uint64_t colourPasses = passesOf(*renderer, requestOf(recoloured), &colour);
     RecordProperty("colour_passes", (int)colourPasses);
+    // R42: the faces shade over the kept rims, the effects reuse what they drew from the
+    // unchanged alpha (their blurs and fields): stack, placement, compose, output and one pass
+    // per effect
+    EXPECT_LE(colourPasses, 8u);
     auto freshRenderer = makeRenderer();
     EXPECT_TRUE(identical(colour, render(*freshRenderer, requestOf(recoloured)))) << "the cached colour change differs from a fresh render";
 

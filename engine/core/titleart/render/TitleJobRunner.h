@@ -42,6 +42,8 @@ namespace jasperengine::titleart {
         bool clear(TargetRef& target) override;
         const std::string& error() const override;
         void clearError() override;
+        const TargetRef* recall(uint64_t key) override;
+        bool keep(uint64_t key, TargetRef* target) override;
 
         // the colour texture a pass samples for a source (null when it has none)
         static TextureRender* textureOf(const TitleSource& source);
@@ -55,6 +57,7 @@ namespace jasperengine::titleart {
         TitleRenderServices& services;
         std::vector<std::unique_ptr<TargetRef>> lent;
         std::vector<std::unique_ptr<Lut>> luts;
+        std::vector<std::shared_ptr<TitleCacheEntry>> recalled;     // alive while the step reads them
         std::vector<uint32_t> pending;
         std::string failure;
     };

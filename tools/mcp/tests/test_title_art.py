@@ -348,27 +348,69 @@ async def test_project_settings(ed: Editor):
     ed.check_in("rebake", bad, "the valid values are listed")
 
 
-async def test_export_excludes_document(ed: Editor):
-    """AC9, AC27 (fail): an export ships no .titleart; with stale_bakes_on_export fail an unbaked
-    output fails the export naming the document."""
-    await setup(ed)
-    await create(ed, "assets/titles/shipped.titleart")
-    # an export needs a saved scene in the build
-    await ed.call("create_scene", name="Menu", type="2D", path="scenes/Menu")
-    await ed.call("save_project")
-    await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "fail"})
-    out = ed.scratch.root / "export-fail"
+async def export(ed: Editor, name: str):
+    """A source export for Linux (no compiler needed): the raw result, which may be an error."""
+    out = ed.scratch.root / name
     r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
                                             "allow_missing_assets": True, "overwrite": True, "timeout_seconds": 900})
-    ed.check(r.is_error or (r.structured or {}).get("status") == "failed", f"the export fails: {r.text[:300]}")
-    ed.check_in("shipped.titleart", r.text + json.dumps(r.structured or {}), "naming the document")
+    return out, r
+
+
+async def export_scene(ed: Editor) -> None:
+    """An export needs a saved scene in the build (once per editor)."""
+    if not S.get("export_scene"):
+        await ed.call("create_scene", name="Menu", type="2D", path="scenes/Menu")
+        await ed.call("save_project")
+        S["export_scene"] = True
+
+
+async def test_export_excludes_document(ed: Editor):
+    """AC9: an export ships the baked PNG and no .titleart."""
+    await setup(ed)
+    path = "assets/titles/shipped.titleart"
+    await create(ed, path)
+    await need_renderer(ed, path)
+    await ed.call("export_title", path=path)
+    await export_scene(ed)
     await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "warn"})
-    out = ed.scratch.root / "export-warn"
-    done = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
-                         allow_missing_assets=True, overwrite=True, timeout_seconds=900)
-    ed.check_eq(done.get("status"), "succeeded", f"warn exports: {done}")
-    shipped = [p.name for p in out.rglob("*.titleart")]
-    ed.check_eq(shipped, [], "no .titleart in the export")
+    out, r = await export(ed, "export-excludes")
+    ed.check(not r.is_error and (r.structured or {}).get("status") == "succeeded", f"the export: {r.text[:300]}")
+    ed.check_eq([p.name for p in out.rglob("*.titleart")], [], "no .titleart in the export")
+    shipped = [p.name for p in out.rglob("*") if p.is_file() and "shipped" in p.name]
+    ed.check(shipped, "the baked PNG ships (as itself or cooked under its name)")
+
+
+async def test_export_stale_policy(ed: Editor):
+    """AC27: title_art.stale_bakes_on_export `rebake` bakes a stale output before the textures cook
+    (the document is fresh afterwards, the export succeeds); `fail` fails naming the document and
+    writes nothing to its PNG."""
+    await setup(ed)
+    path = "assets/titles/policy.titleart"
+    png = ed.project / "assets/titles/policy.titleart.png"
+    await create(ed, path)
+    await need_renderer(ed, path)
+    await ed.call("export_title", path=path)
+    await export_scene(ed)
+    try:
+        await ed.call("edit_title", path=path, ops=[{"op": "set", "layer": "Title", "values": {"text": "Rebaked"}}])
+        ed.check_eq((await ed.call("get_title", path=path))["outputs"][0]["status"], "stale", "the edit made it stale")
+        before = png.read_bytes()
+        await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "rebake"})
+        _, r = await export(ed, "export-rebake")
+        ed.check(not r.is_error and (r.structured or {}).get("status") == "succeeded", f"rebake exports: {r.text[:300]}")
+        ed.check_eq((await ed.call("get_title", path=path))["outputs"][0]["status"], "fresh", "rebake baked the stale output")
+        ed.check(png.read_bytes() != before, "the PNG holds the new text")
+
+        await ed.call("edit_title", path=path, ops=[{"op": "set", "layer": "Title", "values": {"text": "Stale again"}}])
+        baked = png.read_bytes()
+        await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "fail"})
+        _, r = await export(ed, "export-fail")
+        ed.check(r.is_error or (r.structured or {}).get("status") == "failed", f"fail fails the export: {r.text[:300]}")
+        ed.check_in("policy.titleart", r.text + json.dumps(r.structured or {}), "naming the document")
+        ed.check_eq(png.read_bytes(), baked, "fail bakes nothing")
+        ed.check_eq((await ed.call("get_title", path=path))["outputs"][0]["status"], "stale", "the output stays stale")
+    finally:
+        await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "rebake"})
 
 
 # ---------------------------------------------------------------------------------------- pixels
@@ -475,3 +517,21 @@ async def test_checks_red_green(ed: Editor):
     report = await ed.call("check_title", path=path, checks=["not_clipped", "not_flat", "deterministic"])
     ed.check(all(c["status"] in ("PASS", "WARN") for c in report["checks"]), f"centred again: {report['checks']}")
     ed.check_in("guidance", report, "the guidance is always present")
+
+
+async def test_rim_spikes(ed: Editor):
+    """rim_spikes (Deviation 53): a wide mitred rim on NMVW in the built-in font pokes its notch
+    mitres through the thin strokes: WARN with a fix that rounds the rim's joins; applied, PASS."""
+    await setup(ed)
+    path = "assets/titles/spikes.titleart"
+    await create(ed, path, text="NMVW")
+    await ed.call("edit_title", path=path, ops=[{"op": "add_rim", "layer": "Title", "values": {"width": 12}}])
+    report = await ed.call("check_title", path=path, checks=["rim_spikes"])
+    check = report["checks"][0]
+    ed.check_eq(check["status"], "WARN", f"mitre spikes: {check}")
+    ed.check(check["measured"]["spike_to_band"] > check["threshold"]["spike_to_band"], f"measured over the threshold: {check}")
+    fix = check.get("fix") or {}
+    ed.check(fix.get("ops"), f"a fix: {check}")
+    await ed.call("edit_title", path=path, ops=fix["ops"])
+    again = (await ed.call("check_title", path=path, checks=["rim_spikes"]))["checks"][0]
+    ed.check_eq(again["status"], "PASS", f"round joins: {again}")

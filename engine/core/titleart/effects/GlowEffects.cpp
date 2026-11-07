@@ -41,11 +41,12 @@ namespace {
         // Softer reads the blurs; From Layer reads the big blur's colour even when Precise
         fx::Scratch big, small, field, box;
         if (!precise || fill == 2) {
-            big = fx::blur(ctx, input, size);
+            // only From Layer reads the big blur's colour
+            big = fill == 2 ? fx::blur(ctx, input, size) : fx::blurAlpha(ctx, input, size);
             if (!big) return;
         }
         if (!precise && fill != 2) {
-            small = fx::blur(ctx, input, size * 0.3f);
+            small = fx::blurAlpha(ctx, input, size * 0.3f);
             if (!small) return;
         }
         if (precise || fill == 3) {
@@ -114,6 +115,7 @@ namespace {
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"glow", "halo", "outerGlow", "光彩 (外側)", "後光"};
         d.apply = applyOuterGlow;
+        d.alphaFromAlpha = true;
         return d;
     }
 

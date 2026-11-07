@@ -192,6 +192,9 @@ namespace jasperengine::titleart {
         bool (*addsLight)(const ParamValues&) = nullptr;    // null = false
         bool outline = false;                       // traces ink (draws under light, §6.4)
         bool onParts = true;                        // allowed in part_effects
+        // its output's alpha is a function of its input's alpha and its params alone (a glow, a
+        // shadow): the effect after it may keep what it computes from that alpha (R42)
+        bool alphaFromAlpha = false;
         CostClass costClass = CostClass::C1;        // at defaults; list_title_library's `cost`
         FallbackClass fallback = FallbackClass::F0;
         LiveVariant live;                           // S81's live compose runs it (never title_fx)

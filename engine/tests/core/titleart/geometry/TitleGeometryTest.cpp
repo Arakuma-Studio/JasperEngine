@@ -7,6 +7,7 @@
 
 #include "gtest/gtest.h"
 
+#include "titleart/support/TitleStandardTitle.h"
 #include "titleart/support/TitleTestAssets.h"
 
 #include "titleart/TitleEffectRegistry.h"
@@ -16,8 +17,10 @@
 #include "titleart/geometry/Shapes.h"
 #include "titleart/geometry/TitleGeometry.h"
 #include "titleart/geometry/Trace.h"
+#include "util/FontRegistry.h"
 
 #include <cmath>
+#include <cstdio>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -426,4 +429,44 @@ TEST(TitleTraceTest, AlphaBecomesOutersAndHoles) {
     const Path again = traceImage(ring, 80, TraceParams{});
     EXPECT_EQ(again.pointList().size(), p.pointList().size());
     EXPECT_EQ(again.pointList()[0].x, p.pointList()[0].x);
+}
+
+// rim_spikes' measure: the classic look on the built-in font (Roboto) at 200 px pokes mitres
+// through the thin strokes under N's and V's notches (the outer rim's band is 5 units, the
+// spikes about 25); the standard title (確定 in Dela Gothic One, the same look) keeps every
+// mitre within its band
+TEST_F(TitleGeometryTest, MitreSpikesOfTheClassicLook) {
+    class BuiltinAssets : public TestAssetResolver {
+    public:
+        std::shared_ptr<FontFace> builtinFont() const override { return jasperengine::FontRegistry::getBuiltInLatin(); }
+    } builtin;
+    auto worst = [](TitleGeometry& geometry, const TitleArtDoc& doc) {
+        const LayerElements els = geometry.elements(doc.layers()[0], doc);
+        double ratio = 0.0, inner = 0.0;
+        int rims = 0;
+        for (const TitleElement& e : els.elements) {
+            if (e.kind != ElementKind::Rim) continue;
+            rims++;
+            const double band = e.grow - inner;
+            inner = e.grow;
+            ratio = std::max(ratio, mitreSpike(e).length / band);
+        }
+        EXPECT_EQ(rims, 4);
+        return ratio;
+    };
+    Json nmvw = standardTitleLayer("00000001", "NMVW");
+    nmvw.erase("font");
+    TitleGeometry roboto(&builtin);
+    const double spiky = worst(roboto, standardDocument({nmvw}));
+    EXPECT_GT(spiky, MITRE_SPIKE_WARN_RATIO) << "NMVW in the built-in font: " << spiky;
+    TitleGeometry dela(&assets);
+    const double clean = worst(dela, standardTitleDocument());
+    EXPECT_LE(clean, MITRE_SPIKE_WARN_RATIO) << "the standard title: " << clean;
+    // round joins have no mitres
+    nmvw["style"]["rims"][3]["join"] = "round";
+    TitleGeometry rounded(&builtin);
+    const TitleArtDoc roundDoc = standardDocument({nmvw});
+    const LayerElements els = rounded.elements(roundDoc.layers()[0], roundDoc);
+    EXPECT_EQ(mitreSpike(els.elements.back()).length, 0.0);
+    std::printf("[ spikes   ] NMVW %.2f, standard title %.2f of the band\n", spiky, clean);
 }

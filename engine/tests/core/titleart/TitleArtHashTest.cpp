@@ -49,6 +49,20 @@ TEST_F(TitleArtHashTest, AColorChangeKeepsMasksAndFields) {
     EXPECT_NE(after.node, before.node);
 }
 
+// the alpha hash (what a stack's alpha depends on): colours shade colour only; opacity, a fill
+// kind or a gradient (its stops carry alpha) and the fields change it
+TEST_F(TitleArtHashTest, AlphaFollowsAllButColours) {
+    const LayerHashes before = hashTitleArt(doc).layers.at(id);
+    EXPECT_EQ(hashesAfter("face.fill.color", "#ff0000").alpha, before.alpha);
+    EXPECT_EQ(hashesAfter("face.bevel.highlight_color", "#ffe0e0").alpha, before.alpha);
+    EXPECT_EQ(hashesAfter("rim#0.material.fill.color", "#00ff00").alpha, before.alpha);
+    EXPECT_NE(hashesAfter("face.opacity", 0.5).alpha, before.alpha);
+    EXPECT_NE(hashesAfter("face.fill.kind", "linear").alpha, before.alpha);
+    EXPECT_NE(hashesAfter("rim#0.width", 6).alpha, before.alpha);
+    EXPECT_NE(hashesAfter("transform.rotation", 10).alpha, before.alpha);
+    EXPECT_EQ(hashesAfter("transform.position", Json::array({40, -12})).alpha, before.alpha);
+}
+
 TEST_F(TitleArtHashTest, APositionOnlyPlacesAgain) {
     const LayerHashes before = hashTitleArt(doc).layers.at(id);
     const LayerHashes after = hashesAfter("transform.position", Json::array({40, -12}));

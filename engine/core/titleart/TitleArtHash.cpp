@@ -34,6 +34,7 @@ namespace {
     // the canonical text each scope of one layer collects
     struct Texts {
         std::string scope[SCOPES];
+        std::string stackAlpha;             // the Stack scope's text without its Color members
         std::vector<std::string> refs;      // layers it reads (mask layers, follow)
 
         std::string& at(HashScope s) { return scope[(int)s]; }
@@ -43,13 +44,15 @@ namespace {
         const TitleArtSchema& schema;
         const AssetRevisionFn& revision;
 
-        void append(Texts& t, HashScope scope, const std::string& path, const std::string& text) {
+        void append(Texts& t, HashScope scope, const std::string& path, const std::string& text, bool colour = false) {
             if (scope == HashScope::Identity || scope == HashScope::Inherit) scope = HashScope::Node;
-            std::string& out = t.at(scope);
-            out += path;
-            out += '=';
-            out += text;
-            out += ';';
+            for (std::string* out : {&t.at(scope), scope == HashScope::Stack && !colour ? &t.stackAlpha : nullptr}) {
+                if (!out) continue;
+                *out += path;
+                *out += '=';
+                *out += text;
+                *out += ';';
+            }
         }
 
         void asset(Texts& t, HashScope scope, const std::string& path, const Json& ref) {
@@ -122,7 +125,7 @@ namespace {
                     case ValueType::Id:
                         break;
                     default:
-                        append(t, scope, at, writeTitleArtJson(value));
+                        append(t, scope, at, writeTitleArtJson(value), m->type == ValueType::Color);
                         break;
                 }
             }
@@ -166,6 +169,7 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
         h.mask = hashCombine(h.geometry, hashText(t.at(HashScope::Mask)));
         h.field = hashCombine(h.mask, hashText(t.at(HashScope::Field)));
         h.stack = hashCombine(h.field, hashText("light=" + light + ";" + t.at(HashScope::Stack)));
+        h.alpha = hashCombine(h.field, hashText("light=" + light + ";" + t.stackAlpha));
         h.effects = hashText(t.at(HashScope::Effects));
         h.masks = hashText(t.at(HashScope::Masks));
         h.placement = hashText(t.at(HashScope::Placement));

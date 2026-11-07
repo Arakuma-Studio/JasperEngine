@@ -28,6 +28,8 @@ namespace jasperengine::titleart::fx {
     public:
         Scratch() = default;
         Scratch(TitlePassRunner& runner, TargetRef* target) : owner(&runner), ref(target) {}
+        // a result the runner keeps (TitlePassRunner::recall): read only, never released here
+        static Scratch kept(const TargetRef* target);
         Scratch(Scratch&& other) noexcept;
         Scratch& operator=(Scratch&& other) noexcept;
         Scratch(const Scratch&) = delete;
@@ -35,6 +37,8 @@ namespace jasperengine::titleart::fx {
         ~Scratch();
 
         TargetRef* get() const { return ref; }
+        // lets go of the target without returning it (the runner took it over)
+        void forget() { owner = nullptr; ref = nullptr; }
         TargetRef& operator*() const { return *ref; }
         explicit operator bool() const { return ref && *ref; }
 
@@ -70,6 +74,9 @@ namespace jasperengine::titleart::fx {
     // Gaussian blur of radius ~3 sigma = radiusPx (lib.ts blur): sigma above 6 runs on a
     // downsampled copy (at most 5 halvings); the result has the context's size, edges clamped
     JASPERENGINE_API Scratch blur(EffectContext& ctx, const TargetRef& src, float radiusPx);
+    // blur() for a caller that reads only the result's alpha: of the context's keyed input
+    // (EffectContext::inputAlphaKey) it is kept across renders, so a colour change reuses it
+    JASPERENGINE_API Scratch blurAlpha(EffectContext& ctx, const TargetRef& src, float radiusPx);
     // Gaussian of standard deviations sigmaX, sigmaY (blur.ts gauss): each axis halved until its
     // sigma is at most 6 level px, written to `output` (the context's size). Without
     // repeatEdges taps outside the whole render read transparent (they fade at the frame edge)
@@ -80,9 +87,11 @@ namespace jasperengine::titleart::fx {
     // <= 0) floods from the target's larger side
     JASPERENGINE_API int floodPasses(float reachPx, int width, int height);
     // the signed distance (+ outside) to src's alpha edge at `threshold`, exact out to reachPx
-    // (beyond it "at least reachPx"), in the Distance buffer (R16F or RGBA8 fixed point)
+    // (beyond it "at least reachPx"), in the Distance buffer (R16F or RGBA8 fixed point). It reads
+    // alpha only: of the keyed input it is kept across renders like blurAlpha()
     JASPERENGINE_API Scratch distanceField(EffectContext& ctx, const TargetRef& src, float threshold, float reachPx);
-    // the box of src's pixels with alpha > 0.004, a 2 x 1 target fx_layerBox reads
+    // the box of src's pixels with alpha > 0.004, a 2 x 1 target fx_layerBox reads (kept like
+    // distanceField())
     JASPERENGINE_API Scratch layerBounds(EffectContext& ctx, const TargetRef& src);
 
     // the Material pattern kinds (patterns.glsl): ids of the stored names, 0 for none

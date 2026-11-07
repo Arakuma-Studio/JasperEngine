@@ -12,8 +12,10 @@
 
 #include "titleart/geometry/TitleGeometry.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <vector>
 
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
@@ -134,6 +136,121 @@ TEST(MaskRasterTest, RimsStrokeTwiceTheirGrowWithTheirJoin) {
     // the mitre of a 19 deg tip is 1 / sin(9.5 deg) = 6 times the half width: beyond 4, bevelled
     EXPECT_LT(right - 80, 15 + 3 * 4);
     EXPECT_GE(right - 80, 14);
+}
+
+// Canvas2D's stroke (the HTML canvas "trace a path" rules Pachislop's rims are drawn with): every
+// edge's rectangle of half width `grow`, and at every vertex of a closed contour the triangle
+// joining the two rectangle corners on the outside of the turn, plus the mitre's triangle up to
+// its tip while the mitre length / line width stays within the limit (beyond it: that bevel).
+// The outside of a turn at a concave glyph vertex lies inside the glyph, so a mitre there can
+// pass through a stroke thinner than it and come out on the far side: Canvas2D draws that.
+namespace {
+
+    struct Vec { double x, y; };
+
+    bool inTriangle(Vec p, Vec a, Vec b, Vec c) {
+        const auto side = [](Vec p0, Vec p1, Vec q) { return (p1.x - p0.x) * (q.y - p0.y) - (p1.y - p0.y) * (q.x - p0.x); };
+        const double d1 = side(a, b, p), d2 = side(b, c, p), d3 = side(c, a, p);
+        return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+    }
+
+    bool insideNonZero(const std::vector<Vec>& poly, Vec p) {
+        int winding = 0;
+        for (size_t i = 0; i < poly.size(); i++) {
+            const Vec a = poly[i], b = poly[(i + 1) % poly.size()];
+            const double cross = (b.x - a.x) * (p.y - a.y) - (p.x - a.x) * (b.y - a.y);
+            if (a.y <= p.y && b.y > p.y && cross > 0) winding++;
+            if (a.y > p.y && b.y <= p.y && cross < 0) winding--;
+        }
+        return winding != 0;
+    }
+
+    // a closed polygon filled and stroked with width 2 x grow, mitre joins, limit `limit`
+    bool canvasRim(const std::vector<Vec>& poly, double grow, double limit, Vec p) {
+        if (insideNonZero(poly, p)) return true;
+        const size_t n = poly.size();
+        for (size_t i = 0; i < n; i++) {
+            const Vec a = poly[i], b = poly[(i + 1) % n];
+            const double dx = b.x - a.x, dy = b.y - a.y, len = std::hypot(dx, dy);
+            const double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len);
+            const double across = ((p.y - a.y) * dx - (p.x - a.x) * dy) / len;
+            if (t >= 0 && t <= 1 && std::fabs(across) <= grow) return true;
+        }
+        for (size_t i = 0; i < n; i++) {
+            const Vec prev = poly[(i + n - 1) % n], v = poly[i], next = poly[(i + 1) % n];
+            const double l1 = std::hypot(v.x - prev.x, v.y - prev.y), l2 = std::hypot(next.x - v.x, next.y - v.y);
+            const Vec d1{(v.x - prev.x) / l1, (v.y - prev.y) / l1}, d2{(next.x - v.x) / l2, (next.y - v.y) / l2};
+            const double turn = d1.x * d2.y - d1.y * d2.x;
+            if (turn == 0) continue;
+            // the corners on the outside of the turn: right of a left turn, left of a right one
+            const double s = turn > 0 ? -1.0 : 1.0;
+            const Vec c1{v.x + s * -d1.y * grow, v.y + s * d1.x * grow}, c2{v.x + s * -d2.y * grow, v.y + s * d2.x * grow};
+            if (inTriangle(p, v, c1, c2)) return true;
+            const double cosHalf = std::sqrt(std::max(0.0, (1 + d1.x * d2.x + d1.y * d2.y) / 2));
+            if (cosHalf <= 0 || 1 / cosHalf > limit) continue;
+            const double bx = c1.x + c2.x - 2 * v.x, by = c1.y + c2.y - 2 * v.y, bl = std::hypot(bx, by);
+            const Vec tip{v.x + bx / bl * grow / cosHalf, v.y + by / bl * grow / cosHalf};
+            if (inTriangle(p, c1, tip, c2)) return true;
+        }
+        return false;
+    }
+
+    // Roboto Regular's N and V (the engine's built-in font, engine/core/util/DefaultFont.h), font units
+    const std::vector<Vec> ROBOTO_N = {{1289, 1456}, {1289, 0}, {1095, 0}, {362, 1123}, {362, 0},
+                                       {169, 0},     {169, 1456}, {362, 1456}, {1098, 330}, {1098, 1456}};
+    const std::vector<Vec> ROBOTO_V = {{238, 1456}, {651, 256}, {1068, 1456}, {1277, 1456}, {738, 0}, {567, 0}, {29, 1456}};
+
+}
+
+TEST(MaskRasterTest, MitresFollowCanvas2DAtConcaveVertices) {
+    // the classic look's outermost rim on the built-in font at 286 px (grow 21.5 px): the
+    // notches of N (33 deg) and V (38 deg) mitre at 3.5 and 3.1 x the half width, within the
+    // limit 4, so Canvas2D draws their tips through the thin strokes below and above them
+    const double scale = 0.14, grow = 215;
+    for (const auto* glyph : {&ROBOTO_N, &ROBOTO_V}) {
+        Path path;
+        for (size_t i = 0; i < glyph->size(); i++) {
+            if (i == 0) path.moveTo((*glyph)[i].x - 650, (*glyph)[i].y - 728);
+            else path.lineTo((*glyph)[i].x - 650, (*glyph)[i].y - 728);
+        }
+        path.close();
+        std::vector<Vec> poly;
+        for (const Vec& v : *glyph) poly.push_back({v.x - 650, v.y - 728});
+        const MaskFrame frame = frameOf(480, 480, scale);
+        const CoverageMask m = rasterizeElement(rimOf({path}, grow, StrokeJoin::Miter), frame);
+        int disagree = 0, covered = 0;
+        for (int y = 0; y < m.height; y++) {
+            for (int x = 0; x < m.width; x++) {
+                int hits = 0;
+                for (int sy = 0; sy < 4; sy++) {
+                    for (int sx = 0; sx < 4; sx++) {
+                        const Vec p{frame.origin.x + (x + (sx + 0.5) / 4) / scale, frame.origin.y - (y + (sy + 0.5) / 4) / scale};
+                        if (canvasRim(poly, grow, 4.0, p)) hits++;
+                    }
+                }
+                covered += hits > 8;
+                if (std::fabs(at(m, x, y) / 255.0 - hits / 16.0) > 0.5) disagree++;
+            }
+        }
+        // antialiased edges aside, the mask is Canvas2D's shape
+        EXPECT_GT(covered, 20000);
+        EXPECT_LE(disagree, covered / 500) << disagree << " of " << covered << " pixels differ from Canvas2D's stroke";
+    }
+    // the V's notch mitre comes out 25 px below the rim's bottom edge, as in Canvas2D
+    std::vector<Vec> v;
+    Path path;
+    for (const Vec& p : ROBOTO_V) v.push_back({p.x - 650, p.y - 728});
+    path.moveTo(v[0].x, v[0].y);
+    for (size_t i = 1; i < v.size(); i++) path.lineTo(v[i].x, v[i].y);
+    path.close();
+    const MaskFrame frame = frameOf(480, 480, scale);
+    const CoverageMask m = rasterizeElement(rimOf({path}, grow, StrokeJoin::Miter), frame);
+    const Vec below{651 - 650, -728 - grow - 20 / scale};
+    const int px = (int)((below.x - frame.origin.x) * scale), py = (int)((frame.origin.y - below.y) * scale);
+    EXPECT_TRUE(canvasRim(v, grow, 4.0, below));
+    EXPECT_EQ(at(m, px, py), 255);
+    // a bevelled join there would leave that point empty
+    EXPECT_FALSE(canvasRim(v, grow, 3.0, below));
 }
 
 TEST(MaskRasterTest, FillCountersFloodsEnclosedPockets) {

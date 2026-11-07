@@ -40,6 +40,10 @@ namespace jasperengine::titleart {
         uint64_t mask = 0;          // geometry + rim widths, joins, plates, erode
         uint64_t field = 0;         // mask + bevel / inner glow / satin sizes and profiles
         uint64_t stack = 0;         // field + materials, rotation, flips, global light
+        // stack without its colours: what the stack's alpha depends on. Every Color member
+        // (#rrggbb) shades colour only (coverage x fill alpha x opacity is the alpha), so a pass
+        // that reads only a layer's alpha keeps its result across a colour change (R42)
+        uint64_t alpha = 0;
         uint64_t effects = 0;       // the layer's effect stacks (layer and part effects)
         uint64_t masks = 0;         // the layer's masks
         uint64_t placement = 0;     // position (and what only places the cached stack)

@@ -124,6 +124,16 @@ namespace {
         return false;
     }
 
+    // a part with effects of its own: the layer's content is then composed from their outputs
+    bool anyPartEffects(const Json& layer) {
+        auto pe = layer.find("part_effects");
+        if (pe == layer.end() || !pe->is_object()) return false;
+        for (auto it = pe->begin(); it != pe->end(); ++it) {
+            if (it->is_array() && anyEnabled(*it)) return true;
+        }
+        return false;
+    }
+
     ParamValues paramsOf(const EffectDef& def, const Json& effect, const TitleArtDoc& doc) {
         static const Json empty = Json::object();
         const Json& light = doc.root.value("global_light", Json::object());
@@ -706,21 +716,32 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     const int ax = (int)std::floor(anchor.x), ay = (int)std::floor(anchor.y);
     const bool leaf2D = node.kind == DrawNodeKind::Leaf && layerTypeHasStyle(node.type);
     uint64_t key = 0;
+    // what the content's alpha is a function of: a leaf title's stack without its colours, placed
+    // the same way (its effects keep what they compute from that alpha alone, R42)
+    uint64_t contentAlpha = 0;
     const bool cacheable = !wantInk && !contentInk && !req.glyphCell;
     if (cacheable) {
         key = hashCombine(fnv1a64("node"), layerHash(node.layerId, &LayerHashes::content));
+        if (leaf2D && !clip && !anyPartEffects(layer)) contentAlpha = hashCombine(fnv1a64("content alpha"), layerHash(node.layerId, &LayerHashes::alpha));
+        auto both = [&](uint64_t v) {
+            key = hashCombine(key, v);
+            if (contentAlpha) contentAlpha = hashCombine(contentAlpha, v);
+        };
         const double s = scale;
-        key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
-        key = hashCombine(key, fnv1a64(svc.caps.pathName()));
-        key = hashCombine(key, inkOnly ? 1 : 2);
+        both(fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
+        both(fnv1a64(svc.caps.pathName()));
+        both(inkOnly ? 1 : 2);
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};
-        key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(linear), sizeof(linear))));
+        both(fnv1a64(std::string_view(reinterpret_cast<const char*>(linear), sizeof(linear))));
         if (leaf2D && !clip) {
             // the part of the position inside a pixel shapes the pixels; whole pixels only move them
             const double phase[2] = {anchor.x - ax, anchor.y - ay};
-            key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(phase), sizeof(phase))));
+            both(fnv1a64(std::string_view(reinterpret_cast<const char*>(phase), sizeof(phase))));
+            // the part of the title the node's rect holds (a region's edge may cut it)
+            const int held[4] = {rect.x - ax, rect.y - ay, rect.width, rect.height};
+            if (contentAlpha) contentAlpha = hashCombine(contentAlpha, fnv1a64(std::string_view(reinterpret_cast<const char*>(held), sizeof(held))));
         } else {
             const double position[2] = {m.e, m.f};
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(position), sizeof(position))));
@@ -745,7 +766,7 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     Content content = unitContent(node, clip, contentInk);
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
-    Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer);
+    Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {
@@ -943,7 +964,7 @@ TitlePx TitlePlanner::adjustOnto(TitlePx acc, const DrawNode& node, const TitleP
 }
 
 TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput,
-                                                 TitlePx inputInk, bool wantInk, const Json* layer) {
+                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha) {
     struct Run {
         const EffectDef* def;
         Json params;
@@ -988,7 +1009,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     const uint32_t seed = (uint32_t)document->root.value("seed", (int64_t)1);
     const std::string layerId = layer ? layer->value("id", std::string()) : std::string();
     // run one definition on `src` into a new target, with the context's content and ink
-    auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id) {
+    auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id, uint64_t srcAlpha) {
         TitlePx out{newSlot(TitleBuffer::Accumulator, src.rect.width, src.rect.height), src.rect};
         uint32_t passes = 1;
         if (r.def->estimate) {
@@ -1028,6 +1049,8 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             ctx.inputInk = refOf(inputInkSlot >= 0 ? inputInkSlot : srcSlot);
             ctx.layerId = id;
             ctx.image = image;
+            ctx.inputAlphaKey = srcAlpha;
+            ctx.alphaKeyed = srcAlpha ? refOf(srcSlot) : nullptr;
             TitleJobState::Slot& outRef = state.slots[(size_t)outSlot];
             def->apply(ctx, *refOf(srcSlot), outRef.ref, paramsOf(*def, effect, *doc));
             if (reads && ctx.usesCanvasPosition) *reads = true;
@@ -1039,10 +1062,18 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
         });
         return out;
     };
+    // what `cur`'s alpha is a function of, while every effect so far keeps alpha a function of alpha
+    uint64_t curAlpha = inputAlpha;
     for (int i = 0; i < (int)run.size(); i++) {
         const Run& r = run[(size_t)i];
         const TitlePx inputInkPx = r.def->outline && ink.valid() ? ink : cur;
-        TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId);
+        TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId, curAlpha);
+        if (curAlpha && r.def->alphaFromAlpha) {
+            // its params (the global light resolves its angles) decide how alpha becomes alpha
+            curAlpha = hashCombine(hashCombine(curAlpha, fnv1a64(writeTitleArtJson(r.effect))), fnv1a64(writeTitleArtJson(light)));
+        } else {
+            curAlpha = 0;
+        }
         if (i < inkUntil) {
             if (effectAddsLight(*r.def, ParamValues(r.params))) {
                 // the light stays out of the ink: the stack before it is the ink from here on
@@ -1050,7 +1081,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             } else if (ink.valid()) {
                 // the same effect on the ink alone (its own id: what effects keep per layer stays apart)
                 TitlePx contentInk = inputInk.valid() ? inputInk : input;
-                TitlePx inkOut = apply(r, ink, contentInk, contentInk, ink, stackId + "~ink");
+                TitlePx inkOut = apply(r, ink, contentInk, contentInk, ink, stackId + "~ink", 0);
                 TitlePx prev = ink;
                 ink = inkOut;
                 drop(prev);

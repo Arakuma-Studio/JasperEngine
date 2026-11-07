@@ -92,6 +92,11 @@ namespace jasperengine::titleart {
         std::function<const TextureRender*(const TitleAssetRef& ref, int& width, int& height)> image;
         // set by apply: what it drew depends on the layer's place on the canvas (above)
         bool usesCanvasPosition = false;
+        // what the alpha of the input `alphaKeyed` is a function of (0: not known): results of
+        // that alpha alone (fx::blurAlpha, distanceField, layerBounds) are kept across renders
+        // under it, so a colour change does not run them again (R42)
+        uint64_t inputAlphaKey = 0;
+        const TargetRef* alphaKeyed = nullptr;
 
         EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };
