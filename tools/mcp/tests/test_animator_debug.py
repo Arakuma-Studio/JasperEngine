@@ -98,11 +98,17 @@ async def test_live_fields_equal_the_inspector(ed: Editor):
                  "##rm_yaw": "Yaw " + fmt("yaw_deg_s", rm["yaw_deg_s"]),
                  "##rm_foot_speed": "Foot Speed " + fmt("foot_speed_mps", rm["foot_speed_mps"]),
                  "##rm_slide": "Slide " + fmt("slide_mm_s", rm["slide_mm_s"])}
+        await ed.screenshot("editor", path=str(evidence(ed) / "ac17-inspector-selected.png"))
+        # a ## id is found only while in view; out of view, its whole label (the tool's value) scrolls it there
+        cells["##ik_state_0"] = "Out of Reach"
         for label, expected in cells.items():
-            drawn = text_of(await ui.reveal(label, "Inspector"))
-            ed.check_eq(drawn, expected, f"the Inspector's {label} is the tool's value")
-        state_cell = text_of(await ui.reveal("##ik_state_0", "Inspector"))
-        ed.check_eq(state_cell, "Out of Reach", "the arm's State")
+            items = (await ed.call("find_ui_item", label=label, window="Inspector")).get("items", [])
+            if not items or not items[0].get("visible"):
+                # below the fold: its whole label, the tool's value, scrolls it into view (or is not drawn)
+                await ui.reveal(expected + label, "Inspector")
+                items = (await ed.call("find_ui_item", label=label, window="Inspector")).get("items", [])
+            ed.check(items, f"{label} is drawn in the Inspector")
+            ed.check_eq(text_of(items[0]), expected, f"the Inspector's {label} is the tool's value")
         await ed.call("wait", frames=4)
         await ed.screenshot("editor", path=str(evidence(ed) / "ac17-inspector-live.png"))
 

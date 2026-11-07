@@ -393,7 +393,8 @@ Step 5 debug (stream `debug`):
   {animationEntities: auto}`) and drawn on a new **Animation** page. It decides when a model is first placed
   in a scene (`ModelLoadCmd`, from the file's clip count): the scene stores `animationEntities: false`, so
   Play, players and exports read the scene as before and nothing at runtime reads the setting. A reload keeps
-  the model's value.
+  the model's value. A new project is one File > New Project makes or a Project Hub template makes: the
+  template's copy is set when it opens, as its Git LFS is, so the committed templates need no regeneration.
 - **R37, contact on a clip.** A foot is on the ground while it is within 2 cm of the lowest it gets in the clip;
   its slide is how far it gets from where it touched down, within one contact. The feet are `feet`, else the
   humanoid map's two feet (`ClipRig::footGoals`, the clip's foot goals); feet found by name (R23's) never count.
