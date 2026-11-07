@@ -753,11 +753,19 @@ void VoxelSystem::update(double dt){
     frameCounter++;
     syncVolumes();
     pumpJobs();
-    for (auto& item : states){
-        VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(item.first);
-        if (component) updateVolume(*item.second, *component, dt);
+    // ensureLoaded may replace a state, so the loop is over a copy of the owners
+    for (Entity owner : stateOwners()){
+        VolumeState* state = stateOf(owner);
+        VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
+        if (state && component) updateVolume(*state, *component, dt);
     }
-    // ensureLoaded may have replaced a state; a removed one simply has no work left
+}
+
+std::vector<Entity> VoxelSystem::stateOwners() const{
+    std::vector<Entity> owners;
+    owners.reserve(states.size());
+    for (const auto& item : states) owners.push_back(item.first);
+    return owners;
 }
 
 void VoxelSystem::fireEvents(VolumeState& state, VoxelVolumeComponent& component){
@@ -1073,10 +1081,10 @@ void VoxelSystem::finishPendingWork(){
         if (queue) queue->finishAll();
         pumpJobs();
         bool idle = !queue || (queue->queued() == 0 && queue->inFlight() == 0);
-        for (auto& item : states){
-            VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(item.first);
-            if (component) updateVolume(*item.second, *component, 0.0);
-            idle = idle && item.second->scheduler.idle() && item.second->uploadQueue.empty();
+        for (Entity owner : stateOwners()){
+            VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
+            if (VolumeState* state = stateOf(owner); state && component) updateVolume(*state, *component, 0.0);
+            if (const VolumeState* state = stateOf(owner)) idle = idle && state->scheduler.idle() && state->uploadQueue.empty();
         }
         if (idle && (!queue || (queue->queued() == 0 && queue->inFlight() == 0))) return;
     }

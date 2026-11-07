@@ -622,17 +622,18 @@ void VoxelSystem::fixedUpdate(double dt){
     auto physics = scene->findSystem<PhysicsSystem>();
     if (!physics) return;
     if (states.empty()) syncVolumes();
-    for (auto& item : states){
-        VolumeState& state = *item.second;
-        VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(item.first);
-        if (!component) continue;
-        if (!state.store && !ensureLoaded(item.first, *component, state)) continue;
+    for (Entity owner : stateOwners()){
+        VolumeState* found = stateOf(owner);
+        VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
+        if (!found || !component) continue;
+        VolumeState& state = *found;
+        if (!state.store && !ensureLoaded(owner, *component, state)) continue;
         if (!component->collision){
             if (!state.collision.empty()) destroyCollision(state);
             continue;
         }
         if (state.model == Matrix4()){
-            if (const Transform* transform = scene->findComponent<Transform>(item.first)){
+            if (const Transform* transform = scene->findComponent<Transform>(owner)){
                 state.model = transform->modelMatrix;
                 state.inverseModel = state.model.inverse();
                 state.worldPosition = transform->worldPosition;

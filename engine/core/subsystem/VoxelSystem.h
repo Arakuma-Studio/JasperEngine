@@ -192,6 +192,8 @@ namespace jasperengine{
         friend struct VolumeState;
 
         VolumeState* stateOf(Entity owner);
+        // The owners with a state, for a loop whose work may remove or replace one (ensureLoaded)
+        std::vector<Entity> stateOwners() const;
         const VolumeState* stateOf(Entity owner) const;
         void syncVolumes();
         bool ensureLoaded(Entity owner, VoxelVolumeComponent& component, VolumeState& state);

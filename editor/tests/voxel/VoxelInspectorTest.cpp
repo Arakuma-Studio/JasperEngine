@@ -138,7 +138,9 @@ TEST_F(InspectorVoxels, MakeUnique) {
     // what Duplicate leaves: two GameObjects on one file
     const Entity twin = scene->createEntity();
     scene->addComponent<Transform>(twin, {});
-    scene->addComponent<VoxelVolumeComponent>(twin, scene->getComponent<VoxelVolumeComponent>(owner));
+    // (a copy first: adding to the array can move the component it would be copied from)
+    const VoxelVolumeComponent same = scene->getComponent<VoxelVolumeComponent>(owner);
+    scene->addComponent<VoxelVolumeComponent>(twin, same);
     sceneProject->entities.push_back(twin);
     system->update(0.0);
     ASSERT_EQ(system->getAsset(twin), asset);
