@@ -9,6 +9,7 @@
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "object/Camera.h"
+#include "object/Light.h"
 #include "object/Terrain.h"
 #include "object/TerrainEdit.h"
 #include "pool/TexturePool.h"
@@ -78,6 +79,9 @@ namespace {
     struct EditGpuStage {
         Scene scene;
         Camera camera{&scene};
+        // a low sun: a raised patch shades unlike the flat ground (seen from above, its outline
+        // alone would not change the image)
+        Light sun{&scene};
         std::shared_ptr<Terrain> terrain;
 
         EditGpuStage(TempDir& dir, const std::string& id, const std::vector<uint16_t>& heights){
@@ -86,6 +90,8 @@ namespace {
             camera.setPosition(0.0f, 5.0f, 4.0f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
             camera.activate();
+            sun.setType(LightType::DIRECTIONAL);
+            sun.setDirection(-1.0f, -0.4f, -0.2f);
             Engine::setScene(&scene);
             terrain = std::make_shared<Terrain>(&scene);
             terrain->setSize(8.0f);
