@@ -225,8 +225,8 @@ CASES = [
         "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
                          "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
                          "which shares the key.",
-        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
-                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "text_at_issue": "Generated AGENTS.md, its list: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in the editor's source.'; list_shortcuts context: 'curve', 'color_picker'",
         "source": "docs/specs/S61-window-commands.md R5",
         "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
         "mocks": [
