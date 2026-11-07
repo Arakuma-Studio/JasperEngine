@@ -121,7 +121,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
 | T1 implementation | in progress | `.worktrees/s41`. Every brush, bake and generator writes through the engine |
 | T2 implementation | in progress | `.worktrees/t2`. Core: 67 filtered tests pass at `c7ded25f3`. Editor half uncommitted, its tests not yet run |
-| T3 implementation | in progress | `.worktrees/t3`. Holes committed at `a88e00f3d`, 41 filtered core tests pass; collider tests and Vulkan not run. Tiers and materials next |
+| T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
 | T4 implementation | not started | After T1 and T3 |
 | T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
 | T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
