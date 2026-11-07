@@ -42,6 +42,7 @@
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/Widgets.h"
 #include "util/FileUtils.h"
 
@@ -1233,6 +1234,8 @@ TerrainStrokeBrush editor::TerrainEditWindow::makeStrokeBrush(TerrainBrushMode m
     if (paintUseMask){
         brush.slope = terrain::FilterRange{paintMinSlope, paintMaxSlope};
         brush.height = terrain::FilterRange{paintMinHeight * terrain.maxHeight, paintMaxHeight * terrain.maxHeight};
+        brush.filterAllMaps = filterAllTools;
+        brush.invertFilter = filterInvert;
     }
     brush.accumulateRamp = scripted;
     return brush;
@@ -2265,6 +2268,11 @@ void editor::TerrainEditWindow::show(){
         brushActive = false;
         endStroke();
         ImGui::TextWrapped("%s", project->isAnyScenePlaying() ? "Stop the scene to edit terrain." : "Select a Terrain in the Hierarchy to sculpt, paint, or place details and trees.");
+        // T1 R58: the empty state makes one
+        SceneProject* selected = project->getSelectedScene();
+        if (!project->isAnyScenePlaying() && selected && selected->sceneType == SceneType::SCENE_3D && ImGui::Button(ICON_FA_MOUNTAIN " Create Terrain...")){
+            CreateTerrainDialog::instance().open(project, selected->id, NULL_ENTITY);
+        }
         ImGui::End();
         if (!windowOpen){
             setOpen(false);
@@ -2274,6 +2282,8 @@ void editor::TerrainEditWindow::show(){
 
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(selectedEntity);
     ImGui::TextWrapped(ICON_FA_MOUNTAIN "  %s", sceneProject->scene->getEntityName(selectedEntity).c_str());
+    // T1 R72: what is wrong, with its fix, before anything else
+    drawIssuesBanner(sceneProject, terrain);
     ImGui::Spacing();
     const int layerCount = static_cast<int>(terrain.foliageLayers.size());
     selectedFoliageLayer = std::clamp(selectedFoliageLayer, 0, std::max(0, layerCount - 1));
@@ -2307,6 +2317,8 @@ void editor::TerrainEditWindow::show(){
          "Paint grass and other detail meshes by density. Ctrl erases."},
         {TerrainToolCategory::Trees, ICON_FA_TREE, "Paint Trees",
          "Place trees, rocks and other models or Prefabs along the drag. Ctrl erases."},
+        {TerrainToolCategory::Settings, ICON_FA_GEAR, "Terrain Settings",
+         "Size and height, maps, Import Raw and Export Raw, collision, runtime edits."},
     };
     if (brushActive && toolCategoryFor(brushMode) != toolCategory){
         // A brush chosen elsewhere (shortcut or AI) brings its tool's settings up
@@ -2396,6 +2408,7 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndDisabled();
         ImGui::EndDisabled();
         ImGui::EndTable();
+        drawPaintByRules(sceneProject, terrain);
     }
 
     if (toolCategory == TerrainToolCategory::Details && beginTerrainProperties("foliage_properties")){
@@ -2565,7 +2578,9 @@ void editor::TerrainEditWindow::show(){
         brushActive = false;
         endStroke();
     }
-    if (Theme::foldoutHeader("Brushes", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("brush_properties")){
+    if (toolCategory == TerrainToolCategory::Settings){
+        drawSettingsTool(sceneProject, terrain);
+    }else if (Theme::foldoutHeader("Brushes", ImGuiTreeNodeFlags_DefaultOpen) && beginTerrainProperties("brush_properties")){
         ImGui::BeginDisabled(!brushTargetAvailable);
         terrainPropertyRow("Shape");
         if (iconButton(ICON_FA_CIRCLE, "shape_circle", "Circle brush", brushShape == TerrainBrushShape::Circle, commandSize)){
@@ -2586,8 +2601,13 @@ void editor::TerrainEditWindow::show(){
             "How far placements scatter from the cursor, in world units. Adjust with [ and ] while painting." :
             "Brush size in world units. Adjust with [ and ] while painting.";
         terrainPropertyRow("Size", sizeTooltip);
-        brushSize = std::clamp(brushSize, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
-        UIUtils::sliderFloatInput("##brush_size", &brushSize, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, "%.2f");
+        // R60: the slider ends at max(50, size / 4); a typed value reaches the whole terrain
+        float minSize = MIN_BRUSH_SIZE, maxSize = MAX_BRUSH_SIZE;
+        brushSizeLimits(terrain, minSize, maxSize);
+        brushSize = std::clamp(brushSize, minSize, maxSize);
+        UIUtils::sliderFloatInput("##brush_size", &brushSize, minSize, std::min(maxSize, std::max(50.0f, terrain.terrainSize * 0.25f)), "%.2f",
+                                  ImGuiSliderFlags_Logarithmic);
+        brushSize = std::clamp(brushSize, minSize, maxSize);
         ImGui::BeginDisabled(placementBrush);
         terrainPropertyRow("Strength", "Brush flow while held. Adjust with Shift+[ and Shift+] while painting.");
         float strength = std::clamp(brushStrength, MIN_BRUSH_STRENGTH, MAX_BRUSH_STRENGTH) * 100.0f;
@@ -2595,10 +2615,15 @@ void editor::TerrainEditWindow::show(){
             brushStrength = strength / 100.0f;
         }
         ImGui::EndDisabled();
-        if (isBlendBrush()){
-            terrainPropertyRow("Mask", "Restrict painting to a range of slope and height.");
+        // T1 R66: the Slope Filter, Paint Texture's unless All Tools
+        if (isBlendBrush() || (!placementBrush && filterAllTools)){
+            terrainPropertyRow("Slope Filter", "Paint only where the slope and height are in range.");
             ImGui::Checkbox("##paint_mask", &paintUseMask);
             ImGui::BeginDisabled(!paintUseMask);
+            terrainPropertyRow("Invert", "Paint where the slope or height is out of range instead.");
+            ImGui::Checkbox("##filter_invert", &filterInvert);
+            terrainPropertyRow("All Tools", "The filter also limits sculpting and details.");
+            ImGui::Checkbox("##filter_all_tools", &filterAllTools);
             terrainPropertyRow("Slope range", "Allowed ground slope in degrees, from flat (0) to vertical (90).");
             ImGui::DragFloatRange2("##paint_slope", &paintMinSlope, &paintMaxSlope, 0.5f, 0.0f, 90.0f, "%.0f deg", "%.0f deg", ImGuiSliderFlags_AlwaysClamp);
             terrainPropertyRow("Height range", "Allowed ground height, from the terrain base (0) to its max height (1).");
@@ -2623,7 +2648,11 @@ void editor::TerrainEditWindow::show(){
         if (brushMode == TerrainBrushMode::Flatten){
             terrainPropertyRow("Sample height", "Pick the flatten height from the terrain at the start of each stroke.");
             ImGui::Checkbox("##flatten_pick", &flattenPickOnStroke);
-            terrainPropertyRow("Flatten height", "Normalized terrain height.");
+            terrainPropertyRow("Flatten height", "Normalized terrain height. The eyedropper takes it from the next click on the terrain.");
+            if (iconButton(ICON_FA_EYE_DROPPER, "pick_height", "Pick from Terrain", pickHeightArmed, commandSize)){
+                pickHeightArmed = !pickHeightArmed;
+            }
+            ImGui::SameLine();
             ImGui::BeginDisabled(flattenPickOnStroke);
             UIUtils::sliderFloatInput("##flatten_height", &flattenHeight, 0.0f, 1.0f, "%.3f");
             ImGui::EndDisabled();
@@ -2631,6 +2660,8 @@ void editor::TerrainEditWindow::show(){
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
+    // R62: what the pointer is over
+    drawInfoPanel(sceneProject, terrain);
     ImGui::End();
 
     TerrainEditorSettings& ts = project->getTerrainEditorSettings();
@@ -2651,6 +2682,8 @@ void editor::TerrainEditWindow::show(){
     ts.heightMapStartAtMiddle = heightMapStartAtMiddle;
     ts.flattenPickOnStroke = flattenPickOnStroke;
     ts.paintUseMask = paintUseMask;
+    ts.filterAllTools = filterAllTools;
+    ts.slopeFilterInvert = filterInvert;
     ts.paintMinSlope = paintMinSlope;
     ts.paintMaxSlope = paintMaxSlope;
     ts.paintMinHeight = paintMinHeight;
@@ -2715,6 +2748,8 @@ void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
     heightMapStartAtMiddle = ts.heightMapStartAtMiddle;
     flattenPickOnStroke = ts.flattenPickOnStroke;
     paintUseMask = ts.paintUseMask;
+    filterAllTools = ts.filterAllTools;
+    filterInvert = ts.slopeFilterInvert;
     paintMinSlope = std::clamp(ts.paintMinSlope, 0.0f, 90.0f);
     paintMaxSlope = std::clamp(ts.paintMaxSlope, paintMinSlope, 90.0f);
     paintMinHeight = std::clamp(ts.paintMinHeight, 0.0f, 1.0f);
@@ -2774,6 +2809,17 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 
     const ImGuiIO& io = ImGui::GetIO();
 
+    // T1 R63: an armed eyedropper takes the height under the click and edits nothing
+    if (pickHeightArmed){
+        const TerrainComponent& picked = scene->getComponent<TerrainComponent>(entity);
+        if (std::abs(picked.maxHeight) > std::numeric_limits<float>::epsilon()){
+            flattenHeight = std::clamp(localHeight / picked.maxHeight, 0.0f, 1.0f);
+            flattenPickOnStroke = false;
+        }
+        pickHeightArmed = false;
+        return false;
+    }
+
     if (isPlacementBrush()){
         clearStroke();
         stroke.active = true;
@@ -2815,22 +2861,8 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
     stroke.ref = ref;
     openStrokeEdit(sceneProject);
 
-    // Modifiers picked up at stroke start and held for the whole stroke:
-    // Shift turns any sculpt brush into Smooth, Ctrl inverts Raise/Lower and paint/erase.
-    stroke.effectiveMode = brushMode;
-    if (isHeightBrush()){
-        if (io.KeyShift){
-            stroke.effectiveMode = TerrainBrushMode::Smooth;
-        }else if (io.KeyCtrl){
-            if (brushMode == TerrainBrushMode::Raise){
-                stroke.effectiveMode = TerrainBrushMode::Lower;
-            }else if (brushMode == TerrainBrushMode::Lower){
-                stroke.effectiveMode = TerrainBrushMode::Raise;
-            }
-        }
-    }else if (isDensityBrush() && io.KeyCtrl){
-        stroke.effectiveMode = brushMode == TerrainBrushMode::PaintDensity ? TerrainBrushMode::EraseDensity : TerrainBrushMode::PaintDensity;
-    }
+    // Modifiers picked up at stroke start and held for the whole stroke
+    stroke.effectiveMode = effectiveModeFor(io.KeyCtrl, io.KeyShift);
 
     // Flatten levels toward the height under the first click (slider value is used instead when
     // picking is disabled), and a ramp runs from here to wherever the drag ends
@@ -2917,6 +2949,7 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     if (!isEditingScene(scene)){
         return false;
     }
+    infoValid = false;
 
     Entity entity = NULL_ENTITY;
     Vector3 localPoint;
@@ -2928,6 +2961,9 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
 
     Transform& transform = scene->getComponent<Transform>(entity);
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    infoValid = true;
+    infoEntity = entity;
+    infoLocal = localPoint;
 
     // Drape the cursor over the live heightmap so it follows the terrain's
     // topology (including edits still in progress).
@@ -2985,6 +3021,12 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     };
 
     cursor.visible = true;
+    // R55: the colour of what a click would do now, modifiers included; under one texel the warning
+    const ImGuiIO& io = ImGui::GetIO();
+    const TerrainBrushMode shown = stroke.active ? stroke.effectiveMode : effectiveModeFor(io.KeyCtrl, io.KeyShift);
+    const float texel = mapWidth > 1 ? terrainSize / static_cast<float>(mapWidth - 1) : 0.0f;
+    cursor.color = pickHeightArmed ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
+                                   : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f) : decalColor(shown));
     buildLoop(brushSize, 16, cursor.outerPoints);
     // Placement has no falloff — the ring is the area objects can scatter into.
     if (brushFalloff != TerrainBrushFalloff::Constant && !isPlacementBrush()){
@@ -2997,8 +3039,61 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     return true;
 }
 
+TerrainBrushMode editor::TerrainEditWindow::effectiveModeFor(bool ctrl, bool shift) const{
+    if (isHeightBrush()){
+        if (shift){
+            return TerrainBrushMode::Smooth;
+        }
+        if (ctrl && brushMode == TerrainBrushMode::Raise){
+            return TerrainBrushMode::Lower;
+        }
+        if (ctrl && brushMode == TerrainBrushMode::Lower){
+            return TerrainBrushMode::Raise;
+        }
+    }else if (isDensityBrush() && ctrl){
+        return brushMode == TerrainBrushMode::PaintDensity ? TerrainBrushMode::EraseDensity : TerrainBrushMode::PaintDensity;
+    }else if (isPlacementBrush() && ctrl){
+        return brushMode == TerrainBrushMode::PlaceObject ? TerrainBrushMode::EraseObject : TerrainBrushMode::PlaceObject;
+    }
+    return brushMode;
+}
+
+Vector4 editor::TerrainEditWindow::decalColor(TerrainBrushMode mode){
+    switch (mode){
+        case TerrainBrushMode::Raise: return Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        case TerrainBrushMode::Lower: return Vector4(0.2f, 0.2f, 0.2f, 1.0f);
+        case TerrainBrushMode::Smooth: return Vector4(0.5f, 0.0f, 0.2f, 1.0f);
+        case TerrainBrushMode::Sharpen: return Vector4(0.9f, 0.3f, 0.5f, 1.0f);
+        case TerrainBrushMode::Flatten: return Vector4(0.0f, 0.6f, 1.0f, 1.0f);
+        case TerrainBrushMode::Ramp: return Vector4(1.0f, 1.0f, 0.0f, 1.0f);
+        case TerrainBrushMode::Noise: return Vector4(0.6f, 0.4f, 1.0f, 1.0f);
+        case TerrainBrushMode::Terrace: return Vector4(0.0f, 0.7f, 0.6f, 1.0f);
+        case TerrainBrushMode::Stamp: return Vector4(0.6f, 1.0f, 0.2f, 1.0f);
+        case TerrainBrushMode::Erode: return Vector4(0.6f, 0.4f, 0.0f, 1.0f);
+        case TerrainBrushMode::PaintLayer: return Vector4(0.0f, 0.5f, 0.0f, 1.0f);
+        case TerrainBrushMode::PaintBase: return Vector4(0.4f, 0.8f, 0.4f, 1.0f);
+        case TerrainBrushMode::PaintDensity: return Vector4(0.5f, 0.8f, 0.3f, 1.0f);
+        case TerrainBrushMode::EraseDensity: return Vector4(0.5f, 0.2f, 0.5f, 1.0f);
+        case TerrainBrushMode::PlaceObject: return Vector4(0.86f, 0.08f, 0.24f, 1.0f);
+        case TerrainBrushMode::EraseObject: return Vector4(0.2f, 0.9f, 0.6f, 1.0f);
+    }
+    return Vector4(1.0f, 0.78f, 0.22f, 1.0f);
+}
+
+void editor::TerrainEditWindow::brushSizeLimits(const TerrainComponent& terrain, float& minSize, float& maxSize){
+    const int texels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getWidth() : 0;
+    const float texel = texels > 1 ? terrain.terrainSize / static_cast<float>(texels - 1) : 0.0f;
+    minSize = std::max(MIN_BRUSH_SIZE, texel * 0.5f);
+    maxSize = std::clamp(terrain.terrainSize, minSize, MAX_BRUSH_SIZE);
+}
+
 void editor::TerrainEditWindow::adjustBrushSize(float factor){
-    brushSize = std::clamp(brushSize * factor, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
+    float minSize = MIN_BRUSH_SIZE, maxSize = MAX_BRUSH_SIZE;
+    SceneProject* sceneProject = getTargetSceneProject();
+    if (hasValidTarget(sceneProject)){
+        brushSizeLimits(sceneProject->scene->getComponent<TerrainComponent>(selectedEntity), minSize, maxSize);
+    }
+    brushSize = std::clamp(brushSize * factor, minSize, maxSize);
 }
 
 void editor::TerrainEditWindow::adjustBrushStrength(float factor){
@@ -3085,7 +3180,9 @@ bool editor::TerrainEditWindow::scriptedStroke(uint32_t sceneId, Entity entity, 
     brushMode = brush.mode;
     brushShape = brush.shape;
     brushFalloff = brush.falloff;
-    brushSize = std::clamp(brush.size, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE);
+    float minSize = MIN_BRUSH_SIZE, maxSize = MAX_BRUSH_SIZE;
+    brushSizeLimits(scene->getComponent<TerrainComponent>(entity), minSize, maxSize);
+    brushSize = std::clamp(brush.size, minSize, maxSize);
     brushStrength = std::clamp(brush.strength, MIN_BRUSH_STRENGTH, MAX_BRUSH_STRENGTH);
     brushRotation = std::clamp(brush.rotation, 0.0f, 360.0f);
     flattenPickOnStroke = brush.flattenHeight < 0.0f;

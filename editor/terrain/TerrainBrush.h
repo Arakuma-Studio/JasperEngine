@@ -61,9 +61,12 @@ namespace jasperengine::editor{
         int maskWidth = 0;
         int maskHeight = 0;
 
-        // Paint Texture's mask: texels outside it keep what they had
+        // The Slope Filter (T1 R66): texels outside it keep what they had. Paint Texture's alone,
+        // unless allMaps (All Tools); invert keeps the outside instead
         std::optional<terrain::FilterRange> slope;      // degrees
         std::optional<terrain::FilterRange> height;     // terrain-local
+        bool filterAllMaps = false;
+        bool invertFilter = false;
 
         // T1 R36, R18: a person's ramp is a re-application from its start to where the pointer is now;
         // sculpt_terrain's accumulates a stamp at a time, as it always did

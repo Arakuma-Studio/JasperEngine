@@ -7,8 +7,10 @@
 #include "command/CommandHistory.h"
 #include "Project.h"
 #include "math/Ray.h"
+#include "math/Vector4.h"
 #include "terrain/EditorTerrainStore.h"
 #include "terrain/TerrainBrush.h"
+#include "terrain/TerrainRawIO.h"
 #include "terrain/TerrainStroke.h"
 #include "terrain/TerrainStrokeSession.h"
 #include "util/TerrainMapUtils.h"
@@ -35,7 +37,8 @@ namespace jasperengine::editor{
         Sculpt,
         Texture,
         Details,
-        Trees
+        Trees,
+        Settings    // T1 R59: Terrain Settings
     };
 
     struct TerrainBrushCursor{
@@ -44,6 +47,8 @@ namespace jasperengine::editor{
         // boundary and (when the falloff has a gradient) the half-strength contour.
         std::vector<Vector3> outerPoints;
         std::vector<Vector3> innerPoints;
+        // T1 R55: the effective operation's colour (Table 4), the texel-size warning colour under one texel
+        Vector4 color = Vector4(1.0f, 0.78f, 0.22f, 1.0f);
     };
 
     // A brush stroke run without the mouse (MCP tools): the settings the stroke uses. The
@@ -162,6 +167,10 @@ namespace jasperengine::editor{
         float placeAlignToNormal;
 
         bool paintUseMask;
+        bool filterAllTools = false;
+        bool filterInvert = false;
+        // T1 R63: the next click picks the Set Height value instead of painting
+        bool pickHeightArmed = false;
         float paintMinSlope;
         float paintMaxSlope;
         float paintMinHeight;
@@ -173,6 +182,47 @@ namespace jasperengine::editor{
         uint32_t placementSeed = 0;
 
         ActiveStroke stroke;
+
+        // T1 R61: Import Raw... and Export Raw...
+        struct ImportRawDialog{
+            bool open = false;
+            bool justOpened = false;
+            std::string path;
+            std::vector<uint8_t> bytes;
+            HeightImportOptions options;
+            HeightImport preview;
+            bool setHeightFromRange = false;
+            std::string message;
+        };
+        struct ExportRawDialog{
+            bool open = false;
+            bool justOpened = false;
+            HeightExportOptions options;
+            std::string message;
+        };
+        ImportRawDialog importRaw;
+        ExportRawDialog exportRaw;
+        // T1 R59: a new Terrain Height keeps the surface where it is
+        bool keepWorldHeights = true;
+        // T1 R62: the point under the pointer, from the last cursor update
+        mutable bool infoValid = false;
+        mutable Entity infoEntity = NULL_ENTITY;
+        mutable Vector3 infoLocal;
+
+        void drawIssuesBanner(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawSettingsTool(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawImportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawExportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawInfoPanel(SceneProject* sceneProject, TerrainComponent& terrain);
+        // T1 R67: Paint by Rules under Paint Texture; Apply is one undo step
+        void drawPaintByRules(SceneProject* sceneProject, TerrainComponent& terrain);
+        std::string paintRulesMessage;
+        void frameTerrain(SceneProject* sceneProject);
+        // An undoable property of the selected terrain
+        template<typename T> bool setTerrainProperty(const char* property, const T& value);
+        // Terrain Height, with the heights kept in place when keepWorldHeights (one undo step)
+        bool setTerrainHeight(SceneProject* sceneProject, float height, std::string& error);
+        bool importRawFile(SceneProject* sceneProject, std::string& error);
 
         void showTooltip(const char* text, ImGuiHoveredFlags flags = 0);
         bool iconButton(const char* icon, const char* id, const char* tooltip, bool selected, const ImVec2& size);
@@ -231,8 +281,9 @@ namespace jasperengine::editor{
     public:
         static constexpr const char* WINDOW_NAME = "Terrain";
 
-        static constexpr float MIN_BRUSH_SIZE = 0.1f;
-        static constexpr float MAX_BRUSH_SIZE = 50.0f;
+        // T1 R60: the size a brush may have anywhere; each terrain narrows it (brushSizeLimits)
+        static constexpr float MIN_BRUSH_SIZE = 0.01f;
+        static constexpr float MAX_BRUSH_SIZE = 100000.0f;
         static constexpr float MIN_BRUSH_STRENGTH = 0.01f;
         static constexpr float MAX_BRUSH_STRENGTH = 1.0f;
         static constexpr int MIN_TERRACE_STEPS = 2;
@@ -262,6 +313,14 @@ namespace jasperengine::editor{
         void endStroke();
         void updateFoliagePreview();
         bool updateCursor(Scene* scene, const Ray& ray, TerrainBrushCursor& cursor) const;
+
+        // T1 R60: half a heightmap texel up to the whole terrain
+        static void brushSizeLimits(const TerrainComponent& terrain, float& minSize, float& maxSize);
+
+        // The operation a stroke started now would run: Ctrl inverts, Shift smooths (T1 R56)
+        TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
+        // T1 R55, Table 4: the decal's colour of an operation
+        static Vector4 decalColor(TerrainBrushMode mode);
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);

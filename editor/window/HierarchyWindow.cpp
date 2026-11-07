@@ -62,6 +62,7 @@
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
 #include "util/PhysicsMaterialAssets.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "pose/PoseEditSession.h"
 
@@ -669,6 +670,11 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
             return;
         }
         RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
+    if (entry.type == EntityCreationType::TERRAIN) {
+        // T1 R58: sizes, a height map and a collider first, one undo step
+        CreateTerrainDialog::instance().open(project, sceneProject->id, entry.rootOnly ? NULL_ENTITY : parent);
         return;
     }
     if (entry.type == EntityCreationType::LATTICE) {

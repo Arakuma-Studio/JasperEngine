@@ -137,6 +137,51 @@ TEST(TerrainStrokeSession, AMouseRampDependsOnlyOnItsEnds) {
     EXPECT_NE(rampThrough({start, Vector2(0.0f, 15.0f), end}, true), rampThrough({start, end}, true));
 }
 
+// AC30 (R33): one drag sampled at 20 and at 240 events a second leaves the same bytes, and the
+// frame budget changes when stamps run, not what they write. Red with a stamp per mouse event.
+TEST(TerrainStrokeSession, TheMouseRateDoesNotChangeTheDrag) {
+    constexpr int N = 129;
+    auto drag = [&](int eventsPerSecond, double budget) {
+        auto store = std::make_unique<terrain::RawMapStore>(static_cast<float>(N), 10.0f);
+        addHeight(*store, N, 20000);
+        TerrainStrokeSession session(*store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(6.0f, 0.3f));
+        const int events = eventsPerSecond;   // one second from x = -40 to x = 40
+        for (int i = 0; i <= events; i++) {
+            const float t = static_cast<float>(i) / static_cast<float>(events);
+            session.addSample(t, -40.0f + 80.0f * t, 0.0f, 1.0f);
+            session.run(budget);
+        }
+        session.run(0.0);
+        EXPECT_FALSE(session.hasQueued());
+        session.flush();
+        return std::vector<uint8_t>(store->mapBytes(HEIGHT_MAP), store->mapBytes(HEIGHT_MAP) + store->mapByteCount(HEIGHT_MAP));
+    };
+    const std::vector<uint8_t> slow = drag(20, 0.0);
+    EXPECT_EQ(drag(240, 0.0), slow) << "the stamps sit at the brush's spacing, not at the events";
+    EXPECT_EQ(drag(240, 1e-9), slow) << "a tight frame budget only delays them";
+    terrain::RawMapStore flat(static_cast<float>(N), 10.0f);
+    addHeight(flat, N, 20000);
+    EXPECT_NE(slow, std::vector<uint8_t>(flat.mapBytes(HEIGHT_MAP), flat.mapBytes(HEIGHT_MAP) + flat.mapByteCount(HEIGHT_MAP))) << "the drag wrote";
+}
+
+// R34, R35: a pointer held still keeps stamping at 60 a second (one sample a frame), each a click's deposit
+TEST(TerrainStrokeSession, AHeldBrushStampsAtSixtyASecond) {
+    constexpr int N = 65;
+    auto store = std::make_unique<terrain::RawMapStore>(static_cast<float>(N), 10.0f);
+    addHeight(*store, N, 20000);
+    TerrainStrokeSession session(*store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(4.0f, 0.5f));
+    session.addSample(0.0f, 0.0f, 0.0f, 1.0f);
+    session.run(0.0);
+    session.flush();
+    const unsigned once = heightAt(*store, N, N / 2, N / 2) - 20000;
+    ASSERT_GT(once, 0u);
+    for (int frame = 1; frame <= 30; frame++) session.addSample(static_cast<float>(frame) / 60.0f, 0.0f, 0.0f, 1.0f);
+    session.run(0.0);
+    session.flush();
+    const unsigned held = heightAt(*store, N, N / 2, N / 2) - 20000;
+    EXPECT_NEAR(static_cast<double>(held) / static_cast<double>(once), 31.0, 1.5) << "half a second of frames is 30 more stamps";
+}
+
 // R27: Esc goes back through the before tiles
 TEST(TerrainStrokeSession, CancelRestoresEveryByte) {
     constexpr int N = 200;

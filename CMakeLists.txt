@@ -895,6 +895,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
@@ -969,6 +970,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
+    ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
@@ -1200,6 +1202,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainSettingsPanel.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp

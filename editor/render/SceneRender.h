@@ -12,6 +12,7 @@
 #include "RenderUtil.h"
 #include "SceneDrawModes.h"
 #include "navigation/NavigationOverlay.h"
+#include "terrain/TerrainOverlay.h"
 #include "command/Command.h"
 #include "command/CommandHistory.h"
 
@@ -239,6 +240,16 @@ namespace jasperengine::editor{
         // --- the AI Navigation overlay (S19, editor/navigation/NavigationOverlay.cpp) ---
         std::unique_ptr<NavigationOverlay> navigationOverlay;
         void updateNavigationOverlay(const std::vector<Entity>& selEntities);
+
+        // --- the terrain overlays (T1 R65, editor/terrain/TerrainOverlay.cpp) ---
+        std::unique_ptr<TerrainOverlay> terrainOverlay;
+        void updateTerrainOverlay();
+    public:
+        // the legend of the terrain overlay drawn now (empty: none)
+        std::vector<TerrainOverlayLegendStop> getTerrainOverlayLegend() const {
+            return terrainOverlay ? terrainOverlay->getLegend() : std::vector<TerrainOverlayLegendStop>();
+        }
+    private:
 
         // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
         struct LatticeCageLines{

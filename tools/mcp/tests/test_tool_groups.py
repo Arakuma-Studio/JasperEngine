@@ -205,7 +205,8 @@ SPEC_GROUPS = {
     "diagnostics": ["get_job_system_stats", "set_job_system_config", "get_memory_stats",   # S06
                     "get_log_config", "set_log_level", "wait_for_log", "list_timers"],     # S09
     "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
-    "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
+    "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain",                    # S31 (budget)
+                "edit_terrain", "export_terrain_heightmap", "visualize_terrain"],           # T1
     "editor_ux": ["get_undo_history", "get_play_changes", "apply_play_changes", "discard_play_changes",  # S24
                   "find_ui_item",                                                   # BF1 (UI tests)
                   "get_inspector_layout",                                           # S08

@@ -351,10 +351,10 @@ namespace {
     constexpr FieldDesc kTerrainFields[] = {
         JE_FIELD(TerrainComponent, enabled),
         JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage, .assetMoved = &terrainHeightMapMoved),
-        // cut and filled by operations, never picked by hand (S53 R12)
+        // cut and filled by operations, never picked by hand (T1 R12)
         JE_FIELD(TerrainComponent, holeMap, .flags = Hidden, .updateFlags = kTerrainTexture),
-        // the Inspector row and what it does at load land with the runtime edits (T1 R77)
-        JE_FIELD(TerrainComponent, allowRuntimeEdits, .flags = Hidden),
+        // T1 R77: a game may write the maps (Terrain:applyOps); the collider keeps room for every height
+        JE_FIELD(TerrainComponent, allowRuntimeEdits, .label = "Allow Runtime Edits"),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, offset),
         JE_FIELD(TerrainComponent, terrainSize, .updateFlags = kTerrain | kFoliage, .unit = Unit::Meters, .min = 0.0f),
