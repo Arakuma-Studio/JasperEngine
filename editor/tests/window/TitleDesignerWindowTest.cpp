@@ -357,8 +357,8 @@ TEST(TitleDesignerWindowDeathTest, LibraryPreviewEqualsApply) {
 }
 
 // R21, R43: the window's dialogs are EditorModals, so an agent sees and answers Expose as Parameter as a
-// person does (editor_status, respond_dialog). Red control: the raw BeginPopupModal it had is never
-// reported (topModal false).
+// person does (editor_status, respond_dialog). Red control: the raw BeginPopupModal it had is
+// reported without its question or its Name field, so an agent could not fill it in.
 TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
     IN_EDITOR("expose", {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
@@ -366,6 +366,7 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
         ASSERT_TRUE(window->open(file, nullptr));
         const std::string layer = titleLayer(*window);
         ASSERT_FALSE(layer.empty());
+        const size_t exposedBefore = window->designer().committed().root.value("exposed", ta::Json::array()).size();
         Access::exposeField(*window, FieldRef{layer, "text"}, "Text");
         for (int i = 0; i < 3; i++) Access::drawFrame(*window);
         EditorDialogInfo info;
@@ -380,8 +381,8 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
         for (int i = 0; i < 3; i++) Access::drawFrame(*window);
         EXPECT_FALSE(EditorModal::topModal(info)) << "Expose closes it";
         const ta::Json& exposed = window->designer().committed().root.value("exposed", ta::Json::array());
-        ASSERT_EQ(exposed.size(), 1u);
-        EXPECT_EQ(exposed[0].value("name", std::string()), "headline");
+        ASSERT_EQ(exposed.size(), exposedBefore + 1);
+        EXPECT_EQ(exposed.back().value("name", std::string()), "headline");
         EXPECT_EQ(w.p->getProjectCommandHistory()->top()->name(), "Expose Parameter headline");
     });
 }
