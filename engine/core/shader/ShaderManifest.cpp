@@ -7,6 +7,7 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "shader/ShaderData.h"
+#include "shader/ShaderUniforms.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Color.h"
 
@@ -1123,7 +1124,8 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
     }
 
     for (const auto& member : members){
-        if (member.first != "time" && member.first != "resolution" && !findProperty(member.first)){
+        // the engine writes the reserved members (time, resolution, sceneTime, the water's)
+        if (!ShaderUniforms::isReserved(member.first) && !findProperty(member.first)){
             diagnostics.push_back({file, 1, false, "member '" + member.first + "' of the custom block has no @property (it stays zero)"});
         }
     }

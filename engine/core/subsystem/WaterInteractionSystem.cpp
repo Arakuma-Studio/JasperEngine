@@ -89,6 +89,9 @@ namespace{
     // history kept per emitter
     constexpr size_t WAKE_HISTORY_SAMPLES = 256;
     constexpr float WAKE_HISTORY_SECONDS = 60.0f;
+    // seconds between two stamps of the wake crests
+    constexpr float WAKE_CREST_PERIOD_MIN = 0.05f;
+    constexpr float WAKE_CREST_PERIOD_MAX = 0.25f;
 
 }
 
@@ -385,6 +388,7 @@ uint8_t WaterInteractionSystem::tagOf(Entity key){
 }
 
 void WaterInteractionSystem::releaseWakes(){
+    crestTimer = 0.0f;
     emitters.clear();
     wakeMap = WaterWakeMap();
     wakeActive = false;
@@ -550,7 +554,8 @@ void WaterInteractionSystem::stepWakes(float dt){
             float halfWidth;
             footprint.along(direction, halfLength, halfWidth);
             const Vector2 bow = Vector2(center.x, center.z) + direction * halfLength;
-            if (track.history.empty() || (bow - track.history.back().position).length() >= std::max(0.25f, halfLength * 0.1f)){
+            // (twice Doriax's spacing: the step's cost is the history's stamps)
+            if (track.history.empty() || (bow - track.history.back().position).length() >= std::max(0.5f, halfLength * 0.2f)){
                 WaterWakeSample sample;
                 sample.position = bow;
                 sample.direction = direction;
@@ -596,10 +601,16 @@ void WaterInteractionSystem::stepWakes(float dt){
     const int originZ = (int)std::floor((eye.z + forward.y) / texel) - size / 2;
     wakeMap.moveTo(originX, originZ);
 
-    // an eighth is left after the fade time, which shows as scattered foam
-    wakeMap.fade(std::exp(-2.0f * dt / wakeFade));
+    // the crests are stamped again once they may have moved half a texel (they spread at about
+    // 2 m/s: 16 times a second at 256 texels over 64 m, 8 at 128), the foam every step. An eighth
+    // is left after the fade time, which shows as scattered foam
+    crestTimer -= dt;
+    const bool withCrests = crestTimer <= 0.0f;
+    if (withCrests)
+        crestTimer = std::clamp(texel * 0.25f, WAKE_CREST_PERIOD_MIN, WAKE_CREST_PERIOD_MAX);
+    wakeMap.fade(std::exp(-2.0f * dt / wakeFade), withCrests);
     for (Stamping& stamping : stampings)
-        wakeMap.stampTrack(*stamping.track, stamping.footprint, stamping.foam, stamping.waves, wakeFade, dt);
+        wakeMap.stampTrack(*stamping.track, stamping.footprint, stamping.foam, stamping.waves, wakeFade, dt, withCrests);
 
     float strongest = 0.0f;
     wakeMap.encode(strongest);

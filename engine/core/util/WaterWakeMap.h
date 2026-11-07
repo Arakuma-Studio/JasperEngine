@@ -84,16 +84,17 @@ namespace jasperengine{
         // moves the corner to a world texel: the texels it uncovers are cleared, the rest kept
         // (each world texel is at its position modulo the size)
         void moveTo(int originX, int originZ);
-        // foam times factor (under 0.002: none); every crest cleared, they are stamped again each step
-        void fade(float factor);
+        // foam times factor (under 0.002: none); with clearCrests every crest cleared, to be stamped again
+        void fade(float factor, bool clearCrests = true);
 
         // The wake one emitter makes on the map this step: from each pair of its history samples on
         // the same body, diverging crests at the wake angle of their speed (an inner one at half
         // strength), transverse waves between and breaking bow waves past hull speed; while it
         // crosses a water (track.body), churn behind the stern and spray along the hull.
         // waves and foam scale the strengths (0..2), fade is the scene's wake fade (seconds).
+        // withCrests false stamps the foam only (the crests kept from the last step that stamped them).
         void stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& footprint, float foamStrength, float waveStrength,
-                        float fade, float step);
+                        float fade, float step, bool withCrests = true);
 
         // the RGBA8 texels (R foam, G crest, B the body tag, A 255) and the largest value
         void encode(float& strongest);

@@ -65,8 +65,6 @@ shaderKeys:
   - type: mesh
     properties: 301990978
   - type: mesh
-    properties: 2199023255617
-  - type: mesh
     properties: 2199023256579
   - type: mesh
     properties: 2199056810049
@@ -487,9 +485,6 @@ shaderKeys:
     customShader: library:water#BLEND_MULTIPLY,WAVES
   - type: mesh
     properties: 65
-    customShader: library:water#BLEND_NONE,WAVES
-  - type: mesh
-    properties: 2199023255617
     customShader: library:water#BLEND_NONE,WAVES
   - type: mesh
     properties: 65

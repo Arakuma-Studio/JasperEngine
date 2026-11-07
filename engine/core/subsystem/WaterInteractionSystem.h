@@ -89,6 +89,7 @@ namespace jasperengine{
         WaterWakeMap wakeMap;
         bool wakeActive = false;
         bool wakeDirty = false;
+        float crestTimer = 0.0f;
         float wakeFade = 8.0f;
         // A wake's water body tag (1..255) by the body's key, stable while the map holds texels of
         // it. A body is a spline river or lake (its GameObject) or the library:water meshes at one

@@ -872,3 +872,13 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    `waterWakeParams`; reserved names like `sceneTime`) to the shader's `u_fs_customParams`;
    `CustomUniformBlock::writeWaterInteraction` writes them each draw before the block is uploaded.
    The bits add two textures and no block (`WaterInteractionVariants.WorstWaterVariantsCompileForEveryBackend`).
+9. **The wake step is cheaper than Doriax's**, measured by the bench: Doriax's stamping as ported took
+   52 ms a step at 256 texels with four hulls. The history keeps a bow sample every 0.5 m (or a fifth
+   of the hull's length; Doriax every 0.25 m or a tenth), the crests are stamped again 20 times a
+   second at most (once they may have moved half a texel: 16 times at 256 texels over 64 m, 8 at
+   128; the foam every step), the transverse waves of every fourth sample, a stamp skips texels
+   already at its strength, and the falloffs are polynomial in the squared distance (a crest
+   `(1 - d^2)^2`, close to Doriax's `0.5 + 0.5 cos(pi d)`; foam solid to d = 0.45 as Doriax's), with
+   no root or cosine per texel.
+10. **Opaque water's 'Aui' key is gone from exports** (deviation 4): the `shader-library-export/Blend`
+    reflection golden loses the auto-instanced key of its `BLEND_NONE` water.

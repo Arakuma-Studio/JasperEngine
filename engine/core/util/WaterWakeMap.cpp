@@ -105,11 +105,12 @@ void WaterWakeMap::moveTo(int newOriginX, int newOriginZ){
     originZ = newOriginZ;
 }
 
-void WaterWakeMap::fade(float factor){
+void WaterWakeMap::fade(float factor, bool clearCrests){
     for (float& value : foam){
         value = (value > 0.002f) ? value * factor : 0.0f;
     }
-    std::fill(crests.begin(), crests.end(), 0.0f);
+    if (clearCrests)
+        std::fill(crests.begin(), crests.end(), 0.0f);
 }
 
 void WaterWakeMap::stamp(std::vector<float>& values, Vector2 a, Vector2 b, float radius, float strengthA, float strengthB, bool crest, uint8_t tag){
@@ -123,16 +124,31 @@ void WaterWakeMap::stamp(std::vector<float>& values, Vector2 a, Vector2 b, float
     const int maxZ = std::min((int)std::floor((std::max(a.y, b.y) + radius) * inv), originZ + size - 1);
     const Vector2 ab = b - a;
     const float lengthSquared = ab.squaredLength();
+    const float invLengthSquared = lengthSquared > 0.0f ? 1.0f / lengthSquared : 0.0f;
+    const float invRadiusSquared = 1.0f / (radius * radius);
+    const float strongest = std::max(strengthA, strengthB);
+    const int firstColumn = wrapWakeTexel(minX, size);
     for (int z = minZ; z <= maxZ; z++){
         const size_t row = (size_t)wrapWakeTexel(z, size) * (size_t)size;
-        for (int x = minX; x <= maxX; x++){
-            const Vector2 p(((float)x + 0.5f) * texel, ((float)z + 0.5f) * texel);
-            const float t = (lengthSquared > 0.0f) ? std::clamp((p - a).dotProduct(ab) / lengthSquared, 0.0f, 1.0f) : 0.0f;
-            const float d = (p - (a + ab * t)).length() / radius;
-            if (d >= 1.0f)
+        const float pz = ((float)z + 0.5f) * texel - a.y;
+        int column = firstColumn;
+        for (int x = minX; x <= maxX; x++, column = (column + 1 == size) ? 0 : column + 1){
+            const size_t index = row + (size_t)column;
+            // a texel already at least the strongest this can give: nothing to do
+            if (values[index] >= strongest)
                 continue;
-            const float shape = crest ? 0.5f + 0.5f * std::cos(0.5f * WAKE_TWO_PI * d) : 1.0f - wakeSmoothstep(0.45f, 1.0f, d);
-            const size_t index = row + (size_t)wrapWakeTexel(x, size);
+            const float px = ((float)x + 0.5f) * texel - a.x;
+            const float t = std::clamp((px * ab.x + pz * ab.y) * invLengthSquared, 0.0f, 1.0f);
+            const float dx = px - ab.x * t;
+            const float dz = pz - ab.y * t;
+            // the distance's square over the radius's: no root, no cosine
+            const float d2 = (dx * dx + dz * dz) * invRadiusSquared;
+            if (d2 >= 1.0f)
+                continue;
+            // a crest falls off as a smooth bump (close to Doriax's 0.5 + 0.5 cos(pi d)), foam keeps a
+            // solid core to d = 0.45
+            const float falloff = 1.0f - d2;
+            const float shape = crest ? falloff * falloff : 1.0f - wakeSmoothstep(0.2f, 1.0f, d2);
             const float value = (strengthA + (strengthB - strengthA) * t) * shape;
             if (value > values[index]){
                 values[index] = value;
@@ -143,7 +159,7 @@ void WaterWakeMap::stamp(std::vector<float>& values, Vector2 a, Vector2 b, float
 }
 
 void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& footprint, float foamStrength, float waveStrength,
-                              float fade, float step){
+                              float fade, float step, bool withCrests){
     if (size <= 0 || track.history.empty())
         return;
 
@@ -179,7 +195,14 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
         return crest;
     };
 
-    for (size_t s = 1; s < track.history.size(); s++){
+    // without the crests, only the last 0.6 s of the history (its breaking bow waves)
+    size_t first = 1;
+    if (!withCrests){
+        first = track.history.size();
+        while (first > 1 && track.time - track.history[first - 1].time < 0.6f)
+            first--;
+    }
+    for (size_t s = first; s < track.history.size(); s++){
         const WaterWakeSample& a = track.history[s - 1];
         const WaterWakeSample& b = track.history[s];
         // a wake stays on the water it was made on (Doriax db794e641)
@@ -191,24 +214,28 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
         if (crestA.strength <= 0.0f && crestB.strength <= 0.0f)
             continue;
 
-        const Vector2 acrossA(-a.direction.y, a.direction.x);
         const Vector2 acrossB(-b.direction.y, b.direction.x);
-        const float width = 0.5f * (crestA.width + crestB.width);
-        const float innerA = crestA.offset - 1.6f * crestA.width;
-        const float innerB = crestB.offset - 1.6f * crestB.width;
-        for (float side : {-1.0f, 1.0f}){
-            stamp(crests, a.position + acrossA * (side * crestA.offset), b.position + acrossB * (side * crestB.offset),
-                  width, crestA.strength, crestB.strength, true, b.body);
-            if (innerA > halfWidth && innerB > halfWidth){
-                stamp(crests, a.position + acrossA * (side * innerA), b.position + acrossB * (side * innerB),
-                      width, 0.5f * crestA.strength, 0.5f * crestB.strength, true, b.body);
+        if (withCrests){
+            const Vector2 acrossA(-a.direction.y, a.direction.x);
+            const float width = 0.5f * (crestA.width + crestB.width);
+            const float innerA = crestA.offset - 1.6f * crestA.width;
+            const float innerB = crestB.offset - 1.6f * crestB.width;
+            for (float side : {-1.0f, 1.0f}){
+                stamp(crests, a.position + acrossA * (side * crestA.offset), b.position + acrossB * (side * crestB.offset),
+                      width, crestA.strength, crestB.strength, true, b.body);
+                if (innerA > halfWidth && innerB > halfWidth){
+                    stamp(crests, a.position + acrossA * (side * innerA), b.position + acrossB * (side * innerB),
+                          width, 0.5f * crestA.strength, 0.5f * crestB.strength, true, b.body);
+                }
             }
-        }
 
-        if (crestB.phase > 0.0f){
-            const float strength = 0.45f * crestB.strength * crestB.phase * crestB.phase;
-            stamp(crests, b.position - acrossB * crestB.offset, b.position + acrossB * crestB.offset,
-                  std::max(0.25f * crestB.wavelength, texel), strength, strength, true, b.body);
+            // the transverse waves of every fourth sample: a quarter of their wavelength wide, the
+            // samples between overlap them whole
+            if (crestB.phase > 0.0f && s % 4 == 0){
+                const float strength = 0.45f * crestB.strength * crestB.phase * crestB.phase;
+                stamp(crests, b.position - acrossB * crestB.offset, b.position + acrossB * crestB.offset,
+                      std::max(0.25f * crestB.wavelength, texel), strength, strength, true, b.body);
+            }
         }
 
         // the bow waves of a fast hull break as they form

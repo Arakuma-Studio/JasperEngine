@@ -21,7 +21,7 @@ using namespace jasperengine;
 
 namespace water_wake_bench_test {
 
-    // four 6 m hulls crossing the map at 6 m/s, each with 8 s of history
+    // four 6 m hulls crossing the map at 6 m/s, each with 8 s of history (a sample every 0.5 m)
     std::vector<WaterWakeTrack> tracks(){
         std::vector<WaterWakeTrack> result;
         for (int h = 0; h < 4; h++){
@@ -30,7 +30,7 @@ namespace water_wake_bench_test {
             track.velocity = Vector2(6.0f, 0.0f);
             track.body = 1;
             const float z = -12.0f + 8.0f * (float)h;
-            for (float t = 0.0f; t <= 8.0f; t += 1.0f / 15.0f){
+            for (float t = 0.0f; t <= 8.0f; t += 1.0f / 12.0f){
                 WaterWakeSample sample;
                 sample.position = Vector2(-24.0f + 6.0f * t, z);
                 sample.direction = Vector2(1.0f, 0.0f);
@@ -46,7 +46,9 @@ namespace water_wake_bench_test {
         return result;
     }
 
-    double stepMicroseconds(int size){
+    // a step at 60 frames a second; the crests every crestEvery steps, as WaterInteractionSystem
+    // stamps them (a quarter of a texel's metres in seconds: 0.0625 s at 256, 0.125 s at 128)
+    double stepMicroseconds(int size, int crestEvery){
         WaterWakeMap map;
         map.reset(size, 64.0f / (float)size);
         map.moveTo(-size / 2, -size / 2);
@@ -61,9 +63,10 @@ namespace water_wake_bench_test {
         constexpr int steps = 60;
         const auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < steps; i++){
-            map.fade(std::exp(-2.0f * dt / 8.0f));
+            const bool crests = i % crestEvery == 0;
+            map.fade(std::exp(-2.0f * dt / 8.0f), crests);
             for (WaterWakeTrack& track : wakes)
-                map.stampTrack(track, footprint, 1.0f, 1.0f, 8.0f, dt);
+                map.stampTrack(track, footprint, 1.0f, 1.0f, 8.0f, dt, crests);
             map.encode(strongest);
         }
         EXPECT_GT(strongest, 0.1f);
@@ -75,7 +78,7 @@ namespace water_wake_bench_test {
 using namespace water_wake_bench_test;
 
 TEST(WaterWakeBench, Step256x4){
-    const double us = stepMicroseconds(256);
+    const double us = stepMicroseconds(256, 4);
     std::printf("[bench] Water Wakes step, 256 texels, 4 hulls %.1f us (budget 300 us)\n", us);
     if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(us, 300.0 * 1.5 * testsupport::perfSlack());
@@ -83,7 +86,7 @@ TEST(WaterWakeBench, Step256x4){
 }
 
 TEST(WaterWakeBench, Step128x4){
-    const double us = stepMicroseconds(128);
+    const double us = stepMicroseconds(128, 8);
     std::printf("[bench] Water Wakes step, 128 texels, 4 hulls %.1f us (budget 200 us)\n", us);
     if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(us, 200.0 * 1.5 * testsupport::perfSlack());
