@@ -641,6 +641,10 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
 - **The preview.** Its images are read back at 256² (`PREVIEW_SIZE`), so the ball (one `MaterialRender`) has textures
   on every tier; the 2×2 tile is four quads, since a backend's ImGui sampler need not repeat. A selection's preview is
   a second session on the node's first output (`ProceduralSession::setRoots`).
+- **Where the GPU work runs.** The window's sessions and images advance in `App::engineRender`
+  (`ProceduralMaterialWindow::processFrame`) and commit what they drew there: a read back waits for the commit of the
+  frame that drew, and an editor whose scenes are idle commits nothing else (the first MCP run found the preview stuck
+  out of date).
 - **The Bake estimate** is the preview's last evaluation time scaled by pixels, `t · (size / 256)²`, shown on tiers 2
   and 3 as "about N s" (R25: both tiers scale with pixels).
 - **Seams to the bake and the tiers** (`ProceduralMaterialWindow::Services`): the evaluator factory, the device image,
