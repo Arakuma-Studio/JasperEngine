@@ -123,7 +123,7 @@ namespace {
         ImGui::TableSetColumnIndex(1);
     }
 
-    void aseViewProblem(const pixelart::PixelProblem& problem){
+    void aseViewProblem(const editor::pixelart::PixelProblem& problem){
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s", problem.message.c_str());
         ImGui::PopTextWrapPos();
@@ -227,7 +227,7 @@ ase::AsepriteImportSettings AsepriteImporterView::workingSettings() const{
     Json patch = Json::object();
     for (const std::string& pointer : touched)
         patch[Json::json_pointer(pointer)] = workingValue(pointer);
-    std::vector<pixelart::PixelProblem> ignored;
+    std::vector<editor::pixelart::PixelProblem> ignored;
     settings.applyJson(patch, ignored);
     return settings;
 }
@@ -472,7 +472,7 @@ void AsepriteImporterView::toggleLayer(const ase::Document& document, int layer,
         drop(exclude);
         setWorking("/layers/exclude", exclude);
         // still out (hidden, an ignored prefix): named in include
-        std::vector<pixelart::PixelProblem> warnings;
+        std::vector<editor::pixelart::PixelProblem> warnings;
         const std::vector<int> imported = ase::selectLayers(document, workingSettings(), warnings);
         bool any = false;
         for (int l : imported)
@@ -551,7 +551,7 @@ void AsepriteImporterView::drawLayers(){
         return;
     }
     const ase::Document& document = *structure.document;
-    std::vector<pixelart::PixelProblem> warnings;
+    std::vector<editor::pixelart::PixelProblem> warnings;
     const std::vector<int> selected = ase::selectLayers(document, workingSettings(), warnings);
     const std::set<int> imported(selected.begin(), selected.end());
     if (ImGui::BeginTable("aseprite_layer_tree", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)){
@@ -562,7 +562,7 @@ void AsepriteImporterView::drawLayers(){
         drawLayerRows(document, -1, imported);
         ImGui::EndTable();
     }
-    for (const pixelart::PixelProblem& warning : warnings)
+    for (const editor::pixelart::PixelProblem& warning : warnings)
         aseViewProblem(warning);
 }
 
@@ -613,7 +613,7 @@ void AsepriteImporterView::drawAnimation(){
             ImGui::EndDisabled();
             ImGui::PopID();
             ImGui::TableSetColumnIndex(1);
-            const pixelart::PixelRgba color = tag.color();
+            const editor::pixelart::PixelRgba color = tag.color();
             ImGui::TextColored(ImVec4(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, 1.0f), ICON_FA_TAG);
             ImGui::SameLine();
             ImGui::TextUnformatted(tag.name.c_str());
@@ -711,9 +711,9 @@ void AsepriteImporterView::drawStatus(){
         }
         if (record && !record->ok) aseViewProblem(record->error);
         if (record)
-            for (const pixelart::PixelProblem& warning : record->warnings)
+            for (const editor::pixelart::PixelProblem& warning : record->warnings)
                 aseViewProblem(warning);
-        for (const pixelart::PixelProblem& problem : file.problems)
+        for (const editor::pixelart::PixelProblem& problem : file.problems)
             aseViewProblem(problem);
     }
 }
@@ -827,7 +827,7 @@ bool AsepriteImporterView::draw(const std::vector<fs::path>& selection){
     section("Slices", [&]{ drawSlices(); });
     section("Texture", [&]{ drawTexture(); });
 
-    for (const pixelart::PixelProblem& problem : applyProblems)
+    for (const editor::pixelart::PixelProblem& problem : applyProblems)
         aseViewProblem(problem);
     ImGui::Separator();
     ImGui::BeginDisabled(touched.empty());
