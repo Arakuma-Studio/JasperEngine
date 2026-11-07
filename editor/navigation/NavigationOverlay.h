@@ -8,7 +8,7 @@
 // 64k triangles), tile bounds, the detail (height) mesh, NavGrid cells, agent paths and
 // avoidance, links, obstacles, and the selected components' gizmos (surface and modifier
 // volumes, link start/end, obstacle shapes, the agent's cylinder); in play, the NavGrid cells
-// agents reserved at the current fixed tick (S53 R22). Editor-only objects in the
+// agents reserved at the current fixed tick (S74 R22). Editor-only objects in the
 // scene they annotate (the Scene view draws them, never a game or camera image); a shipped
 // player has none of this.
 
@@ -46,7 +46,7 @@ namespace jasperengine::editor {
     // Saved with the workspace (per scene, with the Scene view's display settings)
     struct NavOverlaySettings {
         enum class Paths { None, Selected, All };
-        // what the navmesh's triangles are tinted by (S42 R27)
+        // what the navmesh's triangles are tinted by (S75 R27)
         enum class ColorBy { Areas, Islands, Tiles };
 
         bool enabled = true;
@@ -58,9 +58,9 @@ namespace jasperengine::editor {
         bool showAvoidance = false;
         bool showLinks = true;
         bool showObstacles = true;
-        // ---- S55 areas: runtime modifier volumes always, script volumes in play (R41)
+        // ---- S76 areas: runtime modifier volumes always, script volumes in play (R41)
         bool showAreaOverrides = true;
-        // ---- S54 diagnostics (R27, R38: written only when not default)
+        // ---- S75 diagnostics (R27, R38: written only when not default)
         ColorBy colorBy = ColorBy::Areas;
         // collected triangles steeper than the agent type's Max Slope
         bool showSteepSlopes = false;
@@ -141,7 +141,7 @@ namespace jasperengine::editor {
         // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
         static std::string tileLabelText(const nav::NavTileReport& report);
 
-        // ---- S55 areas: each area override box the last update drew, and its colour (tests)
+        // ---- S76 areas: each area override box the last update drew, and its colour (tests)
         struct AreaOverrideDraw {
             Entity modifier = NULL_ENTITY;
             uint32_t handle = 0;

@@ -1791,7 +1791,7 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
 _STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
               'char16_t', 'char32_t',
-              # onPathFailed's reason: its snake_case name (luabridge::Stack<nav::PathFailure>, S55)
+              # onPathFailed's reason: its snake_case name (luabridge::Stack<nav::PathFailure>, S76)
               'PathFailure', 'nav::PathFailure', 'jasperengine::nav::PathFailure',
               # asset path fields: plain path strings in Lua (luabridge::Stack<AssetRef>, LuaBridgeAddon.h)
               'AssetRef', 'ShaderRef', 'jasperengine::AssetRef', 'jasperengine::ShaderRef'}
@@ -2919,7 +2919,7 @@ OVERRIDES[('UIDocument', 'reload')] = {
     'overloads': [([], ''), ([('options', '{mode: "patch"|"rebuild"}')], '')]}
 PROPERTY_OVERRIDES[('UIDocument', 'onReload')] = ('fun(report: UIReloadReport)|nil', False)
 
-# S55 runtime areas (NavigationComponentsLua.cpp): script volumes
+# S76 runtime areas (NavigationComponentsLua.cpp): script volumes
 OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
     'doc': ['A script volume (a world box): the navmesh polygons whose centre lies in it take `area` (1 Not',
             'Walkable: nothing walks there) until `remove()`, on every surface of `options.agentType` (all by',
@@ -2943,7 +2943,7 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
-# S54 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
+# S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
             'when their islands differ.'],
@@ -2961,8 +2961,8 @@ OVERRIDES[('NavigationSystem', 'getIslands')] = {
     'overloads': [([('surface', 'integer')], 'NavIsland[]')]}
 PROPERTY_OVERRIDES[('NavMeshSurface', 'lastBakeResult')] = ('NavBakeReport|nil', True)
 
-# S55 navigation queries: random points, surface moves, the closest edge within a distance, path
-# options (docs/specs/S55-navigation-gameplay-api.md R1-R5, R42)
+# S76 navigation queries: random points, surface moves, the closest edge within a distance, path
+# options (docs/specs/S76-navigation-gameplay-api.md R1-R5, R42)
 OVERRIDES[('NavigationSystem', 'calculatePath')] = {
     'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, cost, cornerAreas,',
             'cornerFlags, areaLengths and the corridor NavMeshAgent:setPath takes; when it is not Complete why',
@@ -2986,7 +2986,7 @@ OVERRIDES[('NavigationSystem', 'moveAlongSurface')] = {
     'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
-# S55 agents: the NavMeshAgent's paths, queries and link data (docs/specs/S55-navigation-gameplay-api.md
+# S76 agents: the NavMeshAgent's paths, queries and link data (docs/specs/S76-navigation-gameplay-api.md
 # R19-R27)
 OVERRIDES[('NavMeshAgent', 'calculatePath')] = {
     'doc': ['A path from where the agent stands to `target` (snapped as setDestination snaps it), planned now',

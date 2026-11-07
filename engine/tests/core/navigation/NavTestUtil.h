@@ -118,7 +118,7 @@ namespace jasperengine::navtest {
         }
 
         // a 600 x 3 m strip along x on tiles of 16 cells of 0.1 m: a path end to end crosses more
-        // polygons than a crowd corridor holds (256, spec S53 AC1)
+        // polygons than a crowd corridor holds (256, spec S74 AC1)
         Entity stripSurface() {
             plane(*scene, Vector3(), 600.0f, 3.0f);
             const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Strip");

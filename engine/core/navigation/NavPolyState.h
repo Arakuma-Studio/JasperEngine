@@ -4,7 +4,7 @@
 #ifndef NAV_POLY_STATE_H
 #define NAV_POLY_STATE_H
 
-// Runtime polygon state of one navmesh (docs/specs/S55-navigation-gameplay-api.md R11-R18, D5):
+// Runtime polygon state of one navmesh (docs/specs/S76-navigation-gameplay-api.md R11-R18, D5):
 // area overrides (convex prisms in nav space) and deactivated links over the baked flags and
 // areas. Engine-internal, owned by NavMesh::Impl and made on the first override or link change,
 // so a mesh without them stores nothing and its tile changes cost one null check.
@@ -56,7 +56,7 @@ namespace jasperengine::nav::detail {
         // the polygon references whose flags or area changed since the last call
         void takeChanged(std::vector<uint32_t>& out);
         // Runs `search` with every touched tile in its baked state, then puts the overrides and
-        // link states back as they were: no revision, no changed polygon (S55 R27: why a path a
+        // link states back as they were: no revision, no changed polygon (S76 R27: why a path a
         // runtime volume or a deactivated link blocks fails)
         void withBakedState(const std::function<void()>& search);
         // no override, no deactivated link, no snapshot

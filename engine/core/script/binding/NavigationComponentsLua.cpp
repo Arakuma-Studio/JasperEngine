@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Lua's NavMesh Obstacle, Link and Modifier handles and the script volumes of
-// docs/specs/S55-navigation-gameplay-api.md (R12, R16, R17, R30-R33): Unity's scripting names over
+// docs/specs/S76-navigation-gameplay-api.md (R12, R16, R17, R30-R33): Unity's scripting names over
 // the components' fields (docs/navigation.md "Script names"), registered from
 // registerNavigationClasses.
 

@@ -64,7 +64,7 @@ void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, ui
     if (agent == 0)
         return;
     // the agent's entry is reused, its cell list keeping its capacity: a walking agent's tick
-    // allocates nothing (spec S53 R19)
+    // allocates nothing (spec S74 R19)
     std::vector<int>* taken = nullptr;
     for (auto& entry : held) {
         if (entry.first == agent) {
@@ -145,7 +145,7 @@ bool GridSolver::passable(const NavGridMap& map, int cell, const GridQuery& quer
 
 GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts) {
     GridPath path = search(map, start, goal, query, areaCosts);
-    // S54: the reason, from the ends first (as the navmesh's R3 orders them)
+    // S75: the reason, from the ends first (as the navmesh's R3 orders them)
     auto endFailure = [&](GridCell cell, PathFailure offMesh, PathFailure filtered) {
         if (!map.contains(cell) || map.getAreaAt(map.index(cell)) == AREA_NOT_WALKABLE)
             return offMesh;

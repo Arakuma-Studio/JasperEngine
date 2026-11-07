@@ -133,7 +133,7 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
-        # navigation's runtime and the engine's CMake: the engine without Recast/Detour too (S53 R28)
+        # navigation's runtime and the engine's CMake: the engine without Recast/Detour too (S74 R28)
         for f in ("engine/core/navigation/NavMesh.cpp", "engine/libs/recastnavigation/Detour/Source/DetourNavMesh.cpp",
                   "engine/core/subsystem/NavigationSystem.h", "engine/core/object/navigation/NavMeshAgent.cpp",
                   "engine/core/component/NavMeshSurfaceComponent.h", "engine/CMakeLists.txt",

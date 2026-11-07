@@ -271,7 +271,7 @@ void NavigationWindow::drawSurfaces() {
                 if (baking) {
                     ImGui::ProgressBar(status.progress, ImVec2(-1, 0));
                 } else if (failed && !failed->ok && !failed->cancelled) {
-                    // the session's last bake failed (S53 R3): until a bake succeeds
+                    // the session's last bake failed (S74 R3): until a bake succeeds
                     ImGui::TextColored(Theme::Colors::ErrorText, "Bake failed");
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", failed->error.c_str());
                 } else if (status.state == NavBakeState::NOT_BAKED) {

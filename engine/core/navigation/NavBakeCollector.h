@@ -45,7 +45,7 @@ namespace jasperengine::nav {
         int excluded = 0;
         size_t triangles = 0;
         std::vector<std::string> warnings;
-        // S54, with NavCollectOptions::recordSources only: each GameObject left out and why
+        // S75, with NavCollectOptions::recordSources only: each GameObject left out and why
         // ("layer", "inactive", "moving body", "agent", "obstacle", "exclude modifier")
         std::vector<std::pair<Entity, std::string>> excludedEntities;
     };
@@ -75,7 +75,7 @@ namespace jasperengine::nav {
 
         // A box (center and size in the space worldOf maps to the world) as the frame's nav-space
         // prism: the hull of its corners' footprint and their height range (unbounded on a 2D
-        // surface), with its bounds. False when it has no footprint. (Modifier volumes, S55's
+        // surface), with its bounds. False when it has no footprint. (Modifier volumes, S76's
         // runtime volumes)
         static bool boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size, NavConvexVolume& out);
     };

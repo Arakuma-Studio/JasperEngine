@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Why a path is not Complete (docs/specs/S54-navigation-diagnostics.md R1-R6; AC1-AC5): the
+// Why a path is not Complete (docs/specs/S75-navigation-diagnostics.md R1-R6; AC1-AC5): the
 // PathFailure contract, each failure on a small baked fixture with its status, the snapped ends,
 // closest point and gap of a Partial path, the surface ranking, and the grid's reasons.
 
@@ -66,7 +66,7 @@ namespace {
 }
 
 TEST(NavFailureNames, NamesAreTheContract){
-    // the values are the contract shared with S55: appended only
+    // the values are the contract shared with S76: appended only
     static_assert((int)PathFailure::None == 0 && (int)PathFailure::NoSurface == 1 && (int)PathFailure::NotBaked == 2 &&
                   (int)PathFailure::StartOffMesh == 3 && (int)PathFailure::EndOffMesh == 4 && (int)PathFailure::StartFiltered == 5 &&
                   (int)PathFailure::EndFiltered == 6 && (int)PathFailure::Disconnected == 7 && (int)PathFailure::BlockedByArea == 8 &&

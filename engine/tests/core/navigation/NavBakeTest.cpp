@@ -337,7 +337,7 @@ TEST_F(NavBakeTest, TooLargeRejected){
 
 // an agent keeps a valid corridor through every tick of a runtime updateTiles (S19 AC11); on a
 // carving surface the tiles build within the carving budget, the agent on the old ones till then
-// (S53 AC19)
+// (S74 AC19)
 void NavBakeTest::runtimeUpdateTiles(bool carving){
     const Entity surface = planeSurface(40.0f, 40.0f, 0.25f);
     scene->getComponent<NavMeshSurfaceComponent>(surface).runtimeCarving = carving;
@@ -411,7 +411,7 @@ TEST_F(NavBakeTest, HeightmapReleasedIsReadAgain){
     EXPECT_GT(middle, corner + 1.0f);
 }
 
-// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
+// ---------------------------------------------------------------- S74 (docs/specs/S74-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION
 // The tile builds' rcContext keeps Recast's warnings and errors, deterministic (pointers as "?"),
@@ -598,7 +598,7 @@ TEST_F(NavBakeTest, RuntimeCarvingBakeDeferred){
     EXPECT_TRUE(handle.isOnNavMesh());
 }
 
-// S54 R12 (AC9): the probe's sources ride along with the input but never into its tile hashes
+// S75 R12 (AC9): the probe's sources ride along with the input but never into its tile hashes
 TEST_F(NavBakeTest, SourcesDoNotChangeHashes){
     const Entity floor = plane(*scene, Vector3(), 40.0f, 40.0f);
     const Entity statics = box(*scene, Vector3(-5.0f, 0.5f, 0.0f), Vector3(2.0f, 1.0f, 2.0f));

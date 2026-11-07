@@ -405,7 +405,7 @@ namespace {
     constexpr int MAX_CORNERS = 2048;
     constexpr int QUERY_NODES = 2048;
     // dtTileCache's request and update lists hold 64 entries, and an obstacle touches at most
-    // DT_MAX_TOUCHED_TILES (8) layers: 8 requests at a time never overflow either (spec S53 R11)
+    // DT_MAX_TOUCHED_TILES (8) layers: 8 requests at a time never overflow either (spec S74 R11)
     constexpr int TILE_CACHE_LIST = 64;
     constexpr int OBSTACLE_BATCH = TILE_CACHE_LIST / DT_MAX_TOUCHED_TILES;
     // the tile-cache layers of one tile (buildNavMeshTilesAt's own limit)
@@ -414,12 +414,12 @@ namespace {
     std::atomic<uint64_t> revisions{1};
     std::atomic<uint64_t> generations{1};
 
-    // ---- S55 queries
+    // ---- S76 queries
     // the most tries findRandomPointAround makes for a point within the radius (and island)
     constexpr int RANDOM_AROUND_TRIES = 8;
     // the polygons moveAlongSurface may cross (Detour's tiny node pool holds 64)
     constexpr int MOVE_MAX_VISITED = 64;
-    // area tables a mesh keeps for anywhere random points (spec S55 R39)
+    // area tables a mesh keeps for anywhere random points (spec S76 R39)
     constexpr size_t MAX_RANDOM_TABLES = 4;
 
     // Detour's random callbacks take no context: the stream of the call in progress (main thread)
@@ -429,7 +429,7 @@ namespace {
     }
 
     // The area a query reports for a polygon: its flag bit (an area is a flag; a link has the flag
-    // of its area while its polygon area holds its cost), Not Walkable for flags 0 (spec S55 D3)
+    // of its area while its polygon area holds its cost), Not Walkable for flags 0 (spec S76 D3)
     uint8_t reportedArea(const dtPoly* poly) {
         const unsigned short flags = poly->flags;
         if (flags == 0)
@@ -608,7 +608,7 @@ struct NavMesh::Impl {
     uint64_t revision = 0;
     uint64_t generation = 0;
 
-    // ---- carving obstacles (spec S53 R11-R17): the registry, its request FIFO, the tile-cache
+    // ---- carving obstacles (spec S74 R11-R17): the registry, its request FIFO, the tile-cache
     // builds Detour's update list holds (mirrored, in its order: each update() builds the first),
     // and the tiles whose build is deferred (R15)
     struct Obstacle {
@@ -640,13 +640,13 @@ struct NavMesh::Impl {
     // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
     mutable uint64_t linksRevision = UINT64_MAX;
     mutable bool hasLinks = false;
-    // S54: the island labels of `labelledRevision` (made on demand, R8), the searches run
+    // S75: the island labels of `labelledRevision` (made on demand, R8), the searches run
     mutable NavIslandLabels islands;
     mutable uint64_t labelledRevision = 0;
     mutable uint64_t searches = 0;
-    // S55: runtime overrides and link states, made on the first one (R18)
+    // S76: runtime overrides and link states, made on the first one (R18)
     std::unique_ptr<detail::NavPolyState> polyState;
-    // ---- S55 queries: the passable polygons of a mask (and island) with their cumulative areas,
+    // ---- S76 queries: the passable polygons of a mask (and island) with their cumulative areas,
     // for random points uniform by area; dropped when the revision changes
     struct RandomTable {
         uint16_t mask = 0;
@@ -661,7 +661,7 @@ struct NavMesh::Impl {
 
     ~Impl() { release(); }
 
-    // S55 R14: overrides and link states over the tiles just added or rebuilt; true when a
+    // S76 R14: overrides and link states over the tiles just added or rebuilt; true when a
     // polygon changed (the caller bumps the revision)
     bool tilesChanged() {
         if (!polyState)
@@ -1087,7 +1087,7 @@ struct NavMesh::Impl {
         return reportedArea(poly);
     }
 
-    // the table of a mask and island (S54's labels, -1: any) at this revision, built on first use
+    // the table of a mask and island (S75's labels, -1: any) at this revision, built on first use
     const RandomTable& randomTable(uint16_t mask, int island, const dtQueryFilter& filter) const {
         if (randomTablesRevision != revision) {
             randomTables.clear();
@@ -1213,7 +1213,7 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error, const 
                 keys.push_back(TileKey{blob.x, blob.y});
         }
         if (impl->deferBuilds) {
-            // built by updateCarving, within the carving budget (spec S53 R15)
+            // built by updateCarving, within the carving budget (spec S74 R15)
             for (const TileKey& key : keys)
                 impl->deferTile(key);
         } else if (!impl->buildCarvedTiles(keys, error)) {
@@ -1221,7 +1221,7 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error, const 
             return false;
         }
         // a new tile cache: the obstacles kept from before (the pool-growth fallback) cut again
-        // (spec S53 R12)
+        // (spec S74 R12)
         impl->requeueObstacles([](const Impl::Obstacle&) { return true; });
     } else {
         for (const NavTileBlob& blob : data.tiles) {
@@ -1315,7 +1315,7 @@ bool NavMesh::replaceTiles(const std::vector<NavTileCoord>& coords, std::vector<
     if (impl->header.config.carving) {
         for (const TileKey& key : keys) {
             impl->removeLayersAt(key.x, key.y);
-            // deferred: the old Detour tile serves until its rebuild replaces it (spec S53 R15)
+            // deferred: the old Detour tile serves until its rebuild replaces it (spec S74 R15)
             if (!impl->deferBuilds)
                 impl->removeNavTilesAt(key.x, key.y);
         }
@@ -1330,7 +1330,7 @@ bool NavMesh::replaceTiles(const std::vector<NavTileCoord>& coords, std::vector<
             return rebuild();
         }
         // the new layers have new refs, which no obstacle touches yet: the obstacles over them cut
-        // again (spec S53 R12)
+        // again (spec S74 R12)
         const float size = impl->header.config.tileWorldSize();
         impl->requeueObstacles([&](const Impl::Obstacle& obstacle) {
             float bmin[3], bmax[3];
@@ -1478,7 +1478,7 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
     if (polys[(size_t)count - 1] != endRef)
         impl->query->closestPointOnPoly(polys[(size_t)count - 1], endPoint, target, nullptr);
 
-    // the corners, with Detour's flags and the polygon each one enters (S55 D3)
+    // the corners, with Detour's flags and the polygon each one enters (S76 D3)
     static thread_local std::vector<float> corners;
     static thread_local std::vector<unsigned char> flags;
     static thread_local std::vector<dtPolyRef> refs;
@@ -1538,7 +1538,7 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
         path.areaLengths[reportedArea(poly)] += length;
     }
 
-    // the corridor before S54's all-areas search reuses the buffer
+    // the corridor before S75's all-areas search reuses the buffer
     path.polys.assign(polys.begin(), polys.begin() + count);
     path.meshRevision = impl->revision;
 
@@ -1554,7 +1554,7 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
     if (outOfNodes(status)) {
         path.failure = PathFailure::OutOfNodes;
     } else if (impl->polyState && !impl->polyState->idle()) {
-        // S55 R27: a runtime volume (Not Walkable: flags 0, which no mask passes) or a deactivated
+        // S76 R27: a runtime volume (Not Walkable: flags 0, which no mask passes) or a deactivated
         // link may be what blocks it. Every area over the baked flags: a path there means an area
         // stops it, the mask's or a runtime override's
         dtQueryFilter all = f;
@@ -1635,7 +1635,7 @@ NavHit NavMesh::raycast(const Vector3& from, const Vector3& to, const NavFilter&
     const float end[3] = {to.x, to.y, to.z};
     static thread_local std::vector<dtPolyRef> polys;
     polys.resize(MAX_PATH_POLYS);
-    // with the costs of the polygons it crosses (S55 R6)
+    // with the costs of the polygons it crosses (S76 R6)
     dtRaycastHit rayHit;
     std::memset(&rayHit, 0, sizeof(rayHit));
     rayHit.path = polys.data();
@@ -1723,7 +1723,7 @@ bool NavMesh::findRandomPoint(const NavFilter& filter, NavRandom& random, int is
     const Impl::RandomTable& table = impl->randomTable(filter.areaMask, island, f);
     if (table.refs.empty())
         return false;
-    // draw 1: a polygon by area; draws 2-3: a point in it (S55 D2)
+    // draw 1: a polygon by area; draws 2-3: a point in it (S76 D2)
     const float pick = random.nextFloat() * table.cumulative.back();
     size_t index = (size_t)(std::upper_bound(table.cumulative.begin(), table.cumulative.end(), pick) - table.cumulative.begin());
     index = std::min(index, table.refs.size() - 1);
@@ -1849,7 +1849,7 @@ bool NavMesh::getHeight(const Vector3& point, const NavFilter& filter, const Vec
 uint32_t NavMesh::addObstacle(const NavObstacleDesc& desc) {
     if (!impl->valid || !impl->tileCache)
         return 0;
-    // queued adds count: Detour's slots never run out (spec S53 R11, R17)
+    // queued adds count: Detour's slots never run out (spec S74 R11, R17)
     if ((int)impl->obstacles.size() >= impl->header.maxObstacles)
         return 0;
     const uint32_t id = impl->nextObstacle++;
@@ -1914,14 +1914,14 @@ bool NavMesh::updateCarving(const NavCarveBudget& budget, bool& upToDate, int& t
         return false;
     Impl& m = *impl;
     const auto begin = std::chrono::steady_clock::now();
-    // the wall-clock ceiling stops a tick after at least one build (spec S53 R14)
+    // the wall-clock ceiling stops a tick after at least one build (spec S74 R14)
     const auto spent = [&]() {
         return budget.ceilingMs > 0.0 && tilesRebuilt > 0 &&
                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() >= budget.ceilingMs;
     };
     bool changed = false;
     while (tilesRebuilt < budget.maxTileBuilds && !spent()) {
-        // deferred tiles first (spec S53 R15)
+        // deferred tiles first (spec S74 R15)
         if (!m.deferred.empty()) {
             const TileKey key = m.deferred.front();
             m.deferred.pop_front();
@@ -1958,7 +1958,7 @@ bool NavMesh::updateCarving(const NavCarveBudget& budget, bool& upToDate, int& t
             m.buildFailed(tile->header->tx, tile->header->ty, tile->header->tlayer, status);
     }
     upToDate = m.deferred.empty() && m.pending.empty() && m.requests.empty();
-    // S55 R14: the overrides check every tile's reference, so tiles Detour's update replaced and
+    // S76 R14: the overrides check every tile's reference, so tiles Detour's update replaced and
     // deferred tiles built above both get their runtime areas and link states again
     const bool overridden = m.tilesChanged();
     if (changed || overridden)
@@ -2071,7 +2071,7 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
     }
 
     // static tiles: patch the connections in a copy of their tile and re-add it. A tile is copied
-    // in its baked state (S55): its overrides and link states apply again on the way out
+    // in its baked state (S76): its overrides and link states apply again on the way out
     dtNavMesh* mesh = impl->navMesh;
     auto refuse = [&](const char* why) {
         error = why;
@@ -2279,7 +2279,7 @@ bool NavMesh::hasOffMeshConnections() const {
     return impl->hasLinks;
 }
 
-// ---------------------------------------------------------------- S54 diagnostics
+// ---------------------------------------------------------------- S75 diagnostics
 
 const std::vector<NavIsland>& NavMesh::getIslands() const {
     impl->ensureLabels();
@@ -2497,7 +2497,7 @@ bool NavMesh::tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& co
     return covered;
 }
 
-// ---------------------------------------------------------------- S55 areas
+// ---------------------------------------------------------------- S76 areas
 
 uint32_t NavMesh::addAreaOverride(const NavConvexVolume& volume, uint8_t area, uint64_t order) {
     bool changed = false;

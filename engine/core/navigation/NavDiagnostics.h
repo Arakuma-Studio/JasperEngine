@@ -4,7 +4,7 @@
 #ifndef NAV_DIAGNOSTICS_H
 #define NAV_DIAGNOSTICS_H
 
-// What navigation says about itself (docs/specs/S54-navigation-diagnostics.md, docs/navigation.md
+// What navigation says about itself (docs/specs/S75-navigation-diagnostics.md, docs/navigation.md
 // "Why navigation fails"): the bake's error codes and hints, the findings every surface of
 // diagnostics shares (the Navigation window, get_navigation_info, the CLI check, the export
 // preflight), the per-tile bake report, and the island labelling of a Detour navmesh.

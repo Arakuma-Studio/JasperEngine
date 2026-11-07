@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// "Why is this point not walkable?" (docs/specs/S54-navigation-diagnostics.md R11, R12; AC9): one
+// "Why is this point not walkable?" (docs/specs/S75-navigation-diagnostics.md R11, R12; AC9): one
 // fixture point per reason on a baked level: a 60 degree ramp, a 1.2 m ceiling, a point 0.2 m
 // from a wall, a 0.8 m^2 platform, a Not Walkable volume, a layer-excluded mesh, a dynamic body,
 // outside the volume, empty ground, a moved box, a 0.6 m ledge, a masked area, a small island

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Where a point is and how much is walkable (docs/specs/S54-navigation-diagnostics.md R9, R10;
+// Where a point is and how much is walkable (docs/specs/S75-navigation-diagnostics.md R9, R10;
 // AC8): locate on, near and far off the mesh, and the coverage of a plane.
 
 #include "NavTestUtil.h"

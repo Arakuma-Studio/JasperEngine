@@ -4,7 +4,7 @@
 #ifndef NAVIGATION_AREAS_H
 #define NAVIGATION_AREAS_H
 
-// Engine-internal: what NavigationSystem's runtime areas hold (docs/specs/S55-navigation-gameplay-api.md
+// Engine-internal: what NavigationSystem's runtime areas hold (docs/specs/S76-navigation-gameplay-api.md
 // R11-R17, D1, D9; NavigationAreas.cpp). The system makes it on the first runtime modifier volume,
 // script volume or deactivated link, so a scene without them holds nothing.
 

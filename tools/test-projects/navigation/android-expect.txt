@@ -1,6 +1,6 @@
 # tools/android-emulator-test.sh --expect-file: the runtime bakes land (jobs), the grid path is
 # found, the agent arrives (docs/specs/S19-navigation.md AC27) and a carving cut lands and goes
-# (docs/specs/S53-navigation-fixes.md AC21)
+# (docs/specs/S74-navigation-fixes.md AC21)
 I/JasperEngine: [gate] nav baked city
 I/JasperEngine: [gate] nav slices within budget
 I/JasperEngine: [gate] nav grid path complete

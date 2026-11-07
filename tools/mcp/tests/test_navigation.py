@@ -1,6 +1,6 @@
 """S19 navigation as an agent sees it (docs/specs/S19-navigation.md R37, R38; AC22-AC25), with the
-S53 fixes (docs/specs/S53-navigation-fixes.md R2, R3, R4, R17, R23, R24, R28; AC5, AC7, AC26-AC28) and
-S54's tool rules (docs/specs/S54-navigation-diagnostics.md R34, AC19; the diagnostics themselves are
+S74 fixes (docs/specs/S74-navigation-fixes.md R2, R3, R4, R17, R23, R24, R28; AC5, AC7, AC26-AC28) and
+S75's tool rules (docs/specs/S75-navigation-diagnostics.md R34, AC19; the diagnostics themselves are
 in test_navigation_diagnostics.py).
 
 Scene Nav (3D): a 40 x 40 floor (plane x 4) with a static 2 m box near its middle, a NavMesh
@@ -71,7 +71,7 @@ async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
 
 async def test_tools_listed_with_schemas(ed: Editor):
     """Each tool is in tools/list (group navigation) with an object schema; the group is hidden from
-    a new session until tool_groups enables it (S54 AC19)."""
+    a new session until tool_groups enables it (S75 AC19)."""
     listed = {tool.name: tool for tool in await ed.tools(groups=["navigation"])}
     for name in TOOLS:
         ed.check(name in listed, f"{name} in tools/list")
@@ -85,7 +85,7 @@ async def test_tools_listed_with_schemas(ed: Editor):
         ed.check(set(TOOLS) <= enabled, f"listed once enabled: {sorted(set(TOOLS) - enabled)}")
     finally:
         await ed.call("tool_groups", disable=["navigation"])
-    # S54 R34: the read tools are read-only and idempotent; visualize_navigation is idempotent, not read-only
+    # S75 R34: the read tools are read-only and idempotent; visualize_navigation is idempotent, not read-only
     annotations = {name: listed[name].annotations for name in TOOLS}
     for name in ("get_navigation_info", "query_navigation"):
         ed.check(annotations[name].read_only_hint and annotations[name].idempotent_hint, f"{name}: {annotations[name]}")
@@ -252,7 +252,7 @@ async def test_overlay_golden(ed: Editor):
         GOLDEN.write_bytes(shot)
         print(f"     [golden] wrote {GOLDEN}")
     else:
-        # a missing golden is a failure, never a silent rewrite (S53 R28)
+        # a missing golden is a failure, never a silent rewrite (S74 R28)
         ed.check(GOLDEN.exists(), f"{GOLDEN} is missing: JASPER_UPDATE_GOLDEN=1 writes it")
         ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
         if not ok and ed.scratch:
@@ -261,7 +261,7 @@ async def test_overlay_golden(ed: Editor):
 
 
 async def test_tool_play_policy(ed: Editor):
-    """S53 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
+    """S74 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
     resolves the running scene (after a scene load too) and its path takes agent_type and area_mask.
     bake_navigation is listed as destructive (clear deletes the .navmesh)."""
     s = await setup(ed)
@@ -316,7 +316,7 @@ async def errors_since(ed: Editor) -> list[str]:
 
 
 async def test_bake_failures_reported(ed: Editor):
-    """S53 AC5: (a) a refused start (Surface too large), (b) a tile failure (Runtime Carving with Tile
+    """S74 AC5: (a) a refused start (Surface too large), (b) a tile failure (Runtime Carving with Tile
     Size 300) and (c) a save failure (the .navmesh path is a directory) each log exactly one Console
     error naming the surface, and get_navigation_info's last_bake says ok false with the reason. A
     good bake then reports ok true."""
@@ -377,7 +377,7 @@ async def test_bake_failures_reported(ed: Editor):
 
 
 async def test_bake_warnings(ed: Editor):
-    """S53 AC7: 70 stacked 3 x 3 m slabs, 2.5 m apart, are more spans than a compact heightfield
+    """S74 AC7: 70 stacked 3 x 3 m slabs, 2.5 m apart, are more spans than a compact heightfield
     column holds: the static bake succeeds and bake_navigation returns Recast's warning (and
     get_navigation_info's last_bake keeps it)."""
     made = await ed.call("create_scene", name="NavLayers", type="3D", path="scenes/NavLayers")
@@ -394,7 +394,7 @@ async def test_bake_warnings(ed: Editor):
 
 
 async def test_carving_settings_undo(ed: Editor):
-    """S53 AC26: Max Carving Obstacles (a surface property) and Carve Tiles Per Tick (a project
+    """S74 AC26: Max Carving Obstacles (a surface property) and Carve Tiles Per Tick (a project
     setting) are set, shown by get_navigation_info and undone."""
     s = await setup(ed)
     info = await ed.call("get_navigation_info", scene=s["scene"])

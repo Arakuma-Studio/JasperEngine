@@ -563,6 +563,6 @@ Budgets and measured numbers: [perf/navigation.md](perf/navigation.md).
 
 ## Changes
 
-- S53: `onDestinationReached` no longer fires at the end of a Partial path (S19 R12 says "of the
+- S74: `onDestinationReached` no longer fires at the end of a Partial path (S19 R12 says "of the
   destination"); a script that relied on it reacts to `onPathFailed` instead. Carving cuts land
   on a tick count (Carve Tiles Per Tick) rather than 1 ms of wall clock.

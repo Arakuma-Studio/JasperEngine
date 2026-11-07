@@ -2,7 +2,7 @@
 
 Served as `jasper://docs/navigation`. The user guide is [docs/navigation.md](../../navigation.md);
 the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md), with the fixes of
-[S53](../../specs/S53-navigation-fixes.md) (diagnostics: [S54](../../specs/S54-navigation-diagnostics.md)).
+[S74](../../specs/S74-navigation-fixes.md) (diagnostics: [S75](../../specs/S75-navigation-diagnostics.md)).
 Tools: group `navigation` (`tool_groups` enables it in tools/list; callable by name without it).
 
 ## The model (Unity AI Navigation names)

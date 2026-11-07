@@ -43,7 +43,7 @@ namespace jasperengine::nav {
     constexpr int FIRST_LINK_COST_AREA = AREA_COUNT;
     constexpr int MAX_POLY_AREAS = 64;
 
-    // ---- S55 runtime volumes (docs/specs/S55-navigation-gameplay-api.md D4): the bake moves a
+    // ---- S76 runtime volumes (docs/specs/S76-navigation-gameplay-api.md D4): the bake moves a
     // walkable span of Recast area r (1-16) inside a runtime volume to r + RUNTIME_VOLUME_AREA_OFFSET,
     // so regions and polygons split along the volume; built polygons map those ids back to r's
     // area, so stored areas stay 0-15 (R48). Recast and the collector use none of these ids.
@@ -131,7 +131,7 @@ namespace jasperengine::nav {
         uint8_t recastArea = 0;
         float bmin[3] = {0, 0, 0};
         float bmax[3] = {0, 0, 0};
-        // S55: a runtime volume's boundary: spans keep their area, only moved to the runtime
+        // S76: a runtime volume's boundary: spans keep their area, only moved to the runtime
         // volume ids (recastArea unused); hashed only when true, so other tiles hash as before
         bool boundaryOnly = false;
     };
@@ -173,7 +173,7 @@ namespace jasperengine::nav {
         // the cost of each link cost area (index - FIRST_LINK_COST_AREA)
         std::vector<float> linkAreaCosts;
 
-        // S54: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
+        // S75: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
         // each triangle, terrain and volume (NULL_ENTITY: one the collector made). Never hashed.
         std::vector<Entity> triangleSources;
         std::vector<Entity> terrainSources;

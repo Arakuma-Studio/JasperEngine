@@ -59,7 +59,7 @@ namespace jasperengine::editor {
         // Removes the navmesh and its asset (Unity's Clear); a failure is logged and recorded
         bool clear(Project* project, uint32_t sceneId, Entity surface, std::string& error);
 
-        // The last bake of a surface this session (spec S53 R3): a refused start and an
+        // The last bake of a surface this session (spec S74 R3): a refused start and an
         // editor-side failure (the save, the scene closed) count. Null when the surface has
         // none (never baked here, or cleared since); entries of closed scenes are dropped.
         struct LastBake {
@@ -132,7 +132,7 @@ namespace jasperengine::editor {
         // the grid cell under a ray (false: it misses the grid's plane)
         static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
 
-        // ---- the overlay's query (the Path Tester, visualize_navigation path; S42 R25): start
+        // ---- the overlay's query (the Path Tester, visualize_navigation path; S75 R25): start
         // green, end red, a Complete path magenta, a Partial one orange with a red gap to the end
         void setQueryDraw(uint32_t sceneId, NavQueryDraw draw);
         void clearQueryDraw(uint32_t sceneId);
@@ -144,7 +144,7 @@ namespace jasperengine::editor {
         // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
         // not collected (inputReport's count)
         int dirtyTiles(Project* project, uint32_t sceneId, Entity surface);
-        // The surface's inputs collected against its navmesh (S54 R15, R24, R29): the dirty tiles
+        // The surface's inputs collected against its navmesh (S75 R15, R24, R29): the dirty tiles
         // and their coordinates, the tile grid and voxel size of the Inspector's estimate.
         // Collected at most once a second (it reads the whole scene); null while it bakes or in
         // play. keepInput: with the collected input itself and its sources (the slope overlay,

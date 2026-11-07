@@ -54,8 +54,8 @@ namespace jasperengine::nav {
         Invalid
     };
 
-    // ---- S54 diagnostics: why a path is not Complete (docs/specs/S54-navigation-diagnostics.md
-    // R1-R4). Shared with S55 (onPathFailed); values may only be appended.
+    // ---- S75 diagnostics: why a path is not Complete (docs/specs/S75-navigation-diagnostics.md
+    // R1-R4). Shared with S76 (onPathFailed); values may only be appended.
     enum class PathFailure : uint8_t {
         None,
         // no enabled, active NavMeshSurface of the agent type (or the given entity is not one)
@@ -89,7 +89,7 @@ namespace jasperengine::nav {
         XY
     };
 
-    // ---- S55 queries
+    // ---- S76 queries
 
     // A path corner's flags (Detour's DT_STRAIGHTPATH_* values)
     enum CornerFlag : uint8_t {
@@ -134,7 +134,7 @@ namespace jasperengine::nav {
         std::vector<Vector3> corners;
         float length = 0.0f;
 
-        // ---- S54 (R2, R4): failure is None exactly when status is Complete; Invalid goes with
+        // ---- S75 (R2, R4): failure is None exactly when status is Complete; Invalid goes with
         // NoSurface, NotBaked and the four end reasons, Partial with Disconnected, BlockedByArea
         // and OutOfNodes
         PathFailure failure = PathFailure::NoSurface;
@@ -151,7 +151,7 @@ namespace jasperengine::nav {
         // has no corners: the snapped start (else the requested one) and its distance to the end.
         Vector3 closestPoint;
         float gap = 0.0f;
-        // ---- S55 queries
+        // ---- S76 queries
         // per corner: the area of the stretch that starts there (the last: the area at the end)
         std::vector<uint8_t> cornerAreas;
         // per corner: CornerFlag bits
@@ -170,7 +170,7 @@ namespace jasperengine::nav {
         bool areaCrossings = false;
     };
 
-    // randomPoint (spec S55 R1): anywhere (uniform by area), around a point (reachable from it
+    // randomPoint (spec S76 R1): anywhere (uniform by area), around a point (reachable from it
     // within radius, not uniform) and/or on the island of a point; seeded: a private stream
     struct RandomPointQuery {
         bool around = false;
@@ -182,7 +182,7 @@ namespace jasperengine::nav {
         uint64_t seed = 0;
     };
 
-    // ---- S54 diagnostics (R7-R10)
+    // ---- S75 diagnostics (R7-R10)
 
     // locate(): where a point is on the navmesh
     struct NavLocation {
@@ -261,7 +261,7 @@ namespace jasperengine::nav {
         float webBakeBudgetMs = 4.0f;
         // grid path requests solved per fixed tick
         int maxGridSolvesPerTick = 64;
-        // tile-cache builds a carving surface does per fixed tick (S53 R14); 0: Auto
+        // tile-cache builds a carving surface does per fixed tick (S74 R14); 0: Auto
         int carveTilesPerTick = 0;
 
         NavigationSettings();
@@ -305,7 +305,7 @@ namespace jasperengine::nav {
 
     JASPERENGINE_API const char* pathStatusName(PathStatus status);
 
-    // ---- S55 queries
+    // ---- S76 queries
     // an area cost as queries use it: >= 1 (a lower or non-finite cost warns, once per process)
     JASPERENGINE_API float clampAreaCost(float cost);
 

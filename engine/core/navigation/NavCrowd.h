@@ -44,7 +44,7 @@ namespace jasperengine::nav {
         uint16_t areaMask = ALL_AREAS;
         // a non-carving obstacle: it never steers and every agent avoids it
         bool obstacle = false;
-        // ---- S55 queries
+        // ---- S76 queries
         // the agent's own area costs; 0: the project's (which follow its later edits)
         float areaCosts[AREA_COUNT] = {};
     };
@@ -57,7 +57,7 @@ namespace jasperengine::nav {
         Failed
     };
 
-    // What the corridor of an agent with a valid target holds (S53 R6, D5): the way to the
+    // What the corridor of an agent with a valid target holds (S74 R6, D5): the way to the
     // target's polygon, its first 256 polygons (the search reached the target), or the way to
     // the polygon nearest an unreachable target
     enum class NavCrowdPath : uint8_t {
@@ -154,8 +154,8 @@ namespace jasperengine::nav {
         // the area costs of every filter from the project's settings and the mesh's link costs
         void refreshFilters();
 
-        // ---- S55 queries: Detour's 16 query filters, keyed by area mask and costs, shared by
-        // the agents with the same key and freed when none uses them (spec S55 R10)
+        // ---- S76 queries: Detour's 16 query filters, keyed by area mask and costs, shared by
+        // the agents with the same key and freed when none uses them (spec S76 R10)
         // the filters in use (the all-areas filter included)
         int getFilterCount() const;
         // the agents on a fallback filter now (no free filter: one with their mask, else all areas)
@@ -165,12 +165,12 @@ namespace jasperengine::nav {
         // what the crowd holds (agents, grids, path queue), approximately
         size_t getMemoryBytes() const;
 
-        // ---- S55 areas (R15): every walking agent whose whole corridor (not dtCrowd's 10-polygon
+        // ---- S76 areas (R15): every walking agent whose whole corridor (not dtCrowd's 10-polygon
         // lookahead) holds one of the changed polygons (sorted) requests its target again; their
         // indices, ascending. Agents on a link finish it.
         void replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned);
 
-        // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R20-R24, D7)
+        // ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R20-R24, D7)
         // Hands the agent a planned corridor (setPath): its current polygon must be among the first
         // 16 (those before it are dropped) and each polygon kept must still pass its filter. At most
         // 256 are kept, with `target` (the path's end) as the target: the crowd plans the rest near

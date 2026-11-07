@@ -263,7 +263,7 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
     const std::string exactLabel = std::string(ICON_FA_CROSSHAIRS) + "##ExactPick" + sid;
     const std::string alignLabel = std::string(ICON_FA_ARROWS_DOWN_TO_LINE) + "##Align" + sid;
     const std::string cameraLabel = std::string(ICON_FA_CAMERA) + "##SceneCamera" + sid;
-    // the Path Tester (S54 R25), in scenes with a NavMesh Surface or a Nav Grid
+    // the Path Tester (S75 R25), in scenes with a NavMesh Surface or a Nav Grid
     const std::string pathTesterLabel = std::string(ICON_FA_ROUTE) + "##PathTester" + sid;
     const bool hasNavigation = sceneProject.scene && (sceneProject.scene->getComponentArray<NavMeshSurfaceComponent>()->size() > 0 ||
                                                       sceneProject.scene->getComponentArray<NavGridComponent>()->size() > 0);

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The gameplay queries of docs/specs/S55-navigation-gameplay-api.md (R1-R8; AC1-AC4, AC7-AC9):
+// The gameplay queries of docs/specs/S76-navigation-gameplay-api.md (R1-R8; AC1-AC4, AC7-AC9):
 // seeded random points (anywhere uniform by area, around a point, on an island), the area costs and
 // corner areas of paths, the raycast's cost, and per-query area costs.
 

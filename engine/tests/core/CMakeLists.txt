@@ -109,7 +109,7 @@ jasperengine_add_test_target(jasperengine-core-tests
 )
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
 # the navigation tests call into Recast/Detour directly (the vendored patches, the tile builds'
-# rcContext: docs/specs/S53-navigation-fixes.md AC1-AC3, AC7)
+# rcContext: docs/specs/S74-navigation-fixes.md AC1-AC3, AC7)
 if(TARGET recastnavigation)
     target_link_libraries(jasperengine-core-tests PRIVATE recastnavigation)
 endif()

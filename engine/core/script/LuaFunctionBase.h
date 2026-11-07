@@ -92,7 +92,7 @@ namespace jasperengine{
         void push_value(lua_State *vm, ControllerColliderHit o);
         void push_value(lua_State *vm, NavMeshAgent o);
         void push_value(lua_State *vm, NavMeshSurface o);
-        // onPathFailed's reason: its snake_case name ("blocked_by_area", S54 D4)
+        // onPathFailed's reason: its snake_case name ("blocked_by_area", S75 D4)
         void push_value(lua_State *vm, nav::PathFailure o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);

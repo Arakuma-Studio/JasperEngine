@@ -1,4 +1,4 @@
-"""Navigation in the editor's UI (docs/specs/S53-navigation-fixes.md), driven like a human in the
+"""Navigation in the editor's UI (docs/specs/S74-navigation-fixes.md), driven like a human in the
 harness's Xvfb:
 
 - R21, AC24 (a guard: the keys already worked, see the spec's Deviations): the Inspector's Nav

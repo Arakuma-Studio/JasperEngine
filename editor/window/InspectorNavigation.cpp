@@ -258,7 +258,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
         recordLayoutRow(RowPropertyType::Label, cpType, id, text, sceneProject, entities);
     };
 
-    // S54 R29: what a bake would build, from the editor's cached collection (Volume: the box)
+    // S75 R29: what a bake would build, from the editor's cached collection (Volume: the box)
     ImGui::Spacing();
     {
         // the bake's own configuration (nav units: metres, scene points on a 2D surface)
@@ -345,7 +345,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     ImGui::EndDisabled();
     ImGui::EndDisabled();
 
-    // the last bake of this session (S53 R3): a failure until a bake succeeds, or its warnings
+    // the last bake of this session (S74 R3): a failure until a bake succeeds, or its warnings
     const NavigationEditor::LastBake* editorBake = navEditor.lastBake(sceneProject->id, entity);
     const bool failureShown = editorBake && !editorBake->ok && !editorBake->cancelled;
     if (failureShown) {
@@ -376,7 +376,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
             }
         }
     }
-    // S54 R29: the last bake of this session, the walkable area and the islands
+    // S75 R29: the last bake of this session, the walkable area and the islands
     if (const NavBakeResult* last = system->getLastBakeResult(entity)) {
         char line[192];
         if (last->ok) {
@@ -486,7 +486,7 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::Bool, cpType, "updateRotation", "Update Rotation", sceneProject, entities, settingsFlag);
     endTable();
 
-    // ---- S55 agents: the stuck watchdog (R40)
+    // ---- S76 agents: the stuck watchdog (R40)
     if (beginFoldout("Stuck Detection##navagent")) {
         RowSettings settingsDetect;
         settingsDetect.help = "Fire onStuck when it makes no progress along its path for Stuck After seconds";
@@ -513,7 +513,7 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
         ImGui::TextDisabled("Is On NavMesh: %s", agent.isOnNavMesh ? "yes" : "no");
         ImGui::TextDisabled("Velocity: %.2f, %.2f, %.2f", agent.velocity.x, agent.velocity.y, agent.velocity.z);
         ImGui::TextDisabled("Destination: %.2f, %.2f, %.2f", agent.destination.x, agent.destination.y, agent.destination.z);
-        // ---- S55 agents (R26, R27, R21, R9)
+        // ---- S76 agents (R26, R27, R21, R9)
         if (agent.stuckDetection)
             ImGui::TextDisabled("Stuck Time: %.2f s", agent.stuckTime);
         ImGui::TextDisabled("Last Path Failure: %s", nav::pathFailureName(agent.lastPathFailure));
@@ -601,7 +601,7 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Bool, cpType, "activated", "Activated", sceneProject, entities, settingsActivated);
     endTable();
 
-    // ---- S55 areas: in play, whether an agent is crossing it (R17)
+    // ---- S76 areas: in play, whether an agent is crossing it (R17)
     NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
     if (entities.size() == 1 && system && sceneProject->playState != ScenePlayState::STOPPED)
         ImGui::TextDisabled("Occupied: %s", system->isLinkOccupied(entities[0]) ? "yes" : "no");
@@ -644,7 +644,7 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settingsRuntime.indent = true;
     settingsRuntime.help = "The bake only splits the navmesh along the volume; while enabled, the polygons inside take its Area Type "
                            "(a door, a bridge), in edit mode and in play";
-    // a runtime volume always marks its Area Type (S55 R40)
+    // a runtime volume always marks its Area Type (S76 R40)
     const bool runtimeVolume = modifier.useVolume && modifier.applyAtRuntime;
 
     beginTable(cpType, getLabelSize("Apply At Runtime"));
@@ -662,7 +662,7 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     }
     endTable();
 
-    // ---- S55 areas: in play, the polygons the runtime volume holds now
+    // ---- S76 areas: in play, the polygons the runtime volume holds now
     NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
     if (entities.size() == 1 && runtimeVolume && system && sceneProject->playState != ScenePlayState::STOPPED)
         ImGui::TextDisabled("Applied Polygons: %d", system->getModifierAppliedPolygons(entities[0]));

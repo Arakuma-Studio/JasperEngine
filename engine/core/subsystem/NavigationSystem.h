@@ -61,10 +61,10 @@ namespace jasperengine{
         int polys = 0;
         double milliseconds = 0.0;
         std::vector<std::string> warnings;
-        // the engine logged the failure already (Log::error): the editor does not again (S53 R2)
+        // the engine logged the failure already (Log::error): the editor does not again (S74 R2)
         bool logged = false;
 
-        // ---- S54 bake report (R16): why it failed, what it collected, the tiles it built
+        // ---- S75 bake report (R16): why it failed, what it collected, the tiles it built
         nav::NavBakeError errorCode = nav::NavBakeError::None;
         // bakeErrorHint(errorCode)
         std::string hint;
@@ -91,9 +91,9 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
-        // carved tile builds left before its navmesh is complete (a bake landing in play, S53 R15)
+        // carved tile builds left before its navmesh is complete (a bake landing in play, S74 R15)
         int queuedBuilds = 0;
-        // ---- S55 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
+        // ---- S76 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
         int crowdFilters = 0;
         int crowdFilterOverflow = 0;
     };
@@ -112,7 +112,7 @@ namespace jasperengine{
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
 
         // ---- queries (world positions); without a surface, the first surface of the agent type
-        // that answers (entity order). Every query honours the filter's area costs (S55 R8).
+        // that answers (entity order). Every query honours the filter's area costs (S76 R8).
         nav::NavPath calculatePath(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {},
                                    const nav::PathOptions& options = {});
         bool samplePosition(const Vector3& point, float maxDistance, nav::NavHit& out, const nav::QueryFilter& filter = {});
@@ -121,7 +121,7 @@ namespace jasperengine{
         // the nearest wall within maxDistance (<= 0: S19's reach); false with out.distance =
         // maxDistance when none is that close
         bool findClosestEdge(const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter = {}, float maxDistance = -1.0f);
-        // S54 R6: false without a search when the ends' islands are current and differ; why: the
+        // S75 R6: false without a search when the ends' islands are current and differ; why: the
         // failure of the answering surface (None when reachable)
         bool isReachable(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {}, nav::PathFailure* why = nullptr);
         // the same on one surface
@@ -130,7 +130,7 @@ namespace jasperengine{
         bool raycastOn(Entity surface, const Vector3& from, const Vector3& to, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
         bool findClosestEdgeOn(Entity surface, const Vector3& point, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
 
-        // ---- S55 queries (spec S55 R1-R9)
+        // ---- S76 queries (spec S76 R1-R9)
         static constexpr uint64_t DEFAULT_RANDOM_SEED = 0x5EED;
         // A random navmesh point of the filter's agent type: anywhere (uniform by area), around
         // query.center (reachable within query.radius, not uniform) and/or on the island of
@@ -164,7 +164,7 @@ namespace jasperengine{
         // system (the Background lane in the editor, Normal in a game) or time-sliced (web).
         // The navmesh changes once every tile is built; a cancel keeps the previous one.
         // A bake that cannot start (nothing collected, too large, unavailable) is the surface's
-        // last result too; code: why (S54)
+        // last result too; code: why (S75)
         bool bake(Entity surface, NavBakeMode mode, std::string& error, nav::NavBakeError* code = nullptr);
         // Re-collects and rebuilds the tiles touching the world box (procedural levels)
         bool updateTiles(Entity surface, const AABB& worldBounds, std::string& error, nav::NavBakeError* code = nullptr);
@@ -173,7 +173,7 @@ namespace jasperengine{
         bool cancelBake(Entity surface);
         bool isBaking(Entity surface) const;
         bool isAnyBaking() const;
-        // the last finished bake (null before any). Not const (S54): the first read fills its
+        // the last finished bake (null before any). Not const (S75): the first read fills its
         // island fields (main thread: the editor, Lua)
         const NavBakeResult* getLastBakeResult(Entity surface);
         // Lands finished bakes and runs time-sliced ones (the editor calls it every frame;
@@ -215,7 +215,7 @@ namespace jasperengine{
         // the link it is on (when isOnOffMeshLink)
         bool getCurrentOffMeshLink(Entity agent, Vector3& start, Vector3& end, Entity& link);
 
-        // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R19-R27), world positions
+        // ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R19-R27), world positions
         // A path from where the agent stands (its simulation position) to `target` snapped as
         // setDestination snaps it, on its surface with its area mask and costs, at once. Its own
         // path is unchanged. Invalid when the agent is not placed on a surface or grid.
@@ -279,7 +279,7 @@ namespace jasperengine{
         bool getDebugGeometry(Entity surface, const std::function<bool(const AABB& worldBounds)>& visible, size_t maxTriangles,
                               bool detailMesh, nav::NavDebugGeometry& out, uint32_t extras = 0);
 
-        // ---- S54 diagnostics (docs/specs/S54-navigation-diagnostics.md; world positions, m, m^2).
+        // ---- S75 diagnostics (docs/specs/S75-navigation-diagnostics.md; world positions, m, m^2).
         // Islands label on demand here (R8); path queries never label.
         // Where a point is (R10): over the agent type's surfaces, the on-mesh one with the
         // smallest snap distance, else the closest found
@@ -325,7 +325,7 @@ namespace jasperengine{
         // The scene's navigation problems (R13, R14), error first, then by entity and code
         std::vector<nav::NavFinding> getFindings(const nav::NavFindingOptions& options = {});
 
-        // ---- S55 areas (docs/specs/S55-navigation-gameplay-api.md R11-R17; NavigationAreas.cpp).
+        // ---- S76 areas (docs/specs/S76-navigation-gameplay-api.md R11-R17; NavigationAreas.cpp).
         // A script volume (a world box): on every surface of the agent type (< 0: all), the
         // polygons whose centroid lies in it take `area` (Not Walkable: nothing walks there) until
         // removeAreaOverride. Handles end with the system (Stop). 0 for an area outside 0-15.
@@ -373,9 +373,9 @@ namespace jasperengine{
         uint64_t getWorkingTicks() const { return workingTicks; }
         uint32_t getFixedTick() const { return fixedTick; }
         // path searches run on the main thread (calculatePath*, isReachable); crowd agents never
-        // add to it (S53 R6)
+        // add to it (S74 R6)
         uint64_t getPathQueryCount() const { return pathQueryCount; }
-        // the wall-clock ceiling of a tick's carving builds, ms (S53 R14); 0 turns it off
+        // the wall-clock ceiling of a tick's carving builds, ms (S74 R14); 0 turns it off
         void setCarveTimeCeiling(double ms) { carveTimeCeilingMs = ms; }
         // the tile-cache builds of the last fixed tick, every surface together
         int getCarveTileBuilds() const { return carveTileBuilds; }
@@ -392,7 +392,7 @@ namespace jasperengine{
         struct Runtime;
         // made on the first navigation component or query; null otherwise (spec R25)
         std::unique_ptr<Runtime> runtime;
-        // S55: made on the first runtime volume, script volume or deactivated link (R18)
+        // S76: made on the first runtime volume, script volume or deactivated link (R18)
         struct AreaState;
         std::unique_ptr<AreaState> areas;
         bool areaSyncing = false;
@@ -408,13 +408,13 @@ namespace jasperengine{
         std::string slowestBakeStep;
         std::map<std::string, double> bakeStageMaxMs;
 
-        // ---- S55 queries: the random point stream (R2)
+        // ---- S76 queries: the random point stream (R2)
         nav::NavRandom randomStream{DEFAULT_RANDOM_SEED};
         uint64_t randomSeed = DEFAULT_RANDOM_SEED;
 
         bool hasNavigationComponents() const;
         Runtime& rt();
-        // ---- S55 areas
+        // ---- S76 areas
         nav::NavMesh* editableNavMesh(Entity surface);
         // its crowd has agents (they replan on area changes)
         bool hasAreaCrowd(Entity surface) const;

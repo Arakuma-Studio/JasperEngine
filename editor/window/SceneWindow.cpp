@@ -2554,7 +2554,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             sceneProject.needUpdateRender = true;
             project->saveWorkspaceFile();
         }
-        // S54 diagnostics: what tints the navmesh, the steep collected ground, the tiles' builds
+        // S75 diagnostics: what tints the navmesh, the steep collected ground, the tiles' builds
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("    Color By");

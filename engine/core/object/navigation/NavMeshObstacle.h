@@ -11,7 +11,7 @@ namespace jasperengine{
 
     // Unity's NavMeshObstacle (docs/navigation.md): Lua NavMeshObstacle(scene, entity). Unity's
     // scripting names over the component's fields (carving, carvingMoveThreshold,
-    // carvingTimeToStationary; S55 R30, R33); changes apply at the next fixed tick.
+    // carvingTimeToStationary; S76 R30, R33); changes apply at the next fixed tick.
     class JASPERENGINE_API NavMeshObstacle: public EntityHandle{
     private:
         NavMeshObstacleComponent& component() const;

@@ -768,7 +768,7 @@ async def test_cli_shaders_summary_counts_navmesh_surfaces():
 
 
 async def test_cli_navigation_findings(ed: Editor):
-    """S54 AC21: a whole-project check reports every navigation finding of the shared list with its
+    """S75 AC21: a whole-project check reports every navigation finding of the shared list with its
     code and severity: a baked floor with a NavMesh Link whose end hangs in the air and an agent
     far off the navmesh are warnings (exit 0); an unreadable .navmesh is an error (exit 1)."""
     made = await ed.call("create_scene", name="NavCheck", type="3D", path="scenes/NavCheck")

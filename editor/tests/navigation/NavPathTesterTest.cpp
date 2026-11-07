@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Scene view's Path Tester (docs/specs/S54-navigation-diagnostics.md R25, R26, AC13), without
+// The Scene view's Path Tester (docs/specs/S75-navigation-diagnostics.md R25, R26, AC13), without
 // a window or a GPU: Shift+click sets the start and a click the end, a press near a handle drags
 // it and every drag step queries again, each mode answers what NavigationSystem answers, the
 // answer is what the overlay's query draw shows, and Locate asks the walkability probe.

@@ -57,7 +57,7 @@ NavMeshSurfaceComponent editor::Stream::decodeNavMeshSurfaceComponent(const YAML
     if (node["minRegionArea"]) surface.minRegionArea = YamlNumbers::as<float>(node["minRegionArea"]);
     if (node["plane"]) surface.plane = decodeEnum(node, "plane", StreamSchema::navPlane());
     if (node["runtimeCarving"]) surface.runtimeCarving = YamlNumbers::as<bool>(node["runtimeCarving"]);
-    // (S53: missing in S19-era scenes, which keep the default 128)
+    // (S74: missing in S19-era scenes, which keep the default 128)
     if (node["maxCarvingObstacles"])
         surface.maxCarvingObstacles = std::clamp(YamlNumbers::as<int>(node["maxCarvingObstacles"]), 1, 4096);
     if (node["navMeshData"]) surface.navMeshData = decodeAssetRef(node, "navMeshData");

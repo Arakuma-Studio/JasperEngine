@@ -2282,7 +2282,7 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
         put("desiredVelocity", vec3(c->desiredVelocity));
         put("isOnNavMesh", c->isOnNavMesh);
         put("isOnOffMeshLink", c->isOnOffMeshLink);
-        // ---- S55 agents (R44)
+        // ---- S76 agents (R44)
         put("stuckTime", c->stuckTime);
         put("lastPathFailure", nav::pathFailureName(c->lastPathFailure));
         if (NavigationSystem* navigation = scene->getSystem<NavigationSystem>().get()) {
@@ -2290,7 +2290,7 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
             put("steeringTarget", vec3(navigation->getSteeringTarget(entity)));
         }
     }
-    // S55 R44: link, modifier and obstacle state the navigation system holds
+    // S76 R44: link, modifier and obstacle state the navigation system holds
     NavigationSystem* navigation = scene->getSystem<NavigationSystem>().get();
     if (type == ComponentType::NavMeshLinkComponent && navigation && scene->findComponent<NavMeshLinkComponent>(entity))
         put("occupied", navigation->isLinkOccupied(entity));

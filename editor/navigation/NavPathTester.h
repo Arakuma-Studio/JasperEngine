@@ -3,7 +3,7 @@
 
 #pragma once
 
-// The Scene view's Path Tester (docs/specs/S54-navigation-diagnostics.md R25, R26; docs/navigation.md
+// The Scene view's Path Tester (docs/specs/S75-navigation-diagnostics.md R25, R26; docs/navigation.md
 // "Path Tester"): Shift+click sets the start, a click the end, a press near a handle drags it and
 // queries again every frame. Modes Path, Raycast, Closest Edge and Locate call the same
 // NavigationSystem queries as query_navigation and draw through the overlay's query draw

@@ -64,7 +64,7 @@ namespace jasperengine::nav::detail {
         std::vector<unsigned int> ids;
     };
 
-    // The rcContext of a tile build (S53 R4): logging on, timers off. It keeps Recast's warnings
+    // The rcContext of a tile build (S74 R4): logging on, timers off. It keeps Recast's warnings
     // and errors in order, pointer values written as "?" (results stay deterministic) and without
     // the contour buffer's allocation notice. Nothing is allocated or formatted while Recast logs
     // nothing.
@@ -95,7 +95,7 @@ namespace jasperengine::nav::detail {
     };
 
     // Converts a built polygon's Recast area to the area and its flag
-    // (S55: a runtime volume's ids back to the area they were moved from)
+    // (S76: a runtime volume's ids back to the area they were moved from)
     inline void polyAreaAndFlags(unsigned char recastArea, unsigned char& area, unsigned short& flags) {
         if (recastArea >= FIRST_RUNTIME_VOLUME_RECAST_AREA && recastArea <= LAST_RUNTIME_VOLUME_RECAST_AREA)
             recastArea = (unsigned char)(recastArea - RUNTIME_VOLUME_AREA_OFFSET);

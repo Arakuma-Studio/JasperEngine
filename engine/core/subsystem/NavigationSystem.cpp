@@ -59,9 +59,9 @@ using namespace jasperengine::nav;
 namespace {
 
     constexpr float PI = 3.14159265358979323846f;
-    // the Recast warning lines a bake result keeps (spec S53 R4)
+    // the Recast warning lines a bake result keeps (spec S74 R4)
     constexpr size_t MAX_BAKE_WARNINGS = 32;
-    // Max Carving Obstacles' range (spec S53 R17)
+    // Max Carving Obstacles' range (spec S74 R17)
     constexpr int MAX_CARVING_OBSTACLES = 4096;
     // Detour cuts an obstacle into at most this many tile-cache layers (DT_MAX_TOUCHED_TILES)
     constexpr int MAX_CUT_LAYERS = 8;
@@ -82,14 +82,14 @@ namespace {
         LinkStart,
         LinkEnd,
         BakeCompleted,
-        // ---- S55 agents
+        // ---- S76 agents
         Stuck
     };
 
     struct Event {
         Entity entity;
         EventType type;
-        // ---- S55 agents: PathFailed's nav::PathFailure
+        // ---- S76 agents: PathFailed's nav::PathFailure
         uint8_t detail = 0;
         // its place in the queue (dispatch keeps it within an entity)
         uint32_t sequence = 0;
@@ -138,9 +138,9 @@ struct NavigationSystem::Runtime {
         std::chrono::steady_clock::time_point bakeStarted;
         std::unique_ptr<NavBakeResult> lastResult;
         int dirtyTiles = -1;
-        // S54 R17: each tile's last build in this session, ms by (y, x); cleared on a load
+        // S75 R17: each tile's last build in this session, ms by (y, x); cleared on a load
         std::map<std::pair<int, int>, double> tileMs;
-        // A bake that landed in play while its carved tiles still build (spec S53 R15): the new
+        // A bake that landed in play while its carved tiles still build (spec S74 R15): the new
         // mesh of a full bake (staging, in service once complete) or the live mesh's queued
         // builds, and the result reported when they are done
         std::unique_ptr<NavMesh> staging;
@@ -150,7 +150,7 @@ struct NavigationSystem::Runtime {
         uint64_t crowdGeneration = 0;
         int crowdCapacity = 0;
         bool crowdGrow = false;
-        // ---- S55 queries: the crowd ran out of query filters once (one warning per crowd)
+        // ---- S76 queries: the crowd ran out of query filters once (one warning per crowd)
         bool warnedFilterFallback = false;
 
         // the mesh that holds the carving obstacles: the staging one while it builds
@@ -179,7 +179,7 @@ struct NavigationSystem::Runtime {
         bool failed = false;
         bool wasPending = false;
         bool warnedOffMesh = false;
-        // what dtCrowd's corridor held at the last fixed tick (spec S53 R6, R8)
+        // what dtCrowd's corridor held at the last fixed tick (spec S74 R6, R8)
         NavCrowdPath crowdPath = NavCrowdPath::Complete;
         int corridorPolys = 0;
         // its own traversal of an off-mesh link (nav space)
@@ -197,10 +197,10 @@ struct NavigationSystem::Runtime {
         Vector3 gridVelocity;
         uint64_t gridRevision = 0;
         GridCell gridGoal;
-        // ---- S55 queries: its own area costs (0: the project's), runtime only
+        // ---- S76 queries: its own area costs (0: the project's), runtime only
         float areaCosts[AREA_COUNT] = {};
 
-        // ---- S55 agents: the stuck watchdog's anchor (R25) and a script's velocity for the next
+        // ---- S76 agents: the stuck watchdog's anchor (R25) and a script's velocity for the next
         // fixed tick (world, R22)
         Vector3 stuckAnchor;
         bool stuckAnchored = false;
@@ -208,7 +208,7 @@ struct NavigationSystem::Runtime {
         Vector3 overrideVelocity;
     };
 
-    // what an obstacle's cut was made from (spec S53 R13): a re-cut once it moved past the
+    // what an obstacle's cut was made from (spec S74 R13): a re-cut once it moved past the
     // threshold, turned (a box) or changed shape
     struct Cut {
         uint32_t id = 0;
@@ -227,7 +227,7 @@ struct NavigationSystem::Runtime {
         // its cut in each carving surface's mesh (an id of the mesh's registry)
         std::map<Entity, Cut> carves;
         Vector3 lastPosition;
-        // S55 R30: from its transform, per fixed tick
+        // S76 R30: from its transform, per fixed tick
         Vector3 velocity;
         // stationary: within the move threshold of `anchor` for stationaryTime seconds
         Vector3 anchor;
@@ -235,7 +235,7 @@ struct NavigationSystem::Runtime {
         bool hasLast = false;
     };
 
-    // an auto-updating link on one surface (spec S53 R10): the connections last applied
+    // an auto-updating link on one surface (spec S74 R10): the connections last applied
     struct LinkTrack {
         uint64_t generation = 0;
         std::vector<NavLinkInput> applied;
@@ -273,7 +273,7 @@ struct NavigationSystem::Runtime {
     std::vector<int> detourLinks;
     std::map<std::pair<Entity, Entity>, LinkTrack> links;
     bool inFixedUpdate = false;
-    // scratch of the fixed tick, reused so that a steady tick allocates nothing (spec S53 R19):
+    // scratch of the fixed tick, reused so that a steady tick allocates nothing (spec S74 R19):
     // the agents and obstacles in entity order (rebuilt when such components come or go), each
     // crowd slot's agent, a grid agent's lookahead, a link's connections
     std::vector<Entity> agentOrder;
@@ -283,7 +283,7 @@ struct NavigationSystem::Runtime {
     std::vector<int> lookahead;
     std::vector<NavLinkInput> connections;
     std::vector<float> linkCosts;
-    // ---- S55 agents: crowd agents steered by a velocity request this tick (no path), and the
+    // ---- S76 agents: crowd agents steered by a velocity request this tick (no path), and the
     // events being dispatched (the two buffers swap, R18)
     std::vector<int> velocityRequests;
     std::vector<Event> dispatching;
@@ -302,13 +302,13 @@ struct NavigationSystem::Runtime {
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
     void dispatch(Scene* scene);
     const std::vector<Entity>& sortedAgents(Scene* scene);
-    // S55 step 1b: the agents whose path an area change touches ask again (R15)
+    // S76 step 1b: the agents whose path an area change touches ask again (R15)
     void replanAreaChanges(NavigationSystem& system, Scene* scene);
     std::vector<int> replanned;
-    // ---- S55 queries: an agent whose area mask and costs found no free crowd filter
+    // ---- S76 queries: an agent whose area mask and costs found no free crowd filter
     void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
-    // ---- S55 agents
-    // why the agent's destination has no Complete path now: one search on its surface (S54's
+    // ---- S76 agents
+    // why the agent's destination has no Complete path now: one search on its surface (S75's
     // classification), else over the surfaces of its agent type
     PathFailure classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent);
     // queues onPathFailed with its reason, which lastPathFailure keeps
@@ -371,7 +371,7 @@ void NavigationSystem::Runtime::replaceMesh(Entity entity, Surface& surface, std
         surface.pendingResult->error = "cancelled";
         surface.lastResult = std::move(surface.pendingResult);
     }
-    // the cuts carry over: same ids, cut again on the new tile cache (spec S53 R12)
+    // the cuts carry over: same ids, cut again on the new tile cache (spec S74 R12)
     if (next && surface.carvingMesh())
         next->adoptObstacles(*surface.carvingMesh());
     surface.staging.reset();
@@ -391,7 +391,7 @@ void NavigationSystem::load() {
 }
 
 void NavigationSystem::destroy() {
-    // S55: script volumes end with the system (Stop)
+    // S76: script volumes end with the system (Stop)
     areas.reset();
     if (!runtime)
         return;
@@ -500,7 +500,7 @@ namespace {
         return scene->findComponent<NavMeshSurfaceComponent>(entity);
     }
 
-    // Max Carving Obstacles, in its range (spec S53 R17)
+    // Max Carving Obstacles, in its range (spec S74 R17)
     int maxCarvingObstaclesOf(const NavMeshSurfaceComponent* component) {
         return std::clamp(component ? component->maxCarvingObstacles : 128, 1, MAX_CARVING_OBSTACLES);
     }
@@ -570,7 +570,7 @@ bool NavigationSystem::reloadNavMesh(Entity surface, std::string& error) {
         Log::error("NavMeshSurface '%s': %s; it reports Not baked", scene->getEntityName(surface).c_str(), error.c_str());
         return false;
     }
-    // a load builds at once, its obstacles' cuts included (spec S53 R12, R15)
+    // a load builds at once, its obstacles' cuts included (spec S74 R12, R15)
     r.replaceMesh(surface, state, std::move(mesh), true);
     onAreaMeshReplaced(surface);
     return true;
@@ -723,7 +723,7 @@ NavigationSystem::InputReport NavigationSystem::inspectInputs(Entity surface, co
 namespace {
 
     // a bake that could not start: its code, and (when the surface exists and no bake runs) the
-    // surface's last result, so the report and the findings see it (S54 R16)
+    // surface's last result, so the report and the findings see it (S75 R16)
     bool refuseBake(std::unique_ptr<NavBakeResult>* last, NavBakeError why, const std::string& error, NavBakeError* code,
                     NavCollectStats* stats = nullptr) {
         if (code)
@@ -925,7 +925,7 @@ bool NavigationSystem::isBaking(Entity surface) const {
     if (!runtime)
         return false;
     auto found = runtime->surfaces.find(surface);
-    // a bake that landed in play is baking until its carved tiles are built (spec S53 R15)
+    // a bake that landed in play is baking until its carved tiles are built (spec S74 R15)
     return found != runtime->surfaces.end() && (found->second.bake || found->second.pendingResult);
 }
 
@@ -1002,7 +1002,7 @@ void NavigationSystem::processBakes(double budgetMs) {
         }
 
         // the tiles land in tile-index order (spec R40a); Recast's warnings go with them, as
-        // "tile (x, y): message", equal lines merged (spec S53 R4)
+        // "tile (x, y): message", equal lines merged (spec S74 R4)
         std::vector<NavTileBlob> blobs;
         std::vector<NavTileCoord> coords;
         std::vector<std::string> recastLines;
@@ -1055,7 +1055,7 @@ void NavigationSystem::processBakes(double budgetMs) {
 
         const std::shared_ptr<const NavBakeInput>& input = bake->getInput();
         const NavMeshSurfaceComponent* component = surfaceComponent(scene, entry.first);
-        // in play, carved tiles build within the carving budget (spec S53 R15); edit-mode bakes
+        // in play, carved tiles build within the carving budget (spec S74 R15); edit-mode bakes
         // build at once, as no frame budget applies there
         const bool defer = r.inFixedUpdate && input->config.carving;
         std::string error;
@@ -1069,7 +1069,7 @@ void NavigationSystem::processBakes(double budgetMs) {
             data.header.config = input->config;
             data.header.maxTiles = std::max(1, input->tileCount());
             data.header.linkAreaCosts = input->linkAreaCosts;
-            // informational in the file: a load takes the surface's own (spec S53 R17)
+            // informational in the file: a load takes the surface's own (spec S74 R17)
             data.header.maxObstacles = maxCarvingObstaclesOf(component);
             data.tiles = std::move(blobs);
             auto mesh = std::make_unique<NavMesh>();
@@ -1092,7 +1092,7 @@ void NavigationSystem::processBakes(double budgetMs) {
             const uint64_t generation = state.mesh->getGeneration();
             state.mesh->setDeferCarvedBuilds(defer);
             ok = state.mesh->replaceTiles(coords, std::move(blobs), error);
-            // the pool grew: a new Detour mesh inside the same NavMesh (spec S53 R9)
+            // the pool grew: a new Detour mesh inside the same NavMesh (spec S74 R9)
             if (state.mesh->getGeneration() != generation)
                 r.releaseCrowd(entry.first, state);
             staged = ok && defer && !state.mesh->isComplete();
@@ -1125,7 +1125,7 @@ void NavigationSystem::processBakes(double budgetMs) {
             state.pendingResult = std::move(result);
             continue;
         }
-        // S55 R14: a full bake's new navmesh gets the overrides before anything queries it
+        // S76 R14: a full bake's new navmesh gets the overrides before anything queries it
         if (newMesh)
             onAreaMeshReplaced(entry.first);
         if (state.mesh)
@@ -1158,7 +1158,7 @@ namespace {
 namespace {
 
     // what a query needs of a surface: its mesh, frame and the search box of its agent type;
-    // why not (S54 R3 steps 1-2: not an enabled, active surface, or not baked)
+    // why not (S75 R3 steps 1-2: not an enabled, active surface, or not baked)
     bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out, PathFailure* why = nullptr) {
         const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(entity);
         if (!component || !activeSurface(scene, entity, *component)) {
@@ -1268,7 +1268,7 @@ NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, c
         if (i > 0)
             path.length += path.corners[i - 1].distance(path.corners[i]);
     }
-    // the S54 fields in the world (snap distances and the gap are lengths: the frame keeps them)
+    // the S75 fields in the world (snap distances and the gap are lengths: the frame keeps them)
     path.surface = surface;
     path.start = path.startSnapDistance >= 0.0f ? q.frame.toWorld(path.start, planeZ) : from;
     path.end = path.endSnapDistance >= 0.0f ? q.frame.toWorld(path.end, q.frame.planeZOf(to)) : to;
@@ -1403,12 +1403,12 @@ bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const
     return false;
 }
 
-// ---- S55 queries
+// ---- S76 queries
 
 namespace {
 
     // Random points need the surface's mesh and frame (makeQuery), the stream to draw from, and the
-    // island to stay on (S54's labels; -1: any)
+    // island to stay on (S75's labels; -1: any)
     bool randomPointWith(NavigationSystem& system, Scene* scene, Entity surface, NavHit& out, const QueryFilter& filter,
                          const RandomPointQuery& query, NavRandom& stream) {
         SurfaceQuery q;
@@ -1418,7 +1418,7 @@ namespace {
         const NavFilter navFilter = NavFilter::fromQuery(filter);
         int island = -1;
         if (query.sameIsland) {
-            // an explicit island use: locate labels a stale navmesh first (S54 R8)
+            // an explicit island use: locate labels a stale navmesh first (S75 R8)
             const NavLocation under = q.mesh->locate(q.frame.toNav(query.islandOf), navFilter, q.halfExtents, 0.0f);
             if (!under.onMesh || under.island < 0)
                 return false;
@@ -1541,7 +1541,7 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
     return true;
 }
 
-// ---------------------------------------------------------------- S54 diagnostics
+// ---------------------------------------------------------------- S75 diagnostics
 
 namespace {
 
@@ -2418,7 +2418,7 @@ namespace {
 
 namespace {
 
-    // ---- S55 agents: a destination snapped to the mesh within twice the agent's height (S19 R12;
+    // ---- S76 agents: a destination snapped to the mesh within twice the agent's height (S19 R12;
     // setDestination and calculatePath)
     Vector3 snapDestination(NavigationSystem& system, Scene* scene, Entity surface, bool onGrid, const NavMeshAgentComponent& agent,
                             const Vector3& target) {
@@ -2441,7 +2441,7 @@ Entity NavigationSystem::getAgentSurface(Entity agent) {
     return found != runtime->agents.end() ? found->second.surface : NULL_ENTITY;
 }
 
-// ---- S55 queries: an agent's own area costs
+// ---- S76 queries: an agent's own area costs
 
 void NavigationSystem::setAgentAreaCost(Entity agent, int area, float cost) {
     if (area < 0 || area >= AREA_COUNT || !scene->findComponent<NavMeshAgentComponent>(agent))
@@ -2669,7 +2669,7 @@ bool NavigationSystem::getAgentPath(Entity entity, std::vector<Vector3>& corners
     return true;
 }
 
-// ---- S55 agents (R19-R24)
+// ---- S76 agents (R19-R24)
 
 namespace {
 
@@ -3019,7 +3019,7 @@ namespace {
 }
 
 const std::vector<Entity>& NavigationSystem::Runtime::sortedAgents(Scene* scene) {
-    // rebuilt when navigation components come or go, not every tick (spec S53 R19)
+    // rebuilt when navigation components come or go, not every tick (spec S74 R19)
     if (orderDirty || agentOrder.size() != scene->getComponentArray<NavMeshAgentComponent>()->size() ||
         obstacleOrder.size() != scene->getComponentArray<NavMeshObstacleComponent>()->size()) {
         sortedEntities<NavMeshAgentComponent>(scene, agentOrder);
@@ -3034,7 +3034,7 @@ const std::vector<Entity>& NavigationSystem::Runtime::sortedObstacles(Scene* sce
     return obstacleOrder;
 }
 
-// ---- S55 agents: failure reasons (R27) and the stuck watchdog (R25)
+// ---- S76 agents: failure reasons (R27) and the stuck watchdog (R25)
 
 PathFailure NavigationSystem::Runtime::classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent) {
     Vector3 from = agent.currentPosition;
@@ -3046,7 +3046,7 @@ PathFailure NavigationSystem::Runtime::classifyFailure(NavigationSystem& system,
     if (agent.placed && surface != surfaces.end() && surface->second.crowd && agent.crowdIndex >= 0)
         from = surface->second.frame.toWorld(surface->second.crowd->getPosition(agent.crowdIndex), agent.planeZ);
     const QueryFilter filter = system.getAgentQueryFilter(entity);
-    // a failure's one search is not a script's: getPathQueryCount (S53 R6) leaves it out
+    // a failure's one search is not a script's: getPathQueryCount (S74 R6) leaves it out
     const uint64_t queries = system.pathQueryCount;
     PathFailure failure = PathFailure::None;
     if (agent.surface != NULL_ENTITY && scene->findComponent<NavMeshSurfaceComponent>(agent.surface))
@@ -3108,7 +3108,7 @@ void NavigationSystem::Runtime::syncSurfaces(NavigationSystem& system, Scene* sc
         surface.frame = NavBakeCollector::frameOf(scene, entity);
         system.getNavMesh(entity);
         // a new Detour mesh needs a new crowd, its agents placed again: told by the mesh's
-        // generation, as a mesh made again inside the same NavMesh may get the same address (spec S53 R9)
+        // generation, as a mesh made again inside the same NavMesh may get the same address (spec S74 R9)
         const bool valid = surface.mesh && surface.mesh->isValid();
         if (surface.crowd && (!valid || surface.crowdGeneration != surface.mesh->getGeneration()))
             releaseCrowd(entity, surface);
@@ -3259,7 +3259,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
                 agent.warnedOffMesh = true;
                 Log::warn("NavMeshAgent '%s' is not on a navmesh or a NavGrid: it does not move", scene->getEntityName(entity).c_str());
             }
-            // ---- S55 agents: its destination fails, with why (no surface, not baked, off the mesh)
+            // ---- S76 agents: its destination fails, with why (no surface, not baked, off the mesh)
             if (agent.requested && !agent.failed) {
                 agent.failed = true;
                 component.pathPending = false;
@@ -3324,7 +3324,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
         Surface& surface = surfaceIt->second;
         if (!ensureCrowd(scene, surface)) {
             component.isOnNavMesh = false;
-            // ---- S55 agents: its surface has no navmesh
+            // ---- S76 agents: its surface has no navmesh
             if (agent.requested && !agent.failed) {
                 agent.failed = true;
                 component.pathPending = false;
@@ -3364,7 +3364,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
             }
             if (agent.requested && !agent.arrived && component.isOnNavMesh &&
                 !surface.crowd->requestMoveTarget(index, frame.toNav(agent.destination)) && !agent.failed) {
-                // ---- S55 agents: the crowd refused the destination (R27)
+                // ---- S76 agents: the crowd refused the destination (R27)
                 agent.failed = true;
                 component.pathPending = false;
                 component.pathStatus = PathStatus::Invalid;
@@ -3417,7 +3417,7 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
         const Vector3 position = transform ? transform->modelMatrix * component.center : Vector3();
         const Vector3 velocity = obstacle.hasLast && dt > 0.0f ? (position - obstacle.lastPosition) / dt : Vector3();
         // Unity's carving stationarity: within Move Threshold of where it came to rest, for Time
-        // To Stationary (spec S53 R13; sub-threshold jitter stays at rest)
+        // To Stationary (spec S74 R13; sub-threshold jitter stays at rest)
         const float threshold = std::max(component.moveThreshold, 0.0f);
         if (!obstacle.hasLast || position.distance(obstacle.anchor) > threshold) {
             obstacle.anchor = position;
@@ -3577,7 +3577,7 @@ namespace {
 void NavigationSystem::Runtime::syncLinks(Scene* scene) {
     auto array = scene->getComponentArray<NavMeshLinkComponent>();
     for (size_t i = 0; i < array->size(); i++) {
-        // Auto Update Positions (Unity's NavMeshLink.autoUpdate, spec S53 R10); without it a
+        // Auto Update Positions (Unity's NavMeshLink.autoUpdate, spec S74 R10); without it a
         // moved link stays where it was baked
         const NavMeshLinkComponent& link = array->getComponentFromIndex(i);
         if (!link.autoUpdatePosition || !link.enabled)
@@ -3721,7 +3721,7 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
 
 int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* scene, double ceilingMs) {
     // a count of tile builds per surface and tick, so the tick a cut lands on is the same on
-    // every machine (spec S53 R14); the wall-clock ceiling only guards against a slow one
+    // every machine (spec S74 R14); the wall-clock ceiling only guards against a slow one
     const int perTick = getSettings().effectiveCarveTilesPerTick();
     int total = 0;
     std::vector<Entity> promoted;
@@ -3737,7 +3737,7 @@ int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* sc
             surface.mesh->updateCarving(budget, upToDate, built);
             used += built;
         }
-        // a staged mesh takes what is left, at least one build a tick (spec S53 D2)
+        // a staged mesh takes what is left, at least one build a tick (spec S74 D2)
         if (surface.staging && surface.staging->isCarving()) {
             budget.maxTileBuilds = std::max(1, perTick - used);
             int built = 0;
@@ -3763,7 +3763,7 @@ int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* sc
         surface.lastResult = std::move(result);
         events.push_back(Event{entry.first, EventType::BakeCompleted});
     }
-    // S55 R14: a staged navmesh gets the runtime overrides as it goes into service; after the
+    // S76 R14: a staged navmesh gets the runtime overrides as it goes into service; after the
     // loop, since the area sync can reset crowds
     for (Entity entity : promoted)
         system.onAreaMeshReplaced(entity);
@@ -3821,7 +3821,7 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             }
             if (params.maxSpeed != crowd.getParams(agent.crowdIndex).maxSpeed)
                 crowd.setParams(agent.crowdIndex, params);
-            // ---- S55 agents: a script's velocity for this tick (root motion, R22): along its path
+            // ---- S76 agents: a script's velocity for this tick (root motion, R22): along its path
             // after the step, else steered by the crowd for the tick
             if (agent.velocityOverride) {
                 agent.velocityOverride = false;
@@ -3867,7 +3867,7 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             JE_PROFILE_SCOPE("Nav.Crowd");
             crowd.update(dt);
         }
-        // ---- S55 agents: a velocity request lasts one tick
+        // ---- S76 agents: a velocity request lasts one tick
         for (int index : velocityRequests)
             crowd.resetMoveTarget(index);
         velocityRequests.clear();
@@ -3938,7 +3938,7 @@ void NavigationSystem::Runtime::moveGridAgent(NavigationSystem& system, Scene* s
                 desired = toGoal * (std::min(maxSpeed, distance / std::max(dt, 1e-6f)) / distance);
         }
     }
-    // the velocity follows the desired one within the acceleration; a script's velocity (S55 R22)
+    // the velocity follows the desired one within the acceleration; a script's velocity (S76 R22)
     // is this tick's as given
     if (agent.velocityOverride) {
         agent.velocityOverride = false;
@@ -4011,7 +4011,7 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             forwardAxis = frame.plane == NavPlane::XY ? Vector3(1.0f, 0.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
             moveGridAgent(system, scene, agent, component, dt, tick);
             worldVelocity = component.velocity;
-            // ---- S55 agents
+            // ---- S76 agents
             if (component.stuckDetection)
                 watchStuck(system, entity, agent, component, dt, 1.0f);
             else if (agent.stuckAnchored)
@@ -4061,12 +4061,12 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             }
 
             // the path's state and its events (spec R12), read from dtCrowd's corridor: no path
-            // search runs for an agent (spec S53 R6)
+            // search runs for an agent (spec S74 R6)
             const NavCrowdTarget target = crowd.getTargetState(index);
             if (agent.requested && !agent.arrived) {
                 if (target == NavCrowdTarget::Pending) {
                     // dtCrowd extending a truncated or partial corridor near its end keeps the
-                    // path; a replan of an invalid corridor is a repath (spec S53 R8)
+                    // path; a replan of an invalid corridor is a repath (spec S74 R8)
                     const bool extension = agent.crowdPath != NavCrowdPath::Complete && agent.corridorPolys < EXTENSION_POLYS;
                     if (!agent.wasPending && !component.autoRepath && !extension) {
                         // a repath without autoRepath: the path is dropped
@@ -4110,7 +4110,7 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             }
 
             // arrival: within the stopping distance of the destination, once (spec R12); only a
-            // corridor that ends in the destination's polygon arrives (spec S53 R7: the end of a
+            // corridor that ends in the destination's polygon arrives (spec S74 R7: the end of a
             // Partial path is not the destination)
             if (agent.requested && !agent.arrived && target == NavCrowdTarget::Valid && !agent.onLink) {
                 bool reachedEnd = false;
@@ -4136,7 +4136,7 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             component.nextPosition = frame.toWorld(navPosition, agent.planeZ) + up * (component.baseOffset * scale);
             agent.previousPosition = agent.currentPosition;
             agent.currentPosition = component.nextPosition;
-            // ---- S55 agents: the watchdog; turned off, it lets go of its anchor once
+            // ---- S76 agents: the watchdog; turned off, it lets go of its anchor once
             if (component.stuckDetection)
                 watchStuck(system, entity, agent, component, dt, scale);
             else if (agent.stuckAnchored)
@@ -4231,7 +4231,7 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
     }
 }
 
-// ---------------------------------------------------------------- S55 areas
+// ---------------------------------------------------------------- S76 areas
 
 NavMesh* NavigationSystem::editableNavMesh(Entity surface) {
     if (!surfaceComponent(scene, surface))
@@ -4378,7 +4378,7 @@ void NavigationSystem::fixedUpdate(double dt) {
     r.syncSurfaces(*this, scene);
     // grids that follow their tilemap or terrain
     updateGridSources();
-    // 1b. runtime area volumes and link states (S55 D9); agents whose path they touch ask again
+    // 1b. runtime area volumes and link states (S76 D9); agents whose path they touch ask again
     syncAreaOverrides();
     r.replanAreaChanges(*this, scene);
     // 2. transforms -> agents and obstacles

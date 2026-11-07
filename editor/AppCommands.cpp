@@ -257,7 +257,7 @@ void editor::App::registerCommands(){
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
-    // the Path Tester (S54 R25): in the selected scene's view, edit or play
+    // the Path Tester (S75 R25): in the selected scene's view, edit or play
     bind("navigation.pathTester", [this](const CommandArgs&) {
         if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
     }, sceneShown, noDrag);

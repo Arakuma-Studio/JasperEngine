@@ -24,7 +24,7 @@ NavMeshModifierComponent& NavMeshModifier::component() const{
 }
 
 void NavMeshModifier::sync() const{
-    // a runtime volume re-applies at once: a query right after the call sees it (S55 R14)
+    // a runtime volume re-applies at once: a query right after the call sees it (S76 R14)
     if (component().useVolume && component().applyAtRuntime)
         scene->getSystem<NavigationSystem>()->syncAreaOverrides();
 }

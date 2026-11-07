@@ -446,7 +446,7 @@ TEST_F(NavGridTest, JumpPointSearchMatchesAStar){
 }
 
 // two grid agents walking: getGridReservedCells reports the cells their lookahead holds at the
-// current fixed tick, and nothing once they stop (S53 AC25, R22)
+// current fixed tick, and nothing once they stop (S74 AC25, R22)
 TEST_F(NavGridTest, ReservedCellsReported){
     const Entity gridEntity = transformEntity(*scene, Vector3(), NULL_ENTITY, "Grid");
     NavGridComponent grid;

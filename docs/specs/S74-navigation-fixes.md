@@ -1,7 +1,7 @@
-# S53 — Navigation hygiene (N0): upstream fixes, bake reporting, corridor status, links, carving
+# S74 — Navigation hygiene (N0): upstream fixes, bake reporting, corridor status, links, carving
 
 Wave 4 (navigation N0). A follow-up to `docs/specs/S19-navigation.md`, from an audit of its code.
-It lands before S54 (navigation diagnostics) and S55 (gameplay API), which build on it. Paths are
+It lands before S75 (navigation diagnostics) and S76 (gameplay API), which build on it. Paths are
 relative to the repository root. `UPSTREAM` is recastnavigation's history (read-only clone,
 `/tmp/recast-analysis/src`). Every claim in §3 was checked by reading the code at the cited lines.
 
@@ -15,7 +15,7 @@ build on:
 - A NavMeshLink option that is stored but does nothing.
 - Carving obstacles whose cuts can be lost or stay forever, and whose timing depends on the machine.
 
-S53 fixes and hardens what exists. It adds no new features: S54 owns diagnostics and S55 owns the
+S74 fixes and hardens what exists. It adds no new features: S75 owns diagnostics and S76 owns the
 gameplay API. Every fix ships a test that fails without it.
 
 ## 2. Scope
@@ -32,9 +32,9 @@ gameplay API. Every fix ships a test that fails without it.
 - Small editor and MCP defects, test-infrastructure gaps, and records missing from S19 (R20-R28).
 
 **Out of scope**
-- **S54:** `nav::PathFailure` reasons, islands, coverage, findings, the Path Tester, new overlays,
+- **S75:** `nav::PathFailure` reasons, islands, coverage, findings, the Path Tester, new overlays,
   and new MCP parameters for diagnostics.
-- **S55:** new queries, runtime area toggles, enabling or disabling links at runtime, `setPath`,
+- **S76:** new queries, runtime area toggles, enabling or disabling links at runtime, `setPath`,
   root motion, stuck detection, and Lua handles for Obstacle, Link and Modifier.
 - Re-vendoring upstream `main`, and the upstream commits `0096f0d`, `3e94c3b` and `c393777` (R1).
 - Per-tile vertical bounds. They would change every tile hash (`NavBakeInput.cpp:287-288`) and
@@ -61,7 +61,7 @@ the brief come after it in `UPSTREAM`.
   - dtCrowd cannot reach it: `moveAlongSurface` visits at most 16 polygons, and the corridor holds
     256. Only a direct call can (inferred).
   - `dtMergeCorridorStartShortcut` (`:142-152`) has the same pattern, but `req <= MAX_RES` (32) is
-    always below 256. Upstream left it unchanged too, so S53 does not patch it.
+    always below 256. Upstream left it unchanged too, so S74 does not patch it.
 - `9f4ce64` (#796): `distToTriMesh(..., &tris[0], ...)` runs on a possibly empty `rcIntArray`
   (`Recast/Source/RecastMeshDetail.cpp:846`).
   - `delaunayHull` can drop every dangling face (`:518-528`).
@@ -444,7 +444,7 @@ its upstream hash. No OpenEngine code is used.
 
   - The schemas stay within `tools/mcp/budget.json`.
   - `docs/mcp/TOOLS.md` is regenerated.
-- **R25 Lua.** No new bindings: Link and Obstacle handles are S55's. `docs/scripting.md` and the
+- **R25 Lua.** No new bindings: Link and Obstacle handles are S76's. `docs/scripting.md` and the
   Lua stub comments describe the R6 and R7 semantics of `pathStatus`, `remainingDistance` and
   `onDestinationReached`.
 - **R26 Docs.**
@@ -452,7 +452,7 @@ its upstream hash. No OpenEngine code is used.
     Positions, long paths, bake failures and warnings.
   - `docs/mcp/guide/navigation.md`: `last_bake`, warnings, and the play policy.
   - `docs/testing.md`: the OFF gate and the export test.
-  - `docs/specs/README.md` index: an S53 row.
+  - `docs/specs/README.md` index: an S74 row.
 
 ### Data & compatibility
 
@@ -594,14 +594,14 @@ build, so asserts are on).
   - S08 (reflection tables), S24 (undo of rows and settings), S30 (prebuilt players, for AC29),
     S25 (`run_command`, for AC24), S02 (sanitizer presets, the web gate, `check_bench.py`).
 - **Blocks:**
-  - S54, which builds failure reasons on R6's status and findings on R4's warnings.
-  - S55, which builds Link and Obstacle handles on R10-R12 and the agent API on R6-R8.
-  - Both rebase on S53.
+  - S75, which builds failure reasons on R6's status and findings on R4's warnings.
+  - S76, which builds Link and Obstacle handles on R10-R12 and the agent API on R6-R8.
+  - Both rebase on S74.
 - **Merge hotspots:**
-  - `NavigationSystem.cpp` and `NavCrowd.*` (S55).
+  - `NavigationSystem.cpp` and `NavCrowd.*` (S76).
   - `NavigationTools.cpp`, `NavigationOverlay.*`, `NavigationWindow.cpp` and the
-    `get_navigation_info` schema (S54).
-  - `InspectorNavigation.cpp` and `NavigationReflect.cpp` (S54, S55).
+    `get_navigation_info` schema (S75).
+  - `InspectorNavigation.cpp` and `NavigationReflect.cpp` (S75, S76).
   - `tools/mcp/budget.json` and `docs/mcp/TOOLS.md` (every MCP stream).
   - `editor/tests/reflect/catalog_snapshot.json` (any reflection change).
   - `NOTICE.md`.
@@ -615,7 +615,7 @@ build, so asserts are on).
 | A desktop Auto of 4 builds over 1 ms on the timing server | The bench decides: lower Auto to 2 and record it in Deviations |
 | Deferred builds delay a runtime carving rebake by about tiles / budget ticks (400 tiles at 4 per tick ≈ 1.7 s) | Accepted: the old mesh stays in service (R10); the docs say so |
 | Partial paths no longer fire `onDestinationReached`, which some scripts may rely on | It is a fix (S19 R12 says "of the destination"); recorded in `docs/navigation.md` "Changes" and the guide's Pitfalls |
-| The R5 warning lets clamped bakes ship | A hard error would refuse scenes that work today; S54's findings can raise it to an error |
+| The R5 warning lets clamped bakes ship | A hard error would refuse scenes that work today; S75's findings can raise it to an error |
 | Static links cannot move across tiles | A warning, with Runtime Carving as the fix (R10); growing static tiles is out of scope |
 | A `%p` rewrite merges different pointers | Intended: the messages are for people, and deterministic results matter more |
 | The AC3 red control may not be constructible | Recorded in Progress; the patch is upstream's |
@@ -625,7 +625,7 @@ build, so asserts are on).
 Two implementers work in separate worktrees, each on its own branch, and merge into one
 integration branch.
 - **P1** lands an interface commit first: the §6 declarations with their default implementations.
-  It is named `nav: S53 interfaces` and touches only headers and stubs.
+  It is named `nav: S74 interfaces` and touches only headers and stubs.
 - **P2** merges that commit before its step 3.
 - After that the packages share no file except as noted.
 
@@ -674,44 +674,44 @@ P2 order:
 
 ## Deviations
 
-- S53 P1: R15, a full bake landing in play: the staged mesh adopts the obstacles when the bake
+- S74 P1: R15, a full bake landing in play: the staged mesh adopts the obstacles when the bake
   lands, not at the swap. Its tiles are then built with their cuts and the swap leaves no tick
   without them; until the swap, obstacle changes reach the staged mesh and the mesh in service
   keeps the cuts it had. The swap waits for the adopted cuts (`NavMesh::isComplete`).
-- S53 P1: R15, `replaceTiles`' pool-growth fallback (a new Detour mesh inside the same `NavMesh`)
+- S74 P1: R15, `replaceTiles`' pool-growth fallback (a new Detour mesh inside the same `NavMesh`)
   builds every tile at once even in play: no old Detour tile survives it to stay in service.
-- S53 P1: R14, a deferred build is one tile (x, y) with all its layers, counted as one build, so
+- S74 P1: R14, a deferred build is one tile (x, y) with all its layers, counted as one build, so
   a tile never serves half old and half new layers.
-- S53 P1: R11, an add whose obstacle touches no tile-cache layer is not handed to Detour (it would
+- S74 P1: R11, an add whose obstacle touches no tile-cache layer is not handed to Detour (it would
   cut nothing, and Detour never frees the slot of such an obstacle); it is handed over when
   `replaceTiles` adds layers under it. Detour's slots are Max Carving Obstacles + 8 (the removals
   of one batch in flight).
-- S53 P1: R6, `onPathFailed` and `pathStatus` read dtCrowd's corridor; `cancelBake` cannot cancel
+- S74 P1: R6, `onPathFailed` and `pathStatus` read dtCrowd's corridor; `cancelBake` cannot cancel
   a bake that landed and is building its carved tiles (`isBaking` stays true until they are done).
-- S53 P1: R6, after a tile change (the mesh revision) the crowd checks whole corridors, not only
+- S74 P1: R6, after a tile change (the mesh revision) the crowd checks whole corridors, not only
   dtCrowd's next 10 polygons, and plans a corridor holding a polygon that is gone again: a cut
   far ahead otherwise left a stale Complete status until the agent reached it (AC9). A status is
   also read again whenever the corridor's state changes, not only after a Pending tick (dtCrowd's
   quick search can land a plan within one step).
-- S53 P1: R4, a tile keeps at most 64 Recast messages, then `... and N more Recast messages`.
-- S53 P1: interface additions beyond §6, used by the tests and the editor: `NavMesh::hasObstacle`,
+- S74 P1: R4, a tile keeps at most 64 Recast messages, then `... and N more Recast messages`.
+- S74 P1: interface additions beyond §6, used by the tests and the editor: `NavMesh::hasObstacle`,
   `getTileCacheObstacleCount`, `getFailedCarveBuilds`, `getLinkConnections`,
   `setDeferCarvedBuilds`; `NavCrowd::getCorridorSize`; `NavSurfaceStatus::queuedBuilds`;
   `NavigationSystem::getCarveTileBuilds`; `detail::NavRecastLog` in `NavDetourSupport.h`.
-- S53 P1: R19 needed `GridReservations::reserve` (`GridPathfinder.cpp`) to reuse an agent's cell
+- S74 P1: R19 needed `GridReservations::reserve` (`GridPathfinder.cpp`) to reuse an agent's cell
   list: it allocated on every reservation.
-- S53 P1: AC7, a stack of slabs alone never overflows Recast's layer set (a column keeps at most
+- S74 P1: AC7, a stack of slabs alone never overflows Recast's layer set (a column keeps at most
   63 regions, each overlapping at most 62 others): the carving case adds a ground plate under the
   stack and 10 slabs beside it, so the plate overlaps more than 63 platforms.
-- S53 P1: AC14 RemoveNeverLost, 70 boxes disabled the tick after they appear do not lose a cut
+- S74 P1: AC14 RemoveNeverLost, 70 boxes disabled the tick after they appear do not lose a cut
   (the removals follow the adds' tile order); the test disables 60 cut boxes while it enables 10
   others, 70 requests in one tick, which is what loses cuts in the S19 code.
-- S53 P1: R1, a fifth local patch: dtProximityGrid's spatial hash overflowed `int` (UBSan) for
+- S74 P1: R1, a fifth local patch: dtProximityGrid's spatial hash overflowed `int` (UBSan) for
   the AC1 strip's crowd 300 m from the origin; it now wraps in `unsigned int` (same buckets).
   NOTICE.md and README.jasper.md count five patches.
-- S53 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
+- S74 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
   Android test's project), with two gate lines.
-- S53 P2: R21 held already, so §3's item 8 is wrong there: the brush keys' enable predicate
+- S74 P2: R21 held already, so §3's item 8 is wrong there: the brush keys' enable predicate
   `dyePainting()` is `SceneRender::isFluidPainting()`, which counts the nav-grid brush
   (`SceneRender.cpp:2579-2581`). The red run of AC24 on the base editor saw `run_command
   terrain.brushLarger` succeed once Paint was clicked, so no fix was made and `AppCommands.cpp`
@@ -719,21 +719,21 @@ P2 order:
   control. It reads the brush size from a UIProbe item the
   Inspector's brush slider names (`inspector.navBrushSize.<n>`): `find_ui_item` reports where a
   control is, not its value.
-- S53 P2: R28 "CI runs it": the repository has no CI any more (origin/main removed the
+- S74 P2: R28 "CI runs it": the repository has no CI any more (origin/main removed the
   workflows). `tools/check-changed` plans `navigation-off` for the paths R28 lists, plus
   `engine/tests/core/navigation/**` (the NavStubTest source itself) and the script.
-- S53 P2: AC29's tool `navigation` finding comes from `jasperengine-editor check` (findings with
+- S74 P2: AC29's tool `navigation` finding comes from `jasperengine-editor check` (findings with
   a tool name exist only there); the build's preflight logs the same out-of-date warning, which
   the test reads from the build's warnings and log.
-- S53 P2: R3 details the spec leaves open: a cancel does not replace a standing failure (it shows
-  until a bake succeeds), a successful Clear drops the editor's record of the surface (S54's
+- S74 P2: R3 details the spec leaves open: a cancel does not replace a standing failure (it shows
+  until a bake succeeds), a successful Clear drops the editor's record of the surface (S75's
   engine report, merged into `last_bake`, then speaks alone), and an Inspector
   Shift-click starts only the full bake (it started a dirty bake too on release, which logged a
   refusal twice).
-- S53 P2: `bake_navigation` set its job's progress text after the loop that starts the bakes, so
+- S74 P2: `bake_navigation` set its job's progress text after the loop that starts the bakes, so
   when every start was refused the job's failure message read "baking" (found by AC5's red run);
   the progress is set before the loop.
-- S53 P2: R24's new text follows the lean MCP rules that landed meanwhile: no description grew
+- S74 P2: R24's new text follows the lean MCP rules that landed meanwhile: no description grew
   (`last_bake` and the path's `agent_type`/`area_mask` speak through their names, schemas and
   results), `carve_tiles_per_tick` says only "0: Auto."; `tools/mcp/eval/cases.py` has
   `guard_nav_carve_tiles_per_tick` and `guard_nav_visualize_agent_type` for them (offline
@@ -741,7 +741,7 @@ P2 order:
 
 ## Progress
 
-- S53 P1 (branch `nav/s41-p1`): interface commit `nav: S53 interfaces`; then R1 (patches 2-5),
+- S74 P1 (branch `nav/s41-p1`): interface commit `nav: S74 interfaces`; then R1 (patches 2-5),
   R4-R19 and R25-R26 (runtime docs). Red controls, all recorded under `/tmp/je-logs/s41-p1/`:
   the release run of the tests against the interface commit (19 of them fail, among them AC1's
   remaining distance, AC7-AC9, AC11, AC13-AC20, AC22), `MergeCorridorStartMovedBounds` crashes
@@ -756,7 +756,7 @@ P2 order:
 - AC25: `NavGridTest.ReservedCellsReported` (P1's `getGridReservedCells`); the overlay tint is P2's.
 - Not run by P1 at the integrator's request (light gate only): the web and Android builds and the
   navigation web gate (AC21), and je-bench-nav's thresholds on the timing server (AC22, second half).
-- S53 P2 (editor, MCP, test infrastructure), branch `nav/s41-p2`:
+- S74 P2 (editor, MCP, test infrastructure), branch `nav/s41-p2`:
   - Done: R24 play policy and annotations, `visualize_navigation` on the running scene with the
     path's `agent_type`/`area_mask` (AC27); R28 golden (AC28 first half); R20 labels and the
     regenerated catalog snapshot (AC23); R21 (no fix needed, guard AC24); R2/R3 in
@@ -769,9 +769,9 @@ P2 order:
     `test_bake_failures_reported` (0 Console lines for a refused start), `test_carving_settings_undo`
     (no field), `test_bake_failure_shown` (no `last_bake`), the old `test_overlay_golden` passing
     and writing a missing golden, `test_check_changed.py` against the old `check_changed.py`.
-  - With P1's runtime and S54 merged, the gate passes: the editor's Nav*/Navigation*/
+  - With P1's runtime and S75 merged, the gate passes: the editor's Nav*/Navigation*/
     ReflectRegistry* unit tests, `test_navigation.py`, `test_navigation_ui.py`,
     `test_navigation_export.py` (prebuilt glcore player), `test_protocol.py`, `test_docs.py`,
-    `test_tool_budget.py`, `tools/check-navigation-off.sh` (3 NavStubTest tests). After the S54
-    merge `last_bake` is S54's engine report overlaid with the editor's session outcome, and the
-    Inspector shows a failure once ("Bake failed: ..." plus S54's hint).
+    `test_tool_budget.py`, `tools/check-navigation-off.sh` (3 NavStubTest tests). After the S75
+    merge `last_bake` is S75's engine report overlaid with the editor's session outcome, and the
+    Inspector shows a failure once ("Bake failed: ..." plus S75's hint).

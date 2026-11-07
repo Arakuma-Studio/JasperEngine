@@ -1,4 +1,4 @@
-"""S54 navigation diagnostics as an agent sees them (docs/specs/S54-navigation-diagnostics.md R30-R33,
+"""S75 navigation diagnostics as an agent sees them (docs/specs/S75-navigation-diagnostics.md R30-R33,
 R35; AC16-AC18, AC20).
 
 Scene NavDiag (3D): a 40 x 40 floor (plane x 4) with a NavMesh Surface, crossed at x = 0 by a 4 m strip

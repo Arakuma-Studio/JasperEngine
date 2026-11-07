@@ -89,7 +89,7 @@ TEST_F(NavCrowdTest, GrowsWhenFull){
 }
 
 // a carving box on a corridor reroutes the path within 2 ticks; removed, the path is back (AC10).
-// The budget counts tile builds (spec S53 R14): every build, sanitizers included, lands in 2 ticks
+// The budget counts tile builds (spec S74 R14): every build, sanitizers included, lands in 2 ticks
 TEST_F(NavObstacleTest, CarveBlocksAndRestores){
     const Entity surface = gapSurface();
     bake(surface);
@@ -242,7 +242,7 @@ TEST_F(NavDeterminismTest, CrowdReplay){
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0);
 }
 
-// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R9, R10)
+// ---- S76 queries (docs/specs/S76-navigation-gameplay-api.md R9, R10)
 
 // AC10: an agent with its own cost on the mud detours through the gap, its neighbour walks through
 // the mud; two agents with the same costs share one filter
@@ -358,7 +358,7 @@ TEST_F(NavCrowdTest, PerAgentAreaCostsFilterSlots){
     EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
 }
 
-// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
+// ---------------------------------------------------------------- S74 (docs/specs/S74-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION && !defined(NDEBUG)
 namespace {
@@ -842,7 +842,7 @@ TEST_F(NavSystemTest, SteadyStateNoAllocations){
     }
 }
 
-// ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R18, R35, R38)
+// ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R18, R35, R38)
 
 // AC18: 50 agents walking, stuck detection off and no overrides: a fixed tick allocates nothing
 TEST_F(NavSystemTest, GameplayZeroCost){

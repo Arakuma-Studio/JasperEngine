@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The NavMeshAgent gameplay API of docs/specs/S55-navigation-gameplay-api.md (R19-R29; AC19-AC25):
+// The NavMeshAgent gameplay API of docs/specs/S76-navigation-gameplay-api.md (R19-R29; AC19-AC25):
 // scripted paths, the corridor as a path and its staleness, root motion, the agent's queries, the
 // stuck watchdog and why a path failed.
 

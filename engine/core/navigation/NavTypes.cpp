@@ -131,7 +131,7 @@ int NavigationSettings::findArea(const std::string& name) const {
 int NavigationSettings::effectiveCarveTilesPerTick() const {
     if (carveTilesPerTick > 0)
         return std::min(carveTilesPerTick, 64);
-    // Auto: the tile builds a frame of the platform affords next to everything else (spec S53 R14)
+    // Auto: the tile builds a frame of the platform affords next to everything else (spec S74 R14)
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
     return 2;
 #else
@@ -225,7 +225,7 @@ const char* nav::pathStatusName(PathStatus status) {
     return "invalid";
 }
 
-// ---------------------------------------------------------------- S54: path failures
+// ---------------------------------------------------------------- S75: path failures
 
 namespace {
 
@@ -279,7 +279,7 @@ bool nav::pathFailureFromName(const std::string& name, PathFailure& out) {
     return false;
 }
 
-// ---------------------------------------------------------------- S55 queries: area costs
+// ---------------------------------------------------------------- S76 queries: area costs
 
 float nav::clampAreaCost(float cost) {
     if (cost >= 1.0f && std::isfinite(cost))

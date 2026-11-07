@@ -55,7 +55,7 @@ namespace jasperengine{
         // the NavMeshSurface or NavGrid to walk; none: the surface of its agent type under it,
         // else the NavGrid containing it
         Entity surface = NULL_ENTITY;
-        // ---- S55 agents: the stuck watchdog (spec S55 R25). While it walks a path, an agent that
+        // ---- S76 agents: the stuck watchdog (spec S76 R25). While it walks a path, an agent that
         // stays within stuckSpeedRatio x speed x stuckTimeout of where it was for stuckTimeout
         // seconds fires onStuck (and asks for its destination again with repathWhenStuck)
         bool stuckDetection = false;
@@ -76,13 +76,13 @@ namespace jasperengine{
         Vector3 nextPosition;
         bool isOnNavMesh = false;
         bool isOnOffMeshLink = false;
-        // ---- S55 agents: seconds without progress (the watchdog; 0 while it is off or not
+        // ---- S76 agents: seconds without progress (the watchdog; 0 while it is off or not
         // walking) and why the last path failed (None after a later success or resetPath)
         float stuckTime = 0.0f;
         nav::PathFailure lastPathFailure = nav::PathFailure::None;
 
         FunctionSubscribe<void(NavMeshAgent)> onDestinationReached;
-        // with why (spec S55 R27); a one-argument Lua function still works
+        // with why (spec S76 R27); a one-argument Lua function still works
         FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)> onPathFailed;
         FunctionSubscribe<void(NavMeshAgent)> onOffMeshLinkStart;
         FunctionSubscribe<void(NavMeshAgent)> onOffMeshLinkEnd;

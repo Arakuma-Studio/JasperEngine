@@ -48,7 +48,7 @@ bool NavMeshLink::isAutoUpdate() const{ return component().autoUpdatePosition; }
 
 void NavMeshLink::setActivated(bool activated){
     component().activated = activated;
-    // a query right after the call already sees it (S55 R14)
+    // a query right after the call already sees it (S76 R14)
     scene->getSystem<NavigationSystem>()->syncAreaOverrides();
 }
 

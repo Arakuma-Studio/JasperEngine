@@ -96,7 +96,7 @@ HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rm
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
 # what a JASPERENGINE_NAVIGATION=OFF build compiles differently: tools/check-navigation-off.sh
-# builds the engine that way and runs NavStubTest (compiled only then) and NavGridTest (S53 R28)
+# builds the engine that way and runs NavStubTest (compiled only then) and NavGridTest (S74 R28)
 NAVIGATION_OFF_PATHS = ("engine/core/navigation/*", "engine/libs/recastnavigation/*", "engine/core/subsystem/NavigationSystem.*",
                         "engine/core/object/navigation/*", "engine/core/component/Nav*", "engine/CMakeLists.txt",
                         "engine/tests/core/navigation/*", "tools/check-navigation-off.sh")

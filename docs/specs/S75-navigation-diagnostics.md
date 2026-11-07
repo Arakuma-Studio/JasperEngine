@@ -1,6 +1,6 @@
-# S54 — Navigation diagnostics ("N1: navigation explains itself")
+# S75 — Navigation diagnostics ("N1: navigation explains itself")
 
-Wave 4 (navigation follow-up to S19; parallel with S53 fixes and S55 agent API). OURS paths are
+Wave 4 (navigation follow-up to S19; parallel with S74 fixes and S76 agent API). OURS paths are
 relative to the repo root; recastnavigation's are relative to `/tmp/recast-analysis/src` (the
 upstream checkout, zlib, read-only).
 
@@ -29,10 +29,10 @@ the export preflight. Humans get a Path Tester, a "why not walkable?" probe and 
 - Docs: `docs/navigation.md`, `docs/mcp/guide/navigation.md`, `docs/mcp/TOOLS.md` (regenerated).
 
 **Out of scope (owned elsewhere; do not specify or implement)**
-- S53: silent bake-failure logging, crowd path-arrival A*, link auto-update, carving obstacle
-  defects, Recast `rcContext` warnings (S54 only consumes them from `NavBakeResult::warnings`),
+- S74: silent bake-failure logging, crowd path-arrival A*, link auto-update, carving obstacle
+  defects, Recast `rcContext` warnings (S75 only consumes them from `NavBakeResult::warnings`),
   `visualize_navigation`'s path filter, play-scene use and activity, the modifier label.
-- S55: random point, wall distance, `moveAlongSurface`, area costs, runtime area toggles, the agent
+- S76: random point, wall distance, `moveAlongSurface`, area costs, runtime area toggles, the agent
   API (setPath, steeringTarget, root motion, stuck watchdog, `onPathFailed(agent, reason)` using
   `PathFailure`, `agent_detail` stuck fields), Lua handles for Obstacle, Link and Modifier,
   `NavPath::cost` and per-corner areas.
@@ -109,7 +109,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
 
 ### Functional — path failures
 
-- **R1 Contract.** `engine/core/navigation/NavTypes.h` defines, exactly (shared with S55):
+- **R1 Contract.** `engine/core/navigation/NavTypes.h` defines, exactly (shared with S76):
   `enum class PathFailure : uint8_t { None, NoSurface, NotBaked, StartOffMesh, EndOffMesh,
   StartFiltered, EndFiltered, Disconnected, BlockedByArea, OutOfNodes };` and
   `const char* pathFailureName(PathFailure)` returning `"none", "no_surface", "not_baked",
@@ -143,7 +143,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
   polygon); `startIsland`, `endIsland` (-1 unless the islands were current); for Partial,
   `closestPoint` (the last corner) and `gap` (from it to the snapped end, or to the requested end
   when the end is off the mesh); for Complete, `closestPoint` is the last corner and `gap` 0.
-  S55 appends `cost` and per-corner areas after these fields.
+  S76 appends `cost` and per-corner areas after these fields.
 - **R5 Surface ranking.** With several surfaces of the agent type, the first Complete one (entity
   order) answers. Otherwise the answer with the lowest rank wins: OutOfNodes < BlockedByArea <
   Disconnected < EndFiltered < EndOffMesh < StartFiltered < StartOffMesh < NotBaked < NoSurface,
@@ -162,7 +162,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
 - **R8 When labelled.** Islands are recomputed lazily on the main thread when
   `NavMesh::getRevision()` differs from the labelled revision. The revision already changes on
   create, clear, `replaceTiles` (bake landing, tile swaps), carving rebuilds and link moves; a new
-  `NavMesh::setPolyFlags(polyRef, flags)` is the only way to change flags and bumps it too (S55's
+  `NavMesh::setPolyFlags(polyRef, flags)` is the only way to change flags and bumps it too (S76's
   doors build on it). Path queries never relabel (they use islands only when current, R3/R4/R6);
   explicit diagnostics do: `getIslands`, `getCoverage`, `locate`, findings, the bake report, the
   overlay, the MCP tools. Bakes never label inside the landing (`processBakes`), so web slices keep
@@ -231,7 +231,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
   save_failed`), `hint` (one fixed sentence per code), `sources` (the `NavCollectStats` counts:
   meshes, instances, terrains, colliders, colliders 2D, volumes, links, excluded, triangles), the
   built tiles' `{x, y, layer, ms, polys, bytes}`, and, filled on first read (R8), `walkableArea`,
-  `islandCount` and the 16 largest islands. `warnings` stays the one list (S53 adds Recast's).
+  `islandCount` and the 16 largest islands. `warnings` stays the one list (S74 adds Recast's).
 - **R17 Tile reports persist per surface** in memory: each bake replaces the entries of the tiles
   it built and drops removed ones, so overlay labels show every tile's last build. They are not
   saved (no `.navmesh` change); after a reload a tile's ms is unknown (`-1`, shown "– ms").
@@ -316,7 +316,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
   tile_colors set Color By; true on one clears the other), `tile_labels`; `frame: "navmesh" |
   GameObject` (the union of the baked surfaces' world bounds through `SceneWindow::frameBounds`, or
   Frame Selected's `frameEntities`), applied before the capture; `screenshot: true | "scene" |
-  "game"` (true stays the Scene view); `path` (with S53's filter) reports and draws `reason`,
+  "game"` (true stays the Scene view); `path` (with S74's filter) reports and draws `reason`,
   `surface`, `closest_point`, `gap`; with `tile_labels` the result lists the visible labels.
 - **R34 Tool rules.** All six tools stay in group `navigation`. Annotations / activity /
   play: `query_navigation` and `get_navigation_info` read-only, idempotent, Read, allowed in play;
@@ -324,7 +324,7 @@ its end with `edge = 1` (`:494`); `findPath` sets `DT_OUT_OF_NODES` when the nod
   idempotent, not read-only (it changes saved overlay flags and, with `frame`, the camera),
   Control, allowed in play. The group stays ≤ 15,000 characters; `query_navigation` ≤ 1,500;
   `visualize_navigation` gets a `budget.json` exception at its measured size + 5 % (estimate
-  ~1,640 with S53's path filter). Agent guidance goes to `docs/mcp/guide/navigation.md`;
+  ~1,640 with S74's path filter). Agent guidance goes to `docs/mcp/guide/navigation.md`;
   `McpInstructions.cpp` is unchanged.
 - **R35 Lua.** The path table adds `reason` (string), `surface` (entity id, 0 none),
   `closestPoint`, `gap`; `nav:isReachable(a, b[, filter])` returns `reachable, reason`;
@@ -389,7 +389,7 @@ struct NavPath {
     int startIsland = -1, endIsland = -1;            // -1 unless islands were current
     Vector3 closestPoint;
     float gap = 0.0f;
-    // S55: cost, per-corner areas
+    // S76: cost, per-corner areas
 };
 struct NavLocation { bool onMesh = false, found = false; Vector3 position; float snapDistance = -1.0f;
                      int island = -1; uint8_t area = 0; Entity surface = NULL_ENTITY; };
@@ -483,7 +483,7 @@ Schema additions (McpSchema builders only): a shared `point = anyOf[vec3, entity
 `to = anyOf[point, {array, maxItems 64, items point}]`; op enum + `"locate"`; `get_navigation_info`
 `entities`; `visualize_navigation` `show.{islands, slope, tile_colors, tile_labels}` booleans,
 `frame = anyOf[stringEnum{navmesh}, entityRef]`, `screenshot = anyOf[boolean, stringEnum{scene,
-game}]`, `path.from/to = point`. Estimated sizes: query ~1,476, visualize ~1,560 (+S53's filter),
+game}]`, `path.from/to = point`. Estimated sizes: query ~1,476, visualize ~1,560 (+S74's filter),
 info ~530, bake ~800; group ~7,400. Descriptions stay ≤ 400 characters, details in the guide.
 
 Lua:
@@ -552,19 +552,19 @@ the run on the tree before the change (or with the named line reverted) that mus
 
 ## 8. Dependencies & conflicts
 
-- **Depends on:** S19 (all of it), S53 (lands first: its bake-failure logging and
-  `visualize_navigation` filter / play scene / activity are the base of R31 and R33; S54 consumes
+- **Depends on:** S19 (all of it), S74 (lands first: its bake-failure logging and
+  `visualize_navigation` filter / play scene / activity are the base of R31 and R33; S75 consumes
   its Recast warnings), S26 (`surfaceAt`, Frame Selected), S25 (rebindable command), S31 (CLI).
-- **Blocks:** S55 needs R1 (the `PathFailure` contract and `NavPath` fields) and `setPolyFlags`
-  (R8). P1's first commit (contract headers, see Work packages) is what S55 merges early.
-- **Merge hotspots** (shared with S53 / S55): `engine/core/subsystem/NavigationSystem.{h,cpp}`
-  (S53 `processBakes` logging, S55 agents and `onPathFailed`), `engine/core/navigation/NavMesh.{h,cpp}`
-  (S55 random point, wall distance, moveAlongSurface), `NavTypes.h` (S55 appends to `NavPath`),
-  `NavMeshBuilder.cpp` and `NavBakeCollector.cpp` (S53 rcContext warnings),
-  `editor/mcp/tools/NavigationTools.cpp` (S53 visualize fixes, S55 query ops),
+- **Blocks:** S76 needs R1 (the `PathFailure` contract and `NavPath` fields) and `setPolyFlags`
+  (R8). P1's first commit (contract headers, see Work packages) is what S76 merges early.
+- **Merge hotspots** (shared with S74 / S76): `engine/core/subsystem/NavigationSystem.{h,cpp}`
+  (S74 `processBakes` logging, S76 agents and `onPathFailed`), `engine/core/navigation/NavMesh.{h,cpp}`
+  (S76 random point, wall distance, moveAlongSurface), `NavTypes.h` (S76 appends to `NavPath`),
+  `NavMeshBuilder.cpp` and `NavBakeCollector.cpp` (S74 rcContext warnings),
+  `editor/mcp/tools/NavigationTools.cpp` (S74 visualize fixes, S76 query ops),
   `engine/core/script/binding/NavigationClassesLua.cpp`, `stubs/Navigation.lua` and
-  `tools/lua_api/parser.py`'s S19 block (S55 agent API and handles),
-  `editor/navigation/NavigationOverlay.cpp` and `editor/window/InspectorNavigation.cpp` (S53
+  `tools/lua_api/parser.py`'s S19 block (S76 agent API and handles),
+  `editor/navigation/NavigationOverlay.cpp` and `editor/window/InspectorNavigation.cpp` (S74
   modifier label), `tools/mcp/budget.json`, `docs/navigation.md`, `docs/mcp/guide/navigation.md`,
   `tools/mcp/tests/test_navigation.py`, `docs/mcp/TOOLS.md` (regenerate after merging, never
   hand-merge). Also `editor/window/SceneWindow.{h,cpp}` (S26 tools) and
@@ -574,8 +574,8 @@ the run on the tree before the change (or with the named line reverted) that mus
 
 | Risk / open question | Default taken |
 |---|---|
-| `query_navigation` (~1,476) is near the 1,500 cap and S55 adds ops | S54 must measure ≤ 1,500 (trim the description first); S55 records its own exception |
-| `visualize_navigation` over 1,500 after S53 + S54 | One `exceptions` entry (measured + 5 %), reason "S53 path filter, S54 frame/islands/slope/tile flags" |
+| `query_navigation` (~1,476) is near the 1,500 cap and S76 adds ops | S75 must measure ≤ 1,500 (trim the description first); S76 records its own exception |
+| `visualize_navigation` over 1,500 after S74 + S75 | One `exceptions` entry (measured + 5 %), reason "S74 path filter, S75 frame/islands/slope/tile flags" |
 | Weak components call a one-way-only connection "same island" | Islands answer "never reachable"; one-way cases are found by the search and reported `disconnected` |
 | Island relabel cost on mobile for frequently carving surfaces | Queries never relabel (D3); diagnostics relabel at most once per fixed tick |
 | The probe's counterfactual rebuild differs from the baked tile (stale inputs) | It reports `stale_tile` first and rebuilds from the current inputs |
@@ -595,7 +595,7 @@ NavigationSystem.h / NavBakeCollector.h / NavBakeInput.h / NavMeshBuilder.h decl
 commits its interface headers (`NavOverlaySettings` fields, `NavQueryDraw`, `getTileLabels`,
 `SceneWindow::frameBounds`). P2 and P3 merge those commits and code against them. P1 lands first,
 then P3, then P2 (P2's tests exercise everything); the overlay goldens are recorded on the merged
-tree. S55 merges P1's contract commit.
+tree. S76 merges P1's contract commit.
 
 **P1 — engine core, Lua, probe, findings** (owns):
 `engine/core/navigation/NavTypes.{h,cpp}`, `NavDiagnostics.{h,cpp}` (new), `NavMesh.{h,cpp}`,
@@ -640,51 +640,51 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
-- S54 P2: the upstream MCP text rules (AGENTS.md "MCP text", newer than this spec) win where they
+- S75 P2: the upstream MCP text rules (AGENTS.md "MCP text", newer than this spec) win where they
   differ. The listed schemas stay lean: a point (`from`, `to`, `path.from/to`) is the loose type
   list `["array", "integer", "string"]` rather than `anyOf[vec3, entityRef]`, `to` is the same list
   with `maxItems` 64 (an array that is not three numbers is a list of targets), `frame` is
   `["integer", "string"]`; the handler validates them. The server does not check `maxItems`, so 65
   targets are refused by the handler with an error naming the limit (AC16 "refused by the schema").
-- S54 P2: a failed path or `reachable` also carries `next` in structuredContent (and the text): the
+- S75 P2: a failed path or `reachable` also carries `next` in structuredContent (and the text): the
   tool route of its reason (`locate` at the end off the mesh, `bake_navigation`, the islands...),
   since a hint an agent must see goes there; list entries leave it out. `reachable` answers carry
   `surface`, `closest_point` and `gap` from a path searched for them only when not reachable.
-- S54 P2: `from` as a NavMesh Agent also gives its Area Mask when `area_mask` is absent (the spec
+- S75 P2: `from` as a NavMesh Agent also gives its Area Mask when `area_mask` is absent (the spec
   names only the agent type), so the answer is the agent's own query.
-- S54 P2: R34 "McpInstructions.cpp is unchanged": the guide's "Other areas" index gains
+- S75 P2: R34 "McpInstructions.cpp is unchanged": the guide's "Other areas" index gains
   `navigation (get_navigation_info)` (upstream: an area without a digest is one index entry), with
   the eval case `guard_navigation_findings`. The descriptions of `get_navigation_info` and
   `bake_navigation` lose their result field lists (upstream: descriptions hold no field lists);
   the fields are in `docs/mcp/guide/navigation.md`.
-- S54 P2: `show.islands` and `show.tile_colors` both true is an error ("turn on one"); false on the
+- S75 P2: `show.islands` and `show.tile_colors` both true is an error ("turn on one"); false on the
   current Color By returns to Areas.
-- S54 P2: `out_of_nodes` is not raised by the MCP fixture (it needs a 3,000-polygon comb);
+- S75 P2: `out_of_nodes` is not raised by the MCP fixture (it needs a 3,000-polygon comb);
   `NavFailureTest.OutOfNodes` (P1) covers it, `test_query_reasons` covers the other eight.
-- S54 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
+- S75 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
   (`tools/mcp/ui_input.py`, xdotool in its Xvfb), not `send_input` (that tool sends input to the
   running game only). The panel's answer is read through UIProbe names (`pathTester.status.<status>`,
   `.reason.<name>`, `.length.<dm>`, `.locate.<on_mesh|near_mesh|not_found>`, `.why.<code>`):
   `find_ui_item` only sees labelled widgets, and the panel's lines are text.
-- S54 P3: Closest Edge and Locate need one point: any click (Shift or not) sets it. While a Locate
+- S75 P3: Closest Edge and Locate need one point: any click (Shift or not) sets it. While a Locate
   handle is dragged the location follows every frame, the walkability probe (up to 3 tile
   rebuilds) runs on the click and when the drag ends.
-- S54 P3: "More tools ▸ Path Tester": the toolbar shows a Path Tester toggle (route icon) when its
+- S75 P3: "More tools ▸ Path Tester": the toolbar shows a Path Tester toggle (route icon) when its
   items fit and a "Path Tester" item in its "..." (More Scene view tools) menu when they do not,
   both only in scenes with a NavMesh Surface or a Nav Grid.
-- S54 P3: AC14's goldens set Color By and Show Steep Slopes through the Gizmos menu with real
+- S75 P3: AC14's goldens set Color By and Show Steep Slopes through the Gizmos menu with real
   input: `visualize_navigation`'s `show.islands/slope/tile_colors/tile_labels` are P2's and land
   after P3.
-- S54 P3: Color By Islands greys from the start of the scene's query draw, the Path Tester's or
+- S75 P3: Color By Islands greys from the start of the scene's query draw, the Path Tester's or
   `visualize_navigation`'s `path.from`, when it lies on the surface.
-- S54 P3: the Inspector's summary lines are `get_inspector_layout` rows of kind Label (paths
+- S75 P3: the Inspector's summary lines are `get_inspector_layout` rows of kind Label (paths
   `estimate`, `estimateVoxels`, `estimateTiles`, `estimateLimit`, `estimateError`, `lastBake`,
   `lastBakeWarnings`, `walkable`; the label is the text drawn). A collection that fails shows its
   error and code instead of the estimate.
-- S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
+- S75 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
   (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
   alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
-- S54 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
+- S75 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
   `setPolyFlags` takes), `covers` (a polygon right under a point), `isReachable` (R6 on one mesh),
   `getSearchCount`, `getLabelledRevision`, `getIslandMemoryBytes`; `nav::labelIslands` /
   `NavIslandLabels` and `bakeErrorFromName` in `NavDiagnostics.h`;
@@ -695,46 +695,46 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   string, and for `filtered` the area name, go in `detail`); `ProjectNavFinding::sceneId` and an
   options argument of `collectProjectFindings` (`stale`, a per-scene `dirtyTilesOf`) for P3's
   Problems list.
-- S54 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
+- S75 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
   `getLastBakeResult` labels (R8), so a synchronous bake (the bench's incremental bake) never
   pays for islands.
-- S54 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
+- S75 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
   surface's last result, so `bake_failed` and the Inspector see it; `busy` and `no_surface` do not
   replace it.
-- S54 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
+- S75 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
   vector, which every path had before; nothing else (no labels, no second search) allocates.
-- S54 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
+- S75 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
   Height + 2 cell heights tall), not when one is in the query search box: R10's `onMesh` (the
   search box, 2 x radius) would call a point 0.2 m from a wall on the mesh and never explain it.
   The location it returns is still R10's.
-- S54 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
+- S75 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
   if that already covers the point, `stale_tile` is the only reason (a bake fixes it). That case
   takes 4 single-tile rebuilds instead of R24's 3.
-- S54 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
+- S75 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
   width (2 x 0.5 m radius) and Detour's box test is inclusive.
-- S54 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
+- S75 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
   project without navigation would get an info for Humanoid); `collectProjectFindings` keeps a
   type only when no scene uses it, once, without a scene.
-- S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
+- S75 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
   `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
   more useful than `disconnected`).
-- S54 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
+- S75 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
   Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
   baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
   bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
-- S54 P1: `bench_nav_city` (S19's fixture) holds 2643 polygons in 400 tiles, not the ~20k R21-R23
+- S75 P1: `bench_nav_city` (S19's fixture) holds 2643 polygons in 400 tiles, not the ~20k R21-R23
   assume, so a per-tile cost weighs 8 x more per polygon: the island tile table keeps only the
   slots up to the last one in use, in 16 bits while every label index fits. Measured (5 runs,
   `--workers 3`, a shared 8-core host): `city_islands_ms` 0.19, `islands_bytes_per_poly` 4.30,
   `query_reject_disconnected_us` 0.54 (0 searches), `query_locate_p95_ms` 0.0022,
   `findings_city_ms` 0.085, `query_path_p95_ms` 0.122 (unchanged budget).
-- S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
+- S75 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
   (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
   the sources).
 
 ## Progress (implementation notes, keep updated)
 
-- S54 P2: `query_navigation` (points as GameObjects, agent type and mask from an agent, the
+- S75 P2: `query_navigation` (points as GameObjects, agent type and mask from an agent, the
   target/agent type conflict, `locate` with the probe's `why[]`, up to 64 targets, every reason on
   paths, reachable and grids, islands labelled for the answer), `bake_navigation` (the bake report:
   sources, islands, slowest tiles, error code and hint), `get_navigation_info` (coverage, islands,
@@ -744,12 +744,12 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   Tests: `test_navigation_diagnostics.py`, `test_checks.py::test_cli_navigation_findings`,
   `test_navigation.py::test_tools_listed_with_schemas` (group hidden, annotations); eval cases
   `guard_navigation_*`.
-- S54 P2: `bake_navigation`'s job message was overwritten by its "baking" progress when every start
+- S75 P2: `bake_navigation`'s job message was overwritten by its "baking" progress when every start
   was refused (the reasons and hint never reached the text); the progress is set before the loop,
-  the same hunk as S53 P2's (`nav/s41-p2`). `nav/s41-p2` after 11ed93a92 is not merged here: it
+  the same hunk as S74 P2's (`nav/s41-p2`). `nav/s41-p2` after 11ed93a92 is not merged here: it
   conflicts in P1/P3 files too; its `get_navigation_info` `last_bake` (the editor's record) and this
   package's (the bake report, R32) meet in `NavigationTools.cpp` at the integration.
-- S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
+- S75 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
   §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
   ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
   `locate`), R11-R12 (`NavWalkabilityProbe`, `NavCollectOptions::recordSources`, the builder's
@@ -760,7 +760,7 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
   `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
   (`NavigationEditor::finish`).
-- S54 P3 (branch `nav/s42-p3`): the interfaces (`nav: S54 P3 interfaces`, 030976793:
+- S75 P3 (branch `nav/s42-p3`): the interfaces (`nav: S75 P3 interfaces`, 030976793:
   `NavOverlaySettings::colorBy/showSteepSlopes/showTileLabels`, `NavTileLabel` and
   `getTileLabels`, `NavQueryDraw` with `setQueryDraw/clearQueryDraw/getQueryDraw` replacing
   `setQueryPath`, `overlayOf`, `SceneWindow::frameBounds`), then R24-R29: `NavPathTester` (four

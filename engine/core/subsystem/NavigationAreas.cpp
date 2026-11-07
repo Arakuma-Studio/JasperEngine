@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// NavigationSystem's runtime areas and links (docs/specs/S55-navigation-gameplay-api.md R11-R16,
+// NavigationSystem's runtime areas and links (docs/specs/S76-navigation-gameplay-api.md R11-R16,
 // D1, D9): NavMesh Modifier volumes with Apply At Runtime, script volumes (setAreaInVolume) and
 // NavMesh Link Activated, sampled from their components at each sync (every editor frame, fixed
 // tick step 1b in play) and handed to each surface's navmesh as overrides and link states.

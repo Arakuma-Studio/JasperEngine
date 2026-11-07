@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The scene's navigation findings (docs/specs/S54-navigation-diagnostics.md R13-R15; AC10): a
+// The scene's navigation findings (docs/specs/S75-navigation-diagnostics.md R13-R15; AC10): a
 // scene that raises every code once with its details, the same list twice, and stale counts from
 // the caller's cache.
 

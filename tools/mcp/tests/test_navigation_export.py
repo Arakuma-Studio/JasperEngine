@@ -1,5 +1,5 @@
 """A baked navmesh ships in a Desktop build and works there (docs/specs/S19-navigation.md AC27, as
-docs/specs/S53-navigation-fixes.md R28 / AC29 asks).
+docs/specs/S74-navigation-fixes.md R28 / AC29 asks).
 
 Scene NavExport (3D): a 40 x 40 floor with a NavMesh Surface, a static block, and a walker with a
 NavMesh Agent and a Lua script that sends it 12 m away and prints a marker from

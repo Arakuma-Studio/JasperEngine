@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The project's navigation findings (docs/specs/S54-navigation-diagnostics.md R13, R36; AC10):
+// The project's navigation findings (docs/specs/S75-navigation-diagnostics.md R13, R36; AC10):
 // every loaded scene with a file, in scene order, the scene named; agent types unused by every
 // scene once; and the export preflight's lines.
 

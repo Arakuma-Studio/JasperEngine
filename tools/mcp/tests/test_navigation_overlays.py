@@ -1,4 +1,4 @@
-"""S54 navigation diagnostics in the editor UI (docs/specs/S54-navigation-diagnostics.md R25-R29,
+"""S75 navigation diagnostics in the editor UI (docs/specs/S75-navigation-diagnostics.md R25-R29,
 AC13-AC15), driven like a person in the harness's Xvfb and checked through MCP.
 
 Scene NavOverlays (3D): two 10 x 10 m floors 12 m apart under one NavMesh Surface, a 2 m cube

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Navmesh islands (docs/specs/S54-navigation-diagnostics.md R7, R8, R20; AC6, AC7): components
+// Navmesh islands (docs/specs/S75-navigation-diagnostics.md R7, R8, R20; AC6, AC7): components
 // joined through links, area and bounds, relabelled when the revision changes (carving, flags),
 // deterministic ids, and path queries that never label.
 
@@ -162,7 +162,7 @@ TEST_F(NavIslandTest, QueriesNeverRelabel){
             const nav::NavPath path = mesh->findPath(from, to, filter, extents);
             ASSERT_EQ(path.failure, nav::PathFailure::None);
         }
-        // per path its four vectors (S19's corners; S55's corner areas, corner flags and polygon
+        // per path its four vectors (S19's corners; S76's corner areas, corner flags and polygon
         // corridor): nothing more (no labels, no second search)
         EXPECT_EQ(scope.count(), 4000u);
     }

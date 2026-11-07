@@ -47,7 +47,7 @@ TEST_F(NavQueryTest, AreaCosts){
     const Vector3 from(-10.0f, 0.0f, 0.0f), to(10.0f, 0.0f, 0.0f);
     const nav::NavPath path = nav->calculatePath(from, to);
     ASSERT_EQ(path.status, nav::PathStatus::Complete);
-    // S54 R2: Complete exactly when nothing failed
+    // S75 R2: Complete exactly when nothing failed
     EXPECT_EQ(path.failure, nav::PathFailure::None);
     // the strip costs 10 per metre: the path detours through the gap (z > 3) instead
     float maxZ = -1e9f;
@@ -170,7 +170,7 @@ TEST_F(NavQueryTest, MovedSurfaceMovesItsNavmesh){
     EXPECT_NEAR(hit.position.x, 100.0f, CELL);
 }
 
-// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R3, R4)
+// ---- S76 queries (docs/specs/S76-navigation-gameplay-api.md R3, R4)
 
 // AC5: a wall 3 m away: within 2 m none (the distance says how far it looked), within 5 m found
 TEST_F(NavQueryTest, ClosestEdgeMaxDistance){

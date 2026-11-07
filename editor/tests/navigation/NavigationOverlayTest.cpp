@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Scene view's AI Navigation overlay (docs/specs/S19-navigation.md R33, docs/specs/S54-navigation-
+// The Scene view's AI Navigation overlay (docs/specs/S19-navigation.md R33, docs/specs/S75-navigation-
 // diagnostics.md R27, R38, AC14), without a GPU: its workspace settings round trip and an S19
 // workspace loads with the new options at their defaults; the options off create nothing; tile
 // labels read the tiles' last builds; Color By Islands greys what the query's start cannot reach.
@@ -79,7 +79,7 @@ TEST(NavigationOverlay, SettingsRoundTrip){
 }
 
 TEST(NavigationOverlay, OldWorkspaceLoads){
-    // the "navigation" block an S19 editor wrote: its keys read, the S54 options at their defaults
+    // the "navigation" block an S19 editor wrote: its keys read, the S75 options at their defaults
     NavOverlaySettings read;
     decodeNavOverlaySettings(YAML::Load("enabled: true\nshowTileBounds: true\nshowPaths: all\nshowLinks: false"), read);
     NavOverlaySettings expected;

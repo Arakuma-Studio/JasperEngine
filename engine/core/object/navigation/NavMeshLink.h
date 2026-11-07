@@ -10,8 +10,8 @@
 namespace jasperengine{
 
     // Unity's NavMeshLink (docs/navigation.md): Lua NavMeshLink(scene, entity). activated works
-    // without a rebake (S55 R16); the other fields are bake inputs: updateLink() moves the baked
-    // connections to them (S53's link update), a rebake does the rest.
+    // without a rebake (S76 R16); the other fields are bake inputs: updateLink() moves the baked
+    // connections to them (S74's link update), a rebake does the rest.
     class JASPERENGINE_API NavMeshLink: public EntityHandle{
     private:
         NavMeshLinkComponent& component() const;

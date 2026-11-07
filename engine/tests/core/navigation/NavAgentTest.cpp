@@ -336,7 +336,7 @@ TEST_F(NavAgentTest, PathFailedFires){
     EXPECT_EQ(handle.getPathStatus(), nav::PathStatus::Partial);
 }
 
-// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
+// ---------------------------------------------------------------- S74 (docs/specs/S74-navigation-fixes.md)
 
 // 20 agents walking through a gap a carving box then closes: every path status comes from the
 // crowd's corridor, no path search runs for them (getPathQueryCount stays 0 across arrivals and

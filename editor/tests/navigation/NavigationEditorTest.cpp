@@ -6,9 +6,9 @@
 // what differs from the defaults and reads back sanitized, the generated main.cpp sets the
 // settings, and the nav-grid brush's stamps, lines, fills and strokes. (The overlay's settings:
 // NavigationOverlayTest.cpp.)
-// S55 (docs/specs/S55-navigation-gameplay-api.md R40, R41, R47): the Link, Modifier and Agent fields
+// S76 (docs/specs/S76-navigation-gameplay-api.md R40, R41, R47): the Link, Modifier and Agent fields
 // of old scenes, their Inspector rows' undo, and the overlay's area override boxes.
-// S53 (docs/specs/S53-navigation-fixes.md R17, R22, R27): Max Carving Obstacles and Carve Tiles Per
+// S74 (docs/specs/S74-navigation-fixes.md R17, R22, R27): Max Carving Obstacles and Carve Tiles Per
 // Tick default when missing, and the overlay's reservation tint.
 
 #include "Project.h"
@@ -82,7 +82,7 @@ NAV_STABLE(NavGridComponent, component.layout = nav::GridLayout::Hex; component.
            component.tileAreas = {{"water", 3}, {"wall", 1}}; component.collidersBlock = true;
            component.gridData = AssetRef("Level/NavGrid-Grid.navgrid"))
 
-// S53 R27: a surface saved before Max Carving Obstacles existed loads with 128 and writes it back
+// S74 R27: a surface saved before Max Carving Obstacles existed loads with 128 and writes it back
 TEST(NavigationStream, OldSurfaceLoadsDefaults){
     const YAML::Node s19 = YAML::Load("enabled: true\nagentType: 0\ncollectObjects: all\nuseGeometry: render_meshes\n"
                                       "includeLayers: 4294967295\ndefaultArea: 0\nruntimeCarving: true\ntileSize: 64\n");
@@ -157,7 +157,7 @@ TEST(NavigationProjectSettings, GeneratedCodeSetsThem){
     EXPECT_NE(generateNavigationSettingsCode(onlyCarving, "").find("navigation.carveTilesPerTick = 1;"), std::string::npos);
 }
 
-// S53 R22: in play the cells agents reserved are tinted halfway to the agent-path colour; the
+// S74 R22: in play the cells agents reserved are tinted halfway to the agent-path colour; the
 // others keep their area's colour (overrides more opaque)
 TEST(NavigationOverlay, ReservationTint){
     nav::NavGridMap map;
@@ -231,7 +231,7 @@ TEST(NavGridBrush, StrokeRecordsFirstOldAndLastNew){
     for (int i = 0; i < map.getCellCount(); i++) EXPECT_EQ(map.getAreaAt(i), nav::AREA_WALKABLE);
 }
 
-// ---------------------------------------------------------------- S55 runtime areas and links
+// ---------------------------------------------------------------- S76 runtime areas and links
 
 namespace {
 
@@ -278,7 +278,7 @@ namespace {
 
 }
 
-// AC29 (R47): a scene saved before S55 has no Activated or Apply At Runtime: they load as their
+// AC29 (R47): a scene saved before S76 has no Activated or Apply At Runtime: they load as their
 // defaults and the next save writes them
 TEST_F(NavigationEditorTest, OldSceneLoadsDefaults){
     const YAML::Node link = YAML::Load("enabled: true\nagentType: 0\nstartPoint: [0, 0, -2.5]\nendPoint: [0, 0, 2.5]\nwidth: 0\n"
@@ -306,7 +306,7 @@ TEST_F(NavigationEditorTest, OldSceneLoadsDefaults){
     runtime.applyAtRuntime = true;
     EXPECT_TRUE(Stream::decodeNavMeshModifierComponent(YAML::Load(YAML::Dump(Stream::encodeNavMeshModifierComponent(runtime)))).applyAtRuntime);
 
-    // S55 P3: an S19 agent has the stuck watchdog's defaults, and saves them
+    // S76 P3: an S19 agent has the stuck watchdog's defaults, and saves them
     const YAML::Node agent = YAML::Load("enabled: true\nagentType: 0\nspeed: 3.5\nautoRepath: true\nareaMask: 65535\n");
     const NavMeshAgentComponent decodedAgent = Stream::decodeNavMeshAgentComponent(agent);
     EXPECT_FALSE(decodedAgent.stuckDetection);
@@ -349,7 +349,7 @@ TEST_F(NavigationEditorTest, GameplayRowsUndo){
     ASSERT_TRUE(history()->undo());
     EXPECT_TRUE(s->getComponent<NavMeshLinkComponent>(bridge).activated);
 
-    // S55 P3: Detect Stuck and Stuck After (s)
+    // S76 P3: Detect Stuck and Stuck After (s)
     const Entity walker = addObject("Walker");
     s->addComponent<NavMeshAgentComponent>(walker, {});
     ASSERT_TRUE(history()->addCommand(new PropertyCmd<bool>(project.get(), sceneId, walker, ComponentType::NavMeshAgentComponent, "stuckDetection", true)));

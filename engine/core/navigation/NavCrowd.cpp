@@ -80,7 +80,7 @@ struct NavCrowd::Impl {
     std::vector<const dtCrowdAgent*> obstacleScratch;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
-    // ---- S55 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
+    // ---- S76 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
     // project's), reference-counted; filter 0 (every area, the project's costs) is never freed
     struct FilterSlot {
         uint16_t mask = 0;
@@ -94,8 +94,8 @@ struct NavCrowd::Impl {
     std::vector<uint8_t> agentFallback;
     int fallbackCount = 0;
     std::vector<dtCrowdAgent*> active;
-    // ---- S55 agents: corridors a script set (followed without the crowd's shortcuts until a
-    // request or replan) and this update's velocity overrides (spec S55 R20, R22)
+    // ---- S76 agents: corridors a script set (followed without the crowd's shortcuts until a
+    // request or replan) and this update's velocity overrides (spec S76 R20, R22)
     std::vector<uint8_t> scripted;
     int scriptedCount = 0;
     struct VelocityOverride {
@@ -250,7 +250,7 @@ struct NavCrowd::Impl {
         } else {
             out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_TOPO;
             // Detour's visibility shortcut raycasts without costs: it would cut an agent's own
-            // costly areas (spec S55 R9) straight through, so agents with costs of their own skip it
+            // costly areas (spec S76 R9) straight through, so agents with costs of their own skip it
             if (std::none_of(std::begin(p.areaCosts), std::end(p.areaCosts), [](float cost) { return cost > 0.0f; }))
                 out.updateFlags |= DT_CROWD_OPTIMIZE_VIS;
             if (p.quality != AvoidanceQuality::None) {
@@ -424,7 +424,7 @@ NavCrowdPath NavCrowd::getPathState(int agent) const {
     if (ag->partial)
         return NavCrowdPath::Partial;
     // not partial, so the search reached the target (DT_PARTIAL_RESULT unset): a corridor
-    // ending elsewhere holds the path's first polygons only (spec S53 D5)
+    // ending elsewhere holds the path's first polygons only (spec S74 D5)
     return ag->corridor.getPathCount() > 0 && ag->corridor.getLastPoly() == ag->targetRef ? NavCrowdPath::Complete
                                                                                           : NavCrowdPath::Truncated;
 }
@@ -443,7 +443,7 @@ void NavCrowd::update(float dt) {
     // Tiles changed (a cut, a rebuilt or patched tile): dtCrowd checks only the next 10 polygons
     // of a corridor, so a change further along would leave the path, and its status, stale until
     // the agent got there. A corridor holding a polygon that is gone is planned again now, so
-    // pathStatus follows the mesh (spec S53 R6).
+    // pathStatus follows the mesh (spec S74 R6).
     const uint64_t revision = impl->mesh->getRevision();
     if (revision != impl->meshRevision) {
         impl->meshRevision = revision;
@@ -462,7 +462,7 @@ void NavCrowd::update(float dt) {
             impl->crowd->requestMoveTarget(index, ag->targetRef, target);
         }
     }
-    // ---- S55 agents: a script's corridor is followed as given, until a request for a new path
+    // ---- S76 agents: a script's corridor is followed as given, until a request for a new path
     // (a replan since the last update included); velocity overrides start here
     if (impl->scriptedCount > 0) {
         for (int i = 0; i < impl->capacity; i++) {
@@ -719,7 +719,7 @@ float NavCrowd::getSteeringRemaining(int agent, bool& reachedEnd) const {
         if (!reachedEnd)
             distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
     }
-    // a truncated corridor: on to the target as the crow flies (a lower bound, spec S53 R7)
+    // a truncated corridor: on to the target as the crow flies (a lower bound, spec S74 R7)
     if (getPathState(agent) == NavCrowdPath::Truncated) {
         distance += dtVdist(ag->corridor.getTarget(), ag->targetPos);
         reachedEnd = false;
@@ -876,13 +876,13 @@ void NavCrowd::replanCrossing(const std::vector<uint32_t>& changedPolys, std::ve
     }
 }
 
-// ---- S55 agents
+// ---- S76 agents
 
 namespace {
 
     // dtCrowd's corridor capacity (DetourCrowd.cpp: m_maxPathResult)
     constexpr int CROWD_CORRIDOR_POLYS = 256;
-    // setPath: the agent's polygon among the path's first ones (spec S55 R20)
+    // setPath: the agent's polygon among the path's first ones (spec S76 R20)
     constexpr int CORRIDOR_START_SEARCH = 16;
 
     // the area a polygon reports: the index of its flag bit (links report their area; flags 0,

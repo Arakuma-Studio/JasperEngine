@@ -3,7 +3,7 @@
 
 // Lua's navigation (docs/specs/S19-navigation.md R38, docs/navigation.md): the scene's
 // NavigationSystem queries, NavMeshQueryFilter, NavMeshAgent with its events, NavMeshSurface
-// (runtime bakes), NavGrid and GridCell, and their enums. S55 (docs/specs/S55-navigation-gameplay-api.md):
+// (runtime bakes), NavGrid and GridCell, and their enums. S76 (docs/specs/S76-navigation-gameplay-api.md):
 // random points, surface moves, area costs per query and per agent, path costs and corner areas.
 
 #include "LuaBinding.h"
@@ -49,7 +49,7 @@ namespace luabridge
     template<> struct Stack<NavCollectObjects> : EnumWrapper<NavCollectObjects>{};
     template<> struct Stack<NavUseGeometry> : EnumWrapper<NavUseGeometry>{};
 
-    // ---- S55 agents: onPathFailed's reason is S54's snake_case name in Lua ("blocked_by_area")
+    // ---- S76 agents: onPathFailed's reason is S75's snake_case name in Lua ("blocked_by_area")
     template<> struct Stack<nav::PathFailure>
     {
         [[nodiscard]] static Result push(lua_State* L, nav::PathFailure failure)
@@ -77,7 +77,7 @@ namespace luabridge
 
 namespace {
 
-    // ---- S55 queries
+    // ---- S76 queries
     // NavMeshPathCorridor: what a path from calculatePath carries for NavMeshAgent:setPath, opaque
     // in Lua (a script-built path table has none)
     struct NavPathCorridor {
@@ -153,7 +153,7 @@ namespace {
         return 2;
     }
 
-    // Unity's NavMeshPath as a table: status, corners, length; S55 adds cost, cornerAreas and
+    // Unity's NavMeshPath as a table: status, corners, length; S76 adds cost, cornerAreas and
     // cornerFlags (aligned with corners), areaLengths (area index -> length, areas walked only) and
     // the corridor setPath reads (nil without polygons)
     luabridge::LuaRef pathTable(lua_State* L, const nav::NavPath& path) {
@@ -164,7 +164,7 @@ namespace {
             corners[(int)i + 1] = path.corners[i];
         table["corners"] = corners;
         table["length"] = path.length;
-        // S54 R35: why it is not Complete ("none" when it is), the surface that answered
+        // S75 R35: why it is not Complete ("none" when it is), the surface that answered
         table["reason"] = std::string(nav::pathFailureName(path.failure));
         table["surface"] = (lua_Integer)path.surface;
         table["closestPoint"] = path.closestPoint;
@@ -274,7 +274,7 @@ namespace {
         return query;
     }
 
-    // ---- S54 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
+    // ---- S75 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
 
     luabridge::LuaRef islandTable(lua_State* L, const nav::NavIsland& island) {
         luabridge::LuaRef table = luabridge::newTable(L);
@@ -385,7 +385,7 @@ namespace {
         return query;
     }
 
-    // ---- S55 agents
+    // ---- S76 agents
 
     NavMeshAgent* agentSelf(lua_State* L) {
         auto self = luabridge::get<NavMeshAgent*>(L, 1);
@@ -414,7 +414,7 @@ namespace {
     }
 
     // OffMeshLinkData {valid, activated, occupied, startPos, endPos, link}: activated and occupied
-    // are the link's state now (S55 R16, R17, R24)
+    // are the link's state now (S76 R16, R17, R24)
     luabridge::LuaRef linkTable(const NavMeshAgent& agent, lua_State* L, bool valid, const Vector3& start, const Vector3& end, Entity link) {
         luabridge::LuaRef table = luabridge::newTable(L);
         NavigationSystem* system = valid ? agent.getScene()->getSystem<NavigationSystem>().get() : nullptr;
@@ -552,7 +552,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("remove", &FunctionSubscribe<void(NavMeshAgent)>::remove)
         .endClass();
 
-    // ---- S55 agents: onPathFailed(agent, reason)
+    // ---- S76 agents: onPathFailed(agent, reason)
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>>("FunctionSubscribe_V_NavMeshAgent_PathFailure")
         .addFunction("__call", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::call)
@@ -608,7 +608,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         })
         .addProperty("randomSeed", +[](const NavigationSystem* self) { return (lua_Integer)self->getRandomSeed(); },
                                    +[](NavigationSystem* self, lua_Integer seed) { self->setRandomSeed((uint64_t)seed); })
-        // (reachable, reason): S54 R35, the reason is ignorable
+        // (reachable, reason): S75 R35, the reason is ignorable
         .addFunction("isReachable", +[](lua_State* L) -> int {
             NavigationSystem* self = navSelf(L);
             nav::PathFailure why = nav::PathFailure::None;
@@ -709,7 +709,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("getAreaCost", &NavMeshAgent::getAreaCost)
         .addFunction("resetAreaCost", &NavMeshAgent::resetAreaCost)
 
-        // ---- S55 agents
+        // ---- S76 agents
         .addFunction("calculatePath", +[](const NavMeshAgent* self, const Vector3& target, lua_State* L) {
             return pathTable(L, self->calculatePath(target));
         })

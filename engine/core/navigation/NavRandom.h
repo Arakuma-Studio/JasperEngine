@@ -4,7 +4,7 @@
 #ifndef NAV_RANDOM_H
 #define NAV_RANDOM_H
 
-// The random stream of navigation's random point queries (docs/specs/S55-navigation-gameplay-api.md
+// The random stream of navigation's random point queries (docs/specs/S76-navigation-gameplay-api.md
 // R2, D2): splitmix64, a fixed integer recipe, so a seed gives the same draws on every platform and
 // toolchain (std::mt19937's distributions are implementation-defined). Header only.
 

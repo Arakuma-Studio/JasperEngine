@@ -1019,7 +1019,7 @@ namespace {
             addVolume(transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize,
                       area == AREA_NOT_WALKABLE ? RECAST_NULL_AREA : (uint8_t)(area + 1));
         }
-        // S55 R11, D4: runtime volumes last, enabled or not: the bake splits the polygons along
+        // S76 R11, D4: runtime volumes last, enabled or not: the bake splits the polygons along
         // them and keeps their areas; NavigationSystem applies their area at runtime
         for (Entity entity : entities) {
             const NavMeshModifierComponent& modifier = scene->getComponent<NavMeshModifierComponent>(entity);
@@ -1164,7 +1164,7 @@ namespace {
             input->linkAreaCosts.resize((size_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA));
 
         // a tile's heightfield spans the surface's whole height, in at most 8191 voxels: above
-        // that Recast clamps, so the geometry there is lost (spec S53 R5; a warning, since the
+        // that Recast clamps, so the geometry there is lost (spec S74 R5; a warning, since the
         // clamped part may well not be walkable)
         const float voxel = input->config.cellHeight;
         if (voxel > 0.0f && (input->bmax[1] - input->bmin[1]) / voxel + 2.0f > (float)SPAN_MAX_HEIGHT) {

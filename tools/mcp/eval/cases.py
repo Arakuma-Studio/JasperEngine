@@ -806,7 +806,7 @@ CASES = [
         "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "
                          "parameter; without it an agent hand-edits project.yaml or reports it cannot be changed.",
         "text_at_issue": "set_navigation_settings carve_tiles_per_tick: '0: Auto.'",
-        "source": "S53 R14, R24 (new parameter); no failure on record",
+        "source": "S74 R14, R24 (new parameter); no failure on record",
         "prompt": "Carving NavMesh Obstacles make my web build hitch when they move. Limit runtime carving to one tile "
                   "rebuild per surface per fixed tick.",
         "groups_enabled": ["navigation"],
@@ -836,7 +836,7 @@ CASES = [
                          "path, an agent must pass that agent type to the drawn path, not only to query_navigation.",
         "text_at_issue": "visualize_navigation path {from, to, agent_type, area_mask} (agent_type: 'Name or id. Default: "
                          "the first.')",
-        "source": "S53 R24 (new parameters); no failure on record",
+        "source": "S74 R24 (new parameters); no failure on record",
         "prompt": "Show me in the Scene view the path a Giant (the agent type) takes from (-10, 0, 0) to (10, 0, 5).",
         "groups_enabled": ["navigation"],
         "mocks": [
@@ -861,7 +861,7 @@ CASES = [
         "max_turns": 10,
     },
 
-    # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
+    # -- S75 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {
         "id": "guard_navigation_path_reason",
         "kind": "guard",
@@ -872,7 +872,7 @@ CASES = [
         "text_at_issue": "query_navigation: 'locate (is a point on the navmesh; if not, why). A failed path says why and what "
                          "to do. from/to: a point or a GameObject'; result next: 'query_navigation op locate at to says why it "
                          "is off the navmesh.'",
-        "source": "S54 R30 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
         "prompt": "In scene Main the Enemy's NavMesh Agent never reaches the Player. Find out why; don't change anything.",
         "mocks": [
             {"tool": "get_navigation_info", "result": ok(
@@ -910,7 +910,7 @@ CASES = [
                          "agents do not move, instead of playing and reading scripts.",
         "text_at_issue": "Guide 'Other areas': 'navigation (get_navigation_info)'; get_navigation_info: '... and its "
                          "findings: each problem with its fix. Start here when agents do not move.'",
-        "source": "S54 R13, R32 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "source": "S75 R13, R32 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
         "prompt": "My enemies in scene Main just stand still when I press Play. What is wrong? Tell me; don't fix it yet.",
         "mocks": [
             {"tool": "get_navigation_info", "result": ok(
@@ -939,7 +939,7 @@ CASES = [
                          "screenshot; guards that agents use it instead of moving the camera by hand and guessing.",
         "text_at_issue": "visualize_navigation: 'navmesh in area, island or tile colours ... frame first moves the Scene "
                          "camera to the navmesh or a GameObject.'; show.islands, frame",
-        "source": "S54 R33 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "source": "S75 R33 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
         "prompt": "Show me a picture of scene Main's whole navmesh with each disconnected part in its own colour.",
         "mocks": [
             {"tool": "visualize_navigation", "result": ok(
@@ -958,7 +958,7 @@ CASES = [
         "what_happened": "query_navigation's to takes a list of up to 64 targets; guards that an agent checks several spawn "
                          "points in one call instead of one call each.",
         "text_at_issue": "query_navigation to: '[x, y, z] or a GameObject. Or a list of up to 64.'",
-        "source": "S54 R30 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
         "prompt": "Which of these spawn points can the Enemy in scene Main walk to: [4, 0, 4], [-6, 0, 8], [12, 0, -3], "
                   "[0, 0, 15], [-9, 0, -9], [7, 0, 11]?",
         "mocks": [
@@ -979,11 +979,11 @@ CASES = [
         "id": "guard_navigation_random_point",
         "kind": "guard",
         "groups_enabled": ["navigation"],
-        "what_happened": "S55 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
+        "what_happened": "S76 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
                          "agents use it instead of sampling guessed points or writing Lua.",
         "text_at_issue": "query_navigation: '... locate (...), random, move_along'; from: 'Optional for random.'; max_distance: "
                          "'Default: sample 2, locate 5. closest_edge, random.'; seed: 'random.'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
         "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
                   "agent standing there can walk to. Make it repeatable (seed 3).",
         "mocks": [
@@ -1003,10 +1003,10 @@ CASES = [
         "id": "guard_navigation_move_along",
         "kind": "guard",
         "groups_enabled": ["navigation"],
-        "what_happened": "S55 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
+        "what_happened": "S76 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
                          "guards that agents use it rather than a raycast or a path for a one-step move.",
         "text_at_issue": "query_navigation: '... locate (...), random, move_along'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
         "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
                   "does it end up on the navmesh surface, and does a wall stop it?",
         "mocks": [
@@ -1025,12 +1025,12 @@ CASES = [
         "id": "guard_navigation_door_in_play",
         "playing": True,
         "kind": "guard",
-        "what_happened": "S55 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
+        "what_happened": "S76 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
                          "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
                          "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
         "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
                          "links[].activated; visualize_navigation show.area_overrides",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R45 (no failure on record)",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R45 (no failure on record)",
         "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
                   "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
         "groups_enabled": ["navigation"],

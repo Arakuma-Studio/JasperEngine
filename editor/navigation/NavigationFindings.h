@@ -4,7 +4,7 @@
 #ifndef NAVIGATION_FINDINGS_H
 #define NAVIGATION_FINDINGS_H
 
-// The project's navigation findings (docs/specs/S54-navigation-diagnostics.md R13, R36):
+// The project's navigation findings (docs/specs/S75-navigation-diagnostics.md R13, R36):
 // NavigationSystem::getFindings over every loaded scene that has a file, with the scene added.
 // The Navigation window's Problems list, get_navigation_info, the CLI check and the export
 // preflight read them; nothing else makes navigation findings.

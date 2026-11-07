@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
     }
 
-    // ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R36): random points (the area
+    // ---- S76 queries (docs/specs/S76-navigation-gameplay-api.md R36): random points (the area
     // table's first build, then cached), around a point, the closest wall within 5 m, 2 m steps
     {
         const Vector3 extents(1.0f, 2.0f, 1.0f);
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
         results.add("query_move_along_p95_ms", bench::percentile(moves, 0.95), "ms");
     }
 
-    // ---- S54 diagnostics: island labelling, a disconnected reject, locate (islands current)
+    // ---- S75 diagnostics: island labelling, a disconnected reject, locate (islands current)
     {
         static_assert(sizeof(nav::NavIsland) <= 48, "R21: an island is at most 48 bytes");
         nav::NavIslandLabels labels;
@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- S54 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
+    // ---- S75 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
     {
         Scene findingsScene;
         test::disableSubSystems(findingsScene);
@@ -396,7 +396,7 @@ int main(int argc, char** argv) {
         results.add("crowd_" + std::to_string(count) + "_tick_p95_ms", bench::percentile(ticks, 0.95), "ms");
     }
 
-    // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R38): what the stuck watchdog adds
+    // ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R38): what the stuck watchdog adds
     // to 100 walking agents. Two copies of the crowd (the same agents and destinations) step in
     // turns, only the second watched; the median of the paired tick differences
     {
@@ -452,7 +452,7 @@ int main(int argc, char** argv) {
 
     // ---- carving: one obstacle moved on a carving surface; tile-cache work per tick at Carve
     // Tiles Per Tick Auto (desktop: 4) with the wall-clock ceiling off, ticks to land
-    // (S19 R28, S53 R14, R19)
+    // (S19 R28, S74 R14, R19)
     {
         Scene carveScene;
         test::disableSubSystems(carveScene);

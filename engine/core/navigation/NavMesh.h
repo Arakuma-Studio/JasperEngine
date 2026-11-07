@@ -99,7 +99,7 @@ namespace jasperengine::nav {
         // the triangle cap stopped the extraction
         bool truncated = false;
 
-        // ---- S54: per tile of tileBounds, its x, y and layer
+        // ---- S75: per tile of tileBounds, its x, y and layer
         std::vector<int32_t> tileCoords;
         // per triangle: its island (DEBUG_ISLANDS, -1: none), the index of its tile in
         // tileBounds (DEBUG_TILES); empty without the flag
@@ -107,7 +107,7 @@ namespace jasperengine::nav {
         std::vector<int32_t> triangleTiles;
     };
 
-    // ---- S54 diagnostics (docs/specs/S54-navigation-diagnostics.md)
+    // ---- S75 diagnostics (docs/specs/S75-navigation-diagnostics.md)
 
     // getDebugGeometry's extras
     constexpr uint32_t DEBUG_ISLANDS = 1u << 0;
@@ -132,7 +132,7 @@ namespace jasperengine::nav {
         float bmax[3] = {0, 0, 0};
     };
 
-    // A carving obstacle (S53 R11), in nav space: Detour's cylinders and yaw-only boxes
+    // A carving obstacle (S74 R11), in nav space: Detour's cylinders and yaw-only boxes
     struct NavObstacleDesc {
         enum class Shape : uint8_t {
             Cylinder,
@@ -149,13 +149,13 @@ namespace jasperengine::nav {
 
     struct NavMeshCreateOptions {
         // carving: the tiles built from the layers are queued and built by updateCarving (a bake
-        // landing in play, S53 R15) instead of all at once
+        // landing in play, S74 R15) instead of all at once
         bool deferCarvedBuilds = false;
         // the carving obstacles the mesh may hold (Max Carving Obstacles); -1: the header's
         int maxObstacles = -1;
     };
 
-    // What one updateCarving may do (S53 R14): a count of tile builds, and a wall-clock ceiling
+    // What one updateCarving may do (S74 R14): a count of tile builds, and a wall-clock ceiling
     // that stops it after at least one build
     struct NavCarveBudget {
         int maxTileBuilds = 4;
@@ -175,10 +175,10 @@ namespace jasperengine::nav {
         bool create(NavMeshData data, bool keepData, std::string& error, const NavMeshCreateOptions& options = {});
         void clear();
         bool isValid() const;
-        // no carved tile build is queued (deferred builds, S53 R15)
+        // no carved tile build is queued (deferred builds, S74 R15)
         bool isComplete() const;
         int getQueuedBuilds() const;
-        // changes on every create() and clear(): a new Detour mesh (crowds are made again, S53 R9)
+        // changes on every create() and clear(): a new Detour mesh (crowds are made again, S74 R9)
         uint64_t getGeneration() const;
 
         const NavMeshHeader& getHeader() const;
@@ -197,7 +197,7 @@ namespace jasperengine::nav {
 
         // ---- queries (nav space)
         // the query searches at most 2048 nodes (spec R26); the path keeps its polygon corridor,
-        // per-corner areas and flags, its cost and the length per area (S55 R5)
+        // per-corner areas and flags, its cost and the length per area (S76 R5)
         NavPath findPath(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents,
                          const PathOptions& options = {}) const;
         // the nearest point within maxDistance
@@ -208,7 +208,7 @@ namespace jasperengine::nav {
         // the nearest wall within maxDistance (<= 0: 64 tiles); hit false with distance
         // maxDistance when there is none
         NavHit findClosestEdge(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float maxDistance = -1.0f) const;
-        // ---- S55 queries
+        // ---- S76 queries
         // A point uniform by area over the polygons the filter passes (of island `island`, -1:
         // any): three draws of `random`. False when no polygon passes.
         bool findRandomPoint(const NavFilter& filter, NavRandom& random, int island, NavHit& out) const;
@@ -225,7 +225,7 @@ namespace jasperengine::nav {
         // the polygon height under a point (false off the mesh)
         bool getHeight(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float& height) const;
 
-        // ---- runtime carving (S53 R11-R17). The mesh owns its obstacles: ids are stable and never
+        // ---- runtime carving (S74 R11-R17). The mesh owns its obstacles: ids are stable and never
         // 0, requests queue and reach Detour's tile cache as it has room, so none is lost.
         // 0 when the mesh does not carve, or holds its Max Carving Obstacles
         uint32_t addObstacle(const NavObstacleDesc& desc);
@@ -250,7 +250,7 @@ namespace jasperengine::nav {
 
         // ---- links: moves the connections of a link to new endpoints (an auto-updating
         // NavMeshLink that moved). False when a start left its tile (the surface must be rebaked).
-        // A carving mesh created with deferCarvedBuilds queues the rebuilt tiles (S53 R15).
+        // A carving mesh created with deferCarvedBuilds queues the rebuilt tiles (S74 R15).
         bool updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error);
         // the connections of a link as the mesh holds them now (false: it holds none)
         bool getLinkConnections(uint32_t userId, std::vector<NavLinkInput>& out) const;
@@ -268,7 +268,7 @@ namespace jasperengine::nav {
         // whether a tile holds off-mesh connections (links)
         bool hasOffMeshConnections() const;
 
-        // ---- S54 diagnostics (nav space). Islands are labelled lazily, on the main thread, when
+        // ---- S75 diagnostics (nav space). Islands are labelled lazily, on the main thread, when
         // the revision changed since the last labelling (R8): the calls that say so label;
         // path queries never do, they only use labels that are current.
         // the islands (nav-space bounds, nav units^2); labels when stale
@@ -306,7 +306,7 @@ namespace jasperengine::nav {
         static bool tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& config, const Vector3& point,
                                const Vector3& halfExtents);
 
-        // ---- S55 areas (docs/specs/S55-navigation-gameplay-api.md R11-R18, D5). Runtime area
+        // ---- S76 areas (docs/specs/S76-navigation-gameplay-api.md R11-R18, D5). Runtime area
         // overrides (nav-space prisms: the ground polygons whose centroid lies inside take the
         // area, Not Walkable gives flags 0) and link states over the baked flags. They apply in
         // ascending (order, id), a later one wins and Not Walkable always; every tile change

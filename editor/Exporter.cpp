@@ -2327,7 +2327,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     return scene->getComponentArray<Rigidbody2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
                 });
             }
-            // S19 R42, S54 R36: the build's navigation warnings and errors (never blocking)
+            // S19 R42, S75 R36: the build's navigation warnings and errors (never blocking)
             logNavigationPreflight(project);
             if (!project->isPhysics3DEnabled()) {
                 warnDroppedPhysics("3D", [](Scene* scene) {

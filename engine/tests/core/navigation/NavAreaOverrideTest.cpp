@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Runtime areas and links of docs/specs/S55-navigation-gameplay-api.md (R11-R18, R48; AC11-AC18)
+// Runtime areas and links of docs/specs/S76-navigation-gameplay-api.md (R11-R18, R48; AC11-AC18)
 // on the nav_doors fixture: runtime modifier volumes and script volumes over baked polygons, link
 // Activated and Occupied, their survival through every tile rebuild, and their zero cost.
 
@@ -60,7 +60,7 @@ namespace {
 }
 
 // AC13 (R48): nav_doors without its runtime volume collects the tile hashes recorded on the tree
-// before S55 (JASPER_TEST_UPDATE_FIXTURES=1 records them): scenes without runtime volumes need no
+// before S76 (JASPER_TEST_UPDATE_FIXTURES=1 records them): scenes without runtime volumes need no
 // rebake after the upgrade
 TEST_F(NavAreaOverrideTest, HashesUnchangedWithoutRuntimeVolumes){
     Doors fixture = doors(*scene);

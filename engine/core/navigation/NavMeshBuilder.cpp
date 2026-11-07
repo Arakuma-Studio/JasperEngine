@@ -98,7 +98,7 @@ namespace {
         return inside;
     }
 
-    // S55 D4: a runtime volume's boundary on the compact heightfield. A walkable span of the
+    // S76 D4: a runtime volume's boundary on the compact heightfield. A walkable span of the
     // areas (Recast ids 1-16) whose cell centre lies in the prism keeps its area, moved to the
     // runtime volume ids, so region building splits the polygons along the volume. Our own
     // loop over the prism's cells, as rcMarkConvexPolyArea walks them.
@@ -145,7 +145,7 @@ struct NavMeshBuilder::TileJob::State {
     std::chrono::steady_clock::time_point started;
     double busyMs = 0.0;
 
-    // Recast's warnings and errors (spec S53 R4); errorsAtStep: its error count when the running
+    // Recast's warnings and errors (spec S74 R4); errorsAtStep: its error count when the running
     // step began, so a failure names Recast's reason only when that step logged one
     detail::NavRecastLog context;
     int errorsAtStep = 0;
@@ -160,7 +160,7 @@ struct NavMeshBuilder::TileJob::State {
     std::vector<NavLinkInput> links;
 
     const NavBakeInput& in() const { return *input; }
-    // S54: the probe's relaxed limits for this build (null: the input's)
+    // S75: the probe's relaxed limits for this build (null: the input's)
     std::unique_ptr<NavBuildConfig> configOverride;
     const NavBuildConfig& config() const { return configOverride ? *configOverride : input->config; }
 

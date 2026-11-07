@@ -9,7 +9,7 @@
 //   bench_nav_city  a 256 x 256 m terrain with 200 static buildings (cell 0.2 m, 400 tiles)
 //   nav_2d_topdown  a 2D scene (plane XY, points) with static Box2D polygons and circles
 //   nav_tilemap     a tilemap whose rects map to grid areas
-//   nav_doors       two rooms, a doorway, a mud strip and a bridge link to a platform (S55)
+//   nav_doors       two rooms, a doorway, a mud strip and a bridge link to a platform (S76)
 // Scenes are plain Scenes with no view: MeshSystem builds the primitives' CPU buffers, which is all
 // a bake reads.
 
@@ -174,7 +174,7 @@ namespace jasperengine::navtest {
         return city;
     }
 
-    // nav_doors (S55): two rooms of a 40 x 12 m floor split by a wall at x = 0 with a 2.5 m doorway
+    // nav_doors (S76): two rooms of a 40 x 12 m floor split by a wall at x = 0 with a 2.5 m doorway
     // (z in [-1.25, 1.25]), a strip of area 3 across the east room (x in [8, 10]), and a platform
     // (x in [23, 31]) beyond a 3 m gap, reached only by the bridge link from (19, 0, 0) to
     // (24, 0, 0): without the bridge the platform is a second island. Cell 0.2 m, tiles of 32
@@ -224,7 +224,7 @@ namespace jasperengine::navtest {
         return fixture;
     }
 
-    // nav_doors' doorway as a runtime volume (S55 R11): a NavMesh Modifier with Use Volume and
+    // nav_doors' doorway as a runtime volume (S76 R11): a NavMesh Modifier with Use Volume and
     // Apply At Runtime over the gap, Not Walkable (a closed door) unless told otherwise
     inline Entity doorway(Scene& scene, const Doors& fixture, bool closed = true, int area = nav::AREA_NOT_WALKABLE) {
         const Entity door = transformEntity(scene, fixture.doorCenter, NULL_ENTITY, "Door");

@@ -3,7 +3,7 @@
 # (JASPERENGINE_NAVIGATION=OFF, what an export with Project Settings > Navigation > Include In
 # Builds off compiles) and its core tests, then runs the suites that build has:
 # NavStubTest (compiled only when navigation is OFF: every navmesh call fails and logs once) and
-# NavGridTest (grids keep working). docs/specs/S53-navigation-fixes.md R28; docs/testing.md.
+# NavGridTest (grids keep working). docs/specs/S74-navigation-fixes.md R28; docs/testing.md.
 #
 #   tools/check-navigation-off.sh [-j N]        inside the Linux image:
 #   tools/build.sh exec linux tools/check-navigation-off.sh

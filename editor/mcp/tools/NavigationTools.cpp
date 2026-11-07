@@ -5,7 +5,7 @@
 // navigation state (settings, surfaces, grids, links, agents and crowds), query paths, samples,
 // raycasts, closest edges and reachability on navmeshes or NavGrids (edit and play), change the
 // project's navigation settings, paint NavGrid cells (one undo step) and show the Scene view's
-// AI Navigation overlay (with a screenshot). S54 (docs/specs/S54-navigation-diagnostics.md
+// AI Navigation overlay (with a screenshot). S75 (docs/specs/S75-navigation-diagnostics.md
 // R30-R34) adds why: failure reasons, locate with the walkability probe, the bake report,
 // coverage, islands, link states and the findings. The guide is docs/mcp/guide/navigation.md.
 #include "McpTools.h"
@@ -158,7 +158,7 @@ Json islandsJson(std::vector<nav::NavIsland> islands, size_t limit) {
     return list;
 }
 
-// S54 R16, R31: one surface's bake report (bake_navigation's per surface, get_navigation_info's
+// S75 R16, R31: one surface's bake report (bake_navigation's per surface, get_navigation_info's
 // last_bake); the island fields once getLastBakeResult filled them
 Json bakeReportJson(const NavBakeResult& result) {
     const nav::NavCollectStats& sources = result.sources;
@@ -272,7 +272,7 @@ void bakeNavigationTool(const CallPtr& call) {
         NavigationSystem* system = sp && sp->scene ? NavigationEditor::systemOf(*sp) : nullptr;
         for (Entity surface : state->surfaces) {
             NavBakeResult& result = state->results[surface];
-            // the island fields label on their first read (never inside the landing, S54 R8)
+            // the island fields label on their first read (never inside the landing, S75 R8)
             const NavBakeResult* last = system && result.ok && !result.cancelled ? system->getLastBakeResult(surface) : nullptr;
             if (last && last->islandCount >= 0) {
                 result.walkableArea = last->walkableArea;
@@ -346,7 +346,7 @@ void bakeNavigationTool(const CallPtr& call) {
 
 // ------------------------------------------------------------ get_navigation_info
 
-// a finding as get_navigation_info lists it (S54 R32); a detail holding a code reads as its name
+// a finding as get_navigation_info lists it (S75 R32); a detail holding a code reads as its name
 Json findingJson(SceneProject* scene, const nav::NavFinding& finding) {
     Json details = Json::object();
     for (const auto& detail : finding.details) {
@@ -420,8 +420,8 @@ void getNavigationInfoTool(const CallPtr& call) {
             std::snprintf(line, sizeof(line), ", %d island(s), %.1f m\xC2\xB2 walkable", coverage.islandCount, coverage.walkableArea);
             coverageText = line;
         }
-        // last_bake: the engine's report of the last bake (S54 R16), with the outcome the editor
-        // saw this session (S53 R3: a refused start or a failed save counts, and a failure stays
+        // last_bake: the engine's report of the last bake (S75 R16), with the outcome the editor
+        // saw this session (S74 R3: a refused start or a failed save counts, and a failure stays
         // until a bake succeeds)
         const NavBakeResult* engineBake = system->getLastBakeResult(entity);
         Json lastBake = engineBake ? bakeReportJson(*engineBake) : Json::object();
@@ -490,7 +490,7 @@ void getNavigationInfoTool(const CallPtr& call) {
         if (playing) item["occupied"] = system->isLinkOccupied(entity);
         links.push_back(item);
     }
-    // S55 R43: runtime modifier volumes and script volumes, applied or not (with `entities`, only
+    // S76 R43: runtime modifier volumes and script volumes, applied or not (with `entities`, only
     // those GameObjects' volumes)
     Json areaOverrides = Json::array();
     int appliedOverrides = 0;
@@ -513,7 +513,7 @@ void getNavigationInfoTool(const CallPtr& call) {
             item["velocity"] = vec3Json(agent.velocity);
             item["is_on_navmesh"] = agent.isOnNavMesh;
             item["is_on_off_mesh_link"] = agent.isOnOffMeshLink;
-            // ---- S55 agents (R43): why its last path failed, and the watchdog's count
+            // ---- S76 agents (R43): why its last path failed, and the watchdog's count
             item["last_failure"] = nav::pathFailureName(agent.lastPathFailure);
             if (agent.stuckDetection) item["stuck_seconds"] = rounded(agent.stuckTime);
         }
@@ -543,7 +543,7 @@ void getNavigationInfoTool(const CallPtr& call) {
         if (modifier.useVolume) item["apply_at_runtime"] = modifier.applyAtRuntime;
         modifiers.push_back(item);
     }
-    // S54 R13: the one findings function, with the dirty counts read above
+    // S75 R13: the one findings function, with the dirty counts read above
     nav::NavFindingOptions options;
     options.dirtyTilesOf = [&dirtyOf](Entity surface) {
         auto found = dirtyOf.find(surface);
@@ -574,7 +574,7 @@ void getNavigationInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------ query_navigation
 
-// A point argument (S54 R30): [x, y, z] in world space, or a GameObject: its world position, a
+// A point argument (S75 R30): [x, y, z] in world space, or a GameObject: its world position, a
 // NavMesh Agent's feet (its base offset below)
 struct NavPoint {
     Vector3 position;
@@ -671,7 +671,7 @@ std::string agentTypeLabel(int id) {
     return (type ? "'" + type->name + "'" : std::string("an unknown type")) + " (" + std::to_string(id) + ")";
 }
 
-// The agent type and area mask of a navmesh query (S54 R30): agent_type, else from's NavMesh
+// The agent type and area mask of a navmesh query (S75 R30): agent_type, else from's NavMesh
 // Agent's, else the target surface's, else the first type; area_mask, else from's agent's
 bool queryFilterOf(SceneProject* scene, const Json& args, const NavPoint& from, Entity targetSurface, nav::QueryFilter& filter,
                    std::string& error) {
@@ -695,7 +695,7 @@ bool queryFilterOf(SceneProject* scene, const Json& args, const NavPoint& from, 
     return true;
 }
 
-// Diagnostics label islands on demand (S54 R8): the snapped ends of the queries then name theirs
+// Diagnostics label islands on demand (S75 R8): the snapped ends of the queries then name theirs
 void labelIslandsOf(Scene* s, NavigationSystem* system, int agentType, Entity target) {
     if (target != NULL_ENTITY) {
         system->getIslands(target);
@@ -732,7 +732,7 @@ const char* failureNext(nav::PathFailure failure) {
     return "";
 }
 
-// reason, surface, closest_point, gap and next of an answer that is not Complete (S54 R30)
+// reason, surface, closest_point, gap and next of an answer that is not Complete (S75 R30)
 void addFailureJson(SceneProject* scene, Json& data, nav::PathFailure failure, Entity surface, const Vector3& closest, float gap) {
     data["reason"] = nav::pathFailureName(failure);
     data["surface"] = surface != NULL_ENTITY ? McpRefs::entityJson(scene, surface) : Json();
@@ -771,7 +771,7 @@ Json navPathJson(SceneProject* scene, const nav::NavPath& path, bool full) {
     return data;
 }
 
-// ---- S55 queries: a path's cost, per-corner areas and flags, and its length per area name
+// ---- S76 queries: a path's cost, per-corner areas and flags, and its length per area name
 void addPathCosts(Json& data, const nav::NavPath& path) {
     data["cost"] = rounded(path.cost);
     Json areas = Json::array(), flags = Json::array();
@@ -787,7 +787,7 @@ void addPathCosts(Json& data, const nav::NavPath& path) {
     data["area_lengths"] = lengths;
 }
 
-// A grid answer's reason (S54 R30): outside or a Not Walkable cell is *_off_mesh, a cell the
+// A grid answer's reason (S75 R30): outside or a Not Walkable cell is *_off_mesh, a cell the
 // mask leaves out *_filtered, no way through disconnected
 nav::PathFailure gridEndFailure(const nav::NavGridMap& map, const nav::GridCell& cell, uint16_t areaMask, bool start) {
     if (!map.contains(cell) || !map.isWalkable(map.index(cell))) return start ? nav::PathFailure::StartOffMesh : nav::PathFailure::EndOffMesh;
@@ -916,7 +916,7 @@ void queryGrid(const CallPtr& call, SceneProject* scene, NavigationSystem* syste
     call->ok(text, data);
 }
 
-// op locate (S54 R10, R30): where a point is on the navmesh and, off it, why (the walkability probe)
+// op locate (S75 R10, R30): where a point is on the navmesh and, off it, why (the walkability probe)
 void locateTool(const CallPtr& call, SceneProject* scene, NavigationSystem* system, const NavPoint& from, const nav::QueryFilter& filter,
                 Entity target, Json data) {
     const Json& args = call->args();
@@ -1037,7 +1037,7 @@ void queryNavigationTool(const CallPtr& call) {
         return;
     }
     if (op == "random") {
-        // S55 R42: anywhere without from; around from within max_distance; else on from's island.
+        // S76 R42: anywhere without from; around from within max_distance; else on from's island.
         // Its own stream (the seed, else the default): the game's stream is never drawn from.
         nav::RandomPointQuery query;
         query.seeded = true;
@@ -1106,7 +1106,7 @@ void queryNavigationTool(const CallPtr& call) {
                 addPathCosts(item, path);
             return item;
         }
-        // reachable: the O(1) island answer of isReachable (S54 R6); the path says where it stops
+        // reachable: the O(1) island answer of isReachable (S75 R6); the path says where it stops
         nav::PathFailure why = nav::PathFailure::None;
         const bool reachable = targetEntity != NULL_ENTITY ? path.status == nav::PathStatus::Complete
                                                            : system->isReachable(from.position, to.position, filter, &why);
@@ -1411,7 +1411,7 @@ const char* colorByName(NavOverlaySettings::ColorBy colorBy) {
     return "areas";
 }
 
-// The visible tile labels of the overlay's last update (S54 R33)
+// The visible tile labels of the overlay's last update (S75 R33)
 Json tileLabelsJson(SceneProject* scene) {
     Json labels = Json::array();
     const NavigationOverlay* overlay = NavigationEditor::get().overlayOf(scene->id);
@@ -1472,7 +1472,7 @@ void visualizeNavigationTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    // screenshot: true is the Scene view (S54 R33)
+    // screenshot: true is the Scene view (S75 R33)
     std::string view;
     if (args.contains("screenshot")) {
         const Json& shot = args["screenshot"];

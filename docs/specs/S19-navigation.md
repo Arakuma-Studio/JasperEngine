@@ -645,13 +645,13 @@ What the implementation does differently from the text above, and why.
   `tileAreas` is one opaque value (the Inspector edits it as a table); runtime state is no field.
   One label per enum value: MCP's labels are now the Inspector's (Modifier mode "Remove Object",
   grid movement "Free (smoothed)", grid source "None (painted)"); the tokens are unchanged.
-  S53 R20 relabelled the Modifier modes after what they do: `auto` "Surface Policy", `include`
+  S74 R20 relabelled the Modifier modes after what they do: `auto` "Surface Policy", `include`
   "Add or Modify Object", `exclude` "Remove Object" (tokens unchanged).
-- **`bench_nav_city` size** (recorded by S53 R28). The reference mesh of R26 bakes to 2643 polys on
+- **`bench_nav_city` size** (recorded by S74 R28). The reference mesh of R26 bakes to 2643 polys on
   linux-gcc-x86_64 and 2670 on apple-clang-arm64
   (`engine/tests/core/fixtures/navigation/bench_nav_city_polys.txt`), not "about 20k". R26's
   query budget is measured on that mesh.
-- **Timing allowance** (recorded by S53 R28). The je-bench-nav gates are the desktop budgets of
+- **Timing allowance** (recorded by S74 R28). The je-bench-nav gates are the desktop budgets of
   R25-R30 plus 10 % for the timing server E; that allowance is written only in
   `tools/perf/bench-thresholds.json` (its `_comment` and the thresholds), not in this spec's
   requirements.

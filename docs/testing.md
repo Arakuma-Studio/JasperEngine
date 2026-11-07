@@ -145,7 +145,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   `test_html_ui_video_export.py::test_desktop_build_plays_the_video`,
   `test_navigation_export.py::test_desktop_export_ships_navmesh` (a baked `.navmesh` in the
   build's `content.jpak`, an agent of the headless player reaching its destination from Lua, and
-  the preflight's stale-navmesh warning after static geometry moved; S19 AC27, S53 AC29) and
+  the preflight's stale-navmesh warning after static geometry moved; S19 AC27, S74 AC29) and
   `test_call_cli.py::test_wait_job_build` (the CLI's `--wait-job` on a build job). The runtime is
   the one `tools/build.sh players` builds, from the same engine sources as the editor under
   test.
@@ -695,7 +695,7 @@ to off there, and the exporter never sets them: a game configures and builds exa
 A project with Project Settings > Navigation > Include In Builds off exports with
 `JASPERENGINE_NAVIGATION=OFF`: Recast/Detour is not compiled, every navmesh bake, query and agent
 fails and logs once, and Nav Grids keep working. `NavStubTest` checks that, and it is compiled only
-in such a build, which no other suite makes (S53 R28):
+in such a build, which no other suite makes (S74 R28):
 
 ```sh
 tools/build.sh exec linux tools/check-navigation-off.sh     # build/navigation-off, build/test-results/navigation-off.xml

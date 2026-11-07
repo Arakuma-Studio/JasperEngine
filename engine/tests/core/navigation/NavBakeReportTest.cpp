@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The bake report (docs/specs/S54-navigation-diagnostics.md R16, R17; AC11): what a bake
+// The bake report (docs/specs/S75-navigation-diagnostics.md R16, R17; AC11): what a bake
 // collected, its islands on first read, its error codes and hints, and the per-tile build times
 // kept across incremental bakes and forgotten on a reload.
 

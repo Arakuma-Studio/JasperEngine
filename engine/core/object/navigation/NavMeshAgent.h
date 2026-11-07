@@ -99,7 +99,7 @@ namespace jasperengine{
         // the link it is on: false when it is on none
         bool getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& link) const;
 
-        // ---- S55 queries
+        // ---- S76 queries
 
         // its own area cost (Unity's SetAreaCost), runtime only: it applies to its crowd planning
         // and its queries; the areas it does not set cost the project's
@@ -109,7 +109,7 @@ namespace jasperengine{
         // back to the project's cost
         void resetAreaCost(int area);
 
-        // ---- S55 agents (docs/navigation.md "Scripted paths and root motion", "Stuck agents")
+        // ---- S76 agents (docs/navigation.md "Scripted paths and root motion", "Stuck agents")
 
         // a path from where it stands to the target, planned now with its mask and costs (Unity's
         // CalculatePath); its own path is unchanged

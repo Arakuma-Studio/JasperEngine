@@ -7,8 +7,8 @@
 // single-threaded web build the tiles are time-sliced on the main thread: no slice may exceed
 // the web bake budget (4 ms) + 2 ms. The navmesh files' hashes are logged: a threaded build gives
 // the same bytes (tools/web/gates/navigation.json holds them for both). Then an agent walks the
-// city and arrives (onDestinationReached), and a grid path is found. Last, S53's carving fixture
-// (NavObstacleTest's walled gap, docs/specs/S53-navigation-fixes.md AC21): a carving box closes
+// city and arrives (onDestinationReached), and a grid path is found. Last, S74's carving fixture
+// (NavObstacleTest's walled gap, docs/specs/S74-navigation-fixes.md AC21): a carving box closes
 // the gap within the tile budget of Carve Tiles Per Tick, and opens it again when it goes.
 //
 //   BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web ; GATE=navigation tools/build.sh web-gate

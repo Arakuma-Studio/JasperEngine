@@ -34,7 +34,7 @@ TEST_F(NavStubTest, QueriesFail){
     nav::NavHit hit;
     EXPECT_FALSE(nav->samplePosition(Vector3(), 2.0f, hit));
     EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit));
-    // S55's queries fail the same way
+    // S76's queries fail the same way
     EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit, {}, 5.0f));
     EXPECT_FALSE(nav->randomPoint(hit));
     EXPECT_FALSE(nav->moveAlongSurface(Vector3(), Vector3(1, 0, 0), hit));
@@ -54,7 +54,7 @@ TEST_F(NavStubTest, QueriesFail){
     EXPECT_FALSE(NavMeshAgent(scene.get(), walker).isOnNavMesh());
 }
 
-// S54 R18 (AC8): the diagnostics answer Not baked, no islands and an empty location
+// S75 R18 (AC8): the diagnostics answer Not baked, no islands and an empty location
 TEST_F(NavStubTest, DiagnosticsStubs){
     test::LogCapture log;
     const Entity surface = planeSurface();

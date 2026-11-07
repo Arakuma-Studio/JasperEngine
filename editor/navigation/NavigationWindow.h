@@ -5,7 +5,7 @@
 
 // Window > AI > Navigation (spec S19 R31): the project's agent types and areas, every surface
 // of the open scenes (state, last bake, tiles, polys, walkable area, islands, memory; Bake,
-// Clear, Select; Bake All), the project's navigation Problems (S54 R28) and every NavGrid
+// Clear, Select; Bake All), the project's navigation Problems (S75 R28) and every NavGrid
 // (Rebuild). Settings edits are undo steps (NavigationSettingsCmd).
 
 #include "navigation/NavigationFindings.h"

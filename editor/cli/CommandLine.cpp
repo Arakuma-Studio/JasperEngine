@@ -3039,7 +3039,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.vatRan = true;
     }
 
-    // S19 R42, S54 R36: the scenes' navigation findings with their severities (an error fails the
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
     // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;

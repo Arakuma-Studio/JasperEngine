@@ -118,7 +118,7 @@ NavigationProjectSettings editor::decodeNavigationProjectSettings(const YAML::No
     settings.crowdMaxAgents = std::clamp(readOr<int>(node, "crowdMaxAgents", settings.crowdMaxAgents), 1, 4096);
     settings.webBakeBudgetMs = std::clamp(readFinite(node, "webBakeBudgetMs", settings.webBakeBudgetMs), 0.5f, 50.0f);
     settings.maxGridSolvesPerTick = std::clamp(readOr<int>(node, "maxGridSolvesPerTick", settings.maxGridSolvesPerTick), 1, 4096);
-    // 0: Auto (S53 R14; projects before it have no key)
+    // 0: Auto (S74 R14; projects before it have no key)
     settings.carveTilesPerTick = std::clamp(readOr<int>(node, "carveTilesPerTick", settings.carveTilesPerTick), 0, 64);
     const YAML::Node agents = node["agentTypes"];
     if (agents.IsDefined() && agents.IsSequence() && agents.size() > 0) {

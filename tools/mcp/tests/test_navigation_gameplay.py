@@ -1,18 +1,18 @@
-"""S55 navigation gameplay API as an agent sees it (docs/specs/S55-navigation-gameplay-api.md R42-R45;
+"""S76 navigation gameplay API as an agent sees it (docs/specs/S76-navigation-gameplay-api.md R42-R45;
 AC26-AC28, AC30).
 
 Scene Gameplay (3D): a 40 x 40 floor (plane x 4) with a NavMesh Surface, a strip of the "Mud" area
 (index 3, cost 4) across it at x in [-1, 1] (a NavMesh Modifier volume), and a walker with a NavMesh
-Agent. test_query_ops (S55 P1): query_navigation's random (seeded, around a point, on an island),
+Agent. test_query_ops (S76 P1): query_navigation's random (seeded, around a point, on an island),
 move_along, closest_edge with max_distance, and the path's cost, corner areas and flags and lengths
 per area, in edit mode and in play.
 
-Scene Doors (S55 P2, nav_doors): two rooms split by a wall with a doorway whose NavMesh Modifier is a
+Scene Doors (S76 P2, nav_doors): two rooms split by a wall with a doorway whose NavMesh Modifier is a
 runtime volume, and a bridge link to a platform. test_door_and_bridge_in_play,
 test_lua_component_handles and test_overlay_screenshot: the door and the bridge toggled in play, the
 Obstacle / Link / Modifier handles and script volumes, and the overlay's area override boxes. Its
-Guard agent (S55 P3) walks through the doorway without Auto Repath: closing the door drops its path,
-blocked by an area. test_path_failed_callbacks (S55 P3): one- and two-argument onPathFailed, the
+Guard agent (S76 P3) walks through the doorway without Auto Repath: closing the door drops its path,
+blocked by an area. test_path_failed_callbacks (S76 P3): one- and two-argument onPathFailed, the
 reason's name, lastPathFailure and stuck_seconds in get_runtime_entity and get_navigation_info.
 """
 
@@ -65,7 +65,7 @@ def flat_distance(a, b) -> float:
 
 
 async def check_queries(ed: Editor, scene=None):
-    """The S55 query ops (scene: the edited scene, or None for the running one)."""
+    """The S76 query ops (scene: the edited scene, or None for the running one)."""
     q = {"scene": scene} if scene is not None else {}
 
     # a path across the mud prices it at 4 per metre and reports its length per area name
@@ -158,7 +158,7 @@ async def test_query_ops(ed: Editor):
         await ed.call("play", action="stop")
 
 
-# ---- S55 P2: runtime areas and links, the component handles, the overlay (AC26, AC28, AC30)
+# ---- S76 P2: runtime areas and links, the component handles, the overlay (AC26, AC28, AC30)
 #
 # Scene Doors (nav_doors): two rooms of a 40 x 12 floor split by a wall at x = 0 with a 2.5 m doorway,
 # a NavMesh Modifier "Door" over the gap with Use Volume and Apply At Runtime (Not Walkable, disabled:
@@ -196,7 +196,7 @@ async def setup_doors(ed: Editor) -> dict:
     crate = await ed.call("create_entity", scene=sc, type="empty", name="Crate", position=[-6, 0.5, 4])
     D["crate"] = crate["entity_id"]
     await ed.call("add_component", scene=sc, entity=D["crate"], component="navmeshobstacle")
-    # S55 P3: an agent walking through the doorway, without Auto Repath, its watchdog on
+    # S76 P3: an agent walking through the doorway, without Auto Repath, its watchdog on
     guard = await ed.call("create_entity", scene=sc, type="capsule", name="Guard", position=[-10, 1, -2])
     D["guard"] = guard["entity_id"]
     await ed.call("add_component", scene=sc, entity=D["guard"], component="navmeshagent",
@@ -239,7 +239,7 @@ async def test_door_and_bridge_in_play(ed: Editor):
     started = await ed.call("play", action="start", scene=d["scene"], fixed_fps=60)
     ed.check_eq(started["state"], "playing", f"{started}")
     try:
-        # S55 P3: the guard walks east through the doorway
+        # S76 P3: the guard walks east through the doorway
         sent = await ed.call("eval_lua", code=(
             "local guard = NavMeshAgent(scene, entity('Guard')) guard.speed = 1 "
             "return guard:setDestination(Vector3(14, 0, -2))"))
@@ -248,7 +248,7 @@ async def test_door_and_bridge_in_play(ed: Editor):
         await ed.call("set_runtime_property", entity="Door", component="navmeshmodifier", property="enabled", value=True)
         await ed.call("wait", seconds=60, game_seconds=0.1)
         ed.check_eq(await path_status(ed, WEST, EAST), "partial", "the closed door blocks the only way east")
-        # S55 P3: its path crossed the door: dropped (no Auto Repath), blocked by an area
+        # S76 P3: its path crossed the door: dropped (no Auto Repath), blocked by an area
         await ed.call("wait", seconds=60, game_seconds=1,
                       **{"until": "return NavMeshAgent(scene, entity('Guard')).lastPathFailure ~= 'none'"})
         live = await ed.call("get_runtime_entity", entity=d["guard"], components=["navmeshagent"])
@@ -374,7 +374,7 @@ async def test_overlay_screenshot(ed: Editor):
 
 async def test_path_failed_callbacks(ed: Editor):
     """AC26 (R27, R28): onPathFailed with one argument and with two both run; the reason, and
-    lastPathFailure, are S54's snake_case names; get_runtime_entity and get_navigation_info show them."""
+    lastPathFailure, are S75's snake_case names; get_runtime_entity and get_navigation_info show them."""
     s = await setup(ed)
     st = await ed.call("get_play_state")
     if st["state"] != "stopped":
@@ -388,9 +388,9 @@ async def test_path_failed_callbacks(ed: Editor):
         got = await ed.call("eval_lua", code=(
             "local agent = NavMeshAgent(scene, entity('Walker')) "
             "failedOne, failedTwo, failedReason = 0, 0, nil "
-            "agent.onPathFailed:add('one', function(a) failedOne = failedOne + 1 print('S55 one-argument onPathFailed') end) "
+            "agent.onPathFailed:add('one', function(a) failedOne = failedOne + 1 print('S76 one-argument onPathFailed') end) "
             "agent.onPathFailed:add('two', function(a, reason) failedTwo = failedTwo + 1 failedReason = reason "
-            "print('S55 two-argument onPathFailed: ' .. reason) end) "
+            "print('S76 two-argument onPathFailed: ' .. reason) end) "
             "agent.areaMask = NavAreas.All - NavAreas.maskOf(NavAreas.getAreaFromName('Mud')) "
             "return agent:setDestination(Vector3(15, 0, -15)), agent.lastPathFailure"))
         ed.check_eq(got["values"], [True, "none"], f"{got}")
@@ -399,9 +399,9 @@ async def test_path_failed_callbacks(ed: Editor):
             "local agent = NavMeshAgent(scene, entity('Walker')) "
             "return failedOne, failedTwo, failedReason, agent.lastPathFailure"))
         ed.check_eq(state["values"], [1, 1, "blocked_by_area", "blocked_by_area"], f"{state}")
-        text = "\n".join(str(entry.get("message")) for entry in await ed.console_since(cursor, contains="S55 "))
-        ed.check("S55 one-argument onPathFailed" in text, f"one-argument marker: {text[-2000:]}")
-        ed.check("S55 two-argument onPathFailed: blocked_by_area" in text, f"two-argument marker: {text[-2000:]}")
+        text = "\n".join(str(entry.get("message")) for entry in await ed.console_since(cursor, contains="S76 "))
+        ed.check("S76 one-argument onPathFailed" in text, f"one-argument marker: {text[-2000:]}")
+        ed.check("S76 two-argument onPathFailed: blocked_by_area" in text, f"two-argument marker: {text[-2000:]}")
 
         live = await ed.call("get_runtime_entity", entity=s["walker"], components=["navmeshagent"])
         agent = live["components"]["navmeshagent"]

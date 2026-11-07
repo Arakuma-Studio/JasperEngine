@@ -592,7 +592,7 @@ void NavigationOverlay::updateSurface(Entity entity, SurfaceDraw& draw, ScenePro
     }
 }
 
-// Show Steep Slopes (S54 R27): the triangles the bake collected (meshes and terrains) that are
+// Show Steep Slopes (S75 R27): the triangles the bake collected (meshes and terrains) that are
 // steeper than the agent type's Max Slope, tinted red, from the editor's cached input. A 2D
 // surface is flat: nothing to show.
 void NavigationOverlay::updateSlopes(Entity entity, SurfaceDraw& draw, SceneProject& sceneProject, const NavOverlaySettings& settings,
@@ -671,7 +671,7 @@ void NavigationOverlay::updateGrid(Entity entity, GridDraw& draw, SceneProject& 
                            transform->worldRotation.x, transform->worldRotation.y, transform->worldRotation.z};
     const uint64_t version = nav::getSettingsVersion();
     const bool moved = !std::equal(pose, pose + 7, draw.pose);
-    // in play, the cells agents reserved this fixed tick (S53 R22; ascending, each once)
+    // in play, the cells agents reserved this fixed tick (S74 R22; ascending, each once)
     reservedScratch.clear();
     if (sceneProject.playState != ScenePlayState::STOPPED) system->getGridReservedCells(entity, reservedScratch);
     if (draw.revision != map->getRevision() || draw.settingsVersion != version || moved || draw.meshes.empty() ||
@@ -799,7 +799,7 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
             const Vector3 a = transform->modelMatrix * link.startPoint;
             const Vector3 b = transform->modelMatrix * link.endPoint;
             Vector4 color = link.enabled ? areaColor(link.area, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 0.8f);
-            // S55: a deactivated link is faint, one an agent is crossing is white (R41)
+            // S76: a deactivated link is faint, one an agent is crossing is white (R41)
             if (!link.activated)
                 color.w *= DEACTIVATED_ALPHA;
             else if (playing && system && system->isLinkOccupied(entity))
@@ -867,7 +867,7 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
         addBox(lines, transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize, color);
     }
 
-    // ---- S55 areas: runtime modifier volumes always, script volumes in play, in their area's colour:
+    // ---- S76 areas: runtime modifier volumes always, script volumes in play, in their area's colour:
     // solid while applied, faint while not (R41)
     areaOverrideDraws.clear();
     if (settings.showAreaOverrides && system) {

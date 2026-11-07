@@ -11,7 +11,7 @@ namespace jasperengine{
 
     // Unity's NavMeshModifier / NavMeshModifierVolume (docs/navigation.md): Lua
     // NavMeshModifier(scene, entity). With Use Volume and Apply At Runtime, enabled, area, center
-    // and size change the navmesh without a rebake (S55 R11, R32); the rest are bake inputs.
+    // and size change the navmesh without a rebake (S76 R11, R32); the rest are bake inputs.
     class JASPERENGINE_API NavMeshModifier: public EntityHandle{
     private:
         NavMeshModifierComponent& component() const;

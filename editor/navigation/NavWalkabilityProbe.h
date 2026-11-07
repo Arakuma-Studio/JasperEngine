@@ -4,7 +4,7 @@
 #ifndef NAV_WALKABILITY_PROBE_H
 #define NAV_WALKABILITY_PROBE_H
 
-// "Why is this point not walkable?" (docs/specs/S54-navigation-diagnostics.md R11, R12, D5): a
+// "Why is this point not walkable?" (docs/specs/S75-navigation-diagnostics.md R11, R12, D5): a
 // point's location on a surface and, off the mesh, the reasons in the order they apply. The
 // geometric reasons read the surface's collected inputs (with their sources); erosion, step
 // height and region pruning are decided by rebuilding only the tile under the point with that

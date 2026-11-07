@@ -16,7 +16,7 @@ namespace jasperengine{
     class NavigationSystem;
     class Scene;
 
-    // A script volume (docs/navigation.md, S55 R12): what NavigationSystem:setAreaInVolume returns
+    // A script volume (docs/navigation.md, S76 R12): what NavigationSystem:setAreaInVolume returns
     // in Lua. The polygons whose centroid lies in its box take its area until remove(); handles end
     // with the scene's navigation (Stop). A copy names the same volume.
     class JASPERENGINE_API NavAreaOverride{
