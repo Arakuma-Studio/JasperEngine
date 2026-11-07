@@ -3872,11 +3872,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations (keys, runtime_bytes), nodes (an FBX: of its glTF conversion, fbx_import.state); "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users, stats; .vat clips, staleness, users; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
-        tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("A model's skeleton_summary.")}}, {"path"});
+        tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getAssetInfoTool;

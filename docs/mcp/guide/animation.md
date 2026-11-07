@@ -54,6 +54,7 @@ are in the `animation` group (`tool_groups {enable: ["animation"]}`) and run as 
 |---|---|---|
 | How big? | `get_animation {clip, max_keys: 1}` or `get_asset_info {path}` | `stats.runtime_bytes`, `keys` |
 | How many joints, before placing it? | `get_asset_info {path, skeleton: true}` | `model.skeleton_summary` |
+| Which bone hangs from which, once placed? | `get_model_info {entity}` | `bones[i].parent` (null: a root) |
 | What costs most in the project? | `check_animation {checks: ["stats"], top: 8}` | `clips` (largest first), `totals` |
 | A clean loop? Does the root drift? | `check_animation {clips: [clip]}` | `loop_seam`, `root_motion`, `findings`, `ok` |
 | Is this clip the same as that one? | `check_animation {clips: [a], compare_to: b, limits: {error_mm: 1}}` | `compare.max_error_mm`, `worst_joint`, `within_tolerance` |

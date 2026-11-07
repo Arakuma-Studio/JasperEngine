@@ -5952,7 +5952,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- models
     add("get_model_info", "Get Model Info",
-        "What a Model loaded: file, loading, mesh GameObjects, bones (name, id, parent), animation clips (tracks, length, loop), "
+        "What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (tracks, length, loop), "
         "morph targets, skeleton.",
         object({
             {"scene", sceneRef()},
