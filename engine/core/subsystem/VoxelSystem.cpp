@@ -5,6 +5,8 @@
 
 #include "subsystem/VoxelSystemState.h"
 
+#include "subsystem/RenderSystem.h"
+
 #include "Engine.h"
 #include "Log.h"
 #include "Scene.h"
@@ -653,8 +655,13 @@ void VoxelSystem::uploadChunks(VolumeState& state, const VoxelVolumeComponent& c
         state.uploadBytesThisFrame += static_cast<int64_t>(size);
         state.uploadMeshesThisFrame++;
     }
-    // A hidden chunk loads like any mesh; without a view nothing would ever load it
-    const bool viewLoaded = Engine::isViewLoaded();
+    // A hidden chunk loads like any mesh; with no view, or no RenderSystem running in this scene (a
+    // server, a test), nothing would ever load it
+    bool renderRuns = false;
+    for (const auto& system : scene->getScheduler().getSystems()){
+        if (dynamic_cast<RenderSystem*>(system->getOwner()) && system->isEnabled()) renderRuns = true;
+    }
+    const bool viewLoaded = Engine::isViewLoaded() && renderRuns;
     for (size_t i = 0; i < state.uploading.size();){
         const MeshId& id = state.uploading[i];
         const auto found = state.chunks.find(id);
