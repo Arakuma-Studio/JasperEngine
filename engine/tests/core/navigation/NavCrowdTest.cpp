@@ -356,6 +356,8 @@ TEST_F(NavCrowdTest, PerAgentAreaCostsFilterSlots){
     EXPECT_LT(secondMaxX, -1.0f + 0.2f);
     // one warning per crowd
     EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
+}
+
 // ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION && !defined(NDEBUG)
