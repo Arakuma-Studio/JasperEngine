@@ -6,6 +6,10 @@
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
+#include "model/ModelHeader.h"
+#include "model/ModelImportSettings.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 
 #include "Stream.h"
 #include "animation/PreviewOwner.h"
@@ -25,6 +29,7 @@
 #include <unordered_set>
 
 using namespace jasperengine;
+namespace fs = std::filesystem;
 
 editor::ModelLoadCmd::ModelLoadCmd(Project* project, uint32_t sceneId, Entity entity, const std::string& modelPath){
     this->project = project;
@@ -702,6 +707,21 @@ bool editor::ModelLoadCmd::execute(){
         model.skinBindings.clear();
     }
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
+
+    // Project Settings > Animation > Animation Entities: Auto (S74 R38): a model placed with many
+    // clips makes no Animation entity per clip. Only a first load: a reload keeps the user's choice.
+    if (isNewModel && model.animationEntities && project->getModelSettings().animationEntities == AnimationEntitiesMode::Auto) {
+        if (autoClipCount < 0) {
+            const fs::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(modelPath));
+            const fs::path read = FbxImporter::isFbxFile(absolute) ? project->getImportedModelPath(absolute) : absolute;
+            ModelHeader header;
+            std::string headerError;
+            autoClipCount = readModelHeader(read, header, headerError) ? header.animations : 0;
+        }
+        if (autoClipCount >= kAutoAnimationEntitiesClips) {
+            model.animationEntities = false;
+        }
+    }
 
     // The scene root node gets an entity of its own in the node hierarchy, which carries the
     // matrix the legacy model entity stood in for: taken off the entity, everything stays where

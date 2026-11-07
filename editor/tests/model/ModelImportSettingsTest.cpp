@@ -144,3 +144,21 @@ TEST(ModelImportSettings, ProjectSettingsWriteOnlyWhatDiffers){
     EXPECT_EQ(decoded.defaults[(size_t)ModelFamily::Mobile].meshCompression, MeshCompression::High);
     EXPECT_EQ(decoded.cacheSizeMB, 64);
 }
+
+// S74 R38: Animation Entities is written only when Auto; a project without the key is Always
+TEST(ModelImportSettings, AnimationEntitiesMissingKeyIsAlways){
+    ModelProjectSettings settings;
+    EXPECT_EQ(settings.animationEntities, AnimationEntitiesMode::Always) << "what every project did before";
+    EXPECT_FALSE(encodeModelProjectSettings(settings)["animationEntities"]);
+    settings.animationEntities = AnimationEntitiesMode::Auto;
+    const YAML::Node node = encodeModelProjectSettings(settings);
+    ASSERT_TRUE(node["animationEntities"]);
+    EXPECT_EQ(node["animationEntities"].as<std::string>(), "auto");
+    ModelProjectSettings decoded;
+    decodeModelProjectSettings(YAML::Load(YAML::Dump(node)), decoded);
+    EXPECT_EQ(decoded.animationEntities, AnimationEntitiesMode::Auto);
+    decodeModelProjectSettings(YAML::Load("cacheSizeMB: 512"), decoded);
+    EXPECT_EQ(decoded.animationEntities, AnimationEntitiesMode::Always) << "an older project.yaml";
+    decodeModelProjectSettings(YAML::Load("animationEntities: sometimes"), decoded);
+    EXPECT_EQ(decoded.animationEntities, AnimationEntitiesMode::Always) << "an unknown name is skipped";
+}

@@ -523,6 +523,13 @@ on **+ Add Clip** and choose the animation.
   "Played by an Animation Player (no entity animations)". Scenes then store one short clip list
   instead of every key of every model instance.
 
+**Project Settings > Animation > Animation Entities** decides what placing a model in a scene does.
+**Always** makes an entity animation per clip, as every project before did. **Auto**, which new
+projects start with, places a model of 5 or more clips with no entity animations (as after Use
+Animation Player, without the player): play its clips with an Animation Player or an Animator. A
+model of fewer clips, and a model already in a scene, are not affected. A project without the
+setting in its `project.yaml` (`mesh: {animationEntities: auto}`) is Always.
+
 Duplicate glTF names: the Model section labels the second entity animation row "Wave 2", matching
 the model clip name. The entity animations themselves are both named "Wave", but without a player
 `Model:playAnimation` and `Model:findAnimation` take the same names: "Wave" is the first one and
