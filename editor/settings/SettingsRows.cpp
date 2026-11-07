@@ -3303,6 +3303,8 @@ std::vector<Setting> mcpSettingsTable() {
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
+        // S44 §6.8: settings.yaml externalTools.aseprite.path
+        toolPreference("preferences.aseprite_path", "aseprite.path", "External Tools: the Aseprite executable Open in Aseprite starts (\"\" = JASPER_ASEPRITE, then the usual install places and PATH).");
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports and Recorder movies (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
@@ -3615,6 +3617,7 @@ const Placement placements[] = {
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
+    {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},
     {"preferences.logging.file_level", "Logging", "", "Log File Level", "editor log"},
     {"preferences.logging.backtrace_on_error", "Logging", "", "Capture Backtrace on Errors", "stack trace"},
     {"preferences.logging.show_source", "Logging", "", "Show Source Location", "file line"},
