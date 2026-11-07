@@ -401,13 +401,18 @@ protected:
         const Entity owner = ground(name, VoxelQuality::High, 128, 128);
         VoxelVolumeComponent& component = scene->getComponent<VoxelVolumeComponent>(owner);
         component.rescueBodies = rescue;
+        // the system knows the volume after its first update
+        step(1);
         // A wall one voxel thick across the middle
         Shape wall;
         wall.kind = ShapeKind::Box;
         wall.center = Vec3d{64.0, 40.0, 64.0};
         wall.halfExtents = Vec3d{0.5, 8.0, 40.0};
         const EditOp op = addOp(wall);
-        EXPECT_TRUE(system->edit(owner, std::span<const EditOp>(&op, 1), EditOptions{}).ok);
+        if (!system->edit(owner, std::span<const EditOp>(&op, 1), EditOptions{}).ok) {
+            ADD_FAILURE() << "the wall";
+            return {};
+        }
         step(10);
         system->finishPendingWork();
         std::vector<Entity> thrown;
