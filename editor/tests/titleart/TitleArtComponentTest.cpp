@@ -56,7 +56,9 @@ namespace {
             out.dir = root / "project";
             fs::create_directories(out.dir / ".jasperengine");
             fs::create_directories(out.dir / "assets" / "titles");
-            std::ofstream(out.dir / "project.yaml") << "name: titleartcomponent\nassetsDir: assets\n";
+            // the default assets directory (the project's root): components name project-relative
+            // paths ("assets/titles/logo.titleart"), as MCP's tools and the Inspector do
+            std::ofstream(out.dir / "project.yaml") << "name: titleartcomponent\n";
             // a document exposing its text and a number, and the sidecar of its bake
             titleart::TitleArtDoc doc = titleart::makeNewTitleArt({800, 400, "JACKPOT", ""});
             titleart::Json number = {{"name", "glow_amount"}, {"label", "Glow Amount"}, {"type", "number"}, {"min", 0}, {"max", 1},
