@@ -3,6 +3,7 @@
 
 #include "MeshSystem.h"
 #include "component/ActionComponent.h"
+#include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/BoneComponent.h"
@@ -3936,8 +3937,8 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     float rootNodeSize = terrain.terrainSize / terrain.rootGridSize;
 
     if (terrain.autoSetRanges){
-        CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-        if (camera.farClip < (rootNodeSize * 2)){
+        const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (camera && camera->farClip < (rootNodeSize * 2)){
             Log::warn("Terrain quadtree root is not in camera field of view. Increase terrain root grid.");
         }
     }
@@ -4578,11 +4579,12 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
         return;
     }
 
-    if (scene->getCamera() == NULL_ENTITY){
+    // a scene not loaded yet (an inline child scene) has no camera: the ranges wait for it
+    const CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+    if (!cameraPtr){
         return;
     }
-
-    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    const CameraComponent& camera = *cameraPtr;
 
     // Each level doubles the node size, so its range doubles too and every level keeps
     // the same detail on screen. Halving the far clip down instead leaves every range
@@ -7263,7 +7265,12 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
     }
 
     if (sprite.needUpdateSprite){
-        CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
+        // no camera yet (a scene drawn before it was loaded): built once it has one
+        CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (!cameraPtr){
+            return false;
+        }
+        CameraComponent& camera = *cameraPtr;
         if (sprite.automaticFlipY){
             changeFlipY(sprite.flipY, camera, mesh);
         }
@@ -7345,8 +7352,11 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
 bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
     if (polygon.needUpdatePolygon){
         if (polygon.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(polygon.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(polygon.flipY, *camera, mesh);
         }
 
         if (createMeshPolygon(polygon, mesh)){
@@ -7362,8 +7372,11 @@ bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshCo
 bool MeshSystem::createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     if (tilemap.needUpdateTilemap){
         if (tilemap.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(tilemap.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(tilemap.flipY, *camera, mesh);
         }
 
         if (createTilemap(tilemap, mesh)){

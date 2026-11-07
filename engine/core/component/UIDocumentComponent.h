@@ -37,6 +37,9 @@ namespace jasperengine{
         float pixelRatio = 0.0f;                                    // 0 = automatic (phase-0 dp ratio); TEXTURE mode default 1
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onLoad); f(onUnload); }
         // S17: after a live patch reload, which keeps the document (onLoad and onUnload do not fire then)
         std::function<void(const UIReloadReport&)> onReload;
         std::shared_ptr<HtmlUILuaRef> onReloadLua;                  // the Lua function behind onReload, when a script set it

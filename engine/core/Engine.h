@@ -381,6 +381,8 @@ namespace jasperengine {
         static bool nativePaused;
         static void applyPause();
         static std::atomic<bool> focused;
+        // systemVisibilityChanged: the window can be seen
+        static std::atomic<bool> visible;
 
         // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
         static int targetFrameRate;
@@ -842,8 +844,12 @@ namespace jasperengine {
         // With the ready signal on, logs "Engine presented: N frames since ready" once N frames
         // reached the screen after the ready line (tools/android-emulator-test.sh screenshots then)
         static void systemFramePresented();
-        // systemDraw() without drawing, for a view that can't be seen (a minimized window)
+        // systemDraw() without drawing, for a view that can't be seen (a minimized window). On
+        // Metal it first waits for the GPU (SystemRender::waitGpuIdle): a frame without passes
+        // frees what earlier frames released without waiting for them
         static void systemUpdate();
+        // Nothing when no view is loaded (a launch that failed before systemViewLoaded, a second
+        // destroy)
         static void systemViewDestroyed();
         static void systemShutdown();
 
@@ -861,6 +867,11 @@ namespace jasperengine {
         // dialog, the notification shade, another window (false). Idempotent; gaining focus
         // while the OS holds the pause resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
+        // The platform's window can (not) be seen: minimized, unmapped or hidden by the window
+        // manager, fully covered (macOS), a hidden page (web). Desktop platforms then call
+        // systemUpdate at getHiddenUpdateFps() instead of systemDraw; the web pauses as before.
+        // Idempotent; logs the change and fires onVisibilityChanged.
+        static void systemVisibilityChanged(bool visible);
         // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
         // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
         // quarter turn reported before the view size flips waits for it (at most
@@ -872,7 +883,7 @@ namespace jasperengine {
         static bool isOrientationPending();
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
-        // Play stop / start in the editor: focused, not paused (neither hold), no orientation
+        // Play stop / start in the editor: focused, visible, not paused (neither hold), no orientation
         // seen yet, and the default frame pacing again, without any event (nothing listens any
         // more)
         static void resetApplicationState();
@@ -893,6 +904,12 @@ namespace jasperengine {
         // Unity's Application.isFocused (true at start)
         static bool isFocused();
         static bool isPaused();
+        // false while the window can't be seen (systemVisibilityChanged); true at start and on
+        // Android and iOS, whose pause is the signal there
+        static bool isVisible();
+        // the update rate of a hidden window: the game's own frame rate (targetFrameRate, or the
+        // display's refresh rate over vSyncCount), at most 60 (PlatformRules::hiddenUpdateFps)
+        static double getHiddenUpdateFps();
 
         // The platform window gained or lost the keyboard focus. On a loss what is held comes
         // up (key, mouse button: their events and Input edges) and the fingers are cancelled,
@@ -972,6 +989,8 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onShutdown;
         // systemFocus: the app gained (true) or lost (false) focus
         static FunctionSubscribe<void(bool)> onFocus;
+        // systemVisibilityChanged: the window can (true) or can't (false) be seen
+        static FunctionSubscribe<void(bool)> onVisibilityChanged;
         // the interface rotated: the new ScreenOrientation, after onCanvasChanged
         static FunctionSubscribe<void(int)> onOrientationChanged;
         // the system is short of memory (Android, iOS)

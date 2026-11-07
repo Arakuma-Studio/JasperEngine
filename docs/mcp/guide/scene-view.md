@@ -42,6 +42,11 @@ animates the user's moves):
 - `camera_settings {fov, near, far, speed, acceleration, easing, dynamic_clipping}`, the Scene
   Camera popup's settings (any of them; the reply lists them all).
 
+## While the game plays
+
+After a game load replaced the played scene, the played scene's Scene view draws (and picks) the
+scene the game loaded, from the editor camera.
+
 ## Bookmarks, layouts, measures, filters
 
 - `edit_scene_view_bookmarks {action: list | store | recall | delete | rename, slot}`: slot 0 is

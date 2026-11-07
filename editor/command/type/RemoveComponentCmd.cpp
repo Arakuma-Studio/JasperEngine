@@ -86,7 +86,6 @@ void editor::RemoveComponentCmd::restoreTransformPlace(Scene* scene, const Remov
         if (transform && transform->parent == parent) {
             transform->parent = entityData.entity;
             transform->needUpdate = true;
-            transform->needUpdateChildVisibility = true;
         }
     }
     if (!entityData.transformChildren.empty()) {

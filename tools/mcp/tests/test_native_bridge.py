@@ -302,7 +302,7 @@ async def test_source_export(ed: Editor):
     ed.check_in("include ':jasperbridge'", settings)
     ed.check_in("include ':nativeplugins'", settings)
     module = (studio / "nativeplugins" / "build.gradle").read_text()
-    ed.check_in("namespace 'com.jaspergameengine.nativeplugins'", module)
+    ed.check_in("namespace = 'com.jaspergameengine.nativeplugins'", module)
     ed.check_in("api project(':jasperbridge')", module)
     ed.check_in('api "com.squareup.okio:okio:3.9.0"', module)
     ed.check_in("implementation platform('com.google.firebase:firebase-bom:33.0.0')", module)

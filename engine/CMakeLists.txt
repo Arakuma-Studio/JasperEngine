@@ -591,6 +591,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND PLATFORM_SOURCE
             ${PLATFORM_ROOT}/JasperEngineLinux.cpp
             ${PLATFORM_ROOT}/WindowLinux.cpp
+            ${PLATFORM_ROOT}/X11Visibility.cpp
             ${PLATFORM_ROOT}/SystemLinux.cpp
             ${PLATFORM_ROOT}/HostServicesLinux.cpp
             ${PLATFORM_ROOT}/LinuxInputRouter.cpp
@@ -2435,6 +2436,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         jasperengine_skip_unity_build(
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)

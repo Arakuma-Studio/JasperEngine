@@ -809,8 +809,9 @@ int CustomTextEditor::scanOpenToken(const std::string& line, int i, OpenToken& o
 }
 
 void CustomTextEditor::tokenizeAll() {
-    // Every edit retokenizes, so this is also where cached widths expire
+    // Every edit retokenizes, so this is also where cached widths and the diff expire
     maxLineWidthDirty = true;
+    if (diffBase) diffDirty = true;
     // tokenizeText clears each line's tokens. Keep their buffers across edits
     // instead of allocating every token vector again for the whole document.
     lineTokens.resize(lines.size());
@@ -1312,7 +1313,7 @@ void CustomTextEditor::Redo(int steps) {
     }
 }
 
-void CustomTextEditor::addUndoRecord() {
+void CustomTextEditor::addUndoRecord(bool mergeable) {
     // Remove any redo history
     if (undoIndex < static_cast<int>(undoBuffer.size())) {
         undoBuffer.erase(undoBuffer.begin() + undoIndex, undoBuffer.end());
@@ -1322,13 +1323,15 @@ void CustomTextEditor::addUndoRecord() {
     record.beforeText = GetText();
     record.beforeCursors = cursors;
     record.timestamp = std::chrono::steady_clock::now();
+    // a step that never merges (Revert Change) takes nothing typed after it either
+    record.isMerged = !mergeable;
 
     // Try to merge with previous record if it's recent
     if (!undoBuffer.empty()) {
         auto& last = undoBuffer.back();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             record.timestamp - last.timestamp).count();
-        if (elapsed < 300 && !last.isMerged) {
+        if (mergeable && elapsed < 300 && !last.isMerged) {
             // Keep the previous record and its beforeText, finalize updates its afterText
             last.isMerged = true;
             return;
@@ -3016,8 +3019,21 @@ void CustomTextEditor::handleKeyboardInput() {
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        ClearExtraCursors();
-        ClearSelection();
+        if (diffPeekChange >= 0) {
+            closeDiffPeek();
+        } else {
+            ClearExtraCursors();
+            ClearSelection();
+        }
+    }
+
+    // VS Code's Go to Next / Previous Change
+    if (alt && !ctrl && ImGui::IsKeyPressed(ImGuiKey_F5)) {
+        if (shift) {
+            GoToPreviousChange();
+        } else {
+            GoToNextChange();
+        }
     }
 
     if (ctrl && ImGui::IsKeyPressed(ImGuiKey_A)) {
@@ -3737,39 +3753,8 @@ void CustomTextEditor::renderText(ImDrawList* drawList, const ImVec2& origin, in
     static const std::vector<Token> noTokens;
 
     for (int i = startLine; i <= endLine && i < static_cast<int>(lines.size()); ++i) {
-        float y = origin.y + i * lineHeight + textOffsetY;
-        float x = origin.x + textStartX;
-
-        const std::string& line = lines[i];
-        const auto& tokens = (i < static_cast<int>(lineTokens.size())) ? lineTokens[i] : noTokens;
-
-        if (tokens.empty()) {
-            ImU32 color = ImGui::ColorConvertFloat4ToU32(palette[static_cast<int>(TokenType::Default)]);
-            drawList->AddText(ImVec2(x, y), color, line.c_str());
-        } else {
-            int lastEnd = 0;
-            for (const auto& token : tokens) {
-                if (token.start > lastEnd) {
-                    std::string gap = line.substr(lastEnd, token.start - lastEnd);
-                    ImU32 color = ImGui::ColorConvertFloat4ToU32(palette[static_cast<int>(TokenType::Default)]);
-                    drawList->AddText(ImVec2(x, y), color, gap.c_str());
-                    x += measureText(line.c_str() + lastEnd, line.c_str() + token.start);
-                }
-
-                std::string tokenText = line.substr(token.start, token.length);
-                ImU32 color = ImGui::ColorConvertFloat4ToU32(palette[static_cast<int>(token.type)]);
-                drawList->AddText(ImVec2(x, y), color, tokenText.c_str());
-
-                lastEnd = token.start + token.length;
-                x += measureText(line.c_str() + token.start, line.c_str() + lastEnd);
-            }
-
-            if (lastEnd < static_cast<int>(line.size())) {
-                std::string remaining = line.substr(lastEnd);
-                ImU32 color = ImGui::ColorConvertFloat4ToU32(palette[static_cast<int>(TokenType::Default)]);
-                drawList->AddText(ImVec2(x, y), color, remaining.c_str());
-            }
-        }
+        const ImVec2 pos(origin.x + textStartX, origin.y + i * lineHeight + textOffsetY);
+        renderLineTokens(drawList, pos, lines[i], i < static_cast<int>(lineTokens.size()) ? lineTokens[i] : noTokens);
     }
 }
 
@@ -4212,6 +4197,13 @@ void CustomTextEditor::renderContextMenu() {
             menuItem(ICON_FA_I_CURSOR " Select All", "Ctrl+A", hasLine, [&] { SelectAll(); });
             ImGui::Separator();
             menuItem(ICON_FA_MAGNIFYING_GLASS " Find", "Ctrl+F", true, [&] { OpenFind(); });
+            if (diffBase) {
+                ImGui::Separator();
+                const int changeAtCaret = cursors.empty() ? -1 : GetDiffChangeAt(cursors[primaryCursor].position.line);
+                menuItem(ICON_FA_ROTATE_LEFT " Revert Change", "", changeAtCaret >= 0, [&] { RevertDiffChange(changeAtCaret); });
+                menuItem(ICON_FA_ARROW_DOWN " Next Change", "Alt+F5", !diffChanges.empty(), [&] { GoToNextChange(); });
+                menuItem(ICON_FA_ARROW_UP " Previous Change", "Shift+Alt+F5", !diffChanges.empty(), [&] { GoToPreviousChange(); });
+            }
         }
     }
     ImGui::End();
@@ -4271,6 +4263,8 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
             maxLineWidth = computeMaxLineWidth();
             maxLineWidthDirty = false;
         }
+        updateDiff(false);
+
         float totalWidth = textStartX + maxLineWidth + 50.0f;
         float totalHeight = lines.size() * lineHeight + lineHeight;
 
@@ -4303,13 +4297,17 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
             pendingScrollToCursor = false;
         }
 
+        // A click on a change marker opens its diff instead of moving the caret
+        diffMarkerClicked = false;
+        if (diffBase) updateDiffPeek(origin);
+
         // Handle input (but not mouse input if suggestions popup is hovered)
         bool isHovered = ImGui::IsWindowHovered() && !suggestionsHovered;
         if (ImGui::IsWindowFocused()) {
             handleKeyboardInput();
             handleTextInput();
         }
-        if ((isHovered || isDragging || isDraggingText || isMiddleDragging) && !suggestionsHovered) {
+        if ((isHovered || isDragging || isDraggingText || isMiddleDragging) && !suggestionsHovered && !diffMarkerClicked) {
             handleMouseInput();
         }
 
@@ -4329,7 +4327,8 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
             bool overVScrollbar = (mPos.x >= right - scrollbarSize && mPos.x <= right);
             bool overHScrollbar = (mPos.y >= bottom - scrollbarSize && mPos.y <= bottom);
 
-            ImGui::SetMouseCursor((overVScrollbar || overHScrollbar) ? ImGuiMouseCursor_Arrow : ImGuiMouseCursor_TextInput);
+            const bool overMarker = diffHoverChange >= 0;
+            ImGui::SetMouseCursor((overVScrollbar || overHScrollbar || overMarker) ? ImGuiMouseCursor_Arrow : ImGuiMouseCursor_TextInput);
         }
 
         int startLine = static_cast<int>(scrollY / lineHeight);
@@ -4349,12 +4348,15 @@ void CustomTextEditor::Render(const char* title, const ImVec2& size, bool border
         renderSelections(drawList, origin, startLine, endLine);
         renderMatchingBrackets(drawList, origin);
         renderLineNumbers(drawList, origin, startLine, endLine);
+        renderDiffGutter(drawList, origin, startLine, endLine);
         renderText(drawList, origin, startLine, endLine);
         renderCursors(drawList, origin);
+        renderDiffOverview();
 
         ImGui::PushFont(ImGui::GetIO().FontDefault);
         renderFindDialog(ImGui::GetWindowPos(), contentSize);
         ImGui::PopFont();
+        renderDiffPeek(origin);
 
     }
     ImGui::EndChild();
