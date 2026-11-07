@@ -20717,6 +20717,159 @@
    "type": 91,
    "type_of_key": 91,
    "type_of_name": 91
+  },
+  {
+   "display_name": "Water Excluder",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ],
+     [
+      2,
+      "convex_hull",
+      "Convex Hull"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef889a",
+   "key": "waterexcluder",
+   "known_keys": [
+    "center",
+    "enabled",
+    "shape",
+    "size"
+   ],
+   "name": "WaterExcluderComponent",
+   "properties_of_default": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 92,
+   "type_of_key": 92,
+   "type_of_name": 92
+  },
+  {
+   "display_name": "Water Wake",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9db3",
+   "key": "waterwake",
+   "known_keys": [
+    "enabled",
+    "foam",
+    "length",
+    "waves",
+    "width"
+   ],
+   "name": "WaterWakeComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 93,
+   "type_of_key": 93,
+   "type_of_name": 93
   }
  ],
  "ease_options": [
@@ -28274,6 +28427,28 @@
     true
    ]
   },
+  "WaterExcluderComponent": {
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ]
+  },
   "WaterVolumeComponent": {
    "angularDrag": [
     2,
@@ -28317,6 +28492,33 @@
    ],
    "waves": [
     13,
+    0,
+    true
+   ]
+  },
+  "WaterWakeComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "foam": [
+    2,
+    0,
+    true
+   ],
+   "length": [
+    2,
+    0,
+    true
+   ],
+   "waves": [
+    2,
+    0,
+    true
+   ],
+   "width": [
+    2,
     0,
     true
    ]

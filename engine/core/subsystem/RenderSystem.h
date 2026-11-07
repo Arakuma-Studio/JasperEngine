@@ -172,8 +172,9 @@ namespace jasperengine{
 		Vector4 params;         // x the plane's height, y 1 with a reflection
 	} fs_planar_reflection_t;
 
-	// u_fs_waterInteraction (includes/water_interaction.glsl): the Water Excluders over a water
-	// draw and the scene's wake map
+	// WATER_INTERACTION_PARAMS (includes/water_interaction_params.glsl), the engine-written members
+	// at the end of a water shader's u_fs_customParams: the Water Excluders over a draw and the
+	// scene's wake map
 	constexpr int WATER_EXCLUDERS_PER_DRAW = 8;
 	typedef struct fs_water_interaction_t {
 		Vector4 exclusion;                                      // x the excluders in the arrays
@@ -182,7 +183,7 @@ namespace jasperengine{
 		Vector4 wakeArea;       // xy the map's world corner, z 1 / its world size, w 1 while it holds a wake
 		Vector4 wakeParams;     // x slope per unit of crest over a texel, y 1 / texels, z the body tag / 255
 	} fs_water_interaction_t;
-	static_assert(sizeof(fs_water_interaction_t) == 35 * 16, "u_fs_waterInteraction is 35 vec4");
+	static_assert(sizeof(fs_water_interaction_t) == 35 * 16, "WATER_INTERACTION_PARAMS is 35 vec4");
 
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
@@ -2683,10 +2684,11 @@ namespace jasperengine{
 		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
 		// the eye of the camera pass being drawn (its camera's Transform)
 		Vector3 passEye;
-		// u_fs_waterInteraction and its textures for a draw of a mesh reading them: the excluders over
-		// the mesh in the pass camera's view, nearest first, and the wake map with the mesh's body tag
+		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the
+		// excluders over the mesh in the pass camera's view, nearest first, and the wake map with the
+		// mesh's body tag
 		void applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
-		                           const Material& material);
+		                           const Material& material, CustomUniformBlock& customParams);
 		// the world box a transparent draw covers (null when it has none to tell)
 		AABB transparentBounds(const TransparentRenderData& renderData) const;
 		// whether a draw of the transparent queue samples the scene colour (and is drawn)

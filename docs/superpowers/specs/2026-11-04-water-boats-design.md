@@ -860,3 +860,15 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    `WaterBoatsGpu.WakeUploadsOncePerFrame` replaces `WaterWake.OneUploadPerFrame` (the upload is a
    RenderSystem draw); the variant tests are editor tests (`WaterInteractionVariants.*`, they need
    the library manifests and the collector).
+7. **The wake bench** is `WaterWakeBench.Step256x4` / `Step128x4` in `jasperengine-core-tests`, the
+   budgets enforced through `JASPER_TEST_PERF_SLACK` like the other *Bench suites (AGENTS.md:
+   wall-clock budgets through `perfSlack()`), not an entry in `tools/perf/bench-thresholds.json`.
+8. **The water's per-draw data lives in its own custom block**, not a uniform block of its own: a
+   lit `library:water` with every feature is at the fragment stage's budget of uniform blocks, and
+   the `u_fs_waterInteraction` block the spec planned put it over (measured on the first build:
+   `checkResourceBudget` reported 10 blocks for the variant with shadows, fog and the post colour).
+   `WATER_INTERACTION_PARAMS` (`includes/water_interaction_params.glsl`) appends engine-written
+   members (`waterExclusion`, `waterExclusionRows`, `waterExclusionShapes`, `waterWakeArea`,
+   `waterWakeParams`; reserved names like `sceneTime`) to the shader's `u_fs_customParams`;
+   `CustomUniformBlock::writeWaterInteraction` writes them each draw before the block is uploaded.
+   The bits add two textures and no block (`WaterInteractionVariants.WorstWaterVariantsCompileForEveryBackend`).

@@ -2371,6 +2371,23 @@ const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
 };
 const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
+const FieldEntry kBody_WaterExcluderComponent_fields[] = {
+    JE_RF(WaterExcluderComponent, enabled, 0x1f8220bfu, Bool),
+    JE_RF(WaterExcluderComponent, shape, 0x2f859f6fu, Enum),
+    JE_RF(WaterExcluderComponent, center, 0x05110537u, Vector3),
+    JE_RF(WaterExcluderComponent, size, 0x1fad5cbbu, Vector3),
+};
+const StructTable kBody_WaterExcluderComponent{"waterexcluder", kBody_WaterExcluderComponent_fields, std::size(kBody_WaterExcluderComponent_fields)};
+
+const FieldEntry kBody_WaterWakeComponent_fields[] = {
+    JE_RF(WaterWakeComponent, enabled, 0x111e1027u, Bool),
+    JE_RF(WaterWakeComponent, foam, 0x2a7d6e07u, Float),
+    JE_RF(WaterWakeComponent, waves, 0xb229e9e8u, Float),
+    JE_RF(WaterWakeComponent, width, 0xe2a14056u, Float),
+    JE_RF(WaterWakeComponent, length, 0x0f985d8eu, Float),
+};
+const StructTable kBody_WaterWakeComponent{"waterwake", kBody_WaterWakeComponent_fields, std::size(kBody_WaterWakeComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2478,6 +2495,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
+    JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
+    JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENTS_END
 };
 

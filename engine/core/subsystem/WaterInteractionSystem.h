@@ -24,7 +24,7 @@ namespace jasperengine{
     // How objects interact with the water surfaces (docs/superpowers/specs/2026-11-04-water-boats-design.md):
     // Water Excluders keep water out (their volumes, hulls and hull maps, gathered each frame,
     // edit mode included) and Water Wakes leave foam and waves in the scene's wake map (a running
-    // scene only). RenderSystem binds what it gathers to the water draws (u_fs_waterInteraction,
+    // scene only). RenderSystem binds what it gathers to the water draws (WATER_INTERACTION_PARAMS,
     // includes/water_interaction.glsl); the physics, the Water queries and the underwater switch
     // ask findExcluder. A scene with neither component costs two array-size checks a frame.
     class JASPERENGINE_API WaterInteractionSystem : public SubSystem {

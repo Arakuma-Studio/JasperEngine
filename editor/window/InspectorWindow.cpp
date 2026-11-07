@@ -6673,6 +6673,8 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
             ? "Reserved uniform, written every frame with the size of the render target: xy = width and height, zw = 1 / width and 1 / height.\n\nRename it to edit a value of your own here."
             : name == "sceneTime"
             ? "Reserved uniform, written every frame with the scene's game clock: seconds the scene has run, scaled by the time scale, held while the game is paused.\n\nRename it to edit a value of your own here."
+            : name.rfind("water", 0) == 0
+            ? "Reserved uniform, written every draw with the Water Excluders over the mesh and the scene's Water Wake map (includes/water_interaction_params.glsl)."
             : "Reserved uniform, written every frame with the seconds elapsed since startup.\n\nRename it to edit a value of your own here.");
         return false;
     }

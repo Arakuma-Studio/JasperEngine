@@ -104,9 +104,9 @@ async def test_sample_water_excluded(ed: Editor):
     await ed.call("set_properties", entity=s["boat"], values={"waterexcluder": {"enabled": False}})
     ed.check_eq((await sample(ed, inside))["samples"][0]["excluded_by"], None, "a disabled excluder")
     await ed.call("set_properties", entity=s["boat"], values={"waterexcluder": {"enabled": True}})
-    await ed.call("set_entity_state", entity=s["boat"], visible=False)
+    await ed.call("set_properties", entity=s["boat"], values={"transform": {"visible": False}})
     ed.check_eq((await sample(ed, inside))["samples"][0]["excluded_by"], None, "a hidden excluder")
-    await ed.call("set_entity_state", entity=s["boat"], visible=True)
+    await ed.call("set_properties", entity=s["boat"], values={"transform": {"visible": True}})
     await ed.call("set_entity_state", entity=s["boat"], active=False)
     ed.check_eq((await sample(ed, inside))["samples"][0]["excluded_by"], None, "an inactive excluder")
     await ed.call("set_entity_state", entity=s["boat"], active=True)
@@ -190,7 +190,8 @@ async def test_cargo_dry_boat_floats(ed: Editor):
             y[name] = find_key(await ed.call("get_runtime_entity", entity=name, components=["transform"]), "position")[1]
         ed.check(-0.6 < y["Raft"] < 0.6, f"the raft floats despite its own excluder: {y}")
         ed.check(-0.6 < y["Free"] < 0.6, f"the free crate floats: {y}")
-        ed.check(y["Crate"] < -0.9, f"the crate in the dry room sinks through it: {y}")
+        # it falls through the room until its bottom leaves it, a metre under, where the water takes it again
+        ed.check(y["Crate"] < -0.5 and y["Crate"] < y["Free"] - 0.4, f"the crate in the dry room sinks through it: {y}")
     finally:
         await ed.call("play", action="stop", fixed_fps=0)
 
@@ -224,8 +225,8 @@ async def test_wake_behind_moving_hull(ed: Editor):
         await ed.call("wait", game_seconds=2)
         got = await sample(ed, (7, 0, -4.5), (7, 0, 8), report=True)
         behind, ahead = got["samples"]
-        wakes = got["wakes"]
-        ed.check(wakes and wakes[0]["emitting"] and abs(wakes[0]["speed"] - 5) < 0.6, f"the skiff emits at 5 m/s: {wakes}")
+        wakes = [w for w in got["wakes"] if w["entity"]["name"] == "Skiff"]
+        ed.check(wakes and wakes[0]["emitting"] and abs(wakes[0]["speed"] - 5) < 0.6, f"the skiff emits at 5 m/s: {got['wakes']}")
         ed.check_eq(got["wake_map"]["active"], True, "the wake map runs")
         ed.check(behind["wake"] and behind["wake"]["foam"] > 0.05, f"foam behind the stern: {behind}")
         ed.check(ahead["wake"] is not None and ahead["wake"]["foam"] == 0 and ahead["wake"]["height"] == 0, f"none ahead: {ahead}")

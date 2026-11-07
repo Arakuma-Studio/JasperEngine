@@ -99,8 +99,8 @@ namespace jasperengine{
         // shaders only, fragment stage
         ShaderRequire_PlanarReflection = 1 << 12,
         // what keeps water out and what moving hulls leave on it (includes/water_interaction.glsl,
-        // u_fs_waterInteraction): the Water Excluders over the draw's mesh and the scene's Water
-        // Wake map. Not SURFACE_* defines: the variant takes 'Wex' (USE_WATER_EXCLUSION) / 'Wwk'
+        // engine-written members at the end of the shader's u_fs_customParams): the Water Excluders
+        // over the draw's mesh and the scene's Water Wake map. Not SURFACE_* defines: the variant takes 'Wex' (USE_WATER_EXCLUSION) / 'Wwk'
         // (USE_WATER_WAKE) only while its scene has such components, so without them the shader
         // compiles as if it did not ask. They imply position. Mesh shaders only, fragment stage
         ShaderRequire_WaterExclusion = 1 << 13,

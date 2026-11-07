@@ -4140,7 +4140,6 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
     // the Water Excluders and the wake map (includes/water_interaction.glsl): no hull and no wake
     // until a draw binds its own (a white hull map holds no column)
-    bindings.slotFSWaterInteraction = shaderData.getUniformBlockIndexByName("u_fs_waterInteraction");
     bindings.slotWaterExclusionMaps = shaderData.getTextureIndexByName("u_waterExclusionMaps");
     if (bindings.slotWaterExclusionMaps.first != -1)
         render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT, &emptyArrayWhite);
@@ -8904,7 +8903,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     applySceneInputs(render, extra.libraryBindings);
     applyEnvironment(render, extra.libraryBindings, mesh, transform);
     applyPlanarReflection(render, extra.libraryBindings, entity);
-    applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material);
+    applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material, extra.customFSParams);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -10067,7 +10066,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applySceneInputs(render, libraryBindings);
             applyEnvironment(render, libraryBindings, mesh, transform);
             applyPlanarReflection(render, libraryBindings, entity);
-            applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material);
+            applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material, mesh.submeshes[i].customFSParams);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -14486,8 +14485,8 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
 }
 
 void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
-                                         const Material& material){
-    if (bindings.slotFSWaterInteraction == -1 && bindings.slotWaterExclusionMaps.first == -1 && bindings.slotWaterWake.first == -1)
+                                         const Material& material, CustomUniformBlock& customParams){
+    if (customParams.waterInteractionOffset < 0)
         return;
     // (every member zero: Vector4's default)
     fs_water_interaction_t block;
@@ -14550,8 +14549,8 @@ void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibra
         block.wakeParams = Vector4(WATER_WAKE_CREST_HEIGHT / texel, 1.0f / (float)map.getSize(), (float)water->getBodyTag(entity) / 255.0f, 0.0f);
     }
 
-    if (bindings.slotFSWaterInteraction != -1)
-        render.applyUniformBlock(bindings.slotFSWaterInteraction, sizeof(fs_water_interaction_t), &block);
+    // into the shader's custom block, which the draw uploads next (applyCustomUniforms)
+    customParams.writeWaterInteraction(&block, sizeof(block));
     if (bindings.slotWaterExclusionMaps.first != -1)
         render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT,
                           waterExclusionMapLayers > 0 ? &waterExclusionMaps : &emptyArrayWhite);

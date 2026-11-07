@@ -18,6 +18,7 @@
 #include "object/Primitive.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderManifest.h"
+#include "shader/ShaderUniforms.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "subsystem/RenderSystem.h"
 
@@ -131,38 +132,52 @@ TEST(WaterInteractionVariants, ManifestRequire){
     EXPECT_TRUE(post.hasErrors()) << "a post-process shader has no water draws to bind them to";
 }
 
-TEST(WaterInteractionVariants, WorstWaterVariantCompilesForEveryBackend){
+// library:water with every feature and both bits: lit per pixel with shadows (the most textures),
+// and with fog and the post colour (the most blocks); each within the per-stage budget, the bits'
+// values in the water's own custom block (no uniform block of their own)
+TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
-    // library:water with every feature, pixel lights with shadows, fog, the post colour, both bits
     SubmeshShaderInputs inputs = waterInputs();
     inputs.lighting = MaterialLighting::PIXEL;
     std::vector<std::string> all;
     for (const ShaderManifestFeature& feature : inputs.manifest->features)
         all.push_back(feature.define);
     inputs.features = inputs.manifest->resolveFeatures(all);
-    MeshShaderEnvironment environment;
-    environment.lights = true;
-    environment.shadows = true;
-    environment.fog = true;
-    environment.postColor = true;
-    environment.waterExclusion = true;
-    environment.waterWake = true;
-    const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
-    ASSERT_TRUE(variant.properties & ShaderPool::getWaterExclusionProperty());
-    // as the library's compile matrix builds it (ShaderLibraryMatrix::compileVariants)
+    MeshShaderEnvironment shadows;
+    shadows.lights = true;
+    shadows.shadows = true;
+    MeshShaderEnvironment fog;
+    fog.fog = true;
+    fog.postColor = true;
     const std::string reference = ShaderReference::withFeatures("library:water", inputs.features);
     const uint16_t customId = ShaderPool::registerCustomShader(reference);
-    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId);
     const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
-    for (ShaderBackend backend : ShaderPool::getShaderBackends()){
-        ShaderData data;
-        std::string error, log;
-        ASSERT_TRUE(ShaderVariantCompiler::compile(key, backend, &sources, data, &error, &log))
-            << ShaderPool::getShaderLangStr(backend) << ": " << error << "\n" << log;
-        EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << ShaderPool::getShaderLangStr(backend);
-        EXPECT_NE(data.getUniformBlockIndexByName("u_fs_waterInteraction"), -1);
-        EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1);
-        EXPECT_NE(data.getTextureIndexByName("u_waterWakeTexture").first, -1);
+    for (MeshShaderEnvironment environment : {shadows, fog}){
+        const SubmeshShaderVariant plain = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+        environment.waterExclusion = true;
+        environment.waterWake = true;
+        const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+        ASSERT_TRUE(variant.properties & ShaderPool::getWaterExclusionProperty());
+        for (ShaderBackend backend : ShaderPool::getShaderBackends()){
+            // as the library's compile matrix builds them (ShaderLibraryMatrix::compileVariants)
+            ShaderData plainData, data;
+            std::string error, log;
+            const std::string name = ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId) + " (" +
+                                     ShaderPool::getShaderLangStr(backend) + ")";
+            ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, plain.properties, customId), backend,
+                                                       &sources, plainData, &error, &log)) << name << " without the bits: " << error << "\n" << log;
+            ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId), backend,
+                                                       &sources, data, &error, &log)) << name << ": " << error << "\n" << log;
+            // the bits add two textures and no uniform block
+            EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), ShaderVariantCompiler::checkResourceBudget(plainData)) << name;
+            EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
+            EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1) << name;
+            EXPECT_NE(data.getTextureIndexByName("u_waterWakeTexture").first, -1) << name;
+            CustomUniformBlock custom;
+            ASSERT_TRUE(custom.resolve(data, "u_fs_customParams")) << name;
+            EXPECT_GE(custom.waterInteractionOffset, 0) << name;
+            EXPECT_EQ(custom.waterWakeParamsOffset, custom.waterInteractionOffset + 34 * 16) << name;
+        }
     }
 }
 

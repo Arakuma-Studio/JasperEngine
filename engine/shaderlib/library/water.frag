@@ -200,6 +200,9 @@
 // there is no wake) and bends the normal by its waves, calming the ripples under the foam.
 // Without those components neither is compiled.
 
+// the engine-written members of the Water Excluders and Wakes (none without them)
+#include "includes/water_interaction_params.glsl"
+
 uniform u_fs_customParams {
     vec4 shallowColor;
     vec4 deepColor;
@@ -243,6 +246,7 @@ uniform u_fs_customParams {
     // written by the engine: the scene clock (Scene::getSceneTime), which the waves, the ripples,
     // the flow and the caustics run on, so they hold while the game is paused
     float sceneTime;
+    WATER_INTERACTION_PARAMS
 } customParams;
 
 #define FRAME_FS

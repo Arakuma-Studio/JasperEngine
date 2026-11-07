@@ -497,8 +497,9 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   its own, real 3D normals) must `#define LIGHT2D_SURFACE_NORMALS` first, otherwise its normal is
   ignored and the light falls as from height 0 (`mesh.frag`'s lit path does this).
   `waterexclusion` and `waterwake` (mesh shaders; they bring `position`): the Water Excluders
-  over the draw and the scene's Water Wake map, through `includes/water_interaction.glsl`
-  (`waterExcluded(worldPosition)`: discard after every derivative read; `waterWake(worldXZ)`:
+  over the draw and the scene's Water Wake map, through `includes/water_interaction.glsl` (put
+  `WATER_INTERACTION_PARAMS`, from `includes/water_interaction_params.glsl`, last in your
+  `u_fs_customParams`: the engine writes their values there; `waterExcluded(worldPosition)`: discard after every derivative read; `waterWake(worldXZ)`:
   foam and the wake waves' slope). The variant takes them ('Wex', 'Wwk') only while the scene
   has such components, so a scene without them compiles the shader as if it never asked.
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
