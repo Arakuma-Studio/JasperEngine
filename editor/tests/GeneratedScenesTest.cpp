@@ -17,6 +17,7 @@
 #include "component/MeshComponent.h"
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/SplineExtrudeComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "object/Camera.h"
@@ -191,6 +192,22 @@ TEST(GeneratedScenes, AGeneratedMeshGeneratesTheSameBeforeAndAfterItsGeometryIsM
     mesh.submeshes[0].vertexCount = 6;
     mesh.submeshes[0].attributes[AttributeType::POSITION] = Attribute();
     EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()), before);
+}
+
+// A Spline Extrude's Mesh is its chunks' template: SplineSystem gives it its one submesh when it
+// first runs, which the code holds whether or not that happened before the save
+TEST(GeneratedScenes, ASplineExtrudeTemplateGeneratesTheSameBeforeAndAfterItsSystemRan) {
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<MeshComponent>(entity, MeshComponent());
+    scene.addComponent<SplineExtrudeComponent>(entity, SplineExtrudeComponent());
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
+    ASSERT_EQ(mesh.numSubmeshes, 0u);
+    const std::string before = Factory::createMeshComponent(8, &scene, entity, fs::path());
+
+    mesh.numSubmeshes = 1;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, entity, fs::path()), before);
+    EXPECT_NE(before.find("mesh.numSubmeshes = 1;"), std::string::npos) << before;
 }
 
 // A plain mesh keeps its data, and a load sets its vertexCount (RenderSystem::loadMesh), which the

@@ -149,8 +149,8 @@ member types: `bool`, `int`, `float`, `std::string`, `Vector2`, `Vector3`, `Vect
 |---|---|---|
 | `REGISTER_ENGINE_EVENT(onUpdate)` | `UNREGISTER_ENGINE_EVENT(onUpdate)` | every frame |
 | `REGISTER_ENGINE_EVENT(onFixedUpdate)` | `UNREGISTER_ENGINE_EVENT(onFixedUpdate)` | every physics step |
-| `REGISTER_UI_EVENT(onClick, method)` | `UNREGISTER_UI_EVENT(onClick, method)` | a click: released over the element (a button's click) |
-| `REGISTER_BUTTON_EVENT(onPress, method)` | `UNREGISTER_BUTTON_EVENT(onPress, method)` | the button's pressed state; `onRelease` fires on every release, wherever the pointer is, so it is not a click |
+| `REGISTER_UI_EVENT(onClick, method)` | `UNREGISTER_UI_EVENT(onClick, method)` | a click: released over the element |
+| `REGISTER_BUTTON_EVENT(onPress, method)` | `UNREGISTER_BUTTON_EVENT(onPress, method)` | Button events: `onClick` is the button's click (released over it, or a Submit while selected); `onPress` its pressed state; `onRelease` fires on every release, wherever the pointer is, so it is not a click |
 | `REGISTER_UI_EVENT(event, method)`, `REGISTER_SCROLLBAR_EVENT`, `REGISTER_PANEL_EVENT` | `UNREGISTER_...` | UI component events |
 | `REGISTER_COMPONENT_EVENT(Component, event, method)` | `UNREGISTER_COMPONENT_EVENT(...)` | any component's event |
 

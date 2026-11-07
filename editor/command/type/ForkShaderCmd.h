@@ -15,7 +15,7 @@
 
 namespace jasperengine::editor {
 
-    // Forks a built-in shader and points a component's customShader (customDepthShader
+    // Forks a built-in (or library) shader and points a component's customShader (customDepthShader
     // for a DEPTH fork, or a scene's default shader property) at the new fork as a single
     // undoable step: execute() writes the .vert/.frag (and optional private include) files
     // and sets the property; undo() restores the property and deletes the forked files.
@@ -39,10 +39,13 @@ namespace jasperengine::editor {
 
         // generic variant: the caller builds the command that points a property at the
         // fork, given its base path (the post-process shader lives inside a list value)
+        // (librarySource: a fork of that library shader, "library:water", instead of the
+        // built-in one of shaderType, which is then the library shader's type)
         ForkShaderCmd(Project* project, ShaderType shaderType,
                       const std::function<std::unique_ptr<Command>(const std::string&)>& makePropertyCmd,
                       const std::filesystem::path& targetDirRel,
-                      const std::string& baseName, bool forkIncludes = false);
+                      const std::string& baseName, bool forkIncludes = false,
+                      const std::string& librarySource = std::string());
 
         bool isValid() const { return plan.valid; }
         const std::string& getBase() const { return plan.base; }

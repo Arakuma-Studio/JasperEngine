@@ -144,6 +144,8 @@ namespace {
             sprites.clear();
             Engine::removeScene(&scene);
             Engine::setDynamicBatching(true);
+            // the suites after it render at the harness's view
+            GpuEnvironment::resetView();
             LightingTiers::setLightMode(LightMode::AUTOMATIC);
             SystemRender::setDrawListEnabled(false);
         }

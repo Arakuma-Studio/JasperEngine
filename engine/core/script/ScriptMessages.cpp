@@ -108,6 +108,11 @@ const char* ScriptMessages::methodName(ScriptMessage m) {
         case ScriptMessage::EndDrag: return "onEndDrag";
         case ScriptMessage::Drop: return "onDrop";
         case ScriptMessage::Scroll: return "onScroll";
+        case ScriptMessage::Select: return "onSelect";
+        case ScriptMessage::Deselect: return "onDeselect";
+        case ScriptMessage::Move: return "onMove";
+        case ScriptMessage::Submit: return "onSubmit";
+        case ScriptMessage::Cancel: return "onCancel";
         case ScriptMessage::Count: break;
     }
     return "";

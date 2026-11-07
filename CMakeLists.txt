@@ -715,6 +715,10 @@ else()
     set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The model cook (S53): its normalised normals, their octahedral decode and the LODs they guide
+# are the same bytes on every CPU, so a cooked model and its cache key do not depend on the machine
+set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/model/GltfDocument.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 # The audio analysis (S36, S39's tempo grid): the committed library analysis.json and every agent's
 # numbers are the same on every CPU (arm64 Clang fuses a multiply and an add by default); the
 # decoders and AudioMeter it reads get the same in engine/CMakeLists.txt
@@ -946,6 +950,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetClipboard.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
     ${EDITOR_DIR}/asset/AssetIndex.cpp
     ${EDITOR_DIR}/asset/AssetOps.cpp
@@ -993,6 +998,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/SourceLocation.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
+    ${EDITOR_DIR}/util/ScriptTemplates.cpp
+    ${EDITOR_DIR}/util/TextureLabels.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
@@ -1159,6 +1166,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
+    ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
@@ -1190,6 +1198,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/HierarchyVcs.cpp
+    ${EDITOR_DIR}/window/AssetCreateMenu.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
     ${EDITOR_DIR}/window/ProjectWindowVcs.cpp
