@@ -349,7 +349,9 @@ void NavBakeTest::runtimeUpdateTiles(bool carving){
     ASSERT_TRUE(handle.setDestination(Vector3(15.0f, 0.0f, 0.0f)));
     steps(10);
     ASSERT_TRUE(handle.isOnNavMesh());
-    scene->getComponent<Transform>(crate).position = Vector3(-5.0f, 1.0f, 0.0f);
+    // beside the walker's line, not on it: the tiles land after a wall-clock bake, and an agent
+    // the crate lands on stands in a hole, off the navmesh
+    scene->getComponent<Transform>(crate).position = Vector3(-5.0f, 1.0f, 4.0f);
     resolveTransforms(*scene);
     AABB box(Vector3(-8.0f, -1.0f, -3.0f), Vector3(8.0f, 3.0f, 8.0f));
     std::string error;
@@ -372,7 +374,7 @@ void NavBakeTest::runtimeUpdateTiles(bool carving){
     EXPECT_TRUE(nav->getLastBakeResult(surface)->ok);
     EXPECT_GT(nav->getLastBakeResult(surface)->tilesBuilt, 0);
     // the crate's new place has no walkable polygon now
-    EXPECT_FALSE(walkable(Vector3(-5.0f, 0.0f, 0.0f), 0.2f));
+    EXPECT_FALSE(walkable(Vector3(-5.0f, 0.0f, 4.0f), 0.2f));
     steps(30);
     EXPECT_TRUE(handle.isOnNavMesh());
 }
