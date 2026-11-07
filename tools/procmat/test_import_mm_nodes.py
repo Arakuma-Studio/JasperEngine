@@ -465,6 +465,14 @@ class CommittedOutputTest(unittest.TestCase):
         reference = REPO / "editor/tests/procmat/ExpanderReference.txt"
         self.assertEqual(expander.main(["--nodes", str(NODES), "--check-reference", str(reference)]), 0)
 
+    def test_the_interpreters_oracle_cases_are_current(self):
+        # SpirvInterpreterTest.MatchesThePythonOracle (AC7) reads the oracle's numbers from this header
+        oracle_spec = importlib.util.spec_from_file_location("spirv_oracle", Path(__file__).with_name("spirv_oracle.py"))
+        oracle = importlib.util.module_from_spec(oracle_spec)
+        sys.modules["spirv_oracle"] = oracle
+        oracle_spec.loader.exec_module(oracle)
+        self.assertEqual(oracle.main(["--check"]), 0)
+
     def test_pentagram_is_not_test_data(self):
         for path in Path(__file__).parent.rglob("*"):
             self.assertNotIn("pentagram", path.name)
