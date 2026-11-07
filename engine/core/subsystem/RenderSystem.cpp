@@ -954,6 +954,7 @@ void RenderSystem::load(){
     lastBatchSort = true;
     lastMeshLodEnabled = false;
     objectLightsCleared = false;
+    directionalLightsOnlyKnown = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -16351,8 +16352,13 @@ void RenderSystem::update(double dt){
         lightCapacityTier = lightCapacity;
         needReloadMeshVariants();
     }
-    // so is whether every light is directional ('Dlo': the loaded variant draws until the other is built)
-    if (directionalLightsOnly != loadedDirectionalLightsOnly){
+    // so is whether every light is directional ('Dlo': the loaded variant draws until the other is
+    // built); the first update takes the scene's as it is (no mesh loaded before it: they load
+    // below with it), so a scene does not load its meshes twice
+    if (!directionalLightsOnlyKnown){
+        directionalLightsOnlyKnown = true;
+        loadedDirectionalLightsOnly = directionalLightsOnly;
+    }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
         loadedDirectionalLightsOnly = directionalLightsOnly;
         needReloadMeshVariants();
     }

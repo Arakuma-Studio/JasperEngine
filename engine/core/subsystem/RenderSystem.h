@@ -1696,6 +1696,7 @@ namespace jasperengine{
 		// every Light component is Directional (checkLightsAndShadow), and as the meshes loaded
 		bool directionalLightsOnly = false;
 		bool loadedDirectionalLightsOnly = false;
+		bool directionalLightsOnlyKnown = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
