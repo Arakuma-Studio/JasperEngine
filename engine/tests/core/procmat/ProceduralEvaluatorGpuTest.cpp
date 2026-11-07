@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 
@@ -142,7 +143,7 @@ TEST(ProceduralEvaluatorGpu, ReadsBackTheRowAtVZeroFirst) {
     ASSERT_EQ(image.width, 64);
     ASSERT_EQ(image.rgba.size(), 64u * 64u * 4u);
     for (int y : {0, 31, 63}) {
-        const int expected = quantized(((float)y + 0.5f) / 64.0f);
+        const int expected = (int)std::floor(((float)y + 0.5f) / 64.0f * 255.0f + 0.5f);
         EXPECT_NEAR(image.rgba[(size_t)y * 64 * 4], expected, 1) << "row " << y;
     }
     EXPECT_EQ(image.rgba[3], 255);
