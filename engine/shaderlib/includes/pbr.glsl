@@ -228,8 +228,12 @@ NormalInfo getNormalInfo(){
                 vec3 flatToEye = litFrame.cameraPosition_fogEnd.xyz - v_position;
             #elif defined(FRAME_FS_DECLARED)
                 vec3 flatToEye = frame.cameraPosition.xyz - v_position;
-            #else
+            #elif defined(USE_PUNCTUAL) || defined(USE_IBL)
                 vec3 flatToEye = lighting.eyePos.xyz - v_position;
+            #else
+                // a fork's legacy u_fs_lighting block is declared only with lights or IBL: without
+                // them no eye position exists, and nothing lit reads which way the normal faces
+                vec3 flatToEye = ng;
             #endif
             ng = dot(ng, flatToEye) < 0.0 ? -ng : ng;
         #endif
