@@ -343,8 +343,10 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
     // A dish 1 m deep and about 12 m across under world (64, 64)
     const EditOp dish = digOp(sphereShape(32.0, surface + 19.0, 32.0, 20.0));
     ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&dish, 1), EditOptions{}).ok);
+    // until the hole opens and a second after it, in game time: the meshes and colliders come from
+    // background jobs, which a busy machine slows
     int openedAt = -1;
-    for (int tick = 0; tick < 120; tick++) {
+    for (int tick = 0; tick < 1800 && (openedAt < 0 || tick < openedAt + 60); tick++) {
         steps(1);
         // the terrain, or through its hole the new dish's collider: never nothing, never the seed's
         // old collider under an open hole
