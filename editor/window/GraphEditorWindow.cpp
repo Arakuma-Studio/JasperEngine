@@ -1016,8 +1016,11 @@ void GraphEditorWindow::drawSearch(){
             ImGui::TextDisabled("%s", category.empty() ? "Other" : category.c_str());
         }
         ImGui::PushID((int)i);
+        // (a Selectable's rect reaches past the list's clip by half the item spacing: its label's)
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        const ImVec2 label = ImGui::CalcTextSize(entry.label.c_str());
         if (ImGui::Selectable(entry.label.c_str(), (int)i == searchCursor)) picked = &entry;
-        UIProbe::item("graph.search.entry." + std::to_string(i));
+        UIProbe::rect("graph.search.entry." + std::to_string(i), at.x, at.y, at.x + label.x, at.y + label.y);
         if ((int)i == searchCursor && ImGui::IsKeyPressed(ImGuiKey_DownArrow)) ImGui::SetScrollHereY();
         ImGui::PopID();
     }

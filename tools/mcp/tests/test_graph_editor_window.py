@@ -10,7 +10,7 @@ Covered here, where the App's wiring, focus and real input matter:
   a Blend wired to Speed, with its input port under the cursor where the wire was dropped (one undo step);
 - Esc during a node drag puts the node back and adds no undo step; Esc during a wire drag joins nothing;
 - Esc closes the search a right click opened, adding nothing.
-Set JASPER_GRAPH_SHOTS=<dir> to keep the editor screenshots.
+Set JASPER_MCP_GRAPH_SHOTS=<dir> to keep the editor screenshots.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ CI = True
 TIMEOUT = 600
 
 PATH = "assets/Flow.testgraph"
-SHOTS = os.environ.get("JASPER_GRAPH_SHOTS")
+SHOTS = os.environ.get("JASPER_MCP_GRAPH_SHOTS")
 GRAPH = {
     "formatVersion": 1,
     "kind": "test",
@@ -129,12 +129,18 @@ async def test_setup(ed: Editor):
 
 async def test_double_click_opens_the_graph(ed: Editor):
     await focus_x(ed, "project")
-    if not await ed.ui_rect("project.file.Flow.testgraph", timeout=2.0):
-        folder = await rect_of(ed, "project.file.assets", "the assets folder in the Project window")
-        await move(ed, *center(folder))
-        xdo(ed, "click", "--repeat", "2", "--delay", "80", "1")
-        await frames(ed, 10)
-    entry = await rect_of(ed, "project.file.Flow.testgraph", "the graph file in the Project window")
+    entry = None
+    for _ in range(12):
+        await frames(ed, 4)
+        items = ed.ui_items()
+        entry = items.get("project.file.Flow.testgraph")
+        if entry:
+            break
+        if "project.file.assets" in items:
+            await move(ed, *center(items["project.file.assets"]))
+            xdo(ed, "click", "--repeat", "2", "--delay", "80", "1")
+            await frames(ed, 6)
+    ed.check(entry, f"the Project window lists the graph file: {sorted(ed.ui_items())[:80]}")
     await move(ed, *center(entry))
     xdo(ed, "click", "--repeat", "2", "--delay", "80", "1")
     await frames(ed, 10)
