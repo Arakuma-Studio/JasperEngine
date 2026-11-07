@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "command/type/ShaderOverridesCmd.h"
 #include "cook/BuildReport.h"
 #include "window/EditorModal.h"
 #include "player/PlayerModules.h"
@@ -155,13 +156,34 @@ void ExportWindow::refreshShaderSelection() {
 }
 
 void ExportWindow::includeShader(ShaderKey key) {
-    m_shaderExclusions.erase(key);
+    std::set<ShaderKey> additions = m_shaderAdditions;
+    std::set<ShaderKey> exclusions = m_shaderExclusions;
+    exclusions.erase(key);
     const bool fromScene = std::any_of(m_shaderEntries.begin(), m_shaderEntries.end(), [key](const ShaderEntry& entry) {
         return entry.key == key && entry.fromScene;
     });
-    if (!fromScene) m_shaderAdditions.insert(key);
+    if (!fromScene) additions.insert(key);
+    applyShaderOverrides(additions, exclusions);
+}
+
+void ExportWindow::applyShaderOverrides(const std::set<ShaderKey>& additions, const std::set<ShaderKey>& exclusions) {
+    // one project undo step, saved at once (as edit_build_shaders); the list shows the project's
+    const ShaderOverrides& current = m_project->getShaderOverrides();
+    if (current.additions != additions || current.exclusions != exclusions) {
+        auto* command = new ShaderOverridesCmd(m_project, current, ShaderOverrides{additions, exclusions});
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
+    syncShaderOverrides(true);
+}
+
+void ExportWindow::syncShaderOverrides(bool force) {
+    // the project's lists, which MCP edits and undo change while the window is open
+    const ShaderOverrides& shaders = m_project->getShaderOverrides();
+    if (!force && shaders.additions == m_shaderAdditions && shaders.exclusions == m_shaderExclusions) return;
+    m_shaderAdditions = shaders.additions;
+    m_shaderExclusions = shaders.exclusions;
     refreshShaderSelection();
-    saveCurrentSettingsToProject();
 }
 
 void ExportWindow::populateBackendList() {
@@ -328,10 +350,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
         settings.graphicBackendConfigured = true;
     }
 
-    ShaderOverrides& shaders = m_project->getShaderOverrides();
-    changed = changed || shaders.additions != m_shaderAdditions || shaders.exclusions != m_shaderExclusions;
-    shaders.additions = m_shaderAdditions;
-    shaders.exclusions = m_shaderExclusions;
+    // shader overrides are not written here: every edit applied them through ShaderOverridesCmd
     m_projectSettingsDirty = m_projectSettingsDirty || changed;
     if (saveProjectFile && m_projectSettingsDirty) {
         if (!m_project->saveProjectFile()) {
@@ -345,6 +364,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
 
 void ExportWindow::show() {
     if (!m_isOpen) return;
+    if (m_project) syncShaderOverrides(false);
 
     ImGui::OpenPopup("Build Settings##ExportModal");
 
@@ -840,10 +860,11 @@ void ExportWindow::drawShaderSection() {
         if (selectionExcluded) {
             includeShader(key);
         } else {
-            m_shaderAdditions.erase(key);
-            m_shaderExclusions.insert(key);
-            refreshShaderSelection();
-            saveCurrentSettingsToProject();
+            std::set<ShaderKey> additions = m_shaderAdditions;
+            std::set<ShaderKey> exclusions = m_shaderExclusions;
+            additions.erase(key);
+            exclusions.insert(key);
+            applyShaderOverrides(additions, exclusions);
         }
     }
     ImGui::EndDisabled();
@@ -880,10 +901,7 @@ void ExportWindow::drawShaderSection() {
 
     ImGui::BeginDisabled(m_shaderAdditions.empty() && m_shaderExclusions.empty());
     if (ImGui::Button("Reset Shader Overrides")) {
-        m_shaderAdditions.clear();
-        m_shaderExclusions.clear();
-        refreshShaderSelection();
-        saveCurrentSettingsToProject();
+        applyShaderOverrides({}, {});
     }
     ImGui::EndDisabled();
     drawAddShaderDialog();

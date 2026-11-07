@@ -644,9 +644,10 @@ void setTransformTool(const CallPtr& call) {
         }
         if (args.contains("rotation")) {
             Quaternion value = relative ? Quaternion::IDENTITY : rotation;
-            if (!McpValues::parseQuaternion(args["rotation"], value)) {
+            std::string why;
+            if (!McpValues::parseQuaternion(args["rotation"], value, &why)) {
                 delete multi;
-                call->fail("rotation must be {\"euler\":[x,y,z]} degrees, [x,y,z,w] or {\"quat\":[...]}.");
+                call->fail("rotation: " + why);
                 return;
             }
             rotation = relative ? value * rotation : value;

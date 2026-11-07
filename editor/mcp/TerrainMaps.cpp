@@ -195,10 +195,12 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
     return result;
 }
 
-TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
-                                                          uint32_t sceneId,
-                                                          Entity entity,
-                                                          const TerrainBlendmapRequest& request) {
+namespace {
+
+// A constant RGBA PNG for the project's terrain maps folder, named terrain_<scene>_<entity>_<kind>, encoded in
+// memory: written here (write), or by the caller's undoable command (encoded)
+TerrainBlendmapResult encodeConstantMap(Project* project, uint32_t sceneId, Entity entity, const std::string& kind, int requested,
+                                        const unsigned char rgba[4], const char* what) {
     TerrainBlendmapResult result;
     if (!project) {
         result.error = "No project is available.";
@@ -210,46 +212,72 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
         return result;
     }
 
-    const int resolution = std::max(2, request.resolution);
-    const unsigned char r = blendChannel(request.red);
-    const unsigned char g = blendChannel(request.green);
-    const unsigned char b = blendChannel(request.blue);
-
+    const int resolution = std::max(2, requested);
     std::vector<unsigned char> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 4);
     for (size_t i = 0; i < pixels.size(); i += 4) {
-        pixels[i] = r;
-        pixels[i + 1] = g;
-        pixels[i + 2] = b;
-        pixels[i + 3] = 255;
+        pixels[i] = rgba[0];
+        pixels[i + 1] = rgba[1];
+        pixels[i + 2] = rgba[2];
+        pixels[i + 3] = rgba[3];
     }
 
-    fs::path outputDir = project->getTerrainMapsDir();
-    std::error_code ec;
-    FileUtils::createDirectories(outputDir, ec);
-    if (ec) {
-        result.error = "Failed to create terrain maps directory: " + ec.message();
-        return result;
-    }
-
+    const fs::path outputDir = project->getTerrainMapsDir();
     result.fullPath = uniqueChildPath(
         outputDir,
-        "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
+        "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_" + kind,
         ".png");
-    // encoded in memory, then written beneath the project (the tool's write scope)
-    std::string encoded;
     auto append = [](void* context, void* data, int size) {
         static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
     };
-    if (!stbi_write_png_to_func(append, &encoded, resolution, resolution, 4, pixels.data(), resolution * 4) ||
-        !FileUtils::writeFileReplacing(result.fullPath, encoded)) {
-        result.error = "Failed to write generated terrain blendmap.";
+    if (!stbi_write_png_to_func(append, &result.encoded, resolution, resolution, 4, pixels.data(), resolution * 4)) {
+        result.error = std::string("Failed to encode generated terrain ") + what + ".";
         return result;
     }
-
+    std::error_code ec;
     fs::path rel = fs::relative(result.fullPath, project->getAssetsPath(), ec);
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
     result.success = true;
     return result;
+}
+
+TerrainBlendmapResult writeConstantMap(Project* project, uint32_t sceneId, Entity entity, const std::string& kind, int requested,
+                                       const unsigned char rgba[4], const char* what) {
+    TerrainBlendmapResult result = encodeConstantMap(project, sceneId, entity, kind, requested, rgba, what);
+    if (!result.success) return result;
+    std::error_code ec;
+    FileUtils::createDirectories(project->getTerrainMapsDir(), ec);
+    if (ec) {
+        result.success = false;
+        result.error = "Failed to create terrain maps directory: " + ec.message();
+        return result;
+    }
+    // written beneath the project (the tool's write scope)
+    if (!FileUtils::writeFileReplacing(result.fullPath, result.encoded)) {
+        result.success = false;
+        result.error = std::string("Failed to write generated terrain ") + what + ".";
+    }
+    return result;
+}
+
+} // namespace
+
+TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
+                                                          uint32_t sceneId,
+                                                          Entity entity,
+                                                          const TerrainBlendmapRequest& request) {
+    const unsigned char rgba[4] = {blendChannel(request.red), blendChannel(request.green), blendChannel(request.blue), 255};
+    return writeConstantMap(project, sceneId, entity, "blend", request.resolution, rgba, "blendmap");
+}
+
+TerrainBlendmapResult TerrainMaps::encodeDensityMap(Project* project,
+                                                    uint32_t sceneId,
+                                                    Entity entity,
+                                                    int layer,
+                                                    const TerrainDensityMapRequest& request) {
+    // MeshSystem::sampleFoliageDensity reads the first channel
+    const unsigned char grey = blendChannel(request.fill);
+    const unsigned char rgba[4] = {grey, grey, grey, 255};
+    return encodeConstantMap(project, sceneId, entity, "density" + std::to_string(layer), request.resolution, rgba, "density map");
 }
 
 } // namespace jasperengine::editor::mcp

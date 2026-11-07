@@ -278,8 +278,8 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 
 | Source (wrapper + getter) | Event field | Handler args |
 |---|---|---|
-| `Button(...):getButtonComponent()` | `onPress`, `onRelease` | none |
-| `Image(...):getUIComponent()` (any UI element) | `onClick`, `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
+| `Button(...):getButtonComponent()` | `onPress`, `onRelease` (fires on every release, wherever the pointer is: a click is the UI `onClick` below) | none |
+| `Image(...):getUIComponent()` (any UI element) | `onClick` (released over the element while interactable: a button's click), `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
 | same | `onGetFocus`, `onLostFocus` | none |
 | `Scrollbar(...):getScrollbarComponent()` | `onChange` | `step` |
 | `Panel(...):getPanelComponent()` | `onMove` / `onResize` | none / `width, height` |

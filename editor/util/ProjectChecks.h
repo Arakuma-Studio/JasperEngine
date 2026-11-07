@@ -28,6 +28,8 @@ namespace jasperengine::htmlui {
 
 namespace jasperengine::editor {
 
+    struct LocalBuildSettings;
+
     class Project;
 
     // The checks of a project's Lua scripts, forked shaders, C++ scripts and HTML/CSS UI files,
@@ -128,6 +130,10 @@ namespace jasperengine::editor {
             CMakeKit kit;
             unsigned int jobs = 0;
         };
+        // The toolchain check Play, compile_scripts, editor scripts and get_build_info share: the
+        // machine's build settings (no compiler or generator chosen = a default kit compatible with
+        // this editor) resolved into kit; "" when C++ scripts can build here, else what is missing
+        static std::string checkCppToolchain(const LocalBuildSettings& settings, CMakeKit& kit);
         enum class CppPrepare { Ready, NothingToBuild, Failed, MissingTools };
         // Main thread. Failed (generating the build files) and MissingTools: error says why.
         static CppPrepare prepareCppBuild(Project* project, CppBuildPlan& plan, std::string& error);
