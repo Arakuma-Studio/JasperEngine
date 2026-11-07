@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
+#include <set>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -165,6 +167,21 @@ bool cook::readsContentFormat(std::string_view reader, std::string_view content)
     return readerMajor == contentMajor && contentMinor <= readerMinor;
 }
 
+bool cook::playerReadsContentFormat(std::string_view content) {
+    unsigned long major = 0, minor = 0;
+    if (!parseFormatVersion(content, major, minor) || major != FORMAT_MAJOR) return false;
+    if (minor > FORMAT_MINOR) {
+        static std::mutex mutex;
+        static std::set<std::string> warned;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (warned.insert(std::string(content)).second) {
+            Log::warn("Cooked content: content %.*s was made by a newer editor; features newer than %s are skipped",
+                      static_cast<int>(content.size()), content.data(), contentFormatVersion().c_str());
+        }
+    }
+    return true;
+}
+
 bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[4], std::string& error) {
     if (bytes.size() < HEADER_BYTES) {
         error = "too small to be a cooked file";
@@ -181,9 +198,9 @@ bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[
     header.entityCount = le32(bytes.data() + 12);
     header.flags = le32(bytes.data() + 16);
     header.stringsOffset = le64(bytes.data() + 20);
-    if (header.major != FORMAT_MAJOR || header.minor > FORMAT_MINOR) {
+    if (!playerReadsContentFormat(std::to_string(header.major) + "." + std::to_string(header.minor))) {
         error = "content format " + std::to_string(header.major) + "." + std::to_string(header.minor) + "; this player reads " +
-                std::to_string(FORMAT_MAJOR) + ".0 to " + contentFormatVersion() + " (build the game with the editor of this player's version)";
+                contentFormatVersion() + " (build the game with the editor of this player's version)";
         return false;
     }
     if (header.stringsOffset < HEADER_BYTES || header.stringsOffset > bytes.size()) {

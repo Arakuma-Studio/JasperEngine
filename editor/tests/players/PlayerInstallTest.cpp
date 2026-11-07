@@ -135,9 +135,10 @@ TEST(PlayerInstall, AnotherEditorVersionIsNotUsed) {
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "root", true, error).has_value()) << error;
 }
 
-// The editor cooks its own format: a runtime that reads an older minor would load the content
-// without the newer fields, so it is not used (with --allow-player-mismatch neither); a newer one is
-TEST(PlayerInstall, APlayerOfAnOlderContentFormatIsNotUsed) {
+// The editor cooks its own format: a runtime that reads an older minor would skip what is newer,
+// so it is not used unless --allow-player-mismatch asks for it (the error names the fix); a
+// runtime of a newer minor is
+TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     static_assert(jasperengine::cook::FORMAT_MINOR > 0, "an older minor exists");
     TestTempDir dir("players");
     const std::vector<PlayerArchiveHash> none;
@@ -149,12 +150,17 @@ TEST(PlayerInstall, APlayerOfAnOlderContentFormatIsNotUsed) {
     old.contentFormatVersion = major + std::to_string(jasperengine::cook::FORMAT_MINOR - 1);
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "old.zip", BINARY, old), dir / "old", installed, warnings, error, &none)) << error;
     EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "old", false, error).has_value());
-    EXPECT_NE(error.find("reads content format " + old.contentFormatVersion + ", this editor writes " +
-                         jasperengine::cook::contentFormatVersion()), std::string::npos) << error;
-    EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "old", true, error).has_value());
+    EXPECT_NE(error.find("reads content format " + old.contentFormatVersion + ", older than the " + jasperengine::cook::contentFormatVersion() +
+                         " this editor writes: update the player runtime"), std::string::npos) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "old", true, error).has_value()) << error;
 
     PlayerInfo newer = info(sha256Hex(BINARY));
     newer.contentFormatVersion = major + std::to_string(jasperengine::cook::FORMAT_MINOR + 1);
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "new.zip", BINARY, newer), dir / "new", installed, warnings, error, &none)) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "new", false, error).has_value()) << error;
+
+    PlayerInfo otherMajor = info(sha256Hex(BINARY));
+    otherMajor.contentFormatVersion = std::to_string(jasperengine::cook::FORMAT_MAJOR + 1) + ".0";
+    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "major.zip", BINARY, otherMajor), dir / "major", installed, warnings, error, &none)) << error;
+    EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "major", true, error).has_value());
 }

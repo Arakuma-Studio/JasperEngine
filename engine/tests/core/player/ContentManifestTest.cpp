@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include "LogCapture.h"
+
 #include "player/ContentManifest.h"
 #include "player/PlayerModules.h"
 #include "serialization/CookedScene.h"
@@ -92,6 +94,9 @@ TEST(ContentManifest, ChecksAtStart) {
 }
 
 TEST(ContentManifest, ReadsContentFormat) {
+    EXPECT_TRUE(cook::playerReadsContentFormat(cook::contentFormatVersion()));
+    EXPECT_FALSE(cook::playerReadsContentFormat(std::to_string(cook::FORMAT_MAJOR + 1) + ".0"));
+    EXPECT_FALSE(cook::playerReadsContentFormat("1.x"));
     EXPECT_TRUE(cook::readsContentFormat("1.5", "1.5"));
     EXPECT_TRUE(cook::readsContentFormat("1.5", "1.0"));
     EXPECT_TRUE(cook::readsContentFormat("1.12", "1.9"));
@@ -102,26 +107,30 @@ TEST(ContentManifest, ReadsContentFormat) {
     for (const char* bad : {"", "1", "1.", ".5", "1.x", "v1.5", "1.5.0", "-1.5"}) EXPECT_FALSE(cook::readsContentFormat("1.5", bad)) << bad;
 }
 
-// A player refuses content of a newer minor (it would load without the newer fields) and runs an
-// older minor's
-TEST(ContentManifest, RefusesANewerContentFormatMinor) {
+// A player runs content of a newer minor (its additions are skipped, one warning per version) and
+// of an older one; another major is refused, naming the fix
+TEST(ContentManifest, ReadsANewerMinorAndRefusesAnotherMajor) {
     present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
     const ContentAccess access{&exists, &noSha};
     ContentManifest m = sample();
     const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR + 1);
     m.contentFormatVersion = newer;
     std::vector<std::string> problems;
-    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release", access, false, problems));
-    ASSERT_EQ(problems.size(), 1u);
-    EXPECT_NE(problems[0].find("content format " + newer + ", this player reads " + std::to_string(cook::FORMAT_MAJOR) + ".0 to " +
-                               cook::contentFormatVersion()), std::string::npos) << problems[0];
-    EXPECT_NE(problems[0].find("build the game with the editor of this player's version"), std::string::npos) << problems[0];
+    EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
+    EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
+    const std::string warning = "content " + newer + " was made by a newer editor; features newer than " + cook::contentFormatVersion() +
+                                " are skipped";
+    EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, warning), 1u) << "one warning per version";
 
     m.contentFormatVersion = std::to_string(cook::FORMAT_MAJOR) + ".0";
-    problems.clear();
     EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
-    m.contentFormatVersion = std::to_string(cook::FORMAT_MAJOR + 1) + ".0";
+
+    const std::string otherMajor = std::to_string(cook::FORMAT_MAJOR + 1) + ".0";
+    m.contentFormatVersion = otherMajor;
     EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release", access, false, problems));
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_NE(problems[0].find("content format " + otherMajor + ", this player reads " + cook::contentFormatVersion() +
+                               ": build the game with the editor of this player's version"), std::string::npos) << problems[0];
 }
 
 // S34 R3: a player variant runs only content whose modules it has; content of an older editor

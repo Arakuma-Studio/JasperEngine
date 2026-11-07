@@ -128,11 +128,12 @@ An engine checkout builds its own runtimes: `tools/build.sh players` (Linux; `PL
 and `PLAYER_PLATFORM=android` for those), into `build/players/`; point the editor at them with
 `JASPER_PLAYERS_DIR=build/players` or `--players-dir`. A runtime is locked to the editor version
 it was built with, and reads the cooked content format of that version (`contentFormatVersion`,
-major.minor) and every older minor of it. A newer minor adds what an older player would skip, so
-the editor does not use a runtime that reads an older format than it cooks ("reads content format
-..., this editor writes ..."; build the runtimes again), not even with the player-mismatch option,
-and a player refuses newer content at start (exit 5, "build the game with the editor of this
-player's version").
+major.minor). A newer minor only adds what an older player skips: the editor does not use a
+runtime of an older minor than it cooks ("reads content format ..., older than the ... this
+editor writes: update the player runtime") unless the player-mismatch option asks for it (warning
+W-PLAYER-MISMATCH, and publish verify refuses the build). A player runs content of a newer minor
+without what is newer, with one warning ("content ... was made by a newer editor; features newer
+than ... are skipped"), and refuses another major at start (exit 5).
 
 ## Player size: Strip Engine Code
 
