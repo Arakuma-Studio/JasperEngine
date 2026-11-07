@@ -1698,6 +1698,14 @@ rest of S82 lands in 6B.
       out and the bloom and streak tails fade out at 6 sizes and 3 streak lengths.
     - Light Streaks draws the halo source and both halo blurs at quarter resolution; the cores
       stay at full resolution.
+    - Measured mobile-against-desktop agreement at 0.25 (`TitleGenMobileGpu.AgreesWithDesktop`,
+      first presets): Particles equals the desktop render of its first 2,000 (F1) and Fractal
+      Noise the desktop render at complexity 4 (F1, and F1 against complexity 5); Backlight 0.8 %
+      of blocks, Aura 0.5 % (AC12's block metric); Light Streaks 3.2 % of blocks (held at 4 %:
+      quarter-res halos); Lens Flare mean 1.7/255, 2.2 % of pixels over 8/255, max 135/255 (held
+      to F2's mean and share: its quads cut the bloom's faint tail at their edges); Fire and
+      Smoke 5.5 % and 4.9 % of blocks with histogram distance 1.2 % and 0.9 % (held to the
+      histogram: the noise texture is another random field), Fire's baked field to F1.
 26. **Implementation: the two S83 streams' shared names.** S83's effect programs take
     `ShaderType::TITLE_ART` property bit 9 ('Efx', `titleart_fx.frag`) and live kernels bit 10
     ('Liv'); the generator programs take bit 11 ('Gen', `titleart_gen.vert/.frag`), so a generator
