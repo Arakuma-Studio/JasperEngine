@@ -135,7 +135,7 @@ see the effect in its scene, from its camera.
 ### Bake Sprite Sheet
 
 `bake_particle_sheet {path | entity, columns, rows, cell_size, seconds}` runs the same preview and
-draws `columns x rows` frames, evenly over the run, into one PNG with straight alpha (additive light
+draws `columns x rows` frames (each the middle of its share of the run) into one PNG with straight alpha (additive light
 keeps its brightest channel as alpha). Without `output` nothing is written; with `output:
 "assets/fx/smoke_sheet"` it writes `smoke_sheet.png` and `smoke_sheet.particles` (one particle the
 size of the frame playing the sheet through Texture Sheet Animation) as one undo step

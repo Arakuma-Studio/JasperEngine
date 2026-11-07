@@ -35,11 +35,12 @@ CHECK_KEYS = {"id", "kind", "status", "round", "measured", "threshold", "thresho
 
 
 def burst_effect(count: int, max_particles: int, **main) -> dict:
-    """A one-shot burst, seed 5, still particles unless main says otherwise."""
+    """A one-shot burst from a sphere, seed 5 (a module the file does not list is absent: no shape emits from a point)."""
     fields = {"startLifetime": 1, "startSpeed": 2, "startSize": 0.2}
     fields.update(main)
     return {"duration": 1, "looping": False, "seed": 5, "maxParticles": max_particles,
-            "modules": {"main": fields, "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": count}]}}}
+            "modules": {"main": fields, "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": count}]},
+                        "shape": {"shape": "sphere", "radius": 1}}}
 
 
 async def make_effect(ed: Editor, path: str, effect: dict) -> None:
@@ -88,7 +89,7 @@ async def test_same_request_same_bytes_and_capacity(ed: Editor):
     ed.check_eq(first.value["metrics"]["scene_context"]["world_budget"], "not_applied")
     ed.check("next" in first.value, "the guidance reaches the agent")
 
-    await make_effect(ed, "assets/fx/under.particles", burst_effect(300, 400))
+    await make_effect(ed, "assets/fx/under.particles", burst_effect(100, 400))
     under = await ed.call("preview_particle_effect", path="assets/fx/under.particles", frames=0)
     ed.check_eq(check_of(under, "capacity_hit")["status"], "PASS")
 
@@ -117,7 +118,8 @@ async def test_overdraw_heat_row_agrees(ed: Editor):
               "modules": {"main": {"startLifetime": 2, "startSpeed": 0, "startSize": 1},
                           "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": 12}]}, "shape": {"enabled": False}}}
     await make_effect(ed, "assets/fx/stack.particles", effect)
-    r = await ed.call_raw("preview_particle_effect", {"path": "assets/fx/stack.particles", "frames": 2, "overdraw_map": True})
+    # (at 0 s nothing is born yet, and the stack has died by the run's end: cells while it lives)
+    r = await ed.call_raw("preview_particle_effect", {"path": "assets/fx/stack.particles", "times": [0.5, 1.0], "overdraw_map": True})
     ed.check(not r.is_error, r.text[:400])
     heat = r.value["metrics"]["overdraw"]["heat"]
     ed.check(abs(heat["peak_layers"] - heat["analytic_peak_layers"]) <= 0.1 * heat["analytic_peak_layers"],
@@ -212,7 +214,8 @@ async def test_bake_sheet(ed: Editor):
     ed.check(all(c[0] >= 250 and c[1] <= 4 and c[2] <= 4 for c, a in zip(colours, alphas) if abs(a - 128) <= 4), "straight red")
 
     # the cell over the dark background is what the preview shows at that time
-    shown = await ed.call_raw("preview_particle_effect", {"path": "assets/fx/square.particles", "times": [0], "seconds": 1,
+    # the first frame of 2 over 1 s is the middle of its half: 0.25 s
+    shown = await ed.call_raw("preview_particle_effect", {"path": "assets/fx/square.particles", "times": [0.25], "seconds": 1,
                                                           "view": "front", "background": "dark"})
     strip = pngdiff.decode(shown.images[0][0])
     preview_cell = pngdiff.crop(strip, 0, 0, 192, 192)
@@ -254,7 +257,7 @@ async def test_changed_thresholds_are_listed(ed: Editor):
 
 
 async def test_check_cli(ed: Editor):
-    """check --particles: the FAIL in compiler style, exit 1; --files with the passing effect alone exits 0."""
+    """check --particles: the FAIL in compiler style, exit 1; --files with an effect without FAIL (its pop is a warning) exits 0."""
     cmd = harness.editor_command() + ["check", "--project", str(ed.project), "--particles"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     output = r.stdout + r.stderr

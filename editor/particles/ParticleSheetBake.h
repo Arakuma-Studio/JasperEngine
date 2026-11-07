@@ -25,7 +25,7 @@ namespace jasperengine::editor {
         static constexpr int MAX_TILES = 16;   // columns and rows each
         static constexpr int MAX_SHEET = 4096; // pixels each way
 
-        // the preview request of a sheet: columns x rows cells at k / count of the run, transparent
+        // the preview request of a sheet: columns x rows cells, each in the middle of its part of the run, transparent
         static ParticlePreviewRequest sheetRequest(ParticlePreviewRequest base, int columns, int rows, int cellSize);
         // why columns, rows and cell size do not make a sheet (empty: they do)
         static std::string validate(int columns, int rows, int cellSize);

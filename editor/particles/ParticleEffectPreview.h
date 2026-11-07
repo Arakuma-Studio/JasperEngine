@@ -60,7 +60,8 @@ namespace jasperengine::editor {
         // a sheet's cells: the straight-alpha colour (Bake Sprite Sheet) instead of a background
         bool transparentCells = false;
         bool labels = true;             // time and count under each cell
-        // the cells at k / frames of the run (a flipbook's frames) rather than k / (frames - 1)
+        // the cells in the middle of each of `frames` equal parts of the run (a flipbook's frames: the
+        // first is not the empty start) rather than at k / (frames - 1)
         bool openEnd = false;
         ParticleQaSettings qa;
         std::map<std::string, int> rounds;   // consecutive FAILs before this run, by check id

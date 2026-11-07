@@ -764,7 +764,7 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
         const int frames = request.times.empty() ? request.frames : (int)request.times.size();
         if (times.empty()){
             for (int k = 0; k < frames; k++){
-                if (request.openEnd) times.push_back(measured.seconds * (double)k / (double)frames);
+                if (request.openEnd) times.push_back(measured.seconds * ((double)k + 0.5) / (double)frames);
                 else times.push_back(frames == 1 ? measured.seconds * 0.5 : measured.seconds * (double)k / (double)(frames - 1));
             }
         }
