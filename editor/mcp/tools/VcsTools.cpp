@@ -14,7 +14,8 @@
 //   sync_remote          fetch, pull (fast-forward only) or push: a job; pull and push need confirm
 //
 // Every path is project-relative, inside the project, without a NUL; a revision is a hash, HEAD
-// or HEAD~n (git), a number, BASE or HEAD (svn). No parameter ever becomes a flag of the tool.
+// or HEAD~n (git), a number, BASE or HEAD (svn, where HEAD reads BASE); omitted, the baseline
+// (git HEAD, svn BASE). No parameter ever becomes a flag of the tool.
 #include "McpTools.h"
 
 #include "mcp/McpCall.h"
@@ -122,6 +123,13 @@ bool validRevision(const CallPtr& call, const VcsService& service, const std::st
     call->fail("\"" + rev + "\" is not a revision: " +
                (service.caps().provider == "svn" ? std::string("a number, BASE or HEAD") : std::string("a 7-64 digit hash, HEAD or HEAD~n")) + ".");
     return false;
+}
+
+// rev as given, the baseline when omitted (git HEAD, svn BASE); false (and the call failed) when it is not one
+bool readRevision(const CallPtr& call, const VcsService& service, std::string& rev) {
+    rev = call->args().value("rev", std::string());
+    if (rev.empty()) rev = service.baselineRevision();
+    return validRevision(call, service, rev);
 }
 
 Json changeJson(const VcsService& service, const vcs::VcsChange& change) {
@@ -275,8 +283,10 @@ void diffFileTool(const CallPtr& call) {
     std::vector<fs::path> absolute;
     std::vector<RepoPath> keys;
     if (!resolvePaths(call, *service, Json::array({args.value("path", std::string())}), absolute, keys, true)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
-    if (!validRevision(call, *service, rev)) return;
+    std::string rev;
+    if (!readRevision(call, *service, rev)) return;
+    // what the read compares with (svn's HEAD is its BASE)
+    rev = service->effectiveRevision(rev);
     const size_t maxBytes = static_cast<size_t>(std::clamp(args.value("max_bytes", 65536), 1024, 1 << 20));
     const std::string path = args.value("path", std::string());
     const std::string source = args.value("source", std::string("editor"));
@@ -303,7 +313,7 @@ void diffFileTool(const CallPtr& call) {
         std::string text = FileUtils::withLineEndings(absolute[0], *buffer);
         const vcs::SnapshotPtr& snapshot = service->snapshot();
         const vcs::VcsChange* change = snapshot ? snapshot->find(key) : nullptr;
-        if (rev == "HEAD" && change && (change->index == vcs::FileState::Untracked || change->newFile())) {
+        if (rev == service->baselineRevision() && change && change->newFile()) {
             reply(LineDiff::unified({}, text, key, key), "editor", true);
             return;
         }
@@ -425,8 +435,9 @@ void diffSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     SceneTarget target;
     if (!resolveSceneTarget(call, project, false, target)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
-    if (!validRevision(call, *service, rev)) return;
+    std::string rev;
+    if (!readRevision(call, *service, rev)) return;
+    rev = service->effectiveRevision(rev);
     const std::string source = args.value("source", std::string("editor"));
     vcs::SceneDiffTracker::Request request;
     request.sceneId = source == "editor" ? target.sceneId : 0;
@@ -736,7 +747,7 @@ void registerVcsTools(McpRegistry& registry) {
                            "(source editor), else the file on disk. Scenes and prefabs read better with diff_scene.";
         tool.inputSchema = object({
             {"path", string("Project-relative.")},
-            {"rev", withDefault(string("git: hash, HEAD, HEAD~n; svn: number, BASE (HEAD = BASE)."), "HEAD")},
+            {"rev", string("Omitted: git HEAD, svn BASE (svn's HEAD reads BASE too). Else a git hash or HEAD~n, an svn number.")},
             {"source", withDefault(stringEnum("", {"editor", "disk"}), "editor")},
             {"max_bytes", withDefault(integer("", 1024, 1048576), 65536)}
         }, {"path"});
@@ -770,7 +781,7 @@ void registerVcsTools(McpRegistry& registry) {
             "before commit_files.";
         tool.inputSchema = object({
             {"scene", Json{{"type", Json::array({"integer", "string"})}, {"description", "An open scene's id or name, or a .scene/.prefab path."}}},
-            {"rev", withDefault(string(""), "HEAD")},
+            {"rev", string("As diff_file's: omitted, git HEAD or svn BASE.")},
             {"source", withDefault(stringEnum("", {"editor", "disk"}), "editor")},
             {"changed_only", withDefault(boolean(""), true)}
         });
@@ -786,7 +797,7 @@ void registerVcsTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Edit;
         tool.allowedWhilePlaying = false;
         tool.description =
-            "Reverts one diff_scene row of an open scene or prefab to HEAD: a property (as diff_scene writes it, transform.position), "
+            "Reverts one diff_scene row of an open scene or prefab to the baseline: a property (as diff_scene writes it, transform.position), "
             "a component, or the whole GameObject (entity \"settings\": Scene Settings). One undo step; returns its name.";
         tool.inputSchema = object({
             {"scene", Json{{"type", Json::array({"integer", "string"})}, {"description", "An open scene's id or name, or an open .prefab path."}}},

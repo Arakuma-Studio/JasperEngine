@@ -70,9 +70,10 @@ and who locked what in the Project window, the Hierarchy and the Inspector, comm
   Version Control > Show Changes in Code Editor turns them off (no version control process runs
   for them then).
 - **Scene Diff** (Window > Version Control > Scene Diff): the tree of GameObjects, components and
-  properties that differ, against HEAD or a revision from History. Changed Only filters; a click
-  selects the GameObject; each row has Revert to Baseline. Values the engine computes on load
-  (world matrices) are never differences, and reordering a script's properties is not a change.
+  properties that differ, against the baseline (HEAD; Subversion: BASE) or a revision from
+  History. Changed Only filters; a click selects the GameObject; each row has Revert to Baseline.
+  Values the engine computes on load (world matrices) are never differences, and reordering a
+  script's properties is not a change.
   A scene too big to encode within the frame budget shows its saved changes instead ("Showing
   saved changes").
 - Version control is read every 10 seconds, at once after a save or a version control operation,
@@ -141,7 +142,9 @@ Fetch and Push do not exist. Locks are Subversion locks on `svn:needs-lock` file
 window reads the `.mine`/`.rOLD`/`.rNEW` files. The baseline is BASE, the revision checked out:
 HEAD given anywhere (the Scene Diff, Diff Against Baseline, the tools) reads BASE, so another
 user's newer commit never shows as a change of yours; a revision number compares with that
-revision. A working copy of `^/tags/<tag>` shows its tag in the status bar.
+revision. A file added with `svn add` has no BASE (the Scene Diff lists all of it as added); a file
+moved with `svn move` compares with the file it was moved from. A working copy of `^/tags/<tag>`
+shows its tag in the status bar.
 
 ## Checking it by hand
 
