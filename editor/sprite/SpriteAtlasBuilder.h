@@ -158,7 +158,6 @@ namespace jasperengine::editor::sprite {
 
     struct AtlasProgress {
         std::atomic<int> done{0}, total{0};
-        std::atomic<bool> running{false};
     };
 
     class SpriteAtlasBuilder {

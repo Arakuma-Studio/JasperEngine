@@ -396,6 +396,7 @@ async def test_incremental(ed: Editor):
         if run == 0:
             changed = [n for n in files if n not in before]
             check(len(changed) == 1, f"only the changed member's page is new: {changed}")
+            check(got.get("relayout") is False, f"new pixels of the same size keep the layout: {got.get('relayout')}")
             check(len([n for n in before if n in files]) >= 2, "the other two pages keep their files")
         before = files
     timings.sort()
@@ -406,6 +407,7 @@ async def test_incremental(ed: Editor):
     await ed.call("sync_files", paths=[big[2]])
     await ed.call("wait", seconds=1.0)
     after = await built(ed, path)
+    check(after.get("relayout") is True, f"a member of a new size relayouts: {after.get('relayout')}")
     sizes = sorted(tuple(p["size"]) for p in after["pages"])
     check((40 + 3, 40 + 3) in sizes or any(s[0] < 60 for s in sizes), f"a smaller page for the new size: {sizes}")
     # progress and cancel: a build cancelled through its job

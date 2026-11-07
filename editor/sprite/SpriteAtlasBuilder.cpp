@@ -234,7 +234,7 @@ namespace jasperengine::editor::sprite {
         }
         nlohmann::json j = {{"platform", platform}, {"compression", compression}, {"filter", filter}, {"pages", pagesJson},
                             {"frame_count", frames.size()}, {"duplicates", duplicates}, {"usage_percent", std::lround(usage * 100.0)},
-                            {"members", members}, {"stats", statsLine()}};
+                            {"members", members}, {"stats", statsLine()}, {"relayout", relayout}, {"cache_hit", cacheHit}};
         nlohmann::json worst = nlohmann::json::array();
         for (size_t i = 0; i < worstMembers.size() && i < 5; i++) worst.push_back({{"member", worstMembers[i].first}, {"transparent_pixels", worstMembers[i].second}});
         j["worst_members"] = worst;
@@ -875,7 +875,6 @@ namespace jasperengine::editor::sprite {
         Running r;
         r.progress = std::make_shared<AtlasProgress>();
         r.cancel = std::make_shared<jobs::CancelToken>();
-        r.progress->running = true;
         jobs::SubmitOptions options;
         options.lane = jobs::Lane::Background;
         options.name = "sprite-atlas-build";
