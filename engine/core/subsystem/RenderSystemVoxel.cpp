@@ -8,6 +8,7 @@
 
 #include "Log.h"
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
 #include "render/SystemRender.h"
@@ -346,6 +347,15 @@ void RenderSystem::applyVoxelLayersUniform(ObjectRender& render, int slot, Entit
         const float scaleY = metresPerTile > 0.0f ? layer.uvScale.y / metresPerTile : layer.uvScale.y;
         layers.uvTransform[i] = Vector4(scaleX, scaleY, originX * scaleX + layer.uvOffset.x, originZ * scaleY + layer.uvOffset.y);
         layers.surface[i] = Vector4(layer.roughnessFactor, layer.metallicFactor, layer.normalStrength, layer.occlusionStrength);
+        // a colour layer leaves roughness and metallic to the terrain's material (terrain_fs.glsl's
+        // getTerrainColor): a slot following one takes them from there too
+        if (present && !layer.pbr && &layer != &volume->materialSlots[i].layer) {
+            if (const MeshComponent* terrainMesh = scene->findComponent<MeshComponent>(volume->terrain)) {
+                const Material& material = terrainMesh->submeshes[0].material;
+                layers.surface[i].x = material.roughnessFactor;
+                layers.surface[i].y = material.metallicFactor;
+            }
+        }
         layers.slices[i] = Vector4(detail ? static_cast<float>(std::max(detail->colorSlice[i], 0)) : 0.0f, detail ? static_cast<float>(detail->normalSlice[i]) : -1.0f,
                                    detail ? static_cast<float>(detail->surfaceSlice[i]) : -1.0f, 0.0f);
     }
