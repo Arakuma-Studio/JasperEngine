@@ -603,6 +603,29 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_app_hide",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "A minimized window was untestable from MCP: agents asked for a real minimize (xdotool) or paused the "
+                         "game, which stops its updates, where a minimized desktop game keeps updating without drawing.",
+        "text_at_issue": "send_input description: 'app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation'",
+        "source": "platform-lifecycle spec (2026-11-04), D7",
+        "prompt": "The game is playing. Check how it behaves while its window is minimized: minimize it for two seconds, "
+                  "then restore it. Do not pause the game.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}, "result": ok(
+                "Sent 3 events over 121 frames; playing.", {"frames": 121, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "show"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"visible": True, "focused": True,
+                                                                                        "paused": False}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
+                   "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "
@@ -1117,6 +1140,31 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_random_start_for_copies",
+        "kind": "guard",
+        "what_happened": "Copies of a looping entity Animation moved in lockstep; edit_animation's random_start (an "
+                         "Action's Random Start) desyncs them without a script.",
+        "text_at_issue": "edit_animation schema: random_start (a bare parameter)",
+        "source": "runtime-core spec 6.7 (Doriax 45966b13a: action start offset / random start)",
+        "prompt": "The 40 coins are copies of the Coin prefab and its CoinSpin animation makes them all spin in sync. "
+                  "Make each coin start its spin at a different point so they look natural.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "Animation \"CoinSpin\" [21]: loop true, duration -1, 1 action(s): 0 rotation tween on Coin (1 s, spin).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "loop": True, "duration": -1, "speed": 1, "start_offset": 0,
+                 "random_start": False, "actions": [{"index": 0, "kind": "rotation_tween"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoinSpin [21] action animation",
+                                                  {"entities": [{"id": 21, "path": "Coin/CoinSpin"}]})},
+            {"tool": "edit_animation", "result": ok(
+                "Updated animation \"CoinSpin\": 1 action(s); 0 track(s) created, 0 rewritten, 0 tween(s) added (one undo step).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "random_start": True})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_animation", "args": {"random_start": True}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"action": {"randomStart": True}}}}]}],
+                   "must_not_call": ["create_script", "write_file"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_scene_default_shader_values",
         "kind": "guard",
         "what_happened": "New text (code-editor-git): a look shared by every object on the scene's default shader is one "
@@ -1595,6 +1643,62 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_child_scene_on_closed_parent",
+        "kind": "bad",
+        "what_happened": "set_child_scene on a closed parent reported success and the attachment was lost when the scene opened "
+                         "(Doriax 385cff970); it now fails and names open_scene.",
+        "text_at_issue": "set_child_scene: 'Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open "
+                         "scene).'",
+        "source": "scene-integrity spec 4.10 (Doriax 385cff970)",
+        "prompt": "Make scenes/Hud.scene a child scene of scenes/Level2.scene, so it loads with it.",
+        "mocks": [
+            {"tool": "list_scenes", "result": ok(
+                "3 scene(s):\n1 \"Main\" 3D scenes/Main.scene open selected start\n2 \"Hud\" 2D scenes/Hud.scene open\n"
+                "3 \"Level2\" 3D scenes/Level2.scene",
+                {"scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True, "selected": True},
+                            {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "opened": True},
+                            {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": False}]})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "after": "open_scene", "result": ok(
+                "Scene 2 is a child scene of 3.", {"scene": {"id": 3, "name": "Level2", "child_scenes": [{"id": 2}]}})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "result": err(
+                "Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open scene).")},
+            {"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}, "result": ok(
+                "Opened scene 3 \"Level2\" (scenes/Level2.scene), selected.",
+                {"scene": {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": True, "selected": True}})},
+            {"tool": "save_scene", "result": ok("Saved scene 3 \"Level2\" to scenes/Level2.scene.", {"scene": {"id": 3}})},
+        ],
+        # opened first, or retried once the error named open_scene
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}},
+                             {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$", "child": "re:Hud|^2$"}}],
+                   "any_of": [{"order": [["open_scene", "set_child_scene"]]}, {"min_calls": {"set_child_scene": 2}}],
+                   "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_move_next_to_skybox",
+        "kind": "bad",
+        "what_happened": "move_entity after=Skybox for a GameObject with a Transform reported 'Moved' while only the list changed, "
+                         "and the next sort put it back; it now fails and says to use parent/index.",
+        "text_at_issue": "move_entity: 'Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the "
+                         "hierarchy; one without (a Skybox) keeps its own place: place it with parent (and index), or next to a "
+                         "GameObject with a Transform.'",
+        "source": "scene-integrity spec 4.16 (Doriax 2eea20daa, narrowed)",
+        "prompt": "In the Main scene, put the Crate first among the root GameObjects (it is listed after the Skybox now).",
+        "mocks": [
+            {"tool": "move_entity", "args": {"after": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "args": {"before": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "result": ok("Moved 1 GameObject(s) (one undo step); world poses kept (local transforms "
+                                                 "adapted).", {"scene_id": 1, "moved": [{"id": 13, "path": "Crate", "parent": None}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" to scenes/Main.scene.", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_typing_utf16_units",
         "playing": True,
         "kind": "guard",
@@ -1834,5 +1938,62 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_copied_scene_ids",
+        "kind": "guard",
+        "what_happened": "A copied .scene used to keep its original's scene id; copies get their own now, and the result says "
+                         "which (copied_scenes): an agent wiring the copy as a child scene needs that id.",
+        "text_at_issue": "move_asset result: copied_scenes [{path, scene_id, name}]",
+        "source": "scene-integrity spec (Doriax e0a38fe33)",
+        "prompt": "Copy the folder levels to levels_v2 with the editor, then tell me the scene id and the scene name the copied "
+                  "Forest scene got.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"copy": True}, "result": ok(
+                "Copied levels to levels_v2 (new GUIDs).",
+                {"from": "levels", "to": "levels_v2", "copy": True, "files_written": ["levels_v2/Forest.scene"],
+                 "copied_scenes": [{"path": "levels_v2/Forest.scene", "scene_id": 2718281828, "name": "Forest 1"}]})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"copy": True}}], "reply_must": [r"2718281828", r"Forest 1"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_scene_view_after_load",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "After the game loads another scene, the Scene view draws that scene (from the editor camera); "
+                         "get_play_state says which scene it draws (scene_view_scene_id).",
+        "text_at_issue": "get_play_state result: scene_view_scene_id",
+        "source": "scene-integrity spec (Doriax 1e6ef8baa)",
+        "prompt": "The game is playing and just loaded another level. Which scene does the editor's Scene view show now? Answer "
+                  "with the scene's name.",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Menu\"). Session: 12 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Menu"},
+                 "running_scenes": [{"id": 3001, "name": "Menu", "main": False}, {"id": 3002, "name": "Arena", "main": True}],
+                 "scene_view_scene_id": 3002})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"Arena"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_game_cursor_released",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "A game that captures the cursor gives it back to the editor on Escape in the Game view; "
+                         "get_play_state says whether it did (input.cursor).",
+        "text_at_issue": "get_play_state result: input.cursor {mode, released_to_editor}",
+        "source": "scene-integrity spec (Doriax e5d7aad14)",
+        "prompt": "The game is playing. Does the game hold the mouse cursor right now, or has it been given back to the editor?",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Main\"). Session: 30 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Main"},
+                 "input": {"actions": {}, "touches": 0, "keys_held": [],
+                           "cursor": {"mode": "captured", "released_to_editor": True}}})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
+        "max_turns": 6,
     },
 ]

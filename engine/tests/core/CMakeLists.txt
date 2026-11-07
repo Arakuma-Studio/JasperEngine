@@ -95,6 +95,9 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+jasperengine_skip_unity_build(
+    REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
@@ -105,6 +108,8 @@ jasperengine_add_test_target(jasperengine-core-tests
     # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
+        # WebKeyMap.h, the web platform's key map (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."

@@ -251,6 +251,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onViewDestroyed` | none | view destroyed |
 | `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
+| `onVisibilityChanged` | `visible` | the window was hidden or shown again (minimized, unmapped, fully covered on macOS; a hidden web page): a hidden desktop game updates without drawing ([platform-services.md](platform-services.md)) |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
 | `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
 | `onLowMemory` | none | the system is short of memory (Android, iOS); `Device.onLowMemory` follows at the next frame, after the engine cleared its caches |
@@ -503,6 +504,7 @@ return Slot
 | `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
 | `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
 | `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
+| `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
@@ -962,7 +964,9 @@ GameObject.destroyImmediate(obj)
   (any wrapper), or a script instance (`self` of some script).
 - A rotation is REQUIRED with a position: use `Quaternion.IDENTITY` or `Quaternion(0, 0, deg)`.
 - Returns a `GameObject` wrapper of the new root. If `original` was a script instance, returns
-  the copy's script instance of the same class instead.
+  the copy's script instance of the same class instead. `nil` when nothing was made, or when the
+  copy's `init` / `onEnable` destroyed it with `destroyImmediate` (a deferred `destroy` there
+  returns the copy: it goes at the end of the frame).
 - Prefabs go to the active scene unless a parent or scene is given.
 - `obj` for destroy: any wrapper or a script `self` (destroys its GameObject). `nil` is ignored.
 
@@ -1756,7 +1760,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `scale` | rw `Vector3` | |
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
 | `getWorldScale()` | method | |
-| `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
+| `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
 | `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
@@ -2680,7 +2684,13 @@ Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a runn
 action and starts it from the beginning, in the same update), `isRunning()`, `isPaused()`,
 `isStopped()`, `getTimeCount()`, `getActionComponent()`; rw `target` (Entity),
 `ownedTarget`, `speed` (scales the action's own time: 2 plays twice as fast, a negative speed
-plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntity)`.
+plays back to the start and holds there), `startOffset` (seconds of the action's own time each new
+run starts at: `start()` from stopped, `restart()`; not a resume after `pause()`, not editor
+previews), `randomStart` (each new run starts at a random point of one cycle, overriding
+`startOffset`: copies of a looping tween or Animation stop moving in lockstep; the same every
+playthrough), `weight`; `setTarget(gameObjectOrEntity)`. A child of an Animation keeps its own
+offset across the Animation's loops; a Particle System's controller ignores both (its Start Delay
+and Prewarm do that).
 `stop()` also cancels a `start()` asked for earlier in the same frame.
 
 Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the

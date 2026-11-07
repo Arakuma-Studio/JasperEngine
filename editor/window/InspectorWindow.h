@@ -25,6 +25,7 @@
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
+#include "animation/ActionPreviewSnapshot.h"
 #include "ecs/Signature.h"
 #include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
@@ -334,12 +335,9 @@ namespace jasperengine::editor{
         bool actionPreviewing = false;
         Entity actionPreviewEntity = 0;
         uint32_t actionPreviewSceneId = 0;
-        struct ActionPreviewState {
-            Entity entity = 0;
-            Entity parent = 0;
-            YAML::Node components;
-        };
-        std::vector<ActionPreviewState> actionPreviewStates;
+        // the authored state of what the action preview writes; values commands write meanwhile
+        // are kept (runtime-core spec 6.6)
+        ActionPreviewSnapshot actionPreviewSnapshot;
 
         // PreviewOwner tokens of the action preview's roots (animation clips 9.R7): acquiring them
         // stops the Animation window or Pose window preview of the same model first
@@ -621,7 +619,7 @@ namespace jasperengine::editor{
             uint32_t sceneId = 0;
         };
 
-        EntityPickerResult drawEntityPickerPopup(const std::string& popupId, const Signature& filter, SceneProject* owningScene, bool includeChildScenes, Entity currentValue, uint32_t currentValueSceneId = 0, const std::vector<Entity>& excludeEntities = {});
+        EntityPickerResult drawEntityPickerPopup(const std::string& popupId, const Signature& filter, SceneProject* owningScene, bool includeRelatedScenes, Entity currentValue, uint32_t currentValueSceneId = 0, const std::vector<Entity>& excludeEntities = {});
         void syncSubSelection(SceneProject* sceneProject, Entity entity, int tileIndex, int instanceIndex);
 
         // widthKey: part of the table's id, so a saved (resized) column width lasts only as long as

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "component/CameraComponent.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
@@ -15854,7 +15855,9 @@ void RenderSystem::updateSwapchainRedirect(){
     if (redirect != swapchainRedirect){
         swapchainRedirect = redirect;
         // the flip is baked in the MVP matrices
-        scene->getComponent<CameraComponent>(scene->getCamera()).needUpdate = true;
+        if (CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+            camera->needUpdate = true;
+        }
     }
 }
 

@@ -8,6 +8,7 @@
 // editor/project/PREFABS.md, section 16.
 
 #include "PrefabStage.h"
+#include "render/ViewCameraMirror.h"
 #include "component/PrefabComponent.h"
 
 #include "Project.h"
@@ -1136,12 +1137,7 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
     }
 
     Scene* contextScene = context->scene;
-    if (stage->contextCamera == NULL_ENTITY || !contextScene->isEntityCreated(stage->contextCamera)) {
-        stage->contextCamera = contextScene->createSystemEntity();
-        contextScene->setEntityName(stage->contextCamera, "Prefab Mode Context Camera");
-        contextScene->addComponent<Transform>(stage->contextCamera, {});
-        contextScene->addComponent<CameraComponent>(stage->contextCamera, {});
-    }
+    ViewCameraMirror::ensure(contextScene, stage->contextCamera, "Prefab Mode Context Camera");
 
     Scene* veil = nullptr;
     if (prefabContextVisibility == PrefabContextVisibility::Gray) {
@@ -1160,12 +1156,6 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
     // The context camera sees the context as the stage's camera sees the stage, the
     // prefab's root standing where the instance is (Unity shows the prefab in its place)
     Scene* scene = sceneProject.scene;
-    const Entity viewCamera = scene->getCamera();
-    CameraComponent* from = scene->findComponent<CameraComponent>(viewCamera);
-    Transform* fromTransform = scene->findComponent<Transform>(viewCamera);
-    if (!from || !fromTransform) {
-        return;
-    }
     Matrix4 toContext;  // identity
     Transform* instanceTransform = contextScene->isEntityCreated(stage->contextRoot) ? contextScene->findComponent<Transform>(stage->contextRoot) : nullptr;
     Transform* rootTransform = scene->findComponent<Transform>(stage->root);
@@ -1173,33 +1163,7 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
         toContext = placement(instanceTransform->worldPosition, instanceTransform->worldRotation)
             * placement(rootTransform->position, rootTransform->rotation).inverse();
     }
-    CameraComponent& to = contextScene->getComponent<CameraComponent>(stage->contextCamera);
-    Transform& toTransform = contextScene->getComponent<Transform>(stage->contextCamera);
-    to.type = from->type;
-    to.leftClip = from->leftClip;
-    to.rightClip = from->rightClip;
-    to.bottomClip = from->bottomClip;
-    to.topClip = from->topClip;
-    to.yfov = from->yfov;
-    to.aspect = from->aspect;
-    to.nearClip = from->nearClip;
-    to.farClip = from->farClip;
-    to.useTarget = from->useTarget;
-    to.autoResize = false;
-    to.transparentSort = from->transparentSort;
-    to.depthTest = from->depthTest;
-    to.hasCustomViewMatrix = false;
-    const Vector3 position = toContext * fromTransform->worldPosition;
-    toTransform.position = position;
-    Vector3 dummyPosition;
-    Vector3 dummyScale;
-    Quaternion contextRotation;
-    toContext.decompose(dummyPosition, dummyScale, contextRotation);
-    toTransform.rotation = contextRotation * fromTransform->worldRotation;
-    to.target = toContext * from->worldTarget;
-    to.up = (toContext * (fromTransform->worldPosition + from->worldUp)) - position;
-    to.needUpdate = true;
-    toTransform.needUpdate = true;
+    ViewCameraMirror::copy(scene, scene->getCamera(), contextScene, stage->contextCamera, toContext);
 }
 
 void editor::Project::beginPrefabStageDraw(uint32_t sceneId) {

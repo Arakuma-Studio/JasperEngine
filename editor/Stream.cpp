@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+
+#include <unordered_map>
+#include <unordered_set>
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
@@ -3063,8 +3066,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             }
         };
 
+        // one entry per file: two scenes on one file would each load and overwrite the other
+        std::unordered_map<std::string, const SceneProject*> listedFiles;
         for (const auto& sceneProject : project->getScenes()) {
             if (sceneProject.filepath.empty()) {
+                continue;
+            }
+            const auto [listed, added] = listedFiles.emplace(project->sceneFileKey(sceneProject.filepath), &sceneProject);
+            if (!added) {
+                Out::warning("Scenes \"%s\" and \"%s\" both name %s: project.yaml lists the file once",
+                             listed->second->name.c_str(), sceneProject.name.c_str(), sceneProject.filepath.generic_string().c_str());
                 continue;
             }
             appendUnresolved();
@@ -3854,6 +3865,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     bool isFirstScene = true;
     size_t listPosition = 0;
+    std::unordered_set<std::string> listedFiles;
     if (node["scenes"]) {
         for (const auto& sceneNode : node["scenes"]) {
             if (!sceneNode["filepath"]) {
@@ -3870,6 +3882,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                     relStr = moved.generic_string();
                 }
             }
+            // a second entry for one file would build a second scene saving into it
+            if (!listedFiles.insert(project->sceneFileKey(relStr)).second) {
+                Out::warning("project.yaml lists %s twice: the second entry is ignored (the next save writes it once)", relStr.c_str());
+                continue;
+            }
             fs::path scenePath = relStr;
             if (scenePath.is_relative()) {
                 scenePath = project->getProjectPath() / scenePath;
@@ -3885,7 +3902,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 project->addUnresolvedScene(position, relStr);
                 continue;
             }
-            if (!project->loadScene(scenePath, opened, true, opened)) {
+            if (!project->loadScene(scenePath, opened, true, opened, true)) {
                 project->addUnresolvedScene(position, relStr);
                 continue;
             }

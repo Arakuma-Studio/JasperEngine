@@ -1486,12 +1486,12 @@ public:
     }
 
     bool execute() override {
-        *report = AssetOps::copy(*project, from, to, &copyGuids);
+        *report = AssetOps::copy(*project, from, to, &copyGuids, &copyScenes);
         if (!report->ok) return false;
         pairTo.clear();
         fs::path vatCopy;
         if (vat::renamedPair(from, to, pairFrom, pairTo)) {
-            const AssetOps::Result pair = AssetOps::copy(*project, pairFrom, pairTo, &copyGuids);
+            const AssetOps::Result pair = AssetOps::copy(*project, pairFrom, pairTo, &copyGuids, &copyScenes);
             if (!pair.ok) {
                 AssetOps::removeCopy(*project, to);
                 report->ok = false;
@@ -1534,6 +1534,7 @@ private:
     fs::path to;
     fs::path pairFrom, pairTo;      // the other file of a Vertex Animation and its copy
     std::map<std::string, std::string> copyGuids;
+    std::map<std::string, AssetOps::SceneCopy> copyScenes;
     std::shared_ptr<AssetOps::Result> report;
 };
 
@@ -1782,6 +1783,14 @@ void moveAssetTool(const CallPtr& call) {
         data["pair"] = {{"from", projectRelative(project, pairFrom)}, {"to", projectRelative(project, pairTo)}};
         text += " With it, " + projectRelative(project, pairFrom) + " -> " + projectRelative(project, pairTo) +
                 " (a Vertex Animation and its mesh stay together; the .vat's mesh follows).";
+    }
+    if (!report->copiedScenes.empty()) {
+        Json scenes = Json::array();
+        for (const auto& [path, identity] : report->copiedScenes) {
+            scenes.push_back(Json{{"path", path}, {"scene_id", identity.id}, {"name", identity.name}});
+            text += "\n" + path + " is scene \"" + identity.name + "\" (id " + std::to_string(identity.id) + ").";
+        }
+        data["copied_scenes"] = scenes;
     }
     for (const AssetOps::TextReference& broken : report->textReferencesBroken) {
         text += "\nStill names the old path: " + broken.referrer + ":" + std::to_string(broken.line) + " (" + broken.target + ")";

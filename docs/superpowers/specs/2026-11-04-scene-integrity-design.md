@@ -982,4 +982,63 @@ Hot files for merge planning: `editor/Project.cpp`, `editor/App.cpp`, `editor/St
 
 ## Deviations
 
-None yet.
+Recorded during the implementation (branch `dc/scene-integrity`).
+
+1. **Multi-delete undo (4.17) was mostly fixed already.** `DeleteEntityCmd` keeps `trackedBeforeDelete`
+   and puts the whole tracked list back on undo (an older fix the comparison's trace missed), so the
+   list order of `{Light, A, Sky, B}` comes back. What remained wrong is the Skybox component array: the
+   skies are restored in restore order, so the scene's sky (the first Skybox) could swap. The undo now
+   sorts the Skybox array by the restored list; no `keepUntransformedPlaces` pass is needed.
+2. **`AssetOps::copy` keeps its `copyGuids` parameter and gains `copyScenes`** (a map of `SceneCopy {id,
+   name}` by copy path) instead of a `CopyIdentity` struct replacing it: the same redo behaviour with
+   less churn in the signature `project-window` also calls. `AssetOps::Result::copiedScenes` reports what
+   each copy got.
+3. **`move_entity parent/index` counts `index` among the siblings with a Transform** when the moved
+   GameObject has one, so `parent: null, index: 0` never anchors on a Skybox (which the command now
+   refuses). Documented in `docs/mcp/guide/ecs.md`.
+4. **No `ProjectUtils::isTransformOrdered` and no debug-only warning in `writeSceneSource`**: the
+   generator and the cooker sort their own copy of the list, so an unsorted list can no longer reach an
+   export, and the tests compare the list with its sorted copy directly.
+5. **Inspector "Main Camera" field**: there is none (the main camera is set from the Hierarchy's context
+   menu and MCP); `list_scenes` reports `main_camera` null when the Camera component is gone, and
+   `getSceneCamera` ignores it.
+6. **Hierarchy child-scene menu items for closed parents**: the Hierarchy only shows open scenes and
+   inline-loaded child scenes, whose data is loaded, so the closed-parent refusal lives in
+   `set_child_scene` alone.
+7. **The picker UI test** is replaced by the unit test of `Project::getRelatedScenes` and the drop rules
+   (`SceneIntegrityTest.RelatedScenesAndDropRules`): driving the picker popup of a script property with
+   real input would test ImGui more than the list it is built from.
+8. **Agent guide**: no digest line (lead decision: only agent-authoring restructures the guide). The
+   changed tool texts (`set_child_scene`'s error and description, `move_entity`'s refusal) have eval cases
+   `bad_child_scene_on_closed_parent` and `bad_move_next_to_skybox` in `tools/mcp/eval/cases.py`.
+9. **Escape** follows the lead decision across specs: the focused Game view delivers Escape to the game
+   (runtime-core) and the same press releases a captured or confined cursor (`PlayInput::forward`).
+10. **The project-switch test** is not an MCP test: since S69, every MCP edit (`open_project` included) is
+    refused while a modal dialog is open, so only a native menu (macOS) can switch projects under an open
+    Save dialog. `App::cancelSaveDialogs` stays (run before every switch and at exit); its parts, the
+    dialogs' `abandon()` and close-as-Cancel, are unit-tested.
+11. **The Save dialog tests use `respond_dialog`** (S69's EditorModal fields `name` and `folder`)
+    instead of real input: the refusal reaches agents as `EditorModal::error`, so it is the same check.
+12. **The replacement id of a clash is made from the file's project path, not its GUID**: a scene file
+    copied outside the editor carries its original's in-file GUID until the asset database settles it,
+    so the GUID was not the same at every load (`SceneIntegrityTest.AClashAtLoadGetsTheSameReplacementEveryTime`
+    found it). The path is stable until the file moves, and the first save writes the id anyway.
+13. **CreateEntityCmd is unchanged**: with the fix taken out, `SceneIntegrityTest.CreatedChildrenJoinTheirParentsBranch`
+    still passed (a created child already joins its parent's branch of the tracked list), so the sort it
+    planned was not needed; the test stays as a guard. The generator and cooker sort their copy whatever
+    the list says (`GeneratedScenes.ParentsAreCreatedBeforeChildren`, red without it); the sorts after a
+    model load and a duplicate are kept from reading the code, not from a failing test.
+14. **The clash rule changed again (review)**: no replacement id is derived (neither from the GUID nor the
+    path, deviation 12 is withdrawn). As Unity regenerates a duplicate GUID, the later scene in
+    `project.yaml` order gets a fresh id written into its file at once (`Project::giveSceneFileItsOwnId`,
+    a line edit through `assetio` with a read stamp), so a closed scene, a reload, a rename, an inline load
+    and a reference saved against it all agree. A listed scene keeps the id the project knows it by when
+    its data loads later (`loadScene`, `loadChildSceneInline`).
+15. **Case folding follows the project's volume, not each file's**: a linked folder on a case-sensitive
+    volume inside a project on a case-insensitive one can have two files whose names differ only in
+    case, and the second is refused as "another scene's file". The refusal is safe (nothing is
+    overwritten) and the layout rare; asking each folder's volume costs a probe per save.
+16. **Eval cases** for the new result fields: `guard_copied_scene_ids` (`copied_scenes`),
+    `guard_scene_view_after_load` (`scene_view_scene_id`), `guard_game_cursor_released` (`input.cursor`).
+    The area guides no longer list fields or the refusals the server enforces.
+
