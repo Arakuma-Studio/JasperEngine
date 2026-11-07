@@ -110,6 +110,10 @@ Work so that every minute of build time answers a question:
   whole round.
 - **Generated docs last:** `gen_tool_docs.py`, `tool_budget.py`, `docs/shaders/library.md` once, at the end.
 - **Never rerun green steps on unchanged code.** Use the box time to review your diff and write docs.
+- **Every landing check also runs the suites that pin shared data**, whatever the feature: unit
+  `RuntimeFields.*:CookedScene.*:ShaderNeutralApi.*:ReflectParity.*:ReflectRegistry.*`; MCP `test_reflection.py`,
+  `test_saved_output_determinism.py`, `test_editor_modals.py`, `test_tool_budget.py`, `test_docs.py`; lints
+  `check-editor-modals.py`, `tools/mcp/eval/test_grade.py`. Landings that skipped them broke main.
 - **New component fields reach cooked scenes:** after adding or renaming a serialized component field, regenerate
   `engine/core/serialization/RuntimeFields.gen.inc` (`jasperengine-editor reflect --emit-runtime-fields ...`, in the
   image under `dbus-run-session -- tools/with-xvfb.sh`) and run `RuntimeFields.*:CookedScene.*`; otherwise prebuilt
