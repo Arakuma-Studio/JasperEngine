@@ -953,6 +953,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/TerrainSplineBake.cpp
     ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
+    ${EDITOR_DIR}/util/ParticleEffectTiming.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/EditorFingerprint.cpp
