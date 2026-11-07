@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */; };
+		5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */; };
         5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
         5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
@@ -550,14 +552,6 @@
 		7AB1C0042F2A000000000001 /* PhysicsLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */; };
 		7AA5E0052F2A000000000001 /* TagManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AA5E0012F2A000000000001 /* TagManager.h */; };
 		7AB1C0052F2A000000000001 /* PhysicsLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AB1C0012F2A000000000001 /* PhysicsLayers.h */; };
-		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
-		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
-		711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */; };
-		711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */; };
-		711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */; };
-		711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070F2A0D86500052A9C3 /* nanopb.xcframework */; };
-		711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */; };
-		711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */; };
 		71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC1282981BE00CF79C1 /* Base64.h in Headers */ = {isa = PBXBuildFile; fileRef = 71165BBE282981BE00CF79C1 /* Base64.h */; };
@@ -4372,6 +4366,7 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3C926279EC37FB5 /* WaterLayering.h */; };
 		4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
@@ -4486,6 +4481,10 @@
 		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
 		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
 		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
+		4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
+		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
 		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
@@ -4915,6 +4914,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = ios/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = macos/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
         5E5280000000000000000012 /* HangStackCapture.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangStackCapture.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
@@ -5548,15 +5549,6 @@
 		7AA5E0022F2A000000000001 /* TagManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TagManager.cpp; sourceTree = "<group>"; };
 		7AB1C0012F2A000000000001 /* PhysicsLayers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PhysicsLayers.h; sourceTree = "<group>"; };
 		7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsLayers.cpp; sourceTree = "<group>"; };
-		711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdMobAdapter.m; sourceTree = "<group>"; };
-		711607092A0D1F360052A9C3 /* AdMobAdapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdMobAdapter.h; sourceTree = "<group>"; };
-		7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleMobileAds.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework"; sourceTree = "<group>"; };
-		7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurement.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework"; sourceTree = "<group>"; };
-		7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FBLPromises.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework"; sourceTree = "<group>"; };
-		7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleUtilities.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework"; sourceTree = "<group>"; };
-		7116070F2A0D86500052A9C3 /* nanopb.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = nanopb.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework"; sourceTree = "<group>"; };
-		711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurementIdentitySupport.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework"; sourceTree = "<group>"; };
-		711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = UserMessagingPlatform.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework"; sourceTree = "<group>"; };
 		71165BBD282981BE00CF79C1 /* Base64.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Base64.cpp; sourceTree = "<group>"; };
 		71165BBE282981BE00CF79C1 /* Base64.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Base64.h; sourceTree = "<group>"; };
 		711BFE392E6E5AE500677D11 /* ScriptComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptComponent.h; sourceTree = "<group>"; };
@@ -8703,6 +8695,7 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47A3C926279EC37FB5 /* WaterLayering.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterLayering.h; sourceTree = "<group>"; };
 		4A534E47261DED0CDC733CE1 /* VisibleList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VisibleList.cpp; sourceTree = "<group>"; };
 		4A534E478899E2BB41CC207E /* VisibleList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VisibleList.h; sourceTree = "<group>"; };
 		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
@@ -8785,6 +8778,9 @@
 		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
 		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
 		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
+		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
+		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
+		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
 		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
 		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
 		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
@@ -8880,13 +8876,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */,
-				711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */,
-				711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */,
-				711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */,
-				711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */,
-				711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */,
-				7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */,
 				713D82D7259D324700567F9F /* libjasperengine-ios.a in Frameworks */,
 				17995BFA3003C40000411B78 /* GameController.framework in Frameworks */,
 				4A534E47723A6ABA786CF3A1 /* AVFoundation.framework in Frameworks */,
@@ -10030,8 +10019,6 @@
 				713D8335259D407A00567F9F /* main.m */,
 				713D8337259D407A00567F9F /* ViewController.h */,
 				713D8334259D407A00567F9F /* ViewController.m */,
-				711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */,
-				711607092A0D1F360052A9C3 /* AdMobAdapter.h */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -10069,6 +10056,8 @@
 			children = (
 				710EE4A12A2E2A2000EB04EC /* macos */,
 				710EE49F2A2E291100EB04EC /* ios */,
+				5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */,
+				5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */,
 				710EE49C2A2E1E9200EB04EC /* Assets.xcassets */,
 				7162FEAA25993F810075B97D /* project */,
 				7162FE2D2597C7990075B97D /* platform */,
@@ -10898,6 +10887,7 @@
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 				4A534E4737234843A0260B98 /* UIDrawColor.h */,
+				4A534E47A3C926279EC37FB5 /* WaterLayering.h */,
 				4A534E47261DED0CDC733CE1 /* VisibleList.cpp */,
 				4A534E478899E2BB41CC207E /* VisibleList.h */,
 				4A534E474A83C09CDE4EC26D /* CapsuleShadows.cpp */,
@@ -11020,6 +11010,7 @@
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
+				4A534E47B4E493A883DC863A /* UISelectable.h */,
 				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 			);
 			path = component;
@@ -11302,6 +11293,7 @@
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
+				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
 			);
 			path = subsystem;
@@ -11425,15 +11417,8 @@
 			children = (
 				717AD972290B67B8007D7DB5 /* AudioToolbox.framework */,
 				717AD970290B67A5007D7DB5 /* AVFoundation.framework */,
-				7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */,
 				17995BF93003C40000411B78 /* GameController.framework */,
 				A5E05A7C0000000000000003 /* CoreServices.framework */,
-				7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */,
-				711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */,
-				7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */,
-				7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */,
-				7116070F2A0D86500052A9C3 /* nanopb.xcframework */,
-				711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */,
 				4A534E47982642CBDC327A37 /* CoreMedia.framework */,
 				4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */,
 			);
@@ -12443,6 +12428,7 @@
 				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
+				4A534E47F8386218660CC63D /* UIEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -15586,6 +15572,7 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */,
 				4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */,
 				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
 				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
@@ -15636,6 +15623,8 @@
 				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
 				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
+				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
+				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
 				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
 				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
@@ -16984,6 +16973,7 @@
 				717D9B4E27338381002C0803 /* lua in Resources */,
 				7128CFAE25BA717500965B51 /* Main.storyboard in Resources */,
 				710EE49D2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16994,6 +16984,7 @@
 				7128CEE425BA705600965B51 /* Main.storyboard in Resources */,
 				717D9B4F27338382002C0803 /* lua in Resources */,
 				710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */,
 				71BE60E525B1D019006D6E02 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18170,6 +18161,7 @@
 				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
+				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
 				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
 				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
 				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
@@ -18197,7 +18189,6 @@
 				713D835B259D408C00567F9F /* AppDelegate.m in Sources */,
 				7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */,
 				713D82E4259D32FE00567F9F /* JasperEngineApple.mm in Sources */,
-				711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */,
 				7158F43F259C2C82006E55D3 /* Renderer.mm in Sources */,
 				7162FEAC25993F810075B97D /* main.cpp in Sources */,
 				17995BF73003C3A800411B78 /* JasperEngineGameController.mm in Sources */,
@@ -18999,6 +18990,7 @@
 				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
+				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
 				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
 				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
 				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,
@@ -21658,7 +21650,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21724,7 +21715,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -23683,7 +23673,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23710,7 +23700,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23740,7 +23730,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -23767,7 +23757,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

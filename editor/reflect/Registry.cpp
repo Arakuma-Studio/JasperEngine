@@ -322,7 +322,7 @@ namespace {
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,
         &enums::kProgressbarType, &enums::kReflectionProbeMode, &enums::kReflectionProbeUpdateMode, &enums::kRigidbodyMotionQuality,
-        &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
+        &enums::kButtonTransition, &enums::kNavigationMode, &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
         &enums::kTextureAlphaBorder, &enums::kTextureFilter, &enums::kTextureWrap, &enums::kUIDocumentRenderMode,
         &enums::kUIEventState, &enums::kWindingOrder,
         &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,

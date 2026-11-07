@@ -794,16 +794,30 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
 
 template<>
 void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx) {
-    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled}) {
+    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled,
+                             &button.textureSelected}) {
         remapFramebufferTexture(*texture, ctx);
     }
     button.label = ctx.remap(button.label);
+    // Explicit navigation follows the copy (another GameObject of the source stays, or means nothing elsewhere)
+    button.selectOnUp = ctx.remap(button.selectOnUp);
+    button.selectOnDown = ctx.remap(button.selectOnDown);
+    button.selectOnLeft = ctx.remap(button.selectOnLeft);
+    button.selectOnRight = ctx.remap(button.selectOnRight);
     button.pressed = false;
     button.hovered = false;
+    // the runtime state starts over: not selected, no hold, no fade (appliedScale is kept: the
+    // copied Transform holds that factor, which the copy's next look takes back)
+    button.selected = false;
+    button.submitPressed = false;
+    button.wasLive = false;
+    button.fading = false;
+    button.state = SelectionState::NORMAL;
     button.needUpdateButton = true;
     if (!ctx.move) {
         button.onPress.clear();
         button.onRelease.clear();
+        button.onClick.clear();
     }
 }
 
@@ -1462,6 +1476,7 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, En
     if (ButtonComponent* button = componentOf<ButtonComponent>(source, entity, signature)) {
         button->onPress.clear();
         button->onRelease.clear();
+        button->onClick.clear();
     }
     if (PanelComponent* panel = componentOf<PanelComponent>(source, entity, signature)) {
         panel->onMove.clear();

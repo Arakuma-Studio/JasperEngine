@@ -32,6 +32,9 @@ namespace jasperengine { namespace test {
 
         // screen = the target size in pixels, canvas = the preferred canvas size
         static void setView(int screenWidth, int screenHeight, int canvasWidth, int canvasHeight, Scaling scaling);
+        // the view every GPU suite starts with (640 x 360, Fit Width): a suite that sets its own
+        // puts it back, and one whose goldens or pixel positions depend on it asks for it
+        static void resetView();
 
         // Engine::systemDraw until ready() holds, no shader or pipeline is pending (spec S32) and
         // no mesh waits for its detail levels (spec S54), then 2 more frames; false if it never did within maxFrames frames and a minute

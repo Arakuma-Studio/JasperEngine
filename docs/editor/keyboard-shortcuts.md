@@ -50,6 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
+| Maximize On Play | F11 | Global |
 
 ## Assets
 
@@ -218,6 +219,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Copy Assets | Ctrl+C | Project |
 | Cut Assets | Ctrl+X | Project |
 | Paste Assets | Ctrl+V | Project |
+| Duplicate Assets | Ctrl+D | Project |
 | Select All Assets | Ctrl+A | Project |
 | Delete Assets | Delete / Backspace | Project |
 | Rename Asset | F2 | Project |

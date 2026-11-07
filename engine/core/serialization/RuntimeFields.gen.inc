@@ -1233,6 +1233,20 @@ const FieldEntry kBody_ButtonComponent_fields[] = {
     JE_RF(ButtonComponent, colorPressed, 0xc5a5fc56u, Vector4),
     JE_RF(ButtonComponent, colorDisabled, 0x04208fa8u, Vector4),
     JE_RF(ButtonComponent, disabled, 0x314a4b2du, Bool),
+    JE_RF(ButtonComponent, textureSelected, 0x5d4ca8f5u, Texture),
+    JE_RF(ButtonComponent, colorSelected, 0xba8f6da9u, Vector4),
+    JE_RF(ButtonComponent, transition, 0x8067a0fau, Enum),
+    JE_RF(ButtonComponent, fadeDuration, 0x8a75823fu, Float),
+    JE_RF(ButtonComponent, scaleHovered, 0xc324dcf8u, Float),
+    JE_RF(ButtonComponent, scalePressed, 0xcdab3f89u, Float),
+    JE_RF(ButtonComponent, scaleSelected, 0xf90a4298u, Float),
+    JE_RF(ButtonComponent, navigationMode, 0xe1276984u, Enum),
+    JE_RF(ButtonComponent, wrapAround, 0xfd8c6bd4u, Bool),
+    JE_RF_ENTITY(ButtonComponent, selectOnUp, 0x8a84c0ddu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnDown, 0xcd357e1cu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnLeft, 0xee234711u, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnRight, 0x04170632u, Entity),
+    JE_RF(ButtonComponent, selectOnEnable, 0xdb5cb9cfu, Bool),
 };
 const StructTable kBody_ButtonComponent{"button", kBody_ButtonComponent_fields, std::size(kBody_ButtonComponent_fields)};
 

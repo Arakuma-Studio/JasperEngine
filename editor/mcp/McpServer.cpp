@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <optional>
@@ -860,20 +861,11 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         runOnMainThread([this, id, uri, reply, notFound]() {
             // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
             McpWriteScope writeScope;
-            ResourceResult result;
-            try {
-                std::map<std::string, std::string> vars;
-                if (const ResourceDef* def = reg.findResource(uri)) {
-                    result = def->read ? def->read(uri) : ResourceResult{false, "Resource has no reader.", {}};
-                } else if (const ResourceTemplateDef* tmpl = reg.matchResourceTemplate(uri, vars)) {
-                    result = tmpl->read ? tmpl->read(uri, vars) : ResourceResult{false, "Resource has no reader.", {}};
-                } else {
-                    reply->respond(makeError(id, notFound, "Resource not found: " + uri, Json{{"uri", uri}}));
-                    return;
-                }
-            } catch (const std::exception& e) {
-                result.ok = false;
-                result.error = e.what();
+            bool found = false;
+            const ResourceResult result = reg.readResource(uri, found);
+            if (!found) {
+                reply->respond(makeError(id, notFound, "Resource not found: " + uri, Json{{"uri", uri}}));
+                return;
             }
             if (!result.ok) {
                 reply->respond(makeError(id, notFound, result.error.empty() ? "Resource not found: " + uri : result.error,
@@ -1265,6 +1257,31 @@ std::string McpServer::blockingDialogMessage() const {
     return dialogBlockMessage(dialog);
 }
 
+namespace {
+
+// The play state a tool that needs Edit mode meets, for its refusal
+std::string playStateText(const Project& project) {
+    for (const SceneProject& scene : project.getScenes()) {
+        if (scene.playState == ScenePlayState::LOADING) return "Play mode is starting";
+        if (scene.playState == ScenePlayState::CANCELLING) return "Play mode is stopping";
+        if (scene.playState == ScenePlayState::SAVING) return "Play mode is saving the scenes before it starts";
+    }
+    return "a scene is playing";
+}
+
+// How long a call waits for a scene save the editor started; JASPER_TEST_SAVE_HOLD_MS shortens it
+// for the tests of the timeout
+int saveHoldMs() {
+    static const int ms = []() {
+        const char* value = std::getenv("JASPER_TEST_SAVE_HOLD_MS");
+        const int parsed = value ? std::atoi(value) : 0;
+        return parsed > 0 ? parsed : 60000;
+    }();
+    return ms;
+}
+
+} // namespace
+
 bool McpServer::mayChange(const ToolDef& def, const Json& args) {
     return !def.annotations.readOnly || (def.writesFiles && args.is_object() && def.writesFiles(args));
 }
@@ -1406,8 +1423,30 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
             return;
         }
     }
-    if (!def.allowedWhilePlaying && app.getProject()->isAnyScenePlaying()) {
-        call->fail("This tool is not available while a scene is playing. Stop Play mode first "
+    Project* project = app.getProject();
+    // a scene save the editor started (Ctrl+S, Save All, Save As): the call is valid, so it waits
+    // for the save, as at the window, instead of reading or changing what the save worker reads
+    if (project && project->isAnySceneSaving() && !project->isPlaySessionActive() &&
+        (mayChange(def, call->args()) || !def.allowedWhilePlaying)) {
+        const ToolDef* waiting = &def;
+        const double started = call->elapsedMs();
+        call->waitUntil([this]() {
+            const Project* current = appPtr->getProject();
+            return !current || !current->isAnySceneSaving();
+        }, saveHoldMs(), [this, call, waiting, started](bool timedOut) {
+            if (timedOut) {
+                call->fail("A scene save started in the editor is still running after " + std::to_string(saveHoldMs() / 1000) +
+                           " s; nothing was changed. Retry when editor_status shows no scene saving.",
+                           Json{{"busy", {{"kind", "scene_save"}}}});
+                return;
+            }
+            call->addSaveWait(call->elapsedMs() - started);
+            execute(call, *waiting);
+        });
+        return;
+    }
+    if (!def.allowedWhilePlaying && project->isAnyScenePlaying()) {
+        call->fail("This tool is not available while " + playStateText(*project) + ". Stop Play mode first "
                    "(play with action \"stop\"), then retry.");
         return;
     }
@@ -1453,6 +1492,12 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     std::weak_ptr<McpCall> weakCall = call;
     call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall](ToolResult& result) {
         result.text += notes;
+        if (CallPtr done = weakCall.lock(); done && done->saveWait() > 0.0) {
+            const long long ms = std::llround(done->saveWait());
+            result.text += "\n(Waited " + std::to_string(ms) + " ms for a scene save started in the editor.)";
+            if (result.structured.is_null()) result.structured = Json::object();
+            if (result.structured.is_object()) result.structured["waited_for_save_ms"] = ms;
+        }
         if (!appPtr || !appPtr->isMainThread()) return;
         if (CallPtr done = weakCall.lock(); done && done->attributed()) {
             Json undo = McpUndo::foldCall(*done, toolTitle);

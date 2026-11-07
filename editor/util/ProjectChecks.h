@@ -28,6 +28,8 @@ namespace jasperengine::htmlui {
 
 namespace jasperengine::editor {
 
+    struct LocalBuildSettings;
+
     class Project;
 
     // The checks of a project's Lua scripts, forked shaders, C++ scripts and HTML/CSS UI files,
@@ -128,6 +130,10 @@ namespace jasperengine::editor {
             CMakeKit kit;
             unsigned int jobs = 0;
         };
+        // The toolchain check Play, compile_scripts, editor scripts and get_build_info share: the
+        // machine's build settings (no compiler or generator chosen = a default kit compatible with
+        // this editor) resolved into kit; "" when C++ scripts can build here, else what is missing
+        static std::string checkCppToolchain(const LocalBuildSettings& settings, CMakeKit& kit);
         enum class CppPrepare { Ready, NothingToBuild, Failed, MissingTools };
         // Main thread. Failed (generating the build files) and MissingTools: error says why.
         static CppPrepare prepareCppBuild(Project* project, CppBuildPlan& plan, std::string& error);
@@ -304,6 +310,17 @@ namespace jasperengine::editor {
         // code "stochastic-no-effect" where a material asks Lit's Stochastic Tiling but it does
         // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
         static std::vector<Finding> stochasticTilingFindings(Project* project);
+
+        // ---- Water (water-reflections spec 6.3, 6.8)
+
+        // Warnings (tool "shader", at the scene or prefab file) for the loaded scenes and prefab
+        // stages: code "water-fork-without-role" where a material or post-process pass draws
+        // with a fork that declares library:water's parameters (buoyancy, waveHeight,
+        // shallowColor) or library:underwater's (waterLevel, followWater) but no @role, so the
+        // engine does not treat it as water; code "planar-reflection-not-flat" where a mesh reads
+        // a planar reflection but its world bounds are taller than 1% of their larger horizontal
+        // extent plus 0.05 (it mirrors about one level)
+        static std::vector<Finding> waterFindings(Project* project);
 
         // Line and Trail Renderers of the loaded scenes (lines and trails spec 6.8): code
         // "line-texture-no-uv" where a hairline (no width) draws with a shader that samples a

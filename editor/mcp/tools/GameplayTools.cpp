@@ -418,7 +418,9 @@ void sampleWaterTool(const CallPtr& call) {
             std::snprintf(line, sizeof(line), "(%g, %g, %g): no water\n", p.x, p.y, p.z);
         text += line;
     }
-    call->ok(text, Json{{"scene_id", scene->id}, {"shader_time", Engine::getShaderTime()}, {"samples", samples}});
+    // water_time: the clock the waves run on (the scene's, Water.getTime); shader_time: the wall clock
+    call->ok(text, Json{{"scene_id", scene->id}, {"water_time", Water::getTime(scene->scene)}, {"shader_time", Engine::getShaderTime()},
+                        {"samples", samples}});
 }
 
 } // namespace
@@ -482,7 +484,7 @@ void registerGameplayTools(McpRegistry& registry) {
         tool.name = "sample_water";
         tool.title = "Sample Water";
         tool.description =
-            "What the water is at world points (Lua Water.sample), at this frame's shader time: in_water, the surface "
+            "What the water is at world points (Lua Water.sample), at this frame's water_time: in_water, the surface "
             "height over the point with the waves the shader draws (null: no water there), its normal, the water's "
             "velocity (flow + the surface rising) and the Water Volume (or library:water mesh). The running scene "
             "while playing.";

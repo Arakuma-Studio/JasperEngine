@@ -17,8 +17,8 @@ default), all (every registered tool), or a comma-separated list of groups.
 default listing (core) over its characters or tool count, a group over its limits, a tool over
 the per-tool limit (or its exceptions entry), an exceptions/groups entry naming a tool or group
 that does not exist. It also gates the agent guide (initialize.instructions) against the
-budget's "guide" entry: the whole text, the headroom it must leave under its limit, and each
-"## " section. docs/mcp/conventions.md explains the rules.
+budget's "guide" entry: the whole text, the headroom it must leave under its limit, each
+"## " section, and the client cut (the sections that must come before it, and the pointer). docs/mcp/conventions.md explains the rules.
 """
 
 from __future__ import annotations
@@ -157,6 +157,7 @@ def check_guide(text: str, budget: dict) -> list[str]:
                         f"under {limit} that later specs need: move area detail into docs/mcp/guide/<area>.md "
                         f"(jasper://docs/<area>) and keep a one-line pointer; never shrink the headroom or "
                         f"raise the limit (docs/mcp/conventions.md)")
+    problems += check_client_cut(text, entry)
     own = entry.get("sections", {})
     present = set()
     for heading, nbytes in guide_sections(text):
@@ -173,6 +174,48 @@ def check_guide(text: str, budget: dict) -> list[str]:
     return problems
 
 
+def utf16_len(text: str) -> int:
+    """Length as JavaScript clients count it (UTF-16 code units)."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def section_ends(text: str) -> dict[str, int]:
+    """Each "## " section's end, in UTF-16 code units from the start (the intro is "(intro)")."""
+    ends: dict[str, int] = {}
+    heading, offset = "(intro)", 0
+    for line in text.splitlines(keepends=True):
+        if line.startswith("## "):
+            ends[heading] = utf16_len(text[:offset])
+            heading = line[3:].strip()
+        offset += len(line)
+    ends[heading] = utf16_len(text)
+    return ends
+
+
+def check_client_cut(text: str, entry: dict) -> list[str]:
+    """The guide's "client_cut": clients that keep only the first chars of the instructions (Claude
+    Code: 4096) must still get the listed sections whole and the pointer to the rest."""
+    cut = entry.get("client_cut")
+    if cut is None:
+        return []   # budget.json has one (test_tool_budget.py test_budget_file_shape); made-up budgets may not
+    missing = [k for k in ("chars", "sections", "pointer", "reason") if not cut.get(k)]
+    if missing:
+        return [f"guide client_cut lacks {', '.join(missing)}"]
+    problems: list[str] = []
+    chars = int(cut["chars"])
+    ends = section_ends(text)
+    for heading in cut["sections"]:
+        if heading not in ends:
+            problems.append(f"guide client_cut section {heading!r}: no such section")
+        elif ends[heading] > chars:
+            problems.append(f"agent guide section {heading!r} ends at character {ends[heading]}, after the "
+                            f"{chars}-character client cut: put it before the cut or move detail to its doc")
+    intro_end = ends.get("(intro)", 0)
+    if cut["pointer"] not in text[:intro_end]:
+        problems.append(f"agent guide intro lacks the pointer {cut['pointer']!r} for clients that cut it")
+    return problems
+
+
 def print_guide(text: str, budget: dict) -> None:
     sections = sorted(guide_sections(text), key=lambda s: s[1], reverse=True)
     entry = budget["guide"]
@@ -180,6 +223,10 @@ def print_guide(text: str, budget: dict) -> None:
     print(f"guide: {size} of {limit} bytes, {limit - size} left (headroom {entry.get('headroom_bytes', 0)} "
           f"required), {len(sections)} sections; largest: " +
           ", ".join(f"{h} {n}" for h, n in sections[:5]))
+    cut = entry.get("client_cut")
+    if cut:
+        inside = [h for h, end in section_ends(text).items() if end <= int(cut["chars"])]
+        print(f"client cut at {cut['chars']} characters keeps: " + ", ".join(inside))
 
 
 async def known_tool_groups(ed: Editor) -> set[str]:

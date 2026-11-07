@@ -13,6 +13,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/InstancedMeshComponent.h"
 #include "pixelart/PixelSnap.h"
 
 #include "Scene.h"
@@ -4126,6 +4127,23 @@ std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{
     }
 
     return entities;
+}
+
+size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    if (it == terrainFoliage.end() || layer >= it->second.size()){
+        return 0;
+    }
+    size_t count = 0;
+    for (const TerrainFoliageChunk& chunk : it->second[layer].chunks){
+        if (chunk.entity == NULL_ENTITY || !scene->isEntityCreated(chunk.entity)){
+            continue;
+        }
+        if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(chunk.entity)){
+            count += instmesh->instances.size();
+        }
+    }
+    return count;
 }
 
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{

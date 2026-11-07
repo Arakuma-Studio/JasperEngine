@@ -2128,6 +2128,26 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    # ui-components: the selection (Unity's EventSystem.currentSelectedGameObject)
+    ('UI', 'getSelected'): {
+        'doc': ['The Button selected in `scene` (keyboard, gamepad and TV menus), nil for none.'],
+        'overloads': [([('scene', 'Scene')], 'GameObject?')]},
+    ('UI', 'setSelected'): {
+        'doc': ['Selects a Button of `scene` (Unity\'s SetSelectedGameObject); nil deselects. False when it',
+                'cannot be selected (not a Button, inactive, hidden, an on-screen control).'],
+        'overloads': [([('scene', 'Scene'), ('button', 'GameObject|integer|nil')], 'boolean')]},
+    ('Button', 'findSelectableOnUp'): {
+        'doc': ['Where the selection moves up from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnDown'): {
+        'doc': ['Where the selection moves down from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnLeft'): {
+        'doc': ['Where the selection moves left from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnRight'): {
+        'doc': ['Where the selection moves right from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
     ('UIComponent', 'getPointerEventData'): {
         'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
                 'its pointerId, button, positions; nil outside one.'],
@@ -2690,6 +2710,14 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'bodyA'): ('GameObject|nil', False),
     ('Joint3D', 'bodyB'): ('GameObject|nil', False),
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
+    # ui-components: a Button's Explicit navigation targets and the selection events' GameObjects
+    ('Button', 'selectOnUp'): ('GameObject|nil', False),
+    ('Button', 'selectOnDown'): ('GameObject|nil', False),
+    ('Button', 'selectOnLeft'): ('GameObject|nil', False),
+    ('Button', 'selectOnRight'): ('GameObject|nil', False),
+    ('Button', 'onClick'): ('FunctionSubscribe', False),
+    ('BaseEventData', 'target'): ('GameObject?', False),
+    ('BaseEventData', 'selectedObject'): ('GameObject?', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are

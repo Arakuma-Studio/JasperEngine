@@ -93,6 +93,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kReflectionProbeUpdateMode;
     extern const EnumDesc kRigidbodyMotionQuality;
     extern const EnumDesc kScriptType;
+    extern const EnumDesc kButtonTransition;
+    extern const EnumDesc kNavigationMode;
     extern const EnumDesc kScrollbarType;
     extern const EnumDesc kShadowCaster2DShape;
     extern const EnumDesc kShadowUpdateMode;

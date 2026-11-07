@@ -192,7 +192,8 @@ const std::vector<jasperengine::editor::EngineAPISymbol>& getScriptMacroSymbols(
          ""},
         {"REGISTER_BUTTON_EVENT", "Macro",
          "REGISTER_BUTTON_EVENT(eventName, methodName); shortcut for REGISTER_COMPONENT_EVENT(ButtonComponent, ...). "
-         "ButtonComponent events: onPress, onRelease (handlers take no args). For a click use REGISTER_UI_EVENT(onClick, ...). "
+         "ButtonComponent events: onPress, onRelease, onClick (handlers take no args). onClick is the click: released over the "
+         "button, or submitted (Enter, Space, gamepad A) while selected; onRelease fires off the button too. "
          "Destructor counterpart: UNREGISTER_BUTTON_EVENT(eventName, methodName).",
          ""},
         {"REGISTER_SCROLLBAR_EVENT", "Macro",

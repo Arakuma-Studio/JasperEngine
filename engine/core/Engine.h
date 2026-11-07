@@ -331,6 +331,9 @@ namespace jasperengine {
         };
 
     private:
+        // TEST-ONLY seam: a view loaded without a GPU (canvas refresh tests)
+        friend struct EngineTestAccess;
+
         //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
         static std::unordered_set<Scene*> oneTimeScenes;
@@ -481,7 +484,10 @@ namespace jasperengine {
         static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
-        static void calculateCanvas();
+        // the canvas and view rect for the current screen, then what follows them: every scene's
+        // and the debug overlay's camera (Canvas Scaler), Screen.safeArea; with notify, the events
+        // of a view change when the canvas or the view rect changed (a nested call does not notify)
+        static void refreshCanvas(bool notify);
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
@@ -526,6 +532,9 @@ namespace jasperengine {
         static bool isSceneRunning(Scene* scene);
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
+        // The scene drawn first, which clears the frame: the main scene, or before there is one
+        // (a loading scene covering the start scene) the bottom running scene
+        static Scene* getBaseScene();
         static Scene* getLastScene();
         // every running scene: the main scene and its layers (child scenes), bottom first
         static std::vector<Scene*> getSceneLayers();
@@ -716,6 +725,8 @@ namespace jasperengine {
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
+        // the draw calls of the frame being drawn, so far
+        static uint32_t getFrameDrawCalls();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
 
@@ -753,6 +764,9 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+        // whether the shader clock is pinned, and at what (Scene::getSceneTime follows it)
+        static bool hasPinnedShaderTime();
+        static double getPinnedShaderTime();
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render
@@ -1037,9 +1051,13 @@ namespace jasperengine {
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
-        // an element of a document has focus, so the d-pad, the left stick and A go to the UI
-        // (a game that polls Input can check it)
+        // an element of a document has focus, or a component UI Button is selected, so the d-pad,
+        // the left stick and A go to the UI (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a component UI Button is selected: the arrows, Tab, Enter, keypad Enter and Space are the UI's
+        static bool wantsKeyboardNavigation();
+        // both at once, from one look at the scenes (Input::beginFrame)
+        static void getUINavigationWants(bool& gamepad, bool& keyboard);
         // a text field has keyboard focus (a native InputField or a document text control): the
         // keyboard does not drive input actions then (Input::beginFrame)
         static bool isTextInputFocused();

@@ -278,8 +278,8 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 
 | Source (wrapper + getter) | Event field | Handler args |
 |---|---|---|
-| `Button(...):getButtonComponent()` | `onPress`, `onRelease` | none |
-| `Image(...):getUIComponent()` (any UI element) | `onClick`, `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
+| `Button(...):getButtonComponent()` | `onClick` (the click: released over it, or a Submit while selected), `onPress`, `onRelease` (fires on every release, wherever the pointer is: not a click) | none |
+| `Image(...):getUIComponent()` (any UI element) | `onClick` (released over the element while interactable: a button's click), `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
 | same | `onGetFocus`, `onLostFocus` | none |
 | `Scrollbar(...):getScrollbarComponent()` | `onChange` | `step` |
 | `Panel(...):getPanelComponent()` | `onMove` / `onResize` | none / `width, height` |
@@ -481,6 +481,14 @@ return Slot
   takes it, or a press there holds it; check it before world clicks (Unity's
   `EventSystem.IsPointerOverGameObject`).
 - C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+
+The selection messages (keyboard, gamepad and TV menus, jasper://docs/ui): `onSelect(e)`,
+`onDeselect(e)` (the GameObject selected or deselected), `onMove(e)` (`e.moveDir`
+`MoveDirection.UP`..., `e.moveVector`; `e:use()` skips the Button's navigation), `onSubmit(e)`
+(`e:use()` skips its click) go to the selected Button's GameObject; `onCancel(e)` goes up its
+parents to the first script that defines it (otherwise the game gets Escape or B). `e`:
+`BaseEventData` (`target`, `selectedObject`, `used`, `use()`); onMove's is an `AxisEventData`. C++:
+`onSelect(BaseEventData&)` ... `onMove(AxisEventData&)`.
 - Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
 
 ---
@@ -870,13 +878,11 @@ local price = Items.sword.price
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
-`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
-export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
-`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
+`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); web ads:
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
-`loadingStopCrazyGames()`.
+`loadingStopCrazyGames()`. Ads and purchases on Android and iOS: the native bridge
+([native-bridge.md](native-bridge.md), section 10).
 
 Platform services ([platform-services.md](platform-services.md) has the per-platform details):
 
@@ -1039,6 +1045,8 @@ Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain s
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
 `loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
 until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+With a loading scene (Project Settings > Loading), it covers the game's start scene too: the start
+loads under it from the first frame, so the loading scene's scripts start first.
 
 ### 2.8.1 Persistent objects (DontDestroyOnLoad)
 
@@ -1272,12 +1280,12 @@ if hit.hit then local e = hit.body end
 
 ### 2.10.1 Water (static)
 
-The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
-resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
-follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
-seconds since the engine started, wall-clock latched once a frame, running in the editor and
-while the game is paused or time-scaled; with a fixed frame delta it advances by exactly that a
-frame), so a script and the screen agree. Where waters overlap the one whose
+The water surfaces of a scene are its meshes drawn with `library:water` or a fork of it (a
+manifest with `@role water`; enabled, active), each resting at the top of its world bounds and
+covering their XZ extent; with `WAVES` (and `GERSTNER`) the heights follow the same waves the
+shader draws, on its clock, the scene clock (`Water.getTime(scene)`: the seconds the scene has
+run, scaled by `Time.timeScale`, held while the game is paused, 0 when the scene starts; a
+stopped scene's follows the Scene view's Animate water), so a script and the screen agree. Where waters overlap the one whose
 bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
 looks through the scene's meshes: for many points a frame, keep the results.
 
@@ -1286,8 +1294,8 @@ looks through the scene's meshes: for many points a frame, keep the results.
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
 | `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
-| `Water.getTime()` | the shader library's clock, seconds (one value a frame) |
-| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface rising), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
+| `Water.getTime(scene)` | the scene clock the waves run on, seconds (one value a frame); without `scene` the main scene's |
+| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface's motion: rising and falling, and with `GERSTNER` rolling back and forth), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
 | `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
 
 A Water Volume (`go:getWaterVolume()`, `WaterVolume(scene, entity)`): `size` (Vector3, local: XZ
@@ -1354,6 +1362,9 @@ or `(r,g,b,a)`.
 `UI.canvasToUI(scene, Vector2)` / `UI.uiToCanvas(scene, Vector2)`: game canvas pixels (`Input`,
 touches) to a scene's UI units and back (they differ when its Canvas Scaler scales the UI);
 `UI.reducedMotion` (rw, default false): Text Effects skip their motion layers.
+`UI.getSelected(scene)` (a GameObject or nil) / `UI.setSelected(scene, obj)` (nil deselects; false
+when it cannot be selected): the scene's keyboard/gamepad selection, Unity's
+`EventSystem.currentSelectedGameObject` / `SetSelectedGameObject` (jasper://docs/ui).
 
 ### 2.13 Timer (static): delayed calls, repeats, coroutines
 
@@ -2468,7 +2479,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
-| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Disabled(path)`, `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Disabled), `setLabelColor(r,g,b,a)` |
+| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled`, `disabled`, `interactable`, `color` (with a tinting transition: Normal's), `onClick`; `transition` (`ButtonTransition.*`), `fadeDuration`, `scaleHovered/Pressed/Selected`; `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right` (GameObject or nil), `selectOnEnable`; ro `selected`, `state` (`SelectionState.*`) | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Selected/Disabled(path)`, `setTexture(path)` (with a swapping transition: Normal's), `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Selected/Disabled), `setLabelColor(r,g,b,a)`, `select()`, `findSelectableOnUp/Down/Left/Right()` (jasper://docs/ui) |
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
@@ -3303,7 +3314,6 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
-| `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
 | `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
 | `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
 | `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |

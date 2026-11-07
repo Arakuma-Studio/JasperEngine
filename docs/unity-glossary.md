@@ -15,6 +15,9 @@ Projects made before the rename are migrated once with
 | Hierarchy window | Structure window |
 | Inspector window | Properties window |
 | Project window | Resources window |
+| Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
+| The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
+| Maximize On Play (the Game view toolbar; F11, Edit > Maximize On Play) | the toolbar toggle only |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
@@ -242,6 +245,8 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Animate water |
+| HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 
 ## Camera shake and camera follow
 
@@ -306,6 +311,27 @@ Details: jasper://docs/native-bridge.
 | External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
 | `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
 | `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
+| `PrivacyInfo.xcprivacy` in `Assets/Plugins/iOS` (Unity copies plugin privacy manifests into the Xcode project) | `PrivacyInfo.xcprivacy` in `plugins/native/ios` (or `apple`, `macos`), merged into the app's; the game's own entries: Project Settings > Player > iOS > Privacy Manifest (`apple.privacy_*`) |
+| Google Mobile Ads Unity plugin, Unity IAP | a native plugin (`plugins/native`): docs/mcp/guide/native-bridge.md section 10 has an interstitial ads example |
+
+## UI (Selectable, Button)
+
+Details: [mcp/guide/ui.md](mcp/guide/ui.md) (Buttons, Keyboard, gamepad and TV navigation).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Button.onClick` | `button.onClick` (Lua), `REGISTER_BUTTON_EVENT(onClick, method)` (C++): released over it, or a Submit while selected |
+| `Selectable.interactable` | `Button.interactable` (the stored field is `disabled`; Inspector "Interactable") |
+| `Selectable.transition` (`None`, `ColorTint`, `SpriteSwap`; `Animation` not built) | `Button.transition` (`NONE`, `COLOR_TINT`, `SPRITE_SWAP`, and `COLOR_TINT_AND_SPRITE_SWAP`, the default) |
+| `ColorBlock.normalColor`, `highlightedColor`, `pressedColor`, `selectedColor`, `disabledColor`, `fadeDuration` | `colorNormal`, `colorHovered` (Inspector "Highlighted Color"), `colorPressed`, `colorSelected`, `colorDisabled`, `fadeDuration` (the colours replace the image colour; Unity multiplies) |
+| `SpriteState.highlightedSprite`, `pressedSprite`, `selectedSprite`, `disabledSprite` | `textureHovered`, `texturePressed`, `textureSelected`, `textureDisabled` (`textureNormal` is the image's sprite) |
+| `Navigation.mode` (`None`, `Horizontal`, `Vertical`, `Automatic`, `Explicit`), `wrapAround`, `selectOnUp/Down/Left/Right`, Visualize | `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right`, the Inspector's Visualize |
+| `EventSystem.firstSelectedGameObject` | the Button's **Select On Enable** (`selectOnEnable`; also a menu shown later) |
+| `EventSystem.current.currentSelectedGameObject`, `SetSelectedGameObject(go)`, `Selectable.Select()` | `UI.getSelected(scene)`, `UI.setSelected(scene, go)`, `button:select()` |
+| `Selectable.FindSelectableOnUp()` ... | `button:findSelectableOnUp()` ... |
+| `ISelectHandler.OnSelect`, `IDeselectHandler`, `IMoveHandler` (`AxisEventData.moveDir`), `ISubmitHandler`, `ICancelHandler` | script methods `onSelect(e)`, `onDeselect(e)`, `onMove(e)` (`e.moveDir`), `onSubmit(e)`, `onCancel(e)` |
+| StandaloneInputModule: Submit (Enter, keypad Enter, Space, joystick button 0), Cancel (Escape, joystick button 1), Horizontal/Vertical | the same keys and gamepad A, B, d-pad and left stick, plus Tab / Shift+Tab and Android TV's remote |
+| A pointer click selects a Selectable | only while its scene has a selection (a clicked HUD button never takes Space or the arrows from the game) |
 
 ## UI (Canvas Group)
 
@@ -382,6 +408,18 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
+
+## Terrain
+
+Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
+
+| Unity term | JasperEngine name |
+|---|---|
+| Terrain | the Terrain component (`TerrainComponent`), Window > Terrain |
+| Terrain Layer (Paint Texture) | an entry of `surfaceLayers` (up to 9); MCP `set_terrain_maps layers` |
+| Splat map / control texture (`TerrainData.alphamapTextures`) | `blendMaps` (up to 3; slot i weights layers 3i..3i+2); MCP `set_terrain_maps blendmap {index}` |
+| Details (Paint Details), Detail Mesh (`TerrainData.detailPrototypes`) | detail layers: `foliageLayers`, the Terrain window's "Detail layer"; MCP `edit_terrain_details` |
+| detail density (`SetDetailLayer`) | a detail layer's density map, painted with Paint Density (`sculpt_terrain paint_density`) |
 
 ## Layers and physics
 

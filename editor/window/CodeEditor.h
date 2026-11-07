@@ -127,6 +127,10 @@ namespace jasperengine::editor {
         bool isFileOpen(const std::string& filepath) const;
         bool isFileModified(const std::string& filepath) const;
         bool handleFileRename(const fs::path& oldPath, const fs::path& newPath);
+        // Save Project As continued the project in a copy at another folder: the tabs follow their
+        // files there (a path kept outside the old folder stays), and take the copies' write times,
+        // so the next save writes the copy, never the original
+        void retargetProject(const fs::path& oldProjectPath);
 
         // ---- MCP (files edited by external agents) ----
         struct BufferState {

@@ -194,6 +194,8 @@ namespace jasperengine::editor{
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
 
+        // the text a row shows: its name, "GameObject <id>" for an unnamed object
+        static std::string nodeText(const TreeNode& node);
         // the drag's header (no YAML: a Project window drop encodes the selection itself)
         EntityPayload buildEntityPayload(const TreeNode& node, bool& allowed);
         std::filesystem::path getPrefabSaveDirectory() const;

@@ -157,6 +157,7 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::uiNavigationVisualize = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
@@ -442,6 +443,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             auto editorNode = settingsData["editor"];
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
+            }
+            if (editorNode["ui_navigation_visualize"]) {
+                uiNavigationVisualize = editorNode["ui_navigation_visualize"].as<bool>();
             }
             if (editorNode["pose_dock_grown"]) {
                 poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
@@ -776,6 +780,7 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["ui_navigation_visualize"] = uiNavigationVisualize;
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
@@ -1215,6 +1220,14 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getUINavigationVisualize() {
+    return uiNavigationVisualize;
+}
+
+void AppSettings::setUINavigationVisualize(bool visualize) {
+    uiNavigationVisualize = visualize;
 }
 
 bool AppSettings::getAutoRefresh() {
