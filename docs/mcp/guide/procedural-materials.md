@@ -28,7 +28,8 @@ measures a `.material`, an image, or `entity` + `submesh`. It changes nothing.
 
 - The contact sheet: top row flat, the lit sphere, a 2x2 tiling; bottom row one cell per output. `sheet` picks
   parts (`flat`, `sphere`, `tiled`, `channels`); `sheet: []` returns the metrics only.
-- `size` (default 512) and `seed` (default 0) are the evaluation's. The same graph, seed and size give the same
+- `size` (default 512) and `seed` are the evaluation's; `seed` defaults to the graph's `metadata.seed` (what the
+  window's lock, reroll and Variations keep), else 0, and a call's `seed` is never written back. The same graph, seed and size give the same
   numbers on one device; `device: {tier, name}` names it (`gpu`, or `software` for llvmpipe and lavapipe).
 - `checks` rows have S35's shape. A FAIL counts rounds: past `materials.qa.fix_rounds` in a row, stop and report.
 - `fail_on: "fail" | "warn"` makes a reached verdict an error.
@@ -65,7 +66,7 @@ Numbers cannot judge a look: show the sheet to the user.
 It is one undo step (`undo` in the result has its id). A re-bake changes only the bake's slots: every other
 field of the `.material` stays, and so does a factor you tuned on a baked slot. It is refused while the graph has
 errors, and a PNG at an output's path that is not this graph's bake needs `overwrite: true`. `fail_on` writes
-nothing when the baked images' checks reach it. Defaults: size 1024 (64 to 8192), seed 0.
+nothing when the baked images' checks reach it. Defaults: size 1024 (64 to 8192), the graph's `metadata.seed`.
 
 Every baked PNG records how it was made (a `jasper.procmat` chunk the export strips). When the graph changes
 since, the bake is stale: the Project window's badge turns yellow, the Inspector says so, and `check --materials`

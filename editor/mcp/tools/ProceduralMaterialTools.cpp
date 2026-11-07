@@ -472,7 +472,8 @@ void previewTool(const CallPtr& call) {
     }
     int size = 0;
     if (!sizeArg(call, 512, 64, 4096, size)) return;
-    const uint32_t seed = args.value("seed", 0u);
+    // the graph's own seed unless the call names one; never written back
+    const uint32_t seed = args.contains("seed") ? args.value("seed", 0u) : (source->kind == "procmat" ? graphSeed(source->graph) : 0u);
     std::vector<std::string> only;
     if (args.contains("checks")) {
         for (const Json& id : args["checks"]) {
@@ -620,7 +621,7 @@ void bakeTool(const CallPtr& call) {
     }
     BakeOptions options;
     if (!sizeArg(call, BAKE_SIZE_DEFAULT, BAKE_SIZE_MIN, BAKE_SIZE_MAX, options.size)) return;
-    options.seed = args.value("seed", 0u);
+    options.seed = args.contains("seed") ? args.value("seed", 0u) : graphSeed(graphFile);
     if (args.contains("outputs")) {
         for (const Json& name : args["outputs"]) options.outputs.push_back(name.is_string() ? name.get<std::string>() : name.dump());
     }
@@ -712,7 +713,7 @@ void registerProceduralMaterialTools(McpRegistry& registry) {
             {"submesh", withDefault(integer("", 0, 255), 0)},
             {"sheet", array(stringEnum("", {"flat", "sphere", "tiled", "channels"}), "Default: all.")},
             {"size", withDefault(integer("A .procmat's evaluation size, a power of two.", 64, 4096), 512)},
-            {"seed", withDefault(integer("", 0, 2147483647), 0)},
+            {"seed", integer("Default: the graph's metadata.seed.", 0, 2147483647)},
             {"checks", array(string(""), "Default: all.")},
             {"fail_on", stringEnum("", {"fail", "warn"})},
             {"reference", string("An image to compare with (advisory).")},
@@ -737,7 +738,7 @@ void registerProceduralMaterialTools(McpRegistry& registry) {
             {"path", assetPath("A .procmat.")},
             {"output", string("Project-relative folder.")},
             {"size", withDefault(integer("A power of two.", 64, 8192), 1024)},
-            {"seed", withDefault(integer("", 0, 2147483647), 0)},
+            {"seed", integer("Default: the graph's metadata.seed.", 0, 2147483647)},
             {"outputs", array(stringEnum("", {"base_color", "normal", "orm", "emission", "height"}), "Default: every connected one.")},
             {"fail_on", stringEnum("Write nothing when the checks reach it.", {"fail", "warn"})},
             {"overwrite", withDefault(boolean("Replace PNGs that are not this graph's."), false)},

@@ -30,7 +30,7 @@ namespace {
             << "Options:\n"
             << "  --output <folder>     Project-relative folder (default: a folder named after the graph beside it).\n"
             << "  --size <n>            A power of two from 64 to 8192 (default 1024).\n"
-            << "  --seed <n>            The graph's seed (default 0).\n"
+            << "  --seed <n>            The seed (default: the graph's metadata.seed, else 0).\n"
             << "  --outputs <a,b,...>   base_color, normal, orm, emission, height (default: every connected one).\n"
             << "  --fail-on fail|warn   Write nothing when the material's checks reach it.\n"
             << "  --overwrite           Replace PNGs that are not this graph's.\n"

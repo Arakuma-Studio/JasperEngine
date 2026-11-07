@@ -667,6 +667,8 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
 - **R37.** `palette_delta_e` is the mean CIE76 distance from each of the reference's 8 dominant colours
   (4 bits a channel) to the nearest of the material's; `spectrum` the L1 distance of the radially averaged
   power spectra at 64 x 64; `edges` the difference of the Sobel edge densities.
+- **R34, R35, the seed.** Both tools default to the graph's `metadata.seed` (the window's lock, reroll and
+  Variations write it; 0 when absent), and a `seed` argument overrides it without writing it back.
 - **R35, `fail_on`.** The bake runs the checks on the images it baked and writes nothing when the verdict
   reaches `fail_on`. Without it, nothing is checked.
 - **R38.** The wait bound is the call's `timeout_seconds`: a run past it fails with the stage it was in, and

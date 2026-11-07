@@ -135,6 +135,19 @@ async def test_preview_is_a_sheet_with_checks(ed: Editor):
     ed.check(again.images and again.images[0][0] != first, "a sheet of the channels alone is another image")
 
 
+async def test_the_seed_is_the_graphs_unless_given(ed: Editor):
+    """the window keeps a graph's seed in metadata.seed: the default of both tools, a call's seed overrides it unwritten"""
+    graph = stone_graph()
+    graph["metadata"] = {"seed": 7}
+    write_graph(ed, graph, "assets/mats/seeded.procmat")
+    before = (ed.project / "assets/mats/seeded.procmat").read_text()
+    kept = await ed.call("preview_procedural_material", path="assets/mats/seeded.procmat", size=64, sheet=[])
+    ed.check_eq(kept["seed"], 7, "the graph's seed")
+    given = await ed.call("preview_procedural_material", path="assets/mats/seeded.procmat", size=64, sheet=[], seed=3)
+    ed.check_eq(given["seed"], 3, "the call's seed")
+    ed.check_eq((ed.project / "assets/mats/seeded.procmat").read_text(), before, "never written back")
+
+
 async def test_a_changed_threshold_is_listed(ed: Editor):
     await ed.call("set_project_settings", values={"materials.qa.seam_fail": 5})
     try:

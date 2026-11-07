@@ -412,3 +412,14 @@ TEST(ProceduralBake, ALibraryNormalIsTurnedIntoTheEnginesConvention) {
     for (size_t i = 0; i < images["normal"].rgba.size(); i += 4) away += images["normal"].rgba[i + 2] < 128;
     EXPECT_EQ(away, 0u) << "Material Maker's normals face -z; the engine's +z";
 }
+
+TEST(ProceduralBake, TheSeedIsTheGraphsOwnUnlessToldAnother) {
+    graph::Graph file = stoneGraph();
+    EXPECT_EQ(graphSeed(file), 0u) << "none kept";
+    file.metadata["seed"] = 7;
+    EXPECT_EQ(graphSeed(file), 7u);
+    file.metadata["seed"] = -3;
+    EXPECT_EQ(graphSeed(file), 0u) << "no seed a bake could record";
+    file.metadata["seed"] = "seven";
+    EXPECT_EQ(graphSeed(file), 0u);
+}

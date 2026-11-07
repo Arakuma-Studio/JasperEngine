@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -130,6 +131,13 @@ namespace {
 const std::vector<std::string>& jasperengine::editor::procmat::bakeOutputNames() {
     static const std::vector<std::string> names = {"base_color", "normal", "orm", "emission", "height"};
     return names;
+}
+
+uint32_t jasperengine::editor::procmat::graphSeed(const graph::Graph& file) {
+    const auto seed = file.metadata.find("seed");
+    if (seed == file.metadata.end() || !seed->is_number()) return 0;
+    const double value = seed->get<double>();
+    return value >= 0.0 && value <= 2147483647.0 && value == std::floor(value) ? (uint32_t)value : 0;
 }
 
 bool jasperengine::editor::procmat::planBake(const graph::Graph& file, const std::shared_ptr<const NodeLibrary>& library, const BakeOptions& options,

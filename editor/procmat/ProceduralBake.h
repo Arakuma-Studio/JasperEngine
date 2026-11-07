@@ -62,6 +62,10 @@ namespace jasperengine::editor::procmat {
         std::vector<std::string> outputs;
     };
 
+    // The seed a graph keeps in its metadata.seed (the Procedural Material window's lock, reroll and
+    // Variations write it): what a bake and a preview use when not told another; 0 when it has none
+    uint32_t graphSeed(const graph::Graph& graph);
+
     // The plan of a bake (read back, Buffers at the sizes the graph asks) and the outputs it draws, in
     // plan order. False with why: an invalid size, an output the graph does not have, a graph that does
     // not plan.
