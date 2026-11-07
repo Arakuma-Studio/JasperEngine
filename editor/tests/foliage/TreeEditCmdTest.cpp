@@ -12,6 +12,8 @@
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "subsystem/FoliageSystem.h"
+#include "AppSettings.h"
+#include "Engine.h"
 #include "support/EditorTestSupport.h"
 #include "terrain/FoliageTypes.h"
 #include "terrain/TreeStore.h"
@@ -19,25 +21,62 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <unistd.h>
 #include <memory>
 #include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::terrain;
+namespace fs = std::filesystem;
 
 namespace {
 
+    // one headless project for this file (a second Engine::systemInit would crash the tree)
+    struct Headless {
+        bool ready = false;
+        fs::path dir;
+        std::unique_ptr<Project> project;
+    };
+
+    Headless& headless() {
+        static Headless h = []() {
+            Headless out;
+            const fs::path root = fs::temp_directory_path() / ("jasper-tree-edit-test-" + std::to_string(::getpid()));
+            fs::remove_all(root);
+            fs::create_directories(root / "config");
+            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
+            out.dir = root / "project";
+            fs::create_directories(out.dir / ".jasperengine");
+            fs::create_directories(out.dir / "assets");
+            std::ofstream(out.dir / "project.yaml") << "name: trees\nassetsDir: assets\n";
+            AppSettings::initialize();
+            out.project.reset(new Project());
+            editor::test::useProjectPaths(out.project.get());
+            Engine::pauseGameEvents(true);
+            Engine::setAsyncLoading(false);
+            out.ready = out.project->loadProject(out.dir, false);
+            return out;
+        }();
+        if (h.project) editor::test::useProjectPaths(h.project.get());
+        return h;
+    }
+
     struct TreeScene {
-        Project project;
+        Project& project;
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
         FoliageSystem* foliage = nullptr;
         std::shared_ptr<TreeStore> store;
 
-        TreeScene() {
-            test::useProjectPaths(&project);
-            sceneId = project.createNewScene("Trees", SceneType::SCENE_3D);
+        TreeScene(): project(*headless().project) {
+            EXPECT_TRUE(headless().ready) << "the test project did not load";
+            if (SceneProject* current = project.getSelectedScene()) current->isModified = false;
+            std::string error;
+            sceneId = project.createSceneNow("Trees", SceneType::SCENE_3D, {}, false, UnsavedChoice::Discard, &error);
+            EXPECT_NE(sceneId, NULL_PROJECT_SCENE) << error;
             Scene* scene = project.getScene(sceneId)->scene;
             entity = scene->createEntity();
             scene->addComponent<Transform>(entity);
@@ -46,17 +85,17 @@ namespace {
             terrain.terrainSize = 128.0f;
             TerrainTreePrototype prototype;
             prototype.id = 1;
-            prototype.meshPath = AssetRef("t5-no-such-tree.obj");
+            prototype.meshPath = AssetRef("tree.obj");
             terrain.treePrototypes.push_back(prototype);
             foliage = scene->getSystem<FoliageSystem>().get();
             foliage->update(0.0);
             store = foliage->getOrCreateTreeStore(entity);
+            EXPECT_NE(store, nullptr) << "the Terrain has no foliage region";
         }
-
-        ~TreeScene() { test::closeProject(project); }
 
         // what a brush stamp makes
         TreeDelta stamp(int count, float at) {
+            if (!store) return TreeDelta();
             std::vector<TreeRecord> records;
             for (int i = 0; i < count; i++) {
                 TreeRecord record{};
@@ -84,23 +123,27 @@ TEST(TreeEditCmdTests, DeltaMemoryIsSmall) {
     EXPECT_LE(command.memoryBytes(), sizeof(TreeEditCmd) + 64 + 8 * (sizeof(TreeRecord) + 16)) << "only the delta, not the store";
 }
 
-TEST(TreeEditCmdTests, UndoAndRedoRestoreTheBytes) {
+// The records come back byte for byte; the file's next id does not go back (R22: ids are never reused),
+// so an undone stamp's ids stay spent and its redo brings the same ids back
+TEST(TreeEditCmdTests, UndoAndRedoRestoreTheRecords) {
     TreeScene scene;
     scene.stamp(3, 0.2f);
-    std::vector<uint8_t> before;
-    scene.store->encode(before, nullptr);
+    const auto bytesOf = [&scene]() {
+        std::vector<uint8_t> bytes;
+        for (const TreeRecord& record : scene.store->records()) {
+            const uint8_t* raw = reinterpret_cast<const uint8_t*>(&record);
+            bytes.insert(bytes.end(), raw, raw + sizeof(TreeRecord));
+        }
+        return bytes;
+    };
+    const std::vector<uint8_t> before = bytesOf();
     TreeEditCmd command(&scene.project, scene.sceneId, scene.entity, "Paint Trees", scene.stamp(8, 0.7f));
-    std::vector<uint8_t> after;
-    scene.store->encode(after, nullptr);
+    const std::vector<uint8_t> after = bytesOf();
     ASSERT_NE(before, after);
     command.undo();
-    std::vector<uint8_t> undone;
-    scene.store->encode(undone, nullptr);
-    EXPECT_EQ(undone, before);
+    EXPECT_EQ(bytesOf(), before);
     ASSERT_TRUE(command.execute());
-    std::vector<uint8_t> redone;
-    scene.store->encode(redone, nullptr);
-    EXPECT_EQ(redone, after);
+    EXPECT_EQ(bytesOf(), after);
 }
 
 TEST(TreeEditCmdTests, StrokeMergesAndEscCancels) {
