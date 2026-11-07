@@ -109,6 +109,7 @@ async def test_preview_does_not_write(ed: Editor):
     ui = Ui(ed)
     sid, terrain = await scene_with_terrain(ed, "Preview")
     await open_section(ed, ui)
+    await ed.call("save_scene", scene=sid)
     files = map_files(ed)
     heights = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
     # right after start-up, as a person clicks it: the editor's shader compiles are still queued as Heavy
@@ -151,6 +152,8 @@ async def test_cancel_writes_nothing(ed: Editor):
     ui = Ui(ed)
     sid, terrain = await scene_with_terrain(ed, "Cancel", resolution=2049)
     await open_section(ed, ui)
+    # T1's map files follow an edit a second later: a scene save writes what is pending first
+    await ed.call("save_scene", scene=sid)
     files = map_files(ed)
     before = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
     await ui.click(mid(ui, ed.ui_items()["terrain.generate.apply"]))
@@ -159,6 +162,7 @@ async def test_cancel_writes_nothing(ed: Editor):
     await ui.click(mid(ui, cancel))
     status = await wait_status(ed, ui)
     ed.check(status.startswith("Cancelled"), status)
+    await ed.call("save_scene", scene=sid)
     ed.check_eq(map_files(ed), files, "no map file changed")
     after = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
     ed.check_eq(after["grid"], before["grid"], "no height changed")

@@ -67,6 +67,7 @@ async def test_dry_run_writes_nothing(ed: Editor):
     """AC19."""
     sid, terrain = await scene_with_terrain(ed, "Dry")
     await seed_height(ed, sid, terrain)
+    await ed.call("save_scene", scene=sid)   # what an earlier test left pending reaches its file first
     before = map_files(ed)
     first = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": "rolling_hills", "dry_run": True, "seed": 5})
     ed.check(not first.is_error, first.text)
@@ -88,8 +89,8 @@ async def test_apply_is_one_undo_step(ed: Editor):
     """AC20."""
     sid, terrain = await scene_with_terrain(ed, "Apply")
     await seed_height(ed, sid, terrain)
-    before = map_files(ed)
     sampled_before = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=4)
+    texels_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=65))["grid"]
     applied = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="rolling_hills", seed=7)
     ed.check_eq(applied["undo_name"], "Generate Terrain (Rolling Hills, seed 7)", "the step's name")
     ed.check(any(c["map"] == "height" for c in applied["changed"]), f"changed: {applied['changed']}")
@@ -101,9 +102,9 @@ async def test_apply_is_one_undo_step(ed: Editor):
     restored = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=4)
     ed.check_eq(restored["grid"]["min"], sampled_before["grid"]["min"], "undo restores the heights")
     ed.check_eq(restored["grid"]["max"], sampled_before["grid"]["max"], "undo restores the heights")
-    after_undo = map_files(ed)
-    for path, digest in before.items():
-        ed.check_eq(after_undo.get(path), digest, f"undo restores {path} byte for byte")
+    # every texel of the 65 x 65 map (T1's map files follow memory a second later, re-encoded: not the bytes)
+    texels_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=65))["grid"]
+    ed.check_eq(texels_after, texels_before, "undo restores every texel")
     await ed.call("redo", scene=sid)
     redone = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="rolling_hills", seed=7, dry_run=True)
     ed.check_eq(redone["hash"], applied["hash"], "redo's terrain is the same run's")
@@ -126,6 +127,7 @@ async def test_all_or_nothing(ed: Editor):
     """AC21: refused before evaluation, with issues and node ids, nothing written."""
     sid, terrain = await scene_with_terrain(ed, "Refused")
     await seed_height(ed, sid, terrain)
+    await ed.call("save_scene", scene=sid)   # what an earlier test left pending reaches its file first
     before = map_files(ed)
     (ed.project / "graphs").mkdir(exist_ok=True)
     path = "graphs/Bad.noisegraph"
@@ -187,6 +189,9 @@ async def test_job(ed: Editor):
         await ed.call("wait", seconds=0.1)
     ed.check_eq(state["status"], "succeeded", str(state))
 
+    # T1's map files follow an edit a second later: a scene save writes what is pending first, so the files
+    # compared are the run's alone
+    await ed.call("save_scene", scene=sid)
     before = map_files(ed)
     big = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="alpine", seed=2, wait=False, resolution=1024)
     await ed.call("cancel_job", job_id=big["job_id"])
@@ -196,6 +201,7 @@ async def test_job(ed: Editor):
             break
         await ed.call("wait", seconds=0.1)
     ed.check_eq(state["status"], "cancelled", str(state))
+    await ed.call("save_scene", scene=sid)
     ed.check_eq(map_files(ed), before, "cancel writes nothing")
 
     # erode_existing reads the heights: a sculpt during the run makes it fail
