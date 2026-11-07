@@ -9,6 +9,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "graph/GraphRegistry.h"
 #include "noise/NoiseGraphRuntime.h"
+#include "memory/MemoryStats.h"
 #include "noise/NoiseNodes.h"
 #include "util/ProjectChecks.h"
 #include "util/UIProbe.h"
@@ -105,8 +106,24 @@ void NoiseGraphWindow::refreshGraphList() {
     std::sort(graphFiles.begin(), graphFiles.end());
 }
 
+namespace {
+
+    // What the window's thumbnails and Preview image hold on the GPU, in get_memory_stats: closed, it is 0 (R50)
+    memory::TrackedBytes& noiseGraphTextureBytes() {
+        static auto* tracked = new memory::TrackedBytes("Texture.NoiseGraph", memory::Residency::Gpu);
+        return *tracked;
+    }
+
+}
+
 void NoiseGraphWindow::releaseRetired() {
-    for (Texture& texture : retired) texture.destroy();
+    for (Texture& texture : retired) {
+        if (auto it = textureBytes.find(texture.getId()); it != textureBytes.end()) {
+            noiseGraphTextureBytes().subtract(it->second);
+            textureBytes.erase(it);
+        }
+        texture.destroy();
+    }
     retired.clear();
 }
 
@@ -136,6 +153,9 @@ ImTextureID NoiseGraphWindow::makeTexture(Texture& texture, const std::string& i
         texture = Texture();
         return ImTextureID{};
     }
+    const uint64_t bytes = static_cast<uint64_t>(size) * static_cast<uint64_t>(size) * 4u;
+    textureBytes[id] = bytes;
+    noiseGraphTextureBytes().add(bytes);
     return Backend::getImGuiTexture(render);
 }
 
@@ -473,7 +493,12 @@ void NoiseGraphWindow::drawSearchPopup() {
     bool add = !entries.empty() && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter));
     int chosen = searchCursor;
     std::string category;
-    ImGui::BeginChild("##noisegraph_search_list", ImVec2(ImGui::GetFontSize() * 16.0f, ImGui::GetFontSize() * 18.0f));
+    // The popup opens at the mouse, which may be near the screen's bottom: the list takes what fits there, so no
+    // row is drawn off-screen (it scrolls instead)
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float roomBelow = viewport->WorkPos.y + viewport->WorkSize.y - ImGui::GetCursorScreenPos().y - ImGui::GetStyle().WindowPadding.y * 2.0f;
+    const float listHeight = std::max(ImGui::GetFontSize() * 4.0f, std::min(ImGui::GetFontSize() * 18.0f, roomBelow));
+    ImGui::BeginChild("##noisegraph_search_list", ImVec2(ImGui::GetFontSize() * 16.0f, listHeight));
     for (int i = 0; i < static_cast<int>(entries.size()); i++) {
         if (entries[i].category != category) {
             category = entries[i].category;

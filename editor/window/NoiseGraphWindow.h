@@ -89,6 +89,8 @@ namespace jasperengine::editor {
         uint64_t previewTextureRevision = 0;
         std::vector<Texture> retired;
         uint64_t textureCounter = 0;
+        // texture id -> the GPU bytes it holds, reported as the "Texture.NoiseGraph" memory record (R50, AC38)
+        std::map<std::string, uint64_t> textureBytes;
 
         NoisePreviewSettings settings;
         std::vector<std::filesystem::path> graphFiles;

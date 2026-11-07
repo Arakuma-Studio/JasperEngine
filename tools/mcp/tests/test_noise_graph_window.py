@@ -212,9 +212,11 @@ async def test_closed_costs_nothing(ed: Editor):
               if tab_rect["y"] <= b["y"] + b["height"] / 2 <= tab_rect["y"] + tab_rect["height"]
               and tab_rect["x"] <= b["x"] + b["width"] / 2 <= tab_rect["x"] + tab_rect["width"] + b["width"]]
     ed.check(on_tab, f"a close button on the {WINDOW} tab {tab_rect}: {buttons}")
-    # GPU texture bytes are one total for the whole editor: read them just around the close, so nothing else the
-    # editor loads in between is counted
-    opened = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
+    # the window's own textures, its memory record: the editor's GPU texture total also moves with what a closed
+    # tab reveals behind it (the Project window's thumbnails)
+    opened = await ed.call("get_memory_stats", prefix="Texture.NoiseGraph")
+    held = sum(r["current"] for r in opened["records"])
+    ed.check(held >= 3 * 64 * 64 * 4, f"the open window holds its thumbnails: {opened['records']}")
     await ui.click(ui.centre(on_tab[0]))
     closed_items = None
     for _ in range(60):
@@ -224,11 +226,8 @@ async def test_closed_costs_nothing(ed: Editor):
             break
     ed.check(closed_items is None, "the window closed")
     await ui.frames(4)
-    after = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
-    before_bytes = sum(r["current"] for r in opened["records"])
-    after_bytes = sum(r["current"] for r in after["records"])
-    # at least the three thumbnails of 64 x 64 x 4 bytes went
-    ed.check(after_bytes <= before_bytes - 3 * 64 * 64 * 4, f"the thumbnails' textures went: {before_bytes} -> {after_bytes}")
+    after = await ed.call("get_memory_stats", prefix="Texture.NoiseGraph")
+    ed.check_eq(sum(r["current"] for r in after["records"]), 0, f"closed, the window holds no texture: {after['records']}")
     # No job: counted by the window's own preview service, not a whole lane other editor work shares, in
     # NoiseGraphDocument.PreviewsAreSkippedWhenClosed (a closed window submits nothing, and closing cancels the
     # running preview); closed, NoiseGraphWindow::show calls update(false) once and nothing that previews after it

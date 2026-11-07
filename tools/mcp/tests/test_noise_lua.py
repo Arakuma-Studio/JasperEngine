@@ -32,7 +32,7 @@ function self.start()
     self.task = graph:sampleGridAsync{x = 0, z = 0, width = 64, depth = 64, step = 1 / 64, seed = 7}
 end
 
-function self.update()
+function self.onUpdate()
     if self.task and self.task.done then
         report("async " .. self.task:result().hash)
         self.task = nil
@@ -65,11 +65,14 @@ async def test_noise_lua_in_play(ed: Editor):
         await ed.call("wait", seconds=0.2)
     await ed.call("play", action="start", scene=sid)
     lines = {}
+    errors = []
     try:
         for _ in range(600):
             await ed.call("wait", seconds=0.05)
             for entry in await ed.console_since("last"):
                 text = entry.get("message", "") if isinstance(entry, dict) else str(entry)
+                if isinstance(entry, dict) and entry.get("level") == "error" and len(errors) < 5:
+                    errors.append(text[:300])
                 if "[noise-lua] " in text:
                     key, _, value = text.split("[noise-lua] ", 1)[1].partition(" ")
                     lines[key] = value
@@ -85,4 +88,4 @@ async def test_noise_lua_in_play(ed: Editor):
     ed.check(lines.get("grid_only", "").startswith("true") and "n" in lines["grid_only"], f"sample on a grid-only graph names the node: {lines.get('grid_only')}")
     # Same bits as the tool and the golden table's grid
     ed.check_eq(lines.get("grid"), preview["outputs"]["height"], "Lua's grid is the tool's")
-    ed.check_eq(lines.get("async"), lines.get("grid"), "the async grid has the same bits")
+    ed.check_eq(lines.get("async"), lines.get("grid"), f"the async grid has the same bits (errors in Play: {errors})")

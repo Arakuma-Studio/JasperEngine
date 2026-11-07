@@ -153,7 +153,16 @@ namespace {
         jobs::SubmitOptions options;
         options.lane = jobs::Lane::Background;
         options.name = "noise-grid";
-        jobs::submit([state]() { runTaskBatch(state); }, options);
+        jobs::submit([state]() {
+            // done always comes: a batch that threw would otherwise leave the script waiting forever
+            try {
+                runTaskBatch(state);
+            } catch (const std::exception& e) {
+                Log::error("[NoiseGraph] sampleGridAsync failed: %s", e.what());
+                state->cancelled.store(true, std::memory_order_relaxed);
+                state->done.store(true, std::memory_order_release);
+            }
+        }, options);
     }
 
     void runTaskBatch(const std::shared_ptr<TaskState>& state) {
