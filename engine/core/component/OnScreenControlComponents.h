@@ -57,6 +57,9 @@ namespace jasperengine{
         FunctionSubscribe<void(float, float)> onValueChanged;   // x, y
         FunctionSubscribe<void()> onPress;
         FunctionSubscribe<void()> onRelease;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onValueChanged); f(onPress); f(onRelease); }
     };
 
     struct JASPERENGINE_API OnScreenButtonComponent{
@@ -73,6 +76,9 @@ namespace jasperengine{
 
         FunctionSubscribe<void()> onPress;
         FunctionSubscribe<void()> onRelease;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onPress); f(onRelease); }
     };
 
     struct JASPERENGINE_API TouchAreaComponent{
@@ -91,6 +97,9 @@ namespace jasperengine{
         int pointerId = INT_MIN;
 
         FunctionSubscribe<void(float, float)> onDrag;   // dx, dy (canvas px), once a frame while it moves
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onDrag); }
     };
 
 }

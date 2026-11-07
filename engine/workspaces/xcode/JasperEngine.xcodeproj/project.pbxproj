@@ -188,7 +188,6 @@
 		17995BF83003C3A800411B78 /* JasperEngineGameController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 17995BF63003C3A800411B78 /* JasperEngineGameController.mm */; };
 		17995BFA3003C40000411B78 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17995BF93003C40000411B78 /* GameController.framework */; };
 		17995BFD3003C4F600411B78 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17995BF93003C40000411B78 /* GameController.framework */; };
-		17A4DD6D2F5E4F8800C1BFC6 /* HybridArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */; };
 		17C554F82FB903B0008804C2 /* ModelPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 17C554F62FB903B0008804C2 /* ModelPool.h */; };
 		17C554F92FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
 		17C554FA2FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
@@ -4463,6 +4462,19 @@
 		4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */; };
 		4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C31E68F4C6398B1 /* Audio.h */; };
 		4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4779D650DFEE40600C /* SoundHandle.h */; };
+		4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */; };
+		4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */; };
+		4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479455F5D4C55C2B3C /* MusicPlayer.h */; };
+		4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47858C3240395205D8 /* MusicSequenceSource.h */; };
+		4A534E4799335E2BD23D7D89 /* HeapTrim.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471EB0AC923124B223 /* HeapTrim.h */; };
+		4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799EC5AF629083BC1 /* GrowArray.h */; };
+		4A534E47B252695D7B90F977 /* StableArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4F45D33EE25F2E9 /* StableArray.h */; };
+		4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
+		4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
+		4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */; };
+		4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D9914C150209E5CB /* ComponentEvents.h */; };
+		4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D02364B83FAFB4BA /* HashRandom.h */; };
+		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
 		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
@@ -4475,8 +4487,6 @@
 		4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
 		4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
 		4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
-		4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479455F5D4C55C2B3C /* MusicPlayer.h */; };
-		4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47858C3240395205D8 /* MusicSequenceSource.h */; };
 		4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */; };
 		4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479A02188939300830 /* PixelPerfectCamera.h */; };
 		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
@@ -5050,7 +5060,6 @@
 		17995BF53003C3A800411B78 /* JasperEngineGameController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JasperEngineGameController.h; sourceTree = "<group>"; };
 		17995BF63003C3A800411B78 /* JasperEngineGameController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = JasperEngineGameController.mm; sourceTree = "<group>"; };
 		17995BF93003C40000411B78 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
-		17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HybridArray.h; sourceTree = "<group>"; };
 		17C554F62FB903B0008804C2 /* ModelPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ModelPool.h; sourceTree = "<group>"; };
 		17C554F72FB903B0008804C2 /* ModelPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ModelPool.cpp; sourceTree = "<group>"; };
 		71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MeshLodPool.h; sourceTree = "<group>"; };
@@ -8747,14 +8756,23 @@
 		4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSnapshotComponent.h; sourceTree = "<group>"; };
 		4A534E470C31E68F4C6398B1 /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
 		4A534E4779D650DFEE40600C /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
+		4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeapTrim.cpp; sourceTree = "<group>"; };
+		4A534E479455F5D4C55C2B3C /* MusicPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicPlayer.h; sourceTree = "<group>"; };
+		4A534E47858C3240395205D8 /* MusicSequenceSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicSequenceSource.h; sourceTree = "<group>"; };
+		4A534E471EB0AC923124B223 /* HeapTrim.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HeapTrim.h; sourceTree = "<group>"; };
+		4A534E4799EC5AF629083BC1 /* GrowArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GrowArray.h; sourceTree = "<group>"; };
+		4A534E47C4F45D33EE25F2E9 /* StableArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StableArray.h; sourceTree = "<group>"; };
+		4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SSRProbeSlots.cpp; sourceTree = "<group>"; };
+		4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SSRProbeSlots.h; sourceTree = "<group>"; };
+		4A534E47D9914C150209E5CB /* ComponentEvents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentEvents.h; sourceTree = "<group>"; };
+		4A534E47D02364B83FAFB4BA /* HashRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HashRandom.h; sourceTree = "<group>"; };
+		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
 		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
 		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
 		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
 		4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelSnap.cpp; sourceTree = "<group>"; };
 		4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectCamera.cpp; sourceTree = "<group>"; };
 		4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemPixelArt.cpp; sourceTree = "<group>"; };
-		4A534E479455F5D4C55C2B3C /* MusicPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicPlayer.h; sourceTree = "<group>"; };
-		4A534E47858C3240395205D8 /* MusicSequenceSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicSequenceSource.h; sourceTree = "<group>"; };
 		4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCameraComponent.h; sourceTree = "<group>"; };
 		4A534E479A02188939300830 /* PixelPerfectCamera.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCamera.h; sourceTree = "<group>"; };
 		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
@@ -10593,6 +10611,15 @@
 			path = model;
 			sourceTree = "<group>";
 		};
+		4A534E47FD9CD85331CEC557 /* memory */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */,
+				4A534E471EB0AC923124B223 /* HeapTrim.h */,
+			);
+			path = memory;
+			sourceTree = "<group>";
+		};
 		4A534E47F4CE7F7900B70B3C /* pixelart */ = {
 			isa = PBXGroup;
 			children = (
@@ -10686,6 +10713,7 @@
 				4A534E47B1D2BFA5C64803C4 /* debug */,
 				4A534E473659413B6A589E09 /* device */,
 				4A534E474D0727C81240C154 /* model */,
+				4A534E47FD9CD85331CEC557 /* memory */,
 				4A534E47F4CE7F7900B70B3C /* pixelart */,
 			);
 			path = core;
@@ -10730,7 +10758,6 @@
 				71ABBD28277A3210001CE3AF /* DefaultFont.h */,
 				175DCE6A30255343008C19EC /* DefaultFontArabic.h */,
 				71BE620D25B1DB37006D6E02 /* FunctionSubscribe.h */,
-				17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */,
 				7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */,
 				71451BF2270CA3EA00712643 /* SpriteFrameData.h */,
 				71ABBD27277A3210001CE3AF /* STBText.h */,
@@ -10773,6 +10800,8 @@
 				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
 				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
+				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
+				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10864,6 +10893,9 @@
 				4A534E478CF8D2F65A3997F5 /* LodFade.cpp */,
 				4A534E47AB92482ADCC4F296 /* LodFade.h */,
 				4A534E471C0A929FCC2A2ED4 /* ViewDrawMode.h */,
+				4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */,
+				4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */,
+				4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -10963,6 +10995,7 @@
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
+				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 			);
 			path = component;
@@ -11004,6 +11037,7 @@
 				4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */,
 				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 				4A534E472114016401F2D894 /* Noise.h */,
+				4A534E47D02364B83FAFB4BA /* HashRandom.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -14899,7 +14933,6 @@
 				715253542CD057C400D294D8 /* Sphere.h in Headers */,
 				71E544FE284D5BB700C68FAB /* Animation.h in Headers */,
 				175DCCB3300FA1C2008C19EC /* ReflectionProbeComponent.h in Headers */,
-				17A4DD6D2F5E4F8800C1BFC6 /* HybridArray.h in Headers */,
 				713E581527BA9D1300376680 /* PolygonComponent.h in Headers */,
 				7157764E2B050C230049C970 /* FontPool.h in Headers */,
 				710506B0297F4483002DD23C /* Primitive.h in Headers */,
@@ -15568,6 +15601,13 @@
 				4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */,
 				4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */,
 				4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */,
+				4A534E4799335E2BD23D7D89 /* HeapTrim.h in Headers */,
+				4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */,
+				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
+				4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */,
+				4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */,
+				4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */,
+				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
 				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
 				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
@@ -18096,6 +18136,8 @@
 				4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */,
 				4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */,
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
+				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
+				4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */,
 				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
 				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
 				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
@@ -18919,6 +18961,8 @@
 				4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */,
 				4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */,
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
+				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
+				4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */,
 				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
 				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
 				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,

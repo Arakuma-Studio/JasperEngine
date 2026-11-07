@@ -214,7 +214,8 @@ void prepare<Transform>(Transform& transform, Entity sourceEntity, CloneContext&
     // the copy of the root starts at the top of the hierarchy
     transform.parent = sourceEntity == ctx.sourceRoot ? NULL_ENTITY : ctx.remap(transform.parent);
     transform.needUpdate = true;
-    transform.needUpdateChildVisibility = true;
+    // needUpdateChildVisibility keeps the source's value: copying is no visibility change, so
+    // each copied child keeps its own visible flag (only a cascade pending on the source goes on)
 }
 
 template<>
@@ -229,18 +230,29 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     // (its bytes are copied below: a clone that shares the model takes the GPU buffers instead)
     if (!keepsModelData)
         ModelCpuData::ensure(mesh, "a clone without its model");
-    for (unsigned int i = 0; i < mesh.numExternalBuffers && i < mesh.eBuffers.size(); i++) {
+    // every element held, also past the counts: each carries GPU handles of the original's
+    for (size_t i = 0; i < mesh.eBuffers.stored(); i++) {
         resetBuffer(mesh.eBuffers[i]);
         // bytes in the file data of a model not copied along may go with the original
-        if (!keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
+        if (i < mesh.numExternalBuffers && !keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
             mesh.eBuffers[i].copyToOwnData();
         }
     }
-    for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++) {
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++) {
         Submesh& submesh = mesh.submeshes[i];
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
+        // the batch variants too (spec S55): the clone's load destroys what they hold, which
+        // were the original's pipelines
+        submesh.batchRender = ObjectRender();
+        submesh.batchDepthRender = ObjectRender();
+        submesh.batchShader.reset();
+        submesh.batchDepthShader.reset();
+        submesh.batchShaderProperties = 0;
+        submesh.batchDepthShaderProperties = 0;
+        submesh.batchShaderId = 0;
+        submesh.batchDepthShaderId = 0;
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();
@@ -262,6 +274,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
+    mesh.bonesUploadRows = 0;
     mesh.needUpdateBones = true;
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
@@ -342,6 +355,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
     points.uiGroupAlpha = 1.0f;
+    points.loadedTransparent = false;
 }
 
 template<>
@@ -423,6 +437,8 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
         view = InstanceViewRange();
     }
     instmesh.lastFadeCullEnd = -1;
+    instmesh.lastFadeCullNear = 0;
+    instmesh.lastCullSlack = 0;
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 }

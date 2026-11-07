@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "JasperEngineWeb.h"
+#include "WebKeyMap.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -424,6 +425,31 @@ bool JasperEngineWeb::isTouchDevice(){
     });
 }
 
+// Browsers start an AudioContext only from a user gesture, and miniaudio resumes its devices on
+// touchend and click only, dropping its listeners after the first even when the resume fails. Every
+// gesture the browser counts (a key too: keyboard-only players, IME keys the key callback leaves to
+// the composition) resumes the devices the engine started; the listeners stay, so a gesture the
+// browser does not count (Escape) or a context the system suspended later (a call on iOS) is
+// retried on the next one. A device the engine stopped stays stopped.
+EM_JS(void, jasper_audio_unlock_install, (), {
+    if (Module.jasperAudioUnlock) return;
+    var resume = function() {
+        var ma = window.miniaudio;
+        if (!ma || !ma.devices || !ma.device_state) return;
+        for (var i = 0; i < ma.devices.length; ++i) {
+            var device = ma.devices[i];
+            if (device && device.webaudio && device.state === ma.device_state.started &&
+                device.webaudio.state !== 'running' && device.webaudio.state !== 'closed') {
+                device.webaudio.resume().catch(function() {});
+            }
+        }
+    };
+    Module.jasperAudioUnlock = resume;
+    ['keydown', 'mousedown', 'pointerdown', 'pointerup', 'touchend', 'click'].forEach(function(type) {
+        window.addEventListener(type, resume, {capture: true, passive: true});
+    });
+});
+
 int JasperEngineWeb::init(int argc, char **argv){
 
     canvas = "#canvas";
@@ -435,6 +461,8 @@ int JasperEngineWeb::init(int argc, char **argv){
         sWidth = atoi(argv[1]);
         sHeight = atoi(argv[2]);
     }
+
+    jasper_audio_unlock_install();
 
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, key_callback);
@@ -565,7 +593,12 @@ void JasperEngineWeb::setContextLost(bool lost){
 
 EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
     pageHidden = e && e->hidden != 0;
+    // hiding: onVisibilityChanged(false) before onPause; showing: after onResume
+    if (projectStarted && pageHidden)
+        jasperengine::Engine::systemVisibilityChanged(false);
     updatePause();
+    if (projectStarted && !pageHidden)
+        jasperengine::Engine::systemVisibilityChanged(true);
 
     // A hidden tab may be closed without another frame: files written in the last half second
     // (and the settings the pause saved) go to IndexedDB now
@@ -879,6 +912,8 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         // what the page did while the project waited
         if (!windowFocused)
             jasperengine::Engine::systemFocus(false);
+        if (pageHidden)
+            jasperengine::Engine::systemVisibilityChanged(false);
         updatePause();
     }
 
@@ -1021,12 +1056,12 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
     if (e->altKey)  modifiers |= D_MODIFIER_ALT;
     if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
 
-    int code = jasperengine_input(e->code);
+    int code = jasperengine::web::keyFromCode(e->code);
     if (code==0){
-        code = jasperengine_legacy_input(e->which);
+        code = jasperengine::web::keyFromKeyCode((int)e->which, (int)e->location);
     }
     if (code==0){
-        code = jasperengine_legacy_input(e->keyCode);
+        code = jasperengine::web::keyFromKeyCode((int)e->keyCode, (int)e->location);
     }
 
     int skey=0;
@@ -1083,7 +1118,7 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
         if (jasper_ime_is_focused())
             return 0;
 
-        wchar_t cp = toCodepoint(std::string(e->key));
+        char32_t cp = toCodepoint(std::string(e->key));
         if (cp == 0) cp = e->which;
         if (cp == 0) cp = e->keyCode;
 
@@ -1283,222 +1318,6 @@ int JasperEngineWeb::jasperengine_gamepad_button(int button){
     return -1;
 }
 
-int JasperEngineWeb::jasperengine_input(const char code[32]){
-    if (!strcmp(code,"Space")) return D_KEY_SPACE;
-    if (!strcmp(code,"Quote")) return D_KEY_APOSTROPHE;  /* ' */
-    if (!strcmp(code,"Comma")) return D_KEY_COMMA;  /* , */
-    if (!strcmp(code,"Minus")) return D_KEY_MINUS;  /* - */
-    if (!strcmp(code,"Period")) return D_KEY_PERIOD;  /* . */
-    if (!strcmp(code,"Slash")) return D_KEY_SLASH;  /* / */
-    if (!strcmp(code,"Digit0")) return D_KEY_0;
-    if (!strcmp(code,"Digit1")) return D_KEY_1;
-    if (!strcmp(code,"Digit2")) return D_KEY_2;
-    if (!strcmp(code,"Digit3")) return D_KEY_3;
-    if (!strcmp(code,"Digit4")) return D_KEY_4;
-    if (!strcmp(code,"Digit5")) return D_KEY_5;
-    if (!strcmp(code,"Digit6")) return D_KEY_6;
-    if (!strcmp(code,"Digit7")) return D_KEY_7;
-    if (!strcmp(code,"Digit8")) return D_KEY_8;
-    if (!strcmp(code,"Digit9")) return D_KEY_9;
-    if (!strcmp(code,"Semicolon")) return D_KEY_SEMICOLON; /* ; */
-    if (!strcmp(code,"Equal")) return D_KEY_EQUAL;  /* = */
-    if (!strcmp(code,"KeyA")) return D_KEY_A;
-    if (!strcmp(code,"KeyB")) return D_KEY_B;
-    if (!strcmp(code,"KeyC")) return D_KEY_C;
-    if (!strcmp(code,"KeyD")) return D_KEY_D;
-    if (!strcmp(code,"KeyE")) return D_KEY_E;
-    if (!strcmp(code,"KeyF")) return D_KEY_F;
-    if (!strcmp(code,"KeyG")) return D_KEY_G;
-    if (!strcmp(code,"KeyH")) return D_KEY_H;
-    if (!strcmp(code,"KeyI")) return D_KEY_I;
-    if (!strcmp(code,"KeyJ")) return D_KEY_J;
-    if (!strcmp(code,"KeyK")) return D_KEY_K;
-    if (!strcmp(code,"KeyL")) return D_KEY_L;
-    if (!strcmp(code,"KeyM")) return D_KEY_M;
-    if (!strcmp(code,"KeyN")) return D_KEY_N;
-    if (!strcmp(code,"KeyO")) return D_KEY_O;
-    if (!strcmp(code,"KeyP")) return D_KEY_P;
-    if (!strcmp(code,"KeyQ")) return D_KEY_Q;
-    if (!strcmp(code,"KeyR")) return D_KEY_R;
-    if (!strcmp(code,"KeyS")) return D_KEY_S;
-    if (!strcmp(code,"KeyT")) return D_KEY_T;
-    if (!strcmp(code,"KeyU")) return D_KEY_U;
-    if (!strcmp(code,"KeyV")) return D_KEY_V;
-    if (!strcmp(code,"KeyW")) return D_KEY_W;
-    if (!strcmp(code,"KeyX")) return D_KEY_X;
-    if (!strcmp(code,"KeyY")) return D_KEY_Y;
-    if (!strcmp(code,"KeyZ")) return D_KEY_Z;
-    if (!strcmp(code,"BracketLeft")) return D_KEY_LEFT_BRACKET; /* [ */
-    if (!strcmp(code,"Backslash")) return D_KEY_BACKSLASH;  /* \ */
-    if (!strcmp(code,"BracketRight")) return D_KEY_RIGHT_BRACKET;  /* ] */
-    if (!strcmp(code,"Backquote")) return D_KEY_GRAVE_ACCENT; /* ` */
-
-    if (!strcmp(code,"Escape")) return D_KEY_ESCAPE;
-    if (!strcmp(code,"Enter")) return D_KEY_ENTER;
-    if (!strcmp(code,"Tab")) return D_KEY_TAB;
-    if (!strcmp(code,"Backspace")) return D_KEY_BACKSPACE;
-    if (!strcmp(code,"Insert")) return D_KEY_INSERT;
-    if (!strcmp(code,"Delete")) return D_KEY_DELETE;
-    if (!strcmp(code,"ArrowRight")) return D_KEY_RIGHT;
-    if (!strcmp(code,"ArrowLeft")) return D_KEY_LEFT;
-    if (!strcmp(code,"ArrowDown")) return D_KEY_DOWN;
-    if (!strcmp(code,"ArrowUp")) return D_KEY_UP;
-    if (!strcmp(code,"PageUp")) return D_KEY_PAGE_UP;
-    if (!strcmp(code,"PageDown")) return D_KEY_PAGE_DOWN;
-    if (!strcmp(code,"Home")) return D_KEY_HOME;
-    if (!strcmp(code,"End")) return D_KEY_END;
-    if (!strcmp(code,"CapsLock")) return D_KEY_CAPS_LOCK;
-    if (!strcmp(code,"ScrollLock")) return D_KEY_SCROLL_LOCK;
-    if (!strcmp(code,"NumLock")) return D_KEY_NUM_LOCK;
-    if (!strcmp(code,"PrintScreen")) return D_KEY_PRINT_SCREEN;
-    if (!strcmp(code,"Pause")) return D_KEY_PAUSE;
-    if (!strcmp(code,"F1")) return D_KEY_F1;
-    if (!strcmp(code,"F2")) return D_KEY_F2;
-    if (!strcmp(code,"F3")) return D_KEY_F3;
-    if (!strcmp(code,"F4")) return D_KEY_F4;
-    if (!strcmp(code,"F5")) return D_KEY_F5;
-    if (!strcmp(code,"F6")) return D_KEY_F6;
-    if (!strcmp(code,"F7")) return D_KEY_F7;
-    if (!strcmp(code,"F8")) return D_KEY_F8;
-    if (!strcmp(code,"F9")) return D_KEY_F9;
-    if (!strcmp(code,"F10")) return D_KEY_F10;
-    if (!strcmp(code,"F11")) return D_KEY_F11;
-    if (!strcmp(code,"F12")) return D_KEY_F12;
-    if (!strcmp(code,"Numpad0")) return D_KEY_KP_0;
-    if (!strcmp(code,"Numpad1")) return D_KEY_KP_1;
-    if (!strcmp(code,"Numpad2")) return D_KEY_KP_2;
-    if (!strcmp(code,"Numpad3")) return D_KEY_KP_3;
-    if (!strcmp(code,"Numpad4")) return D_KEY_KP_4;
-    if (!strcmp(code,"Numpad5")) return D_KEY_KP_5;
-    if (!strcmp(code,"Numpad6")) return D_KEY_KP_6;
-    if (!strcmp(code,"Numpad7")) return D_KEY_KP_7;
-    if (!strcmp(code,"Numpad8")) return D_KEY_KP_8;
-    if (!strcmp(code,"Numpad9")) return D_KEY_KP_9;
-    if (!strcmp(code,"NumpadDecimal")) return D_KEY_KP_DECIMAL;
-    if (!strcmp(code,"NumpadDivide")) return D_KEY_KP_DIVIDE;
-    if (!strcmp(code,"NumpadMultiply")) return D_KEY_KP_MULTIPLY;
-    if (!strcmp(code,"NumpadSubtract")) return D_KEY_KP_SUBTRACT;
-    if (!strcmp(code,"NumpadAdd")) return D_KEY_KP_ADD;
-    if (!strcmp(code,"NumpadEnter")) return D_KEY_KP_ENTER;
-    if (!strcmp(code,"NumpadEqual")) return D_KEY_KP_EQUAL;
-    if (!strcmp(code,"ShiftLeft")) return D_KEY_LEFT_SHIFT;
-    if (!strcmp(code,"ControlLeft")) return D_KEY_LEFT_CONTROL;
-    if (!strcmp(code,"AltLeft")) return D_KEY_LEFT_ALT;
-    if (!strcmp(code,"OSLeft")) return D_KEY_LEFT_SUPER;
-    if (!strcmp(code,"ShiftRight")) return D_KEY_RIGHT_SHIFT;
-    if (!strcmp(code,"ControlRight")) return D_KEY_RIGHT_CONTROL;
-    if (!strcmp(code,"AltRight")) return D_KEY_RIGHT_ALT;
-    if (!strcmp(code,"OSRight")) return D_KEY_RIGHT_SUPER;
-    if (!strcmp(code,"Menu")) return D_KEY_MENU;
-
-
-    return 0;
-}
-
-int JasperEngineWeb::jasperengine_legacy_input(int code){
-    if (code==8) return D_KEY_DELETE;
-    if (code==9) return D_KEY_TAB;
-    if (code==13) return D_KEY_ENTER;
-    if (code==16) return D_KEY_LEFT_SHIFT;
-    if (code==17) return D_KEY_LEFT_CONTROL;
-    if (code==18) return D_KEY_LEFT_ALT;
-    if (code==19) return D_KEY_PAUSE;
-    if (code==20) return D_KEY_CAPS_LOCK;
-    if (code==27) return D_KEY_ESCAPE;
-    if (code==32) return D_KEY_SPACE;
-    if (code==33) return D_KEY_PAGE_UP;
-    if (code==34) return D_KEY_PAGE_DOWN;
-    if (code==35) return D_KEY_END;
-    if (code==36) return D_KEY_HOME;
-    if (code==37) return D_KEY_LEFT;
-    if (code==38) return D_KEY_UP;
-    if (code==39) return D_KEY_RIGHT;
-    if (code==40) return D_KEY_DOWN;
-    if (code==45) return D_KEY_INSERT;
-    if (code==46) return D_KEY_DELETE;
-    if (code==48) return D_KEY_0;
-    if (code==49) return D_KEY_1;
-    if (code==50) return D_KEY_2;
-    if (code==51) return D_KEY_3;
-    if (code==52) return D_KEY_4;
-    if (code==53) return D_KEY_5;
-    if (code==54) return D_KEY_6;
-    if (code==55) return D_KEY_7;
-    if (code==56) return D_KEY_8;
-    if (code==57) return D_KEY_9;
-
-    if (code==65) return D_KEY_A;
-    if (code==66) return D_KEY_B;
-    if (code==67) return D_KEY_C;
-    if (code==68) return D_KEY_D;
-    if (code==69) return D_KEY_E;
-    if (code==70) return D_KEY_F;
-    if (code==71) return D_KEY_G;
-    if (code==72) return D_KEY_H;
-    if (code==73) return D_KEY_I;
-    if (code==74) return D_KEY_J;
-    if (code==75) return D_KEY_K;
-    if (code==76) return D_KEY_L;
-    if (code==77) return D_KEY_M;
-    if (code==78) return D_KEY_N;
-    if (code==79) return D_KEY_O;
-    if (code==80) return D_KEY_P;
-    if (code==81) return D_KEY_Q;
-    if (code==82) return D_KEY_R;
-    if (code==83) return D_KEY_S;
-    if (code==84) return D_KEY_T;
-    if (code==85) return D_KEY_U;
-    if (code==86) return D_KEY_V;
-    if (code==87) return D_KEY_W;
-    if (code==88) return D_KEY_X;
-    if (code==89) return D_KEY_Y;
-    if (code==90) return D_KEY_Z;
-
-    if (code==91) return D_KEY_LEFT_SUPER;
-    if (code==92) return D_KEY_RIGHT_SUPER;
-    if (code==93) return 0; //SELECT key
-    if (code==96) return D_KEY_KP_0;
-    if (code==97) return D_KEY_KP_1;
-    if (code==98) return D_KEY_KP_2;
-    if (code==99) return D_KEY_KP_3;
-    if (code==100) return D_KEY_KP_4;
-    if (code==101) return D_KEY_KP_5;
-    if (code==102) return D_KEY_KP_6;
-    if (code==103) return D_KEY_KP_7;
-    if (code==104) return D_KEY_KP_8;
-    if (code==105) return D_KEY_KP_9;
-    if (code==106) return D_KEY_KP_MULTIPLY;
-    if (code==107) return D_KEY_KP_ADD;
-    if (code==109) return D_KEY_KP_SUBTRACT;
-    if (code==110) return D_KEY_KP_DECIMAL;
-    if (code==111) return D_KEY_KP_DIVIDE;
-    if (code==112) return D_KEY_F1;
-    if (code==113) return D_KEY_F2;
-    if (code==114) return D_KEY_F3;
-    if (code==115) return D_KEY_F4;
-    if (code==116) return D_KEY_F5;
-    if (code==117) return D_KEY_F6;
-    if (code==118) return D_KEY_F7;
-    if (code==119) return D_KEY_F8;
-    if (code==120) return D_KEY_F9;
-    if (code==121) return D_KEY_F10;
-    if (code==122) return D_KEY_F11;
-    if (code==123) return D_KEY_F12;
-    if (code==144) return D_KEY_NUM_LOCK;
-    if (code==145) return D_KEY_SCROLL_LOCK;
-    if (code==186) return D_KEY_SEMICOLON;
-    if (code==187) return D_KEY_EQUAL;
-    if (code==188) return D_KEY_COMMA;
-    if (code==189) return D_KEY_MINUS;
-    if (code==190) return D_KEY_PERIOD;
-    if (code==191) return D_KEY_SLASH;
-    if (code==192) return D_KEY_GRAVE_ACCENT;
-    if (code==219) return D_KEY_LEFT_BRACKET;
-    if (code==220) return D_KEY_BACKSLASH;
-    if (code==222) return D_KEY_APOSTROPHE;
-
-    return 0;
-}
 
 // ---- UserSettings: localStorage. Pages of one site share it, so each game prefixes its keys:
 // "<storageId>/<key>". Bare "<key>" entries of older builds are still read, so their saves

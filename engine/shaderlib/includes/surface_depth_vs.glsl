@@ -48,10 +48,7 @@
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
-    uniform u_vs_fade {
-        vec4 fadeRange; //start.x, end.y
-        vec4 fadeEye;   //camera in model space.xyz
-    } fadeParams;
+    #include "includes/instance_fade.glsl"
 #endif
 
 #ifdef HAS_TEXTURERECT
@@ -209,12 +206,7 @@ void main() {
     surfaceFadeVisible = 1.0;
     #ifdef USE_INSTANCE_FADE
         vec3 fadeOrigin = i_matrix_col4.xyz;
-        float fadeVisible = 1.0;
-        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
-            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
-            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
-                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
-        }
+        float fadeVisible = instanceFadeVisible(fadeOrigin);
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
         surfaceFadeVisible = fadeVisible;
     #endif

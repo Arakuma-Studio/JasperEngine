@@ -54,6 +54,7 @@ class HubEditor:
         self.proc: subprocess.Popen | None = None
         self.xvfb: harness.Xvfb | None = None
         self.ed: Editor | None = None
+        self.log = None
 
     async def __aenter__(self) -> "HubEditor":
         port = free_port()
@@ -66,18 +67,23 @@ class HubEditor:
                     "export": {"default_dir": str(self.cwd)}}
         settings.update(self.settings)
         (self.cwd / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
-        self.xvfb = harness.Xvfb()
-        self.display = self.xvfb.start()
-        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("WAYLAND_DISPLAY", "JASPER_MCP_URL")}
-        env.update({"DISPLAY": self.display, "HOME": str(home), "LIBGL_ALWAYS_SOFTWARE": "1"})
-        env.update(self.extra_env)
-        self.log = open(self.cwd / f"editor-{port}.log", "w")
-        self.proc = subprocess.Popen(harness.editor_command() + ["--hub"], cwd=str(self.cwd), env=env,
-                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
-        await wait_for_port(port, timeout=180)
-        self.ed = Editor(url=f"http://127.0.0.1:{port}/mcp", token=harness.HTTP_TOKEN)
-        await self.ed.__aenter__()
-        return self
+        try:
+            self.xvfb = harness.Xvfb()
+            self.display = self.xvfb.start()
+            env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("WAYLAND_DISPLAY", "JASPER_MCP_URL")}
+            env.update({"DISPLAY": self.display, "HOME": str(home), "LIBGL_ALWAYS_SOFTWARE": "1"})
+            env.update(self.extra_env)
+            self.log = open(self.cwd / f"editor-{port}.log", "w")
+            self.proc = subprocess.Popen(harness.editor_command() + ["--hub"], cwd=str(self.cwd), env=env,
+                                         stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
+            await wait_for_port(port, timeout=180)
+            self.ed = Editor(url=f"http://127.0.0.1:{port}/mcp", token=harness.HTTP_TOKEN)
+            await self.ed.__aenter__()
+            return self
+        except BaseException:
+            with contextlib.suppress(BaseException):
+                await self.__aexit__(None, None, None)
+            raise
 
     def kill9(self) -> None:
         """No clean-up runs; the lock is free when this returns"""
@@ -88,15 +94,17 @@ class HubEditor:
         if self.ed:
             with contextlib.suppress(BaseException):
                 await self.ed.__aexit__(None, None, None)
-        if self.proc.poll() is None:
+        if self.proc is not None and self.proc.poll() is None:
             self.proc.terminate()
             try:
                 await asyncio.to_thread(self.proc.wait, 60)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 await asyncio.to_thread(self.proc.wait, 30)
-        self.xvfb.stop()
-        self.log.close()
+        if self.xvfb is not None:
+            self.xvfb.stop()
+        if self.log is not None:
+            self.log.close()
 
 
 class Scene:

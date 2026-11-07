@@ -1116,8 +1116,7 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "get_entity";
         tool.title = "Get Entity";
         tool.description =
-            "A GameObject as the Inspector shows it (id, name, path, active, tag, layer, parent, children, world "
-            "transform, prefab) and its components. detail: summary (names), values ({component: {property: "
+            "A GameObject and its components as the Inspector shows them. detail: summary (names), values ({component: {property: "
             "value}}), full (+ type, default, enum options, overridden flag), yaml (scene-file encoding). Filter "
             "by components and properties (globs: \"submeshes[0].*\"); big custom values are elided unless named.";
         tool.inputSchema = object({

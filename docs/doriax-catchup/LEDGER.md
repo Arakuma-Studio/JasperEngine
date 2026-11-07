@@ -77,25 +77,25 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | review |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
-| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
+| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | specced |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
-| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
+| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
 
@@ -155,3 +155,58 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   and more). Owner's rule: no full suites anywhere; the brief's gate is now the WERROR editor build, the feature's
   own tests and red controls, filtered affected suites, compile-only web/Android when relevant, and lints. Agents
   revived in batches, closest to landing first.
+- 2026-11-06: a second stop (the session account's login was revoked, about 17 hours lost). The slot queue kept
+  running the agents' detached jobs meanwhile. Merged 187 more upstream commits (the sound layer S35-S40) into
+  `main` and pushed; all 16 agents revived to read their job results, merge `main` once more, finish and report.
+- 2026-11-06 18:3x: owner's top priority: mesh-memory, sprite-batching, unicode-text, platform-lifecycle (in that
+  order), and permission to rent Hetzner VMs. `slot` now runs only priority order while a priority-1 job waits.
+  Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
+  (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
+  (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
+- 2026-11-06 18:4x: owner: time efficiency is the priority. Six more Hetzner cpx51 boxes (eight in total, about
+  $3.55/h, 48 h limit), assigned per feature in [BOXES.md](BOXES.md), each with one shared ccache per box.
+  The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
+  controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
+  local slots only finish the jobs already running.
+- 2026-11-06 21:xx: **unicode-text merged** (`052c14c4b`). Landing check on the merged tree (box C): WERROR editor,
+  filtered unit suites, HTML UI input, its MCP files with protocol/stubs/docs, generated docs and tool budget, lints:
+  all green. rbox fixed: `build/.cache` on the boxes was a link the containers could not follow (uv and MCP steps
+  failed); now only `build/.cache/ccache` is a link.
+- 2026-11-06 21:xx: **mesh-memory merged** (`3618eab04`) after an independent review (7 findings fixed: bounded Lua
+  submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
+  batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
+  merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.
+- 2026-11-06 22:xx: **build-toolchain merged** after an independent review (editor C++ scripts get the physics
+  macros, CMAKE_GENERATOR respected, node lookup order, vswhere only when needed and UTF-8, /WHOLEARCHIVE only for
+  MSVC-style drivers). Round on box H with main merged: WERROR editor, unit 41/41, MCP 35 + 2, physics link check,
+  jasperengine.py 11/11, lints; red controls failed as they should. MSVC, MinGW, clang-cl and macOS paths by
+  reading only. rbox now has `auto` (any idle box); the brief says so.
+- 2026-11-06 23:xx: **ssr-probes merged** after an independent review (saturated pixels keep their colour, coverage
+  clipped to the near plane, two-probe test with authored gradients, stats cleared per frame, spec tolerances).
+  Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
+  controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
+  Shader cache v49 is now taken: later landings bump it.
+- 2026-11-07 00:xx: **render-correctness merged** after an independent review (flat normals turned toward the eye on
+  every backend, catalog snapshot regenerated, foliage refills on a distance-scale change, scaled cylindrical
+  billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
+  rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
+  red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.
+- 2026-11-07 00:xx: **code-editor-git merged** after an independent review (revert is its own undo step, editor-buffer
+  diffs match git byte for byte, renamed files diff from their old path, svn '@' paths, restored MCP warnings, core
+  budget kept at 99000 by trimming). Landing check on main + branch (box C): WERROR editor, gen_tool_docs and
+  tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
+  render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
+  water-reflections takes 1.4.
+- 2026-11-07 01:xx: **runtime-core, platform-lifecycle and scene-integrity merged as one batch** (`f0fc338d9`), each
+  after an independent review and its fixes. They share Engine.cpp, App.cpp, Project.cpp and InspectorWindow.cpp,
+  so one landing check covered the three on main: WERROR editor, unit filters of all three plus render-correctness
+  and code-editor-git suites (343), MCP files of all three plus budget/docs/protocol (57 and 75), Android compile,
+  lints. Integration fixes made at landing: onVisibilityChanged cleared with the other lifecycle events
+  (runtime-core's event-clear lint meets platform-lifecycle's new event); set_child_scene description trimmed to keep
+  core at 99000; RuntimeFields.gen.inc regenerated (runtime-core's action fields and render-correctness' foliage and
+  instanced fade fields were not in cooked scenes, so prebuilt exports dropped them).
+- Lesson for every landing check: a branch that adds component fields runs `RuntimeFields.*:CookedScene.*`.
+- Open, not ours: a many-material OBJ drops submeshes on main since mesh-memory (S55's per-submesh culling assumed
+  contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
+  diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
+  program). An FBX foliage layer draws no instances in the headless editor (unverified).

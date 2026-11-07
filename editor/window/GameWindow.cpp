@@ -1367,6 +1367,14 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         const bool hovered = ImGui::IsWindowHovered();
 
         if (running && sceneProject->playState == ScenePlayState::PLAYING) {
+            // Escape is the game's while it plays here (Unity): ImGui's keyboard navigation
+            // would take it to leave this child window (its focus lost before PlayInput saw the
+            // key). The claim applies from the next frame on and locks nothing, so every editor
+            // reader of the key with the default owner test still sees the press (a captured
+            // cursor's release among them)
+            if (focused) {
+                ImGui::SetKeyOwner(ImGuiKey_Escape, ImGui::GetID("##GameCanvasKeys"));
+            }
             const ImVec2 inputScale(engineScale.x / zoom, engineScale.y / zoom);
             playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
             cursorInView = hovered;

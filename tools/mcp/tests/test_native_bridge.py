@@ -302,7 +302,7 @@ async def test_source_export(ed: Editor):
     ed.check_in("include ':jasperbridge'", settings)
     ed.check_in("include ':nativeplugins'", settings)
     module = (studio / "nativeplugins" / "build.gradle").read_text()
-    ed.check_in("namespace 'com.jaspergameengine.nativeplugins'", module)
+    ed.check_in("namespace = 'com.jaspergameengine.nativeplugins'", module)
     ed.check_in("api project(':jasperbridge')", module)
     ed.check_in('api "com.squareup.okio:okio:3.9.0"', module)
     ed.check_in("implementation platform('com.google.firebase:firebase-bom:33.0.0')", module)
@@ -375,7 +375,11 @@ async def test_source_export(ed: Editor):
     packages = [o for o in objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"]
     ed.check_eq([(p["repositoryURL"], p["requirement"]["kind"], p["requirement"]["minimumVersion"]) for p in packages],
                 [("https://github.com/RevenueCat/purchases-ios", "upToNextMajorVersion", "4.0.0")])  # "4" padded
-    header_refs = [o.get("path") for o in objects.values() if o.get("isa") == "PBXFileReference" and o.get("path") == "Device.h"]
+    # (the engine's own engine/core/device/Device.h, S56, is the template's reference)
+    template = pbxproj.parse((Path(__file__).resolve().parents[3] / "engine" / "workspaces" / "xcode" / "JasperEngine.xcodeproj" /
+                              "project.pbxproj").read_text(encoding="utf-8"))["objects"]
+    header_refs = [o.get("path") for key, o in objects.items()
+                   if o.get("isa") == "PBXFileReference" and o.get("path") == "Device.h" and key not in template]
     ed.check_eq(header_refs, [], "plugin headers are no file references (they would shadow engine headers)")
     exported_link = out / "project" / "plugins" / "native" / "ios" / "sdk" / "Linked.framework"
     ed.check((exported_link / "Versions" / "Current").is_symlink(), "a framework's Versions/Current stays a link")

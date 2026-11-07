@@ -8,6 +8,7 @@
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "window/PlayInput.h"
 #include "Platform.h"
 #include "util/FrameLimiter.h"
 #include "WindowMac.h"
@@ -631,9 +632,11 @@ bool renderEditorFrame() {
     // A screen-change notification can rebuild the list between frames.
     normalizeMonitorDpiScale();
     applyRelativeMouseData();
+    editor::App& app = editor::Backend::getApp();
+    // the system's CJK and emoji fonts join the editor's fonts between frames, once found
+    app.applySystemFonts();
     ImGui::NewFrame();
 
-    editor::App& app = editor::Backend::getApp();
     app.engineRender();
     app.show();
 
@@ -992,6 +995,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         double lastActivityTime = monotonicSeconds();
         bool currentFrameSync = true;
         FrameLimiter playLimiter;
+        // when the next unfocused or hidden frame is due
+        double frameDeadline = monotonicSeconds();
 
         while (!backend->shouldClose) {
             @autoreleasepool {
@@ -1016,13 +1021,17 @@ int editor::Backend::init(int argc, char* argv[]) {
                     activeProject->isPlaySessionActive();
                 // the window's focus reaches the game as Engine::onFocus
                 editor::Platform::forwardHostFocus(focused, playSessionActive);
+                // and whether it can be seen as Engine::onVisibilityChanged: a hidden (or covered)
+                // window's game updates without drawing (runHiddenGameFrame below)
+                app.setWindowVisible(visible);
+                editor::Platform::forwardHostVisibility(visible, playSessionActive);
                 // while playing, the game's Engine.vSyncCount decides
                 const FramePacing& pacing = Engine::getFramePacing();
                 const bool frameSync = app.isBenchmarkMode() ? false : (playSessionActive
                     ? pacing.swapInterval > 0
                     : AppSettings::getEditorVSyncEnabled());
                 setMouseControlSuspended(playSessionActive &&
-                    !activeProject->isMainScenePlaying());
+                    (!activeProject->isMainScenePlaying() || app.getPlayInput()->wantsEditorCursor()));
 
                 const bool desiredFrameSync = focused && frameSync;
                 if (desiredFrameSync != currentFrameSync) {
@@ -1064,10 +1073,16 @@ int editor::Backend::init(int argc, char* argv[]) {
                 // A screen-change notification can rebuild the list between frames.
                 normalizeMonitorDpiScale();
                 applyRelativeMouseData();
+                app.applySystemFonts();
                 ImGui::NewFrame();
 
-                if (frameReady) app.engineRender();
-                else app.processMainThreadTasks();
+                if (frameReady) {
+                    app.engineRender();
+                } else {
+                    app.processMainThreadTasks();
+                    // a playing game keeps running while the window can't be seen, as an exported one
+                    if (!visible) app.runHiddenGameFrame();
+                }
                 app.show();
 
                 ImGuiIO& io = ImGui::GetIO();
@@ -1080,8 +1095,10 @@ int editor::Backend::init(int argc, char* argv[]) {
                 const bool activity =
                     io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
                     io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
-                    ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
-                    ImGui::IsAnyItemActive() || app.didRenderScene() ||
+                    // a text field stays active while it has the caret, which blinks at the idle
+                    // rate (renderRequested keeps those frames), as EditorFrame
+                    ImGui::IsAnyMouseDown() || typing ||
+                    (ImGui::IsAnyItemActive() && !io.WantTextInput) || app.didRenderScene() ||
                     app.hasPendingMainThreadTasks() ||
                     backend->redrawRequested || appRedraw;
                 backend->redrawRequested = false;
@@ -1103,7 +1120,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                     app.recordFrameTime((monotonicSeconds() - frameStart) * 1000.0);
 
                 // Engine.targetFrameRate without vsync: the game's frame limiter
-                const bool playLimited = playSessionActive && !app.isBenchmarkMode() && !minimized &&
+                const bool playLimited = playSessionActive && !app.isBenchmarkMode() && visible &&
                     pacing.limiterFps > 0.0;
                 if (playLimited) {
                     const double limit = focused || backend->framePeriod <= 0.0
@@ -1112,11 +1129,22 @@ int editor::Backend::init(int argc, char* argv[]) {
                 } else {
                     playLimiter.reset();
                 }
-                if (!playLimited && (!focused || minimized)) {
-                    const double remaining = backend->framePeriod -
-                        (monotonicSeconds() - frameStart);
-                    if (remaining > 0.0)
-                        [NSThread sleepForTimeInterval:remaining];
+                if (!visible && !app.isBenchmarkMode() && app.isHiddenGameRunning()) {
+                    // a hidden game's updates come at their own rate (at most 60 Hz): wake for
+                    // the next one
+                    const double wait = app.hiddenGameSecondsUntilDue();
+                    if (wait > 0.0)
+                        [NSThread sleepForTimeInterval:wait];
+                    frameDeadline = monotonicSeconds();
+                } else if (!playLimited && (!focused || !visible) && !app.isBenchmarkMode()) {
+                    // Paced by deadline, so a late wake-up is made up on the next frame
+                    // (EditorFrame::run)
+                    const double now = monotonicSeconds();
+                    frameDeadline += backend->framePeriod;
+                    if (std::abs(frameDeadline - now) > backend->framePeriod)
+                        frameDeadline = now;
+                    if (frameDeadline > now)
+                        [NSThread sleepForTimeInterval:frameDeadline - now];
                 }
                 if (app.consumeBenchmarkExit())
                     backend->shouldClose = true;

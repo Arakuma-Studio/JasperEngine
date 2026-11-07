@@ -8,6 +8,7 @@
 
 #include "shader/ShaderBuildTypes.h"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,11 @@ namespace jasperengine::editor {
     // the backends a platform's players exist for (R11), the first its default; names are the
     // runtime ids' (glcore gles3 vulkan d3d11 metal)
     std::vector<std::string> platformBackends(BuildPlatform platform);
+    // the shader backends a source export compiles for a target platform (the Build Settings
+    // window's presets and MCP build_project's): the backends its engine build supports
+    std::set<ShaderBackend> sourceExportBackends(BuildPlatform platform);
+    // the graphics APIs a Desktop player of this host can use, the first the default
+    const std::vector<ShaderBackend>& hostDesktopBackends();
     // a backend as the CLI and MCP name it ("opengl", "opengles", "vulkan", "d3d11", "metal",
     // "metal-macos", "metal-ios", or the runtime names) -> runtime name; empty when unknown
     std::string normalizeBackend(const std::string& name);

@@ -90,6 +90,8 @@ namespace jasperengine{
         static void commitQueue();
         static void executeQueue();
         static void commit();
+        // between frames: returns once the GPU finished what was committed (Metal; nothing elsewhere)
+        static void waitGpuIdle();
         static void shutdown();
         static const RenderFeatures& getFeatures();
         static uint64_t getPipelineCacheMisses();

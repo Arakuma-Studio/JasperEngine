@@ -16,7 +16,7 @@
 #define TILEMAP_CHUNK_TARGET_TILES 64
 #define MAX_TILEMAP_CHUNKS_PER_AXIS 16
 
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "math/AABB.h"
 #include "Engine.h"
 #include <vector>
@@ -69,11 +69,13 @@ namespace jasperengine{
         unsigned int reserveTiles = 10;
         unsigned int renderedTiles = 0;
         
-        HybridArray<TileRectData, MAX_TILEMAP_TILESRECT> tilesRect;
+        GrowArray<TileRectData> tilesRect;
         unsigned int numTilesRect = 0;
 
-        HybridArray<TileData, MAX_TILEMAP_TILES> tiles;
+        GrowArray<TileData> tiles;
         unsigned int numTiles = 0;
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return tilesRect.storageBytes() + tiles.storageBytes(); }
 
         // Chunks of every submesh, grouped by submesh: submesh s owns
         // [chunkStart[s], chunkStart[s+1]).

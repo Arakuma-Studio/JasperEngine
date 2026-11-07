@@ -41,11 +41,13 @@ struct VersionControlSettings {
     int autoFetchMinutes = 0;       // 0 off
     bool commitAndPush = false;     // the Commit window's "Commit and Push", remembered
     bool showChanges = true;        // the Hierarchy's "Show VCS Changes"
+    bool codeEditorChanges = true;  // the code editor's change markers
 
     bool operator==(const VersionControlSettings& other) const {
         return gitPath == other.gitPath && svnPath == other.svnPath && lockOnEdit == other.lockOnEdit &&
                pollSeconds == other.pollSeconds && lockPollSeconds == other.lockPollSeconds &&
-               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges;
+               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges &&
+               codeEditorChanges == other.codeEditorChanges;
     }
     bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
 };
@@ -316,6 +318,9 @@ private:
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
+    // Preferences > General > Editor Font > CJK Font Language: auto, japanese, korean,
+    // simplified_chinese or traditional_chinese (SystemFonts)
+    static std::string cjkFontLanguage;
     static bool soundBrowserAutoplay;
     static bool soundBrowserMatchLoudness;
     static std::filesystem::path hubLastLocation;
@@ -460,6 +465,9 @@ public:
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
+    // Preferences > General > Editor Font > CJK Font Language (SystemFonts::isLanguageSetting)
+    static std::string getCjkFontLanguage();
+    static void setCjkFontLanguage(const std::string& language);
     // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
     static bool getProjectHubAlways();
     static void setProjectHubAlways(bool always);

@@ -42,6 +42,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
+#include "util/SystemFonts.h"
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
@@ -198,6 +199,8 @@ bool readProjectFile(SettingsContext& ctx, const Json& value, fs::path& out, std
         out.clear();
         return true;
     }
+    // a backslash is a separator on every platform (Stream::portablePath)
+    text = FileUtils::portablePath(text);
     fs::path absolute;
     if (!mcp::McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
     out = FileUtils::pathFromUtf8(text).lexically_normal();
@@ -2038,6 +2041,28 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // the foliage distance scale per platform group (Engine::setFoliageDistanceScaleDefaults)
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "number";
+            s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+            s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 10.0, v, error)) return false;
+                if (apply) {
+                    std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
+                    all[group] = static_cast<float>(v);
+                    ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
 
         // ---- player logging
         {
@@ -2772,6 +2797,16 @@ std::vector<Setting> mcpSettingsTable() {
                 return readBool(value, settings.commitAndPush, error);
             });
         }
+        {
+            Setting s;
+            s.key = "editor.vcs.code_editor_changes";
+            s.type = "bool";
+            s.description = "Version control: the code editor marks the lines changed since the last commit.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().codeEditorChanges); };
+            vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.codeEditorChanges, error);
+            });
+        }
 
         // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging),
         // from the reflection table
@@ -3068,6 +3103,28 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        {
+            Setting s;
+            s.key = "preferences.cjk_font_language";
+            s.type = "enum";
+            s.values = {"auto", "japanese", "korean", "simplified_chinese", "traditional_chinese"};
+            s.preference = true;
+            s.description = "General: which language's glyph forms the editor uses for Chinese characters, from the "
+                            "system's fonts (auto: the system language). Applies at the next start.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getCjkFontLanguage()); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || !SystemFonts::isLanguageSetting(value.get<std::string>())) {
+                    error = "must be auto, japanese, korean, simplified_chinese or traditional_chinese";
+                    return false;
+                }
+                if (apply) {
+                    AppSettings::setCjkFontLanguage(value.get<std::string>());
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
         // S30: the platform tools of builds and releases (editor/platform/ExternalTools.h)
         auto toolPreference = [&stringPreference](const std::string& key, const std::string& tool, const std::string& description) {
             stringPreference(key, description, [tool] { return AppSettings::getExternalToolPath(tool); },
@@ -3284,6 +3341,9 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},
     {"quality.lod_bias", "Quality", "", "LOD Bias", "lod level of detail bias meshes distance"},
     {"quality.shadow_lod_bias", "Quality", "", "Shadow LOD Bias", "lod level of detail shadows casters bias"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
@@ -3345,6 +3405,7 @@ const Placement placements[] = {
     {"editor.vcs.lock_poll_seconds", "Version Control", "Refresh", "Lock Poll (s)", "locks server refresh seconds"},
     {"editor.vcs.auto_fetch_minutes", "Version Control", "Refresh", "Auto Fetch (min)", "fetch remote minutes"},
     {"editor.vcs.commit_and_push", "Version Control", "Commit", "Commit and Push", "push remote"},
+    {"editor.vcs.code_editor_changes", "Version Control", "Code Editor", "Show Changes in Code Editor", "gutter markers diff lines"},
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
@@ -3372,6 +3433,7 @@ const Placement placements[] = {
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
     {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
     {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
+    {"preferences.cjk_font_language", "General", "Editor Font", "CJK Font Language", "cjk chinese japanese korean kanji hanja han font language glyphs"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},
     {"preferences.build_cxx_compiler", "External Tools", "Desktop Build", "C++ Compiler", "compiler kit cpp"},

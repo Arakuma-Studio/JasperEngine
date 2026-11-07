@@ -22,7 +22,7 @@ baseline's isolated; a line of the baseline's "console" list ({"text", "level"}:
 warning, error) missing, at another console level, or (with "ordered": true) out of order. An
 error the "console" list names is expected and fails nothing. A baseline may also give "query" (items added to the
 page URL's query), "seconds" (the run length when --seconds is not given), "capture_timeout" (seconds the screenshot may take), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
-its value must contain), "chrome_flags" (extra Chrome flags, e.g. a device scale factor), and "allow": substrings of console lines and uncaught exceptions that are expected (a
+its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
 --until-line TEXT ends the run at the first console line containing TEXT (a game that prints when it
@@ -31,6 +31,14 @@ is done; --seconds is then the cap).
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
+
+A baseline's "keys": key presses after the clicks, each a {"code", "key", "key_code", "location"} object
+(every field optional: an event without "code" exercises the legacy keyCode path) sent as a CDP
+Input.dispatchKeyEvent rawKeyDown and keyUp pair (trusted: a key press is a user gesture), each followed
+by "after_key_seconds" (default 0.5). "eval_before_input" with "eval_before_input_expect" is evaluated
+after the run, before the clicks and keys (a state a gesture changes: the audio context). "chrome_flags"
+adds Chrome flags (["--autoplay-policy=user-gesture-required"]: audio waits for a gesture as in a
+desktop browser).
 
 The transcript is printed before anything that needs the page's main thread (evaluation, the
 screenshot), so a wedged page still yields its console. The only capture path is
@@ -385,6 +393,11 @@ def main() -> int:
             ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event))
         cdp.pump(seconds, until=(lambda event: args.until_line in console_text(event)) if args.until_line else None)
 
+        before_input = None
+        if baseline.get("eval_before_input"):
+            before_input = evaluate(cdp, baseline["eval_before_input"])
+            print(f"browser_gate: eval before input {baseline['eval_before_input']} = {json.dumps(before_input)[:20000]}")
+
         # user gestures the page waits for (pointer lock, audio): trusted clicks at the canvas centre
         for _ in range(int(baseline.get("click", 0))):
             rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
@@ -394,6 +407,16 @@ def main() -> int:
                 cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left" if kind != "mouseMoved" else "none",
                          buttons=1 if kind == "mousePressed" else 0, clickCount=1 if kind != "mouseMoved" else 0)
             cdp.pump(float(baseline.get("after_click_seconds", 2.0)))
+
+        # key presses (trusted, so a gesture: web audio starts on one)
+        for key in baseline.get("keys", []):
+            event = {"key": key.get("key", ""), "windowsVirtualKeyCode": int(key.get("key_code", 0)),
+                     "nativeVirtualKeyCode": int(key.get("key_code", 0)), "location": int(key.get("location", 0))}
+            if key.get("code"):
+                event["code"] = key["code"]
+            for kind in ("rawKeyDown", "keyUp"):
+                cdp.send("Input.dispatchKeyEvent", type=kind, **event)
+            cdp.pump(float(baseline.get("after_key_seconds", 0.5)))
 
         # the transcript first: everything after this needs the page's main thread
         records = [(console_time(e), console_level(e), console_text(e)) for e in cdp.events]
@@ -482,6 +505,11 @@ def main() -> int:
             failures.append(f"no '{READY_LINE}' line within {args.timeout:g} s")
         for text in missing:
             failures.append(f"no console line contains '{text}'")
+        if baseline.get("eval_before_input"):
+            value = json.dumps(before_input) if not isinstance(before_input, str) else before_input
+            for text in baseline.get("eval_before_input_expect", []):
+                if text not in (value or ""):
+                    failures.append(f"eval before input {baseline['eval_before_input']} does not contain '{text}' (got {value})")
         if baseline.get("eval"):
             value = json.dumps(baseline_eval) if not isinstance(baseline_eval, str) else baseline_eval
             for text in baseline.get("eval_expect", []):

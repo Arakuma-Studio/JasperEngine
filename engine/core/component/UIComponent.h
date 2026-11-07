@@ -98,6 +98,13 @@ namespace jasperengine{
         FunctionSubscribe<void(float, float)> onDrag;
         FunctionSubscribe<void(float, float)> onDragEnd;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onGetFocus); f(onLostFocus); f(onPointerEnter); f(onPointerLeave); f(onPointerMove);
+            f(onPointerDown); f(onPointerUp); f(onClick); f(onDoubleClick); f(onDragStart); f(onDrag);
+            f(onDragEnd);
+        }
+
         bool automaticFlipY = true;
         bool flipY = false;
 

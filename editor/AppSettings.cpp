@@ -11,6 +11,7 @@
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
 #include "util/FileUtils.h"
+#include "util/SystemFonts.h"
 #include "util/SafeWrite.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
@@ -159,6 +160,7 @@ bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
+std::string AppSettings::cjkFontLanguage = "auto";
 bool AppSettings::soundBrowserAutoplay = false;
 bool AppSettings::soundBrowserMatchLoudness = true;
 std::filesystem::path AppSettings::hubLastLocation;
@@ -450,6 +452,11 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (editorNode["project_hub_at_startup"] && editorNode["project_hub_at_startup"].IsScalar()) {
                 projectHubAlways = editorNode["project_hub_at_startup"].as<std::string>() == "always";
             }
+            if (editorNode["cjk_font_language"] && editorNode["cjk_font_language"].IsScalar()) {
+                // an unknown value (a newer editor's) reads as auto
+                cjkFontLanguage = SystemFonts::isLanguageSetting(editorNode["cjk_font_language"].as<std::string>())
+                    ? editorNode["cjk_font_language"].as<std::string>() : "auto";
+            }
             if (editorNode["sound_browser_autoplay"]) soundBrowserAutoplay = editorNode["sound_browser_autoplay"].as<bool>();
             if (editorNode["sound_browser_match_loudness"]) soundBrowserMatchLoudness = editorNode["sound_browser_match_loudness"].as<bool>();
             if (editorNode["hub_last_location"] && editorNode["hub_last_location"].IsScalar()) {
@@ -659,6 +666,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (vcsNode["auto_fetch_minutes"]) vcs.autoFetchMinutes = vcsNode["auto_fetch_minutes"].as<int>();
             if (vcsNode["commit_and_push"]) vcs.commitAndPush = vcsNode["commit_and_push"].as<bool>();
             if (vcsNode["show_changes"]) vcs.showChanges = vcsNode["show_changes"].as<bool>();
+            if (vcsNode["code_editor_changes"]) vcs.codeEditorChanges = vcsNode["code_editor_changes"].as<bool>();
         }
         versionControlSettings = vcs;
         versionControlSettings = getVersionControlSettings();
@@ -771,6 +779,7 @@ bool AppSettings::saveSettings() {
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
+        editorNode["cjk_font_language"] = cjkFontLanguage;
         if (soundBrowserAutoplay) editorNode["sound_browser_autoplay"] = true;
         if (!soundBrowserMatchLoudness) editorNode["sound_browser_match_loudness"] = false;
         if (!hubLastLocation.empty()) editorNode["hub_last_location"] = FileUtils::pathToGenericUtf8(hubLastLocation);
@@ -942,6 +951,7 @@ bool AppSettings::saveSettings() {
             vcsNode["auto_fetch_minutes"] = vcs.autoFetchMinutes;
             vcsNode["commit_and_push"] = vcs.commitAndPush;
             vcsNode["show_changes"] = vcs.showChanges;
+            vcsNode["code_editor_changes"] = vcs.codeEditorChanges;
             settingsData["version_control"] = vcsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
@@ -1406,6 +1416,14 @@ bool AppSettings::getEditorVSyncEnabled() {
 
 void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
+}
+
+std::string AppSettings::getCjkFontLanguage() {
+    return cjkFontLanguage;
+}
+
+void AppSettings::setCjkFontLanguage(const std::string& language) {
+    cjkFontLanguage = SystemFonts::isLanguageSetting(language) ? language : "auto";
 }
 
 bool AppSettings::getSoundBrowserAutoplay() {

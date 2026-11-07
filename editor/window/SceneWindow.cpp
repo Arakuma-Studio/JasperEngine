@@ -1145,7 +1145,8 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
                             }
 
                             int freeSlot = (int)tilemap->numTiles;
-                            if (freeSlot < (int)tilemap->tiles.size()) {
+                            // (a Tilemap draws at most MAX_TILEMAP_RENDERED_TILES)
+                            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                                 std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, ComponentType::TilemapComponent,

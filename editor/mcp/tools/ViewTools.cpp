@@ -796,6 +796,17 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         job->fail("view must be game, scene or editor.");
         return;
     }
+    // nothing is drawn: the capture would wait for a frame that never comes
+    if (!call->ctx().app().isWindowVisible()) {
+        job->fail("The editor window is minimized or hidden, so nothing is drawn (the game keeps updating). Restore the "
+                  "window, or run the editor with mcp --headless.");
+        return;
+    }
+    if (request.view == "game" && Platform::isGameHiddenSimulated() && call->ctx().project()->isPlaySessionActive()) {
+        job->fail("The game is hidden (send_input app hide): it updates without drawing. Send {type: \"app\", action: "
+                  "\"show\"} first.");
+        return;
+    }
     auto capture = [job]() {
         if (job->req.view == "game") captureGame(job);
         else if (job->req.view == "scene") captureScene(job);

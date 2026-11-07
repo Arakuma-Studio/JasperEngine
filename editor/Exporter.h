@@ -305,6 +305,8 @@ namespace jasperengine::editor {
         bool checkTargetDir();
         bool prepareCacheTarget();
         bool configureBuild();
+        // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
+        unsigned int effectiveBuildJobs() const;
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
@@ -335,6 +337,9 @@ namespace jasperengine::editor {
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
         bool cookModels();
+        // False, with the error set, when an asset sits where the engine loads an FBX's import
+        // from (<relPath>.glb, relative to the assets)
+        bool checkFbxImportPathFree(const fs::path& relPath);
         // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);
@@ -413,12 +418,6 @@ namespace jasperengine::editor {
         // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
         // Android exports then need no INTERNET for videos)
         std::string videoUrlScene() const;
-        // Aggregates SceneMaxValues across all project scenes into the capacities that
-        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
-        std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
-        static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
-        // add_definitions() block applying them to the export.
-        std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
         fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
         // Script roots inside the exported project, as copyCppScripts() lays them out.
@@ -427,9 +426,15 @@ namespace jasperengine::editor {
         std::string buildScriptDirIncludes() const;
 
         static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // dst mirrors src: changed files copied, files src no longer has removed, unchanged files
+        // left untouched (their mtime, for incremental builds) but given src's permissions
+        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
+        // Adds the execute bits (owner, group, others) to each file, as a terminal needs them for
+        // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
+        // no-op on Windows. False with error naming the file when one can't be changed.
+        static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
         // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
@@ -486,9 +491,11 @@ namespace jasperengine::editor {
                                                             const CommandRunner::Environment& env, std::string& error);
         // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
         // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
-        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is, else Ninja
+        // with CMAKE_MAKE_PROGRAM when visualStudioNinja (CommandRunner::findVisualStudioNinja)
+        // is given; else error.
         static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                       std::string& error);
+                                                                       std::string& error, const fs::path& visualStudioNinja = {});
         // Windows Web builds: the first file or folder below `roots` (what the build copies or
         // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
         // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is

@@ -18,6 +18,7 @@
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
+#include "util/CMakeText.h"
 #include "util/EditorScripts.h"
 #include "util/ExportFeatureScan.h"
 #include "yaml-cpp/yaml.h"
@@ -1317,8 +1318,8 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
 fs::path editor::Exporter::getSharedBuildCacheDir() const {
     // What decides how the engine and the vendored libraries compile: the kit (configureBuild's,
     // without the tree's path) and the project settings that are definitions of the whole build
-    // (the C++ standard, the compiled-in features, the crash handler and the watchdog, the
-    // SceneMaxValues capacities). Everything else of a project (its title, window, logging,
+    // (the C++ standard, the compiled-in features, the crash handler and the watchdog).
+    // Everything else of a project (its title, window, logging,
     // scenes, scripts, shaders) only recompiles its own units in a tree it shares. Another
     // editor's engine sources are synced into the tree like an update's (copyEngine), and Ninja
     // recompiles what changed.
@@ -1333,9 +1334,6 @@ fs::path editor::Exporter::getSharedBuildCacheDir() const {
         + "\nruntime shaders " + (project->isRuntimeShadersEnabled() ? "1" : "0")
         + "\ncrash handler " + (project->getPlayerCrash().enabled ? "1" : "0")
         + "\nhang watchdog " + (project->getPlayerCrash().hangWatchdog ? "1" : "0");
-    for (const auto& [name, value] : getSceneMaxValues()) {
-        key += "\n" + name + " " + std::to_string(value);
-    }
     if (config.mode == ExportMode::Desktop) {
         const std::string platform = Generator::getGeneratorPlatform(config.cmakeGenerator);
         if (!platform.empty()) key += "\n" + platform;
@@ -1572,6 +1570,9 @@ bool editor::Exporter::configureBuild() {
         if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
         if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
         if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
+        // the same cap as the build step's --parallel: cl's /MP under Visual Studio generators
+        // (jasperengine_msvc_parallel_compile)
+        argv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(effectiveBuildJobs()));
     }
     argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
     if (config.developmentBuild) argv.push_back("-DJASPERENGINE_DEVELOPMENT_BUILD=ON");
@@ -1625,6 +1626,11 @@ bool editor::Exporter::configureBuild() {
     return true;
 }
 
+unsigned int editor::Exporter::effectiveBuildJobs() const {
+    const unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
+    return std::min(jobs, Generator::getMaxParallelBuildJobs());
+}
+
 bool editor::Exporter::runBuild() {
     setProgressRaw("Compiling project...", BUILD_PROGRESS_START);
 
@@ -1632,8 +1638,7 @@ bool editor::Exporter::runBuild() {
 
     const fs::path buildDir = config.targetDir / buildDirName;
 
-    unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
-    jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
+    const unsigned int jobs = effectiveBuildJobs();
 
     // the CMake that configured the tree (Web too: no emcmake picking its own any more)
     const std::string cmakeCmd = Generator::cmakeProgram();
@@ -2817,6 +2822,16 @@ bool editor::Exporter::writeAudioCredits() {
     return true;
 }
 
+bool editor::Exporter::checkFbxImportPathFree(const fs::path& relPath) {
+    fs::path importRelPath = relPath;
+    importRelPath += ".glb";
+    std::error_code ec;
+    if (!fs::exists(getAssetsSourceDir() / importRelPath, ec)) return true;
+    setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
+        relPath.generic_string() + ". Rename it.");
+    return false;
+}
+
 bool editor::Exporter::cookModels() {
     setProgress("Cooking models...", 0.34f);
     cookedModelSources.clear();
@@ -2840,6 +2855,11 @@ bool editor::Exporter::cookModels() {
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
+    }
+    // before the cook, which would read such an asset as a model and fail on it instead
+    for (const ModelBatchItem& item : inputs.items) {
+        const fs::path relPath = FileUtils::pathFromUtf8(item.assetPath);
+        if (FbxImporter::isFbxFile(relPath) && !checkFbxImportPathFree(relPath)) return false;
     }
     const fs::path assetsOut = getExportProjectRoot() / "assets";
     if (inputs.items.empty()) {
@@ -3075,11 +3095,7 @@ bool editor::Exporter::copyAssets() {
             fs::path importRelPath = relPath;
             importRelPath += ".glb";
             // The engine loads the import from that path, so no asset can have it
-            if (fs::exists(assetsSrc / importRelPath, ec)) {
-                setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
-                    relPath.generic_string() + ". Rename it.");
-                return stop();
-            }
+            if (!checkFbxImportPathFree(relPath)) return stop();
             const fs::path fbxPath = project->resolveAssetPath(relPath);
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
             // Scripts may load any of them, so none can be left out or outdated
@@ -3612,6 +3628,14 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
                 if (fs::exists(target)
                     && fs::file_size(target) == entry.file_size()
                     && filesEqual(entry.path(), target)) {
+#ifndef _WIN32
+                    // an older export (or one from an editor that lost the modes) gets the
+                    // source's: an executable script stays executable
+                    const fs::perms sourcePerms = entry.status().permissions();
+                    if (fs::status(target).permissions() != sourcePerms) {
+                        fs::permissions(target, sourcePerms, fs::perm_options::replace);
+                    }
+#endif
                     continue;
                 }
                 fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing);
@@ -3634,6 +3658,23 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
     } catch (const fs::filesystem_error& e) {
         ec = e.code();
     }
+}
+
+bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {
+    error.clear();
+#ifdef _WIN32
+    (void)files;
+#else
+    for (const fs::path& file : files) {
+        std::error_code ec;
+        fs::permissions(file, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, ec);
+        if (ec) {
+            error = "Could not make " + FileUtils::pathToGenericUtf8(file) + " executable: " + ec.message();
+            return false;
+        }
+    }
+#endif
+    return true;
 }
 
 bool editor::Exporter::copyEngine() {
@@ -3693,6 +3734,13 @@ bool editor::Exporter::copyEngine() {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
         if (ec) {
             setError("Failed to copy jasperengine.py: " + ec.message());
+            return false;
+        }
+        // run from a terminal as ./jasperengine.py and ./gradlew (docs/shipping.md)
+        std::string executableError;
+        if (!ensureExecutable({config.targetDir / "jasperengine.py", config.targetDir / "workspaces" / "androidstudio" / "gradlew"},
+                              executableError)) {
+            setError(executableError);
             return false;
         }
         if (!writeAndroidProjectSettings()) return false;
@@ -3805,20 +3853,10 @@ bool editor::Exporter::copyEngine() {
     if (projectSettingsPos != std::string::npos) {
         const WindowSettings window = project->getWindowSettings();
 
-        // The title crosses two quoting layers: the CMake string literal here and
-        // the C string literal it becomes through add_definitions. Escape for the
-        // C level first, then for the CMake level ($ stops variable expansion).
+        // The title becomes a C string literal through the engine's compile definitions: carried
+        // as escaped bytes (util/CMakeText.h), so any character in any language builds.
         // Control characters are sanitized upstream in Project::getWindowSettings().
-        std::string title;
-        for (char c : window.title) {
-            if (c == '\\' || c == '"') title += '\\';
-            title += c;
-        }
-        std::string cmakeTitle;
-        for (char c : title) {
-            if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-            cmakeTitle += c;
-        }
+        const std::string cmakeTitle = cmaketext::cStringDefinitionValue(window.title);
 
         // First line reuses the marker's existing indentation; subsequent lines
         // match the surrounding standalone setup block (4 spaces).
@@ -3888,18 +3926,6 @@ bool editor::Exporter::copyEngine() {
     const size_t scriptDirsPos = cmakeContent.find(scriptDirsMarker);
     if (scriptDirsPos != std::string::npos) {
         cmakeContent.replace(scriptDirsPos, scriptDirsMarker.size(), buildScriptDirIncludes());
-    }
-
-    // Inject per-project HybridArray capacities so the exported build sizes its
-    // fixed-capacity arrays to the larger of what the project actually uses and the
-    // engine defaults in core/Engine.h (big models grow past the defaults). Missing
-    // marker is non-fatal: the build simply falls back to those defaults.
-    const std::string maxValuesMarker = "# @JASPERENGINE_SCENE_MAX_VALUES@";
-    const size_t maxValuesPos = cmakeContent.find(maxValuesMarker);
-    if (maxValuesPos != std::string::npos) {
-        cmakeContent.replace(maxValuesPos, maxValuesMarker.size(), buildSceneMaxValuesDefinitions());
-    } else {
-        Out::warning("Exported CMakeLists.txt is missing the SceneMaxValues marker; using engine default capacities");
     }
 
     if (!writeExportSettingsScript(cmakeContent)) return false;
@@ -4232,53 +4258,6 @@ std::string editor::Exporter::videoUrlScene() const {
     return "";
 }
 
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
-    return sceneMaxValuesOf(project);
-}
-
-std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValuesOf(const Project* project) {
-    // Aggregate the per-scene maxima into a single project-wide capacity for each
-    // HybridArray. SceneProject::maxValues is refreshed for every scene during
-    // loadAndSaveAllScenes(), which always runs before copyEngine().
-    SceneMaxValues agg;
-    for (const SceneProject& sceneProject : project->getScenes()) {
-        agg.maxSubmeshes        = std::max(agg.maxSubmeshes, sceneProject.maxValues.maxSubmeshes);
-        agg.maxTilemapTilesRect = std::max(agg.maxTilemapTilesRect, sceneProject.maxValues.maxTilemapTilesRect);
-        agg.maxTilemapTiles     = std::max(agg.maxTilemapTiles, sceneProject.maxValues.maxTilemapTiles);
-        agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
-        agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
-        agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-    }
-
-    // Floor each capacity at the engine default declared in core/Engine.h: growing past the
-    // default sizes big models correctly, while never shrinking below the known-safe baseline.
-    // This matters because the editor-time calc can undercount model-backed meshes (e.g.
-    // numExternalBuffers is regenerated at runtime, not serialized) and cannot see content
-    // created dynamically by scripts. Passing the macros themselves as the floor keeps these in
-    // lockstep with the engine defaults (string literals are not macro-expanded; the bare macro
-    // arguments are).
-    auto capacity = [](unsigned int value, unsigned int engineDefault) { return std::max(value, engineDefault); };
-    return {
-        {"MAX_SUBMESHES", capacity(agg.maxSubmeshes, MAX_SUBMESHES)},
-        {"MAX_TILEMAP_TILESRECT", capacity(agg.maxTilemapTilesRect, MAX_TILEMAP_TILESRECT)},
-        {"MAX_TILEMAP_TILES", capacity(agg.maxTilemapTiles, MAX_TILEMAP_TILES)},
-        {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
-        {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
-        {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-    };
-}
-
-std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
-    // First line reuses the marker's existing indentation; subsequent lines are
-    // indented to match the surrounding standalone setup block (4 spaces).
-    std::string out;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        if (!out.empty()) out += "\n    ";
-        out += "add_definitions(\"-D" + macro + "=" + std::to_string(value) + "\")";
-    }
-    return out;
-}
-
 bool editor::Exporter::writeAndroidProjectSettings() {
     const AndroidProjectSettings& android = project->getAndroidProjectSettings();
     if (!android.abiArmeabiV7a && !android.abiArm64V8a && !android.abiX86 && !android.abiX86_64) {
@@ -4296,13 +4275,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         normalizeNewlines(out);
         return true;
     };
-
-    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
-    {
-        std::error_code permissionError;
-        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
-                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
-    }
 
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";
@@ -5834,25 +5806,6 @@ bool editor::Exporter::writeXcodeBuildSettings(std::string& xcodeProject) {
         }
     }
 
-    // Like add_definitions() in CMake: the capacities size engine structs, so every target gets them
-    const PbxRange projectObject = findPbxObject(xcodeProject, pbxValueId(xcodeProject, {0, xcodeProject.size()}, "rootObject"));
-    const PbxRange configurationList = findPbxObject(xcodeProject, pbxValueId(xcodeProject, projectObject, "buildConfigurationList"));
-    const std::vector<std::string> configurationIds = pbxListIds(xcodeProject, configurationList, "buildConfigurations");
-    if (configurationIds.empty()) {
-        setError("Apple export template has no project build configurations");
-        return false;
-    }
-    std::vector<std::string> definitions;
-    for (const auto& [macro, value] : getSceneMaxValues()) {
-        definitions.push_back(pbxString(macro + "=" + std::to_string(value)));
-    }
-    for (const std::string& configurationId : configurationIds) {
-        if (!addPbxListEntries(xcodeProject, findPbxBuildSettings(xcodeProject, configurationId), "GCC_PREPROCESSOR_DEFINITIONS", definitions)) {
-            setError("Apple export template has no project GCC_PREPROCESSOR_DEFINITIONS");
-            return false;
-        }
-    }
-
     std::error_code ec;
     if (fs::exists(getExportProjectRoot() / "ProjectBuild.cmake", ec)) {
         Out::warning("ProjectBuild.cmake applies to CMake builds only; the Xcode workspace ignores it");
@@ -6391,8 +6344,10 @@ namespace {
     // A folder holding Emscripten itself: its CMake toolchain file and emcc
     bool isEmscriptenDir(const fs::path& dir) {
         std::error_code ec;
+        // (Emscripten 6 on Windows has emcc.exe launchers where earlier versions had emcc.bat)
         return fs::is_regular_file(dir / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", ec) &&
-               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.bat", ec) || fs::exists(dir / "emcc.py", ec));
+               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.exe", ec) || fs::exists(dir / "emcc.bat", ec) ||
+                fs::exists(dir / "emcc.py", ec));
     }
 
     bool isEmsdkRoot(const fs::path& dir) {
@@ -6548,7 +6503,7 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
 }
 
 std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                          std::string& error) {
+                                                                          std::string& error, const fs::path& visualStudioNinja) {
     error.clear();
     // emcmake.py: only when neither -G nor CMAKE_GENERATOR picks one (CMake reads that itself)
     if (generatorGiven || !CommandRunner::variable(env, "CMAKE_GENERATOR").empty()) return {};
@@ -6566,8 +6521,10 @@ std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const 
     fs::path found;
     if (CommandRunner::resolveWindowsProgram("mingw32-make", dirs, found).empty()) return {"-G", "MinGW Makefiles"};
     if (CommandRunner::resolveWindowsProgram("ninja", dirs, found).empty()) return {"-G", "Ninja"};
+    // Visual Studio's own Ninja, which it keeps off PATH
+    if (!visualStudioNinja.empty()) return {"-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=" + visualStudioNinja.generic_string()};
     error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH, "
-            "or set CMAKE_GENERATOR";
+            "install Visual Studio's C++ CMake tools, or set CMAKE_GENERATOR";
     return {};
 }
 
@@ -6583,8 +6540,11 @@ std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& 
     args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
     if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
 #ifdef _WIN32
-    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
-    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error)) args.push_back(arg);
+    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH);
+    // Visual Studio's own Ninja (a vswhere run) only when that finds no generator
+    std::vector<std::string> generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error);
+    if (!error.empty()) generatorArgs = emscriptenWindowsGeneratorArgs(env, generatorGiven, error, CommandRunner::findVisualStudioNinja());
+    for (const std::string& arg : generatorArgs) args.push_back(arg);
 #else
     (void)generatorGiven;
     (void)env;

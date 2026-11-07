@@ -162,7 +162,7 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
             if (prevSceneProject && prevSceneProject->scene) {
                 stopActionPreview(prevSceneProject->scene, prevSceneProject);
             } else {
-                actionPreviewStates.clear();
+                actionPreviewSnapshot.clear();
                 actionPreviewing = false;
                 actionPreviewPlaying = false;
                 actionPreviewEntity = NULL_ENTITY;
@@ -187,9 +187,33 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
         }
     }
 
+    // Start Offset / Random Start (runtime-core spec 6.7): Random Start overrides the offset, and
+    // neither applies to a particle system's controller (it has Start Delay and Prewarm)
+    bool randomStart = false;
+    bool controller = false;
+    if (!entities.empty()) {
+        if (ActionComponent* first = scene->findComponent<ActionComponent>(entities[0])) {
+            randomStart = first->randomStart;
+            controller = scene->getSystem<ActionSystem>()->isParticleController(entities[0], *first);
+        }
+    }
+    RowSettings settingsOffset;
+    settingsOffset.help = controller ? "A Particle System's controller starts the system: use its Start Delay or Prewarm"
+                                     : "Seconds into the action each new run starts at, in Play mode and builds (previews start at 0)";
+    RowSettings settingsRandom;
+    settingsRandom.help = controller ? settingsOffset.help
+                                     : "Each new run starts at a random point of one cycle (different per GameObject, the same "
+                                       "every playthrough); overrides Start Offset";
+
     beginTable(cpType, getLabelSize("Owned target"));
     propertyRow(RowPropertyType::Enum, cpType, "state", "State", sceneProject, entities, settingsState);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities);
+    ImGui::BeginDisabled(controller || randomStart);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "startOffset", "Start Offset", sceneProject, entities, settingsOffset);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(controller);
+    propertyRow(RowPropertyType::Bool, cpType, "randomStart", "Random Start", sceneProject, entities, settingsRandom);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::LocalEntity, cpType, "target", "Target", sceneProject, entities);
     endTable();
 
@@ -302,14 +326,8 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
                 actionComp = scene->findComponent<ActionComponent>(entity);
             }
             if (actionPreviewing && actionComp) {
-                // Restore state and re-evaluate at seek time
-                for (const ActionPreviewState& state : actionPreviewStates) {
-                    if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-                        continue;
-                    }
-                    Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-                    ProjectUtils::clearPreviewParticles(scene, state.entity);
-                }
+                // Restore state (with what commands wrote meanwhile) and re-evaluate at seek time
+                actionPreviewSnapshot.restore(scene);
 
                 actionComp = scene->findComponent<ActionComponent>(entity);
                 if (actionComp) {
@@ -797,7 +815,7 @@ void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType,
     }
     float spriteAnimArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
     if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_animation_add", spriteAnimArrowWidth, canAddFrame,
-            "Sprite animation has reached the maximum number of frames")) {
+            "A Sprite Animation holds at most 65,536 frames")) {
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
         for (const Entity& selectedEntity : entities) {
             if (SpriteAnimationComponent* animComp = sceneProject->scene->findComponent<SpriteAnimationComponent>(selectedEntity)) {

@@ -120,9 +120,9 @@ namespace jasperengine::editor::spritenormalsentry {
 
     // The submesh's Base Texture is an image file (not a framebuffer, camera or fluid link)
     inline bool baseIsImage(Project* project, Scene* scene, Entity entity, unsigned submesh) {
-        if (!scene || entity == NULL_ENTITY || submesh >= MAX_SUBMESHES) return false;
+        if (!scene || entity == NULL_ENTITY) return false;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh) return false;
+        if (!mesh || submesh >= std::max(mesh->numSubmeshes, 1u)) return false;
         const Texture& base = mesh->submeshes[submesh].material.baseColorTexture;
         if (base.getPath().empty() || base.isFramebuffer()) return false;
         const std::string rel = mcp::McpValues::assetPathToJson(project, base.getPath());

@@ -5,10 +5,6 @@
 
 #include "render/SystemRender.h"
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-
 using namespace jasperengine;
 
 namespace {
@@ -28,29 +24,4 @@ bool OrderIndependentTransparency::isSupported(int samples){
 
 void OrderIndependentTransparency::setSupportOverride(const bool* supported){
     supportOverride = supported ? (*supported ? 1 : 0) : -1;
-}
-
-float OrderIndependentTransparency::depthWeight(float viewDepth, float scale){
-    const float z = std::abs(viewDepth) * scale;
-    const float a = z / 5.0f;
-    const float b = z / 200.0f;
-    return std::clamp(10.0f / (1e-5f + a * a + b * b * b * b * b * b), 1e-2f, 3e3f);
-}
-
-const char* OrderIndependentTransparency::getModeName(TransparencyMode mode){
-    return mode == TransparencyMode::ORDER_INDEPENDENT ? "order_independent" : "sorted";
-}
-
-bool OrderIndependentTransparency::modeFromName(const char* name, TransparencyMode& mode){
-    if (!name)
-        return false;
-    if (std::strcmp(name, "sorted") == 0){
-        mode = TransparencyMode::SORTED;
-        return true;
-    }
-    if (std::strcmp(name, "order_independent") == 0){
-        mode = TransparencyMode::ORDER_INDEPENDENT;
-        return true;
-    }
-    return false;
 }

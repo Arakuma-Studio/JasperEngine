@@ -5,6 +5,7 @@
 
 #include "CameraRender.h"
 #include "SystemRender.h"
+#include "VulkanRobustness.h"
 #include "TextureRender.h"
 
 #include "imgui_impl_vulkan.h"
@@ -214,6 +215,13 @@ bool Renderer::State::createVulkanDevice(){
     supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     supported.pNext = &supported12;
     vkGetPhysicalDeviceFeatures2(physicalDevice, &supported);
+    VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorProperties{};
+    descriptorProperties.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT;
+    VkPhysicalDeviceProperties2 deviceProperties{};
+    deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    deviceProperties.pNext = &descriptorProperties;
+    vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties);
 
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
     descriptorBuffer.sType =
@@ -241,6 +249,14 @@ bool Renderer::State::createVulkanDevice(){
     requiredFeatures.pNext = &vulkan13;
     requiredFeatures.features.samplerAnisotropy = VK_TRUE;
     requiredFeatures.features.dualSrcBlend = VK_TRUE;
+    // out-of-range buffer reads return zeros instead of hanging the GPU (a shader under
+    // development indexing past an array), where it is safe with sokol's descriptor buffers
+    const VulkanRobustness robustness = decideVulkanRobustBufferAccess(supported.features.robustBufferAccess == VK_TRUE,
+        descriptorProperties.robustUniformBufferDescriptorSize, descriptorProperties.uniformBufferDescriptorSize,
+        descriptorProperties.robustStorageBufferDescriptorSize, descriptorProperties.storageBufferDescriptorSize);
+    requiredFeatures.features.robustBufferAccess = robustness.enable ? VK_TRUE : VK_FALSE;
+    std::fprintf(stderr, "Vulkan robust buffer access: %s\n", robustness.reason);
+    SystemRender::setVulkanRobustBufferAccess(robustness.enable);
     requiredFeatures.features.textureCompressionBC =
         supported.features.textureCompressionBC;
     requiredFeatures.features.textureCompressionETC2 =

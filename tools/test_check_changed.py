@@ -133,10 +133,17 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # an engine shader: the shader lint and its tests
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
         # an MCP test file (a new one too): classified for the CI suite, before anything is built
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
+        # an engine event's holder, or a clear walking them: the event clears lint
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests, ["tools/check_event_clears.py"])
+        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests, ["tools/check_event_clears.py"])
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, [])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
@@ -509,8 +516,12 @@ class Runs(unittest.TestCase):
         self.assertEqual(self.calls(), [])
 
     def test_the_header_gates_run_after_the_editor_build(self):
+        (self.root / "tools/build.sh").write_text(FAKE_BUILD.replace(
+            "exit 0\n", '[[ "$1" != linux ]] || touch editor-ready\nexit 0\n'))
         (self.root / "tools/check_fanout.py").write_text("import sys; sys.exit(1)\n")
-        (self.root / "tools/check_headers.py").write_text("import sys; open('headers.txt', 'w').write(' '.join(sys.argv[1:]))\n")
+        (self.root / "tools/check_headers.py").write_text(
+            "import sys; from pathlib import Path; assert Path('editor-ready').is_file(); "
+            "open('headers.txt', 'w').write(' '.join(sys.argv[1:]))\n")
         (self.root / "editor/App.h").write_text("int app();\n")
         real = cc.in_image
         cc.in_image = lambda: True
@@ -521,6 +532,7 @@ class Runs(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("headers compile alone (1 edited)", out)
         self.assertIn("FAIL (exit 1) header fan-out limits", out)
+        self.assertTrue((self.root / "headers.txt").is_file(), out)
         self.assertEqual((self.root / "headers.txt").read_text(), "editor/App.h")
 
     def test_a_core_header_builds_the_engine_with_every_module_off(self):
@@ -554,12 +566,17 @@ class Runs(unittest.TestCase):
         self.assertFalse((self.root / "args.txt").exists())
 
     def test_no_mcp_leaves_the_mcp_tests_out_and_is_not_cached(self):
-        (self.root / "CMakeLists.txt").write_text("# changed\n")
+        (self.root / "editor/App.cpp").write_text("int app = 8;\n")
         code, out = self.run_main("--no-mcp")
         self.assertEqual(code, 0, out)
+        self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
         self.assertIn("SKIP (--no-mcp)", out)
         self.assertIn("the pass is not cached", out)
-        self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
+        self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
+        previous = len(self.calls())
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertTrue([c for c in self.calls()[previous:] if c.startswith("mcp-tests")])
 
     def test_in_the_image_web_is_left_out_and_said_to_be(self):
         (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 9; }\n")

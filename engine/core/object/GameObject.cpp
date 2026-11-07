@@ -168,7 +168,8 @@ void GameObject::setVisible(bool visible){
     Transform& transform = getComponent<Transform>();
     // Hiding always reaches the children: a parent saved hidden (the editor stores each flag on
     // its own) keeps visible children until it is hidden again. Showing a visible parent stays a
-    // no-op, so a child hidden on its own is not shown again by it.
+    // no-op, so a child hidden on its own is not shown again by it. Only this explicit change
+    // cascades: copies, scene moves and reparenting keep every child's own flag.
     if (transform.visible != visible || !visible){
         transform.visible = visible;
         transform.needUpdateChildVisibility = true;

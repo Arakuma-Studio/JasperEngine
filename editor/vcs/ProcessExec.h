@@ -58,6 +58,12 @@ namespace jasperengine::editor::vcs {
         std::string message() const;
     };
 
+    // A maxOutputBytes that keeps a reader's first maxBytes + 1 bytes of stdout, with room for
+    // stderr; 0 (the spec's default) when maxBytes is SIZE_MAX
+    inline size_t keptOutputBytes(size_t maxBytes) {
+        return maxBytes == SIZE_MAX ? 0 : maxBytes + 1 + (size_t(64) << 10);
+    }
+
     // Runs one process to its end and returns what it wrote. Never on the main thread (R24: a
     // debug build asserts; every build counts it, spawnCount(true)).
     ProcessResult runProcess(const ProcessSpec& spec);

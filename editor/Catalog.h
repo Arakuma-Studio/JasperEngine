@@ -331,8 +331,10 @@ namespace jasperengine::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
-        // The same lookup without the not-found log, for callers a miss is expected on
-        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
+        // The same lookup without the not-found log, for callers a miss is expected on. `append`:
+        // the caller writes the value, so one past the last element of a component array that
+        // grows by index ("tiles[N]") appends one (reflect::resolve); a read never grows it
+        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append = false);
 
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
@@ -347,6 +349,29 @@ namespace jasperengine::editor{
         static bool isCustomShaderBuildFailed(Scene* scene, Entity entity, ComponentType component);
         // same for a mesh's depth fork
         static bool isCustomDepthShaderBuildFailed(Scene* scene, Entity entity);
+
+        // ---- the scene's default shader property values (Scene > Default Shaders)
+        // "default_mesh_shader_uniforms", ... ("" for a type without a scene default)
+        static const char* getDefaultShaderUniformsProperty(ShaderType type);
+        // the type of such a property; false for any other name
+        static bool getDefaultShaderUniformsType(const std::string& propertyName, ShaderType& type);
+        // The layers a component's (submesh -1) or a submesh material's shader property values are
+        // looked up in, as the render system writes them (ShaderUniforms::resolve); it keeps the
+        // manifest alive. The pointers are the component's: valid until it changes.
+        struct UniformChainRefs {
+            UniformChain chain;
+            std::shared_ptr<const ShaderManifest> manifest;
+        };
+        static UniformChainRefs getShaderUniformChain(Scene* scene, Entity entity, ComponentType component, int submesh = -1);
+        // Who draws with the scene's default shader of a type: the objects without a shader of
+        // their own (a mesh with at least one submesh whose material has none), how many of them
+        // failed to build it, and their custom blocks (vertex first)
+        struct DefaultShaderUse {
+            int users = 0;
+            int failed = 0;
+            std::vector<const CustomUniformBlock*> blocks;
+        };
+        static DefaultShaderUse getDefaultShaderUse(Scene* scene, ShaderType type);
 
         // ---- shader library values (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
         // One entry of a shader-library collection property, addressed by its key:
@@ -760,6 +785,11 @@ namespace jasperengine::editor{
                     return scene->getPostProcessPasses();
                 }
             }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) {
+                    return scene->getDefaultShaderUniforms(uniformsType);
+                }
+            }
             else if (propertyName == "canvas_scaler") {
                 if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
                     return SceneCanvasScaler{scene->isCanvasScalerUseProjectDefault(), scene->getCanvasScaler()};
@@ -780,6 +810,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
+            if constexpr (std::is_same_v<T, ShaderUniformValues>) return ShaderUniformValues();
             if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
@@ -955,6 +986,10 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return d.postProcess;
+            }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                // every default shader starts without values
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) return ShaderUniformValues();
             }
             else if (propertyName == "canvas_scaler") {
                 if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler{d.canvasScalerUseProjectDefault, d.canvasScaler};
@@ -1231,6 +1266,11 @@ namespace jasperengine::editor{
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) {
                     scene->setPostProcessPasses(value);
+                }
+            }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) {
+                    scene->setDefaultShaderUniforms(uniformsType, value);
                 }
             }
             else if (propertyName == "canvas_scaler") {

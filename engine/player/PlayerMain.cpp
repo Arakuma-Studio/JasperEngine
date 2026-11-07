@@ -311,6 +311,7 @@ JASPERENGINE_INIT void init() {
     Engine::setPixelsPerUnit(game.pixelsPerUnit);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
+    Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);

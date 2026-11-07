@@ -227,6 +227,10 @@ namespace jasperengine::editor::reflect {
         void (*insert)(void* array, size_t index, const void* value);
         void (*erase)(void* array, size_t index);
         void (*move)(void* array, size_t from, size_t to);
+        // a component array that grows when an index past its end is written (GrowArray,
+        // StableArray): a path a write resolves may name one past its last element, which
+        // appends one (resolve's append)
+        bool appendsByIndex = false;
     };
 
     struct FieldDesc {
@@ -380,8 +384,10 @@ namespace jasperengine::editor::reflect {
     enum class PathError : uint8_t { None, Syntax, UnknownField, IndexOutOfRange, NotIndexable, NotAStruct };
 
     // seg('.'seg | '['N']')*; aliases are accepted in every segment. No heap allocation.
-    FieldRef resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error = nullptr);
-    FieldRef resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error = nullptr);
+    // `append`: the caller writes the value, so one past the last element of an array that grows
+    // by index appends one; a read never grows the component
+    FieldRef resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error = nullptr, bool append = false);
+    FieldRef resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error = nullptr, bool append = false);
     // the path with every alias replaced by its field's name ("" when it does not resolve)
     std::string canonicalPath(const ComponentDesc& desc, void* comp, std::string_view path);
     // the field a path names, without a value (array indices are not checked)
@@ -465,8 +471,9 @@ namespace jasperengine::editor::reflect {
     // The elements in use of an array field (its count, or every element)
     size_t elementCount(const FieldDesc& field, const void* owner, const void* array);
     // The Catalog property a path names: type, update flags, the default instance's value
-    // (NoDefault: none) and the value (an empty one when the path names nothing)
-    PropertyData property(const ComponentDesc& desc, void* comp, std::string_view path);
+    // (NoDefault: none) and the value (an empty one when the path names nothing). `append` as
+    // for resolve: only a write names one past the last element
+    PropertyData property(const ComponentDesc& desc, void* comp, std::string_view path, bool append = false);
     // Every Catalog property of a component (null: of the type, arrays as one template element
     // with no index where the table says so), and its extra properties
     void listProperties(const ComponentDesc& desc, void* comp, std::map<std::string, PropertyData>& out);
@@ -579,11 +586,5 @@ namespace jasperengine::editor::reflect {
     // Same name and kind keeps the value; Int<->Float, Vector widening/narrowing and
     // String<->AssetPath convert; anything else (and an added field) takes its default
     RemapResult remapByName(const FieldSet& from, const ValueSet& values, const FieldSet& to);
-
-    // ---- checks (ReflectRegistry.SelfCheck) ---------------------------------------------
-
-    // Every problem of the tables: duplicate names/keys/aliases, enum round trips, codecs,
-    // proxies. Empty when they are sound.
-    std::vector<std::string> selfCheck();
 
 }

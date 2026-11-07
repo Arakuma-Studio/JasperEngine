@@ -36,6 +36,9 @@ target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Thre
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)
 set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests" ENABLE_EXPORTS ON)
+if(WIN32)
+    jasperengine_add_windows_manifest(jasperengine-crash-test)
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(JASPER_CRASH_TEST_FLAGS "")
 if(JASPERENGINE_SANITIZE_ADDRESS)
@@ -92,6 +95,9 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+jasperengine_skip_unity_build(
+    REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
@@ -99,7 +105,11 @@ jasperengine_add_test_target(jasperengine-core-tests
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
+    # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
+        # WebKeyMap.h, the web platform's key map (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."

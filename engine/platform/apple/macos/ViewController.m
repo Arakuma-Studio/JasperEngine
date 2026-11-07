@@ -5,12 +5,19 @@
 #import "Renderer.h"
 #import "EngineView.h"
 #import "JasperNative.h"
+#import "JasperEngineGameController.h"
 
 @implementation ViewController
 {
     EngineView *_view;
 
     Renderer *_renderer;
+
+    // the window can't be seen: the view is paused and this timer updates the game without drawing
+    NSTimer *_updateTimer;
+    // the rate _updateTimer runs at (Engine::getHiddenUpdateFps when it started)
+    double _updateTimerFps;
+    BOOL _hidden;
 }
 
 - (void)viewDidLoad
@@ -67,6 +74,17 @@
                                              selector:@selector(windowResignedKey:)
                                                  name:NSWindowDidResignKeyNotification
                                                object:nil];
+
+    // Also sent on minimize and restore, Space changes and the app hidden
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(occlusionChanged:)
+                                                 name:NSWindowDidChangeOcclusionStateNotification
+                                               object:nil];
+}
+
+- (void)occlusionChanged:(NSNotification *)notification
+{
+    if (notification.object == self.view.window) [self updateVisibility];
 }
 
 - (void)thermalStateChanged
@@ -88,11 +106,58 @@
 {
     [super viewDidAppear];
     [self updateFrameRate];
+    // a window opened behind others gets no occlusion change
+    [self updateVisibility];
 }
 
 - (void)destroyView
 {
+    // nothing may call into the engine once it is torn down
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [_updateTimer invalidate];
+    _updateTimer = nil;
+    _view.delegate = nil;
+
     [_renderer destroyView];
+}
+
+// Nothing drawn can be seen: the view pauses and the game updates at a steady rate instead
+- (void)updateVisibility
+{
+    NSWindow *window = self.view.window;
+    if (!window || !_renderer) return;
+    const BOOL hidden = (window.occlusionState & NSWindowOcclusionStateVisible) == 0;
+    if (hidden == _hidden) return;
+    _hidden = hidden;
+
+    // a hidden game keeps updating, but the pads are no longer read: what they hold comes up
+    // before the game hears of it
+    [JasperEngineGameController setSuspended:hidden];
+    [Renderer visibilityChanged:!hidden];
+    _view.paused = hidden;
+
+    [_updateTimer invalidate];
+    _updateTimer = nil;
+    if (hidden) [self startUpdateTimer];
+}
+
+// invalidated when the window shows again and in destroyView, which ends the timer's hold on self
+- (void)startUpdateTimer
+{
+    [_updateTimer invalidate];
+    _updateTimerFps = [Renderer hiddenUpdateFps];
+    _updateTimer = [NSTimer timerWithTimeInterval:1.0 / _updateTimerFps
+                                          repeats:YES
+                                            block:^(NSTimer *timer) { (void)timer; [self hiddenUpdate]; }];
+    [[NSRunLoop currentRunLoop] addTimer:_updateTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)hiddenUpdate
+{
+    [Renderer updateGame];
+    // a script changed Engine.targetFrameRate or vSyncCount meanwhile (as the AppKit loop does)
+    if (_hidden && _updateTimer && [Renderer hiddenUpdateFps] != _updateTimerFps)
+        [self startUpdateTimer];
 }
 
 // MTKView's default of 60 runs a 75 Hz display at 37.5: the screen's rate, or what

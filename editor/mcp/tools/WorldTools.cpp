@@ -359,7 +359,8 @@ bool addCatalogProperties(Project* project, SceneProject* scene, Entity entity, 
         return false;
     }
     for (auto it = props.begin(); it != props.end(); ++it) {
-        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key());
+        // (a write follows: "frames[N]" one past the last appends it)
+        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key(), true);
         if (!property.ref) {
             std::vector<std::string> names;
             for (const auto& item : Catalog::findEntityProperties(scene->scene, entity, component)) {
@@ -419,7 +420,8 @@ std::string meshTexturePath(Scene* scene, Entity entity, int submesh) {
 // Sets MeshComponent submeshes[N].material.baseColorTexture from a project-relative path
 bool addMeshTexture(const Target& target, Entity entity, int submesh, const Json& path, MultiPropertyCmd& multi, std::string& error) {
     const std::string name = "submeshes[" + std::to_string(submesh) + "].material.baseColorTexture";
-    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name);
+    // (a write follows: a sprite just made holds no submesh until its first, appended here)
+    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name, true);
     if (!property.ref) {
         error = "The GameObject has no mesh submesh " + std::to_string(submesh) + " to hold a texture.";
         return false;
@@ -2482,7 +2484,7 @@ void editTilemapTool(const CallPtr& call) {
                 return;
             }
             std::vector<SliceRect> slices;
-            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, MAX_TILEMAP_TILESRECT, error)) {
+            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, ARRAY_INDEX_LIMIT, error)) {
                 delete setup;
                 failWith("tileset: " + error);
                 return;
@@ -2527,9 +2529,9 @@ void editTilemapTool(const CallPtr& call) {
                 if (!replaced) rects.push_back(rect);
             }
         }
-        if (rects.size() > MAX_TILEMAP_TILESRECT) {
+        if (rects.size() > ARRAY_INDEX_LIMIT) {
             delete setup;
-            failWith("A tilemap holds at most " + std::to_string(MAX_TILEMAP_TILESRECT) + " tile rects.");
+            failWith("A tilemap holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " tile rects.");
             return;
         }
         for (size_t i = 0; i < std::max(before.size(), rects.size()); i++) {
@@ -2686,7 +2688,7 @@ void editTilemapTool(const CallPtr& call) {
                 if (kind == "fill" && ref.rect < 0) { failWith(where + ": fill needs tile (a tile rect name or index)."); return; }
                 const int c0 = static_cast<int>(std::min(from.x, to.x)), c1 = static_cast<int>(std::max(from.x, to.x));
                 const int r0 = static_cast<int>(std::min(from.y, to.y)), r1 = static_cast<int>(std::max(from.y, to.y));
-                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_TILES * 4) { failWith(where + ": the area is too large."); return; }
+                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_RENDERED_TILES * 4) { failWith(where + ": the area is too large."); return; }
                 for (int r = r0; r <= r1; r++) {
                     for (int c = c0; c <= c1; c++) {
                         if (!setCell(c, r, ref)) { failWith(where + ": " + error); return; }
@@ -2722,8 +2724,8 @@ void editTilemapTool(const CallPtr& call) {
     for (size_t i = 0; i < tiles.size(); i++) {
         if (!removed[i]) finalTiles.push_back(tiles[i]);
     }
-    if (finalTiles.size() > MAX_TILEMAP_TILES) {
-        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; the maximum is " + std::to_string(MAX_TILEMAP_TILES) + ".");
+    if (finalTiles.size() > MAX_TILEMAP_RENDERED_TILES) {
+        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; a Tilemap draws at most " + std::to_string(MAX_TILEMAP_RENDERED_TILES) + ".");
         return;
     }
     auto* tileCmd = new MultiPropertyCmd();
@@ -2839,7 +2841,7 @@ void setSpriteFramesTool(const CallPtr& call) {
     if (has(args, "slice")) {
         int sheetW = 0, sheetH = 0;
         if (!sheetSize(target.project, args["slice"], stored, sheetW, sheetH, error) ||
-            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, MAX_SPRITE_FRAMES, error)) {
+            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, ARRAY_INDEX_LIMIT, error)) {
             delete multi;
             failWith("slice: " + error);
             return;
@@ -2861,9 +2863,9 @@ void setSpriteFramesTool(const CallPtr& call) {
             }
             frames.push_back(slice);
         }
-        if (frames.size() > MAX_SPRITE_FRAMES) {
+        if (frames.size() > ARRAY_INDEX_LIMIT) {
             delete multi;
-            failWith("A sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+            failWith("A sprite holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
             return;
         }
         framesGiven = true;
@@ -2980,8 +2982,8 @@ void setSpriteAnimationTool(const CallPtr& call) {
     } else {
         for (unsigned i = 0; i < sprite->numFramesRect; i++) frames.push_back(static_cast<int>(i));
     }
-    if (frames.size() > MAX_SPRITE_FRAMES) {
-        call->fail("At most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+    if (frames.size() > ARRAY_INDEX_LIMIT) {
+        call->fail("At most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
         return;
     }
     std::vector<int> times(frames.size(), static_cast<int>(std::lround(1000.0f / std::max(0.1f, numberOr(args, "fps", 10.0f)))));
@@ -3517,6 +3519,9 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         item["kind"] = kind;
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(frame.action)) {
             item["target"] = ac->target != NULL_ENTITY && scene->isEntityCreated(ac->target) ? entityJson(target, ac->target) : Json(nullptr);
+            // a nested action's own start (only when set: most have none)
+            if (ac->startOffset > 0.0f) item["start_offset"] = ac->startOffset;
+            if (ac->randomStart) item["random_start"] = true;
         }
         for (const auto& c : channels()) {
             if (kind == std::string(c.first) + "_track") item["keys"] = keysJson(scene, frame.action, c.second, keyLimit);
@@ -3572,6 +3577,8 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         out["target"] = action->target != NULL_ENTITY && scene->isEntityCreated(action->target) ? entityJson(target, action->target) : Json(nullptr);
         out["autoplay"] = action->state == ActionState::Running;
         out["speed"] = action->speed;
+        out["start_offset"] = action->startOffset;
+        out["random_start"] = action->randomStart;
     }
     return out;
 }
@@ -3930,6 +3937,9 @@ void editAnimationTool(const CallPtr& call) {
                              boolOr(args, "autoplay", false) ? ActionState::Running : ActionState::Stopped);
     }
     if (has(args, "speed")) addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "speed", numberOr(args, "speed", 1.0f));
+    if (has(args, "random_start")) {
+        addProp<bool>(*edits, target, animation, ComponentType::ActionComponent, "randomStart", boolOr(args, "random_start", false));
+    }
     if (!step.add(editsGuard.release())) { failWith("The editor rejected the animation edit."); return; }
     if (!toDelete.empty()) {
         if (!step.add(new DeleteEntityCmd(target.project, target.sceneId(), toDelete))) { failWith("Could not delete the removed actions."); return; }
@@ -5837,6 +5847,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"loop", boolean("")},
             {"duration", number("")},
             {"speed", number("")},
+            {"random_start", boolean("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
         }),

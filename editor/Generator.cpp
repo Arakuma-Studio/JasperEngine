@@ -10,6 +10,7 @@
 #include "EditorVersion.h"
 #include "editor/Out.h"
 #include "AppSettings.h"
+#include "util/CMakeText.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
@@ -39,6 +40,7 @@
 #include <cstring>
 #include <cerrno>
 #include <map>
+#include <sstream>
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
@@ -459,11 +461,13 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     }, msvcEnv.empty() ? nullptr : &msvcEnv);
 }
 
-// The Jolt configuration the editor's engine library was built with, as compile definitions.
-// It changes Jolt's class layouts (the engine's PhysicsSystem holds a JPH::PhysicsSystem by
-// value), so scripts linking that library compile Jolt's headers the same way: the object
-// layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own NDEBUG.
-static std::string joltCompileDefinitions() {
+// The Jolt and Box2D configuration the editor's engine library was built with, as compile
+// definitions. Jolt's changes its class layouts (the engine's PhysicsSystem holds a
+// JPH::PhysicsSystem by value), so scripts linking that library compile Jolt's headers the same
+// way: the object layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own
+// NDEBUG. JPH_SHARED_LIBRARY and BOX2D_DLL import both libraries from the engine library, which
+// carries all of them (engine/CMakeLists.txt; MSVC links Jolt's data only through dllimport).
+std::string editor::Generator::physicsCompileDefinitions() {
     std::string definitions = "JPH_OBJECT_LAYER_BITS=" + std::to_string(JPH_OBJECT_LAYER_BITS);
 #ifdef JPH_DEBUG
     // empty, as Jolt defines it, so its own definition is no redefinition
@@ -486,6 +490,9 @@ static std::string joltCompileDefinitions() {
 #ifdef JPH_SHARED_LIBRARY
     definitions += " JPH_SHARED_LIBRARY";
 #endif
+#ifdef BOX2D_DLL
+    definitions += " BOX2D_DLL";
+#endif
     return definitions;
 }
 
@@ -504,19 +511,9 @@ static std::string toProjectRootCMakePath(const fs::path& projectPath, const fs:
 }
 
 std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& projectPath, const fs::path& assetsPath, const fs::path& luaPath) {
-    // The title crosses two quoting layers: the generated CMake string and the
-    // C string literal passed to the platform backend. Escape both, matching the
-    // exported-project configuration produced by Exporter.
-    std::string title;
-    for (char c : windowSettings.title) {
-        if (c == '\\' || c == '"') title += '\\';
-        title += c;
-    }
-    std::string cmakeTitle;
-    for (char c : title) {
-        if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-        cmakeTitle += c;
-    }
+    // The title becomes the C string literal passed to the platform backend: carried as
+    // escaped bytes (util/CMakeText.h), as in the exported project's configuration.
+    const std::string cmakeTitle = cmaketext::cStringDefinitionValue(windowSettings.title);
 
     std::string content;
     content += "if (NOT JASPERENGINE_EDITOR_PLUGIN)\n";
@@ -652,6 +649,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
@@ -1266,19 +1264,19 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
 
     // Both modes link the editor's engine library, which always has both physics backends.
     // Jolt's configuration changes its class layouts, so it has to match the engine's.
-    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + joltCompileDefinitions() + ")\n\n";
+    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + physicsCompileDefinitions() + ")\n\n";
+    cmakeContent += "# libjasperengine is always an editor engine build, whatever JASPERENGINE_LIB_DIR names: the\n";
+    cmakeContent += "# project matches its linkage and data layouts in both modes, so they stay ABI-compatible:\n";
+    cmakeContent += "#  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
+    cmakeContent += "#    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
+    cmakeContent += "#  - JASPERENGINE_EDITOR keeps the editor-only layouts\n";
+    cmakeContent += "#    ABI-compatible across the DLL boundary.\n";
+    cmakeContent += "add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n\n";
 
     cmakeContent += getToolchainFloorCheck();
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(JASPERENGINE_EDITOR_PLUGIN)\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_EDITOR_PLUGIN)\n";
-    cmakeContent += "    # The editor links its own engine build, which is compiled as a shared\n";
-    cmakeContent += "    # library with editor-specific data layouts. The plugin must match both:\n";
-    cmakeContent += "    #  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
-    cmakeContent += "    #    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
-    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps HybridArray (and other editor-only layouts)\n";
-    cmakeContent += "    #    ABI-compatible across the DLL boundary.\n";
-    cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
 
     // Match the engine DLL shipped beside this editor, which JASPERENGINE_LIB_DIR defaults
@@ -1337,10 +1335,6 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "include(${INTERNAL_DIR}/LocalPaths.cmake OPTIONAL)\n";
     cmakeContent += "if(NOT DEFINED JASPERENGINE_LIB_DIR OR JASPERENGINE_LIB_DIR STREQUAL \"\")\n";
     cmakeContent += "    set(JASPERENGINE_LIB_DIR \"${JASPERENGINE_DEFAULT_LIB_DIR}\")\n";
-    cmakeContent += "    # Default target is the editor's own engine build (shared, editor layouts).\n";
-    cmakeContent += "    # Match its macros so symbols link (JASPERENGINE_SHARED -> dllimport on MSVC) and\n";
-    cmakeContent += "    # data layouts stay ABI-compatible (JASPERENGINE_EDITOR), avoiding ODR/ABI mismatch.\n";
-    cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
 
     cmakeContent += "# Find jasperengine library in specified location. find_library() caches its\n";
@@ -1351,6 +1345,13 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "find_library(JASPERENGINE_LIB NAMES jasperengine PATHS \"${JASPERENGINE_LIB_DIR}\" NO_DEFAULT_PATH)\n";
     cmakeContent += "if(NOT JASPERENGINE_LIB)\n";
     cmakeContent += "    message(FATAL_ERROR \"JasperEngine library not found in ${JASPERENGINE_LIB_DIR}\")\n";
+    cmakeContent += "endif()\n";
+    cmakeContent += "# The macros above are the editor engine's: a static engine build has other layouts\n";
+    cmakeContent += "# (MinGW's import library is libjasperengine.dll.a)\n";
+    cmakeContent += "if((JASPERENGINE_LIB MATCHES \"\\\\.a$\" AND NOT JASPERENGINE_LIB MATCHES \"\\\\.dll\\\\.a$\") OR\n";
+    cmakeContent += "   (WIN32 AND NOT EXISTS \"${JASPERENGINE_LIB_DIR}/jasperengine.dll\" AND NOT EXISTS \"${JASPERENGINE_LIB_DIR}/libjasperengine.dll\"))\n";
+    cmakeContent += "    message(FATAL_ERROR \"${JASPERENGINE_LIB} is not an editor engine library (a shared one): \"\n";
+    cmakeContent += "        \"JASPERENGINE_LIB_DIR must name the folder of a JasperEngine Editor and its engine library.\")\n";
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
     // macOS: the Objective-C native plugins run in the Play library and desktop builds too
@@ -1702,7 +1703,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     const std::string internal = relativeInternalPath.generic_string();
     std::string agentsContent;
     agentsContent += "# JasperEngine Project Context\n\n";
-    agentsContent += "This project was generated by JasperEngine Editor version `" JASPERENGINE_EDITOR_VERSION "`.\n\n";
+    agentsContent += "Made with JasperEngine Editor version `" JASPERENGINE_EDITOR_VERSION "`.\n\n";
     agentsContent += "## Working with the editor (MCP)\n\n";
     agentsContent += "Build scenes, prefabs, UI and project settings, and playtest, through the editor's MCP tools, never by editing "
                      "`*.scene`, `*.prefab` or `project.yaml` by hand (the open editor overwrites such edits). Start the server with "
@@ -1710,7 +1711,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`http://127.0.0.1:47615/mcp`, with the bearer token that window copies). Its instructions and the "
                      "`jasper://docs/...` resources explain the tools. From a shell, `jasperengine-editor call <tool> [--flags]` runs any of them "
                      "(`call <tool> --help` lists its parameters).\n\n";
-    agentsContent += "- Scripts, shaders and other text files: edit them on disk yourself; the editor reloads them before the next tool "
+    agentsContent += "- Scripts, shaders and other text files: edit them on disk; the editor reloads them before the next tool "
                      "call and reports problems under `external_changes`.\n";
     agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
@@ -1718,9 +1719,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`generate_sound` (a placeholder), `search_sounds` (built-in clips), `analyze_audio` (measure a clip) or `edit_sound_event` "
                      "(clips that vary: footsteps, hits).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
-                     "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n";
-    agentsContent += "- Models are cooked (smaller, same image; settings in each model's `.meta`): `inspect_models` finds the costly ones, "
-                     "`check_render_budgets` holds a scene to `quality.render_budgets` (`tool_groups` `meshes`).\n\n";
+                     "errors); as a hook after every edit: `check --project <this directory> --hook`.\n";
+    agentsContent += "- Models ship cooked (settings in their `.meta`): `inspect_models` finds costly ones, `check_render_budgets` checks "
+                     "`quality.render_budgets` (tool group `meshes`).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Game UI is standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (MCP: "
                      "`create_ui_document`), under `assets/ui/`. `check --ui` reports what the engine drops or rewrites. Supported CSS: "
@@ -1728,17 +1729,16 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "/html-ui-examples/`.\n\n";
     agentsContent += "## Source references\n\n";
     agentsContent += "The runtime API this project links against: `" + api + "` (use it first). Engine and editor source: "
-                     "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above (report it if you "
-                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
+                     "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above. The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
                      "key is rebound with `set_shortcut` (tool group `editor_ux`), not in that source.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "The editor regenerates these on play and build; never edit them: the root `CMakeLists.txt`, `" + internal +
                      "/LocalPaths.cmake`, `" + internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After "
-                     "changing a `.scene`, `.prefab` or `project.yaml` outside the editor, play the scene in the editor to regenerate "
-                     "before validating a build.\n\n";
+                     "an edit of a `.scene`, `.prefab` or `project.yaml` outside the editor, play it in the editor before validating a "
+                     "build.\n\n";
     agentsContent += "## Version control\n\n";
     agentsContent += "Commit `project.yaml`, `*.scene`, `*.prefab`, `ProjectBuild.cmake`, `AGENTS.md` and the assets. `" + internal +
-                     "/` (generated code, this machine's build settings, layouts, `data://` play data) and `CMakeLists.txt` are not "
+                     "/` (generated code, machine settings, layouts, `data://` play data) and `CMakeLists.txt` are not "
                      "committed. Per-user or per-machine values belong in `" + internal + "/user/`, never in `project.yaml`.\n\n";
     agentsContent += "## Custom build settings\n\n";
     agentsContent += "Put your own CMake in `ProjectBuild.cmake` at the project root (the editor never writes it; play and export include "
@@ -1753,8 +1753,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`(jasperengine::Scene* scene, jasperengine::Entity entity)` constructor, and marks Inspector fields "
                      "`DPROPERTY(\"Name\")`; it overrides `init()`, `onEnable()`, `start()`, `onDisable()`, `onDestroy()` as needed. The "
                      "editor finds and builds scripts on play (or `compile_scripts`); a script root directory (Project Settings > "
-                     "Directories) is compiled whole and is an include root. The C++ standard is Project Settings > Scripting > C++ "
-                     "Standard (20 or 23). Lua scripts are loaded at runtime, not compiled.\n\n";
+                     "Directories) is compiled whole and is an include root. Lua scripts are loaded at runtime, not compiled.\n\n";
     agentsContent += "## Prefabs at runtime\n\n";
     agentsContent += "Unity's Instantiate / Destroy are `GameObject::instantiate(prefab or GameObject [, parent | position, rotation])` "
                      "(returns `<name>(Clone)`, its scripts started) and `GameObject::destroy(object, delay)` (Lua: "
@@ -2045,6 +2044,9 @@ void writeCompileDatabase(const fs::path& projectPath, const fs::path& projectIn
         "-DJASPERENGINE_EDITOR_PLUGIN", "-DJASPERENGINE_SHARED", "-DJASPERENGINE_EDITOR",
         "-I" + project.generic_string(),
     };
+    // the macros the scripts compile with: Jolt's class layouts follow them
+    std::istringstream physics(editor::Generator::physicsCompileDefinitions());
+    for (std::string definition; physics >> definition;) flags.push_back("-D" + definition);
     std::vector<fs::path> roots = {project};
     for (const fs::path& dir : scriptDirs) {
         const fs::path absolute = (dir.is_absolute() ? dir : project / dir).lexically_normal();
@@ -2560,6 +2562,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
+    // Foliage Distance per platform group, written only when the project changed it
+    if (foliageDistanceScale != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
+        mainContent += "    Engine::setFoliageDistanceScaleDefaults(" + Factory::formatFloat(foliageDistanceScale[0]) + ", " +
+                       Factory::formatFloat(foliageDistanceScale[1]) + ", " + Factory::formatFloat(foliageDistanceScale[2]) + ");\n";
+    }
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
@@ -3140,10 +3147,10 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
 #ifdef _WIN32
     // --- MSVC ---
     {
-        std::string vswhere = CommandRunner::findVswherePath();
+        const bool hasVswhere = CommandRunner::hasVswhere();
         std::string vsName;
-        if (!vswhere.empty()) {
-            vsName = runCmd({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
+        if (hasVswhere) {
+            vsName = CommandRunner::vswhere({"-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
         }
         // cl.exe on PATH (e.g. a Developer Command Prompt) also signals MSVC is
         // available even if vswhere cannot be located.
@@ -3160,9 +3167,9 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 generators.emplace(std::stoi((*it)[1].str()), it->str());
             }
             for (const auto& entry : generators) {
-                if (!vswhere.empty()) {
+                if (hasVswhere) {
                     const std::string versionRange = "[" + std::to_string(entry.first) + "," + std::to_string(entry.first + 1) + ")";
-                    const std::string name = runCmd({vswhere, "-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
+                    const std::string name = CommandRunner::vswhere({"-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
                     if (name.empty()) continue;
                     kit.displayName = name;
                 } else {

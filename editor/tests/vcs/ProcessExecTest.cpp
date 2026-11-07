@@ -333,7 +333,7 @@ TEST(ProcessExec, ConfiguredExecutableWins) {
     ExecutableLookup lookup;
     lookup.configured = helper();
     EXPECT_EQ(findExecutable("git", lookup), helper().lexically_normal());
-    lookup.configured = "relative/git";
+    lookup.configured = fs::relative(helper(), fs::current_path());
     std::string why;
     EXPECT_TRUE(findExecutable("git", lookup, &why).empty());
     EXPECT_NE(why.find("not absolute"), std::string::npos);
