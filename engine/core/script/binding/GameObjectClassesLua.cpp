@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/MeshComponent.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
@@ -325,6 +326,37 @@ bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::s
     }
     return false;
 }
+
+// GameObject:setParent / parent = : any GameObject handle, a script instance or nil (the root)
+static void luaSetParent(GameObject* self, const luabridge::LuaRef& value, bool worldPositionStays){
+    if (value.isNil()){
+        self->setParent(nullptr, worldPositionStays);
+        return;
+    }
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("GameObject.setParent takes a GameObject, a script or nil");
+        return;
+    }
+    const EntityHandle parent(scene, entity);
+    self->setParent(&parent, worldPositionStays);
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+// Rigidbody:getAllowedDOFs() -> translationX, translationY, translationZ, rotationX, rotationY, rotationZ
+static int luaRigidbodyGetAllowedDOFs(lua_State* L){
+    Rigidbody* self = luabridge::detail::Userdata::get<Rigidbody>(L, 1, true);
+    bool dofs[6] = {true, true, true, true, true, true};
+    if (self) self->getAllowedDOFs(dofs[0], dofs[1], dofs[2], dofs[3], dofs[4], dofs[5]);
+    for (bool dof : dofs) lua_pushboolean(L, dof);
+    return 6;
+}
+#endif
 
 template<typename T>
 bool luaValueArg(lua_State* L, int index, T& value){
@@ -850,10 +882,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // with when the material names none (the mesh's customShader, else the scene default)
     static luabridge::LuaRef (*meshMaterial)(const Mesh*, unsigned int, lua_State*) =
         +[](const Mesh* self, unsigned int submesh, lua_State* L) -> luabridge::LuaRef {
-            const MeshComponent& mesh = self->getComponent<MeshComponent>();
             luabridge::LuaRef ref(L, self->getMaterial(submesh));
-            if (submesh < mesh.numSubmeshes && mesh.submeshes[submesh].material.shader.empty() && self->getScene()) {
-                const std::string drawn = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[submesh],
+            // the mesh holding it (a part of a model made of parts)
+            unsigned int local = submesh;
+            const Mesh::MeshTarget target = self->findSubmesh(local, nullptr);
+            if (target.mesh && local < target.mesh->numSubmeshes && target.mesh->submeshes[local].material.shader.empty() && self->getScene()) {
+                const MeshComponent& mesh = *target.mesh;
+                const std::string drawn = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[local],
                     self->getScene()->getDefaultCustomShader(ShaderType::MESH));
                 ref.push(L);
                 LuaBinding::setMaterialDrawnShader(L, -1, drawn);
@@ -1241,6 +1276,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<GameObject*>(&GameObject::removeChild),
             luabridge::overload<Entity>(&GameObject::removeChild))
         .addFunction("removeParent", &GameObject::removeParent)
+        // Unity's Transform hierarchy: parent (nil at the root; assigning keeps the world placement),
+        // setParent(p [, worldPositionStays = true]), childCount, getChild(i) (0-based), getChildren(),
+        // findChild("Arm/Hand")
+        .addProperty("parent", &GameObject::getParent,
+            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(self, value, true); })
+        .addFunction("setParent", [](GameObject* self, luabridge::LuaRef parent, std::optional<bool> worldPositionStays) {
+            luaSetParent(self, parent, worldPositionStays.value_or(true));
+        })
+        .addProperty("childCount", &GameObject::getChildCount)
+        .addFunction("getChild", &GameObject::getChild)
+        .addFunction("getChildren", &GameObject::getChildren)
+        .addFunction("findChild", &GameObject::findChild)
         .addFunction("moveToTop", &GameObject::moveToTop)
         .addFunction("moveUp", &GameObject::moveUp)
         .addFunction("moveDown", &GameObject::moveDown)
@@ -1554,6 +1601,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)
+        .addProperty("worldDirection", &Light::getWorldDirection)
         .addFunction("setDirection", (void(Light::*)(const float, const float, const float))&Light::setDirection)
         .addProperty("color", &Light::getColor, (void(Light::*)(Vector3))&Light::setColor)
         .addFunction("setColor", (void(Light::*)(const float, const float, const float))&Light::setColor)
@@ -1882,6 +1930,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getVerticesAABB", &Mesh::getVerticesAABB)
         .addFunction("getWorldAABB", &Mesh::getWorldAABB)
         .addFunction("getNumSubmeshes", &Mesh::getNumSubmeshes)
+        .addProperty("vertexCount", &Mesh::getVertexCount)
         .addProperty("receiveLights", &Mesh::isReceiveLights, &Mesh::setReceiveLights)
         .addProperty("receiveIBL", &Mesh::isReceiveIBL, &Mesh::setReceiveIBL)
         .addProperty("castShadows", &Mesh::isCastShadows, &Mesh::setCastShadows)
@@ -2218,6 +2267,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("loadOBJ", &Model::loadOBJ)
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
+        .addProperty("filename", &Model::getFilename)
+        .addFunction("getAnimationCount", &Model::getAnimationCount)
         .addFunction("getAnimation", &Model::getAnimation)
         .addFunction("findAnimation", &Model::findAnimation)
         .addFunction("playAnimation",
@@ -4589,12 +4640,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setColliderTrigger", &Rigidbody2D::setColliderTrigger)
         .addFunction("isColliderTrigger", &Rigidbody2D::isColliderTrigger)
         .addFunction("getColliderPieceCount", &Rigidbody2D::getColliderPieceCount)
-        .addFunction("applyForce", &Rigidbody2D::applyForce)
-        .addFunction("applyForceToCenter", &Rigidbody2D::applyForceToCenter)
-        .addFunction("applyTorque", &Rigidbody2D::applyTorque)
-        .addFunction("applyLinearImpulse", &Rigidbody2D::applyLinearImpulse)
-        .addFunction("applyLinearImpulseToCenter", &Rigidbody2D::applyLinearImpulseToCenter)
-        .addFunction("applyAngularImpulse", &Rigidbody2D::applyAngularImpulse)
+        // wake defaults to true, as Unity's AddForce (Box2D ignores a force on a sleeping body)
+        .addFunction("applyForce", [] (Rigidbody2D* self, const Vector2& force, const Vector2& point, std::optional<bool> wake) {
+            self->applyForce(force, point, wake.value_or(true));
+        })
+        .addFunction("applyForceToCenter", [] (Rigidbody2D* self, const Vector2& force, std::optional<bool> wake) {
+            self->applyForceToCenter(force, wake.value_or(true));
+        })
+        .addFunction("applyTorque", [] (Rigidbody2D* self, float torque, std::optional<bool> wake) {
+            self->applyTorque(torque, wake.value_or(true));
+        })
+        .addFunction("applyLinearImpulse", [] (Rigidbody2D* self, const Vector2& impulse, const Vector2& point, std::optional<bool> wake) {
+            self->applyLinearImpulse(impulse, point, wake.value_or(true));
+        })
+        .addFunction("applyLinearImpulseToCenter", [] (Rigidbody2D* self, const Vector2& impulse, std::optional<bool> wake) {
+            self->applyLinearImpulseToCenter(impulse, wake.value_or(true));
+        })
+        .addFunction("applyAngularImpulse", [] (Rigidbody2D* self, float impulse, std::optional<bool> wake) {
+            self->applyAngularImpulse(impulse, wake.value_or(true));
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -4844,6 +4908,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setAllowedDOFsAll", &Rigidbody::setAllowedDOFsAll)
         .addFunction("setAllowedDOFs2DPlane", &Rigidbody::setAllowedDOFs2DPlane)
         .addFunction("setAllowedDOFs", &Rigidbody::setAllowedDOFs)
+        .addFunction("getAllowedDOFs", &luaRigidbodyGetAllowedDOFs)
         // Unity's mass fields: setting mass, centerOfMass or inertiaTensor turns its automatic off
         .addProperty("mass", &Rigidbody::getMass, &Rigidbody::setMass)
         .addProperty("automaticMass", &Rigidbody::isAutomaticMass, &Rigidbody::setAutomaticMass)
@@ -4875,6 +4940,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 else self->setMaterial(path);
             })
         .addFunction("setOverrideMassAndInertia", &Rigidbody::setOverrideMassAndInertia)
+        .addProperty("overrideMassProperties", &Rigidbody::isOverrideMassProperties)
         .addProperty("gravityFactor", &Rigidbody::getGravityFactor, &Rigidbody::setGravityFactor)
         .addProperty("collisionGroupID", &Rigidbody::getCollisionGroupID, &Rigidbody::setCollisionGroupID)
         .addFunction("setBitsFilter", &Rigidbody::setBitsFilter)

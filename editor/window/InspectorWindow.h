@@ -15,6 +15,7 @@
 #include "util/PrimitiveParameters.h"
 #include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
@@ -485,6 +486,9 @@ namespace jasperengine::editor{
 
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
+        // the Add Script picker's list (read when it opens) and search text
+        std::vector<ScriptCandidate> addScriptCandidates;
+        char addScriptSearch[128] = {};
         ShaderForkDialog shaderForkDialog;
         ComponentAddDialog componentAddDialog;
         TextureSlicerToolDialog textureSlicerToolDialog;
@@ -596,7 +600,14 @@ namespace jasperengine::editor{
         bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
-        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // New Script (or, existing: Existing Script) dialog; what it makes goes on the entities
+        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities, bool existing);
+        // a script file onto the entities (ScriptAttach), problems to the Console
+        void attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file);
+        // the Scripts header's Add Script picker: the project's scripts, New Script..., Browse...
+        void drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // every one of the entities runs the candidate's file already
+        bool scriptOnAll(SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptCandidate& candidate) const;
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
         // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)
@@ -854,6 +865,7 @@ namespace jasperengine::editor{
 
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawMeshComponentFields(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -976,6 +976,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
+    ${EDITOR_DIR}/util/ScriptAttach.cpp
+    ${EDITOR_DIR}/util/ScriptPropertyCache.cpp
     ${EDITOR_DIR}/util/ScriptReloadService.cpp
     ${EDITOR_DIR}/util/ScriptStatus.cpp
     ${EDITOR_DIR}/util/SourceLocation.cpp
