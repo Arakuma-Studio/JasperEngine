@@ -37,6 +37,16 @@ async def details(ed: Editor, sid, eid) -> list:
     return (await ed.call("sample_terrain", scene=sid, entity=eid, grid=0))["info"]["details"]
 
 
+async def drawn_after_frames(ed: Editor, sid, eid) -> int:
+    drawn = 0
+    for _ in range(20):
+        await ed.call("wait", frames=5)
+        drawn = (await details(ed, sid, eid))[0]["drawn"]
+        if drawn > 0:
+            break
+    return drawn
+
+
 async def test_group_lists_the_tool(ed: Editor):
     default = {t.name for t in await ed.tools(groups=None)}
     ed.check("edit_terrain_details" not in default, "hidden until the terrain group is enabled")
@@ -64,12 +74,7 @@ async def test_add_update_remove(ed: Editor):
     ed.check("undo" in added, "one undo step")
 
     # the editor scatters instances around its camera
-    drawn = 0
-    for _ in range(20):
-        await ed.call("wait", frames=5)
-        drawn = (await details(ed, sid, eid))[0]["drawn"]
-        if drawn > 0:
-            break
+    drawn = await drawn_after_frames(ed, sid, eid)
     ed.check(drawn > 0, f"the layer draws instances: {drawn}")
 
     updated = await ed.call("edit_terrain_details", scene=sid, entity=eid, update=[{"index": 0, "density": 4, "min_scale": 0.5}])
@@ -88,7 +93,8 @@ async def test_add_update_remove(ed: Editor):
 
 async def test_fbx_layer(ed: Editor):
     """an FBX is a detail mesh as in the Terrain window (it draws from its import); red before the fix:
-    refused as not .obj, .gltf or .glb"""
+    refused as not .obj, .gltf or .glb. This one is skinned with a blend shape: a chunk draws it at
+    rest (red before the fix: its instanced variant needed 17 vertex inputs, so 0 instances drew)"""
     sid, eid = await terrain(ed, "Fbx")
     target = ed.project / "assets" / "models" / "rigged_cube.fbx"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -97,6 +103,9 @@ async def test_fbx_layer(ed: Editor):
     added = await ed.call("edit_terrain_details", scene=sid, entity=eid,
                           add=[{"mesh": "assets/models/rigged_cube.fbx", "density": 1, "density_map": {"fill": 1, "resolution": 8}}])
     ed.check_eq(added["layers"][0]["mesh"], "assets/models/rigged_cube.fbx", "the FBX layer")
+    drawn = await drawn_after_frames(ed, sid, eid)
+    ed.check(drawn > 0, f"the FBX layer draws instances: {drawn}\n"
+             f"{await ed.call('read_console', levels=['error'], include_shader_builds=True, limit=10)}")
     # undo removes the layer and the density map the call wrote
     density = ed.project / added["layers"][0]["density_map"]
     ed.check(density.exists(), f"the density map: {density}")

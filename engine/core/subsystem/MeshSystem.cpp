@@ -5568,6 +5568,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // global transform. (Async is always the flatten path, so useChildEntities is already false here.)
     bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
+    // A copy a system places (a foliage or spline chunk) builds no skeleton, so its bones stay at
+    // the identity and a skinned mesh stands at rest: it loads as static geometry. Skinning,
+    // blend shapes and instancing together would need 17 vertex inputs, past the 16 every
+    // backend has, and the chunk would never draw.
+    const bool restPoseSkin = bakeSceneRoot && skipEntities && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -5838,7 +5843,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // flatten path's one mesh takes its largest skin's)
             if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
                 mesh.bonesMatrix.resize(nodeSkin->joints.size());
-        }else if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+        }else if (!bakingFlatten && !restPoseSkin && nodeSkin && !nodeSkin->joints.empty()){
             Log::error("Model %s has a skin of %zu joints, more than %zu",
                 filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
             if (asyncLoad) {
@@ -6022,8 +6027,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
-                    continue; // baked preview is static geometry; drop the skinning attributes
+                if ((bakingFlatten || restPoseSkin) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                    continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
