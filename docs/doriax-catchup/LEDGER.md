@@ -237,3 +237,10 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   changed, a failed write names the file; every web export keeps its favicon and carries native web scripts),
   StreamSchema keys, check-changed rules. Box: WERROR editor, budget, unit 294, MCP 57, web compile, lints, Apple
   privacy check. No Apple code compiled here.
+- 2026-11-07 04:xx: **main's MCP goldens fixed** (`fix/main-goldens`): four MCP tests had failed on main since the
+  landings (reported by the pixel-art program). Intended changes regenerated per suite (scene-integrity's
+  startSceneId and scene source 4, render-correctness' normal-less shader keys, runtime-core's action rows,
+  export-pipeline's hasTextureRect in generated scenes); one real bug fixed with a red control: a spline road saved
+  before its first frame lost its template submesh (save determinism). Checked on main: test_reflection +
+  test_saved_output_determinism 11/11, GeneratedScenes/SplineStream/Compat unit tests. Open: three prefab codegen
+  goldens that need the external fixture project.
