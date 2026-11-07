@@ -7,6 +7,7 @@
 
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
+#include "animation/ModelClipSettings.h"
 #include "io/File.h"
 #include "io/FileData.h"
 #include "pool/AnimationClipPoolTesting.h"
@@ -698,6 +699,8 @@ bool anim::readModelFile(const std::string& modelPath, const std::function<bool(
 }
 
 void anim::dropModelFileParse(const std::string& modelPath){
+    // its <model>.clips is read again with it
+    dropModelClipSettings(modelPath);
     const std::string key = modelPath.empty() ? std::string() : MeshSystem::getModelFilenameKey(modelPath);
     ParseCache& cache = parseCache();
     std::shared_ptr<const tinygltf::Model> dropped;    // freed after the unlock
@@ -794,6 +797,9 @@ bool anim::buildModelSubClip(const std::string& reference, ClipData& out,
         if (error) *error = "\"" + reference + "\" is not a model sub-clip (<model>#<animation>)";
         return false;
     }
+    // the model's <model>.clips (S74 R28): the same file and the same reading in the editor and a
+    // player, so Play matches an export. Read before the model, not under its mutex
+    const std::shared_ptr<const ModelClipSettings> settings = modelClipSettings(parsed.model);
     return withModelFile(parsed.model, error, [&](const tinygltf::Model& model){
         int index = findModelClip(model, parsed.clip);
         if (index < 0){
@@ -802,6 +808,12 @@ bool anim::buildModelSubClip(const std::string& reference, ClipData& out,
         }
         if (!buildSubClip(model, index, out, warnings, error)) return false;
         out.source.path = parsed.model;
+        if (settings){
+            const std::vector<std::string> names = animationNames(model);
+            if (const ModelClipSetting* setting = (size_t)index < names.size() ? settings->find(names[(size_t)index]) : nullptr){
+                applyModelClipSetting(*setting, out);
+            }
+        }
         return true;
     });
 }
