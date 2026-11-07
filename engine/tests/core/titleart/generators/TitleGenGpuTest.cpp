@@ -131,6 +131,13 @@ TEST_F(TitleGenGpu, PresetGoldens) {
 const std::map<std::string, const char*> PARITY_EXCEPTIONS = {
     {"speedLines-beta", "the Beta Flash preset's Halftone dissolve is a layer effect of the effects stream (S83 §6.6.9)"},
     {"glints-highlights", "the picks follow S80's base title, whose highlights differ from Pachislop's, read from the 8-bit grid (D8)"},
+    {"glints-rainbow", "as glints-highlights: the picks follow S80's base title"},
+    {"glints-scatter", "the scatter keeps out of the ink by the 8-bit content grid's distance, which moves borderline stars"},
+    {"backlight-godRays", "the shape centre comes from the 4 px grid's ink box (S83 Deviation 22), which turns every ray slightly"},
+    {"backlight-jackpot", "as backlight-godRays"},
+    {"corona-tendrils", "the tendrils' normals come from the RGBA8-packed field gradient (S83 Deviation 22): ray positions shift a little"},
+    {"corona-auraStrong", "as corona-tendrils"},
+    {"corona-auraWeakUp", "as corona-tendrils, over the rising field"},
 };
 
 TEST_F(TitleGenParityGpu, PachislopPresets) {
