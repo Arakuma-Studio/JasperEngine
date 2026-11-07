@@ -416,6 +416,8 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
 
     // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
     if (!sprite.sheet.empty()) {
@@ -455,6 +457,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());
     if (node["sheet"]) {
         const AssetRef sheet = decodeAssetRef(node, "sheet");
         if (sheet.path != sprite.sheet.path) {

@@ -112,4 +112,115 @@ namespace jasperengine{
         return quad;
     }
 
+
+    bool spriteFrameHasBorder(const SpriteFrame& frame){
+        return frame.border.x > 0.0f || frame.border.y > 0.0f || frame.border.z > 0.0f || frame.border.w > 0.0f;
+    }
+
+    namespace{
+        // source pixels along one axis -> output units: [0, a] keeps its native size (au), [n - b, n]
+        // too (bu), the middle stretches over what is left
+        struct SliceAxis{
+            float n = 0, a = 0, b = 0;      // source size and borders, pixels
+            float out = 0, au = 0, bu = 0;  // output size and borders, units
+
+            float map(float p) const{
+                if (p <= a) return a > 0.0f ? p / a * au : 0.0f;
+                if (p >= n - b) return b > 0.0f ? out - (n - p) / b * bu : out;
+                const float middle = n - a - b;
+                return middle > 0.0f ? au + (p - a) / middle * (out - au - bu) : au;
+            }
+        };
+
+        SliceAxis sliceAxis(float n, float a, float b, float out, float unitsPerPixel){
+            SliceAxis axis;
+            axis.n = n;
+            axis.a = std::clamp(a, 0.0f, n);
+            axis.b = std::clamp(b, 0.0f, n - axis.a);
+            axis.out = out;
+            axis.au = axis.a * unitsPerPixel;
+            axis.bu = axis.b * unitsPerPixel;
+            // a sprite smaller than its two borders: the corners shrink together
+            if (axis.au + axis.bu > out && axis.au + axis.bu > 0.0f){
+                const float k = out / (axis.au + axis.bu);
+                axis.au *= k;
+                axis.bu *= k;
+            }
+            return axis;
+        }
+    }
+
+    SpriteSlicedMesh spriteFrameSliced(const SpriteFrame& frame, const SpriteFrameGeometryInput& input){
+        SpriteSlicedMesh mesh;
+        const float w = frame.sourceSize.x;
+        const float h = frame.sourceSize.y;
+        if (w <= 0.0f || h <= 0.0f) return mesh;
+        const float ppu = input.pixelsPerUnit > 0.0f ? input.pixelsPerUnit : 1.0f;
+        const float ratio = input.pixelRatio.y > 0.0f ? input.pixelRatio.x / input.pixelRatio.y : 1.0f;
+        const float ux = ratio / ppu;
+        const float uy = 1.0f / ppu;
+        mesh.width = input.width > 0 ? static_cast<float>(input.width) : w * ux;
+        mesh.height = input.height > 0 ? static_cast<float>(input.height) : h * uy;
+        const SliceAxis ax = sliceAxis(w, frame.border.x, frame.border.z, mesh.width, ux);
+        const SliceAxis ay = sliceAxis(h, frame.border.y, frame.border.w, mesh.height, uy);
+
+        const float ox = frame.offset.x, oy = frame.offset.y;
+        const float rw = frame.rect.getWidth(), rh = frame.rect.getHeight();
+        mesh.empty = rw <= 0.0f || rh <= 0.0f;
+        if (mesh.empty) return mesh;
+        // the lattice lines in source pixels (y down), clamped to the trimmed rect
+        const float cols[4] = {ox, std::clamp(ax.a, ox, ox + rw), std::clamp(w - ax.b, ox, ox + rw), ox + rw};
+        const float rows[4] = {oy, std::clamp(ay.a, oy, oy + rh), std::clamp(h - ay.b, oy, oy + rh), oy + rh};
+
+        // the pivot in output units, y up from the bottom: presets on the drawn size, the frame's
+        // own pivot through the slicing
+        const Vector2 sourcePivot = spriteFramePivot(frame, input.pivot);
+        Vector2 pivot;
+        if (input.pivot == PivotPreset::FRAME){
+            pivot = Vector2(ax.map(sourcePivot.x), mesh.height - ay.map(h - sourcePivot.y));
+        }else{
+            pivot = Vector2(sourcePivot.x / w * mesh.width, sourcePivot.y / h * mesh.height);
+        }
+        const bool upright = input.uiCamera ? !input.flipY : input.flipY;
+        float ys[4];
+        for (int i = 0; i < 4; i++){
+            const float down = ay.map(rows[i]);   // from the drawn top
+            if (!input.uiCamera){
+                ys[i] = (upright ? mesh.height - down : down) - pivot.y;
+            }else{
+                ys[i] = (upright ? down : mesh.height - down) - (mesh.height - pivot.y);
+            }
+            mesh.v[i] = (rows[i] - oy) / rh;
+        }
+        for (int i = 0; i < 4; i++){
+            mesh.x[i] = ax.map(cols[i]) - pivot.x;
+            mesh.u[i] = (cols[i] - ox) / rw;
+        }
+        // rows bottom-up in y, so the cells wind as the quad's
+        const bool reversed = ys[0] > ys[3];
+        for (int i = 0; i < 4; i++){
+            const int from = reversed ? 3 - i : i;
+            mesh.y[i] = ys[from];
+        }
+        if (reversed){
+            std::swap(mesh.v[0], mesh.v[3]);
+            std::swap(mesh.v[1], mesh.v[2]);
+        }
+        if (input.pageWidth > 0 && input.pageHeight > 0){
+            const float pw = static_cast<float>(input.pageWidth);
+            const float ph = static_cast<float>(input.pageHeight);
+            mesh.textureRect = Rect(frame.rect.getX() / pw, frame.rect.getY() / ph, rw / pw, rh / ph);
+        }
+        return mesh;
+    }
+
+    const uint16_t* spriteSlicedIndices(){
+        static const uint16_t indices[SPRITE_SLICED_INDICES] = {
+            0, 1, 5, 0, 5, 4,      1, 2, 6, 1, 6, 5,      2, 3, 7, 2, 7, 6,
+            4, 5, 9, 4, 9, 8,      5, 6, 10, 5, 10, 9,    6, 7, 11, 6, 11, 10,
+            8, 9, 13, 8, 13, 12,   9, 10, 14, 9, 14, 13,  10, 11, 15, 10, 15, 14,
+        };
+        return indices;
+    }
+
 }

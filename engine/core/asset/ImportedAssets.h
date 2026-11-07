@@ -7,7 +7,10 @@
 //   "sprites/hero.aseprite#sheet"            the jasperengine.spritesheet record
 //   "sprites/hero.aseprite#image#0"          page 0
 //   "sprites/hero.aseprite#animation:walk"   a tag's clip (.anim text); "#animation#0" untagged / duplicate names
-// S45 adds "<atlas>#sheet". An exported game reads assets/je-imported/index.json
+// S45 adds "<atlas>#sheet" and "<atlas>#image#<n>" (a Sprite Atlas's sheet and pages), and for a
+// source an atlas in use packs (docs/specs/S45-sprite-atlas.md R2) "<source>#sheet" names its
+// remapped view into the pages, "<source>#image#<n>" the pages and "<source>#atlas" the atlas
+// (a texture with a Sprite Mode also has "<texture>#sheet", its frames). An exported game reads assets/je-imported/index.json
 // ({"format": "jasperengine.imported", "version": 1, "files": {"<source>#<key>": "<asset-relative file>"}});
 // the editor installs a provider answering from its import cache (.jasperengine/cache/imported/v1)
 // instead. Sources are asset-relative, '/' separated (CookedTextures::normalize's rules).
@@ -38,6 +41,9 @@ namespace jasperengine {
         // the editor's cache; null goes back to the export's index.json
         static void setProvider(Provider provider);
         static bool hasProvider();
+        // S45's editor answers (atlases, their remaps, texture sheets): asked before the provider,
+        // which answers what it does not; null removes it
+        static void setSheetProvider(Provider provider);
 
         // "asset://a/../b.aseprite#sheet" -> "b.aseprite#sheet": the source part normalized, the key kept
         static std::string normalize(const std::string& sourceRef);

@@ -17,6 +17,7 @@
 #include "util/ProjectUtils.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "resources/sky/Daylight_Box_Back_png.h"
 #include "resources/sky/Daylight_Box_Bottom_png.h"
 #include "resources/sky/Daylight_Box_Front_png.h"
@@ -94,6 +95,14 @@ namespace {
                 pageless.setWrapU(copy.submeshes[0].material.baseColorTexture.getWrapU());
                 pageless.setWrapV(copy.submeshes[0].material.baseColorTexture.getWrapV());
                 copy.submeshes[0].material.baseColorTexture = pageless;
+                rt::writeComponent(w, *table, &copy, ctx);
+            } else if (std::string_view(table->cppName) == "MeshComponent" && registry->findComponent<SpriteComponent>(entity) &&
+                       registry->findComponent<SpriteComponent>(entity)->inlineAtlas) {
+                // a legacy sprite drawn from an atlas page (S45 R8): its source texture and rect
+                const SpriteComponent& sprite = *registry->findComponent<SpriteComponent>(entity);
+                MeshComponent copy = *static_cast<const MeshComponent*>(component);
+                copy.submeshes[0].material.baseColorTexture.setPath(MeshSystem::spriteSourceTexture(sprite, copy));
+                copy.submeshes[0].textureRect = MeshSystem::spriteSourceRect(sprite, *static_cast<const MeshComponent*>(component));
                 rt::writeComponent(w, *table, &copy, ctx);
             } else if (std::string_view(table->cppName) == "SkyboxComponent" &&
                        isDefaultSky(static_cast<const SkyboxComponent*>(component)->texture)) {

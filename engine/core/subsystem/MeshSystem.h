@@ -43,6 +43,7 @@ namespace tinygltf {
 namespace jasperengine{
 
     struct InstanceData;
+    struct SpriteSlicedMesh;
     struct Submesh;
     struct TerrainFoliageLayer;
 
@@ -101,6 +102,11 @@ namespace jasperengine{
         // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
         // only when the frame's geometry differs from the one built
         bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        // the 9-slice of a bordered sheet frame (S45 R6, the Sliced draw mode)
+        void buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced);
+        // a legacy sprite whose texture an atlas in use packs (S45 R8): its inline rect drawn from
+        // the page; false when it draws from its own texture
+        bool updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -207,6 +213,12 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // A legacy sprite's texture rect and texture as it saves them: its source's while it draws
+        // from an atlas page (S45 R8), else the mesh's
+        static Rect spriteSourceRect(const SpriteComponent& sprite, const MeshComponent& mesh);
+        static std::string spriteSourceTexture(const SpriteComponent& sprite, const MeshComponent& mesh);
+        // the source texture's size (unchanged when the sprite draws from its own texture)
+        static void spriteSourceSize(const SpriteComponent& sprite, const MeshComponent& mesh, float& width, float& height);
         // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
         // generated code hold them too (the editor applies them on load and before a save)
         static void applyTerrainMapSettings(TerrainComponent& terrain);

@@ -2992,6 +2992,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("pauseAnimation", &Sprite::pauseAnimation)
         .addFunction("stopAnimation", &Sprite::stopAnimation)
         // a sheet sprite (S44): setting the sheet shows its frame 0
+        .addProperty("drawMode", &Sprite::getDrawMode, &Sprite::setDrawMode)
         .addProperty("sheet", &Sprite::getSheet, &Sprite::setSheet)
         .addProperty("frame", &Sprite::getFrameIndex, (void(Sprite::*)(int))&Sprite::setFrame)
         .addProperty("frameName", &Sprite::getFrameName, (void(Sprite::*)(const std::string&))&Sprite::setFrame)
