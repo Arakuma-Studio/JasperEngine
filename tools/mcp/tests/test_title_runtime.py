@@ -31,7 +31,7 @@ async def setup(ed: Editor) -> dict:
     S["scene"] = made["scene"]["id"]
     await ed.call("create_ui", scene=S["scene"], root={"type": "image", "name": "Logo", "layout": {"anchor": "center", "size": [400, 200]}})
     await ed.call("add_component", scene=S["scene"], entity="Logo", component="titleart")
-    await ed.call("set_properties", scene=S["scene"], entity="Logo", component="titleart", properties={"title": DOC})
+    await ed.call("set_properties", scene=S["scene"], entity="Logo", values={"titleart": {"title": DOC}})
     await ed.call("save_scene", scene=S["scene"])
     return S
 
@@ -43,13 +43,13 @@ async def test_parameters_listed_with_the_group(ed: Editor):
     ed.check("get_title" not in default and "render_title" not in default, "the title_art group is hidden by default")
     await ed.call("tool_groups", enable=["title_art"])
     listed = {t.name: t for t in await ed.tools(groups=None)}
-    get_props = listed["get_title"].inputSchema["properties"]
+    get_props = listed["get_title"].input_schema["properties"]
     for key in ("path", "entity", "scene", "wait_ready", "timeout_seconds"):
         ed.check(key in get_props, f"get_title lists {key}")
-    render_props = listed["render_title"].inputSchema["properties"]
+    render_props = listed["render_title"].input_schema["properties"]
     for key in ("path", "entity", "scene", "options"):
         ed.check(key in render_props, f"render_title lists {key}")
-    ed.check("path" not in listed["get_title"].inputSchema.get("required", []), "path is not required once entity exists")
+    ed.check("path" not in listed["get_title"].input_schema.get("required", []), "path is not required once entity exists")
 
 
 async def test_bad_args(ed: Editor):
@@ -79,21 +79,20 @@ async def test_instance_state(ed: Editor):
 
 
 async def test_overrides_are_properties(ed: Editor):
-    """AC2: set_properties {component: "titleart", "overrides.text"} is one undo step; an unknown name lists the exposed ones."""
+    """AC2: set_properties {values: {titleart: {"overrides.text"}}} is one undo step; an unknown name lists the exposed ones."""
     s = await setup(ed)
-    await ed.call("set_properties", scene=s["scene"], entity="Logo", component="titleart", properties={"overrides.text": "WIN"})
+    await ed.call("set_properties", scene=s["scene"], entity="Logo", values={"titleart": {"overrides.text": "WIN"}})
     state = await ed.call("get_title", entity="Logo", scene=s["scene"])
     ed.check_eq(state["overrides"].get("text"), "WIN")
-    await ed.call("set_properties", scene=s["scene"], entity="Logo", component="titleart", properties={"overrides.glow_amount": 0.5})
+    await ed.call("set_properties", scene=s["scene"], entity="Logo", values={"titleart": {"overrides.glow_amount": 0.5}})
     state = await ed.call("get_title", entity="Logo", scene=s["scene"])
     ed.check_eq(state["overrides"].get("glow_amount"), 0.5)
     await ed.call("undo", scope="scene")
     state = await ed.call("get_title", entity="Logo", scene=s["scene"])
     ed.check("glow_amount" not in state["overrides"], f"one undo step takes the last entry: {state['overrides']}")
     ed.check_eq(state["overrides"].get("text"), "WIN", "the earlier entry stays")
-    await ed.check_error("set_properties", {"scene": s["scene"], "entity": "Logo", "component": "titleart",
-                                             "properties": {"overrides.glowamount": 1}}, contains="Exposed: text, glow_amount")
-    await ed.call("set_properties", scene=s["scene"], entity="Logo", component="titleart", properties={"overrides.text": None})
+    await ed.check_error("set_properties", {"scene": s["scene"], "entity": "Logo", "values": {"titleart": {"overrides.glowamount": 1}}}, contains="Exposed: text, glow_amount")
+    await ed.call("set_properties", scene=s["scene"], entity="Logo", values={"titleart": {"overrides.text": None}})
     state = await ed.call("get_title", entity="Logo", scene=s["scene"])
     ed.check_eq(state["overrides"], {}, "null removes the entry")
 
@@ -105,11 +104,11 @@ async def test_lua_sentences(ed: Editor):
     try:
         await ed.call("wait", frames=3)
         r = await ed.call("eval_lua", code=(
-            "local t = scene:findEntity('Logo') and GameObject(scene, scene:findEntity('Logo')):getTitleArt()\n"
+            "local t = GameObject.find('Logo'):getTitleArt()\n"
             "local ok, err = pcall(function() t.text = 'WIN' end)\n"
             "local ok2, err2 = pcall(function() t.renderMode = TitleArtRenderMode.REALTIME end)\n"
-            "return {t.title, t.renderMode == TitleArtRenderMode.BAKED, ok, err, ok2, err2, t:getParameter('text'), t:hasParameter('glow_amount')}"))
-        values = r["values"][0]
+            "return t.title, t.renderMode == TitleArtRenderMode.BAKED, ok, err, ok2, err2, t:getParameter('text'), t:hasParameter('glow_amount')"))
+        values = r["values"]
         ed.check_eq(values[0], DOC)
         ed.check_eq(values[1], True)
         ed.check_eq(values[2], False, "text on a Baked title raises")
@@ -126,11 +125,11 @@ async def test_realtime_text_change(ed: Editor):
     """AC21: in Play, a Realtime title takes a new text from Lua and is ready with it; render_title's
     what-if overrides leave the instance unchanged."""
     s = await setup(ed)
-    await ed.call("set_properties", scene=s["scene"], entity="Logo", component="titleart", properties={"renderMode": "realtime"})
+    await ed.call("set_properties", scene=s["scene"], entity="Logo", values={"titleart": {"renderMode": "realtime"}})
     await ed.call("play", action="start", scene=s["scene"])
     try:
         await ed.call("wait", frames=3)
-        await ed.call("eval_lua", code="GameObject(scene, scene:findEntity('Logo')):getTitleArt().text = 'WIN'")
+        await ed.call("eval_lua", code="GameObject.find('Logo'):getTitleArt().text = 'WIN'")
         state = await ed.call("get_title", entity="Logo", scene=s["scene"], wait_ready=True, timeout_seconds=60)
         ed.check(state.get("ready") is True, f"ready after the change: {state.get('pending')} {state.get('error')}")
         ed.check_eq(state["effective"].get("text"), "WIN")

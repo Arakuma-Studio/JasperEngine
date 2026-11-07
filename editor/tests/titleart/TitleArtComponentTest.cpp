@@ -78,6 +78,8 @@ namespace {
             test::releaseAtExit(out.project.get());
             return out;
         }();
+        // the test System drops the project's paths at the end of every test
+        if (h.project) test::useProjectPaths(h.project.get());
         return h;
     }
 
