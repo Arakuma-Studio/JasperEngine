@@ -650,8 +650,12 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     }else if (colorFormat == ColorFormat::RED){
         pixelFormat = SG_PIXELFORMAT_R8;
         bytesPerPixel = 1;
+    }else if (colorFormat == ColorFormat::RGBA16F){
+        // filterable on every backend (GLES3 and WebGL2 included); not rendered to
+        pixelFormat = SG_PIXELFORMAT_RGBA16F;
+        bytesPerPixel = 8;
     }else{
-        Log::error("Dynamic texture '%s': only RGBA8 and R8 are supported", label.c_str());
+        Log::error("Dynamic texture '%s': only RGBA8, R8 and RGBA16F are supported", label.c_str());
         return false;
     }
     if (width <= 0 || height <= 0){

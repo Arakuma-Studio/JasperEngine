@@ -55,6 +55,7 @@
 #include "component/VertexAnimatorComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
+#include "texture/TexturePrepare.h"
 #include "object/environment/Water.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
@@ -5395,25 +5396,26 @@ bool RenderSystem::ensureSSRIdentityLut(){
     if (ssrIdentityLutReady)
         return true;
     // a strip LUT (post_color.glsl samplePostColorLut) of side N whose texels are their own
-    // coordinates: i / (N - 1) is 17 i / 255, exact in 8 bits, and linear filtering between
-    // them reproduces any input
+    // coordinates, and linear filtering between them reproduces any input. Half floats: an
+    // 8-bit texture's filtering may round its result to 8 bits (llvmpipe does), which would
+    // quantise the code before the dither
     constexpr int n = SSR_IDENTITY_LUT_SIDE;
     if (!ssrIdentityLut.isCreated()){
         JE_GPU_ALLOC_SCOPE(PostFX, "SSR identity LUT");
-        if (!ssrIdentityLut.createDynamicColorTexture("SSR identity LUT", n * n, n))
+        if (!ssrIdentityLut.createDynamicTexture("SSR identity LUT", n * n, n, ColorFormat::RGBA16F, TextureFilter::LINEAR))
             return false;
     }
-    std::vector<uint8_t> pixels((size_t)n * n * n * 4);
+    std::vector<uint16_t> pixels((size_t)n * n * n * 4);
     for (int g = 0; g < n; g++){
         for (int x = 0; x < n * n; x++){
-            uint8_t* p = &pixels[((size_t)g * n * n + x) * 4];
-            p[0] = (uint8_t)((x % n) * 255 / (n - 1));
-            p[1] = (uint8_t)(g * 255 / (n - 1));
-            p[2] = (uint8_t)((x / n) * 255 / (n - 1));
-            p[3] = 255;
+            uint16_t* p = &pixels[((size_t)g * n * n + x) * 4];
+            p[0] = floatToHalf((float)(x % n) / (float)(n - 1));
+            p[1] = floatToHalf((float)g / (float)(n - 1));
+            p[2] = floatToHalf((float)(x / n) / (float)(n - 1));
+            p[3] = floatToHalf(1.0f);
         }
     }
-    ssrIdentityLutReady = ssrIdentityLut.updateTexture(pixels.data(), pixels.size());
+    ssrIdentityLutReady = ssrIdentityLut.updateTexture(pixels.data(), pixels.size() * sizeof(uint16_t));
     return ssrIdentityLutReady;
 }
 

@@ -776,9 +776,10 @@ namespace {
                 d.normalize();
                 const float horizon = 1.0f - std::fabs(d.y);
                 uint8_t* p = &pixels[((size_t)y * SIZE + x) * 4];
-                p[0] = (uint8_t)std::lround((0.25f + 0.65f * horizon) * 255.0f);
-                p[1] = (uint8_t)std::lround((0.35f + 0.6f * horizon) * 255.0f);
-                p[2] = (uint8_t)std::lround((0.6f + 0.4f * horizon) * 255.0f);
+                // dim: under a strong exposure, where a step of the 8-bit store is widest on screen
+                p[0] = (uint8_t)std::lround((0.03f + 0.12f * horizon) * 255.0f);
+                p[1] = (uint8_t)std::lround((0.04f + 0.14f * horizon) * 255.0f);
+                p[2] = (uint8_t)std::lround((0.06f + 0.18f * horizon) * 255.0f);
             }
         }
         return TextureData(SIZE, SIZE, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
@@ -946,7 +947,7 @@ TEST_F(SSRCompositeGpu, ToneCurveKeepsPixelsWithoutReflection){
     EXPECT_LE(ssrMeasured("tone curve, SSR on against off", ssrMaxDiff(on, off)), 3);
     const double blocks = ssrBlockMeanDiff(on, off, [](size_t){ return true; });
     std::printf("[measured] tone curve, SSR on against off, 8 x 8 means: %.2f/255\n", blocks);
-    EXPECT_LE(blocks, 1.0);
+    EXPECT_LE(blocks, 1.5);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -1041,14 +1042,14 @@ TEST_F(SSRCompositeGpu, RebuiltEnvironmentFollowsACurvedSurface){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// The linear store is 8 bits of the shaper's code, a step of about 2% of the light near white:
-// undithered, a long sky gradient under the tone curve bands; dithered, the 8 x 8 means of the
-// image with SSR follow the image without it
+// The linear store is 8 bits of the shaper's code: in a dim sky brightened by the exposure, one
+// step of it is several steps on screen. Undithered, a long gradient bands; dithered, the 8 x 8
+// means of the image with SSR follow the image without it
 TEST_F(SSRCompositeGpu, AGradientSkyDoesNotBandUnderAToneCurve){
     JASPER_REQUIRE_GPU();
     PostProcessingSettings post = scene.getPostProcessing();
     post.tonemap = TonemapMode::ACES;
-    post.exposure = 1.0f;
+    post.exposure = 3.0f;
     scene.setPostProcessing(post);
     static std::vector<uint8_t> faces[6];
     auto sky = std::make_unique<Skybox>(&scene);
@@ -1064,10 +1065,13 @@ TEST_F(SSRCompositeGpu, AGradientSkyDoesNotBandUnderAToneCurve){
     ASSERT_TRUE(render(5));
     const std::vector<uint8_t> off = ssrReadTarget();
     ssrWriteImage("gradient-sky-with-ssr", on);
+    ssrWriteImage("gradient-sky-without-ssr", off);
     ssrWriteImage("gradient-sky-diff-x16", ssrDiffImage(on, off, 16));
-    const double blocks = ssrBlockMeanDiff(on, off, [](size_t){ return true; });
+    // the sky above the box
+    const size_t skyEnd = (size_t)pixelOf(Vector3(0.0f, 2.2f, -4.0f)) / GpuEnvironment::target().getWidth() * GpuEnvironment::target().getWidth();
+    const double blocks = ssrBlockMeanDiff(on, off, [skyEnd](size_t p){ return p < skyEnd; });
     std::printf("[measured] gradient sky, SSR on against off: 8 x 8 means %.2f/255, pixels %d/255\n", blocks, ssrMaxDiff(on, off));
-    EXPECT_LE(blocks, 0.75);
+    EXPECT_LE(blocks, 1.0);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

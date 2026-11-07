@@ -5689,7 +5689,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/lights.glsl and punctual.glsl)
     // v54: SSR follow-ups: the G-buffer's 16-bit normal (color[3] RGBA8, octEncode16), the
     //      composite inside the colour pass under the transparents and its tone curve
-    //      (includes/post_color.glsl's linear-store mode, the composite's USE_POST_COLOR)
+    //      (the composite's USE_POST_COLOR over a linear store: the colour pass's own
+    //      post-processing colour with an identity LUT)
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
