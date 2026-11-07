@@ -1532,6 +1532,20 @@ CASES = [
         "max_turns": 6,
     },
     {
+        "id": "guard_focus_graph_editor",
+        "kind": "guard",
+        "what_happened": "The Graph Editor (S90) is a window a human watches an agent's graph in; without its enum value the "
+                         "schema says it cannot be named, and agents take a screenshot of the Scene instead.",
+        "text_at_issue": "focus_window's window enum: 'graph_editor'",
+        "source": "S90 M2 (s90-canvas); no failure on record",
+        "prompt": "Show me the graph you just edited in the editor's Graph Editor window, I want to look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "graph_editor"}, "result": ok("Focused the Graph Editor window.", {"window": "graph_editor"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
         "id": "guard_patch_did_you_mean",
         "kind": "guard",
         "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "

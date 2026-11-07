@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorEditorHooks.h"
+#include "graph/GraphEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
@@ -12739,6 +12740,13 @@ void editor::InspectorWindow::show(){
     // a state, transition or layer clicked in the Animator window: drawn instead of the scene
     // selection until the selection or the inspected asset changes (S21 R23)
     if (animatorEditorHooks().drawSelection && animatorEditorHooks().drawSelection()) {
+        stopSoundPreview();
+        stopActionPreviewIfActive();
+        ImGui::End();
+        return;
+    }
+    // and a node clicked in a graph window (S90 R26): its parameters
+    if (graphEditorHooks().drawSelection && graphEditorHooks().drawSelection()) {
         stopSoundPreview();
         stopActionPreviewIfActive();
         ImGui::End();

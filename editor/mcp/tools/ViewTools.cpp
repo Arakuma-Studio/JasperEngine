@@ -6,6 +6,7 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
@@ -1536,6 +1537,10 @@ void focusWindowTool(const CallPtr& call) {
         // it shows the selected GameObject's controller (or the .controller opened last)
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
+    } else if (window == "graph_editor") {
+        // the graph opened last (a double-click on a graph file opens it)
+        app.getGraphEditorWindow()->setOpen(true);
+        imguiName = GraphEditorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1586,7 +1591,7 @@ void focusWindowTool(const CallPtr& call) {
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals.");
+                   "vertex_animation_baker, sprite_normals, graph_editor.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
@@ -2062,7 +2067,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
+                                       "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},

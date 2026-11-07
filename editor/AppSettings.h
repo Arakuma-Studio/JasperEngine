@@ -80,6 +80,7 @@ struct PanelVisibilitySettings {
     bool textureSynthesis = false;
     bool audioMixer = false;
     bool soundBrowser = false;
+    bool graphEditor = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -99,6 +100,7 @@ struct PanelVisibilitySettings {
             && textureSynthesis == other.textureSynthesis
             && audioMixer == other.audioMixer
             && soundBrowser == other.soundBrowser
+            && graphEditor == other.graphEditor
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals

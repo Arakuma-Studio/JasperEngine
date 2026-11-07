@@ -12,6 +12,7 @@
 #include "window/AudioMixerWindow.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -238,6 +239,7 @@ editor::App::App(){
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
+    graphEditorWindow = new GraphEditorWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
@@ -748,7 +750,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
-            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME)),
+            catalogItem("window.graphEditor", windowMenuLabel(GraphEditorWindow::WINDOW_NAME))
         }),
         menuSubmenu("Analysis", {
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
@@ -1031,6 +1034,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSoundBrowser:
             soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleGraphEditor:
+            graphEditorWindow->setOpen(true);
+            graphEditorWindow->requestFocus();
             break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();
@@ -2166,6 +2173,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    // a graph wants the width of the views
+    ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2806,10 +2815,10 @@ void editor::App::show(){
         // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
-        // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+        // the Animator and Graph Editor windows edit project assets (their selection in the Inspector too)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || graphEditorWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
-                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
+                 (animatorWindow->inspectorShowsSelection() || graphEditorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2916,6 +2925,7 @@ void editor::App::show(){
     audioMixerWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    graphEditorWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -5067,6 +5077,7 @@ void editor::App::prepareForProjectSwitch() {
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
+    graphEditorWindow->prepareForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
@@ -5771,7 +5782,7 @@ namespace {
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
-                      editor::AudioMixerWindow* audioMixer) {
+                      editor::AudioMixerWindow* audioMixer, editor::GraphEditorWindow* graphEditor) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5795,6 +5806,7 @@ namespace {
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
         visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
+        visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
     }
 
 }
@@ -5813,7 +5825,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow);
+                 audioMixerWindow, graphEditorWindow);
     return panels;
 }
 
@@ -5826,7 +5838,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow);
+                 audioMixerWindow, graphEditorWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5840,6 +5852,7 @@ void editor::App::applyDefaultLayout(){
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     audioMixerWindow->setOpen(false);
+    graphEditorWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);
@@ -6066,6 +6079,7 @@ void editor::App::applyPanelVisibilitySettings() {
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
     soundBrowserWindow->setOpen(visibility.soundBrowser);
+    graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -6087,6 +6101,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
     visibility.soundBrowser = soundBrowserWindow->isOpen();
+    visibility.graphEditor = graphEditorWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

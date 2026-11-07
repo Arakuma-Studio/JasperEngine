@@ -9,6 +9,7 @@
 #include "App.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -423,6 +424,13 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    claims.add({"Graph Editor", [this]() { return graphEditorWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return graphEditorWindow->canDelete(); }, [this]() { graphEditorWindow->removeSelection(); }}},
+                 {Verb::Copy, {{}, [this]() { return !graphEditorWindow->selectedNodes().empty(); }, [this]() { graphEditorWindow->copySelection(); }}},
+                 {Verb::Paste, {{}, [this]() { return graphEditorWindow->canPaste(); }, [this]() { graphEditorWindow->paste(); }}},
+                 {Verb::Duplicate, {{}, [this]() { return !graphEditorWindow->selectedNodes().empty(); }, [this]() { graphEditorWindow->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, [this]() { graphEditorWindow->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},

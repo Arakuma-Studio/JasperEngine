@@ -76,6 +76,7 @@ namespace jasperengine::editor{
     class TextureSynthesisWindow;
     class AudioMixerWindow;
     class SoundBrowserWindow;
+    class GraphEditorWindow;
     class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
@@ -252,6 +253,7 @@ namespace jasperengine::editor{
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         SoundBrowserWindow* soundBrowserWindow;
+        GraphEditorWindow* graphEditorWindow;
         AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -664,6 +666,7 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
         AnimatorWindow* getAnimatorWindow() const { return animatorWindow; }
+        GraphEditorWindow* getGraphEditorWindow() const { return graphEditorWindow; }
         AvatarWindow* getAvatarWindow() const;
         // the Avatar Configuration window on the Model of `entity` (anim-retarget 9)
         void openAvatarWindow(uint32_t sceneId, Entity entity);

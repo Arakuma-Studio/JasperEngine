@@ -231,6 +231,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
