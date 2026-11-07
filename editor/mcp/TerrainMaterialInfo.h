@@ -6,7 +6,7 @@
 // T3 R43: what sample_terrain says of a terrain's material and holes, and of one point, kept out of
 // WorldTools.cpp, which holds only the calls.
 
-#include "McpTypes.h"
+#include "mcp/McpJson.h"
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "terrain/TerrainMaterialCost.h"

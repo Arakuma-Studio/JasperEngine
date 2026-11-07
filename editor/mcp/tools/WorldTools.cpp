@@ -5,7 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
-#include "TerrainMaterialInfo.h"
+#include "mcp/TerrainMaterialInfo.h"
 #include "util/ProjectUtils.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
