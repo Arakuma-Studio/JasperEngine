@@ -217,3 +217,13 @@ async def test_esc_closes_the_search_a_right_click_opened(ed: Editor):
     await key(ed, "Escape")
     ed.check(not ed.ui_items().get("graph.search.query"), "Esc closed the search")
     ed.check_eq((ed.project / PATH).read_text(), text, "nothing added")
+
+
+async def test_focus_window_opens_a_graph_by_path(ed: Editor):
+    """review I6: an agent shows a human a given graph, and reads which one is shown"""
+    got = await ed.call("focus_window", window="graph_editor", path=PATH)
+    ed.check_eq(got.get("graph"), PATH, f"the graph shown: {got}")
+    bad = await ed.call_raw("focus_window", {"window": "graph_editor", "path": "assets/missing.testgraph"})
+    ed.check(bad.is_error and "path" in bad.text, f"a missing graph is refused: {bad.text[:200]}")
+    other = await ed.call_raw("focus_window", {"window": "console", "path": PATH})
+    ed.check(other.is_error and "graph_editor" in other.text, f"path belongs to graph_editor: {other.text[:200]}")
