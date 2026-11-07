@@ -14,7 +14,8 @@
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "foliage/FoliageOpRunner.h"
-#include "foliage/TerrainOverlay.h"
+#include "foliage/FoliageOverlays.h"
+#include "terrain/TerrainOverlay.h"
 #include "foliage/TreeDataFile.h"
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageRules.h"
@@ -60,9 +61,26 @@ namespace {
 
 }
 
-editor::TerrainFoliagePanel::TerrainFoliagePanel(Project* project, TerrainEditWindow* window): project(project), window(window) {}
+editor::TerrainFoliagePanel::TerrainFoliagePanel(Project* project, TerrainEditWindow* window): project(project), window(window) {
+    registerFoliageOverlays();
+}
 
 editor::TerrainFoliagePanel::~TerrainFoliagePanel() = default;
+
+// The Scene view's terrain overlay (T1 R65) set to one of T5's sources, or back to none
+void editor::TerrainFoliagePanel::showOverlay(SceneProject* sceneProject, const char* label, const char* source, int layer) {
+    TerrainOverlaySettings& overlay = sceneProject->displaySettings.terrainOverlay;
+    bool shown = overlay.source == source && (layer < 0 || overlay.layer == layer);
+    if (!ImGui::Checkbox(label, &shown)) return;
+    if (shown) {
+        overlay.source = source;
+        if (layer >= 0) overlay.layer = layer;
+    } else {
+        overlay.source.clear();
+    }
+    sceneProject->needUpdateRender = true;
+    project->saveWorkspaceFile();
+}
 
 bool editor::TerrainFoliagePanel::isReady(const TerrainComponent& terrain) const {
     return prototype >= 0 && prototype < static_cast<int>(terrain.treePrototypes.size());
@@ -663,9 +681,7 @@ bool editor::TerrainFoliagePanel::drawTrees(SceneProject* sceneProject, Entity e
     }
     drawConvert(sceneProject, entity, terrain);
 
-    if (ImGui::Checkbox("Show Tree Density", &showDensity)) {
-        TerrainOverlay::show(sceneProject, entity, showDensity ? TerrainOverlay::Kind::TreeDensity : TerrainOverlay::Kind::None, 0, 0.7f);
-    }
+    showOverlay(sceneProject, "Show Tree Density", "tree_density", -1);
     drawTerrainSettings(sceneProject, entity, terrain);
     drawStats(sceneProject, entity, terrain);
     drawWarnings(sceneProject, entity, terrain);
@@ -703,9 +719,7 @@ void editor::TerrainFoliagePanel::drawDetails(SceneProject* sceneProject, Entity
             ImGui::EndTable();
         }
     }
-    if (ImGui::Checkbox("Show Density", &showDensity)) {
-        TerrainOverlay::show(sceneProject, entity, showDensity ? TerrainOverlay::Kind::Density : TerrainOverlay::Kind::None, layerIndex, 0.7f);
-    }
+    showOverlay(sceneProject, "Show Density", "density", layerIndex);
     drawTerrainSettings(sceneProject, entity, terrain);
     drawStats(sceneProject, entity, terrain);
     drawWarnings(sceneProject, entity, terrain);

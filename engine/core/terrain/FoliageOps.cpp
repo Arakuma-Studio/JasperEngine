@@ -61,6 +61,12 @@ namespace {
         return false;
     }
 
+    // T1's op parser (edit_terrain, Lua's applyOps) leaves a registered op's seed among its keys
+    uint32_t scatterSeed(const Op& op) {
+        const OpParam* seed = op.params.find("seed");
+        return seed ? static_cast<uint32_t>(seed->number) : op.seed;
+    }
+
     bool closedKeys(const OpParam& params, std::initializer_list<const char*> allowed, const char* where, OpError& error) {
         for (const auto& [key, value] : params.fields) {
             (void)value;
@@ -224,7 +230,12 @@ namespace {
 
     bool parseScatter(const FoliageOpHost& host, const TerrainMapStore& store, const Op& op, ParsedScatter& parsed, OpError& error) {
         const OpParam& params = op.params;
-        if (!closedKeys(params, {"target", "density", "count", "mode", "rules", "jitter"}, "", error)) return false;
+        if (!closedKeys(params, {"target", "density", "count", "mode", "rules", "jitter", "seed"}, "", error)) return false;
+        if (const OpParam* seed = params.find("seed")) {
+            if (seed->kind != OpParam::Kind::Number || !(seed->number >= 0.0) || seed->number != std::floor(seed->number) || seed->number > 4294967295.0) {
+                return refuse(error, "seed", "must be a whole number from 0");
+            }
+        }
 
         const OpParam* target = params.find("target");
         if (!target || target->kind != OpParam::Kind::Object) {
@@ -286,7 +297,7 @@ namespace {
         }
 
         parsed.trees.region = op.shape;
-        parsed.trees.seed = op.seed;
+        parsed.trees.seed = scatterSeed(op);
         parsed.trees.density = density;
         parsed.trees.rules = std::move(rules);
 
@@ -459,7 +470,7 @@ namespace {
         entry.fields.emplace_back("instances_added", numberParam(static_cast<double>(scattered.trees.size())));
         entry.fields.emplace_back("instances_removed", numberParam(static_cast<double>(removed.size())));
         entry.fields.emplace_back("hash", textParam(hexHash(scattered.hash)));
-        entry.seed = op.seed;
+        entry.seed = scatterSeed(op);
     }
 
     bool validateClear(const TerrainMapStore& store, const Op& op, OpError& error) {

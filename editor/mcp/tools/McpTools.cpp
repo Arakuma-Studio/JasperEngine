@@ -53,7 +53,6 @@ const ToolModule TOOL_MODULES[] = {
     {registerBuildTools, "Build and export", ""},
     {registerPublishTools, "Shipping: player runtimes and releases", "shipping"},   // S30
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
-    {registerTerrainTools, "Terrain: declarative edits and overlays", "terrain"},
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
     {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerVatTools, "Vertex animation", "animation"},   // upstream (Vertex Animation Textures)
@@ -71,6 +70,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25

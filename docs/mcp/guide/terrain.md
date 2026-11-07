@@ -1,16 +1,31 @@
 # Terrain
 
 Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
-`tool_groups {"enable": ["terrain"]}` lists them (`sculpt_terrain`, `set_terrain_maps`,
-`edit_terrain_details`, `edit_terrain`, `sample_terrain`, `visualize_terrain`). Create a terrain with
-`create_entity` type `terrain`.
+`tool_groups {"enable": ["terrain"]}` lists them (`edit_terrain`, `sample_terrain`, `visualize_terrain`,
+`export_terrain_heightmap`, `edit_terrain_details`, `sculpt_terrain`, `set_terrain_maps`). Create a terrain with
+`create_entity` type `terrain`, then `edit_terrain` `create` with a preset.
+
+## Which tool
+
+| Want | Call |
+|---|---|
+| Hills, flats, noise, paint, holes | `edit_terrain` with `ops` |
+| Import a heightmap file (.r16, .raw, .png, .exr) | `edit_terrain` op `import_heightmap`, `dry_run: true` first |
+| Numbers: heights, slopes, layer coverage, problems | `sample_terrain` with `stats`, `issues`, `hash` |
+| Look: where it is steep, high, painted | `visualize_terrain` with `overlay` |
+| Write the heightmap to a file | `export_terrain_heightmap` |
+| Grass, rocks, flowers scattered by density | `edit_terrain_details`, then `edit_terrain` `paint_density` |
+| Trees, or details by slope, height and layer rules | `edit_terrain` `scatter_by_rules` |
+| Foliage counts, draws and memory | `sample_terrain` `foliage: true` |
+| Place trees or rocks as GameObjects | `sculpt_terrain` `place_object` |
+| A game changing the terrain | Lua `Terrain:applyOps` (below) |
 
 ## The Terrain component
 
 | Unity | Engine | Edited with |
 |---|---|---|
 | Terrain size, height | `terrainSize`, `maxHeight` | `set_properties` |
-| Heightmap | `heightMap` (16-bit image, 0-1 of `maxHeight`) | `set_terrain_maps heightmap`, `sculpt_terrain` |
+| Heightmap | `heightMap` (16-bit image, 0-1 of `maxHeight`) | `edit_terrain`, `set_terrain_maps heightmap` |
 | Terrain Layers (Paint Texture) | `surfaceLayers` (up to 9) | `set_terrain_maps layers` |
 | Splat / control maps | `blendMaps` (up to 3) | `set_terrain_maps blendmap`, `sculpt_terrain paint_layer` |
 | Details (Paint Details: grass, rocks, flowers) | `foliageLayers` | `edit_terrain_details`, `sculpt_terrain paint_density`, `edit_terrain scatter_by_rules` |
@@ -28,7 +43,8 @@ dig and raise), `flat` at `base_height`, `random_noise`, `fractal_noise` (`ampli
 `frequency`, `octaves`, `seed`). `resolution` defaults to the Terrain window's setting.
 `sculpt_terrain` runs brush strokes as a person drags them: `raise`, `lower`, `smooth`,
 `flatten`, `terrace`, `noise`, `erode`, `ramp`, `stamp` (with a mask). Heights are 0-1 of
-`max_height`; check the result with `sample_terrain points`.
+`max_height`; check the result with `sample_terrain points`. A height to reach or an amount to add is
+`edit_terrain` (below), in metres and in one call.
 
 ## Terrain Layers and blend maps
 
@@ -83,6 +99,8 @@ layers. Every value is checked first: one bad value changes nothing.
 | `density_scale` | 0-1 | the layer's multiplier of the Terrain's `detailDensity` |
 | `seed` | 0-4294967295 | another seed reshuffles the positions |
 | `cast_shadows` | bool | off for grass-scale scatter: it skips the shadow cascades |
+| `seed` | 0-4294967295 | another seed reshuffles the positions |
+| `cast_shadows` | bool | off for grass-scale scatter: it skips the shadow cascades |
 
 `set_properties` on `foliageLayers` refuses the same invalid values; a scene file with values out of
 range loads with them clamped, and the Console says which. Paint density where it should grow with
@@ -99,9 +117,63 @@ Add a prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). Pr
 `quality.foliage_quality_desktop|mobile|web` (scales and caps) and `quality.foliage_distance_desktop|mobile|web`
 (the one distance multiplier).
 
-## Ops of edit_terrain
+## The Terrain window
 
-An op's own keys are flat in its object. `shape` is `{type: "all"}` (default), `circle {center, radius}`,
+Window > Terrain (or Edit Terrain in the Inspector) has the same brushes for a person. Its brush,
+paint and placement settings and the default map resolutions are saved per project and user in
+`.jasperengine/user/workspace.yaml`; `set_terrain_maps` and `sculpt_terrain` use those
+resolutions when a call gives none.
+
+## edit_terrain
+
+One call is one undo step and all-or-nothing: a bad field fails naming `ops[i].field` and nothing
+changes. `dry_run: true` returns the same result and changes nothing. Values are absolute or signed
+amounts, never rates; a seeded op gives the same bytes every time.
+
+Spaces: `space: "world"` (default) takes X and Z in world units, heights as world Y and deltas in world
+units. `space: "local"` takes terrain-local units (heights from 0 to Max Height).
+
+Presets for `create` (terrain size m, Max Height m, height map texels): `test_patch` 64, 16, 256;
+`mobile` 512, 100, 512; `small` 256, 64, 512; `medium` 1024, 200, 1024; `large` 2048, 400, 2048;
+`huge` 4096, 800, 4096. `map_resolution` overrides the texels of new maps.
+
+Every op takes `shape` (default the whole terrain), `filter` and `strength` (0 to 1, default 1):
+
+| Op | Fields | Effect |
+|---|---|---|
+| `raise`, `lower` | `delta` | adds or subtracts `delta` |
+| `set_height` | `height` | moves to `height` |
+| `lift_floors`, `flatten_peaks` | `height` | as `set_height`, only below or only above it |
+| `smooth`, `sharpen` | `iterations` (1) | toward or away from the local average |
+| `add_noise` | `amplitude`, `noise_size` (4), `octaves` (4), `seed` | fractal noise of that amplitude |
+| `terrace` | `steps` | flat steps |
+| `stamp` | shape `mask`, `delta` | adds the image times `delta` |
+| `erode` | `iterations`, `seed` | water then slope erosion |
+| `ramp` | shape `polyline` of 2 points, `heights: [a, b]` | a slope from a to b |
+| `remap_heights` | `in_range`, `out_range` | maps one height range to another |
+| `paint_layer` | `layer`, `normalize` (true) | paints a texture layer |
+| `paint_base` | `layer` (optional) | back to the base layer |
+| `paint_by_rules` | `rules: [{layer, slope, height, invert, opacity, noise}]`, `seed` | paints by slope and height, later rules over earlier |
+| `remap_layers` | `order` (new index of each layer) | reorders layers, keeping the paint |
+| `paint_density`, `erase_density` | `layer` | detail density toward 1 or 0 |
+| `cut_holes`, `fill_holes` | shape only | holes in the surface and its collider |
+| `import_heightmap` | `path`, `format`, `width`, `height`, `byte_order`, `flip_vertically`, `range`, `source_min`, `source_max`; no shape | replaces the height map |
+
+Shapes: `{type: "circle", center: [x, z], radius}`, `{type: "rect", min: [x, z], max: [x, z]}`,
+`{type: "polyline", points: [[x, z], ...], radius, closed}`, `{type: "stroke", points: [[x, z, pressure], ...], radius, spacing}`,
+`{type: "mask", path, center, size: [w, d], rotation}`, `{type: "all"}`; `falloff` `smooth` (default), `linear` or
+`constant`, `feather` 0 to 1. Filters: `{slope: [min, max] degrees, height: [min, max], layer: {index, min, max}, invert, softness}`.
+
+The result: `changed` per map (`rect` in texels, `local` box in the call's space, `texels`), `ops` per
+op (`changed_texels`, `clipped_low`, `clipped_high`, `filtered_out`, `outside`, `seed`), `stats`
+(heights before and after), `warnings` and `next`. Warnings: `clipped_high` and `clipped_low` (heights hit
+0 or Max Height), `filter_excluded_all`, `outside_terrain`, `no_change`, `map_created`, `rotated_terrain`.
+Act on `next`.
+
+## Foliage ops of edit_terrain
+
+Foliage ops run in a call of their own, without `create`, as a job: `wait` (default true),
+`timeout_seconds`, `get_job`. An op's own keys are flat in its object. `shape` is `{type: "all"}` (default), `circle {center, radius}`,
 `rect {min, max}` or `polyline {points, radius}`, in the call's `space`. Results give `instances_added`,
 `instances_removed`, `rejected` by rule (slope, height, layer, noise, hole, spline, spacing),
 `changed_rects`, and `hash`, the same for the same input on every platform.
@@ -134,6 +206,20 @@ An op's own keys are flat in its object. `shape` is `{type: "all"}` (default), `
 `noise_mask` needs Noise Graphs, and is refused with the reason until a build has them; `density_map` is
 the mask that always works.
 
+## Import and export
+
+`import_heightmap` detects a raw file's size from its length, its depth and its byte order; the op's
+`detected` entry says what was guessed. An ambiguous file fails listing the candidates: pass `width`,
+`height`, `format` or `byte_order`. `range: "auto"` maps the file's own lowest and highest values to
+0 and Max Height, `full` the format's whole range, `source` `source_min` to `source_max`.
+`export_terrain_heightmap` with `range: "full"` reads back unchanged through `range: "full"`.
+
+## Verify
+
+`sample_terrain` with `stats: ["height", "slope", "layers"]` (optionally a `region`) returns
+percentiles, a slope histogram and layer coverage; `issues: true` lists problems with a `fix`
+(`height_map_8bit`, `height_clipped_high`, `no_height_map`...); `hash: true` gives a hash per map, which
+changes exactly when the map's bytes do.
 
 ## Reading foliage
 
@@ -143,19 +229,39 @@ prototype (`count`, `impostor_state`: `none`, `baked`, `out_of_date`) and `total
 draws, stream and buffer bytes, CPU and GPU bytes, `main_thread_ms`, `pending_cells`, `budget_exceeded`,
 placement `hash`). It works in Play, so runtime removals show.
 
+## Look
 
-## Looking
+`visualize_terrain` turns on a Scene view overlay and returns the view's image with its legend:
+`height` (a colour ramp from 0 to Max Height), `slope` (0-15 green, 15-30 yellow, 30-45 orange, over 45
+red; `slope_range` shows one range only), `contours` (`contour_interval`, auto by default) and
+`layer_weights` (a colour per layer; `layer` shows one). `framing`: `fit` (the default, the current
+direction), `top`, `orbit` (`yaw`, `pitch`) or `keep`; `region` frames part of the terrain. The overlay
+stays on until `overlay: "none"`; it is never in the game or a camera's image. Foliage: `density` (`layer`: a
+detail layer's instances per square unit) and `tree_density` (trees per square unit), blue to red over the
+largest value. To check an impostor: set `billboardStart` near the camera with `set_properties`, frame, and capture.
 
-`visualize_terrain {overlay: "density", layer: i}` or `{overlay: "tree_density"}` draws a heat map and
-returns a PNG with its legend; `none` hides it. `foliage_quality` sets a tier for this capture only. To
-check an impostor: set `billboardStart` near the camera with `set_properties`, frame, and capture.
+## Worked flow
 
-## The Terrain window
+```json
+{"tool": "tool_groups", "enable": ["terrain"]}
+{"tool": "create_entity", "type": "terrain", "name": "Island"}
+{"tool": "edit_terrain", "create": "medium", "ops": [
+  {"op": "set_height", "height": 40},
+  {"op": "add_noise", "amplitude": 25, "noise_size": 120, "seed": 7},
+  {"op": "set_height", "height": 80, "shape": {"type": "circle", "center": [0, 0], "radius": 60, "feather": 0.4}}]}
+{"tool": "sample_terrain", "stats": ["height", "slope"], "issues": true, "hash": true}
+{"tool": "edit_terrain", "ops": [{"op": "paint_by_rules", "rules": [
+  {"layer": 0}, {"layer": 1, "slope": [35, 90]}, {"layer": 2, "height": [70, 200], "noise": 0.2}], "seed": 7}]}
+{"tool": "visualize_terrain", "overlay": "slope", "framing": "fit"}
+{"tool": "undo"}
+```
 
-Window > Terrain (or Edit Terrain in the Inspector) has the same brushes for a person. Its brush,
-paint and placement settings and the default map resolutions are saved per project and user in
-`.jasperengine/user/workspace.yaml`; `set_terrain_maps` and `sculpt_terrain` use those
-resolutions when a call gives none.
+## Lua
+
+A game edits a terrain whose Terrain component has Allow Runtime Edits on, with the same op tables:
+`Terrain(scene, entity):applyOps({{op = "lower", delta = 2, shape = {type = "circle", center = {x, z}, radius = 6}}})`.
+Queries (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) work on any terrain.
+`edit_terrain` refuses while the scene plays. Details and costs: `docs/scripting/terrain.md`.
 
 ## Common mistakes
 

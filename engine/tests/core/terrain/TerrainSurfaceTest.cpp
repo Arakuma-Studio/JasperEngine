@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The one surface query (S53 R14-R16, R93; AC10, AC11, AC73). The existing TerrainHeight.*,
+// The one surface query (T1 R14-R16, R93; AC10, AC11, AC73). The existing TerrainHeight.*,
 // MeshRaycast.Kinds and JoltShapeBuilderTest keep it honest against the drawn surface from their side.
 
 #include "terrain/TerrainHoles.h"
@@ -118,7 +118,7 @@ namespace {
                (1.0f - a) * b * at(i0, j0 + 1) + a * b * at(i0 + 1, j0 + 1);
     }
 
-    // sampleTerrainSurface as it was before S53 moved it (MeshSystem.cpp at 1c59858cd): the
+    // sampleTerrainSurface as it was before T1 moved it (MeshSystem.cpp at 1c59858cd): the
     // reference for "normals keep today's forward difference exactly"
     float todaysTexel(const HeightMap& map, int x, int y) {
         const size_t texelIndex = static_cast<size_t>(y) * map.width + x;
@@ -249,9 +249,9 @@ TEST(TerrainSurface, ExactAndPresentFlags) {
     const HeightMap map = random16();
     const SurfaceSample sample = sampleSurface(map.view(), 1.0f, 1.0f);
     EXPECT_TRUE(sample.present);
-    EXPECT_TRUE(sample.exact) << "true on a single map; S56 returns false from an overview";
+    EXPECT_TRUE(sample.exact) << "true on a single map; T4 returns false from an overview";
 
-    TerrainScope scope(map, "s53-surface-flags");
+    TerrainScope scope(map, "t1-surface-flags");
     const SurfaceSample queried = querySurface(scope.terrain, 1.0f, 1.0f);
     EXPECT_TRUE(queried.present);
     EXPECT_TRUE(queried.exact);
@@ -312,7 +312,7 @@ TEST(TerrainSurface, RaycastSkipsHolesOnRequest) {
 
 TEST(TerrainSurface, QueryInterfaceAndViewAgree) {
     const HeightMap map = random16();
-    TerrainScope scope(map, "s53-surface-agree");
+    TerrainScope scope(map, "t1-surface-agree");
 
     const SurfaceView view = map.view();
     SurfaceViewQuery viewQuery(view);
@@ -343,7 +343,7 @@ TEST(TerrainSurface, QueryInterfaceAndViewAgree) {
         ASSERT_EQ(normal.y, expected.normal.y);
     }
 
-    // The copy stays what it was when the map changes under it (S57's jobs)
+    // The copy stays what it was when the map changes under it (T5's jobs)
     scope.terrain.heightMap.getData();
     unsigned char* live = static_cast<unsigned char*>(scope.terrain.heightMap.getData().getData());
     const float copied = snapshotQuery.heightAt(0.0f, 0.0f);
@@ -366,7 +366,7 @@ TEST(TerrainSurface, ForwardersAreTheSameFunctions) {
 
 TEST(TerrainSurface, RaycastForwarderMatchesTheView) {
     const HeightMap map = random16();
-    TerrainScope scope(map, "s53-surface-ray");
+    TerrainScope scope(map, "t1-surface-ray");
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
     Transform transform;

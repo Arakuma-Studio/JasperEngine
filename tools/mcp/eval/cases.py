@@ -73,6 +73,43 @@ FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": [
 
 FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
 
+# T1: edit_terrain and sample_terrain results in the handler's shapes (editor/mcp/tools/TerrainTools.cpp)
+TERRAIN_ENTITY = {"id": 4, "name": "Island", "type": "terrain"}
+TERRAIN_EDIT_RESULT = {
+    "terrain": TERRAIN_ENTITY, "dry_run": False, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [462, 462, 101, 101], "local": {"min": [-50.0, -50.0], "max": [50.0, 50.0]}, "texels": 7854}],
+    "ops": [{"op": "set_height", "changed_texels": 7854, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0}],
+    "warnings": [], "stats": {"height_min": 0.0, "height_max": 80.0, "height_min_before": 0.0, "height_max_before": 0.0,
+                              "mean_delta": 41.2, "max_delta": 80.0},
+    "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain.",
+}
+TERRAIN_SAMPLE_RESULT = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 0.0, "max": 80.0, "mean": 3.1, "p05": 0.0, "p50": 0.0, "p95": 41.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 0.0}},
+}
+TERRAIN_CLIPPED_RESULT = TERRAIN_EDIT_RESULT | {
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "set_height", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 1050625, "filtered_out": 0, "outside": 0}],
+    "warnings": [{"op": 0, "code": "clipped_high", "message": "1050625 texel(s) reached the terrain's top (100 m)."}],
+    "stats": {"height_min": 100.0, "height_max": 100.0, "height_min_before": 0.0, "height_max_before": 80.0, "mean_delta": 96.9, "max_delta": 100.0},
+    "next": "Heights reached the terrain's top: raise maxHeight with set_properties, then remap_heights to keep the shape.",
+}
+TERRAIN_CLIPPED_SAMPLE = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 100.0, "max": 100.0, "mean": 100.0, "p05": 100.0, "p50": 100.0, "p95": 100.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 1.0}},
+}
+TERRAIN_IMPORT_DRY = {
+    "terrain": TERRAIN_ENTITY, "dry_run": True, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "import_heightmap", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0,
+             "detected": {"format": "r16", "format_guessed": False, "width": 1025, "height": 1025, "size_guessed": True,
+                          "byte_order": "little", "byte_order_guessed": True, "data_min": 812, "data_max": 61022,
+                          "range_low": 812, "range_high": 61022, "clipped_low": 0, "clipped_high": 0}}],
+    "warnings": [], "next": "Nothing changed. Call again without dry_run to apply.",
+}
+
 
 CASES = [
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
@@ -2177,6 +2214,146 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
+    {
+        "id": "terrain_find_docs",
+        "kind": "guard",
+        "what_happened": "T1: terrain edits moved to edit_terrain in the terrain group, hidden until enabled; an agent asked to edit "
+                         "a terrain must find the group or its guide and edit declaratively, not script brush strokes.",
+        "text_at_issue": "Guide 'Other areas': terrain (edit_terrain): jasper://docs/terrain; tool_groups' terrain description",
+        "source": "docs/specs/T1-terrain-authoring.md R73, AC74",
+        "prompt": "The scene has a terrain called Island. Make its middle a plateau 30 m high, about 50 m across.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok(
+                "Edited the terrain: 7854 texel(s) changed in 1 map(s).",
+                TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": ["edit_terrain"], "must_not_call": ["sculpt_terrain", "write_file"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_hill_declarative",
+        "kind": "bad",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Agents raised hills with sculpt_terrain strokes at a strength rate, then looped sampling until the height looked "
+                         "right; edit_terrain's set_height reaches the height in one undoable call.",
+        "text_at_issue": "edit_terrain description: absolute heights or signed deltas, no rates",
+        "source": "docs/specs/T1-terrain-authoring.md R68, AC74",
+        "prompt": "Raise a hill in the centre of the terrain whose top is at 80 m.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 7854 texel(s) changed in 1 map(s).", TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": [{"op": "set_height"}]}}], "must_not_call": ["sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_verify_edit",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "An edit that hit Max Height clipped silently in the old brushes; edit_terrain warns clipped_high and its next "
+                         "names the fix, which the agent must act on or report, measuring with sample_terrain stats.",
+        "text_at_issue": "edit_terrain result next; sample_terrain stats",
+        "source": "docs/specs/T1-terrain-authoring.md R70, R95, AC74",
+        "prompt": "Flatten the whole terrain to 120 m and check that nothing clipped.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_CLIPPED_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_CLIPPED_SAMPLE)},
+            {"tool": "set_properties", "result": ok("Set 1 value(s).", {"changed": [{"component": "terrain", "property": "maxHeight"}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", {"tool": "sample_terrain", "args": {"stats": "*"}}],
+                   "order": [["edit_terrain", "sample_terrain"]], "reply_must": [r"(?i)clip|max(imum)? ?height|100"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_import_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A raw heightmap says nothing about its size, depth or byte order; agents imported with guesses. The import "
+                         "detects them and reports what it guessed, so a dry run comes first.",
+        "text_at_issue": "docs/mcp/guide/terrain.md 'Which tool' and 'Import and export'; edit_terrain dry_run",
+        "source": "docs/specs/T1-terrain-authoring.md R61, R68, AC74",
+        "prompt": "Import assets/dem.r16 into the terrain as its heightmap.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok("Dry run: 1 map(s) would change.", TERRAIN_IMPORT_DRY)},
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_IMPORT_DRY | {"dry_run": False})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"dry_run": True, "ops": [{"op": "import_heightmap"}]}}],
+                   "must_not_call": ["set_terrain_maps", "write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_show_slopes",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked where a terrain is too steep, agents took screenshots and guessed from shading; the slope overlay "
+                         "colours each band and its legend gives the degrees.",
+        "text_at_issue": "visualize_terrain description; docs/mcp/guide/terrain.md 'Look'",
+        "source": "docs/specs/T1-terrain-authoring.md R65, AC74",
+        "prompt": "Show me where the terrain is too steep to walk on (over 35 degrees).",
+        "mocks": [
+            {"tool": "visualize_terrain", "result": ok(
+                "Terrain overlay slope on. Image: the Scene view.",
+                {"overlay": "slope", "legend": [{"label": "35-90 deg", "color": [0.9, 0.15, 0.1]}],
+                 "camera": {"position": [700, 600, 700], "target": [0, 40, 0]},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "slope"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_export_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked for a heightmap file, agents sampled heights and wrote bytes with write_file or a script.",
+        "text_at_issue": "export_terrain_heightmap description",
+        "source": "docs/specs/T1-terrain-authoring.md R61, AC74",
+        "prompt": "Export the terrain's heightmap as a 16-bit raw file to assets/export/heights.r16.",
+        "mocks": [
+            {"tool": "export_terrain_heightmap", "result": ok(
+                "Wrote assets/export/heights.r16 (1025 x 1025).",
+                {"path": "assets/export/heights.r16", "format": "r16", "width": 1025, "height": 1025, "bytes": 2101250,
+                 "min": 12.5, "max": 96.0, "hash": "8f1d22c01a7be310", "warnings": [],
+                 "next": "edit_terrain {op: import_heightmap, path, range: \"full\"} reads it back."})},
+        ],
+        "checks": {"calls": ["export_terrain_heightmap"], "must_not_call": ["write_file", "sample_terrain"],
+                   "shell_must_not": [r"struct\.pack|\.r16"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_lua_crater",
+        "kind": "guard",
+        "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "
+                         "from the script; a game edits a terrain with Terrain:applyOps and needs Allow Runtime Edits.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'Terrain' line; docs/mcp/guide/terrain.md 'Lua'",
+        "source": "docs/specs/T1-terrain-authoring.md R75, AC74",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/bomb.lua: a script with a function Bomb:explode(x, z) that digs a 3 m deep crater, 6 m wide, into the "
+                  "terrain GameObject named Island at that point while the game runs. Just write the file.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/bomb.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/bomb.lua": [r"applyOps", r"\blower\b|set_height"]},
+                   "file_must_not": {"scripts/bomb.lua": [r"edit_terrain|sculpt_terrain", r"setHeightMap"]},
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "play"]},
+        "max_turns": 20,
+    },
+    {
+        "id": "terrain_control_tilemap_name",
+        "kind": "control",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A tilemap's 'terrain' is a tile set brush (S50), not the 3D terrain: the terrain tools must not pull it in.",
+        "text_at_issue": "edit_terrain description; tool_groups' terrain description",
+        "source": "docs/specs/T1-terrain-authoring.md AC74",
+        "prompt": "On the Ground tile layer, paint the grass terrain over cells (0,0) to (4,4).",
+        "mocks": [
+            {"tool": "edit_tilemap", "result": ok("Painted 25 cell(s) with terrain grass.", {"painted": 25})},
+        ],
+        "checks": {"calls": ["edit_tilemap"], "must_not_call": ["edit_terrain", "sculpt_terrain"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_ui_button_gamepad_menu",

@@ -3,8 +3,8 @@
 
 #pragma once
 
-// What T1's tools call for foliage (T5: no tool of its own): the terrain an MCP call means, the
-// bake_impostors op, the overlays and sample_terrain's foliage key.
+// What T1's tools call for foliage (T5: no tool of its own): edit_terrain's foliage ops, the
+// bake_impostors op and sample_terrain's foliage key.
 
 #include "ecs/Entity.h"
 #include "mcp/McpCall.h"
@@ -16,6 +16,10 @@
 
 namespace jasperengine {
     class Scene;
+}
+
+namespace jasperengine::terrain {
+    struct OpSpace;
 }
 
 namespace jasperengine::editor {
@@ -32,12 +36,12 @@ namespace jasperengine::editor::mcp {
         Scene* engineScene() const;
     };
 
-    // The scene and entity args: the only Terrain, or the selected one
-    bool resolveTerrainTarget(const CallPtr& call, TerrainTarget& target);
+    // The ops T5 registers: they write trees as well as density, so edit_terrain hands them here
+    bool isFoliageOp(const terrain::Op& op);
+    // A list of foliage ops as a job on a snapshot (T5 R23), or bake_impostors alone (R56)
+    void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<terrain::Op> ops, const terrain::OpSpace& space, bool dryRun);
     // bake_impostors: a job that spans frames (T5 R56)
     void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, const std::vector<terrain::Op>& ops, bool dryRun);
-    // visualize_terrain's density and tree_density (T5 R57)
-    void visualizeFoliage(const CallPtr& call, const TerrainTarget& target);
     // sample_terrain {foliage: true} (T5 R55), over a local region when there is one
     struct FoliageRegionXZ {
         float minX, minZ, maxX, maxZ;

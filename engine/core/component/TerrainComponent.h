@@ -34,10 +34,14 @@
 #include "ecs/Entity.h"
 #include "Engine.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace jasperengine{
+
+    struct TerrainEditState;    // object/TerrainEdit.h
 
     struct TerrainNode{
         //-----u_vs_terrainNodeParams
@@ -264,8 +268,18 @@ namespace jasperengine{
         int rootGridSize = 2;
         int levels = 6;
 
-        // R8, 0 = hole, 255 = solid (S55 R18); absent means no holes, and no cost anywhere
+        // R8, 0 = hole, 255 = solid (T3 R18); absent means no holes, and no cost anywhere
         Texture holeMap;
+
+        // Whether a running game may write this terrain's maps (T1 R77, R81)
+        bool allowRuntimeEdits = false;
+
+        // Goes up when the surface moved without a rebuild (T1 R23): what follows the surface
+        // compares it, as needUpdateTerrain says the terrain was built again
+        uint32_t surfaceRevision = 0;
+        // Null until the terrain is first edited (T1 R53, DC10). Neither is saved, and a clone
+        // starts without them.
+        std::shared_ptr<TerrainEditState> editState;
 
         bool needUpdateTerrain = true;
         bool needUpdateTexture = false;

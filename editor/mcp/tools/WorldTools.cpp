@@ -22,6 +22,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 #include "mcp/TerrainMaps.h"
+#include "mcp/tools/TerrainToolsSupport.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -529,7 +530,7 @@ Json detailLayerJson(Project* project, const TerrainFoliageLayer& layer) {
     Json out = {{"mesh", McpValues::assetPathToJson(project, layer.meshPath)},
                 {"density_map", McpValues::assetPathToJson(project, layer.densityMap.getPath())},
                 {"seed", layer.seed}, {"cast_shadows", layer.castShadows}};
-    for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) out[range.key] = McpValues::number(layer.*range.field);
+    for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) out[range.key] = McpValues::number(layer.*range.field);
     return out;
 }
 
@@ -649,12 +650,22 @@ void sculptTerrainTool(const CallPtr& call) {
             }
             points.push_back(local);
         }
+        // T1 R60: each terrain's own limits, from half a texel to the whole terrain
+        float minSize = 0.0f, maxSize = 0.0f;
+        TerrainEditWindow::brushSizeLimits(scene->getComponent<TerrainComponent>(target.entity), minSize, maxSize);
+        const bool sizeClamped = brush.size < minSize || brush.size > maxSize;
         int placed = 0;
         if (!window->scriptedStroke(target.sceneId(), target.entity, brush, points, error, &placed)) {
             step.fail(call, where + ": " + error);
             return;
         }
         Json result = {{"mode", nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
+        if (sizeClamped) {
+            result["warnings"] = Json::array({{{"code", "size_clamped"},
+                                               {"message", "size " + std::to_string(brush.size) + " is outside this terrain's " + std::to_string(minSize) +
+                                                           " to " + std::to_string(maxSize) + "; the stroke used " +
+                                                           std::to_string(std::clamp(brush.size, minSize, maxSize)) + "."}}});
+        }
         if (brush.mode == TerrainBrushMode::PlaceObject || brush.mode == TerrainBrushMode::EraseObject) {
             result[brush.mode == TerrainBrushMode::PlaceObject ? "placed" : "erased"] = placed;
         } else {
@@ -986,11 +997,11 @@ void editTerrainDetailsTool(const CallPtr& call) {
         for (auto it = item.begin(); it != item.end(); ++it) {
             const std::string& key = it.key();
             const bool known = std::find(other.begin(), other.end(), key) != other.end() ||
-                std::any_of(editor::terrain::detailRanges().begin(), editor::terrain::detailRanges().end(),
-                            [&key](const editor::terrain::DetailRange& range) { return key == range.key; });
+                std::any_of(editor::terraindetail::detailRanges().begin(), editor::terraindetail::detailRanges().end(),
+                            [&key](const editor::terraindetail::DetailRange& range) { return key == range.key; });
             if (!known || (isAdd && key == "index")) {
                 std::string valid = "mesh, density_map, seed, cast_shadows";
-                for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) valid += std::string(", ") + range.key;
+                for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) valid += std::string(", ") + range.key;
                 error = where + ": unknown field \"" + key + "\". Fields: " + (isAdd ? "" : "index, ") + valid + ".";
                 return false;
             }
@@ -1008,7 +1019,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 error = where + ".mesh: " + error;
                 return false;
             }
-            if (!editor::terrain::isDetailMeshPath(stored)) {
+            if (!editor::terraindetail::isDetailMeshPath(stored)) {
                 error = where + ".mesh \"" + mesh.get<std::string>() + "\" is not a model a detail layer draws: use an .obj, .gltf, .glb or .fbx file.";
                 return false;
             }
@@ -1018,7 +1029,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
             error = where + ".mesh is required: the model each instance draws (.obj, .gltf, .glb or .fbx).";
             return false;
         }
-        for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) {
+        for (const editor::terraindetail::DetailRange& range : editor::terraindetail::detailRanges()) {
             if (!has(item, range.key)) continue;
             const Json& value = item[range.key];
             if (!value.is_number()) {
@@ -1088,7 +1099,7 @@ void editTerrainDetailsTool(const CallPtr& call) {
                 return false;
             }
         }
-        const std::string invalid = editor::terrain::checkDetailLayer(layer);
+        const std::string invalid = editor::terraindetail::checkDetailLayer(layer);
         if (!invalid.empty()) {
             error = where + ": " + invalid;
             return false;
@@ -1233,7 +1244,8 @@ void sampleTerrainTool(const CallPtr& call) {
         }
         data["samples"] = samples;
     }
-    const int grid = intOr(args, "grid", has(args, "points") ? 0 : 9);
+    if (!sampleTerrainExtras(call, target.project, target.scene, target.entity, world, data)) return;
+    const int grid = intOr(args, "grid", has(args, "points") || sampleTerrainAsksExtras(args) ? 0 : 9);
     if (grid >= 2) {
         const int n = std::min(grid, 65);
         const float half = terrain.terrainSize * 0.5f;
@@ -6041,7 +6053,7 @@ void registerWorldTools(McpRegistry& registry) {
                     {"mode", stringEnum("", {"raise", "lower", "smooth", "flatten", "sharpen", "noise", "terrace", "stamp", "erode", "ramp",
                                              "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object"})},
                     {"points", array(array(numberItem, ""), "[x, z] or [x, y, z] points.")},
-                    {"size", withDefault(number("Radius, world units.", 0.1, 50), 4)},
+                    {"size", withDefault(number("Radius, world units.", 0.01, 100000), 4)},
                     {"strength", withDefault(number("", 0.01, 1), 0.5)},
                     {"shape", withDefault(stringEnum("", {"circle", "square"}), "circle")},
                     {"falloff", withDefault(stringEnum("", {"smooth", "linear", "constant"}), "smooth")},
@@ -6128,6 +6140,10 @@ void registerWorldTools(McpRegistry& registry) {
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
             {"grid", integer("Default 9 without points.", 0, 65)},
             {"region", anyObject("{min:[x,z],max:[x,z]}")},
+            {"stats", array(string(""), "height, slope, layers.")},
+            {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
+            {"issues", withDefault(boolean("Problems and fixes."), false)},
+            {"hash", withDefault(boolean("Content hash of each map."), false)},
             {"foliage", withDefault(boolean("Details and trees in region."), false)}
         }),
         sampleTerrainTool, true, true);

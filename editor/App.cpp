@@ -4,6 +4,7 @@
 #include "App.h"
 #include "foliage/FoliageOpRunner.h"
 #include "util/ImpostorBaker.h"
+#include "terrain/TerrainMapPersistence.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -3933,6 +3934,8 @@ void editor::App::engineRender(){
     // Physics Placement gesture (its preview poses are in the scene)
     project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
+    // an edited terrain map reaches its file a second after the last edit (T1 R29)
+    TerrainMapPersistence::get().update();
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();

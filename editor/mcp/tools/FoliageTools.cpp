@@ -6,7 +6,11 @@
 
 #include "Project.h"
 #include "component/TerrainComponent.h"
-#include "foliage/TerrainOverlay.h"
+#include "foliage/FoliageOpRunner.h"
+#include "window/TerrainEditWindow.h"
+#include "App.h"
+#include "Backend.h"
+#include "object/TerrainOpsJson.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
@@ -30,46 +34,6 @@ namespace jasperengine::editor::mcp {
 
 Scene* TerrainTarget::engineScene() const {
     return scene ? scene->scene : nullptr;
-}
-
-bool resolveTerrainTarget(const CallPtr& call, TerrainTarget& target) {
-    target.project = call->ctx().project();
-    std::string error;
-    const Json& args = call->args();
-    target.scene = McpRefs::resolveScene(target.project, args.contains("scene") ? args["scene"] : Json(), error);
-    if (!target.scene || !target.scene->scene) {
-        call->fail(error.empty() ? "The scene is not loaded." : error);
-        return false;
-    }
-    Scene* scene = target.engineScene();
-    if (args.contains("entity")) {
-        target.entity = McpRefs::resolveEntity(target.scene, args["entity"], error);
-        if (target.entity == NULL_ENTITY) {
-            call->fail(error);
-            return false;
-        }
-    } else {
-        std::vector<Entity> terrains;
-        for (Entity entity : target.scene->entities) {
-            if (scene->findComponent<TerrainComponent>(entity)) terrains.push_back(entity);
-        }
-        if (terrains.size() == 1) {
-            target.entity = terrains[0];
-        } else {
-            const std::vector<Entity> selected = target.project->getSelectedEntities(target.scene->id);
-            if (selected.size() == 1 && scene->findComponent<TerrainComponent>(selected[0])) {
-                target.entity = selected[0];
-            } else {
-                call->fail(terrains.empty() ? "The scene has no Terrain: create_entity type=terrain." : "The scene has several Terrains: name one in entity.");
-                return false;
-            }
-        }
-    }
-    if (!scene->findComponent<TerrainComponent>(target.entity)) {
-        call->fail("That GameObject has no Terrain.");
-        return false;
-    }
-    return true;
 }
 
 void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, const std::vector<Op>& ops, bool dryRun) {
@@ -179,68 +143,102 @@ void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, cons
     });
 }
 
-void visualizeFoliage(const CallPtr& call, const TerrainTarget& target) {
-    const Json& args = call->args();
-    const std::string overlay = args.value("overlay", std::string("none"));
-    TerrainOverlay::Kind kind = TerrainOverlay::Kind::None;
-    if (overlay == "density") kind = TerrainOverlay::Kind::Density;
-    else if (overlay == "tree_density") kind = TerrainOverlay::Kind::TreeDensity;
-    else if (overlay != "none") {
-        call->fail("overlay: valid here are none, density, tree_density.");
-        return;
+bool isFoliageOp(const Op& op) {
+    if (op.type != OpType::Registered) return false;
+    static const char* const NAMES[] = {"scatter_by_rules", "clear_foliage", "place_trees", "remove_trees", "convert_placed_to_trees", "bake_impostors"};
+    for (const char* name : NAMES) {
+        if (op.registeredName == name) return true;
     }
-    const int layer = args.value("layer", 0);
-    const float opacity = args.value("opacity", 0.7f);
-    TerrainTarget local = target;
-    TerrainOverlay::show(local.scene, local.entity, kind, layer, opacity);
+    return false;
+}
 
-    // T5 R57: the tier of this capture only
-    if (args.contains("foliage_quality")) {
-        const std::string name = args["foliage_quality"].get<std::string>();
-        FoliageQuality quality;
-        if (name == "low") quality = FoliageQuality::LOW;
-        else if (name == "medium") quality = FoliageQuality::MEDIUM;
-        else if (name == "high") quality = FoliageQuality::HIGH;
-        else {
-            call->fail("foliage_quality: valid: low, medium, high.");
+namespace {
+
+    Json foliageOutcomeJson(const FoliageOpRunner::Outcome& outcome, const OpSpace& space, const std::vector<Op>& ops, const std::string& undoName, bool dryRun) {
+        Json data = opResultJson(outcome.result, space, ops);
+        data["dry_run"] = dryRun;
+        data["undo_name"] = undoName;
+        data["trees"] = outcome.treesAfter;
+
+        // R67: hints an agent must see go in the result
+        Json next = Json::array();
+        const FoliageTierLimits low = foliageTierLimits(FoliageTier::Low);
+        if (outcome.treesAfter > static_cast<int64_t>(low.maxVisibleTrees)) {
+            next.push_back("The Terrain has " + std::to_string(outcome.treesAfter) + " trees, past the Mobile budget of " + std::to_string(low.maxVisibleTrees) +
+                           " visible: bake_impostors, and check sample_terrain foliage on a Low tier.");
+        }
+        if (!next.empty()) data["next"] = next;
+        return data;
+    }
+
+}
+
+void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<Op> ops, const OpSpace& space, bool dryRun) {
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    for (size_t i = 0; i < ops.size(); i++) {
+        if (!isFoliageOp(ops[i])) {
+            call->fail("ops[" + std::to_string(i) + "]: foliage ops (scatter_by_rules, clear_foliage, place_trees, remove_trees, convert_placed_to_trees, "
+                       "bake_impostors) run in a call of their own: send the other ops in a second edit_terrain call.");
             return;
         }
-        Engine::setFoliageQuality(quality);
     }
-
-    const float top = TerrainOverlay::maxValue(target.scene->id);
-    Json legend = Json::array();
-    if (kind != TerrainOverlay::Kind::None) {
-        legend.push_back({{"value", 0.0f}, {"color", "blue"}, {"label", "none"}});
-        legend.push_back({{"value", top * 0.5f}, {"color", "green"}, {"label", "per square unit"}});
-        legend.push_back({{"value", top}, {"color", "red"}, {"label", "per square unit"}});
-    }
-    Json data = {{"overlay", overlay}, {"legend", legend}, {"triangles", TerrainOverlay::triangleCount(target.scene->id)}};
-    const bool keepTier = args.contains("foliage_quality");
-    target.scene->needUpdateRender = true;
-    if (!args.value("screenshot", true)) {
-        if (keepTier) Engine::resetFoliageQuality();
-        call->ok("Overlay " + overlay + ".", data);
+    if (ops.size() == 1 && registeredOpSpansFrames(ops[0].registeredName)) {
+        bakeImpostorsFromOps(call, target, ops, dryRun);
         return;
     }
-    w3::CaptureRequest request;
-    request.view = "scene";
-    request.scene = target.scene->id;
-    request.maxWidth = args.value("max_width", 1024);
-    const std::string text = "Overlay " + overlay + ".";
-    call->afterFrames(2, [call, request, data, text, keepTier]() {
-        w3::captureView(call, request, [call, data, text, keepTier](w3::CaptureResult result) {
-            if (keepTier) Engine::resetFoliageQuality();
-            if (!result.ok) {
-                call->fail("Screenshot failed: " + result.error, data);
-                return;
-            }
-            Json out = data;
-            out["image"] = result.info;
-            ToolResult reply = ToolResult::success(text + " Image: the Scene view.", out);
-            reply.images.push_back(std::move(result.image));
-            call->reply(std::move(reply));
-        });
+    for (size_t i = 0; i < ops.size(); i++) {
+        if (registeredOpSpansFrames(ops[i].registeredName)) {
+            call->fail("ops[" + std::to_string(i) + "]: bake_impostors runs alone in its call: it spans frames.");
+            return;
+        }
+    }
+
+    // A layer just added has no density map: scatter_by_rules on it starts from an empty one. In
+    // memory only, so a dry run writes nothing either.
+    TerrainEditWindow* window = Backend::getApp().getTerrainEditWindow();
+    TerrainComponent& component = scene->getComponent<TerrainComponent>(target.entity);
+    for (const Op& op : ops) {
+        const OpParam* aim = op.params.find("target");
+        const OpParam* layerParam = aim && aim->kind == OpParam::Kind::Object ? aim->find("detail_layer") : nullptr;
+        if (!layerParam || layerParam->kind != OpParam::Kind::Number) continue;
+        const int layer = static_cast<int>(layerParam->number);
+        if (window && layer >= 0 && layer < static_cast<int>(component.foliageLayers.size()) && component.foliageLayers[layer].densityMap.empty()) {
+            window->ensureDensityMap(target.project, target.scene, target.entity, layer);
+        }
+    }
+
+    const std::vector<Op> listed = ops;
+    FoliageOpRunner::Request request;
+    request.sceneId = target.scene->id;
+    request.terrain = target.entity;
+    request.ops = std::move(ops);
+    request.dryRun = dryRun;
+    const std::string terrainName = scene->getEntityName(target.entity);
+    const std::string& first = request.ops.front().registeredName;
+    request.undoName = std::string(first == "scatter_by_rules" ? "Scatter Foliage" : first == "clear_foliage" ? "Clear Foliage" : first == "convert_placed_to_trees" ? "Convert Placed Instances" : first == "remove_trees" ? "Erase Trees" : "Paint Trees") + " (" + terrainName + ")";
+    const std::string undoName = request.undoName;
+
+    std::shared_ptr<McpJob> job = call->ctx().jobs().create("edit_terrain", undoName);
+    std::shared_ptr<FoliageOpRunner> runner = FoliageOpRunner::start(target.project, std::move(request), [job, listed, space, undoName, dryRun](const FoliageOpRunner::Outcome& outcome) {
+        Json data = foliageOutcomeJson(outcome, space, listed, undoName, dryRun);
+        if (!outcome.error.empty()) {
+            job->fail(outcome.error, data);
+        } else if (outcome.cancelled) {
+            job->markCancelled("Cancelled; nothing changed.");
+        } else {
+            job->succeed((dryRun ? std::string("Dry run of ") : std::string()) + undoName + ": " + std::to_string(outcome.treesAfter) + " trees.", data);
+        }
+    });
+    std::weak_ptr<FoliageOpRunner> weak = runner;
+    job->setCancelHandler([weak]() { if (auto alive = weak.lock()) alive->cancel(); });
+    call->detach();
+    replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 120.0), [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
     });
 }
 

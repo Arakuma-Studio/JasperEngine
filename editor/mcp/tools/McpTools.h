@@ -65,7 +65,6 @@ namespace jasperengine::editor::mcp {
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
     void registerWorldTools(McpRegistry& registry);
-    void registerTerrainTools(McpRegistry& registry);
     // AnimatorTools.cpp: edit_animator (Animator Controllers, anim layers spec 11.5)
     void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);
@@ -100,6 +99,7 @@ namespace jasperengine::editor::mcp {
     void registerGraphTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
+    void registerTerrainTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerAnimatorTools(McpRegistry& registry);
     // S27: the editor tools (group editor_tools) and the Project Hub's core tools

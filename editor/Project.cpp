@@ -63,6 +63,7 @@
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "terrain/TerrainMapPersistence.h"
 
 #include <cctype>
 #include <cmath>
@@ -346,6 +347,8 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
 }
 
 editor::Project::~Project(){
+    // closing the project: a map waiting for its debounce reaches its file (T1 R30)
+    TerrainMapPersistence::get().flushAll();
     // the poller and the worker read nothing of the project, but its backups go with it
     vcsService->close();
     removeVcsBackups();
@@ -10897,6 +10900,8 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
     editor::getEditorHost().playStarting(sceneId);
+    // T1 R30: a game reads its maps from their files
+    TerrainMapPersistence::get().flushAll();
     // Play's main-thread startup steps (saving, the script build hand-off, scene copies)
     const diag::BusyScope busy("Starting Play", 120'000);
 

@@ -55,7 +55,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
 endif()
 
 # The terrain goldens hash what TerrainGoldenSequences.h computes in the test's own unit: no
-# contraction there either, or arm64 would seed its maps differently (docs/specs/S53-terrain-authoring.md R8)
+# contraction there either, or arm64 would seed its maps differently (docs/specs/T1-terrain-authoring.md R8)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp

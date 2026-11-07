@@ -79,6 +79,7 @@ namespace jasperengine::editor {
         void drawWarnings(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain);
         void drawTerrainSettings(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain);
         void drawConvert(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain);
+        void showOverlay(SceneProject* sceneProject, const char* label, const char* source, int layer);
         bool setPrototypes(SceneProject* sceneProject, Entity entity, const std::vector<TerrainTreePrototype>& prototypes, const std::string& name);
         void addPrototype(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, const std::string& meshPath);
         void removePrototype(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, int index);
@@ -139,7 +140,6 @@ namespace jasperengine::editor {
         uint32_t shownPending = 0;
 
         // Show Density
-        bool showDensity = false;
     };
 
 }

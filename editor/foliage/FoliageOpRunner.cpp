@@ -6,6 +6,7 @@
 
 #include "Project.h"
 #include "command/CommandHandle.h"
+#include "command/type/TerrainMapDeltaCmd.h"
 #include "command/type/TreeEditCmd.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
@@ -13,16 +14,18 @@
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
 #include "object/GameObject.h"
-#include "foliage/FoliageMapPatchCmd.h"
 #include "foliage/TreeDataFile.h"
 #include "jobs/JobSystem.h"
 #include "object/TerrainEdit.h"
+#include "terrain/EditorTerrainStore.h"
+#include "terrain/OverlayMapStore.h"
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageScatter.h"
 
 #include <optional>
 #include <algorithm>
 #include <filesystem>
+#include <map>
 
 using namespace jasperengine;
 using namespace jasperengine::terrain;
@@ -53,6 +56,27 @@ namespace {
             scanParams(value, wanted);
         }
         for (const OpParam& item : param.items) scanParams(item, wanted);
+    }
+
+    // convert_placed_to_trees' other half: the hosts' instances out on apply, back on undo (R28)
+    std::function<void(bool)> emptyPlacedHosts(editor::Project* project, uint32_t sceneId, std::vector<std::string> hosts) {
+        auto kept = std::make_shared<std::map<std::string, std::vector<InstanceData>>>();
+        return [project, sceneId, hosts = std::move(hosts), kept](bool undone) {
+            editor::SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject) return;
+            for (const std::string& name : hosts) {
+                const Entity entity = static_cast<Entity>(std::stoul(name));
+                InstancedMeshComponent* instmesh = sceneProject->scene->findComponent<InstancedMeshComponent>(entity);
+                if (!instmesh) continue;
+                if (undone) {
+                    instmesh->instances = (*kept)[name];
+                } else {
+                    (*kept)[name] = instmesh->instances;
+                    instmesh->instances.clear();
+                }
+                instmesh->needUpdateInstances = true;
+            }
+        };
     }
 
     void copyMap(TerrainMapStore& from, RawMapStore& to, MapId map) {
@@ -251,17 +275,25 @@ void editor::FoliageOpRunner::commit() {
             CommandHistory* history = CommandHandle::get(request.sceneId);
             const size_t start = history->mark();
 
-            // the density maps first: their bytes as they were and are, over what changed
-            TerrainComponentStore live(scene, request.terrain, terrain);
-            for (const MapChangeReport& change : outcome.result.changed) {
-                if (change.map.kind != MapKind::Density) continue;
-                const MapFormat format = work->snapshot->format(change.map);
-                if (!format.exists) continue;
-                std::vector<uint8_t> after(static_cast<size_t>(change.rect.area()) * bytesPerTexel(format));
-                std::vector<uint8_t> before(after.size());
-                if (work->snapshot->readBytes(change.map, change.rect, after) && live.readBytes(change.map, change.rect, before)) {
-                    history->addCommand(new FoliageMapPatchCmd(project, request.sceneId, request.terrain, change.map, change.rect, std::move(before), std::move(after), request.undoName));
+            // the density maps first, as T1's delta step: the snapshot's bytes over what changed
+            {
+                EditorTerrainStore writer(project, request.sceneId, scene, request.terrain, terrain);
+                writer.setKeepsMaps(true);
+                OverlayMapStore overlay(writer);
+                for (const MapChangeReport& change : outcome.result.changed) {
+                    if (change.map.kind != MapKind::Density) continue;
+                    const MapFormat format = work->snapshot->format(change.map);
+                    if (!format.exists) continue;
+                    std::vector<uint8_t> after(static_cast<size_t>(change.rect.area()) * bytesPerTexel(format));
+                    if (work->snapshot->readBytes(change.map, change.rect, after)) overlay.writeBytes(change.map, change.rect, after);
                 }
+                auto delta = std::make_unique<TerrainMapDeltaCmd>(project, request.sceneId, request.terrain, request.terrain, overlay, false, request.undoName);
+                if (!delta->empty()) {
+                    Command* command = delta.release();
+                    command->setNoMerge();
+                    history->addCommand(command);
+                }
+                overlay.discard();
             }
 
             if (work->host->touched() && store) {
@@ -269,7 +301,7 @@ void editor::FoliageOpRunner::commit() {
                 auto* command = new TreeEditCmd(project, request.sceneId, request.terrain, request.undoName, std::move(delta));
                 // a convert empties what it took, in the same step
                 if (!work->host->convertedHosts.empty()) {
-                    command->alongside = FoliageMapPatchCmd::emptyHosts(project, request.sceneId, work->host->convertedHosts);
+                    command->alongside = emptyPlacedHosts(project, request.sceneId, work->host->convertedHosts);
                 }
                 history->addCommand(command);
             }

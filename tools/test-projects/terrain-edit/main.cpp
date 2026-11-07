@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S53 AC5: the terrain operation engine in wasm. The same op sequences TerrainGolden.* pins on the
+// T1 AC5: the terrain operation engine in wasm. The same op sequences TerrainGolden.* pins on the
 // native core suite run here, and the digest of their hashes goes to the console for the gate to
 // compare (WEB_PROJECT=terrain-edit tools/build.sh web, GATE=terrain-edit tools/build.sh web-gate).
 

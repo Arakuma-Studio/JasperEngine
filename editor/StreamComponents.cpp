@@ -742,7 +742,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
     // a hand-edited or older file: values the renderer cannot use are clamped, and said so
     if (!clamp) return layer;
-    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    const std::vector<std::string> clamped = editor::terraindetail::clampDetailLayer(layer);
     if (!clamped.empty()) {
         std::string what;
         for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
@@ -771,8 +771,9 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     YAML::Node node;
     node["enabled"] = terrain.enabled;
     node["heightMap"] = encodeTexture(terrain.heightMap);
-    // only a terrain with holes says so: an old scene saves back byte-identical (S53 R81)
+    // only a terrain with holes says so: an old scene saves back byte-identical (T1 R81)
     if (!terrain.holeMap.empty()) node["holeMap"] = encodeTexture(terrain.holeMap);
+    if (terrain.allowRuntimeEdits) node["allowRuntimeEdits"] = true;
     YAML::Node blendMapsNode;
     for (const Texture& blendMap : terrain.blendMaps) {
         blendMapsNode.push_back(encodeTexture(blendMap));
@@ -842,6 +843,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
 
     if (node["heightMap"]) terrain.heightMap = decodeTexture(node["heightMap"]);
     terrain.holeMap = node["holeMap"] ? decodeTexture(node["holeMap"]) : Texture();
+    terrain.allowRuntimeEdits = node["allowRuntimeEdits"] ? node["allowRuntimeEdits"].as<bool>() : false;
     // Cleared like the other lists below: decoding over a loaded terrain (a stop, a prefab
     // reload) must replace what it has, not append to it.
     terrain.blendMaps.clear();

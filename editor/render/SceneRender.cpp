@@ -53,6 +53,7 @@ extern unsigned int bulb_icon_png_len;
 #include "subsystem/ParticleSubsystem.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cfloat>
 
@@ -193,6 +194,7 @@ editor::SceneRender::~SceneRender(){
 
     destroyLatticeCages();
     navigationOverlay.reset();
+    terrainOverlay.reset();
     destroySplineOverlay();
     delete wireframeLines;
     for (auto& pair : particleShapeLines) {
@@ -633,6 +635,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
     if (navigationOverlay) navigationOverlay->hide();
+    if (terrainOverlay) terrainOverlay->hide();
     hideSplineOverlay();
 }
 
@@ -1343,6 +1346,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     updateWireframeOverlay();
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
+    updateTerrainOverlay();
 
     uilayer.setViewGizmoImageVisible(true);
 }
@@ -2929,8 +2933,8 @@ void editor::SceneRender::updateTerrainBrushCursor(){
 
     // Brush boundary plus the (dimmer) half-strength falloff contour, both draped
     // over the terrain surface by updateCursor.
-    addLoop(cursor.outerPoints, Vector4(1.0f, 0.78f, 0.22f, 1.0f));
-    addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
+    addLoop(cursor.outerPoints, cursor.color);
+    addLoop(cursor.innerPoints, Vector4(cursor.color.x * 0.75f, cursor.color.y * 0.75f, cursor.color.z * 0.75f, cursor.color.w));
     for (size_t i = 0; i + 1 < cursor.capsuleLines.size(); i += 2){
         terrainBrushLines->addLine(cursor.capsuleLines[i], cursor.capsuleLines[i + 1], Vector4(0.45f, 0.9f, 0.45f, 1.0f));
     }
@@ -4223,6 +4227,22 @@ void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& sel
     if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
     const std::set<Entity> selected(selEntities.begin(), selEntities.end());
     navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
+}
+
+// T1 R65: the terrain overlay the view settings name (none: nothing is built)
+void editor::SceneRender::updateTerrainOverlay(){
+    if (displaySettings.terrainOverlay.source.empty()){
+        if (terrainOverlay) terrainOverlay->hide();
+        return;
+    }
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(getLatticeSceneId()) : nullptr;
+    if (!sceneProject || sceneProject->scene != scene){
+        return;
+    }
+    if (!terrainOverlay) terrainOverlay = std::make_unique<TerrainOverlay>(scene);
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    terrainOverlay->update(*sceneProject, displaySettings.terrainOverlay, now);
 }
 
 // The wires of Wireframe and Shaded Wireframe: the visible meshes' edges at the level the Scene

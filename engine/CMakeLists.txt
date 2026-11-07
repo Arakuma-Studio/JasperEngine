@@ -1626,6 +1626,7 @@ set(JASPERENGINE_SRCS
     core/object/Sprite.cpp
     core/object/Terrain.cpp
     core/object/TerrainEdit.cpp
+    core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
@@ -1681,6 +1682,7 @@ set(JASPERENGINE_SRCS
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
     core/physics/RagdollBuilder.cpp
@@ -1747,6 +1749,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
+    core/script/binding/TerrainClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1779,6 +1782,7 @@ set(JASPERENGINE_SRCS
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
@@ -2248,7 +2252,7 @@ jasperengine_skip_unity_build(
     REASON "the Animator's pose kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
 
-# the terrain operation engine and its query (docs/specs/S53-terrain-authoring.md R8): a map's bytes
+# the terrain operation engine and its query (docs/specs/T1-terrain-authoring.md R8): a map's bytes
 # are the same on every CPU only without floating-point contraction
 if(MSVC)
     set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")

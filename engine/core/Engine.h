@@ -260,6 +260,8 @@ namespace jasperengine {
         static int defaultUniformBytes();
         static int defaultStreamStagingBytes();
         static int defaultDescriptorBytes();
+        // T1 DC9: what a frame's terrain map uploads may take, 2 MB mobile/web, 8 MB desktop
+        static int defaultTerrainUploadBytes();
 
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances

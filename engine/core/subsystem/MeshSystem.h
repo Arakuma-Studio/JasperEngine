@@ -151,6 +151,8 @@ namespace jasperengine{
         void resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent& mesh);
         bool createTerrain(TerrainComponent& terrain, MeshComponent& mesh);
         void createTerrainNode(TerrainComponent& terrain, float x, float y, float size, int lodDepth);
+        // T1 R23 (MeshSystemTerrainEdit.cpp): true when the node's range was computed again
+        bool refitTerrainNode(TerrainComponent& terrain, size_t nodeIndex, int rectX, int rectY, int rectW, int rectH, int mapWidth, int mapHeight);
         void updateTerrainAutoRanges(TerrainComponent& terrain);
 
 
@@ -334,6 +336,11 @@ namespace jasperengine{
         void resetModelToBindPose(Entity entity, ModelComponent& model);
 
         bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
+        // T1 R23, DC10: a height edit refits the node ranges over the rectangle and their ancestors
+        // instead of rebuilding the tree, and the surface revision follows (MeshSystemTerrainEdit.cpp)
+        void refitTerrainNodes(TerrainComponent& terrain, int rectX, int rectY, int rectW, int rectH);
+        // What the terrain's edit state holds for this frame; nowSeconds is any steady clock
+        void flushTerrainEdit(TerrainComponent& terrain, double nowSeconds);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         // (static and read-only: particle collisions call it from the job system's workers)
         static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
