@@ -249,7 +249,7 @@ namespace {
     }
 
     void drawMinMaxCurve(FieldUi& ui, const FieldDesc& f, MinMaxCurve& value, const std::string& id, int indent) {
-        labelCell(f.label, f.tooltip, indent);
+        effectFieldLabel(ui, f, id, indent);
         editor::ui::CurveFieldOptions options;
         options.range = particleRange(value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr);
         options.label = f.label;
@@ -268,7 +268,7 @@ namespace {
     }
 
     void drawMinMaxGradient(FieldUi& ui, const FieldDesc& f, MinMaxGradient& value, const std::string& id, int indent) {
-        labelCell(f.label, f.tooltip, indent);
+        effectFieldLabel(ui, f, id, indent);
         editor::ui::GradientFieldOptions options;
         options.label = f.label;
         ui.phase(editor::ui::minMaxGradientField(id.c_str(), value, options), f.label);
