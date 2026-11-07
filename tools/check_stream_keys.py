@@ -42,6 +42,7 @@ SETTINGS = {
         "normalizeBlendPaint", "heightMapStartAtMiddle", "flattenPickOnStroke", "paintUseMask", "paintMinSlope", "paintMaxSlope",
         "paintMinHeight", "paintMaxHeight", "placeAssetPath", "placeInstanced", "placeSpacing", "placeMinScale", "placeMaxScale",
         "placeRotationJitter", "placeAlignToNormal", "generateGraph", "generateSeed",
+        "filterAllTools", "paintRules", "paintRulesSeed", "slopeFilterInvert",
     }),
 }
 

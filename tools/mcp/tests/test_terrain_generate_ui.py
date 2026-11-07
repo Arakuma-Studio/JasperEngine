@@ -123,10 +123,11 @@ async def test_preview_does_not_write(ed: Editor):
     await ui.reveal("Slope", WINDOW)
     await ui.frames(10)
     ed.check("terrain.generate.image" in ed.ui_items(), f"the hillshaded image: {sorted(k for k in ed.ui_items() if 'generate' in k)}")
-    await save_shot(ed, "terrain-generate-section.png")
     ed.check_eq(map_files(ed), files, "no map file changed")
     again = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
     ed.check_eq(again["grid"], heights["grid"], "no height changed")
+    # last: the screenshot is a file in the project
+    await save_shot(ed, "terrain-generate-section.png")
 
 
 async def test_apply_is_one_undo_step(ed: Editor):
@@ -198,14 +199,18 @@ async def create_through_dialog(ed: Editor, ui: Ui, sid, values: dict):
         if (await ed.call("editor_status")).get("dialog"):
             break
         await ui.frames(2)
-    await ed.call("respond_dialog", values=values)
+    # the preset first: Seed is drawn once one is chosen
+    if "noise_graph" in values:
+        await ed.call("respond_dialog", values={"noise_graph": values["noise_graph"]})
+        await ui.frames(2)
+    answered = await ed.call("respond_dialog", values={k: v for k, v in values.items() if k != "noise_graph"})
     await ed.call("respond_dialog", choice="ok")
     for _ in range(60):
         found = (await ed.call("find_entities", scene=sid, name=values["name"]))["entities"]
         if found:
             return found[0]["id"]
         await ui.frames(2)
-    ed.fail(f"Create Terrain made no {values['name']}")
+    ed.fail(f"Create Terrain made no {values['name']}: dialog {(await ed.call('editor_status')).get('dialog')}; answered {answered}")
 
 
 async def test_create_dialog_preset_is_generate_terrain(ed: Editor):
