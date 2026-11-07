@@ -55,7 +55,7 @@ namespace {
         for (const auto& item : report.items()){
             if (item.key() == "compare"){
                 for (const auto& inner : item.value().items()) keys.insert(inner.key());
-            }else if (item.key() == "loop_seam" || item.key() == "root_motion"){
+            }else if (item.key() == "loop_seam" || item.key() == "root_motion" || item.key() == "foot_sliding" || item.key() == "transition"){
                 for (const auto& inner : item.value().items()) keys.insert(item.key() + "." + inner.key());
             }else{
                 keys.insert(item.key());
@@ -114,6 +114,10 @@ TEST(ClipReport, TheTableAndTheJsonHoldTheSameKeys){
     request.rootMotion = true;
     request.compareTo = clip;
     request.toleranceMm = 1.0;
+    // foot sliding on a foot it has and one it has not; a crossfade into the clip itself (S74 R37, R54)
+    request.footSliding = true;
+    request.feet = {"Hand", "Toe"};
+    request.transitionTo = clip;
     std::set<std::string> full = flattened(anim::clipReportJson(anim::analyzeClip(request)));
     // a named value: items() of a temporary would outlive it (no lifetime extension before C++23)
     const nlohmann::json reduction = anim::clipOptimizeJson(anim::ClipOptimizeResult());
@@ -502,4 +506,117 @@ TEST(ClipStatistics, RowsPrintTheReportAndTheRecord){
     EXPECT_EQ(totals.unusedClips, 1u);
     EXPECT_EQ(totals.unusedBytes, second.report.runtimeBytes);
     std::filesystem::remove_all(root);
+}
+
+namespace {
+
+    // a 1 s Once clip of the arm's Hand: on the ground (y = 0) for the first half while it moves
+    // `slide` metres along x, then lifted 10 cm and back
+    std::shared_ptr<const AnimationClip> stepClip(float slide){
+        ClipData data;
+        data.wrap = ClipWrapMode::Once;
+        data.tracks.push_back(track("Root/Elbow/Hand", ClipChannel::Position,
+                                    {key(0, {0, 0, 0}), key(0.5f, {slide, 0, 0}), key(0.6f, {slide, 0.1f, 0}), key(0.9f, {0, 0.1f, 0}), key(1, {0, 0, 0})}));
+        return AnimationClip::build(data);
+    }
+
+    anim::ClipRig groundArm(){
+        anim::ClipRig rig;
+        rig.assign("arm", {node("Root", -1, "Root", Vector3(0, 0, 0)), node("Elbow", 0, "Root/Elbow", Vector3(0, 0.5f, 0)),
+                           node("Hand", 1, "Root/Elbow/Hand", Vector3(0, -0.5f, 0))});
+        return rig;
+    }
+
+}
+
+// S74 R37, AC17: a foot planted while it moves 50 mm slides 50 mm; one planted still slides none;
+// a rig without foot goals and no feet asked has no contact to judge
+TEST(ClipReport, FootSlidingMeasuresTheFeetOnTheGround){
+    const anim::ClipRig rig = groundArm();
+    anim::ClipReportRequest request;
+    request.rig = &rig;
+    request.footSliding = true;
+    request.feet = {"Hand"};
+    request.moveSpeedMps = 0.0;
+    request.clip = stepClip(0.05f);
+    anim::ClipReport report = anim::analyzeClip(request);
+    ASSERT_TRUE(report.footSliding.has_value());
+    EXPECT_EQ(report.footSliding->contactSource, "feet");
+    ASSERT_EQ(report.footSliding->feet.size(), 1u);
+    EXPECT_NEAR(report.footSliding->maxSlideMm, 50.0, 0.5) << "the planted 50 mm";
+    EXPECT_NEAR(report.footSliding->feet[0].worstStart, 0.0f, 1e-4f);
+    EXPECT_GT(report.footSliding->feet[0].contactRatio, 0.4);
+
+    request.clip = stepClip(0.0f);
+    report = anim::analyzeClip(request);
+    EXPECT_LT(report.footSliding->maxSlideMm, 0.01) << "a clean step: still while on the ground";
+
+    request.feet.clear();
+    report = anim::analyzeClip(request);
+    EXPECT_EQ(report.footSliding->contactSource, "none") << "a generic rig, no feet asked: no guess";
+    EXPECT_TRUE(report.footSliding->feet.empty());
+    const nlohmann::json json = anim::clipReportJson(report);
+    EXPECT_TRUE(json["foot_sliding"]["max_slide_mm"].is_null());
+
+    // foot goals: the humanoid map's feet
+    anim::ClipRig humanoid = rig;
+    humanoid.footGoals = {2};
+    request.rig = &humanoid;
+    request.clip = stepClip(0.05f);
+    report = anim::analyzeClip(request);
+    EXPECT_EQ(report.footSliding->contactSource, "foot_goals");
+    EXPECT_NEAR(report.footSliding->maxSlideMm, 50.0, 0.5);
+}
+
+// an in-place clip whose foot moves back steadily on the ground slides at the ground's speed:
+// the matching ground speed takes it out, a move speed of 0 does not
+TEST(ClipReport, FootSlidingOfAnInPlaceClipUsesTheMatchingGroundSpeed){
+    const anim::ClipRig rig = groundArm();
+    ClipData data;
+    data.wrap = ClipWrapMode::Once;
+    data.tracks.push_back(track("Root/Elbow/Hand", ClipChannel::Position,
+                                {key(0, {0, 0, 0.2f}), key(0.5f, {0, 0, -0.2f}), key(0.51f, {0, 0.1f, -0.2f}), key(0.99f, {0, 0.1f, 0.2f}), key(1, {0, 0, 0.2f})}));
+    anim::ClipReportRequest request;
+    request.rig = &rig;
+    request.footSliding = true;
+    request.feet = {"Hand"};
+    request.clip = AnimationClip::build(data);
+    anim::ClipReport report = anim::analyzeClip(request);
+    EXPECT_NEAR(report.footSliding->matchingGroundSpeedMps, 0.8, 0.02) << "0.4 m back in 0.5 s";
+    EXPECT_NEAR(report.footSliding->moveSpeedMps, report.footSliding->matchingGroundSpeedMps, 1e-9);
+    EXPECT_LT(report.footSliding->maxSlideMm, 15.0) << "moving at that speed, the foot stays";
+    request.moveSpeedMps = 0.0;
+    report = anim::analyzeClip(request);
+    EXPECT_GT(report.footSliding->maxSlideMm, 350.0) << "standing still, it slides the whole 40 cm";
+}
+
+// S74 R54: an instant switch between two poses steps the whole distance in one frame; a 0.5 s
+// crossfade spreads it, and the causes name the duration
+TEST(ClipReport, TransitionPopIsTheStepThroughTheCrossfade){
+    const anim::ClipRig rig = groundArm();
+    auto hold = [](float x){
+        ClipData data;
+        data.wrap = ClipWrapMode::Loop;
+        data.tracks.push_back(track("Root/Elbow/Hand", ClipChannel::Position, {key(0, {x, 0, 0}), key(1, {x, 0, 0})}));
+        return AnimationClip::build(data);
+    };
+    anim::ClipReportRequest request;
+    request.rig = &rig;
+    request.clip = hold(0.0f);
+    request.transitionTo = hold(0.3f);
+    request.transitionFromName = "A";
+    request.transitionToName = "B";
+    request.transitionAt = 0.5f;
+    anim::ClipReport report = anim::analyzeClip(request);
+    ASSERT_TRUE(report.transition.has_value());
+    EXPECT_NEAR(report.transition->maxStepMm, 300.0, 0.5);
+    EXPECT_EQ(report.transition->worstJoint, "Hand");
+    EXPECT_NEAR(report.transition->baselineStepMm, 0.0, 1e-6);
+    ASSERT_FALSE(report.transition->causes.empty());
+    EXPECT_NE(report.transition->causes[0].find("duration 0"), std::string::npos);
+
+    request.transitionDuration = 0.5f;
+    report = anim::analyzeClip(request);
+    EXPECT_NEAR(report.transition->maxStepMm, 300.0 / 30.0, 0.5) << "30 frames of 1/60 s";
+    EXPECT_TRUE(report.transition->causes.empty());
 }

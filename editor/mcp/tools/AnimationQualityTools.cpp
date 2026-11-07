@@ -11,8 +11,9 @@
 // step), then a second worker reads the result back from disk, so the error reported after a write
 // is the one the file has.
 //
-// check_animation's checks are one table, kChecks. A check another stream ships flips its row and
-// adds its runner, with no schema change: the schema lists every check, argument and limit now.
+// check_animation's checks are one table, kChecks. foot_sliding and transition measure clips
+// (animation/ClipReport); record_seconds watches a playing Animator through makeSnapshot
+// (animation/AnimatorDebug) on the main thread, a frame at a time.
 #include "McpTools.h"
 
 #include "W4Shared.h"
@@ -29,6 +30,8 @@
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorDebug.h"
+#include "animation/AnimatorInstance.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipOptimize.h"
@@ -68,11 +71,13 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Calibrated against JasperArcade-Ported (S74's risks table; the numbers are in the spec's Deviations)
-constexpr double LOOP_SEAM_LIMIT_MM = 10.0;
-constexpr double ROOT_DRIFT_LIMIT_MM = 20.0;
-// slower than this, net over the clip, a root that moves is drifting, not walking: a slow walk is 0.5 m/s
-constexpr double IN_PLACE_SPEED_MPS = 0.25;
+constexpr double LOOP_SEAM_LIMIT_MM = anim::kClipLoopSeamLimitMm;
+constexpr double ROOT_DRIFT_LIMIT_MM = anim::kClipRootDriftLimitMm;
+constexpr double IN_PLACE_SPEED_MPS = anim::kClipInPlaceSpeedMps;
+constexpr double FOOT_SLIDE_LIMIT_MM = anim::kClipFootSlideLimitMm;
+// a joint stepping more than this in 1/60 s through a crossfade, and over twice its step around it, pops
+constexpr double POP_LIMIT_MM = 30.0;
+constexpr double POP_RATIO = 2.0;
 constexpr size_t DEFAULT_TOP = 20;
 constexpr size_t COMPARE_DEFAULT_SKIN_MM = 100;
 
@@ -237,6 +242,20 @@ struct CheckLimits {
     std::optional<double> errorMm;
     double rootDriftMm = ROOT_DRIFT_LIMIT_MM;
     bool rootDriftGiven = false;
+    double footSlideMm = FOOT_SLIDE_LIMIT_MM;
+    double popMm = POP_LIMIT_MM;
+};
+
+// `transition`: a crossfade of the GameObject's states, its clips resolved on the main thread
+struct CheckTransition {
+    std::string from;
+    std::string to;
+    NamedClip toClip;
+    std::optional<float> duration;          // seconds (none: the controller's, as a length of `from` when not fixed)
+    std::optional<float> durationOfFrom;    // the controller's duration in lengths of `from`
+    std::optional<float> at;                // seconds into `from`
+    std::optional<float> atOfFrom;          // the controller's exit time
+    std::string note;                       // why the controller gave no duration
 };
 
 struct CheckRequest {
@@ -248,20 +267,21 @@ struct CheckRequest {
     CheckLimits limits;
     size_t top = DEFAULT_TOP;
     std::shared_ptr<const anim::ClipRig> entityRig;
+    std::vector<std::string> feet;
+    std::optional<double> moveSpeed;
+    std::optional<CheckTransition> transition;
 };
 
-// Every check the schema offers. `runs` false: the row waits for the stream that ships it, and
-// asking gets not_available, never a result that looks like a pass.
+// Every check the schema offers
 struct CheckRow {
     const char* name;
-    bool runs;
 };
 const CheckRow kChecks[] = {
-    {"stats", true},
-    {"loop_seam", true},
-    {"root_motion", true},
-    {"foot_sliding", false},
-    {"transition", false},
+    {"stats"},
+    {"loop_seam"},
+    {"root_motion"},
+    {"foot_sliding"},
+    {"transition"},
 };
 
 std::vector<std::string> checkNames() {
@@ -275,10 +295,6 @@ const CheckRow* findCheck(const std::string& name) {
         if (name == row.name) return &row;
     }
     return nullptr;
-}
-
-std::string notAvailable(const std::string& what) {
-    return "not_available: " + what + " is not in this build yet. Available: checks stats, loop_seam, root_motion, and compare_to.";
 }
 
 std::string formattedLimit(double value) {
@@ -304,7 +320,10 @@ void checkOneClip(const CheckRequest& request, const NamedClip& clip, RigCache& 
     report.cancel = &cancel;
     report.loopSeam = request.checks.count("loop_seam") > 0;
     report.rootMotion = request.checks.count("root_motion") > 0;
-    const bool needsRig = report.loopSeam || report.rootMotion || request.hasCompare;
+    report.footSliding = request.checks.count("foot_sliding") > 0;
+    report.feet = request.feet;
+    report.moveSpeedMps = request.moveSpeed;
+    const bool needsRig = report.loopSeam || report.rootMotion || report.footSliding || request.transition || request.hasCompare;
 
     ClipData data;
     std::string error;
@@ -341,7 +360,41 @@ void checkOneClip(const CheckRequest& request, const NamedClip& clip, RigCache& 
         report.skinDistanceMm = record.present && record.skinDistanceMm > 0.0 ? record.skinDistanceMm : (double)COMPARE_DEFAULT_SKIN_MM;
     }
 
+    // a crossfade from this clip into the transition's: the controller's timing, in this clip's lengths
+    std::shared_ptr<const AnimationClip> destination;
+    bool destinationLoaded = false;
+    bool ownLoaded = false;
+    if (request.transition) {
+        const CheckTransition& transition = *request.transition;
+        destinationLoaded = AnimationClipPool::get(transition.toClip.reference) == nullptr;
+        destination = AnimationClipPool::getOrLoad(transition.toClip.reference, &error);
+        ownLoaded = AnimationClipPool::get(clip.reference) == nullptr;
+        std::shared_ptr<const AnimationClip> own = AnimationClipPool::getOrLoad(clip.reference, &error);
+        if (!destination || !own) {
+            own.reset();
+            destination.reset();
+            if (ownLoaded) AnimationClipPool::releaseUnused(clip.reference);
+            if (destinationLoaded) AnimationClipPool::releaseUnused(transition.toClip.reference);
+            out.total++;
+            out.findings.push_back(finding(clip.display, "error", "anim-unreadable", "transition: " + error, "check the states' clips"));
+            return;
+        }
+        const float length = own->getLength();
+        report.transitionTo = destination;
+        report.transitionFromName = transition.from;
+        report.transitionToName = transition.to;
+        report.transitionDuration = transition.duration ? *transition.duration : transition.durationOfFrom ? *transition.durationOfFrom * length : 0.0f;
+        report.transitionAt = transition.at ? *transition.at : transition.atOfFrom ? *transition.atOfFrom * length : 0.5f * length;
+    }
+
     const anim::ClipReport result = anim::analyzeClip(report);
+    if (destinationLoaded) {
+        report.transitionTo.reset();
+        destination.reset();
+        AnimationClipPool::releaseUnused(request.transition->toClip.reference);
+    }
+    // asking does not change Clip memory: what this call loaded leaves the pool again
+    if (ownLoaded) AnimationClipPool::releaseUnused(clip.reference);
     if (referenceLoaded) {
         report.compareTo.reset();
         reference.reset();
@@ -418,6 +471,45 @@ void checkOneClip(const CheckRequest& request, const NamedClip& clip, RigCache& 
                                            "the root (" + facts.bone + ") ends " + anim::formatClipField("root_motion.loop_gap_mm", netMm) + " from where it starts (limit " +
                                            formattedLimit(request.limits.rootDriftMm) + " mm)", "zero the root's keys, or use root motion"));
         }
+    }
+    if (result.footSliding) {
+        const anim::ClipFootSliding& sliding = *result.footSliding;
+        for (const std::string& unknown : sliding.unknownFeet) {
+            out.findings.push_back(finding(clip.display, "warning", "anim-unknown-foot", "feet: the rig has no bone \"" + unknown + "\"",
+                                           "name a foot as get_model_info lists its bones"));
+        }
+        if (sliding.contactSource == "none") {
+            line += "; foot contact: none (pass feet)";
+        } else {
+            line += "; foot slide " + anim::formatClipField("foot_sliding.max_slide_mm", sliding.maxSlideMm);
+            for (const anim::ClipFootSlide& foot : sliding.feet) {
+                if (foot.maxSlideMm <= request.limits.footSlideMm) continue;
+                char span[64];
+                std::snprintf(span, sizeof(span), " (%.2f-%.2f s)", foot.worstStart, foot.worstEnd);
+                out.findings.push_back(finding(clip.display, "warning", "anim-foot-slide",
+                                               foot.bone + " slides " + anim::formatClipField("foot_sliding.max_slide_mm", foot.maxSlideMm) + " on the ground" + span +
+                                               " (limit " + formattedLimit(request.limits.footSlideMm) + " mm)",
+                                               "move the character at " + anim::formatClipField("foot_sliding.matching_ground_speed_mps", sliding.matchingGroundSpeedMps) +
+                                               " (move_speed checks a speed), or add a Foot Lock IK constraint"));
+            }
+        }
+    }
+    if (result.transition) {
+        const anim::ClipTransitionFacts& transition = *result.transition;
+        line += "; " + transition.from + " to " + transition.to + " steps " + anim::formatClipField("transition.max_step_mm", transition.maxStepMm);
+        std::string causes;
+        for (const std::string& cause : transition.causes) causes += (causes.empty() ? "" : "; ") + cause;
+        if (!request.transition->note.empty()) causes += (causes.empty() ? "" : "; ") + request.transition->note;
+        if (transition.maxStepMm > request.limits.popMm && transition.popRatio > POP_RATIO) {
+            out.findings.push_back(finding(clip.display, "warning", "anim-transition-pop",
+                                           transition.from + " to " + transition.to + ": " + transition.worstJoint + " jumps " +
+                                           anim::formatClipField("transition.max_step_mm", transition.maxStepMm) + " in a frame" +
+                                           (transition.baselineStepMm < 0.1 ? std::string(", where it holds still around it")
+                                                                            : ", " + formattedLimit(std::round(transition.popRatio * 10.0) / 10.0) + " x its step around it") +
+                                           (causes.empty() ? std::string() : " (" + causes + ")"),
+                                           "lengthen the transition's duration, or key those bones in both clips"));
+        }
+        if (!request.transition->note.empty()) entry["transition"]["causes"].push_back(request.transition->note);
     }
     out.entries.push_back({result.runtimeBytes, std::move(entry)});
     out.lines.push_back({result.runtimeBytes, line});
@@ -543,6 +635,212 @@ bool resolveGameObject(Project* project, const Json& args, const char* key, Scen
     return true;
 }
 
+ToolResult jobReply(const McpJob& finished);
+
+// The controller's transition from `from` to `to`, when it has one: its duration and exit time
+void controllerTiming(SceneProject* sceneProject, Entity entity, CheckTransition& transition) {
+    const AnimatorComponent* animator = sceneProject->scene->findComponent<AnimatorComponent>(entity);
+    if (!animator) return;
+    std::ifstream stream(FileUtils::pathFromUtf8(FileData::getSystemPath(animator->controller.path)), std::ios::binary);
+    std::ostringstream text;
+    text << stream.rdbuf();
+    const anim::ControllerParseResult parsed = anim::parseController(text.str());
+    if (!parsed.ok) return;
+    std::function<const anim::StateDef*(const anim::StateMachineDef&)> find = [&](const anim::StateMachineDef& machine) -> const anim::StateDef* {
+        for (const anim::StateDef& candidate : machine.states) {
+            if (candidate.name == transition.from) return &candidate;
+        }
+        for (const anim::StateMachineDef& child : machine.subMachines) {
+            if (const anim::StateDef* found = find(child)) return found;
+        }
+        return nullptr;
+    };
+    for (const anim::LayerDef& layer : parsed.data.layers) {
+        const anim::StateDef* state = find(layer.machine);
+        if (!state) continue;
+        for (const anim::TransitionDef& t : state->transitions) {
+            if (t.to != transition.to) continue;
+            if (!transition.duration) {
+                if (t.fixedDuration) transition.duration = t.duration;
+                else transition.durationOfFrom = t.duration;
+            }
+            if (!transition.at && t.hasExitTime) transition.atOfFrom = t.exitTime;
+            return;
+        }
+    }
+    if (!transition.duration) {
+        transition.duration = 0.0f;
+        transition.note = "the controller has no transition from " + transition.from + " to " + transition.to + ": a switch is instant";
+    }
+}
+
+// ---- record_seconds: a playing Animator's legs, a frame at a time
+
+struct RecordSample {
+    float time = 0.0f;
+    Vector3 position = Vector3(0, 0, 0);
+    bool contact = false;
+};
+
+struct RecordCall {
+    McpContext* ctx = nullptr;
+    JobPtr job;
+    Project* project = nullptr;
+    uint32_t sceneId = 0;
+    Entity entity = NULL_ENTITY;
+    double seconds = 0.0;
+    double footSlideMm = FOOT_SLIDE_LIMIT_MM;
+    std::string display;
+    std::shared_ptr<std::atomic<bool>> cancel;
+    uint64_t evaluations = 0;
+    float startClock = -1.0f;
+    float lastClock = 0.0f;
+    Vector3 startPosition = Vector3(0, 0, 0);
+    Vector3 lastPosition = Vector3(0, 0, 0);
+    size_t frames = 0;
+    const char* contactSource = "none";
+    std::vector<std::string> names;                 // per IK constraint (legs only are kept)
+    std::vector<std::vector<RecordSample>> feet;
+};
+
+using RecordCallPtr = std::shared_ptr<RecordCall>;
+
+void finishRecord(const RecordCallPtr& state) {
+    const double elapsed = std::max(0.0f, state->lastClock - state->startClock);
+    Json feet = Json::array();
+    std::vector<ProjectChecks::Finding> findings;
+    double worst = 0.0;
+    for (size_t i = 0; i < state->feet.size(); i++) {
+        const std::vector<RecordSample>& samples = state->feet[i];
+        if (samples.empty()) continue;
+        double maxSlide = 0.0;
+        float worstStart = 0.0f, worstEnd = 0.0f;
+        size_t onGround = 0;
+        size_t start = 0;
+        bool inContact = false;
+        for (size_t k = 0; k < samples.size(); k++) {
+            if (!samples[k].contact) {
+                inContact = false;
+                continue;
+            }
+            onGround++;
+            if (!inContact) {
+                inContact = true;
+                start = k;
+            }
+            const Vector3 moved = samples[k].position - samples[start].position;
+            const double mm = std::hypot((double)moved.x, (double)moved.z) * 1000.0;
+            if (mm > maxSlide) {
+                maxSlide = mm;
+                worstStart = samples[start].time - state->startClock;
+                worstEnd = samples[k].time - state->startClock;
+            }
+        }
+        worst = std::max(worst, maxSlide);
+        auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+        feet.push_back({{"bone", state->names[i]}, {"contact_ratio", round3((double)onGround / (double)samples.size())}, {"max_slide_mm", round3(maxSlide)},
+                        {"worst_contact", {{"start", round3(worstStart)}, {"end", round3(worstEnd)}}}});
+        if (maxSlide > state->footSlideMm) {
+            findings.push_back(finding(state->display, "warning", "anim-foot-slide",
+                                       state->names[i] + " slides " + anim::formatClipField("foot_sliding.max_slide_mm", maxSlide) + " on the ground (limit " +
+                                       formattedLimit(state->footSlideMm) + " mm)", "match the move speed to the clip, or add a Foot Lock IK constraint"));
+        }
+    }
+    const bool judged = std::string(state->contactSource) != "none";
+    const Vector3 travel = state->lastPosition - state->startPosition;
+    const double speed = elapsed > 0.0 ? std::hypot((double)travel.x, (double)travel.z) / elapsed : 0.0;
+    Json entry = {{"clip", state->display},
+                  {"record_seconds", std::round(elapsed * 1000.0) / 1000.0},
+                  {"frames", state->frames},
+                  {"foot_sliding", {{"contact_source", state->contactSource},
+                                    {"max_slide_mm", judged ? Json(std::round(worst * 1000.0) / 1000.0) : Json(nullptr)},
+                                    {"matching_ground_speed_mps", nullptr},
+                                    {"move_speed_mps", std::round(speed * 1000.0) / 1000.0},
+                                    {"feet", feet}}}};
+    Json findingsJson = Json::array();
+    for (const ProjectChecks::Finding& item : findings) findingsJson.push_back(ProjectChecks::toJson(item));
+    Json result = {{"ok", findings.empty()}, {"rig", nullptr}, {"clips", Json::array({entry})},
+                   {"totals", {{"clips", 1}, {"runtime_bytes", 0}, {"keys", 0}}}, {"findings", findingsJson}};
+    std::string text = state->display + ": " + std::to_string(state->frames) + " frames over " + formattedLimit(std::round(elapsed * 100.0) / 100.0) + " s; ";
+    text += judged ? "foot slide " + anim::formatClipField("foot_sliding.max_slide_mm", worst) : std::string("foot contact: none (no Foot IK or Foot Lock)");
+    text += "; ok: " + std::string(findings.empty() ? "true" : "false") + ".";
+    state->job->succeed(text, result);
+}
+
+void recordTick(const RecordCallPtr& state) {
+    if (state->cancel->load()) {
+        state->job->markCancelled("Cancelled; check_animation writes nothing.");
+        return;
+    }
+    SceneProject* sceneProject = state->project->getScene(state->sceneId);
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    const AnimatorComponent* animator = scene && scene->isEntityCreated(state->entity) ? scene->findComponent<AnimatorComponent>(state->entity) : nullptr;
+    const Transform* transform = animator ? scene->findComponent<Transform>(state->entity) : nullptr;
+    if (!animator || !transform || sceneProject->playState == ScenePlayState::STOPPED) {
+        state->job->fail("record_seconds: the game stopped, or the GameObject or its Animator went away, before " +
+                         formattedLimit(state->seconds) + " s were recorded.");
+        return;
+    }
+    const anim::AnimatorInstance* instance = animator->runtime.get();
+    if (instance && instance->bound && instance->evaluations != state->evaluations) {
+        state->evaluations = instance->evaluations;
+        const anim::AnimatorDebugSnapshot snapshot = anim::makeSnapshot(*instance, *animator, *transform);
+        if (snapshot.valid) {
+            if (state->startClock < 0.0f) {
+                state->startClock = instance->clock;
+                state->startPosition = transform->worldPosition;
+                state->names.resize(snapshot.ik.size());
+                state->feet.resize(snapshot.ik.size());
+                for (size_t i = 0; i < snapshot.ik.size(); i++) state->names[i] = snapshot.ik[i].name;
+            }
+            state->contactSource = snapshot.contactSource;
+            state->lastClock = instance->clock;
+            state->lastPosition = transform->worldPosition;
+            state->frames++;
+            for (size_t i = 0; i < snapshot.ik.size() && i < state->feet.size(); i++) {
+                if (snapshot.ik[i].leg) state->feet[i].push_back({instance->clock, snapshot.ik[i].foot, snapshot.ik[i].contact});
+            }
+            const double elapsed = instance->clock - state->startClock;
+            state->job->setProgress(std::min(1.0, elapsed / state->seconds), "recording");
+            if (elapsed >= state->seconds) {
+                finishRecord(state);
+                return;
+            }
+        }
+    }
+    state->ctx->app().requestRedraw();
+    getEditorHost().enqueueMainThreadTask([state]() { recordTick(state); });
+}
+
+void recordAnimator(const CallPtr& call, SceneProject* sceneProject, Entity entity, double seconds, double footSlideMm) {
+    if (sceneProject->playState == ScenePlayState::STOPPED) {
+        call->fail("record_seconds watches the running game: play first (play {action: \"start\"}), or check clips without it.");
+        return;
+    }
+    if (!sceneProject->scene->findComponent<AnimatorComponent>(entity)) {
+        call->fail("record_seconds: the GameObject has no Animator.");
+        return;
+    }
+    auto state = std::make_shared<RecordCall>();
+    state->ctx = &call->ctx();
+    state->project = call->ctx().project();
+    state->sceneId = sceneProject->id;
+    state->entity = entity;
+    state->seconds = std::clamp(seconds, 0.1, 600.0);
+    state->footSlideMm = footSlideMm;
+    state->display = sceneProject->scene->getEntityName(entity) + " (recorded)";
+    state->cancel = std::make_shared<std::atomic<bool>>(false);
+    state->job = call->ctx().jobs().create("check_animation", "Check Animation");
+    auto cancel = state->cancel;
+    state->job->setCancelHandler([cancel]() { cancel->store(true); });
+    state->job->setProgress(0.0, "recording");
+    const bool wait = !call->args().contains("wait") || call->args()["wait"].get<bool>();
+    const double timeout = call->args().contains("timeout_seconds") ? call->args()["timeout_seconds"].get<double>() : 120.0;
+    recordTick(state);
+    call->detach();
+    replyWhenJobDone(call, state->job, wait, timeout, jobReply);
+}
+
 ToolResult jobReply(const McpJob& finished) {
     Json result = finished.result();
     result["job_id"] = finished.id();
@@ -557,22 +855,11 @@ void checkAnimationTool(const CallPtr& call) {
     auto request = std::make_shared<CheckRequest>();
     request->projectRoot = project->getProjectPath();
 
-    // the arguments of checks this build does not have: said, never ignored
-    for (const char* argument : {"transition", "record_seconds", "feet", "move_speed"}) {
-        if (args.contains(argument)) {
-            call->fail(notAvailable(argument));
-            return;
-        }
-    }
     if (args.contains("checks")) {
         for (const Json& name : args["checks"]) {
             const CheckRow* row = findCheck(name.get<std::string>());
             if (!row) {
                 call->fail("checks: unknown check \"" + name.get<std::string>() + "\".");
-                return;
-            }
-            if (!row->runs) {
-                call->fail(notAvailable(row->name));
                 return;
             }
             request->checks.insert(row->name);
@@ -635,14 +922,53 @@ void checkAnimationTool(const CallPtr& call) {
             request->limits.rootDriftMm = limits["root_drift_mm"].get<double>();
             request->limits.rootDriftGiven = true;
         }
-        for (const char* limit : {"foot_slide_mm", "pop_mm"}) {
-            if (limits.contains(limit)) {
-                call->fail(notAvailable(std::string("limits.") + limit));
-                return;
-            }
-        }
+        if (limits.contains("foot_slide_mm")) request->limits.footSlideMm = limits["foot_slide_mm"].get<double>();
+        if (limits.contains("pop_mm")) request->limits.popMm = limits["pop_mm"].get<double>();
     }
-    if (request->checks.empty()) {
+    if (args.contains("feet")) {
+        for (const Json& foot : args["feet"]) request->feet.push_back(foot.get<std::string>());
+        request->checks.insert("foot_sliding");
+    }
+    if (args.contains("move_speed")) {
+        request->moveSpeed = args["move_speed"].get<double>();
+        request->checks.insert("foot_sliding");
+    }
+    if (args.contains("record_seconds")) {
+        if (entity == NULL_ENTITY) {
+            call->fail("record_seconds watches a GameObject's Animator: pass entity too.");
+            return;
+        }
+        recordAnimator(call, sceneProject, entity, args["record_seconds"].get<double>(), request->limits.footSlideMm);
+        return;
+    }
+    if (args.contains("transition")) {
+        if (entity == NULL_ENTITY) {
+            call->fail("transition crossfades two states of a GameObject: pass entity too.");
+            return;
+        }
+        const Json& given = args["transition"];
+        if (!given.contains("from") || !given.contains("to")) {
+            call->fail("transition needs from and to: two states of the GameObject's Animator or Animation Player.");
+            return;
+        }
+        CheckTransition transition;
+        transition.from = given["from"].get<std::string>();
+        transition.to = given["to"].get<std::string>();
+        if (given.contains("duration")) transition.duration = std::max(0.0f, given["duration"].get<float>());
+        if (given.contains("at")) transition.at = std::max(0.0f, given["at"].get<float>());
+        std::string stored;
+        NamedClip fromClip;
+        if (!clipOfState(sceneProject, entity, transition.from, stored, error) || !namedFromStored(project, stored, fromClip, error) ||
+            !clipOfState(sceneProject, entity, transition.to, stored, error) || !namedFromStored(project, stored, transition.toClip, error)) {
+            call->fail("transition: " + error);
+            return;
+        }
+        controllerTiming(sceneProject, entity, transition);
+        request->clips = {fromClip};
+        request->transition = transition;
+        request->checks.insert("transition");
+    }
+    if (request->checks.empty() || (request->checks.size() == 1 && request->checks.count("foot_sliding"))) {
         // the project as a whole is about what things cost: a rig per clip is for clips asked about
         request->checks.insert("stats");
         if (!request->clips.empty() && !request->hasCompare) {

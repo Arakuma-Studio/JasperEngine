@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/ClipReport.h"
+#include "animation/ClipOptimize.h"
+#include "animation/ClipStatistics.h"
+#include "animation/ModelSubClips.h"
 #include "util/SHA1.h"
 #include "media/VideoFormats.h"
 #include "htmlui/compat/CompatApi.h"
@@ -2115,6 +2118,7 @@ struct CheckOptions {
     bool ui = false;
     bool textures = false;
     bool anims = false;
+    bool animQuality = false;
     bool vat = false;
     bool normals = false;
     bool videos = false;
@@ -2147,6 +2151,9 @@ void printCheckUsage(const std::string& commandName) {
         << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
         << "                           JSON path of every dropped part, the clips scenes and prefabs reference, and\n"
         << "                           warnings on redundant keys, constant tracks, rotation flips and stale reductions.\n"
+        << "      --anim-quality       How clips move, on their models (no scene loads): warnings on a skin over the\n"
+        << "                           bone palette phones hold, a Loop clip's seam, an in-place clip's root drift and\n"
+        << "                           feet sliding on the ground (humanoid models). Not in --hook.\n"
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
@@ -2158,7 +2165,8 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, clip quality, vertex animations, normal maps\n"
+        << "                           and videos.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
@@ -2201,6 +2209,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.textures = true;
         } else if (arg == "--anims") {
             options.anims = true;
+        } else if (arg == "--anim-quality") {
+            options.animQuality = true;
         } else if (arg == "--vat") {
             options.vat = true;
         } else if (arg == "--normals") {
@@ -2568,11 +2578,9 @@ void collectPlayerAssets(const YAML::Node& node, std::vector<PlayerAssetReferenc
     }
 }
 
-// The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
-// text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
-// false, nothing to compare with). Empty names stay empty (subClipNames names them).
-bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
-                             std::vector<std::string>& names) {
+// A model file's glTF JSON, read without the engine: a .gltf's text, a .glb's JSON chunk, and for
+// an .fbx the .glb the editor imported it to (none yet: false)
+bool readModelGltfJson(const fs::path& root, const fs::path& assets, const fs::path& model, nlohmann::json& out) {
     fs::path file = model;
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
@@ -2598,8 +2606,16 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     } else {
         text = std::move(bytes);
     }
-    const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
-    if (json.is_discarded() || !json.is_object()) return false;
+    out = nlohmann::json::parse(text, nullptr, false);
+    return !out.is_discarded() && out.is_object();
+}
+
+// The glTF animation names of a model file (readModelGltfJson). Empty names stay empty
+// (subClipNames names them).
+bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
+                             std::vector<std::string>& names) {
+    nlohmann::json json;
+    if (!readModelGltfJson(root, assets, model, json)) return false;
     names.clear();
     const auto animations = json.find("animations");
     if (animations == json.end() || !animations->is_array()) return true;
@@ -2675,6 +2691,104 @@ void addClipQualityFindings(const fs::path& root, const std::string& rel, const 
                  "optimize_animation again with the same arguments");
         }
     }
+}
+
+// ---- --anim-quality (S74 R54): how clips move, measured on their models (no scene is loaded)
+
+// the rows of a bone palette every GLES3 and WebGL2 device's textures hold (their smallest
+// MAX_TEXTURE_SIZE): a skin of more joints cannot load where the palette is a texture
+constexpr size_t SKIN_JOINT_LIMIT = 2048;
+
+struct AnimQualityCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t clips = 0;
+};
+
+AnimQualityCheck checkAnimQuality(const fs::path& root) {
+    AnimQualityCheck check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    auto warn = [&](const std::string& path, const char* code, const std::string& message, const std::string& suggestion) {
+        ProjectChecks::Finding finding;
+        finding.tool = "anim";
+        finding.path = path;
+        finding.severity = "warning";
+        finding.code = code;
+        finding.message = message;
+        finding.suggestion = suggestion;
+        check.findings.push_back(std::move(finding));
+    };
+    for (const fs::path& model : ProjectChecks::findProjectFiles(root, {".gltf", ".glb", ".fbx"})) {
+        nlohmann::json gltf;
+        if (!readModelGltfJson(root, assets, model, gltf)) continue;
+        size_t most = 0;
+        for (const nlohmann::json& skin : gltf.value("skins", nlohmann::json::array())) {
+            if (skin.is_object() && skin.contains("joints") && skin["joints"].is_array()) most = std::max(most, skin["joints"].size());
+        }
+        if (most > SKIN_JOINT_LIMIT) {
+            warn(ProjectChecks::projectRelative(root, model), "anim-bone-limit",
+                 "a skin of " + std::to_string(most) + " joints: phones and browsers hold " + std::to_string(SKIN_JOINT_LIMIT) +
+                 " in a bone palette, so it does not load there", "split the mesh's skin, or remove the bones it does not use");
+        }
+    }
+    std::vector<std::string> notes;
+    std::map<std::string, std::shared_ptr<const anim::ClipRig>> rigs;
+    for (const anim::ProjectClip& clip : anim::listProjectClips(root, notes)) {
+        ClipData data;
+        std::string error;
+        if (anim::isSubClipReference(clip.reference)) {
+            std::vector<ClipWarning> warnings;
+            if (!anim::buildModelSubClip(clip.reference, data, warnings, &error)) continue;
+        } else {
+            std::string text;
+            if (!ProjectChecks::readFile(editor::FileUtils::pathFromUtf8(clip.reference), text)) continue;
+            anim::ClipParseResult parsed = anim::parseClip(text);
+            if (!parsed.ok()) continue;
+            data = *parsed.data;
+        }
+        // the model it plays on: what the motion is measured on (none: nothing to say)
+        const std::string model = anim::clipRigModel(clip.reference, data);
+        if (model.empty()) continue;
+        fs::path modelPath = editor::FileUtils::pathFromUtf8(model);
+        if (modelPath.is_relative()) modelPath = assets / modelPath;
+        const std::string key = editor::FileUtils::pathToGenericUtf8(modelPath.lexically_normal());
+        auto found = rigs.find(key);
+        if (found == rigs.end()) {
+            auto rig = std::make_shared<anim::ClipRig>();
+            if (!anim::clipRigFromModel(key, *rig, &error)) rig.reset();
+            found = rigs.emplace(key, rig).first;
+        }
+        if (!found->second) continue;
+        check.clips++;
+        anim::ClipReportRequest request;
+        request.clip = AnimationClip::build(data);
+        request.rig = found->second.get();
+        request.loopSeam = true;
+        request.rootMotion = true;
+        request.footSliding = true;
+        const anim::ClipReport report = anim::analyzeClip(request);
+        if (!report.ok) continue;
+        if (report.loopSeam && report.wrap == ClipWrapMode::Loop && report.loopSeam->maxErrorMm > anim::kClipLoopSeamLimitMm) {
+            warn(clip.display, "anim-loop-seam", "it is Loop and its seam jumps " + anim::formatClipField("loop_seam.max_error_mm", report.loopSeam->maxErrorMm) +
+                 " at " + report.loopSeam->worstJoint, "make the first and last keys match, or set wrap: once");
+        }
+        if (report.rootMotion && !report.rootMotion->bone.empty() && report.rootMotion->averageSpeedMps < anim::kClipInPlaceSpeedMps) {
+            const Vector3 net = report.rootMotion->netTranslationMetres;
+            const double netMm = std::hypot((double)net.x, (double)net.z) * 1000.0;
+            if (netMm > anim::kClipRootDriftLimitMm) {
+                warn(clip.display, "anim-root-drift", "the root (" + report.rootMotion->bone + ") ends " + anim::formatClipField("root_motion.loop_gap_mm", netMm) +
+                     " from where it starts", "zero the root's keys, or use root motion");
+            }
+        }
+        if (report.footSliding && report.footSliding->contactSource != "none") {
+            for (const anim::ClipFootSlide& foot : report.footSliding->feet) {
+                if (foot.maxSlideMm <= anim::kClipFootSlideLimitMm) continue;
+                warn(clip.display, "anim-foot-slide", foot.bone + " slides " + anim::formatClipField("foot_sliding.max_slide_mm", foot.maxSlideMm) + " on the ground",
+                     "move the character at " + anim::formatClipField("foot_sliding.matching_ground_speed_mps", report.footSliding->matchingGroundSpeedMps) +
+                     ", or add a Foot Lock IK constraint");
+            }
+        }
+    }
+    return check;
 }
 
 // Every VideoPlayerComponent node under a scene or prefab file's YAML
@@ -3216,11 +3330,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool ui = options.ui || options.all;
     bool textures = options.textures || options.all;
     bool anims = options.anims || options.all;
+    // a whole-project check that loads models: never in --hook
+    const bool animQuality = (options.animQuality || options.all) && !options.hook;
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.all) {
+        !options.videos && !options.animQuality && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
@@ -3347,6 +3463,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
     }
+    if (animQuality && !fileMode) {
+        // the models' and clips' JSON, the clips sampled on their models' rigs: no engine
+        const AnimQualityCheck quality = checkAnimQuality(root);
+        run.findings.insert(run.findings.end(), quality.findings.begin(), quality.findings.end());
+        run.checked.push_back({"anim_quality", quality.clips});
+    }
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
         run.checked.push_back({"vat", run.vat.assets});
@@ -3420,7 +3542,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"}, {"anim_quality", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
                                                           {"normals", "map"}, {"videos", "Video Player"}};
         for (const auto& [category, count] : run.checked) {

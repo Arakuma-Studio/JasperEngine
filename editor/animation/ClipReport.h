@@ -43,6 +43,9 @@ namespace jasperengine::anim{
         std::vector<Quaternion> restRotations;
         std::vector<Vector3> restScales;
         std::vector<uint8_t> feet;          // feet and toes: the humanoid map's, else by name (R23)
+        // the humanoid map's two feet, the foot goals foot sliding judges contact on (R37); a generic
+        // rig has none, and its feet by name are never a contact guess
+        std::vector<int> footGoals;
         int hips = -1;                      // the humanoid map's, -1 when there is none
 
         size_t size() const { return parents.size(); }
@@ -124,6 +127,52 @@ namespace jasperengine::anim{
         nlohmann::json worstJoints;             // clipWorstJointsJson: the Worst Joints row
     };
 
+    // The limits of check_animation's and check --anim-quality's warnings (R54), calibrated on
+    // JasperArcade-Ported (the spec's Deviations)
+    inline constexpr double kClipLoopSeamLimitMm = 10.0;
+    inline constexpr double kClipRootDriftLimitMm = 20.0;
+    // slower than this, net over the clip, a root that moves is drifting, not walking: a slow walk is 0.5 m/s
+    inline constexpr double kClipInPlaceSpeedMps = 0.25;
+    inline constexpr double kClipFootSlideLimitMm = 15.0;
+
+    // Foot sliding (R37): how far a foot moves while it is on the ground. A foot is on the ground
+    // while it is within 2 cm of the lowest it gets in the clip. The feet are the ones asked for
+    // (`feet`), else the humanoid map's (foot goals); a generic rig with neither has contactSource
+    // "none" and no numbers, never a guess.
+    struct ClipFootSlide{
+        std::string bone;
+        double contactRatio = 0.0;          // the part of the clip it spends on the ground
+        double maxSlideMm = 0.0;            // the farthest it gets from where it touched down, within one contact
+        float worstStart = 0.0f;            // that contact, seconds
+        float worstEnd = 0.0f;
+    };
+
+    struct ClipFootSliding{
+        std::string contactSource = "none"; // "feet", "foot_goals" or "none"
+        double maxSlideMm = 0.0;
+        // the forward speed (m/s, the rig's +z) the ground has to move at for the feet on it to
+        // stay put on average: what an in-place clip wants the game to move at
+        double matchingGroundSpeedMps = 0.0;
+        double moveSpeedMps = 0.0;          // the ground speed it was measured against
+        std::vector<ClipFootSlide> feet;
+        std::vector<std::string> unknownFeet;   // `feet` names the rig does not have
+    };
+
+    // A crossfade into another clip (R54's pop): each joint's step per 1/60 s through it, against
+    // the steps of the two clips around it
+    struct ClipTransitionFacts{
+        std::string from;
+        std::string to;
+        float durationSeconds = 0.0f;
+        float atSeconds = 0.0f;             // where in `from` it starts
+        double baselineStepMm = 0.0;        // the largest step outside the crossfade
+        double maxStepMm = 0.0;             // the largest step through it
+        double popRatio = 0.0;
+        std::string worstJoint;
+        float worstTimeSeconds = 0.0f;      // from the crossfade's start
+        std::vector<std::string> causes;
+    };
+
     // The checks beyond the stats are off unless asked for, so a stats request costs what it did.
     struct ClipReportRequest{
         // an .anim path or "<model>#<clip>", in any form AnimationClipPool takes. Loaded through
@@ -141,6 +190,17 @@ namespace jasperengine::anim{
         std::string compareToName;              // how the report names it
         std::optional<double> toleranceMm;
         double skinDistanceMm = 100.0;
+        // foot sliding: the feet to judge (paths or bone names; empty: the rig's foot goals) and the
+        // ground's forward speed (none: 0, or for an in-place clip the matching ground speed)
+        bool footSliding = false;
+        std::vector<std::string> feet;
+        std::optional<double> moveSpeedMps;
+        // a crossfade from this clip into `transitionTo`, starting `transitionAt` s into this one
+        std::shared_ptr<const AnimationClip> transitionTo;
+        std::string transitionFromName;
+        std::string transitionToName;
+        float transitionDuration = 0.0f;
+        float transitionAt = 0.0f;
         const std::atomic<bool>* cancel = nullptr;
     };
 
@@ -163,6 +223,8 @@ namespace jasperengine::anim{
         std::optional<ClipLoopSeam> loopSeam;
         std::optional<ClipRootMotionFacts> rootMotion;
         std::optional<ClipCompareFacts> compare;
+        std::optional<ClipFootSliding> footSliding;
+        std::optional<ClipTransitionFacts> transition;
     };
 
     ClipReport analyzeClip(const ClipReportRequest& request);
@@ -171,7 +233,7 @@ namespace jasperengine::anim{
 
     // Where a field lives: Stats at the top of `stats`, Compare under `compare`, the other reports
     // under their own dotted key, Reduction in optimize_animation's clip entries
-    enum class ClipFieldSection{ Stats, Skipped, Compare, LoopSeam, RootMotion, Reduction };
+    enum class ClipFieldSection{ Stats, Skipped, Compare, LoopSeam, RootMotion, FootSliding, Transition, Reduction };
 
     struct ClipReportField{
         const char* key;        // the JSON key
@@ -215,6 +277,24 @@ namespace jasperengine::anim{
         {"root_motion.average_speed_mps", "Average Speed (Root Transform)", "m/s", ClipFieldFormat::MetresPerSecond, ClipFieldSection::RootMotion},
         {"root_motion.average_yaw_deg_s", "Average Yaw (Root Transform)", "deg/s", ClipFieldFormat::DegreesPerSecond, ClipFieldSection::RootMotion},
         {"root_motion.loop_gap_mm", "Loop Gap", "mm", ClipFieldFormat::Millimetres, ClipFieldSection::RootMotion},
+
+        {"foot_sliding.contact_source", "Contact From", "name", ClipFieldFormat::Text, ClipFieldSection::FootSliding},
+        {"foot_sliding.max_slide_mm", "Foot Slide", "mm", ClipFieldFormat::Millimetres, ClipFieldSection::FootSliding},
+        {"foot_sliding.matching_ground_speed_mps", "Matching Ground Speed", "m/s", ClipFieldFormat::MetresPerSecond, ClipFieldSection::FootSliding},
+        {"foot_sliding.move_speed_mps", "Move Speed", "m/s", ClipFieldFormat::MetresPerSecond, ClipFieldSection::FootSliding},
+        {"foot_sliding.feet", "Feet", "mm", ClipFieldFormat::Text, ClipFieldSection::FootSliding},
+        {"foot_sliding.unknown_feet", "Unknown Feet", "name", ClipFieldFormat::Text, ClipFieldSection::FootSliding},
+
+        {"transition.from", "From", "name", ClipFieldFormat::Text, ClipFieldSection::Transition},
+        {"transition.to", "To", "name", ClipFieldFormat::Text, ClipFieldSection::Transition},
+        {"transition.duration_s", "Duration", "s", ClipFieldFormat::Seconds, ClipFieldSection::Transition},
+        {"transition.at_s", "Starts at", "s", ClipFieldFormat::Seconds, ClipFieldSection::Transition},
+        {"transition.baseline_step_mm", "Step Around It", "mm", ClipFieldFormat::Millimetres, ClipFieldSection::Transition},
+        {"transition.max_step_mm", "Largest Step", "mm", ClipFieldFormat::Millimetres, ClipFieldSection::Transition},
+        {"transition.pop_ratio", "Pop", "ratio", ClipFieldFormat::Count, ClipFieldSection::Transition},
+        {"transition.worst_joint", "Pop Joint", "name", ClipFieldFormat::Text, ClipFieldSection::Transition},
+        {"transition.worst_time_s", "Pop at", "s", ClipFieldFormat::Seconds, ClipFieldSection::Transition},
+        {"transition.causes", "Causes", "text", ClipFieldFormat::Text, ClipFieldSection::Transition},
 
         // D6: bytes_before and bytes_after are runtime_bytes of the two clips, under one label
         {"bytes_before", "Memory", "bytes", ClipFieldFormat::Bytes, ClipFieldSection::Reduction},
