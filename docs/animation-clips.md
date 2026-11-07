@@ -546,7 +546,8 @@ entry in it, plays exactly as before.
 **Loop Match** is how far the pose at the end is from the pose at the start, in millimetres, with the
 root's travel and turn taken out (so a walk that moves forward can still match). A clip with no
 setting whose name says it cycles (loop, idle, walk, run or cycle) and whose Loop Match is under
-10 mm shows **Suggestion: looks like a loop** with a **Use** button. Nothing changes until you click
+10 mm shows **Suggestion: looks like a loop** with a **Use** button. Mixamo names every clip
+`mixamo.com`, so in a file like `hero@Running.fbx` the part after `@` names its longest clip. Nothing changes until you click
 it, and Use only sets Wrap Mode to Loop in the edits: Apply still writes it.
 
 **Memory** and **Keys** are the numbers `get_animation` and `get_asset_info` report for the clip.

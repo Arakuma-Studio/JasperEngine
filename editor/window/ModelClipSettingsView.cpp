@@ -284,13 +284,10 @@ void ModelClipSettingsView::draw(const fs::path& newFile, const std::string& new
 void ModelClipSettingsView::drawTable(){
     const bool bakeColumn = vatbakeentry::available();
     const int columns = bakeColumn ? 8 : 7;
-    // the Inspector's width, no horizontal scroll: a row is a whole item there (find_ui_item, clicks)
-    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp |
-                                  ImGuiTableFlags_ScrollY;
-    const float rowHeight = ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().CellPadding.y * 2.0f;
-    const float height = std::min((float)(rows.size() + 1) * rowHeight + ImGui::GetStyle().ScrollbarSize, 12.0f * rowHeight);
-    if (!ImGui::BeginTable("model_clip_settings_table", columns, flags, ImVec2(0.0f, height))) return;
-    ImGui::TableSetupScrollFreeze(0, 1);
+    // the Inspector's width and every row, no scrolling of its own: a row is a whole item in the
+    // Inspector (find_ui_item, clicks), which scrolls a long list
+    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp;
+    if (!ImGui::BeginTable("model_clip_settings_table", columns, flags)) return;
     ImGui::TableSetupColumn("Clip", ImGuiTableColumnFlags_WidthStretch, 2.0f);
     ImGui::TableSetupColumn("Length");
     ImGui::TableSetupColumn("Wrap Mode");
