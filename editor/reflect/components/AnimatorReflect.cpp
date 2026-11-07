@@ -27,6 +27,7 @@ namespace {
         return type == AnimatorIKType::TwoBone || type == AnimatorIKType::Fabrik || type == AnimatorIKType::LookAt;
     }
     bool isFoot(const void* c) { return isFootIK(c) || isFootLock(c); }
+    bool isLeg(const void* c) { return isTwoBone(c) || isFoot(c); }
 
     constexpr FieldDesc kIKConstraintFields[] = {
         JE_FIELD(AnimatorIKConstraint, name, .updateFlags = kReload, .tooltip = "Scripts set its target and weight by this name."),
@@ -43,10 +44,17 @@ namespace {
         JE_FIELD(AnimatorIKConstraint, pole, .ops = &ops::Entity, .visibleIf = &isTwoBone),
         JE_FIELD(AnimatorIKConstraint, polePosition, .visibleIf = &isTwoBone),
         JE_FIELD(AnimatorIKConstraint, usePole, .tooltip = "Bend toward the pole position (off: keep the current bend).", .visibleIf = &isTwoBone),
+        JE_FIELD(AnimatorIKConstraint, soften, .flags = Clamped | OmitIfDefault, .min = 0.0f, .max = 1.0f,
+                 .tooltip = "The part of the reach over which the bone eases toward full extension, so the joint keeps moving (0: a hard limit; try 0.03).", .visibleIf = &isLeg),
+        JE_FIELD(AnimatorIKConstraint, hingeAxis, .flags = OmitIfDefault,
+                 .tooltip = "The middle bone's local axis it only bends about; a positive turn straightens it. Zero: auto, toward the pole or the current bend.", .visibleIf = &isLeg),
+        JE_FIELD(AnimatorIKConstraint, twist, .flags = Clamped | OmitIfDefault, .unit = Unit::Degrees, .min = -180.0f, .max = 180.0f,
+                 .tooltip = "Turns the chain about the line from its first bone to the target.", .visibleIf = &isLeg),
         JE_FIELD(AnimatorIKConstraint, iterations, .flags = Clamped, .min = 1.0f, .max = 64.0f, .visibleIf = &isFabrik),
         JE_FIELD(AnimatorIKConstraint, tolerance, .flags = Clamped, .unit = Unit::Meters, .min = 0.0f, .max = 1.0f, .visibleIf = &isFabrik),
         JE_FIELD(AnimatorIKConstraint, forwardAxis, .tooltip = "The last bone's local axis that turns to the target.", .visibleIf = &isLookAt),
         JE_FIELD(AnimatorIKConstraint, clampAngle, .flags = Clamped, .unit = Unit::Degrees, .min = 0.0f, .max = 180.0f, .visibleIf = &isLookAt),
+        JE_FIELD(AnimatorIKConstraint, aimOffset, .flags = OmitIfDefault, .tooltip = "The eyes, from the last bone in its local space: their forward ray ends on the target.", .visibleIf = &isLookAt),
         JE_FIELD(AnimatorIKConstraint, pelvis, .updateFlags = kReload, .tooltip = "The bone that drops (empty: the hips).", .visibleIf = &isFootIK),
         JE_FIELD(AnimatorIKConstraint, footHeight, .unit = Unit::Meters, .tooltip = "The ankle above the sole.", .visibleIf = &isFootIK),
         JE_FIELD(AnimatorIKConstraint, rayStart, .unit = Unit::Meters, .visibleIf = &isFootIK),
@@ -126,10 +134,14 @@ namespace {
             if (c.pole != NULL_ENTITY) set("pole", Factory::formatEntity(c.pole, ctx.entityVarNames));
             if (c.polePosition != d.polePosition) set("polePosition", Factory::formatVector3(c.polePosition));
             if (c.usePole) set("usePole", "true");
+            if (c.soften != d.soften) set("soften", Factory::formatFloat(c.soften));
+            if (c.hingeAxis != d.hingeAxis) set("hingeAxis", Factory::formatVector3(c.hingeAxis));
+            if (c.twist != d.twist) set("twist", Factory::formatFloat(c.twist));
             if (c.iterations != d.iterations) set("iterations", std::to_string(c.iterations));
             if (c.tolerance != d.tolerance) set("tolerance", Factory::formatFloat(c.tolerance));
             if (c.forwardAxis != d.forwardAxis) set("forwardAxis", Factory::formatVector3(c.forwardAxis));
             if (c.clampAngle != d.clampAngle) set("clampAngle", Factory::formatFloat(c.clampAngle));
+            if (c.aimOffset != d.aimOffset) set("aimOffset", Factory::formatVector3(c.aimOffset));
             if (!c.pelvis.empty()) set("pelvis", literal(c.pelvis));
             if (c.footHeight != d.footHeight) set("footHeight", Factory::formatFloat(c.footHeight));
             if (c.rayStart != d.rayStart) set("rayStart", Factory::formatFloat(c.rayStart));

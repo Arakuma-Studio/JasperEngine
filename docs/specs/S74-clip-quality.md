@@ -290,4 +290,30 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 
 ## Deviations
 
-None yet.
+- **R33, method.** The parents do not use ozz's sphere construction: on an upright chain its shortest arc
+  has a tilted axis, which rolls the spine and breaks the shares of R33's "keep the engine's weights". Each
+  parent takes its share of the arc the head needs now; only the last weighted bone uses the construction,
+  and that is what makes the aim exact.
+- **R34, foot rotation.** The sole cannot stay on the plane if the foot inherits the shin's turn from a
+  bent knee, which `rotateBoneInRigSpace` on the solved pose did: 38 degrees off the slope in the red run at 30
+  degrees. The foot now takes its animated rig rotation turned to the ground, through the two-bone's
+  `endRotation`. An R35 change; the release notes state it.
+- **R34, Foot Lock.** R34 names Foot IK only. A lock on the same leg runs after it and turned the foot with the
+  shin again: 1.65 degrees off the slope in `SoleStaysOnTheSlopeUnderFootLock`, and 3.97 degrees on flat ground in
+  `FootLockKeepsTheAnimatedFootRotation`, both red with Foot IK already fixed. The centre of the sole stayed within
+  1 mm there, so R34's number held and the orientation did not. It is the same defect, so it gets the same
+  fix, and it extends R35's no opt-in to Foot Lock's foot rotation, on flat ground too; the release notes state it.
+- **R32, hinge under non-uniform scale.** The closed form is exact on the first pass, and uniform scale ends
+  there. Repeating it under non-uniform scale oscillated (1.08 m off in the first green run), so the later passes
+  use the auto step from the side it chose, and only the side is kept. The auto step itself can stop short
+  under strong non-uniform scale; a planar model of it, not a run, puts that at up to 1.9 m at scale 2 to 3 on
+  a parent. That predates S74 and is not changed here; `reached` reports the miss.
+- **R34, range.** The centre of the sole stays on the plane past the clamp too (`h cos(slope - clamp) / cos(slope)`),
+  not only up to it. The height stops growing past the steeper of 60 degrees and the clamp, so a wall hit
+  cannot throw a leg.
+- **R32, scope.** `soften`, `hingeAxis` and `twist` also apply to Foot IK and Foot Lock legs, since both are
+  two-bone solves and the near-straight knee is theirs too. All default to off.
+- **R57 and the brief's MCP path.** A controller holds no constraints, so `edit_animator_controller` has no
+  field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
+  fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so
+  the fields are `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`.

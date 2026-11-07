@@ -2106,6 +2106,8 @@ controller does not have warn once and do nothing.
 | `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
 | `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |
 | `setLookAt(position [, weight])` | the first look_at constraint |
+| `isIKReached(constraint)` | the last solve left the end within 1 mm of its target (look_at: the aim within 0.1 degree; foot_ik: on ground it found), measured on the final pose: false for a partial weight, a soft limit, a clamp, a target out of reach, weight 0, a disabled or culled Animator, an unknown name |
+| `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
