@@ -9,6 +9,7 @@
 #include "Exporter.h"
 #include "titleart/TitleArtExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
+#include "titleart/runtime/TitleArtRuntimeFonts.h"
 #include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
@@ -2761,12 +2762,14 @@ bool editor::Exporter::writeTitleArtRuntime() {
     // S81 R11, R32, R54-R57: the prebaked initial states of the shipped Realtime titles, rendered
     // in the editor into the build's assets (the fonts' subsets and credits come with them)
     TitleArtPrebakeResult prebaked;
+    TitleArtFontShipResult fonts;
     std::promise<void> done;
     auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &done, assetsDst]() {
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &done, assetsDst]() {
         const TitleArtExportPlan plan = planTitleArtExport(project);
         prebaked = writeTitleArtPrebakes(project, plan, assetsDst);
+        if (prebaked.ok) fonts = shipTitleArtFonts(project, plan, assetsDst);
         done.set_value();
     });
     doneFuture.get();
@@ -2774,6 +2777,25 @@ bool editor::Exporter::writeTitleArtRuntime() {
     for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
     if (!prebaked.ok) {
         setError(prebaked.error);
+        return false;
+    }
+    for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());
+    for (const std::string& line : fonts.warnings) Out::warning("%s", line.c_str());
+    if (!fonts.ok) {
+        setError(fonts.error);
+        return false;
+    }
+    // R54: the shipped fonts' credits (copyLicenses carries the file to the build)
+    const fs::path credits = config.targetDir / "licenses" / TITLE_FONT_CREDITS_FILE;
+    std::error_code ec;
+    if (fonts.credits.empty()) {
+        fs::remove(credits, ec);
+        return true;
+    }
+    fs::create_directories(credits.parent_path(), ec);
+    std::string error;
+    if (!assetio::writeFile(credits, titleFontCreditsText(fonts.credits, project->getName()), assetio::Durability::Cache, &error)) {
+        setError("The font credits: " + error);
         return false;
     }
     return true;
@@ -6334,7 +6356,8 @@ bool editor::Exporter::writeEffectLicense() {
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt"}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt",
+                                 "licenses/THIRD-PARTY-FONTS.txt"}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

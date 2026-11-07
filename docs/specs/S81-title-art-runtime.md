@@ -1408,3 +1408,20 @@ rest of S82 lands in 6B.
     and `get_title` rows and the warnings, and renders through the Realtime path, so it shows the
     same pixels at Realtime's cost. The compositor is renderer work (new passes in S80's graph) left
     to a follow-up.
+24. **Implementation: the Digits preset has 24 code points** (the explicit list; the spec said 25),
+    and the test asserts 24.
+25. **Implementation: the Reserved Font Name rename** (R57) also covers name IDs 3, 18, 21 and 25;
+    PostScript names (IDs 6, 25) become `TA-<hex>` (no spaces allowed); names inside CFF stay.
+26. **Implementation: the Characters check's Lua literal scan** has its own lexer (ModuleUsage's is
+    local to its file and does not decode escapes); the check warns only for characters given one by
+    one (Custom, Custom File, texts exposed text reaches); presets' gaps are counted
+    (`preset_gaps`), not warned. `check-notices.py` gained `NESTED_LIBRARIES` for the
+    `harfbuzz-subset` entry, and `editor/publish/Notices.cpp` reads a list `when` (ThorVG ships with
+    htmlui or titleart).
+27. **Implementation: where subsets go.** The export writes a font's subset next to it as
+    `<stem>.subset-<font hash 8><characters hash 8><ext>` and points the build's copies of the
+    runtime documents at it; the original leaves the build only when the asset index shows nothing
+    but Title Art documents referencing it (a Text component or a page keeps it). A font collection
+    (.ttc/.otc) ships whole (W-TITLEART-FONT-COLLECTION): its subset would be one face and the
+    documents' face indices would change. An Exposed parameter of type `font` overridden on an
+    instance is not followed: only the fonts the document names are subset.
