@@ -25,6 +25,9 @@ namespace{
     constexpr int kMaxDepth = 16;
     constexpr double kMaxLaps = 1000.0;
     constexpr float kPi = 3.14159265358979323846f;
+    // Foot IK's contact for the debug readouts: the animated ankle within this of its planted
+    // height (footHeight above the rig's floor), the height its lift is measured from
+    constexpr float kFootContactLift = 0.02f;
 
     float wrapAngle(float a){
         while (a > kPi) a -= 2.0f * kPi;
@@ -319,6 +322,8 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
     rig.build(scene, root, paths, channelPaths, rest, propertyPaths);
     humanoid.build(rig, modelPath);
     hierarchyRevision = scene->hierarchyRevision();
+    rootMotionTotal = Vector3(0, 0, 0);
+    rootMotionTotalYaw = 0.0f;
 
     const size_t boneCount = rig.bones.size();
     const size_t channelCount = rig.channels.size();
@@ -1679,6 +1684,7 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
     output.hasRootMotion = false;
     output.rootDeltaPosition = Vector3(0, 0, 0);
     output.rootDeltaYaw = 0.0f;
+    output.deltaTime = std::fabs(context.dt);
     output.sampled = false;
     if (!controller || !bound) return;
     evaluations++;
@@ -1772,6 +1778,10 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
         output.hasRootMotion = any;
         output.rootDeltaPosition = delta;
         output.rootDeltaYaw = yaw;
+        if (any){
+            rootMotionTotal = rootMotionTotal + rotateYaw(delta, rootMotionTotalYaw);
+            rootMotionTotalYaw += yaw;
+        }
     }
 }
 
@@ -1782,6 +1792,7 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
     if (component.ik.empty() || ik.size() != component.ik.size()) return;
     IKContext ctx{&finalPose, rig.parents.data(), space, &context.rootWorld};
     const float dt = std::fabs(context.dt * component.speed);
+    const float frameTime = std::fabs(context.dt);     // the debug velocities are per real second
     const Quaternion rootRotationInverse = context.rootWorldRotation.inverse();
     auto toRig = [&](const Vector3& world){ return context.rootWorldInverse * world; };
     auto toWorld = [&](const Vector3& rigPosition){ return context.rootWorld * rigPosition; };
@@ -1847,8 +1858,11 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     AnimatorIKRun& foot = ik[j];
                     if (f.type != AnimatorIKType::FootIK || foot.boneCount < 3 || foot.bones[2] < 0) continue;
                     const Vector3 footPosition = spacePosition[(size_t)foot.bones[2]];
-                    foot.footWorld = toWorld(footPosition);
+                    const Vector3 footWorld = toWorld(footPosition);
+                    foot.footVelocity = foot.hasFoot && frameTime > 0.0f ? (footWorld - foot.footWorld) * (1.0f / frameTime) : Vector3(0, 0, 0);
+                    foot.footWorld = footWorld;
                     foot.hasFoot = true;
+                    foot.contact = foot.hit && footPosition.y - f.footHeight <= kFootContactLift;
                     float desired = 0.0f;
                     if (foot.hit){
                         const float lift = std::max(0.0f, footPosition.y - f.footHeight);
@@ -1895,6 +1909,8 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     const float speed = run.hadPrevious && dt > 0.0f ? (world - run.previousWorld).length() / dt : 1e9f;
                     contact = speed < c.speedThreshold;
                 }
+                run.footVelocity = run.hadPrevious && frameTime > 0.0f ? (world - run.previousWorld) * (1.0f / frameTime) : Vector3(0, 0, 0);
+                run.contact = contact;
                 run.previousWorld = world;
                 run.hadPrevious = true;
                 if (contact){
@@ -1925,6 +1941,8 @@ void anim::AnimatorInstance::clearIKResults(){
         run.reached = false;
         run.reachError = 0.0f;
         run.solvedWeight = 0.0f;
+        run.contact = false;
+        run.footVelocity = Vector3(0, 0, 0);
     }
 }
 

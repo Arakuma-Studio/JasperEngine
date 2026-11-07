@@ -51,6 +51,10 @@ namespace jasperengine{
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
 }
+
+namespace jasperengine::anim {
+    struct AnimatorDebugSnapshot;
+}
 #include <tuple>
 
 namespace jasperengine::editor{
@@ -366,6 +370,7 @@ namespace jasperengine::editor{
         bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimatorLive(const anim::AnimatorDebugSnapshot& snapshot);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);

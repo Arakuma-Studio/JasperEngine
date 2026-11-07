@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "animation/AnimatorDebug.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -68,6 +69,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
     poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
+    animatorOverlay = std::make_unique<anim::AnimatorOverlayPass>();
 }
 
 editor::SceneRender3D::~SceneRender3D(){
@@ -127,6 +129,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : animatorLines) {
         delete pair.second;
     }
 
@@ -1301,6 +1307,7 @@ void editor::SceneRender3D::dropGoneGizmos(){
     dropGoneGizmos(trackLines, render);
     dropGoneGizmos(reflectionProbeLines, render);
     dropGoneGizmos(capsuleShadowLines, render);
+    dropGoneGizmos(animatorLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
@@ -1343,6 +1350,9 @@ void editor::SceneRender3D::hideAllGizmos(){
         pair.second->setVisible(false);
     }
     for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : animatorLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : waterVolumeLines) {
@@ -1715,6 +1725,26 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
                 createOrUpdateBoneLines(entity, model, isVisible, isSelected);
             }
+        }
+    }
+
+    // Gizmos > Animation (S74 R49): with every toggle off the pass takes no snapshot and draws nothing
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    std::set<Entity> currentAnimatorLines;
+    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
+        ensureOverlayLines(animatorLines, entity);
+        currentAnimatorLines.insert(entity);
+        LineRenderer* overlayLines = animatorLines[entity];
+        overlayLines->clearLines();
+        for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
+        overlayLines->setVisible(true);
+    });
+    for (auto it = animatorLines.begin(); it != animatorLines.end();) {
+        if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
+            delete it->second;
+            it = animatorLines.erase(it);
+        } else {
+            ++it;
         }
     }
 

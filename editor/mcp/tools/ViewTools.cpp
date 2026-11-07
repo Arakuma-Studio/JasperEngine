@@ -970,6 +970,9 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
         {"show_stats", &SceneDisplaySettings::showStats},
+        {"show_ik", &SceneDisplaySettings::showIK},
+        {"show_root_motion", &SceneDisplaySettings::showRootMotion},
+        {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
     };
     return flags;
 }

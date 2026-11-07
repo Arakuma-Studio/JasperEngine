@@ -13,9 +13,11 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorDebug.h"
 #include "animation/AvatarMaskWeights.h"
 #include "InspectorAnimLayers.h"
 #include "animation/AnimatorEditorHooks.h"
+#include "animation/PreviewOwner.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/CompiledController.h"
 #include "animation/ModelSubClips.h"
@@ -165,6 +167,65 @@ namespace{
 
 // ---------------------------------------------------------------- the component
 
+// IK (live) and the Root Motion line (S74 R49): what makeSnapshot says, formatted by its field table.
+// Each value is a selectable named "##ik_<column>_<i>" / "##rm_<field>", so a test reads what is drawn.
+void editor::InspectorWindow::drawAnimatorLive(const AnimatorDebugSnapshot& snapshot){
+    auto cell = [](const std::string& text, const std::string& id, const ImVec4* color = nullptr){
+        if (color) ImGui::PushStyleColor(ImGuiCol_Text, *color);
+        ImGui::Selectable((text + "##" + id).c_str(), false);
+        if (color) ImGui::PopStyleColor();
+    };
+    const ImVec4 warning(1.0f, 0.55f, 0.25f, 1.0f);
+    if (!snapshot.ik.empty()){
+        ImGui::SeparatorText("IK (live)");
+        if (ImGui::BeginTable("##animator_ik_live", 5, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)){
+            ImGui::TableSetupColumn("Constraint");
+            ImGui::TableSetupColumn(findAnimatorDebugField("weight")->label);
+            ImGui::TableSetupColumn(findAnimatorDebugField("reach_error_mm")->label);
+            ImGui::TableSetupColumn("State");
+            ImGui::TableSetupColumn("");
+            ImGui::TableHeadersRow();
+            for (size_t i = 0; i < snapshot.ik.size(); i++){
+                const AnimatorDebugIK& ik = snapshot.ik[i];
+                const std::string n = std::to_string(i);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                cell(ik.name + "  " + animatorIKTypeLabel(ik.type), "ik_name_" + n);
+                ImGui::TableSetColumnIndex(1);
+                cell(formatAnimatorDebugField("weight", ik.weight), "ik_weight_" + n);
+                ImGui::TableSetColumnIndex(2);
+                const bool missed = ik.weight > 0.0f && !ik.reached;
+                cell(formatAnimatorDebugField("reach_error_mm", ik.reachErrorMm), "ik_reach_" + n, missed ? &warning : nullptr);
+                ImGui::TableSetColumnIndex(3);
+                cell(animatorIKStateLabel(ik), "ik_state_" + n);
+                ImGui::TableSetColumnIndex(4);
+                if (ik.type == AnimatorIKType::FootIK){
+                    cell(std::string(findAnimatorDebugField("pelvis_offset_mm")->label) + " " + formatAnimatorDebugField("pelvis_offset_mm", ik.pelvisOffsetMm), "ik_detail_" + n);
+                }else if (ik.type == AnimatorIKType::FootLock && ik.locked){
+                    cell(std::string(findAnimatorDebugField("lock_drift_mm")->label) + " " + formatAnimatorDebugField("lock_drift_mm", ik.lockDriftMm), "ik_detail_" + n);
+                }
+            }
+            ImGui::EndTable();
+        }
+    }
+    if (snapshot.rootMotion.active){
+        ImGui::SeparatorText("Root Motion (live)");
+        const AnimatorDebugRootMotion& rm = snapshot.rootMotion;
+        auto field = [&](const char* key, double value, const char* id, const ImVec4* color = nullptr){
+            cell(std::string(findAnimatorDebugField(key)->label) + " " + formatAnimatorDebugField(key, value), id, color);
+        };
+        field("speed_mps", rm.speedMps, "rm_speed");
+        field("yaw_deg_s", rm.yawDegS, "rm_yaw");
+        if (std::string(snapshot.contactSource) != "none"){
+            field("foot_speed_mps", snapshot.footSpeedMps, "rm_foot_speed");
+            field("slide_mm_s", snapshot.slideMmS, "rm_slide", snapshot.sliding ? &warning : nullptr);
+            if (snapshot.sliding) ImGui::SetItemTooltip("A foot in contact moves faster than %.0f mm/s: match the move speed to Foot Speed, or add a Foot Lock", kAnimatorSlideWarningMmS);
+        }else{
+            ImGui::TextDisabled("Foot contact: none (no Foot IK or Foot Lock constraint)");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     drawDefaultComponent(cpType, sceneProject, entities);
     if (entities.size() != 1) return;
@@ -262,6 +323,12 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
             }
             if (const AnimatorMontageRun* montage = runtime.activeMontage()){
                 ImGui::Text(ICON_FA_FILM " %s  %.2f s", fs::path(montage->path).filename().string().c_str(), montage->time);
+            }
+        }
+        const bool previewed = PreviewOwner::ownerOf(sceneProject->id, entity).token != 0;
+        if ((!stopped || previewed) && runtime.controller && runtime.bound && runtime.evaluations > 0){
+            if (const Transform* root = scene->findComponent<Transform>(entity)){
+                drawAnimatorLive(makeSnapshot(runtime, *animator, *root));
             }
         }
     }else if (!animator->controller.path.empty() && stopped){

@@ -34,6 +34,10 @@ namespace jasperengine::editor{
         float rotationSnapDegrees = 15.0f;
         // every lattice's cage, not only the selected ones' (faint)
         bool showAllLattices     = false;
+        // Gizmos > Animation (S74 R49): every Animator's IK, root motion paths and foot trails
+        bool showIK              = false;
+        bool showRootMotion      = false;
+        bool showFootTrails      = false;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
         // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
