@@ -4424,6 +4424,15 @@ void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, 
     walkSpeedOffset = decodeFinite(node["walkSpeed"], 0.0f);
 }
 
+// scene keys of the default shaders' property values (Scene > Default Shaders)
+static const std::pair<ShaderType, const char*> defaultShaderUniformKeys[] = {
+    {ShaderType::MESH, "defaultMeshShaderUniforms"},
+    {ShaderType::UI, "defaultUIShaderUniforms"},
+    {ShaderType::SKYBOX, "defaultSkyShaderUniforms"},
+    {ShaderType::POINTS, "defaultPointsShaderUniforms"},
+    {ShaderType::LINES, "defaultLinesShaderUniforms"},
+};
+
 YAML::Node editor::Stream::encodeScene(Scene* scene) {
     YAML::Node sceneNode;
 
@@ -4506,6 +4515,12 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         encodeShaderRef(sceneNode, "defaultPointsShader", scene->getDefaultShaderRef(ShaderType::POINTS));
     if (!scene->getDefaultLinesShader().empty())
         encodeShaderRef(sceneNode, "defaultLinesShader", scene->getDefaultShaderRef(ShaderType::LINES));
+    // the default shaders' property values, written only when set (older scenes re-save unchanged)
+    for (const auto& [type, key] : defaultShaderUniformKeys) {
+        const ShaderUniformValues& values = scene->getDefaultShaderUniforms(type);
+        if (!values.empty())
+            sceneNode[key] = encodeShaderUniforms(values);
+    }
 
     for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
         YAML::Node passNode;
@@ -4683,6 +4698,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setDefaultShaderRef(ShaderType::SKYBOX, decodeShaderRef(node, "defaultSkyShader"));
     scene->setDefaultShaderRef(ShaderType::POINTS, decodeShaderRef(node, "defaultPointsShader"));
     scene->setDefaultShaderRef(ShaderType::LINES, decodeShaderRef(node, "defaultLinesShader"));
+    for (const auto& [type, key] : defaultShaderUniformKeys) {
+        scene->setDefaultShaderUniforms(type, decodeShaderUniforms(node[key]));
+    }
 
     // absent key clears the chain so decoding into a reused scene (play restore) is exact
     std::vector<PostProcessPass> postProcess;

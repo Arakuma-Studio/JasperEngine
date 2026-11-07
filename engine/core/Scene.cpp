@@ -38,6 +38,7 @@
 #include "util/Color.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 using namespace jasperengine;
@@ -814,6 +815,88 @@ void Scene::setDefaultShaderRef(ShaderType type, const ShaderRef& ref){
         case ShaderType::LINES:  settings.defaultLinesShader = ref;  break;
         default: break;
     }
+}
+
+// null for the types without a scene default
+static ShaderUniformValues* defaultShaderUniformsField(SceneSettings& settings, ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   return &settings.defaultMeshShaderUniforms;
+        case ShaderType::UI:     return &settings.defaultUIShaderUniforms;
+        case ShaderType::SKYBOX: return &settings.defaultSkyShaderUniforms;
+        case ShaderType::POINTS: return &settings.defaultPointsShaderUniforms;
+        case ShaderType::LINES:  return &settings.defaultLinesShaderUniforms;
+        default: return nullptr;
+    }
+}
+
+// `logged`: the caller's own flag, so a script calling it every frame says so once per call site
+static ShaderUniformValues* writableDefaultShaderUniforms(SceneSettings& settings, ShaderType type, std::atomic<bool>& logged){
+    ShaderUniformValues* field = defaultShaderUniformsField(settings, type);
+    if (!field && !logged.exchange(true))
+        Log::error("Shader type %i has no scene default shader: only mesh, UI, sky, points and lines do", (int)type);
+    return field;
+}
+
+void Scene::setDefaultShaderUniforms(ShaderType type, const ShaderUniformValues& values){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field || *field == values)
+        return;
+    *field = values;
+    getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+}
+
+const ShaderUniformValues& Scene::getDefaultShaderUniforms(ShaderType type) const{
+    static const ShaderUniformValues empty;
+    const ShaderUniformValues* field = defaultShaderUniformsField(const_cast<SceneSettings&>(settings), type);
+    return field ? *field : empty;
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector4& value){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field)
+        return;
+    if (ShaderUniforms::has(*field, name) && ShaderUniforms::get(*field, name) == value)
+        return;
+    if (ShaderUniforms::set(*field, name, value))
+        getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector3& value){
+    setDefaultShaderUniform(type, name, Vector4(value.x, value.y, value.z, 0.0f));
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector2& value){
+    setDefaultShaderUniform(type, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, float value){
+    setDefaultShaderUniform(type, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+}
+
+Vector4 Scene::getDefaultShaderUniform(ShaderType type, const std::string& name) const{
+    return ShaderUniforms::get(getDefaultShaderUniforms(type), name);
+}
+
+bool Scene::hasDefaultShaderUniform(ShaderType type, const std::string& name) const{
+    return ShaderUniforms::has(getDefaultShaderUniforms(type), name);
+}
+
+bool Scene::removeDefaultShaderUniform(ShaderType type, const std::string& name){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field || !ShaderUniforms::remove(*field, name))
+        return false;
+    getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+    return true;
+}
+
+const ShaderUniformValues* Scene::getInheritedShaderUniforms(ShaderType type, const std::string& ownShader) const{
+    if (!ownShader.empty() || getDefaultCustomShader(type).empty())
+        return nullptr;
+    const ShaderUniformValues& values = getDefaultShaderUniforms(type);
+    return values.empty() ? nullptr : &values;
 }
 
 const std::vector<PostProcessPass>& Scene::getPostProcessPasses() const{

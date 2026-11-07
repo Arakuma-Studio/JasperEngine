@@ -3099,6 +3099,9 @@ namespace jasperengine{
 		static uint64_t getTextureVariantChecks();
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
+		// the scene's values for a default shader changed: the components drawing with it
+		// rewrite their custom blocks at their next draw (Scene::setDefaultShaderUniform)
+		void needUpdateDefaultShaderUniforms(ShaderType type);
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
 		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the

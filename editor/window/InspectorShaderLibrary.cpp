@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -662,12 +663,31 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, bindingsProperty, value, onValueChanged));
     };
 
+    // what an unset parameter renders with: a mesh's value under its material's, the scene's
+    // default-shader value, the manifest default (ShaderUniforms::resolve, as the render system)
+    Catalog::UniformChainRefs chain;
+    bool chained = false;
+    if (paramsProperty == "shaderUniforms") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType);
+        chained = true;
+    } else if (unsigned int submesh = 0; std::sscanf(paramsProperty.c_str(), "submeshes[%u].material.shaderParams", &submesh) == 1 &&
+                                         paramsProperty == "submeshes[" + std::to_string(submesh) + "].material.shaderParams") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType, static_cast<int>(submesh));
+        chained = true;
+    }
+    chain.chain.values = &params;
+    chain.chain.manifest = manifest.get();
+
     // ---- parameters
     for (const ShaderManifestProperty& property : manifest->properties) {
         if (!featureOn(property.feature))
             continue;
         const bool hasValue = ShaderUniforms::has(params, property.member);
-        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member) : property.defaultValue;
+        UniformSource source = UniformSource::ShaderDefault;
+        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member)
+                            : chained ? ShaderUniforms::resolve(chain.chain, property.member, &source) : property.defaultValue;
+        // an own value over the scene's default shows "Revert to Scene Default"
+        const bool overScene = chain.chain.sceneDefault && ShaderUniforms::has(*chain.chain.sceneDefault, property.member);
         const bool color = property.kind == ShaderPropertyKind::COLOR || property.kind == ShaderPropertyKind::HDRCOLOR;
         const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
                              : property.kind == ShaderPropertyKind::VECTOR3 ? 3
@@ -685,8 +705,11 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             continue;
         }
         prefabRowProperty = paramsProperty;
-        if (propertyHeader(rowLabel(property.label, property.member), -1, hasValue)) {
-            // back to the manifest default
+        const bool revert = propertyHeader(rowLabel(property.label, property.member), -1, hasValue);
+        if (hasValue && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", overScene ? "Revert to Scene Default" : "Reset to the shader's default");
+        if (revert) {
+            // back to what it inherits (the scene's default-shader value, the manifest default)
             ShaderUniformValues changed = params;
             ShaderUniforms::remove(changed, property.member);
             setParams(changed, false);
@@ -704,8 +727,12 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             setParams(newParams, continuous);
         }
         finishDrag();
-        if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
-            ImGui::SetTooltip("%s", property.member.c_str());
+        if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) {
+            if (!hasValue && source == UniformSource::SceneDefault)
+                ImGui::SetTooltip("%s\nFrom the scene's default shader values (Scene > Default Shaders)", property.member.c_str());
+            else
+                ImGui::SetTooltip("%s", property.member.c_str());
+        }
         if (bindingsRef)
             drawGlobalLinkButton(property.member, components, bindings, setBindings);
         ImGui::PopID();

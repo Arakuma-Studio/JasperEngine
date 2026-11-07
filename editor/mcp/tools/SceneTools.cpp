@@ -778,7 +778,7 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
-                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler };
+                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, ShaderUniforms };
 
 struct SceneSetting {
     std::string name;
@@ -789,6 +789,11 @@ struct SceneSetting {
     bool listed = true;
     const PostProcessingSettings::Field* field = nullptr;
 };
+
+// the scene default shaders' property values (set_shader_uniform shader_type edits one)
+constexpr const char* kDefaultUniformsHelp =
+    "property values of that default shader, inherited by objects without a shader of their own: {member: number | [x,y,z,w] | "
+    "\"#RRGGBB[AA]\" | null}; an object merges (null removes a member), null clears all";
 
 const std::vector<SceneSetting>& sceneSettings() {
     static const std::vector<SceneSetting> settings = {
@@ -852,6 +857,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"default_sky_shader", SettingKind::String, "library:<name> or forked shader base path for the sky (\"\" built-in)"},
         {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
         {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
+        {"default_mesh_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_ui_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_sky_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_points_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_lines_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
         {"post_process", SettingKind::PostProcess,
          "post-process passes in order: [{shader: \"library:<name>\" (list_shaders type=\"postprocess\") or a fork base path, "
          "enabled: bool, uniforms: {name: [x,y,z,w]}, textures: {uniform: image path}, scale: 0.1..1 (output resolution)}]"},
@@ -1041,6 +1051,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::PostProcessing: return "post_processing";
         case SettingKind::PostProcessingField: return "post_processing_field";
         case SettingKind::CanvasScaler: return "canvas_scaler";
+        case SettingKind::ShaderUniforms: return "shader_uniforms";
     }
     return "unknown";
 }
@@ -1138,6 +1149,9 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
                                               : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
+        case SettingKind::ShaderUniforms:
+            return McpValues::shaderUniformsToJson(defaults ? Catalog::getScenePropertyDefault<ShaderUniformValues>(setting.name)
+                                                            : Catalog::getSceneProperty<ShaderUniformValues>(scene, setting.name));
         case SettingKind::CanvasScaler: {
             const SceneCanvasScaler value = defaults ? Catalog::getScenePropertyDefault<SceneCanvasScaler>(setting.name)
                                                      : Catalog::getSceneProperty<SceneCanvasScaler>(scene, setting.name);
@@ -1264,6 +1278,37 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
         case SettingKind::ShadowDebugView:
             break; // editor state, applied by setSceneSettingsTool without an undo step
+        case SettingKind::ShaderUniforms: {
+            if (value.is_null()) return new ScenePropertyCmd<ShaderUniformValues>(project, id, name, ShaderUniformValues());
+            if (!value.is_object()) return expect("an object {member: number | [x,y,z,w] | \"#RRGGBB\" | null}, or null to clear");
+            ShaderType type = ShaderType::MESH;
+            Catalog::getDefaultShaderUniformsType(name, type);
+            // a library default shader takes its manifest's parameters only (colours may be "#RRGGBB")
+            const std::string shader = scene->scene->getDefaultCustomShader(type);
+            const std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+            const ShaderManifest* declared = manifest && manifest->present ? manifest.get() : nullptr;
+            ShaderUniformValues values = scene->scene->getDefaultShaderUniforms(type);
+            for (auto it = value.begin(); it != value.end(); ++it) {
+                if (it.value().is_null()) {
+                    ShaderUniforms::remove(values, it.key());
+                    continue;
+                }
+                if (ShaderUniforms::isReserved(it.key())) return expect("an object without " + it.key() + " (written by the engine)");
+                const ShaderManifestProperty* property = declared ? declared->findProperty(it.key()) : nullptr;
+                if (declared && ShaderReference::isLibrary(shader) && !property) {
+                    error = name + ": " + shader + " has no parameter '" + it.key() + "'.";
+                    return nullptr;
+                }
+                Vector4 parsed;
+                std::string why;
+                if (!McpValues::shaderParamFromJson(property, it.key(), it.value(), parsed, why)) {
+                    error = name + "." + it.key() + ": " + why;
+                    return nullptr;
+                }
+                ShaderUniforms::set(values, it.key(), parsed);
+            }
+            return new ScenePropertyCmd<ShaderUniformValues>(project, id, name, values);
+        }
         case SettingKind::CanvasScaler: {
             if (!value.is_object()) return expect("an object {use_project_default, mode, reference, match_mode, match, ...}");
             SceneCanvasScaler scaler = Catalog::getSceneProperty<SceneCanvasScaler>(scene->scene, name);
