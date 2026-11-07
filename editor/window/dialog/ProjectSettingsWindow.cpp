@@ -4401,13 +4401,14 @@ void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
         m_openPrivacyPreview = false;
     }
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(620.0f), Theme::dpi(460.0f)), ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal("Privacy Manifest Preview", nullptr)) {
+    if (EditorModal::begin("Privacy Manifest Preview", nullptr)) {
+        EditorModal::message(m_privacyPreviewTitle + "\n" + m_privacyPreview);
         ImGui::TextUnformatted(m_privacyPreviewTitle.c_str());
         ImGui::InputTextMultiline("##PrivacyXml", m_privacyPreview.data(), m_privacyPreview.size() + 1,
                                   ImVec2(-1.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiInputTextFlags_ReadOnly);
         if (ImGui::Button(ICON_FA_COPY " Copy")) ImGui::SetClipboardText(m_privacyPreview.c_str());
         ImGui::SameLine();
-        if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Close", "ok")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     ImGui::PopID();
