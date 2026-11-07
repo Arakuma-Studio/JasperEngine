@@ -6,22 +6,38 @@
 
 #include "VoxelTestSupport.h"
 
+#include "Engine.h"
 #include "Scene.h"
+#include "component/RigidbodyComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "object/TerrainEdit.h"
+#include "object/physics/Rigidbody.h"
 #include "object/voxel/GroundQuery.h"
 #include "pool/TextureDataPool.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/VoxelSystem.h"
 #include "../ecs/EcsTestUtil.h"
 
+#include "Jolt/Jolt.h"
+#include "Jolt/Physics/Body/BodyInterface.h"
+#include "Jolt/Physics/Collision/CastResult.h"
+#include "Jolt/Physics/Collision/NarrowPhaseQuery.h"
+#include "Jolt/Physics/Collision/RayCast.h"
+
 #include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 using namespace jasperengine;
 using namespace voxeltest;
 
 namespace {
+
+    constexpr float DT = 1.0f / 60.0f;
 
     class VoxelTerrain : public ::testing::Test {
     protected:
@@ -30,6 +46,8 @@ namespace {
         std::shared_ptr<VoxelAsset> asset;
         Entity terrainEntity = NULL_ENTITY;
         std::vector<unsigned char> heights;
+        PhysicsSystem* physics = nullptr;
+        float updateTime = 0.0f;
 
         void SetUp() override {
             scene = std::make_unique<Scene>();
@@ -57,13 +75,51 @@ namespace {
             system.reset();
             scene.reset();
             asset.reset();
+            if (physics) {
+                Engine::setFixedDeltatime(0.0);
+                Engine::setUpdateTime(updateTime);
+            }
             // The pool keeps pixels by id, and these die with the fixture
             TextureDataPool::remove("voxel-terrain-height");
         }
 
         float surfaceHeight() const { return 128.0f / 255.0f * 40.0f; }
 
-        Entity attached(const std::string& name, VoxelTerrainCut cut = VoxelTerrainCut::Automatic) {
+        // The terrain gets its heightfield collider, as a scene with physics has it (T1 R79)
+        void enablePhysics() {
+            updateTime = Engine::getUpdateTime();
+            Engine::setUpdateTime(DT);
+            Engine::setFixedDeltatime(DT);
+            scene->getScheduler().setEnabled("PhysicsSystem", true);
+            physics = scene->getSystem<PhysicsSystem>().get();
+            physics->setGravity3D(0.0f, -9.81f, 0.0f);
+            TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
+            terrain.needUpdateTerrain = false;
+            terrain.heightMapLoaded = true;
+            RigidbodyComponent rigidbody;
+            rigidbody.type = BodyType::STATIC;
+            rigidbody.colliders.resize(1);
+            rigidbody.colliders[0].type = Collider3DType::HEIGHTFIELD;
+            rigidbody.colliders[0].source = Collider3DSource::ENTITY_HEIGHTFIELD;
+            scene->addComponent<RigidbodyComponent>(terrainEntity, rigidbody);
+        }
+
+        void steps(int count) {
+            for (int i = 0; i < count; i++) {
+                scene->fixedUpdate(DT);
+                scene->update(DT);
+            }
+        }
+
+        // Where a ray straight down at (x, z) first meets a body; NaN when nothing
+        float groundAt(float x, float z) {
+            const JPH::RRayCast ray(JPH::RVec3(x, 50.0f, z), JPH::Vec3(0.0f, -100.0f, 0.0f));
+            JPH::RayCastResult hit;
+            if (!physics->getNarrowPhaseQuery3D().CastRay(ray, hit)) return std::nanf("");
+            return 50.0f - 100.0f * hit.mFraction;
+        }
+
+        Entity attached(const std::string& name, VoxelTerrainCut cut = VoxelTerrainCut::Automatic, bool collision = false) {
             GeneratorDesc generator;
             generator.kind = "terrain";
             VolumeDesc desc;
@@ -81,7 +137,18 @@ namespace {
             component.volumeData.path = name;
             component.terrain = terrainEntity;
             component.terrainCut = cut;
-            component.collision = false;
+            component.collision = collision;
+            if (collision) {
+                // the seed's collider sits clear of the terrain's, so a ray tells the two apart
+                component.overlapDepth = 0.2f;
+                // the colliders gather around the cave mouth, world (64, 64)
+                component.focus = scene->createEntity();
+                scene->addComponent<Transform>(component.focus, {});
+                Transform& focus = scene->getComponent<Transform>(component.focus);
+                focus.position = Vector3(64.0f, surfaceHeight() + 1.0f, 64.0f);
+                focus.worldPosition = focus.position;
+                focus.modelMatrix = Matrix4::translateMatrix(focus.position);
+            }
             scene->addComponent<VoxelVolumeComponent>(entity, component);
             scene->update(1.0 / 60.0);
             system->finishPendingWork();
@@ -259,4 +326,59 @@ TEST_F(VoxelTerrain, SampleGroundFallsBackToVoxels) {
     ground = voxel::sampleGround(scene.get(), 64.0f, 64.0f, 60.0f);
     EXPECT_EQ(ground.source, voxel::GroundSource::Voxel);
     EXPECT_NEAR(ground.height, surfaceHeight() - 6.0f, 0.1f);
+}
+
+TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
+    // R44: the terrain's collision hole opens only once the voxel collider of that change is live, so
+    // a ray down the cave mouth meets one or the other every tick; and a body rolled over the lip
+    // neither falls nor stops (T3 R22's rim leaves it up to a collision cell)
+    enablePhysics();
+    const Entity owner = attached("mem://collider-order", VoxelTerrainCut::Automatic, true);
+    steps(30);
+    system->finishPendingWork();
+    const float surface = surfaceHeight();
+    ASSERT_NEAR(groundAt(64.0f, 64.0f), surface, 0.05f);
+
+    // A dish 1 m deep and about 12 m across under world (64, 64)
+    const EditOp dish = digOp(sphereShape(32.0, surface + 19.0, 32.0, 20.0));
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&dish, 1), EditOptions{}).ok);
+    int openedAt = -1;
+    for (int tick = 0; tick < 120; tick++) {
+        steps(1);
+        // the terrain, or through its hole the new dish's collider: never nothing, never the seed's
+        // old collider under an open hole
+        const float ground = groundAt(64.0f, 64.0f);
+        const bool onTerrain = std::fabs(ground - surface) < 0.05f;
+        const bool onDish = std::fabs(ground - (surface - 1.0f)) < 0.15f;
+        ASSERT_TRUE(onTerrain || onDish) << "tick " << tick << ": a ray down the cave mouth meets " << ground << " m, the surface is at " << surface;
+        if (openedAt < 0 && holeCount() > 0) openedAt = tick;
+    }
+    ASSERT_GE(openedAt, 0);
+    // Through the terrain's hole, the dish floor
+    EXPECT_NEAR(groundAt(64.0f, 64.0f), surface - 1.0f, 0.1f);
+
+    const Entity ball = scene->createEntity();
+    scene->addComponent<Transform>(ball, {});
+    Transform& start = scene->getComponent<Transform>(ball);
+    start.position = Vector3(52.0f, surface + 0.5f, 64.0f);
+    start.worldPosition = start.position;
+    start.modelMatrix = Matrix4::translateMatrix(start.position);
+    physics->createRigidbody(ball);
+    Rigidbody body(scene.get(), ball);
+    body.setType(BodyType::DYNAMIC);
+    body.createSphereCollider(0.5f);
+    steps(10);
+    const JPH::BodyID id = scene->getComponent<RigidbodyComponent>(ball).body;
+    physics->getBodyInterface3D().SetLinearVelocity(id, JPH::Vec3(6.0f, 0.0f, 0.0f));
+    float lowest = 1e9f;
+    bool crossed = false;
+    for (int tick = 0; tick < 240 && !crossed; tick++) {
+        steps(1);
+        const Vector3 at = scene->getComponent<Transform>(ball).worldPosition;
+        lowest = std::min(lowest, at.y);
+        crossed = at.x > 76.0f;
+    }
+    std::printf("[bench] ball over a cave mouth's lip: lowest centre %.3f m under the surface, hole opened %d ticks after the edit\n", surface - lowest, openedAt);
+    EXPECT_TRUE(crossed);
+    EXPECT_GT(lowest, surface - 1.0f + 0.5f - 0.1f);
 }
