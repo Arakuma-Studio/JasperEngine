@@ -143,8 +143,9 @@ class Builds(unittest.TestCase):
         # an engine event's holder, or a clear walking them: the event clears lint
         self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests,
                          ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
-        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests, ["tools/check_event_clears.py"])
-        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, [])
+        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, ["tools/check_apple_privacy.py"])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
