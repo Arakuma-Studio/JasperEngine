@@ -26,7 +26,8 @@
 // u_sceneDepth_smp (packed RGBA8 depth, nearest filtering) and u_sceneColorTexture /
 // u_sceneColor_smp (RGBA8, linear filtering). Drawn where no input exists (a draw in the
 // opaque queue, which is a manifest/material error, or a reflection probe face), the depth
-// reads as the far plane and the colour as black.
+// reads as the far plane and the colour as black, and in a pass without a colour copy
+// colorParams.zw are 0: a shader can test that and draw without the scene colour.
 
 #ifndef SCENE_GLSL
 #define SCENE_GLSL

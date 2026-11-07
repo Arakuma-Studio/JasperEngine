@@ -11,6 +11,7 @@
 // without its phases.
 
 #include "Export.h"
+#include "math/Vector4.h"
 #include "particles/ParticleProgram.h"
 
 #include <functional>
@@ -32,6 +33,11 @@ namespace jasperengine { namespace particles {
         std::function<bool(const MeshSource& source, MeshGeometry& out)> mesh;
         // a parent sub-emitter hands its particles' rotation to this effect's
         bool inheritsRotation = false;
+        // a parent sub-emitter's Follow Parent: this effect's particles keep moving with theirs
+        // (and turning with them, and scaling with their size)
+        bool followsParent = false;
+        bool followsRotation = false;
+        bool followsScale = false;
     };
 
     class JASPERENGINE_API ParticleCompiler {
@@ -39,6 +45,16 @@ namespace jasperengine { namespace particles {
         // validates and compiles; on errors `effect.valid` is false and the program is empty
         static std::shared_ptr<CompiledEffect> compile(const ParticleEffectDocument& document, const CompileEnvironment& environment = {});
         static void compile(const ParticleEffectDocument& document, const CompileEnvironment& environment, CompiledEffect& effect);
+        // the compiles since the process started (any thread)
+        static uint64_t compileCount();
+
+        // Exposed parameter `parameter` (its index in the document's list) to `value` (as
+        // ParticleModules::setExposed takes it) in the effect's document and program, without
+        // compiling (S91 R10): its curve or colour value's params are written where they sit.
+        // False, and the effect unchanged, when it cannot be done that way: a field that is not a
+        // curve or colour value, a value that changes what the compiler decides (a mode, a zero, a
+        // LUT's size), or a use of it the compiler reads otherwise. Compile it then.
+        static bool applyExposed(CompiledEffect& effect, size_t parameter, const Vector4& value);
 
         // the LUT entries a curve bakes into: 65 and doubling, until linear interpolation
         // between them stays within `tolerance` of the curve (at most 1025)

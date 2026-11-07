@@ -51,8 +51,14 @@ namespace jasperengine { namespace particles {
         // the last tick's animated velocity (Velocity over Lifetime, Noise): stretched and
         // velocity-aligned particles follow the total velocity, as Unity's (origin/main's) did
         ChAnimVelX, ChAnimVelY, ChAnimVelZ,
+        // a Follow Parent sub-emitter's child: its parent's spawn index (kNoParent once it died),
+        // and the parent's rotation (Follow Rotation) and size (Follow Scale) at the last tick
+        ChParentId,
+        ChFollowQuatX, ChFollowQuatY, ChFollowQuatZ, ChFollowQuatW,
+        ChFollowSize,
         ChCount
     };
+    inline constexpr uint32_t kNoParent = 0xffffffffu;
     static_assert(ChCount <= 64, "the channel mask is 64 bits");
 
     using ChannelMask = uint64_t;
@@ -64,7 +70,7 @@ namespace jasperengine { namespace particles {
 
     JASPERENGINE_API const char* channelName(Channel channel);
     // Channels holding uint32 values (the rest are floats)
-    constexpr bool isIntegerChannel(Channel c){ return c == ChSpawnIndex || c == ChStartColor || c == ChPlaneTick || c == ChTrailSlot; }
+    constexpr bool isIntegerChannel(Channel c){ return c == ChSpawnIndex || c == ChStartColor || c == ChPlaneTick || c == ChTrailSlot || c == ChParentId; }
 
     // ---------------------------------------------------------------- compiled values
 
@@ -506,6 +512,10 @@ namespace jasperengine { namespace particles {
         bool subEmitters = false;      // the Sub Emitters module is on (the list is in the document)
         // which channels a sub-emitter's parent writes at the child's spawn (inherit)
         bool inheritsRotation = false;
+        // a Follow Parent child (ChParentId; ChFollowQuat* with rotation, ChFollowSize with scale)
+        bool followsParent = false;
+        bool followsRotation = false;
+        bool followsScale = false;
 
         // the parameter blocks and LUTs (16-byte aligned blocks of 32-bit words)
         std::vector<uint32_t> pool;
@@ -526,12 +536,40 @@ namespace jasperengine { namespace particles {
         size_t bytesPerParticle() const;
     };
 
+    // One compiled use of an exposed parameter's field: a curve or colour value as one call of the
+    // compiler turned it into a CurveParam / GradientParam, and where the copies of that param sit
+    // in the program, so a new value is written there without compiling again (S91 R10,
+    // ParticleCompiler::applyExposed)
+    struct ExposedSlot {
+        bool gradient = false;
+        uint8_t tag = 0;              // the copies' pad byte: unique in the program
+        uint32_t salt = 0;            // their random stream
+        float scale = 1.0f;
+        bool startValue = false;
+        MinMaxCurve curve;            // the value that call compiled (with the driver it gave it)
+        MinMaxGradient color;
+        // byte offsets of the copies in the pool, in the program object and in emission.bursts
+        std::vector<uint32_t> inPool, inProgram, inBursts;
+    };
+
+    // An exposed parameter whose field is a curve or colour value: the slots of its uses
+    struct ExposedBinding {
+        uint32_t parameter = 0;       // its index in the document's exposed list
+        std::string member;           // the member it writes ("", "constant", "multiplier", "color", ...)
+        // every compiled use of the field is one of `slots` (none read its numbers otherwise)
+        bool rewritable = true;
+        std::vector<uint32_t> slots;
+    };
+
     // the program and the document it came from (for diagnostics, sub-emitters, exposed names)
     struct CompiledEffect {
         ParticleEffectDocument document;
         ParticleProgram program;
         std::vector<Diagnostic> diagnostics;
         bool valid = false;
+        // empty for an effect without exposed parameters
+        std::vector<ExposedSlot> exposedSlots;
+        std::vector<ExposedBinding> exposedBindings;
     };
 
 }}

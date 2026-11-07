@@ -11,6 +11,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "math/CurveJson.h"
+#include "particles/ParticleModules.h"
 
 #include "imgui_internal.h"
 
@@ -282,6 +283,50 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
             inline_(ImGui::DragFloat("##multiplier", &value.multiplier, 0.01f, 0.0f, 0.0f, "x%.2f"));
             break;
         }
+        case CurveMode::Ease: {
+            // start, end and the preset (each edit makes the curve again), and a multiplier other
+            // than 1 (a patch's), which scales what the particles get
+            const float spacing = ImGui::GetStyle().ItemSpacing.x;
+            const bool scaled = value.multiplier != 1.0f;
+            const float multiplierWidth = scaled ? Theme::dpi(48.0f) + spacing : 0.0f;
+            // the preset's names are long ("Elastic In Out"): it gets the most room
+            const float row = avail - multiplierWidth - 2.0f * spacing;
+            const float third = std::max(4.0f, row * 0.27f);
+            ImGui::SetNextItemWidth(third);
+            bool edited = ImGui::DragFloat("##start", &value.constant, 0.01f, 0.0f, 0.0f, "%.3f");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Start");
+            inline_(edited);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(third);
+            const bool endEdited = ImGui::DragFloat("##end", &value.constantMax, 0.01f, 0.0f, 0.0f, "%.3f");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("End");
+            inline_(endEdited);
+            edited = edited || endEdited;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(std::max(4.0f, row - 2.0f * third));
+            const std::vector<particles::EnumOption>& presets = particles::ParticleModules::easeTypes();
+            const char* current = presets.front().label;
+            for (const particles::EnumOption& preset : presets) {
+                if (preset.value == (uint8_t)value.ease) current = preset.label;
+            }
+            if (ImGui::BeginCombo("##ease", current)) {
+                for (const particles::EnumOption& preset : presets) {
+                    if (ImGui::Selectable(preset.label, preset.value == (uint8_t)value.ease) && preset.value != (uint8_t)value.ease) {
+                        value.ease = (EaseType)preset.value;
+                        edited = true;
+                        phase = EditPhase::Applied;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (edited) value.rebuildEase();
+            if (scaled) {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(48.0f));
+                inline_(ImGui::DragFloat("##multiplier", &value.multiplier, 0.01f, 0.0f, 0.0f, "x%.2f"));
+            }
+            break;
+        }
     }
     // Unity's mode triangle
     ImGui::SameLine();
@@ -293,8 +338,22 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
         };
         for (const ModeItem& item : {ModeItem{"Constant", CurveMode::Constant}, ModeItem{"Curve", CurveMode::Curve},
                                      ModeItem{"Random Between Two Constants", CurveMode::TwoConstants},
-                                     ModeItem{"Random Between Two Curves", CurveMode::TwoCurves}}) {
+                                     ModeItem{"Random Between Two Curves", CurveMode::TwoCurves}, ModeItem{"Ease", CurveMode::Ease}}) {
             if (ImGui::MenuItem(item.label, nullptr, value.mode == item.mode) && value.mode != item.mode) {
+                if (item.mode == CurveMode::Ease) {
+                    // from the value it replaces: a curve's ends, else the constants
+                    if (value.usesCurve() && !value.curve.empty()) {
+                        value.constant = value.curve.evaluate(0.0f) * value.multiplier;
+                        value.constantMax = value.curve.evaluate(1.0f) * value.multiplier;
+                    } else if (value.mode == CurveMode::Constant) {
+                        value.constantMax = value.constant;
+                    }
+                    value.multiplier = 1.0f;
+                    value.mode = CurveMode::Ease;
+                    value.rebuildEase();
+                    phase = EditPhase::Applied;
+                    continue;
+                }
                 // a curve starts from the constant it replaces
                 if ((item.mode == CurveMode::Curve || item.mode == CurveMode::TwoCurves) && value.curve.empty()) {
                     const float scale = value.constant != 0.0f ? value.constant : 1.0f;

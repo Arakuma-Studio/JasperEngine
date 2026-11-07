@@ -814,6 +814,14 @@ namespace {
             endRows();
             ImGui::TreePop();
         }
+
+        // what sendTrigger("name") does besides firing the Trigger sub-emitters of that name
+        if (ImGui::TreeNodeEx(("Triggers##" + prefix).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth)) {
+            beginRows(prefix + "_triggers", labelSize);
+            drawStructList(ui, "Triggers", ParticleModules::triggerFields(), edited.triggers, (size_t)kMaxTriggers, "triggers");
+            endRows();
+            ImGui::TreePop();
+        }
     }
 
 }
