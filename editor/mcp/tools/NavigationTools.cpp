@@ -129,7 +129,7 @@ Json settingsJson(const NavigationProjectSettings& project) {
     }
     return {{"agents", agents}, {"areas", areas}, {"crowd_max_agents", settings.crowdMaxAgents},
             {"web_bake_budget_ms", settings.webBakeBudgetMs}, {"max_grid_solves_per_tick", settings.maxGridSolvesPerTick},
-            {"include_in_builds", project.includeInBuilds}};
+            {"carve_tiles_per_tick", settings.carveTilesPerTick}, {"include_in_builds", project.includeInBuilds}};
 }
 
 // query_navigation's and visualize_navigation's agent type
@@ -404,7 +404,8 @@ void getNavigationInfoTool(const CallPtr& call) {
         if (!listed(entity)) continue;
         Json item = {{"entity", McpRefs::entityJson(scene, entity)}, {"state", stateName(status.state)}, {"tiles", status.tiles},
                      {"dirty_tiles", dirty}, {"polys", status.polys}, {"bytes", status.bytes}, {"carving", status.carving},
-                     {"agent_type", surface.agentType}, {"enabled", surface.enabled}, {"asset", surface.navMeshData.path}};
+                     {"agent_type", surface.agentType}, {"enabled", surface.enabled}, {"asset", surface.navMeshData.path},
+                     {"max_carving_obstacles", surface.maxCarvingObstacles}};
         if (status.state == NavBakeState::BAKING) item["progress"] = rounded(status.progress);
         if (!status.loadError.empty()) item["load_error"] = status.loadError;
         if (playing) item["crowd"] = {{"agents", status.crowdAgents}, {"capacity", status.crowdCapacity}};
@@ -419,7 +420,25 @@ void getNavigationInfoTool(const CallPtr& call) {
             std::snprintf(line, sizeof(line), ", %d island(s), %.1f m\xC2\xB2 walkable", coverage.islandCount, coverage.walkableArea);
             coverageText = line;
         }
-        if (const NavBakeResult* last = system->getLastBakeResult(entity)) item["last_bake"] = bakeReportJson(*last);
+        // last_bake: the engine's report of the last bake (S54 R16), with the outcome the editor
+        // saw this session (S53 R3: a refused start or a failed save counts, and a failure stays
+        // until a bake succeeds)
+        const NavBakeResult* engineBake = system->getLastBakeResult(entity);
+        Json lastBake = engineBake ? bakeReportJson(*engineBake) : Json::object();
+        if (const NavigationEditor::LastBake* last = NavigationEditor::get().lastBake(scene->id, entity)) {
+            lastBake["ok"] = last->ok;
+            lastBake["cancelled"] = last->cancelled;
+            lastBake["warnings"] = last->warnings;
+            if (last->error.empty()) lastBake.erase("error");
+            else lastBake["error"] = last->error;
+            // the engine's code and hint describe its own error only
+            if (last->ok || !engineBake || engineBake->error != last->error) {
+                lastBake.erase("error_code");
+                lastBake.erase("hint");
+            }
+            if (!last->ok && !last->cancelled) text += "\n  surface " + McpRefs::entityPath(scene, entity) + ": last bake failed: " + last->error;
+        }
+        if (!lastBake.empty()) item["last_bake"] = lastBake;
         surfaces.push_back(item);
         text += "\n  surface " + McpRefs::entityPath(scene, entity) + ": " + stateName(status.state) + ", " + std::to_string(status.tiles) +
                 " tiles, " + std::to_string(status.polys) + " polys" + coverageText +
@@ -1268,6 +1287,14 @@ void setNavigationSettingsTool(const CallPtr& call) {
     if (args.contains("crowd_max_agents")) settings.crowdMaxAgents = std::clamp(args["crowd_max_agents"].get<int>(), 1, 4096);
     if (args.contains("web_bake_budget_ms")) settings.webBakeBudgetMs = std::clamp(args["web_bake_budget_ms"].get<float>(), 0.5f, 50.0f);
     if (args.contains("max_grid_solves_per_tick")) settings.maxGridSolvesPerTick = std::clamp(args["max_grid_solves_per_tick"].get<int>(), 1, 4096);
+    if (args.contains("carve_tiles_per_tick")) {
+        const int tiles = args["carve_tiles_per_tick"].get<int>();
+        if (tiles < 0 || tiles > 64) {
+            call->fail("carve_tiles_per_tick: 0 (Auto: 4 on desktop, 2 on Android, iOS and web) to 64.");
+            return;
+        }
+        settings.carveTilesPerTick = tiles;
+    }
     if (args.contains("include_in_builds")) next.includeInBuilds = args["include_in_builds"].get<bool>();
     settings.sanitize();
     if (next == project->getNavigationSettings()) {
@@ -1669,6 +1696,7 @@ void registerNavigationTools(McpRegistry& registry) {
             {"crowd_max_agents", integer("", 1, 4096)},
             {"web_bake_budget_ms", number("", 0.5, 50.0)},
             {"max_grid_solves_per_tick", integer("", 1, 4096)},
+            {"carve_tiles_per_tick", integer("0: Auto.", 0, 64)},
             {"include_in_builds", boolean("Recast/Detour in exported builds.")}
         });
         // area costs apply at the next tick; the edit stays after Stop, like Project Settings

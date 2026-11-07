@@ -33350,6 +33350,7 @@
     "defaultArea",
     "enabled",
     "includeLayers",
+    "maxCarvingObstacles",
     "minRegionArea",
     "navMeshData",
     "navMeshDataGuid",
@@ -33391,6 +33392,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -33473,6 +33479,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -44031,6 +44042,11 @@
    ],
    "includeLayers": [
     9,
+    0,
+    true
+   ],
+   "maxCarvingObstacles": [
+    8,
     0,
     true
    ],

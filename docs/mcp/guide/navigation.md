@@ -1,9 +1,9 @@
 # Navigation (navmeshes, agents, crowds, grids)
 
 Served as `jasper://docs/navigation`. The user guide is [docs/navigation.md](../../navigation.md);
-the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md) (diagnostics:
-[S54](../../specs/S54-navigation-diagnostics.md)). Tools: group
-`navigation` (`tool_groups` enables it in tools/list; callable by name without it).
+the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md), with the fixes of
+[S53](../../specs/S53-navigation-fixes.md) (diagnostics: [S54](../../specs/S54-navigation-diagnostics.md)).
+Tools: group `navigation` (`tool_groups` enables it in tools/list; callable by name without it).
 
 ## The model (Unity AI Navigation names)
 
@@ -13,7 +13,7 @@ the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md) (dia
 | NavMesh Agent (`navmeshagent`) | Walks a surface (or a Nav Grid): speed, acceleration, stopping distance, auto braking, radius/height, avoidance quality and priority (0-99, lower wins), area mask, driver (Transform, Rigidbody, Character Controller, None). |
 | NavMesh Obstacle (`navmeshobstacle`) | Box or capsule agents avoid; with Carve (and Runtime Carving on its surface) it cuts the navmesh. |
 | NavMesh Link (`navmeshlink`) | An off-mesh connection (jump, ladder): start/end in its GameObject's space, bidirectional, cost override, area. |
-| NavMesh Modifier (`navmeshmodifier`) | Include/exclude a hierarchy from collection, or give it (or a volume box) an area. |
+| NavMesh Modifier (`navmeshmodifier`) | Mode `auto` (Surface Policy: collected as the surface decides), `include` (Add or Modify Object) or `exclude` (Remove Object) for a hierarchy, or give it (or a volume box) an area. |
 | Nav Grid (`navgrid`) | Square (4/8) or hex cells of one area each, A* with area costs and reservations; painted, or rebuilt from a Tilemap or Terrain. |
 
 Areas: 16 per project (0 Walkable, 1 Not Walkable, 2 Jump, 3-15 yours), each with a cost per metre
@@ -44,6 +44,14 @@ Bake and check a level:
   meshes, terrains, colliders, volumes, links, excluded, triangles), `walkable_area_m2`,
   `island_count`, the 16 largest `islands` and the 5 `slowest_tiles`; a failed one has
   `error_code` (`nothing_collected`, `too_large`, `busy`, `tile_failed`, ...) and a `hint`.
+  Warnings include Recast's own (`tile (x, y): ...`, for example "Heightfield has too many
+  layers" when more than 63 floors stack in one column) and range warnings (a surface taller than
+  a tile's 8191 voxels); the bake still succeeds.
+- A failed bake (refused, a tile that failed, or the save) fails the job with the reason and logs
+  one Console error `NavMeshSurface '<name>': <reason>`. `get_navigation_info`'s `last_bake` keeps
+  the session's outcome (`ok`, `cancelled`, `error`, `warnings`) until a bake succeeds (the
+  Inspector shows "Bake failed: ..." meanwhile). A cancel logs `bake cancelled` and keeps the
+  previous navmesh.
 - After moving static geometry, `get_navigation_info` shows `dirty_tiles` > 0 (the Inspector's
   stale-bake warning); bake again.
 - `query_navigation` works in edit mode and in play (the running scene). `op`: `path`, `sample`
@@ -71,6 +79,12 @@ Bake and check a level:
 {"tool": "query_navigation", "args": {"op": "random", "from": [0, 0, 0], "max_distance": 10, "seed": 3}}
 {"tool": "query_navigation", "args": {"op": "move_along", "from": [0, 0, 0], "to": [2, 0, 0]}}
 ```
+
+Play policy: `bake_navigation` and `paint_nav_grid` are refused while a scene plays (a game rebakes
+with `NavMeshSurface:bakeAsync()` and edits cells from Lua); `get_navigation_info`,
+`query_navigation` and `visualize_navigation` read the running scene (after a scene load, the copy
+the game shows now); `set_navigation_settings` works in play too (area costs apply at the next
+tick, and the change stays after Stop, like Project Settings).
 
 ## Why it does not work
 
@@ -240,7 +254,12 @@ tick), `raycast`, `findClosestEdge`, `samplePathPosition`, `nextOffMeshLinkData`
 - A 2D surface (`plane` XY) collects static Collider2D footprints; agent lengths and speeds stay in
   metres (the 2D scene's points per metre convert them).
 - Carving obstacles need `runtimeCarving` on the surface; without it they are avoided like any
-  agent (logged once).
+  agent (logged once). A surface carves at most `maxCarvingObstacles` (default 128; read when the
+  navmesh is created); more are avoided instead, with a warning. `set_navigation_settings
+  carve_tiles_per_tick` (0 Auto: 4 on desktop, 2 on Android, iOS and web; 1-64) is how many carved
+  tiles each surface rebuilds per fixed tick.
+- `onDestinationReached` fires only at the destination: an agent at the end of a Partial path
+  stops there with `pathStatus` Partial and gets `onPathFailed` instead.
 - A crowd holds `crowd_max_agents` (default 128) per surface and agent type; it grows past that with
   a warning.
 - Exports carry Recast/Detour unless `navigation.include_in_builds` is off (then navmesh calls fail

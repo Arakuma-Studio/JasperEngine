@@ -242,6 +242,120 @@ TEST_F(NavDeterminismTest, CrowdReplay){
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0);
 }
 
+// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R9, R10)
+
+// AC10: an agent with its own cost on the mud detours through the gap, its neighbour walks through
+// the mud; two agents with the same costs share one filter
+TEST_F(NavCrowdTest, PerAgentAreaCosts){
+    // a strip of area 3 (project cost 1) across a 30 x 10 plane but for a gap at z in [3, 5]
+    const Entity surface = planeSurface(30.0f, 10.0f);
+    areaVolume(Vector3(0.0f, 0.0f, -1.0f), Vector3(2.0f, 4.0f, 8.0f), 3);
+    bake(surface);
+    // the plain agent walks far from the careful one's way to the gap (no avoidance between them)
+    const Entity careful = agent(*scene, Vector3(-10.0f, 0.0f, 0.5f));
+    const Entity alike = agent(*scene, Vector3(-13.0f, 0.0f, 4.0f));
+    const Entity plain = agent(*scene, Vector3(-10.0f, 0.0f, -3.5f));
+    NavMeshAgent(scene.get(), careful).setAreaCost(3, 10.0f);
+    NavMeshAgent(scene.get(), alike).setAreaCost(3, 10.0f);
+    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), careful).getAreaCost(3), 10.0f);
+    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), plain).getAreaCost(3), 1.0f);
+    step();
+    // the all-areas filter and one for both careful agents
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 2);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
+    // the agent filter carries its costs to queries
+    EXPECT_FLOAT_EQ(nav->getAgentQueryFilter(careful).getAreaCost(3), 10.0f);
+    EXPECT_EQ(nav->getAgentQueryFilter(plain).costMask, 0);
+
+    NavMeshAgent(scene.get(), careful).setDestination(Vector3(10.0f, 0.0f, 0.5f));
+    NavMeshAgent(scene.get(), plain).setDestination(Vector3(10.0f, 0.0f, -3.5f));
+    float carefulMaxZ = -1e9f, plainMaxZ = -1e9f;
+    bool plainInMud = false, carefulInMud = false;
+    for (int tick = 0; tick < 60 * 15; tick++) {
+        step();
+        const Vector3 c = position(careful), p = position(plain);
+        carefulMaxZ = std::max(carefulMaxZ, c.z);
+        plainMaxZ = std::max(plainMaxZ, p.z);
+        auto inMud = [](const Vector3& at) { return std::fabs(at.x) < 0.8f && at.z < 2.8f; };
+        carefulInMud = carefulInMud || inMud(c);
+        plainInMud = plainInMud || inMud(p);
+    }
+    EXPECT_GT(carefulMaxZ, 3.0f - 0.2f);
+    EXPECT_FALSE(carefulInMud);
+    EXPECT_TRUE(plainInMud);
+    EXPECT_LT(plainMaxZ, 0.0f);
+    EXPECT_GT(position(careful).x, 9.0f);
+    EXPECT_GT(position(plain).x, 9.0f);
+
+    // a reset cost follows the project's again: the careful agent's filter is the plain one's
+    NavMeshAgent(scene.get(), careful).resetAreaCost(3);
+    NavMeshAgent(scene.get(), alike).resetAreaCost(3);
+    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), careful).getAreaCost(3), 1.0f);
+    step();
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 1);
+}
+
+// AC10: 16 filters per crowd: a 17th key falls back to a filter with its mask (its masked area is
+// still never entered), counted and warned once; freed filters fit new keys (S19 kept a mask's
+// filter forever, so a new mask fell back to every area and walked the masked strip)
+TEST_F(NavCrowdTest, PerAgentAreaCostsFilterSlots){
+    // a strip of area 3 across the whole plane: masked out, nobody crosses it
+    const Entity surface = planeSurface(30.0f, 40.0f);
+    areaVolume(Vector3(0.0f, 0.0f, 0.0f), Vector3(2.0f, 4.0f, 44.0f), 3);
+    bake(surface);
+    const uint16_t noMud = (uint16_t)(nav::ALL_AREAS & ~(1u << 3));
+    auto spawn = [&](int i, uint16_t mask) {
+        const Entity entity = agent(*scene, Vector3(-8.0f, 0.0f, -18.0f + 1.2f * (float)i), 3.5f, 0.3f);
+        scene->getComponent<NavMeshAgentComponent>(entity).areaMask = mask;
+        return entity;
+    };
+    // walks every masked agent at the strip and checks none enters it
+    auto walk = [&](const std::vector<Entity>& walkers) {
+        step();
+        for (Entity entity : walkers) {
+            const Vector3 start = position(entity);
+            NavMeshAgent(scene.get(), entity).setDestination(Vector3(10.0f, 0.0f, start.z));
+        }
+        float maxX = -1e9f;
+        for (int tick = 0; tick < 60 * 4; tick++) {
+            step();
+            for (Entity entity : walkers)
+                maxX = std::max(maxX, position(entity).x);
+        }
+        return maxX;
+    };
+
+    test::LogCapture log;
+    // 15 keys of one mask and different costs fill the 15 free filters, a 16th falls back
+    std::vector<Entity> first;
+    for (int i = 0; i < 16; i++) {
+        first.push_back(spawn(i, noMud));
+        nav->setAgentAreaCost(first.back(), 4, 2.0f + (float)i);
+    }
+    const float firstMaxX = walk(first);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 16);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 1);
+    EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
+    // the fallback kept its mask: nobody crossed into the strip
+    EXPECT_LT(firstMaxX, -1.0f + 0.2f);
+
+    // they leave: their filters are freed
+    for (Entity entity : first)
+        scene->destroyEntity(entity);
+    step();
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 1);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
+
+    // 15 new masks (each without the mud, and without some unused areas) all get a filter
+    std::vector<Entity> second;
+    for (int i = 0; i < 15; i++)
+        second.push_back(spawn(i, (uint16_t)(noMud & ~((unsigned)(i + 1) << 5))));
+    const float secondMaxX = walk(second);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 16);
+    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
+    EXPECT_LT(secondMaxX, -1.0f + 0.2f);
+    // one warning per crowd
+    EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
 // ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION && !defined(NDEBUG)
@@ -350,7 +464,8 @@ TEST_F(NavCrowdTest, CrowdRebuiltOnNewMesh){
     resolveTransforms(*scene);
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(24.0f, -1.0f, -16.0f), Vector3(56.0f, 2.0f, 16.0f)), error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++)
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++)
         step();
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_EQ(nav->getNavMesh(surface), mesh);
@@ -491,7 +606,8 @@ TEST_F(NavObstacleTest, CutsSurviveRebakeAndReload){
 
     std::string error;
     ASSERT_TRUE(nav->bake(surface, NavBakeMode::FULL, error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++) {
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++) {
         step();
         EXPECT_NE(nav->calculatePath(from, to).status, nav::PathStatus::Complete) << "tick " << tick;
     }
@@ -523,7 +639,8 @@ TEST_F(NavObstacleTest, CutsSurviveUpdateTiles){
     ASSERT_NE(nav->calculatePath(from, to).status, nav::PathStatus::Complete);
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(-2.0f, -1.0f, -2.0f), Vector3(2.0f, 3.0f, 2.0f)), error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++)
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++)
         step();
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_TRUE(nav->getLastBakeResult(surface) && nav->getLastBakeResult(surface)->ok);
@@ -722,121 +839,6 @@ TEST_F(NavSystemTest, SteadyStateNoAllocations){
         EXPECT_LT(position(entity).x, 50.0f);
     }
 }
-
-// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R9, R10)
-
-// AC10: an agent with its own cost on the mud detours through the gap, its neighbour walks through
-// the mud; two agents with the same costs share one filter
-TEST_F(NavCrowdTest, PerAgentAreaCosts){
-    // a strip of area 3 (project cost 1) across a 30 x 10 plane but for a gap at z in [3, 5]
-    const Entity surface = planeSurface(30.0f, 10.0f);
-    areaVolume(Vector3(0.0f, 0.0f, -1.0f), Vector3(2.0f, 4.0f, 8.0f), 3);
-    bake(surface);
-    // the plain agent walks far from the careful one's way to the gap (no avoidance between them)
-    const Entity careful = agent(*scene, Vector3(-10.0f, 0.0f, 0.5f));
-    const Entity alike = agent(*scene, Vector3(-13.0f, 0.0f, 4.0f));
-    const Entity plain = agent(*scene, Vector3(-10.0f, 0.0f, -3.5f));
-    NavMeshAgent(scene.get(), careful).setAreaCost(3, 10.0f);
-    NavMeshAgent(scene.get(), alike).setAreaCost(3, 10.0f);
-    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), careful).getAreaCost(3), 10.0f);
-    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), plain).getAreaCost(3), 1.0f);
-    step();
-    // the all-areas filter and one for both careful agents
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 2);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
-    // the agent filter carries its costs to queries
-    EXPECT_FLOAT_EQ(nav->getAgentQueryFilter(careful).getAreaCost(3), 10.0f);
-    EXPECT_EQ(nav->getAgentQueryFilter(plain).costMask, 0);
-
-    NavMeshAgent(scene.get(), careful).setDestination(Vector3(10.0f, 0.0f, 0.5f));
-    NavMeshAgent(scene.get(), plain).setDestination(Vector3(10.0f, 0.0f, -3.5f));
-    float carefulMaxZ = -1e9f, plainMaxZ = -1e9f;
-    bool plainInMud = false, carefulInMud = false;
-    for (int tick = 0; tick < 60 * 15; tick++) {
-        step();
-        const Vector3 c = position(careful), p = position(plain);
-        carefulMaxZ = std::max(carefulMaxZ, c.z);
-        plainMaxZ = std::max(plainMaxZ, p.z);
-        auto inMud = [](const Vector3& at) { return std::fabs(at.x) < 0.8f && at.z < 2.8f; };
-        carefulInMud = carefulInMud || inMud(c);
-        plainInMud = plainInMud || inMud(p);
-    }
-    EXPECT_GT(carefulMaxZ, 3.0f - 0.2f);
-    EXPECT_FALSE(carefulInMud);
-    EXPECT_TRUE(plainInMud);
-    EXPECT_LT(plainMaxZ, 0.0f);
-    EXPECT_GT(position(careful).x, 9.0f);
-    EXPECT_GT(position(plain).x, 9.0f);
-
-    // a reset cost follows the project's again: the careful agent's filter is the plain one's
-    NavMeshAgent(scene.get(), careful).resetAreaCost(3);
-    NavMeshAgent(scene.get(), alike).resetAreaCost(3);
-    EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), careful).getAreaCost(3), 1.0f);
-    step();
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 1);
-}
-
-// AC10: 16 filters per crowd: a 17th key falls back to a filter with its mask (its masked area is
-// still never entered), counted and warned once; freed filters fit new keys (S19 kept a mask's
-// filter forever, so a new mask fell back to every area and walked the masked strip)
-TEST_F(NavCrowdTest, PerAgentAreaCostsFilterSlots){
-    // a strip of area 3 across the whole plane: masked out, nobody crosses it
-    const Entity surface = planeSurface(30.0f, 40.0f);
-    areaVolume(Vector3(0.0f, 0.0f, 0.0f), Vector3(2.0f, 4.0f, 44.0f), 3);
-    bake(surface);
-    const uint16_t noMud = (uint16_t)(nav::ALL_AREAS & ~(1u << 3));
-    auto spawn = [&](int i, uint16_t mask) {
-        const Entity entity = agent(*scene, Vector3(-8.0f, 0.0f, -18.0f + 1.2f * (float)i), 3.5f, 0.3f);
-        scene->getComponent<NavMeshAgentComponent>(entity).areaMask = mask;
-        return entity;
-    };
-    // walks every masked agent at the strip and checks none enters it
-    auto walk = [&](const std::vector<Entity>& walkers) {
-        step();
-        for (Entity entity : walkers) {
-            const Vector3 start = position(entity);
-            NavMeshAgent(scene.get(), entity).setDestination(Vector3(10.0f, 0.0f, start.z));
-        }
-        float maxX = -1e9f;
-        for (int tick = 0; tick < 60 * 4; tick++) {
-            step();
-            for (Entity entity : walkers)
-                maxX = std::max(maxX, position(entity).x);
-        }
-        return maxX;
-    };
-
-    test::LogCapture log;
-    // 15 keys of one mask and different costs fill the 15 free filters, a 16th falls back
-    std::vector<Entity> first;
-    for (int i = 0; i < 16; i++) {
-        first.push_back(spawn(i, noMud));
-        nav->setAgentAreaCost(first.back(), 4, 2.0f + (float)i);
-    }
-    const float firstMaxX = walk(first);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 16);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 1);
-    EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
-    // the fallback kept its mask: nobody crossed into the strip
-    EXPECT_LT(firstMaxX, -1.0f + 0.2f);
-
-    // they leave: their filters are freed
-    for (Entity entity : first)
-        scene->destroyEntity(entity);
-    step();
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 1);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
-
-    // 15 new masks (each without the mud, and without some unused areas) all get a filter
-    std::vector<Entity> second;
-    for (int i = 0; i < 15; i++)
-        second.push_back(spawn(i, (uint16_t)(noMud & ~((unsigned)(i + 1) << 5))));
-    const float secondMaxX = walk(second);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilters, 16);
-    EXPECT_EQ(nav->getSurfaceStatus(surface).crowdFilterOverflow, 0);
-    EXPECT_LT(secondMaxX, -1.0f + 0.2f);
-    // one warning per crowd
-    EXPECT_EQ(log.count(D_LOG_WARN, "no free query filter"), 1u);
 
 // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R18, R35, R38)
 

@@ -6,7 +6,6 @@
 
 #include "App.h"
 #include "Backend.h"
-#include "Out.h"
 #include "Project.h"
 #include "Theme.h"
 #include "command/CommandHistory.h"
@@ -232,8 +231,9 @@ void NavigationWindow::drawSurfaces() {
         const bool playing = sceneProject.playState != ScenePlayState::STOPPED;
         ImGui::BeginDisabled(playing || !nav::isNavMeshAvailable());
         if (ImGui::Button(ICON_FA_HAMMER " Bake All")) {
+            // (NavigationEditor logs what it refuses)
             std::string error;
-            if (navEditor.bakeAll(project, sceneProject.id, NavBakeMode::DIRTY, error) == 0 && !error.empty()) Out::error("Bake All: %s", error.c_str());
+            navEditor.bakeAll(project, sceneProject.id, NavBakeMode::DIRTY, error);
         }
         ImGui::EndDisabled();
         if (ImGui::BeginTable("##NavSurfaces", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -267,8 +267,13 @@ void NavigationWindow::drawSurfaces() {
                 cell(sceneProject.scene->getEntityName(entity), "name");
                 ImGui::TableNextColumn();
                 const bool baking = status.state == NavBakeState::BAKING || navEditor.isBaking(sceneProject.id, entity);
+                const NavigationEditor::LastBake* failed = navEditor.lastBake(sceneProject.id, entity);
                 if (baking) {
                     ImGui::ProgressBar(status.progress, ImVec2(-1, 0));
+                } else if (failed && !failed->ok && !failed->cancelled) {
+                    // the session's last bake failed (S53 R3): until a bake succeeds
+                    ImGui::TextColored(Theme::Colors::ErrorText, "Bake failed");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", failed->error.c_str());
                 } else if (status.state == NavBakeState::NOT_BAKED) {
                     ImGui::TextUnformatted(status.loadError.empty() ? "Not baked" : "Not baked (unreadable asset)");
                 } else {
@@ -337,11 +342,9 @@ void NavigationWindow::drawSurfaces() {
                     if (ImGui::SmallButton("Cancel")) navEditor.cancel(project, sceneProject.id, entity);
                 } else {
                     ImGui::BeginDisabled(playing || !nav::isNavMeshAvailable());
-                    if (ImGui::SmallButton("Bake") && !navEditor.bake(project, sceneProject.id, entity, NavBakeMode::DIRTY, error))
-                        Out::error("Bake: %s", error.c_str());
+                    if (ImGui::SmallButton("Bake")) navEditor.bake(project, sceneProject.id, entity, NavBakeMode::DIRTY, error);
                     ImGui::SameLine();
-                    if (ImGui::SmallButton("Clear") && !navEditor.clear(project, sceneProject.id, entity, error))
-                        Out::error("Clear: %s", error.c_str());
+                    if (ImGui::SmallButton("Clear")) navEditor.clear(project, sceneProject.id, entity, error);
                     ImGui::EndDisabled();
                 }
                 ImGui::SameLine();

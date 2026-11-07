@@ -157,13 +157,16 @@ TEST_F(NavAgentApiTest, SetPathLongerThan256Polys){
 }
 
 // AC21: agent.path is the corridor from where it stands (its corners after the first are
-// getPathCorners'), steeringTarget the first corner ahead; a carving obstacle far ahead on the
-// corridor makes the path stale until the replan lands
+// getPathCorners'), steeringTarget the first corner ahead; an area on the corridor far ahead
+// closed to it makes the path stale until the replan lands
 TEST_F(NavAgentApiTest, CorridorPathAndStale){
+    mudArea(1.0f);
     plane(*scene, Vector3(), 40.0f, 6.0f);
     box(*scene, Vector3(-4.0f, 1.0f, 1.5f), Vector3(1.0f, 2.0f, 3.0f));
+    // mud across the corridor near its end
+    areaVolume(Vector3(14.0f, 0.0f, 0.0f), Vector3(2.0f, 4.0f, 8.0f), MUD);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, surface, CELL, 8).runtimeCarving = true;
+    addSurface(*scene, surface, CELL, 8);
     bake(surface);
     const Entity walker = agent(*scene, Vector3(-18.0f, 0.0f, 1.5f));
     step();
@@ -186,17 +189,17 @@ TEST_F(NavAgentApiTest, CorridorPathAndStale){
     EXPECT_LT(handle.getSteeringTarget().distance(ahead[0]), 1e-4f);
     EXPECT_FALSE(handle.isPathStale());
 
-    // a carved hole near the end: past dtCrowd's 10-polygon look-ahead, so only the whole
-    // corridor's check sees it
-    const Entity hole = obstacle(*scene, Vector3(15.0f, 1.0f, 1.5f), Vector3(1.0f, 2.0f, 1.0f), true);
-    (void)hole;
-    const int stale = stepUntil([&]() { return handle.isPathStale(); }, 120);
-    EXPECT_LT(stale, 120);
+    // the mud closed to it, far ahead: past dtCrowd's 10-polygon look-ahead (and no mesh change, so
+    // no replan of the whole corridor), only the whole corridor's check sees it
+    scene->getComponent<NavMeshAgentComponent>(walker).areaMask = nav::ALL_AREAS & ~(1 << MUD);
+    step();
     EXPECT_TRUE(handle.isPathStale());
-    // the crowd replans once the hole is within its look-ahead: no longer stale
-    stepUntil([&]() { return !handle.isPathStale() && !handle.isPathPending() && position(walker).x > 12.0f; }, 60 * 20);
+    // the crowd replans once the mud is within its look-ahead: no longer stale, short of the mud
+    stepUntil([&]() { return handle.getPathStatus() == nav::PathStatus::Partial && !handle.isPathPending(); }, 60 * 20);
+    EXPECT_EQ(handle.getPathStatus(), nav::PathStatus::Partial);
     EXPECT_FALSE(handle.isPathStale());
-    EXPECT_GT(position(walker).x, 12.0f);
+    steps(60 * 3);
+    EXPECT_LT(position(walker).x, 13.0f);
 }
 
 // AC22: root motion. With updatePosition off, nextPosition moves the simulation along the surface

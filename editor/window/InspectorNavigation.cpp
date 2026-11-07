@@ -11,7 +11,6 @@
 
 #include "InspectorWindow.h"
 
-#include "Out.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -199,7 +198,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
 
     if (beginFoldout("Advanced##navsurface")) {
         const nav::AgentTypeSettings agent = nav::getSettings().agentTypeOrDefault(surface.agentType);
-        beginTable(cpType, getLabelSize("Override Voxel Size"), "advanced");
+        beginTable(cpType, getLabelSize("Max Carving Obstacles"), "advanced");
         propertyRow(RowPropertyType::Bool, cpType, "overrideCellSize", "Override Voxel Size", sceneProject, entities, RowSettings());
         if (surface.overrideCellSize) {
             RowSettings child = settingsAdvanced;
@@ -221,6 +220,13 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
         RowSettings regions = settingsAdvanced;
         regions.help = "Islands smaller than this (square metres) are dropped";
         propertyRow(RowPropertyType::FloatPositive, cpType, "minRegionArea", "Minimum Region Area", sceneProject, entities, regions);
+        if (surface.runtimeCarving) {
+            RowSettings obstacles = settingsAdvanced;
+            obstacles.intMin = 1;
+            obstacles.intMax = 4096;
+            obstacles.help = "Carving NavMesh Obstacles it cuts at once; more are avoided instead, with a warning (read when the navmesh is created)";
+            propertyRow(RowPropertyType::Int, cpType, "maxCarvingObstacles", "Max Carving Obstacles", sceneProject, entities, obstacles);
+        }
         propertyRow(RowPropertyType::Asset, cpType, "navMeshData", "NavMesh Data", sceneProject, entities, settingsData);
         endTable();
         const float cellSize = surface.overrideCellSize ? surface.cellSize : agent.radius / 3.0f;
@@ -232,6 +238,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
             const float points = nav::NavBakeCollector::unitScaleOf(scene, surface);
             ImGui::TextDisabled("2D: %.1f point voxels, tiles of %.0f points", cellSize * points, cellSize * (float)tileSize * points);
         }
+        endFoldout();
     }
 
     if (entities.size() != 1) return;
@@ -319,11 +326,12 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
 
     const bool playing = sceneProject->playState != ScenePlayState::STOPPED;
     ImGui::BeginDisabled(playing);
+    // (a refused start is logged by NavigationEditor; a Shift-click starts only the full bake
+    // below, so it is logged once)
     std::string error;
-    if (ImGui::Button(ICON_FA_HAMMER " Bake")) {
+    if (ImGui::Button(ICON_FA_HAMMER " Bake") && !ImGui::GetIO().KeyShift) {
         // a stale bake rebuilds the changed tiles; nothing baked: every tile
-        if (!navEditor.bake(project, sceneProject->id, entity, NavBakeMode::DIRTY, error))
-            Out::error("Bake: %s", error.c_str());
+        navEditor.bake(project, sceneProject->id, entity, NavBakeMode::DIRTY, error);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Bakes the tiles whose inputs changed (all of them the first time); Shift: every tile");
@@ -333,11 +341,22 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     }
     ImGui::SameLine();
     ImGui::BeginDisabled(status.state == NavBakeState::NOT_BAKED && surface.navMeshData.empty());
-    if (ImGui::Button(ICON_FA_TRASH_CAN " Clear")) {
-        if (!navEditor.clear(project, sceneProject->id, entity, error)) Out::error("Clear: %s", error.c_str());
+    if (ImGui::Button(ICON_FA_TRASH_CAN " Clear")) navEditor.clear(project, sceneProject->id, entity, error);
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    // the last bake of this session (S53 R3): a failure until a bake succeeds, or its warnings
+    const NavigationEditor::LastBake* editorBake = navEditor.lastBake(sceneProject->id, entity);
+    const bool failureShown = editorBake && !editorBake->ok && !editorBake->cancelled;
+    if (failureShown) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::ErrorText);
+        ImGui::TextWrapped("Bake failed: %s", editorBake->error.c_str());
+        ImGui::PopStyleColor();
+    } else if (editorBake && editorBake->ok && !editorBake->warnings.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        ImGui::TextWrapped("Baked with %d warning(s); see the Console", (int)editorBake->warnings.size());
+        ImGui::PopStyleColor();
     }
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
 
     // the state line, then the stale-bake warning (R32)
     if (status.state == NavBakeState::NOT_BAKED) {
@@ -368,7 +387,8 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
             std::snprintf(line, sizeof(line), "Last bake %s: %s", last->cancelled ? "cancelled" : "failed",
                           last->error.empty() ? nav::bakeErrorName(last->errorCode) : last->error.c_str());
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
+            // (the same failure is the "Bake failed" line above already: only its hint here)
+            if (!(failureShown && editorBake->error == last->error)) ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
             if (!last->hint.empty()) ImGui::TextDisabled("%s", last->hint.c_str());
             ImGui::PopTextWrapPos();
         }

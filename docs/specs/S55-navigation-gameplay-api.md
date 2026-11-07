@@ -778,6 +778,10 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   path state never searches; a failure's reason does, once per failure).
 - S55 P3: P2's R15 drop of a path without Auto Repath fires `onPathFailed` through the same
   classification (`failPath`), so its reason is the `BlockedByArea` AC25 expects.
+- S55 P3: AC21's stale path comes from an area closed to the agent's mask far along its corridor,
+  not from a carving obstacle: S53 R6 replans every corridor that holds a gone polygon in the tick
+  its tile changes, so a carved corridor is never stale between ticks. `isPathStale` reports the
+  mask case until dtCrowd's look-ahead replans it.
 - S55 P3: S54's classification answered `Disconnected` for a path blocked only by a runtime Not
   Walkable volume or a deactivated link (flags 0 pass no mask, so its all-areas search fails too).
   When the mesh has runtime overrides, `NavMesh::findPath` now runs that search over the baked flags

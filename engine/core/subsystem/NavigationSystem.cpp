@@ -1120,7 +1120,8 @@ void NavigationSystem::processBakes(double budgetMs) {
         if (component)
             state.loadedPath = component->navMeshData.path;
         if (staged) {
-            // reported once the carved tiles are built (updateCarving)
+            // reported once the carved tiles are built (updateCarving), which puts a staged mesh
+            // into service and gives it the overrides then
             state.pendingResult = std::move(result);
             continue;
         }
@@ -3719,11 +3720,11 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
 }
 
 int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* scene, double ceilingMs) {
-    (void)system;
     // a count of tile builds per surface and tick, so the tick a cut lands on is the same on
     // every machine (spec S53 R14); the wall-clock ceiling only guards against a slow one
     const int perTick = getSettings().effectiveCarveTilesPerTick();
     int total = 0;
+    std::vector<Entity> promoted;
     for (auto& entry : surfaces) {
         Surface& surface = entry.second;
         NavCarveBudget budget;
@@ -3752,6 +3753,7 @@ int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* sc
                 continue;
             surface.mesh = std::move(surface.staging);
             releaseCrowd(entry.first, surface);
+            promoted.push_back(entry.first);
         } else if (surface.mesh && !surface.mesh->isComplete()) {
             continue;
         }
@@ -3761,6 +3763,10 @@ int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* sc
         surface.lastResult = std::move(result);
         events.push_back(Event{entry.first, EventType::BakeCompleted});
     }
+    // S55 R14: a staged navmesh gets the runtime overrides as it goes into service; after the
+    // loop, since the area sync can reset crowds
+    for (Entity entity : promoted)
+        system.onAreaMeshReplaced(entity);
     (void)scene;
     return total;
 }
@@ -4074,9 +4080,13 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     agent.wasPending = agent.requested;
                 } else if (target == NavCrowdTarget::Valid) {
                     component.pathPending = false;
-                    agent.crowdPath = crowd.getPathState(index);
+                    const NavCrowdPath state = crowd.getPathState(index);
+                    // a new corridor (a plan that landed, or one dtCrowd's quick search finished
+                    // within a step) is read again
+                    const bool changed = agent.wasPending || state != agent.crowdPath;
+                    agent.crowdPath = state;
                     agent.corridorPolys = crowd.getCorridorSize(index);
-                    if (agent.wasPending) {
+                    if (changed) {
                         agent.wasPending = false;
                         // a truncated corridor is the start of a Complete path; Partial: no path
                         // reaches the destination, onPathFailed once per destination

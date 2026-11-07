@@ -1958,8 +1958,8 @@ bool NavMesh::updateCarving(const NavCarveBudget& budget, bool& upToDate, int& t
             m.buildFailed(tile->header->tx, tile->header->ty, tile->header->tlayer, status);
     }
     upToDate = m.deferred.empty() && m.pending.empty() && m.requests.empty();
-    // S55 R14: Detour reports the cache up to date in the call that builds its last touched tile,
-    // which the loop does not count: the overrides check every tile's reference instead
+    // S55 R14: the overrides check every tile's reference, so tiles Detour's update replaced and
+    // deferred tiles built above both get their runtime areas and link states again
     const bool overridden = m.tilesChanged();
     if (changed || overridden)
         m.bump();

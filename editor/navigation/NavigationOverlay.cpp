@@ -13,6 +13,7 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/Transform.h"
+#include "navigation/NavGridMap.h"
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeInput.h"
 #include "navigation/NavFrame.h"
@@ -145,6 +146,26 @@ namespace {
         if (bidirectional) arrow(a, a + (b - a) * 0.1f + up * (lift * 0.36f));
     }
 
+}
+
+void NavigationOverlay::gridCellColors(const nav::NavGridMap& map, const std::array<Vector4, nav::AREA_COUNT>& areaColors,
+                                       const std::vector<int>& reserved, std::vector<Vector4>& out) {
+    const int cells = map.getCellCount();
+    out.resize((size_t)cells);
+    for (int i = 0; i < cells; i++) {
+        const nav::GridCell cell = map.cellOf(i);
+        const Vector4& c = areaColors[(size_t)std::clamp((int)map.getAreaAt(i), 0, nav::AREA_COUNT - 1)];
+        out[(size_t)i] = Vector4(c.x, c.y, c.z, map.getOverride(cell) ? OVERRIDE_CELL_ALPHA : CELL_ALPHA);
+    }
+    const Vector4& path = AGENT_PATH_COLOR;
+    for (int i : reserved) {
+        if (i < 0 || i >= cells) continue;
+        // from the area's colour each time: a cell two agents reserve is tinted once
+        const nav::GridCell cell = map.cellOf(i);
+        const Vector4& c = areaColors[(size_t)std::clamp((int)map.getAreaAt(i), 0, nav::AREA_COUNT - 1)];
+        out[(size_t)i] = Vector4((c.x + path.x) * 0.5f, (c.y + path.y) * 0.5f, (c.z + path.z) * 0.5f,
+                                 map.getOverride(cell) ? OVERRIDE_CELL_ALPHA : CELL_ALPHA);
+    }
 }
 
 YAML::Node editor::encodeNavOverlaySettings(const NavOverlaySettings& settings) {
@@ -650,10 +671,18 @@ void NavigationOverlay::updateGrid(Entity entity, GridDraw& draw, SceneProject& 
                            transform->worldRotation.x, transform->worldRotation.y, transform->worldRotation.z};
     const uint64_t version = nav::getSettingsVersion();
     const bool moved = !std::equal(pose, pose + 7, draw.pose);
-    if (draw.revision != map->getRevision() || draw.settingsVersion != version || moved || draw.meshes.empty()) {
+    // in play, the cells agents reserved this fixed tick (S53 R22; ascending, each once)
+    reservedScratch.clear();
+    if (sceneProject.playState != ScenePlayState::STOPPED) system->getGridReservedCells(entity, reservedScratch);
+    if (draw.revision != map->getRevision() || draw.settingsVersion != version || moved || draw.meshes.empty() ||
+        draw.reserved != reservedScratch) {
         draw.revision = map->getRevision();
         draw.settingsVersion = version;
+        draw.reserved = reservedScratch;
         std::copy(pose, pose + 7, draw.pose);
+        std::array<Vector4, nav::AREA_COUNT> areaColors;
+        for (int a = 0; a < nav::AREA_COUNT; a++) areaColors[(size_t)a] = nav::getSettings().areas[(size_t)a].color;
+        gridCellColors(*map, areaColors, draw.reserved, cellColors);
         std::vector<float> triangles;
         std::vector<Vector4> colors;
         const int cells = map->getCellCount();
@@ -669,7 +698,7 @@ void NavigationOverlay::updateGrid(Entity entity, GridDraw& draw, SceneProject& 
                 const float height = map->getHeight(cell);
                 Vector3 world[6];
                 for (int i = 0; i < n; i++) world[i] = system->gridLocalToWorld(entity, outline[i], height);
-                const Vector4 color = areaColor(map->getArea(cell), map->getOverride(cell) ? 0.6f : 0.4f);
+                const Vector4& color = cellColors[(size_t)map->index(cell)];
                 for (int i = 1; i + 1 < n; i++) {
                     for (const Vector3& v : {world[0], world[i], world[i + 1]}) {
                         triangles.push_back(v.x);
@@ -747,7 +776,7 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
                 reserve(corners.size() + 1);
                 Vector3 previous = base;
                 for (const Vector3& corner : corners) {
-                    lines->addLine(previous, corner, Vector4(1.0f, 0.85f, 0.2f, 1.0f));
+                    lines->addLine(previous, corner, AGENT_PATH_COLOR);
                     previous = corner;
                 }
             }

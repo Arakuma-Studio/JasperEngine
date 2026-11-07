@@ -91,11 +91,11 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
+        // carved tile builds left before its navmesh is complete (a bake landing in play, S53 R15)
+        int queuedBuilds = 0;
         // ---- S55 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
         int crowdFilters = 0;
         int crowdFilterOverflow = 0;
-        // carved tile builds left before its navmesh is complete (a bake landing in play, S53 R15)
-        int queuedBuilds = 0;
     };
 
     class JASPERENGINE_API NavigationSystem : public SubSystem{
