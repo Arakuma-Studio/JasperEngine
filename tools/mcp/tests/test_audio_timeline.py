@@ -93,14 +93,11 @@ def placed(voice: dict) -> int:
     return voice["sample"] + voice.get("delay_samples", 0)
 
 
-async def test_setup(ed: Editor):
+async def test_footsteps_land_on_their_samples(ed: Editor):
     # a step that starts at full scale (its first sample is its onset) and a long tone for the loops
     write_wav(ed.project / "sounds/step.wav", [[0.5] * 2400], RATE)
     write_wav(ed.project / "sounds/engine.wav", [[0.5 * math.sin(2 * math.pi * 440 * i / RATE) for i in range(RATE * 2)]], RATE)
     await ed.call("sync_files")
-
-
-async def test_footsteps_land_on_their_samples(ed: Editor):
     await ed.call("write_file", path="anim/footsteps.anim", content=anim(steps(STEPS)))
     await ed.call("sync_files")
     scene = await walker_scene(ed, "Footsteps", "anim/footsteps.anim", {})

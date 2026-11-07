@@ -26,7 +26,8 @@
 #include "shader/ShaderUniforms.h"
 #include "texture/Texture.h"
 #include "asset/AssetRef.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
+#include "util/StableArray.h"
 
 #include <cmath>
 #include <cstring>
@@ -556,34 +557,30 @@ namespace jasperengine::editor::reflect {
 
     namespace detail {
 
-        // HybridArray<T, N>: the editor's growable fixed array (a vector of N at first)
-        template<typename T, size_t N> size_t hybridSize(const void* array) { return static_cast<const HybridArray<T, N>*>(array)->size(); }
-        template<typename T, size_t N> void hybridResize(void* array, size_t size) { static_cast<HybridArray<T, N>*>(array)->values.resize(size); }
-        template<typename T, size_t N> void* hybridAt(void* array, size_t index) { return &(*static_cast<HybridArray<T, N>*>(array))[index]; }
-        template<typename T, size_t N> void hybridInsert(void* array, size_t index, const void* value) {
-            vectorInsert<T>(&static_cast<HybridArray<T, N>*>(array)->values, index, value);
+        // GrowArray<T> and StableArray<T>, a component's arrays that grow by index
+        template<typename A> size_t growSize(const void* array) { return static_cast<const A*>(array)->stored(); }
+        template<typename A> void growResize(void* array, size_t size) { static_cast<A*>(array)->resize(size); }
+        template<typename A> void* growAt(void* array, size_t index) { return &(*static_cast<A*>(array))[index]; }
+        template<typename A, typename T> void growInsert(void* array, size_t index, const void* value) {
+            static_cast<A*>(array)->insert(index, *static_cast<const T*>(value));
         }
-        template<typename T, size_t N> void hybridErase(void* array, size_t index) {
-            vectorErase<T>(&static_cast<HybridArray<T, N>*>(array)->values, index);
-        }
-        template<typename T, size_t N> void hybridMove(void* array, size_t from, size_t to) {
-            vectorMove<T>(&static_cast<HybridArray<T, N>*>(array)->values, from, to);
-        }
-        template<typename T, size_t N> bool equalHybrid(const void* a, const void* b, float epsilon) {
-            return equalVector<T>(&static_cast<const HybridArray<T, N>*>(a)->values, &static_cast<const HybridArray<T, N>*>(b)->values, epsilon);
-        }
+        template<typename A> void growErase(void* array, size_t index) { static_cast<A*>(array)->erase(index); }
+        template<typename A> void growMove(void* array, size_t from, size_t to) { static_cast<A*>(array)->move(from, to); }
+        // equal when every index reads the same: an element one holds and the other does not
+        // compares with the default element (storage that grew past the count is no difference)
+        template<typename A, typename T> bool equalGrow(const void* a, const void* b, float epsilon);
 
     }
 
     namespace ops {
 
-        template<typename T, size_t N>
-        inline constexpr ArrayOps HybridArrayOps{&detail::hybridSize<T, N>, &detail::hybridResize<T, N>, &detail::hybridAt<T, N>,
-            &detail::hybridInsert<T, N>, &detail::hybridErase<T, N>, &detail::hybridMove<T, N>};
-        template<typename T, size_t N>
-        inline constexpr TypeOps Hybrid{"HybridArray", Kind::Array, PropertyType::Custom, sizeof(HybridArray<T, N>),
-            &detail::construct<HybridArray<T, N>>, &detail::destroy<HybridArray<T, N>>, &detail::copy<HybridArray<T, N>>,
-            &detail::equalHybrid<T, N>, &detail::arrayToYaml, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::arraySchema};
+        template<typename A, typename T>
+        inline constexpr ArrayOps GrowArrayOps{&detail::growSize<A>, &detail::growResize<A>, &detail::growAt<A>,
+            &detail::growInsert<A, T>, &detail::growErase<A>, &detail::growMove<A>, true};
+        template<typename A, typename T>
+        inline constexpr TypeOps Grow{"GrowArray", Kind::Array, PropertyType::Custom, sizeof(A),
+            &detail::construct<A>, &detail::destroy<A>, &detail::copy<A>,
+            &detail::equalGrow<A, T>, &detail::arrayToYaml, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::arraySchema};
 
     }
 
@@ -633,12 +630,20 @@ namespace jasperengine::editor::reflect {
         static constexpr const ArrayOps* arrayOps = &ops::FixedArray<T, N>;
     };
 
-    template<typename T, size_t N>
-    struct ReflectTraits<HybridArray<T, N>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
+    template<typename T>
+    struct ReflectTraits<GrowArray<T>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
         using Element = T;
-        static constexpr const TypeOps* ops = &ops::Hybrid<T, N>;
+        static constexpr const TypeOps* ops = &ops::Grow<GrowArray<T>, T>;
         static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
-        static constexpr const ArrayOps* arrayOps = &ops::HybridArrayOps<T, N>;
+        static constexpr const ArrayOps* arrayOps = &ops::GrowArrayOps<GrowArray<T>, T>;
+    };
+
+    template<typename T>
+    struct ReflectTraits<StableArray<T>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
+        using Element = T;
+        static constexpr const TypeOps* ops = &ops::Grow<StableArray<T>, T>;
+        static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
+        static constexpr const ArrayOps* arrayOps = &ops::GrowArrayOps<StableArray<T>, T>;
     };
 
     // A nested struct's traits (its StructDesc), declared once next to its table:
@@ -669,6 +674,22 @@ namespace jasperengine::editor::reflect {
                     if (!structEqual(*ReflectTraits<T>::structDesc, &x[i], &y[i], epsilon)) return false;
                 } else {
                     if (!ReflectTraits<T>::ops->equals(&x[i], &y[i], epsilon)) return false;
+                }
+            }
+            return true;
+        }
+
+        template<typename A, typename T> bool equalGrow(const void* a, const void* b, float epsilon) {
+            const A& x = *static_cast<const A*>(a);
+            const A& y = *static_cast<const A*>(b);
+            const size_t count = x.stored() > y.stored() ? x.stored() : y.stored();
+            const TypeOps* element = ReflectTraits<T>::ops;
+            for (size_t i = 0; i < count; i++) {
+                // (const reads: past an array's end, its default element)
+                if constexpr (HasStructDesc<T>::value) {
+                    if (!structEqual(*ReflectTraits<T>::structDesc, &x[i], &y[i], epsilon)) return false;
+                } else {
+                    if (!element->equals(&x[i], &y[i], epsilon)) return false;
                 }
             }
             return true;

@@ -103,6 +103,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <functional>
 #include <optional>
@@ -135,6 +136,9 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
+bool Engine::foliageDistanceScaleOverridden = false;
+float Engine::foliageDistanceScaleOverride = 1.0f;
 bool Engine::gpuInstancingEnabled = true;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
@@ -243,7 +247,7 @@ FunctionSubscribe<void()> Engine::onMouseEnter;
 FunctionSubscribe<void()> Engine::onMouseLeave;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyDown;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyUp;
-FunctionSubscribe<void(wchar_t)> Engine::onCharInput;
+FunctionSubscribe<void(char32_t)> Engine::onCharInput;
 FunctionSubscribe<void(int)> Engine::onGamepadConnect;
 FunctionSubscribe<void(int)> Engine::onGamepadDisconnect;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonDown;
@@ -898,6 +902,53 @@ void Engine::resetAtmosphereQuality(){
 
 bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
+}
+
+namespace {
+    // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
+    float clampFoliageDistanceScale(float scale){
+        return std::clamp(scale, 0.0f, 10.0f);
+    }
+}
+
+void Engine::setFoliageDistanceScaleDefaults(float desktop, float mobile, float web){
+    const float scales[3] = {desktop, mobile, web};
+    for (int i = 0; i < 3; i++){
+        foliageDistanceScaleDefaults[i] = std::isfinite(scales[i]) ? clampFoliageDistanceScale(scales[i]) : 1.0f;
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return foliageDistanceScaleDefaults[1];
+        case Platform::Web:
+            return foliageDistanceScaleDefaults[2];
+        default:
+            return foliageDistanceScaleDefaults[0];
+    }
+}
+
+float Engine::getFoliageDistanceScaleDefault(){
+    return getFoliageDistanceScaleDefault(getPlatform());
+}
+
+void Engine::setFoliageDistanceScale(float scale){
+    if (!std::isfinite(scale)){
+        Log::warn("Engine::setFoliageDistanceScale: non-finite value ignored");
+        return;
+    }
+    foliageDistanceScaleOverride = clampFoliageDistanceScale(scale);
+    foliageDistanceScaleOverridden = true;
+}
+
+float Engine::getFoliageDistanceScale(){
+    return foliageDistanceScaleOverridden ? foliageDistanceScaleOverride : getFoliageDistanceScaleDefault();
+}
+
+void Engine::resetFoliageDistanceScale(){
+    foliageDistanceScaleOverridden = false;
 }
 
 GraphicBackend Engine::getGraphicBackend(){
@@ -1812,7 +1863,9 @@ namespace {
         // build's macro, both through the platform configuration)
         // (the configuration lives for the whole run, so its text does)
         config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
-        config.root = system->getCrashReportPath();
+        // the platform's path is UTF-8 (a narrow fs::path would read it in the ANSI code page)
+        const std::string crashReportPath = system->getCrashReportPath();
+        config.root = std::filesystem::path(std::u8string(crashReportPath.begin(), crashReportPath.end()));
         config.includeLogTail = setting(platform.crashLogTail, platform.builtCrashLogTail);
         config.dumpKind = setting(platform.crashDumpWithHeap, platform.builtCrashDumpWithHeap) ? diag::crash::DumpKind::WithHeap
                                                                                                   : diag::crash::DumpKind::Small;
@@ -3039,26 +3092,14 @@ namespace {
         return consumed;
     }
 
-    // the game's and the component UI's character input: one wchar_t unit per call, as before
-    // documents existed (two surrogates where wchar_t is 16 bits)
+    // the game's and the component UI's character input: one whole code point per call
     void sendCharacterToGame(uint32_t codepoint, bool toComponentUI, bool toGame, const std::vector<Scene*>& scenes){
-        std::vector<wchar_t> units;
-        if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
-            const uint32_t value = codepoint - 0x10000u;
-            units.push_back((wchar_t)(0xD800u + (value >> 10)));
-            units.push_back((wchar_t)(0xDC00u + (value & 0x3FFu)));
-        }else{
-            units.push_back((wchar_t)codepoint);
-        }
-
-        for (wchar_t unit : units){
-            if (toGame)
-                Engine::onCharInput.call(unit);
-            if (toComponentUI){
-                for (Scene* scene : scenes){
-                    if (canSendUIEvents(scene))
-                        scene->getSystem<UISystem>()->eventOnCharInput(unit);
-                }
+        if (toGame)
+            Engine::onCharInput.call(static_cast<char32_t>(codepoint));
+        if (toComponentUI){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    scene->getSystem<UISystem>()->eventOnCharInput(static_cast<char32_t>(codepoint));
             }
         }
     }
@@ -3666,48 +3707,36 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
         Engine::onKeyUp.call(key, repeat, mods);
 }
 
-void Engine::systemCharInput(wchar_t codepoint){
-    const std::vector<Scene*> scenes = getInputScenes(true);
-
+void Engine::systemCharInput(char32_t unit){
     std::vector<uint32_t> codepoints;
-    charInputCombiner.push((uint32_t)codepoint, codepoints);
-    // Input.inputString (Unity's: the text typed this frame)
-    for (uint32_t typed : codepoints)
-        Input::addInputCharacter(typed);
-
-    bool consumed;
-    if (!codepoints.empty()){
-        const std::string utf8 = toUtf8(codepoints);
-        consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-            return documents->eventOnTextInput(utf8);
-        }) != nullptr;
-    }else{
-        // half of a pair: it goes where its other half will
-        consumed = wantsTextComposition();
-    }
-
-    if (!ignoreEventsHandledByUI || !consumed)
-        onCharInput.call(codepoint);
-
-    if (!consumed){
-        for (Scene* scene : scenes){
-            if (canSendUIEvents(scene))
-                scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
-        }
-    }
+    charInputCombiner.push(static_cast<uint32_t>(unit), codepoints);
+    // half of a pair: nothing until its other half
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
 }
 
 void Engine::flushCharInput(){
     std::vector<uint32_t> codepoints;
     charInputCombiner.flush(codepoints);
-    if (codepoints.empty())
-        return;
+    // a high surrogate whose low one never came: U+FFFD, everywhere a character goes
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
+}
 
-    // a high surrogate whose low one never came
+void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
+    const std::vector<Scene*> scenes = getInputScenes(true);
+
+    // Input.inputString (Unity's: the text typed this frame)
+    for (uint32_t typed : codepoints)
+        Input::addInputCharacter(typed);
+
     const std::string utf8 = toUtf8(codepoints);
-    dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
+    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
-    });
+    }) != nullptr;
+
+    for (uint32_t codepoint : codepoints)
+        sendCharacterToGame(codepoint, !consumed, !ignoreEventsHandledByUI || !consumed, scenes);
 }
 
 void Engine::systemTextInput(const std::string& utf8){

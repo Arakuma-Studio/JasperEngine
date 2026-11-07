@@ -40,6 +40,7 @@
 #include "command/type/PropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
+#include "util/TextEncoding.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
@@ -625,6 +626,8 @@ static void attachHostConsoleIfNeeded() {
         (void)freopen_s(&stdoutFile, "CONOUT$", "w", stdout);
         (void)freopen_s(&stderrFile, "CONOUT$", "w", stderr);
         (void)freopen_s(&stdinFile,  "CONIN$",  "r", stdin);
+        // the console exists only now: it shows the UTF-8 output too
+        TextEncoding::useUtf8Console();
     }
 #endif
 }

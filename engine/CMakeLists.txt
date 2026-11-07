@@ -209,12 +209,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND JASPERENGINE_APP_DEFINITIONS JASPERENGINE_WINDOW_ICON)
     endif()
 
-    # Per-project HybridArray capacities (SceneMaxValues) are injected here by the
-    # editor Exporter, replacing the marker below. When building manually (without
-    # the editor), the marker is left untouched and the engine defaults declared in
-    # core/Engine.h apply.
-    # @JASPERENGINE_SCENE_MAX_VALUES@
-
     if(NOT GRAPHIC_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
             set(GRAPHIC_BACKEND "gles3")
@@ -923,6 +917,10 @@ if(JASPERENGINE_SHARED)
 else()
     set(JASPERENGINE_LIB_TYPE STATIC)
 endif()
+
+# (the editor's export and Play builds pass their job cap; empty or 0: every CPU)
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
 
 if(WIN32)
     if(MSVC)
@@ -1719,6 +1717,7 @@ set(JASPERENGINE_SRCS
     core/render/LodFade.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
+    core/render/SSRProbeSlots.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
     core/render/VisibleList.cpp
@@ -1850,6 +1849,7 @@ set(JASPERENGINE_SRCS
     core/profiler/GpuMemory.cpp
     core/profiler/Profiler.cpp
     core/memory/Arena.cpp
+    core/memory/HeapTrim.cpp
     core/memory/MemoryStats.cpp
     core/memory/ObjectPool.cpp
     core/memory/RangeAllocator.cpp
@@ -2377,6 +2377,30 @@ if(JASPERENGINE_SHARED)
             set_property(TARGET jasperengine APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")
         endif()
     endif()
+endif()
+
+# C++ scripts link only the editor's shared engine, so it carries all of Box2D and Jolt and exports
+# them: built with their export macros (the engine's own sources too, so every object agrees on
+# Jolt's shared-library declarations), every archive member linked, and whoever links the engine
+# (the editor, its tests; generated projects through Generator::physicsCompileDefinitions) compiles
+# with the import macros (MSVC links data such as JPH::Allocate only through dllimport)
+if(JASPERENGINE_SHARED AND JASPERENGINE_PHYSICS_2D)
+    target_compile_definitions(box2d PRIVATE box2d_EXPORTS)
+    target_compile_definitions(jasperengine PRIVATE box2d_EXPORTS INTERFACE BOX2D_DLL)
+    if(MINGW)
+        # base.h uses dllexport with MSVC only
+        target_compile_options(box2d PRIVATE "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/platform/win/Box2DExport.h\"")
+    endif()
+    jasperengine_link_whole_archive(jasperengine box2d)
+endif()
+if(JASPERENGINE_SHARED AND JASPERENGINE_PHYSICS_3D)
+    target_compile_definitions(joltphysics PRIVATE JPH_SHARED_LIBRARY JPH_BUILD_SHARED_LIBRARY)
+    target_compile_definitions(jasperengine PRIVATE JPH_BUILD_SHARED_LIBRARY PUBLIC JPH_SHARED_LIBRARY)
+    if(MINGW)
+        # Core.h uses dllexport with MSVC only
+        target_compile_options(joltphysics PRIVATE "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/platform/win/JoltExport.h\"")
+    endif()
+    jasperengine_link_whole_archive(jasperengine joltphysics)
 endif()
 
 # =============================================================

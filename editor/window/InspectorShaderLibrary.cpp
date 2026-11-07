@@ -14,6 +14,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/PointsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
@@ -275,8 +276,18 @@ namespace {
         std::shared_ptr<const ShaderManifest> manifest =
             presentManifest(editor::Catalog::getShaderReferenceForProperty(scene, entity, cpType, "customShader"));
         const std::vector<std::string>* features = editor::Catalog::getPropertyRef<std::vector<std::string>>(scene, entity, cpType, "shaderFeatures");
-        return RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
-                                                         features ? *features : noFeatures, false);
+        RenderState state = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
+                                                                      features ? *features : noFeatures, false);
+        // Points: Auto writes depth when opaque only (RenderSystem::resolvePointsRenderState)
+        if (cpType == editor::ComponentType::PointsComponent){
+            if (const PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
+                const MaterialDepthWrite manifestDepthWrite = manifest ?
+                    manifest->resolveState(manifest->resolveFeatures(features ? *features : noFeatures)).depthWrite : MaterialDepthWrite::AUTO;
+                if (manifestDepthWrite == MaterialDepthWrite::AUTO)
+                    state.depthWrite = !points->isTransparent();
+            }
+        }
+        return state;
     }
 
 }
@@ -1016,7 +1027,9 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     settings.help = "How the colour mixes with what is behind. Auto: the shader's @state, else alpha blending.";
     propertyRow(RowPropertyType::Enum, cpType, "blendMode", "Blend Mode", sceneProject, entities, settings);
     settings.enumEntries = &depthWriteEntries.entries;
-    settings.help = "Whether it writes depth. Auto: the shader's @state, else on.";
+    settings.help = cpType == ComponentType::PointsComponent ?
+        "Whether it writes depth. Auto: the shader's @state, else on when opaque and off when Transparent (or when Auto Transparency finds alpha in the texture)." :
+        "Whether it writes depth. Auto: the shader's @state, else on.";
     propertyRow(RowPropertyType::Enum, cpType, "depthWrite", "Depth Write", sceneProject, entities, settings);
 
     // stencil and colour write (phase 2): Auto names the shader's rule

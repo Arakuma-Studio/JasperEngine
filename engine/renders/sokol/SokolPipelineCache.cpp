@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "SokolAsyncCreate.h"
 #include "SokolCmdQueue.h"
+#include "memory/MemoryStats.h"
 
 #include <atomic>
 #include <mutex>
@@ -341,6 +342,80 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
     desc.cull_mode = state.cullBack ? SG_CULLMODE_BACK : SG_CULLMODE_NONE;
 
     return desc;
+}
+
+namespace {
+
+    // the shared base descriptions (internBase): by descHash, each a weak reference its last owner
+    // erases. Their own lock, never held while a description is destroyed (its deleter takes it).
+    // Never destroyed: an object may let go of its base in a destructor that runs at exit
+    struct PipelineBasePool {
+        std::mutex mutex;
+        std::unordered_map<uint64_t, std::vector<std::weak_ptr<const sg_pipeline_desc>>> entries;
+        size_t alive = 0;
+    };
+
+    PipelineBasePool& pipelineBasePool(){
+        static PipelineBasePool* pool = new PipelineBasePool();
+        return *pool;
+    }
+
+    memory::TrackedBytes& pipelineDescBytes(){
+        static memory::TrackedBytes* tracked = new memory::TrackedBytes("Render.PipelineDescs", memory::Residency::Cpu);
+        return *tracked;
+    }
+
+}
+
+std::shared_ptr<const sg_pipeline_desc> SokolPipelineCache::internBase(const sg_pipeline_desc& desc){
+    const uint64_t hash = descHash(desc);
+    PipelineBasePool& pool = pipelineBasePool();
+    // a reference taken while looking may be the last one when it is let go of: its deleter takes
+    // the lock, so such references are let go of after it is released
+    std::vector<std::shared_ptr<const sg_pipeline_desc>> passed;
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    std::vector<std::weak_ptr<const sg_pipeline_desc>>& list = pool.entries[hash];
+    for (const std::weak_ptr<const sg_pipeline_desc>& entry : list){
+        std::shared_ptr<const sg_pipeline_desc> held = entry.lock();
+        if (held && descEqual(*held, desc))
+            return held;
+        if (held)
+            passed.push_back(std::move(held));
+    }
+    std::shared_ptr<const sg_pipeline_desc> made(new sg_pipeline_desc(desc), [hash](const sg_pipeline_desc* base){
+        PipelineBasePool& owner = pipelineBasePool();
+        {
+            std::lock_guard<std::mutex> lock(owner.mutex);
+            auto it = owner.entries.find(hash);
+            if (it != owner.entries.end()){
+                std::vector<std::weak_ptr<const sg_pipeline_desc>>& entries = it->second;
+                for (size_t i = 0; i < entries.size();){
+                    if (entries[i].expired()){
+                        entries[i] = entries.back();
+                        entries.pop_back();
+                    }else{
+                        i++;
+                    }
+                }
+                if (entries.empty())
+                    owner.entries.erase(it);
+            }
+            owner.alive--;
+        }
+        pipelineDescBytes().subtract(sizeof(sg_pipeline_desc));
+        delete base;
+    });
+    list.push_back(made);
+    pool.alive++;
+    pipelineDescBytes().add(sizeof(sg_pipeline_desc));
+    // (passed goes after the lock: declared before it)
+    return made;
+}
+
+size_t SokolPipelineCache::internedBaseCount(){
+    PipelineBasePool& pool = pipelineBasePool();
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    return pool.alive;
 }
 
 uint64_t SokolPipelineCache::descHash(const sg_pipeline_desc& d){

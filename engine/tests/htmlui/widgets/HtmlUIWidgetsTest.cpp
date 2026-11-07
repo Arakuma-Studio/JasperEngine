@@ -408,8 +408,9 @@ TEST_F(HtmlUIWidgets, Table){
     rml(element)->QuerySelectorAll(cells, ".htmlui-cell[data-column=name]");
     ASSERT_GT(cells.size(), 10u);
     for (Rml::Element* cell : cells){
-        if (cell->IsVisible(true))
+        if (cell->IsVisible(true)){
             EXPECT_NEAR(cell->GetBox().GetSize(Rml::BoxArea::Border).x, 250.0f, 0.5f);
+        }
     }
     EXPECT_EQ(sorts.size(), 2u) << "a resize is no header click";
 }

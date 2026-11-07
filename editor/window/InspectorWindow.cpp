@@ -1162,7 +1162,7 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
             if (ec || relative.empty() || *relative.begin() == "..") {
                 ImGui::OpenPopup("File Import Error");
             }else{
-                setFontSlot(cpType, id, slot, relative.string(), sceneProject, entities, onValueChanged);
+                setFontSlot(cpType, id, slot, FileUtils::pathToGenericUtf8(relative), sceneProject, entities, onValueChanged);
             }
         }
     }
@@ -2363,12 +2363,12 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
                 entry.enabled = true;
 
                 if (type == ScriptType::CPP) {
-                    entry.headerPath = headerPath.string();
-                    entry.path = sourcePath.string();
+                    entry.headerPath = FileUtils::pathToGenericUtf8(headerPath);
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name;
                 } else if (type == ScriptType::LUA) {
                     entry.headerPath.clear();
-                    entry.path = sourcePath.string();
+                    entry.path = FileUtils::pathToGenericUtf8(sourcePath);
                     entry.className = name; // module (file base) name
                 }
 
@@ -4729,7 +4729,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("File Import Error");
                 }else{
-                    Texture texture(relative.string());
+                    Texture texture(FileUtils::pathToGenericUtf8(relative));
                     for (Entity& entity : entities){
                         cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                         submitRowCommand(sceneProject, cpType, id);
@@ -5010,7 +5010,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         ImGui::OpenPopup("File Import Error##cube");
                     }else{
                         Texture texture = newValue;
-                        texture.setCubeMap(relative.string());
+                        texture.setCubeMap(FileUtils::pathToGenericUtf8(relative));
                         for (Entity& entity : entities){
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                             submitRowCommand(sceneProject, cpType, id);
@@ -5126,7 +5126,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                             ImGui::OpenPopup("File Import Error##cube");
                         }else{
                             Texture texture = newValue;
-                            texture.setCubePath(faceIndex, relative.string());
+                            texture.setCubePath(faceIndex, FileUtils::pathToGenericUtf8(relative));
                             for (Entity& entity : entities){
                                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
                                 submitRowCommand(sceneProject, cpType, id);
@@ -7841,7 +7841,7 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
                 if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("Model Import Error");
                 }else{
-                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, relative.string()));
+                    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, FileUtils::pathToGenericUtf8(relative)));
                 }
             }
         }
@@ -8685,9 +8685,10 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         propertyHeader("Frames", -1, false, false);
         ImGui::Text("%d", activeFrameCount);
         float spriteFramesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Frame##sprite_frames_add", spriteFramesArrowWidth,
+                sprite.framesRect.validIndex((int)sprite.numFramesRect), "A Sprite holds at most 65,536 frames")) {
             int freeSlot = (int)sprite.numFramesRect;
-            if (freeSlot < (int)sprite.framesRect.size()) {
+            if (sprite.framesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "framesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9591,9 +9592,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tile Rects", -1, false, false);
         ImGui::Text("%d", activeTileRectCount);
         float tileRectsArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile Rect##tile_rects_add", tileRectsArrowWidth,
+                tilemap.tilesRect.validIndex((int)tilemap.numTilesRect), "A Tilemap holds at most 65,536 tile rects")) {
             int freeSlot = (int)tilemap.numTilesRect;
-            if (freeSlot < (int)tilemap.tilesRect.size()) {
+            if (tilemap.tilesRect.validIndex(freeSlot)) {
                 editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                 std::string prefix = "tilesRect[" + std::to_string(freeSlot) + "]";
                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9691,9 +9693,15 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
                     ImVec2 centerPad((arrowButtonSize.x - iconSize.x) * 0.5f, (arrowButtonSize.y - iconSize.y) * 0.5f);
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, centerPad);
                     }
-                    if (ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect")) {
+                    ImGui::BeginDisabled(tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES);
+                    const bool addTile = ImGui::Button(ICON_FA_SQUARE_PLUS "##add_tile_from_rect");
+                    ImGui::EndDisabled();
+                    if (tilemap.numTiles >= MAX_TILEMAP_RENDERED_TILES && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("A Tilemap draws at most %d tiles", MAX_TILEMAP_RENDERED_TILES);
+                    }
+                    if (addTile) {
                         int freeSlot = (int)tilemap.numTiles;
-                        if (freeSlot < (int)tilemap.tiles.size()) {
+                        if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                             editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
                             std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                             multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
@@ -9819,9 +9827,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         propertyHeader("Tiles", -1, false, false);
         ImGui::Text("%d", activeTileCount);
         float tilesArrowWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
-        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth)) {
+        if (drawSummaryAddButton(ICON_FA_PLUS " Add Tile##tilemap_tiles_add", tilesArrowWidth,
+                tilemap.numTiles < MAX_TILEMAP_RENDERED_TILES, "A Tilemap draws at most 16,383 tiles")) {
             int freeSlot = (int)tilemap.numTiles;
-            if (freeSlot < (int)tilemap.tiles.size()) {
+            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                 float defaultWidth = 100.0f;
                 float defaultHeight = 100.0f;
                 if (tilemap.numTilesRect > 0 && tilemap.tilesRect[0].rect.getWidth() > 0.0f && tilemap.tilesRect[0].rect.getHeight() > 0.0f) {
@@ -12100,8 +12109,8 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
                 if (changed) {
                     std::string newName = nameBuffer;
-                    std::string newSource = srcPath.string();
-                    std::string newHeader = hdrPath.string();
+                    std::string newSource = FileUtils::pathToGenericUtf8(srcPath);
+                    std::string newHeader = FileUtils::pathToGenericUtf8(hdrPath);
 
                     // Empty class name falls back to header (or source) filename stem
                     if (newName.empty()) {
@@ -13109,7 +13118,8 @@ void editor::InspectorWindow::show(){
 
                         // Debug View: visualize the SSR G-buffer channels (centralized in the composite)
                         {
-                            const char* ssrDebugNames[] = { "Off", "Reflection", "Normal", "Roughness", "Metallic", "Albedo", "IBL Specular" };
+                            const char* ssrDebugNames[] = { "Off", "Reflection", "Normal", "Roughness", "Metallic", "Albedo",
+                                                            "Environment Specular", "Reflection Source", "Occlusion" };
                             int debugMode = jasperengine::editor::Catalog::getSceneProperty<int>(sceneProject->scene, "ssr_debug_mode");
                             int debugModeDefault = jasperengine::editor::Catalog::getScenePropertyDefault<int>("ssr_debug_mode");
                             ImGui::TableNextRow();
@@ -13135,6 +13145,9 @@ void editor::InspectorWindow::show(){
                                 Command* cmd = new ScenePropertyCmd<int>(project, sceneProject->id, "ssr_debug_mode", debugMode);
                                 CommandHandle::get(sceneProject->id)->addCommand(cmd);
                             }
+                            ImGui::SetItemTooltip("Reflection Source colours what SSR swaps against: blue the sky, red/green/yellow/cyan "
+                                                  "a reflection probe's slot, orange a probe without a slot (no SSR), grey the ambient, "
+                                                  "magenta added only, black none. Occlusion shows what the swap is weighed by.");
                         }
                     }
 

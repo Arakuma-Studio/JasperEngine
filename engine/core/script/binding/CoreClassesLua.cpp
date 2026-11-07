@@ -2247,6 +2247,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
+        .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)
@@ -2668,12 +2670,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(wchar_t)>>("FunctionSubscribe_V_W")
-        .addFunction("__call", &FunctionSubscribe<void(wchar_t)>::call)
-        .addFunction("call", &FunctionSubscribe<void(wchar_t)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(wchar_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(wchar_t)>::add)
-        .addFunction("remove", &FunctionSubscribe<void(wchar_t)>::remove)
-        .addFunction("has", &FunctionSubscribe<void(wchar_t)>::has)
+        .beginClass<FunctionSubscribe<void(char32_t)>>("FunctionSubscribe_V_W")
+        .addFunction("__call", &FunctionSubscribe<void(char32_t)>::call)
+        .addFunction("call", &FunctionSubscribe<void(char32_t)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(char32_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(char32_t)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(char32_t)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(char32_t)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

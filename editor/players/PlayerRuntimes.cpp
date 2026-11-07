@@ -100,7 +100,7 @@ std::string PlayerInfo::toJson() const {
     out["gitSha"] = gitSha;
     out["contentFormatVersion"] = contentFormatVersion;
     out["modelCookFormats"] = modelCookFormats;
-    out["capacities"] = capacities;
+    if (!capacities.empty()) out["capacities"] = capacities;
     out["features"] = features;
     out["variant"] = variant;
     out["notices"] = notices;

@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // S57's small pure parts (docs/specs/S57-forge-lighting.md): the tier defaults of Light Mode, the
-// tile grid and contact shadows, Bend's light coordinate and sample groups, the OIT depth weight
-// and the Hair shading model's block and variant.
+// tile grid, Bend's contact-shadow light coordinate and sample groups, and the Hair shading
+// model's block and variant.
 
 #include "render/ContactShadows.h"
 #include "device/Device.h"
 #include "render/LightingTiers.h"
-#include "render/OrderIndependentTransparency.h"
 #include "texture/Material.h"
 #include "texture/MaterialPbr.h"
 
@@ -88,39 +87,6 @@ TEST(ContactShadows, SampleGroupsKeepFourAveragedSamples){
     int fade = 0;
     ContactShadows::sampleGroups(100, hard, fade);
     EXPECT_EQ(hard, 4);
-}
-
-TEST(ContactShadows, ThicknessShareGrowsWithTheThickness){
-    const Matrix4 projection = Matrix4::perspectiveMatrix(1.0f, 1.0f, 0.1f, 100.0f);
-    const float thin = ContactShadows::thicknessShare(projection, 5.0f, 0.01f);
-    const float thick = ContactShadows::thicknessShare(projection, 5.0f, 0.5f);
-    EXPECT_GT(thin, 0.0f);
-    EXPECT_GT(thick, thin);
-    EXPECT_LE(thick, 1.0f);
-}
-
-TEST(OrderIndependentTransparency, DepthWeightFallsWithDistanceAndScale){
-    const float nearWeight = OrderIndependentTransparency::depthWeight(1.0f, 1.0f);
-    const float farWeight = OrderIndependentTransparency::depthWeight(100.0f, 1.0f);
-    EXPECT_GT(nearWeight, farWeight);
-    EXPECT_LE(nearWeight, 3e3f);
-    EXPECT_GE(OrderIndependentTransparency::depthWeight(1e6f, 1.0f), 1e-2f);
-    // a lower scale takes the weights of nearer surfaces (large scenes)
-    EXPECT_GT(OrderIndependentTransparency::depthWeight(100.0f, 0.1f), farWeight);
-    TransparencyMode mode;
-    ASSERT_TRUE(OrderIndependentTransparency::modeFromName("order_independent", mode));
-    EXPECT_EQ(mode, TransparencyMode::ORDER_INDEPENDENT);
-    EXPECT_STREQ(OrderIndependentTransparency::getModeName(TransparencyMode::SORTED), "sorted");
-}
-
-TEST(OrderIndependentTransparency, SupportOverrideAnswers){
-    const bool no = false;
-    OrderIndependentTransparency::setSupportOverride(&no);
-    EXPECT_FALSE(OrderIndependentTransparency::isSupported(1));
-    const bool yes = true;
-    OrderIndependentTransparency::setSupportOverride(&yes);
-    EXPECT_TRUE(OrderIndependentTransparency::isSupported(4));
-    OrderIndependentTransparency::setSupportOverride(nullptr);
 }
 
 TEST(HairShadingModel, ItsBlockAndVariant){

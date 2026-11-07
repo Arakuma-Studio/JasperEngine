@@ -178,23 +178,6 @@ namespace jasperengine::editor{
         bool reused = false;                // an earlier load wrote it already (kept as it is now)
     };
 
-    struct SceneMaxValues {
-        unsigned int maxSubmeshes = 0;
-        unsigned int maxTilemapTilesRect = 0;
-        unsigned int maxTilemapTiles = 0;
-        unsigned int maxExternalBuffers = 0;
-        unsigned int maxSpriteFrames = 0;
-        unsigned int maxBones = 0;
-        // the collider caps of scenes saved before colliders had none (maxColliders2D,
-        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
-        // nothing reads them, kept as they were so re-saving an old scene changes no line
-        std::optional<unsigned int> legacyMaxColliders2D;
-        std::optional<unsigned int> legacyMaxColliderPoints2D;
-        std::optional<unsigned int> legacyMaxColliders3D;
-        std::optional<unsigned int> legacyMaxColliderVertices3D;
-        std::optional<unsigned int> legacyMaxColliderIndices3D;
-    };
-
     struct ChildSceneRef {
         uint32_t id = NULL_PROJECT_SCENE;
         bool startActive = true;
@@ -262,7 +245,10 @@ namespace jasperengine::editor{
         bool playStateModified = false;
         // The prefab instances' bookkeeping when the snapshot was taken (capturePlayPrefabState)
         PlayPrefabState playPrefabState;
-        SceneMaxValues maxValues;
+        // the maxValues block of a scene saved by an editor that sized fixed arrays (capacities) and
+        // collider caps: nothing reads it, written back as it was so re-saving changes no line; a
+        // scene saved since has none (null)
+        YAML::Node legacyMaxValues;
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
@@ -884,6 +870,7 @@ namespace jasperengine::editor{
         bool vsyncEnabled;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
+        std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
@@ -1314,7 +1301,6 @@ namespace jasperengine::editor{
         template<typename T>
         T* findScene(uint32_t sceneId) const;
 
-        void calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const;
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
 
@@ -1520,11 +1506,6 @@ namespace jasperengine::editor{
         // Main thread, not while playing (MCP compile_scripts).
         std::vector<SceneScriptSource> prepareScriptBuild();
 
-        // The external buffers MeshSystem::loadGLTF gives the model in a .gltf/.glb (merged: with
-        // mergeStaticMeshes), read from the file: a command line export loads no model, so the
-        // meshes' numExternalBuffers alone would undersize MAX_EXTERNAL_BUFFERS. 0 when unreadable.
-        static unsigned int countGltfExternalBuffers(const std::filesystem::path& path, bool merged);
-
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;
@@ -1532,6 +1513,7 @@ namespace jasperengine::editor{
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
@@ -1640,6 +1622,12 @@ namespace jasperengine::editor{
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
+
+        // Quality > Foliage Distance of desktop, mobile and web games: scales every terrain foliage
+        // layer's draw distances (Engine::setFoliageDistanceScaleDefaults; the editor's views run
+        // the desktop one); clamped to [0, 10]
+        void setFoliageDistanceScale(const std::array<float, 3>& scale);
+        const std::array<float, 3>& getFoliageDistanceScale() const;
 
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);

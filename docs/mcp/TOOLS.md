@@ -1454,7 +1454,7 @@ Group: `core`
 
 Input into the running game, over frames. events in order, {type, ...} (first action: default):
 key: key (space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods [shift,ctrl,alt,super]
-text: text; ime: text, cursor; ime_commit: text; ime_cancel
+text: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel
 mouse_leave, mouse_enter
 mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)
 touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to
