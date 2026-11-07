@@ -4,7 +4,8 @@
 // The shadow blocks the engine uploads (fs_shadow_data_t, fs_point_shadow_data_t in
 // RenderSystem.h) against the blocks the compiled Lit shader declares (includes/shadow_data.glsl,
 // spec S10): the same size and every member at the same offset. And what the High filters'
-// variant bit ('Shq') adds: the raw-depth view of the atlas, never on GLES.
+// variant bit ('Shq') adds: the raw-depth view of the atlas, on GLES3 too where it fits
+// (ShadowPcssGles holds where it does not).
 
 #include "subsystem/RenderSystem.h"
 #include "pool/ShaderPool.h"
@@ -104,7 +105,7 @@ TEST(ShadowDataLayout, BlocksMatchTheShader){
     }
 }
 
-TEST(ShadowDataLayout, HighFiltersAddTheRawDepthViewOffGles){
+TEST(ShadowDataLayout, HighFiltersAddTheRawDepthView){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
     const ShaderData high = compiled(litKey(true), ShaderBackend::GLCore);
     const ShaderData medium = compiled(litKey(false), ShaderBackend::GLCore);
@@ -114,7 +115,7 @@ TEST(ShadowDataLayout, HighFiltersAddTheRawDepthViewOffGles){
     ASSERT_NE(fragmentOf(gles), nullptr);
     EXPECT_TRUE(hasTexture(*fragmentOf(high), "u_shadowAtlasRaw"));
     EXPECT_FALSE(hasTexture(*fragmentOf(medium), "u_shadowAtlasRaw"));
-    EXPECT_FALSE(hasTexture(*fragmentOf(gles), "u_shadowAtlasRaw"));
+    EXPECT_TRUE(hasTexture(*fragmentOf(gles), "u_shadowAtlasRaw")) << "GLES3 has the texture units for it";
     EXPECT_TRUE(hasTexture(*fragmentOf(medium), "u_shadowAtlas"));
     EXPECT_TRUE(hasTexture(*fragmentOf(medium), "u_shadowPointAtlas"));
 }

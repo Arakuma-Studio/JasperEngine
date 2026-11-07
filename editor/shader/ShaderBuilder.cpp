@@ -385,6 +385,11 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // the variants of a GLES3 build that render Ultra shadows without PCSS (docs/rendering/shadows.md)
+    if (compileLog.find(ShaderVariantCompiler::PCSS_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no PCSS, its textures leave no texture unit for it; Ultra soft shadows use the High tier's filter",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
     // what a fork reads of the global shader values that Project Settings does not declare as
     // such (once: for the editor's own backend)
     if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {

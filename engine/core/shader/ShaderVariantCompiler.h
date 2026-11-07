@@ -48,6 +48,9 @@ namespace jasperengine {
     // compile() fails.
     class JASPERENGINE_API ShaderVariantCompiler {
     public:
+        // what starts the log line of a GLES3 variant built without PCSS (compile)
+        static constexpr const char* PCSS_LEFT_OUT = "pcss-left-out";
+
         using FileReader = std::function<bool(const std::string& path, std::string& content)>;
         using ProgressFn = std::function<void(float progress)>;
 
@@ -93,6 +96,8 @@ namespace jasperengine {
         // custom shader id and ignored otherwise. On failure returns false and fills
         // error with what failed and log with the compiler output. progress, when set,
         // is told how far the build is (0..1); cancelled, when set, stops it between steps.
+        // For GLES3 a variant the raw-depth shadow view (PCSS) would take past 16 fragment
+        // textures is built without it (SHADOW_RAW_VIEW_OFF); log then has a PCSS_LEFT_OUT line.
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});

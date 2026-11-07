@@ -5666,7 +5666,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
     // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
     //      includes/lights.glsl and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
+    //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
+    //      where it would be the 17th fragment texture.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

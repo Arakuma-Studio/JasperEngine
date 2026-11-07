@@ -1107,6 +1107,15 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 #ifdef JASPERENGINE_RUNTIME_SHADERS
 namespace {
 
+// a fragment stage past the 16 texture units GLES3 and WebGL2 guarantee
+bool isOverGlesTextureUnits(const ShaderData& data){
+    for (const ShaderStage& stage : data.stages){
+        if (stage.type == ShaderStageType::FRAGMENT && (stage.textures.size() > 16 || stage.textureSamplerPairs.size() > 16))
+            return true;
+    }
+    return false;
+}
+
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
 // (compile and preprocess). False with an error when the key or its sources are unusable.
 bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
@@ -1233,23 +1242,37 @@ bool ShaderVariantCompiler::preprocess(ShaderKey key, ShaderBackend backend, con
 
     retainCompilerProcess();
 
-    shadercompiler::args_t args;
-    std::string setupError;
-    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
-        return fail(setupError);
-    std::string log;
-    args.error_output = &log;
+    auto run = [&](bool rawViewOff) -> std::string {
+        shadercompiler::args_t args;
+        std::string setupError;
+        if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+            return setupError;
+        if (rawViewOff)
+            args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
+        std::string log;
+        args.error_output = &log;
 
-    std::vector<shadercompiler::input_t> inputs;
-    if (!shadercompiler::load_input(inputs, args))
-        return fail("Error loading shader input");
+        std::vector<shadercompiler::input_t> inputs;
+        if (!shadercompiler::load_input(inputs, args))
+            return "Error loading shader input";
 
-    std::vector<std::string> outputs;
-    if (!shadercompiler::preprocess(outputs, inputs, args))
-        return fail("Error preprocessing: " + log);
+        std::vector<std::string> outputs;
+        if (!shadercompiler::preprocess(outputs, inputs, args))
+            return "Error preprocessing: " + log;
 
-    for (size_t i = 0; i < inputs.size(); i++)
-        (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
+        for (size_t i = 0; i < inputs.size(); i++)
+            (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
+        return "";
+    };
+    std::string failure = run(false);
+    // the variant compile() builds without the raw-depth view (GLES3's texture units)
+    if (failure.empty() && backend == ShaderBackend::GLES3 && fragmentSource.find("u_shadowAtlasRaw") != std::string::npos){
+        ShaderData compiled;
+        if (compile(key, backend, customSources, compiled) && compiled.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first < 0)
+            failure = run(true);
+    }
+    if (!failure.empty())
+        return fail(failure);
     return true;
 #else
     (void)key; (void)backend; (void)customSources;
@@ -1308,60 +1331,75 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
-    shadercompiler::args_t args;
-    std::string setupError;
-    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
-        return fail(setupError);
-
     std::string compileLog;
-    args.error_output = &compileLog;
+    // one pass of the pipeline: "" when out holds the variant, else what failed
+    auto build = [&](bool rawViewOff) -> std::string {
+        shadercompiler::args_t args;
+        std::string setupError;
+        if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+            return setupError;
+        if (rawViewOff)
+            args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
+        args.error_output = &compileLog;
 
-    if (stopped())
-        return fail("Cancelled");
-    report(0.3f);
+        if (stopped())
+            return "Cancelled";
+        report(0.3f);
 
-    std::vector<shadercompiler::input_t> inputs;
-    if (!shadercompiler::load_input(inputs, args))
-        return fail("Error loading shader input");
+        std::vector<shadercompiler::input_t> inputs;
+        if (!shadercompiler::load_input(inputs, args))
+            return "Error loading shader input";
 
-    if (stopped())
-        return fail("Cancelled");
-    report(0.5f);
+        if (stopped())
+            return "Cancelled";
+        report(0.5f);
 
-    std::vector<shadercompiler::spirv_t> spirvvec;
-    spirvvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args)) {
-        if (log)
+        std::vector<shadercompiler::spirv_t> spirvvec;
+        spirvvec.resize(inputs.size());
+        if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args))
+            return "Error compiling to SPIRV";
+
+        if (stopped())
+            return "Cancelled";
+        report(0.8f);
+
+        std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
+        spirvcrossvec.resize(inputs.size());
+        bool crossCompiled = false;
+        try {
+            crossCompiled = shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args);
+        } catch (const std::exception& e) {
+            compileLog += std::string("SPIRV-Cross: ") + e.what() + "\n";
+        }
+        if (!crossCompiled)
+            return "Error cross-compiling";
+
+        if (stopped())
+            return "Cancelled";
+        report(0.9f);
+
+        // A deterministic basename names the stages
+        args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                               getLangSuffix(args.lang, args.version, args.es, args.platform);
+        out = convertToShaderData(spirvcrossvec, args);
+        return "";
+    };
+
+    std::string failure = build(false);
+    // GLES3 and WebGL2 guarantee 16 fragment texture units: a variant the raw-depth view of the
+    // shadow atlas (PCSS) takes past them is built without it, and filters the Ultra tier's
+    // shadows with the High tier's Vogel disk
+    if (failure.empty() && backend == ShaderBackend::GLES3 && isOverGlesTextureUnits(out) &&
+            out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
+        compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would be over GLES3's 16 fragment texture units; "
+                      "this variant filters Ultra shadows with the Vogel disk\n";
+        failure = build(true);
+    }
+    if (!failure.empty()) {
+        if (log && failure != "Cancelled")
             *log = compileLog;
-        return fail("Error compiling to SPIRV");
+        return fail(failure);
     }
-
-    if (stopped())
-        return fail("Cancelled");
-    report(0.8f);
-
-    std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
-    spirvcrossvec.resize(inputs.size());
-    bool crossCompiled = false;
-    try {
-        crossCompiled = shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args);
-    } catch (const std::exception& e) {
-        compileLog += std::string("SPIRV-Cross: ") + e.what() + "\n";
-    }
-    if (!crossCompiled) {
-        if (log)
-            *log = compileLog;
-        return fail("Error cross-compiling");
-    }
-
-    if (stopped())
-        return fail("Cancelled");
-    report(0.9f);
-
-    // A deterministic basename names the stages
-    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
-                           getLangSuffix(args.lang, args.version, args.es, args.platform);
-    out = convertToShaderData(spirvcrossvec, args);
 
     // a globals block (ShaderGlobals) takes at most 64 vec4 slots of a stage's uniform space
     // (GLES3 guarantees 256 vertex uniform vectors in all): a larger one fails like any error

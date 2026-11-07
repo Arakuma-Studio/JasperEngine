@@ -39,13 +39,17 @@ namespace {
 
 TEST(DirectionalOnlyVariants, CompileForEveryBackendWithoutPointAndSpotResources){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
-    // Uv1, Puc, Shw, Nor, Fog, Ibl, SSAO; then vertex lights, terrain PBR (its 16 textures)
+    // Uv1, Puc, Shw, Nor, Fog, Ibl, SSAO; then vertex lights, terrain PBR, and both with the High
+    // filters and the post-processing colour ('Shq', 'Pcl': PCSS's raw-depth view, the LUT)
     const uint64_t lit = shaderPropertyBit(1) | shaderPropertyBit(3) | shaderPropertyBit(4) | shaderPropertyBit(6) |
                          shaderPropertyBit(12) | shaderPropertyBit(19) | shaderPropertyBit(21);
+    const uint64_t highFilters = ShaderPool::getShadowsHQProperty() | shaderPropertyBit(31);
     const std::vector<uint64_t> bases = {
         lit,
         lit | shaderPropertyBit(28),
         lit | shaderPropertyBit(17) | shaderPropertyBit(27),
+        lit | highFilters,
+        lit | shaderPropertyBit(17) | shaderPropertyBit(27) | highFilters,
     };
     for (ShaderBackend backend : ShaderPool::getShaderBackends()){
         for (uint64_t base : bases){
@@ -60,6 +64,9 @@ TEST(DirectionalOnlyVariants, CompileForEveryBackendWithoutPointAndSpotResources
             EXPECT_EQ(data.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS).first, -1) << name << " binds the point shadow atlas";
             EXPECT_EQ(data.getUniformBlockIndexByName("u_fs_point_shadow_data"), -1) << name << " has the point shadow block";
             EXPECT_NE(data.getTextureIndex(TextureShaderType::SHADOWATLAS).first, -1) << name << " lost the sun's shadow atlas";
+            if (base & highFilters){
+                EXPECT_NE(data.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first, -1) << name << " has no PCSS";
+            }
         }
     }
 }
