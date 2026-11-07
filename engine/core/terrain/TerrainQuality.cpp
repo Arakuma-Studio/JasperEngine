@@ -3,7 +3,6 @@
 
 #include "terrain/TerrainQuality.h"
 
-#include "Engine.h"
 
 #include <cstring>
 
@@ -103,10 +102,6 @@ void TerrainQualitySettings::setPlatformTier(int platform, TerrainQuality qualit
 
 TerrainQuality TerrainQualitySettings::getPlatformTier(int platform) {
     return platform >= 0 && platform < PLATFORM_COUNT ? state().platform[platform] : TerrainQuality::HIGH;
-}
-
-TerrainQuality TerrainQualitySettings::getCurrentPlatformTier() {
-    return getPlatformTier(static_cast<int>(Engine::getPlatform()));
 }
 
 void TerrainQualitySettings::setShippedMask(uint32_t mask) {

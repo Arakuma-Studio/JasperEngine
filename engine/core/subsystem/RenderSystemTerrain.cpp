@@ -16,7 +16,7 @@
 #include "object/TerrainEdit.h"
 #include "profiler/Profile.h"
 #include "render/SystemRender.h"
-#include "terrain/TerrainDetailBuilder.h"
+#include "texture/TerrainDetailBuilder.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainMacroNormal.h"
 #include "texture/MaterialPbr.h"

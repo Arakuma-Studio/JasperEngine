@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "terrain/TerrainDetailBuilder.h"
+#include "texture/TerrainDetailBuilder.h"
 
 #include "Log.h"
 #include "io/Data.h"

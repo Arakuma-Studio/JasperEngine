@@ -3249,7 +3249,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.postColor = postColorVariants;
     environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
     environment.pbrTier = MaterialPbr::getRuntimeTier();
-    environment.terrainTier = terrain::TerrainQualitySettings::getCurrentPlatformTier();
+    environment.terrainTier = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
     environment.terrainShippedMask = terrain::TerrainQualitySettings::getShippedMask();
     environment.terrainDebugView = static_cast<int>(terrain::TerrainQualitySettings::getDebugView());
     {

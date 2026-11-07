@@ -5,7 +5,7 @@
 
 #include "Project.h"
 #include "component/TerrainComponent.h"
-#include "terrain/TerrainDetailBuilder.h"
+#include "texture/TerrainDetailBuilder.h"
 #include "texture/CookedTextures.h"
 #include "util/PngWriter.h"
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainQualityPanel.h"
+#include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -9984,7 +9985,7 @@ void editor::InspectorWindow::drawTerrainQualitySection(ComponentType cpType, Sc
     RowSettings qualitySettings;
     qualitySettings.enumEntries = enumEntries(reflect::enums::kTerrainQualitySetting);
     static std::string autoLabel;
-    autoLabel = std::string("Auto (Project: ") + terrain::terrainQualityName(terrain::TerrainQualitySettings::getCurrentPlatformTier()) + ")";
+    autoLabel = std::string("Auto (Project: ") + terrain::terrainQualityName(terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()))) + ")";
     if (!qualitySettings.enumEntries->empty()){
         qualitySettings.enumEntries->front().name = autoLabel.c_str();
     }

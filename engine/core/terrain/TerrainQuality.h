@@ -98,7 +98,6 @@ namespace jasperengine::terrain {
         // graphics.terrainQuality.<platform>; absent means High on every platform (R51)
         static void setPlatformTier(int platform, TerrainQuality quality);
         static TerrainQuality getPlatformTier(int platform);
-        static TerrainQuality getCurrentPlatformTier();
 
         // PlayerConfig's shipped tiers (R34)
         static void setShippedMask(uint32_t mask);

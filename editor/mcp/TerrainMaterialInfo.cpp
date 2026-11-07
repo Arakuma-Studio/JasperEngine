@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMaterialInfo.h"
+#include "Engine.h"
 
 #include "component/LightComponent.h"
 #include "object/TerrainEdit.h"
@@ -94,7 +95,7 @@ terrain::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveTier(
     const terrain::TerrainVariantInputs variant = RenderSystem::getTerrainVariantInputs(component);
     request.hasComponent = variant.hasComponentQuality;
     request.component = variant.componentQuality;
-    request.project = terrain::TerrainQualitySettings::getCurrentPlatformTier();
+    request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
     request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
     return terrain::resolveTerrainQuality(request);
 }

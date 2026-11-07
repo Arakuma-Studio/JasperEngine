@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Terrain.h"
+#include "Engine.h"
 #include "util/Color.h"
 
 #include "subsystem/MeshSystem.h"
@@ -318,7 +319,7 @@ namespace {
         const terrain::TerrainVariantInputs variant = RenderSystem::getTerrainVariantInputs(component);
         request.hasComponent = variant.hasComponentQuality;
         request.component = variant.componentQuality;
-        request.project = terrain::TerrainQualitySettings::getCurrentPlatformTier();
+        request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
         request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
         return terrain::resolveTerrainQuality(request);
     }

@@ -7,7 +7,7 @@
 #include "ImageCompare.h"
 #include "TempDir.h"
 #include "component/TerrainComponent.h"
-#include "terrain/TerrainDetailBuilder.h"
+#include "texture/TerrainDetailBuilder.h"
 #include "texture/MipChain.h"
 
 #include <gtest/gtest.h>
