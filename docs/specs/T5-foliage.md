@@ -953,9 +953,15 @@ Recorded by the implementation, each with what it does instead and why.
     derived at a cell's build, so the undo of a sculpt restores the store's bytes (AC21).
 12. **The "Terrain Settings: Foliage" section lives in the panel.** T1 R59's Terrain Settings tool is absent;
     when it lands the section moves there, with the same fields.
-13. **R65, R66's "lands first" path.** `minDrawDistance`, Foliage Distance and `Engine.foliageDistanceScale`
-    are implemented here; agent-authoring's `detailRanges` is not on the branch, so AC42's second half is for
-    whichever lands second.
+13. **R66: render-correctness landed first.** T5 takes its `TerrainFoliageLayer::minDrawDistance`, its
+    `Engine` Foliage Distance API and project key (`foliageDistanceScale`, settings `quality.foliage_distance_*`),
+    and adds Tree Distance and Billboard Start to what the scale multiplies. Its new-project default stays 1
+    everywhere (its `test_render_correctness.py` pins that), so new projects do not write 0.5 on Mobile and Web
+    (R20): the new-project Foliage Quality of Low there is the mobile protection. Its chunk-entity foliage in
+    `MeshSystem` gives way to F1's `FoliageSystem`; `TerrainFoliageGpu.*` keeps what each test pinned (one entity
+    a layer that walking never destroys and that places only entering cells; scaled Draw and Min Draw distances;
+    a scale change drawing nothing twice; 0 removing foliage and the preview ignoring it), read from the view's
+    instances instead of chunk components. agent-authoring has not landed: R65's second half is for it.
 14. **Details on a brush frame.** `TerrainMapUtils::refresh` takes the region a stamp wrote and publishes it as
     `TerrainEditEvents`; a restored snapshot has no region and refills every cell.
 15. **Tree obstacles do not need Physics 3D.** The collector's cylinder builder is compiled in without it,

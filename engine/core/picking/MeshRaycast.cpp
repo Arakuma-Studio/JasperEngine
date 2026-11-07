@@ -436,6 +436,9 @@ bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3&
         case PickKind::BOUNDS:
             return boundsHit(leaf, origin, direction, maxDistance, false, hit);
         case PickKind::ICON:
+        // foliage has no leaves: SceneBvh walks its cells (T5 R35)
+        case PickKind::TREE:
+        case PickKind::DETAIL:
             return false;
     }
     return false;

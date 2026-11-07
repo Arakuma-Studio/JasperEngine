@@ -811,6 +811,9 @@ bool SceneBvh::computeLeafBounds(const Leaf& leaf, AABB& bounds) const{
             return true;
         }
         case PickKind::ICON:
+        // foliage has no leaves: raycast walks its cells (T5 R35)
+        case PickKind::TREE:
+        case PickKind::DETAIL:
             return false;
     }
     return false;

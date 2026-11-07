@@ -163,7 +163,6 @@ namespace jasperengine{
         bool castShadows = true; // off spares grass-scale scatter the shadow cascades
 
         // T5: each default changes nothing, so a layer made before them places and looks the same
-        float minDrawDistance = 0; //nearer instances fade out; with a nearer layer whose Draw Distance equals it, the two cross-fade
         float minHeightRatio = 1; //Min/Max Height, over the width scale
         float maxHeightRatio = 1;
         Vector4 healthyColor = Vector4(1, 1, 1, 1); //linear tint
