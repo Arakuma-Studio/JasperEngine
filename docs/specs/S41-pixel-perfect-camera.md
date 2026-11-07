@@ -791,3 +791,12 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     ages with every change on main: main's dynamic batching took the scene from 4 draws to 3, with
     the same pixels (the image hash recorded on main before S41, 13037468019309210060, is still
     this build's without the component).
+26. **The eval of S41's MCP text** (`tools/mcp/eval/run.py`, sonnet, an Orquester-lent account; the
+    surface recorded from this branch's editor, and a copy without S41's text):
+    | Case | With the text | Without it |
+    | --- | --- | --- |
+    | `guard_game_view_pixel_scale` (`pixel_scale`'s description) | 5 of 6 pass | 3 of 6 pass (the case fails: half its samples) |
+    | `guard_pixel_perfect_camera` (the "Other areas" line) | 2 of 2 pass | 6 of 6 pass |
+    The `pixel_scale` description earns its bytes. The guide line does not change this case: the
+    agent finds the component through `list_component_types` without it. The line stays because
+    the brief asks for the area's guide entry; whether to cut it is the coordinator's call.
