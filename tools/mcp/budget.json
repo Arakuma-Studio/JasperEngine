@@ -58,6 +58,11 @@
             "chars": 24000,
             "tools": 21,
             "spec": "S24's 4 tools, BF1's find_ui_item, S25's 8 (search, commands, shortcuts, layouts, labels, saved searches, bookmarks), S26's 5 Scene view tools (pick_at, bookmarks, layout, measures, filters), upstream's place_with_physics and S08's get_inspector_layout (the Inspector's drawn rows; it reads the editor UI as find_ui_item does, so it stays in this group), and SYNC#4's configure_game_view (upstream ui-scaling-text and safe-area made the Game view toolbar's editor preferences a tool; out of core so the default listing fits, its options in jasper://docs/ui)"
+        },
+        "particles": {
+            "chars": 15000,
+            "tools": 13,
+            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply"
         }
     },
     "exceptions": {

@@ -280,3 +280,28 @@ Effort in person-weeks, estimates at ±50%.
 - **M6 (about 1).** Budgets, docs, guide, final gate. AC16.
 
 ## Deviations
+
+- **M3, bake as a tool of its own (R12, §6 Budget).** Bake Sprite Sheet is `bake_particle_sheet`,
+  the 13th tool of `particles`, rather than a mode of `preview_particle_effect`: it writes two files
+  as one undo step and runs as a job, as `bake_vertex_animation` does, and the preview stays
+  read-only but for `save_path`. `tools/mcp/budget.json` gives `particles` 13 tools.
+- **M3, D5 adopted by S35 now.** `editor/util/QaChecks` holds the row, the rounds, the threshold
+  audit, the guidance and the row's text line; `AudioQa` and `audio_session` use it, so S90 only
+  adopts it.
+- **M3, overdraw (R27, AC12).** The analytic overdraw counts camera-facing squares of each
+  particle's size, with the Renderer's screen-size clamp, over a 64 x 64 grid of the frame;
+  stretched billboards, meshes and trails are approximated by that square. The heat row redraws the
+  systems as flat additive squares adding 4/255 a layer (it reads up to 63 layers); sub-emitter
+  children keep their own look there (their files are not rewritten), so the cross-check is exact
+  for effects without sub-emitters. AC12's tolerance is 10% of the analytic peak.
+- **M3, cost (R29).** Mobile has no measured row in docs/perf/particles.md; its per-particle costs
+  are assumed twice desktop's single-thread ones (S20 R21's budget ratio) and the result says so in
+  `cost.basis`. `platform_budget` warns over `particles.qa.cpu_ms_<platform>` and fails over twice.
+- **M3, checks (R28).** `pop` is the share of an emitter's live particles (20 or more) dying in one
+  tick at alpha 0.25 or more; `blown_out` needs cells and is SKIP with `frames: 0`; `never_ends` is
+  SKIP for a looping root. `reference` is shown as the last cell, not compared.
+- **M3, AC15.** The Particle Effect window that hosts `ParticleChecksPanel` is M2's (another
+  branch), so AC15 is an editor test of the panel's request against the tool's (its source and
+  arguments) on one effect; a `ui_probe` test of the hosted panel belongs after both merge.
+- **M3, CLI (R33).** `check --particles` is opt-in (and part of `--all`), not in the default set: it
+  starts the engine for every effect. `--fail-on warn` reports WARN rows as errors too.
