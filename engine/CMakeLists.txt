@@ -2237,6 +2237,11 @@ else()
     set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
 endif()
 set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+# the editor's audio analysis (S36) reads clips through these decoders, FFT and meter: without
+# contraction they give it the same samples and numbers on every CPU
+set_source_files_properties(core/audio/AudioMeter.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+set_source_files_properties(libs/soloud/src/audiosource/wav/stb_vorbis.c libs/soloud/src/audiosource/wav/dr_impl.cpp
+    libs/soloud/src/audiosource/wav/soloud_wav.cpp libs/soloud/src/core/soloud_fft.cpp DIRECTORY libs/soloud PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
         set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
