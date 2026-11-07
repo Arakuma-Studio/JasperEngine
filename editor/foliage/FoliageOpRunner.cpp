@@ -4,6 +4,7 @@
 #include "foliage/FoliageOpRunner.h"
 #include "spline/SplineEvaluator.h"
 
+#include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/type/TerrainMapDeltaCmd.h"
@@ -104,6 +105,9 @@ struct editor::FoliageOpRunner::Work {
         FoliageOpScope scope(*host);
         result = applyOps(*snapshot, ops, options);
         done.store(true);
+        // The editor's main-thread queue runs every loop and wakes an idle one; Engine's postToMain
+        // drains only in frames that draw a scene, so an idle editor would never land the result
+        getEditorHost().enqueueMainThreadTask([]() { FoliageOpRunner::updateAll(); });
     }
 };
 

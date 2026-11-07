@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
-#include "foliage/FoliageOpRunner.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "render/ViewCameraMirror.h"
@@ -3917,9 +3916,9 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
-    // T5: Mass Place's and edit_terrain's jobs land here; a bake renders a view a frame
-    FoliageOpRunner::updateAll();
+    // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
     ImpostorBaker::update();
+    if (ImpostorBaker::isRunning()) requestFrame();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();

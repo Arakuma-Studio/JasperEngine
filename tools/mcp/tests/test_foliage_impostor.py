@@ -73,6 +73,17 @@ async def test_bake_op_job_and_refuses_in_play(ed: Editor):
         await ed.call("play", action="stop")
 
 
+async def test_bake_goes_on_in_an_idle_editor(ed: Editor):
+    sid, terrain = await common.terrain_scene(ed, "IdleBake")
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 4, "resolution": 128}], wait=False)
+    # A bake renders a view a frame; with no call to wake it, the editor must keep framing by itself
+    quiet = 60.0
+    await asyncio.sleep(quiet)
+    job = await wait_job(ed, started["job_id"], 900)
+    ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check(job["elapsed_seconds"] < quiet, f"the bake finished while nothing called the editor: {job}")
+
+
 async def test_panel_state_goes_out_of_date(ed: Editor):
     sid, terrain = await common.terrain_scene(ed, "OutOfDate")
     await bake(ed, sid, terrain)

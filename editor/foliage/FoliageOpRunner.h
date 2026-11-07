@@ -59,7 +59,7 @@ namespace jasperengine::editor {
         void cancel() { stop.store(true); }
         bool isFinished() const { return finished; }
 
-        // Runs every runner started until it finishes (the editor's frame)
+        // Lands every runner whose work is done: posted to the editor's main-thread queue by the work
         static void updateAll();
 
         // Fills a host: prototypes by mesh stem, detail layers, splines, instanced hosts
