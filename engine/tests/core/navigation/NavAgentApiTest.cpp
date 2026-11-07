@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -131,20 +132,20 @@ TEST_F(NavAgentApiTest, CalculateAndSetPath){
 // AC20: a path of more than 256 polygons (the corridor's capacity) is accepted, followed to its end
 // (the crowd plans the rest near the corridor's end) and arrives once
 TEST_F(NavAgentApiTest, SetPathLongerThan256Polys){
-    // 700 m x 3 m on tiles of 16 cells (1.6 m): more than 400 polygons end to end, and few enough
-    // for one search (2048 nodes)
-    plane(*scene, Vector3(), 700.0f, 3.0f);
+    // 700 m x 1.8 m on tiles of 16 cells (1.6 m): one row of tiles, more than 400 polygons end to
+    // end, and few enough for one search (2048 nodes)
+    plane(*scene, Vector3(0.0f, 0.0f, 0.8f), 700.0f, 1.8f);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
     addSurface(*scene, surface, 0.1f, 16);
     bake(surface);
-    const Entity walker = agent(*scene, Vector3(-345.0f, 0.0f, 0.0f), 20.0f, 0.4f);
+    const Entity walker = agent(*scene, Vector3(-345.0f, 0.0f, 0.8f), 20.0f, 0.4f);
     scene->getComponent<NavMeshAgentComponent>(walker).acceleration = 40.0f;
     step();
     NavMeshAgent handle(scene.get(), walker);
     ASSERT_TRUE(handle.isOnNavMesh());
-    const Vector3 target(345.0f, 0.0f, 0.0f);
+    const Vector3 target(345.0f, 0.0f, 0.8f);
     const nav::NavPath path = handle.calculatePath(target);
-    ASSERT_EQ(path.status, nav::PathStatus::Complete);
+    ASSERT_EQ(path.status, nav::PathStatus::Complete) << nav::pathFailureName(path.failure) << ", " << path.polys.size() << " polygons";
     ASSERT_GE(path.polys.size(), 400u);
     ASSERT_TRUE(handle.setPath(path));
     EXPECT_FALSE(handle.isPathPending());
@@ -215,14 +216,17 @@ TEST_F(NavAgentApiTest, RootMotion){
     NavMeshAgent handle(scene.get(), walker);
     const Vector3 transformStart = position(walker);
     Vector3 next = handle.getNextPosition();
+    std::string trace;
     for (int tick = 0; tick < 120; tick++) {
         handle.setNextPosition(next + Vector3(0.2f, 0.0f, 0.0f));
-        next = handle.getNextPosition();
+        const float moved = handle.getNextPosition().x;
         step();
+        next = handle.getNextPosition();
+        trace += " " + std::to_string(moved) + "/" + std::to_string(next.x);
         EXPECT_EQ(position(walker), transformStart) << "tick " << tick;
     }
     // the plane's edge, less the agent's radius
-    EXPECT_NEAR(handle.getNextPosition().x, 9.5f, CELL + 0.05f);
+    EXPECT_NEAR(handle.getNextPosition().x, 9.5f, CELL + 0.05f) << "set/after each tick:" << trace;
     EXPECT_NEAR(handle.getNextPosition().z, 0.0f, 1e-3f);
 
     // a velocity for one tick on a path
@@ -474,7 +478,8 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     stepUntil([&]() { return !door.isPathPending(); }, 60);
     ASSERT_EQ(door.getPathStatus(), nav::PathStatus::Complete);
     steps(10);
-    EXPECT_NE(nav->setAreaInVolume(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.2f, 4.0f, 3.5f), Quaternion(), nav::AREA_NOT_WALKABLE), 0u);
+    // a script volume follows the centroid rule: it covers the doorway's polygons whole
+    EXPECT_NE(nav->setAreaInVolume(Vector3(0.0f, 0.0f, 0.0f), Vector3(8.0f, 4.0f, 9.0f), Quaternion(), nav::AREA_NOT_WALKABLE), 0u);
     stepUntil([&]() { return !reasons.empty(); }, 60);
     ASSERT_EQ(reasons.size(), 1u);
     EXPECT_EQ(reasons[0], nav::PathFailure::BlockedByArea);
