@@ -17,6 +17,8 @@ with a NavMesh Agent far off both floors (finding agent_off_mesh).
 - test_inspector_summary_and_estimate: the NavMesh Surface's Inspector rows (get_inspector_layout):
   last bake, walkable area and islands, the "Voxels ... tiles" estimate, and its fewer-than-2-voxels
   warning once Voxel Size is 0.4 m for the 0.5 m agent.
+- test_grid_overlay_draws_exact_cells: a drawn Nav Grid shows each paint as its cells, the same with the
+  scene's mesh LOD on or off.
 - test_inspector_estimate_volume_matches_bake: a scaled Volume surface's estimate counts the tiles its
   bake builds (the box is not stretched by the scale).
 
@@ -274,6 +276,38 @@ async def test_window_last_bake_and_problems(ed: Editor):
 async def layout_labels(ed: Editor, sid: int, entity: int) -> dict[str, str]:
     layout = await ed.call("get_inspector_layout", scene=sid, entities=[entity])
     return {row["path"]: row["label"] for row in layout["rows"] if row.get("kind") == "Label"}
+
+
+async def test_grid_overlay_draws_exact_cells(ed: Editor):
+    """A Nav Grid's overlay shows each paint as its cells: the same image whether the scene's mesh
+    detail levels are on or off (the overlay drew a simplified level, its painted cells smeared
+    across the merged corners, once LOD was on by default)."""
+    made = await ed.call("create_scene", name="NavGridCells", type="3D", path="scenes/NavGridCells")
+    sid = made["scene"]["id"]
+    grid = (await ed.call("create_entity", scene=sid, type="empty", name="Grid"))["entity_id"]
+    await ed.call("add_component", scene=sid, entity=grid, component="navgrid",
+                  values={"navgrid": {"width": 16, "height": 12, "cellSize": 1}})
+    await ed.call("select_entities", scene=sid, entities=[])
+    await ed.call("set_scene_camera", scene=sid, position=[8.0, 20.0, 14.0], target=[8.0, 0.0, 6.0],
+                  display={"show_grid_3d": False, "hide_light_icons": True})
+    await ed.call("visualize_navigation", scene=sid, show={"grid": True})
+
+    async def view() -> tuple:
+        return pngdiff.decode(await ed.screenshot("scene", scene=sid, max_width=640))
+
+    drawn = await view()
+    for block in ([[x, y] for x in range(2, 5) for y in range(2, 5)], [[x, y] for x in range(10, 13) for y in range(6, 9)]):
+        await ed.call("paint_nav_grid", scene=sid, grid=grid, strokes=[{"mode": "paint", "area": "Not Walkable", "cells": block}])
+        painted = await view()
+        same, fraction, _ = pngdiff.compare(drawn, painted, max_fraction=0.002)
+        ed.check(not same, f"the painted cells {block[0]}..{block[-1]} show ({fraction:.4f} of the pixels changed)")
+        drawn = painted
+    await ed.call("set_scene_settings", scene=sid, settings={"mesh_lod_enabled": False})
+    exact = await view()
+    same, fraction, diff = pngdiff.compare(exact, drawn, max_fraction=0.002)
+    if not same and diff:
+        (evidence(ed) / "grid_cells_lod_diff.png").write_bytes(diff)
+    ed.check(same, f"the overlay with the scene's LOD on differs from it with LOD off in {fraction:.4f} of the pixels")
 
 
 async def test_inspector_estimate_volume_matches_bake(ed: Editor):

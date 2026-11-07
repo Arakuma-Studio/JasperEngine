@@ -466,9 +466,19 @@ TEST_F(NavCrowdTest, CrowdRebuiltOnNewMesh){
     resolveTransforms(*scene);
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(24.0f, -1.0f, -16.0f), Vector3(56.0f, 2.0f, 16.0f)), error)) << error;
+    // where each agent stood on the last tick before the new mesh landed: the agents walk (and
+    // avoid each other) for as many ticks as the bake takes, so their spawn points are no reference
+    std::vector<Vector3> stood;
+    for (Entity entity : agents)
+        stood.push_back(position(entity));
     const auto since = std::chrono::steady_clock::now();
-    for (int tick = 0; bakeRunning(surface, since); tick++)
+    for (int tick = 0; bakeRunning(surface, since); tick++) {
+        if (mesh->getGeneration() == generation) {
+            for (size_t i = 0; i < agents.size(); i++)
+                stood[i] = position(agents[i]);
+        }
         step();
+    }
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_EQ(nav->getNavMesh(surface), mesh);
     EXPECT_GT(mesh->getTileCount(), tiles);
@@ -476,8 +486,8 @@ TEST_F(NavCrowdTest, CrowdRebuiltOnNewMesh){
     steps(2);
     for (size_t i = 0; i < agents.size(); i++) {
         EXPECT_TRUE(NavMeshAgent(scene.get(), agents[i]).isOnNavMesh()) << "agent " << i;
-        // placed where it stood, not moved elsewhere
-        EXPECT_LT(std::fabs(position(agents[i]).x - (-3.0f + 2.0f * (float)i)), 0.5f) << "agent " << i;
+        // placed where it stood, not moved elsewhere (three ticks of walking since)
+        EXPECT_LT(position(agents[i]).distance(stood[i]), 0.5f) << "agent " << i;
     }
     // they still walk: the crowd's corridors are the new mesh's
     steps(240);

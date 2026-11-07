@@ -260,6 +260,9 @@ Mesh* NavigationOverlay::newMesh() {
     mesh->setCastShadows(false);
     mesh->setReceiveShadows(false);
     mesh->setFaceCulling(false);
+    // exact geometry at any distance: a simplified detail level merges the corners of cells and
+    // tiles and blends their colours (mesh LOD is on by default)
+    mesh->setLodEnabled(false);
     return mesh;
 }
 
