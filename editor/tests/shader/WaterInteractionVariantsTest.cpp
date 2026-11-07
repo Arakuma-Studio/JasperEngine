@@ -193,8 +193,9 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
                 const size_t plainVectors = fragmentVectors(plainData);
                 std::printf("[water] %s: %zu fragment uniform vectors, %zu without the bits (limit 224)\n", name.c_str(), vectors, plainVectors);
                 EXPECT_LE(vectors, plainVectors + 3) << name;
-                if (environment.lightCapacity <= 8)
+                if (environment.lightCapacity <= 8){
                     EXPECT_LE(vectors, 224u) << name;
+                }
             }
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1) << name;
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionData").first, -1) << name;
