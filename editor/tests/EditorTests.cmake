@@ -91,6 +91,10 @@ jasperengine_add_test_target(jasperengine-editor-tests
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
+    # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
+    # definitions are its own; only its source reads the switch
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/engine/tests/core/support/AllocationCounter.cpp
+        PROPERTIES COMPILE_DEFINITIONS JE_TEST_COUNTS_ALLOCATIONS)
     target_link_options(jasperengine-editor-tests PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc")
 endif()
 
