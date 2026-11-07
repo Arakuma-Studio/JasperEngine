@@ -254,3 +254,9 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   55 + reflection/determinism 11/11, HTML UI input, web compile, lints, test_grade.
 - Box tool: rsync now compares contents and never copies times (a stale object after a cancelled build crashed
   the editor in one landing check).
+- 2026-11-07 06:xx: **main's editor unit failures fixed** (`fix/main-units`, reported by the follow-ups program):
+  ShaderNeutralApi hashes updated after checking every new Lua member is draw-neutral (runtime-core, scripting,
+  AdMob's removal); a real engine bug fixed with a red control: particles with no seed drew from a counter shared by
+  the whole process, so runtime-core's new particle test shifted LegacyParticlePresets (now per scene). The
+  ReflectParity Action goldens already passed after ui-components. Every landing check now also runs the suites
+  that pin shared data (AGENT-BRIEF.md).
