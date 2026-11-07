@@ -11,6 +11,7 @@ set(PROCMAT_SOURCES
     ${EDITOR_DIR}/procmat/PassPlanner.cpp
     ${EDITOR_DIR}/procmat/ProceduralSession.cpp
     ${EDITOR_DIR}/procmat/ProceduralGpuEvaluator.cpp
+    ${EDITOR_DIR}/procmat/ProcMatThumbnails.cpp
 )
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${PROCMAT_SOURCES})
 jasperengine_skip_unity_build(
