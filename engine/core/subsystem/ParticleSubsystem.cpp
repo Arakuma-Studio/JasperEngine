@@ -62,15 +62,13 @@ namespace {
             for (int r = 0; r < 4; r++) out[c * 4 + r] = m[c][r];
     }
 
-    // a seed for a play (Auto Random Seed): the scene's own sequence, never 0
-    uint32_t nextSeed(){
-        static uint32_t counter = 0x9e3779b9u;
-        counter = counter * 1664525u + 1013904223u;
-        return counter | 1u;
-    }
-
     Vector3 point(const float p[3]){ return Vector3(p[0], p[1], p[2]); }
 
+}
+
+uint32_t ParticleSubsystem::nextSeed(){
+    seedCounter = seedCounter * 1664525u + 1013904223u;
+    return seedCounter | 1u;
 }
 
 ParticleSubsystem::ParticleSubsystem(Scene* scene): SubSystem(scene){
