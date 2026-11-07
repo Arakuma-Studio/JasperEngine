@@ -279,8 +279,13 @@ void SvnProvider::parseStatusXml(const XmlElement& root, bool remote, VcsSnapsho
         change.conflict = item == "conflicted" || wc->attribute("tree-conflicted") == "true";
         if (change.conflict && change.worktree == FileState::Unmodified) change.worktree = FileState::Modified;
         change.baseOid = wc->attribute("revision");
-        // a move's new path: its BASE is the source's (a copy without a move counts as new, as in git)
-        if (const std::string& from = wc->attribute("moved-from"); change.worktree == FileState::Added && !from.empty()) change.oldPath = keyOf(from);
+        // a move's new path (added or replaced) is the source renamed; a copy is new with the source's BASE
+        if (const std::string& from = wc->attribute("moved-from"); !from.empty()) {
+            change.oldPath = keyOf(from);
+            change.worktree = FileState::Renamed;
+        } else if (wc->attribute("copied") == "true" && change.worktree == FileState::Added) {
+            change.copied = true;
+        }
         const XmlElement* wcLock = wc->child("lock");
         const XmlElement* repos = entry->child("repos-status");
         if (remote && repos) {
@@ -300,6 +305,21 @@ void SvnProvider::parseStatusXml(const XmlElement& root, bool remote, VcsSnapsho
         // a fast poll reads no locks (the slow poll's stay); a token the server no longer has
         // (broken or stolen) is no lock
         if (change.changed() || change.remoteChanged) out.entries.push_back(std::move(change));
+    }
+    // a changed file inside a moved folder carries no moved-from of its own: its folder's names its source
+    std::vector<std::pair<RepoPath, RepoPath>> movedFolders;
+    for (const VcsChange& change : out.entries) {
+        if (change.worktree == FileState::Renamed) movedFolders.emplace_back(change.path, change.oldPath);
+    }
+    for (VcsChange& change : out.entries) {
+        if (!change.oldPath.empty() || change.worktree != FileState::Modified) continue;
+        for (const auto& [folder, from] : movedFolders) {
+            if (pathKeyIsWithin(change.path, folder) && change.path.size() > folder.size()) {
+                change.oldPath = from + change.path.substr(folder.size());
+                change.worktree = FileState::Renamed;
+                break;
+            }
+        }
     }
     if (const XmlElement* against = findDeep(root, "against")) {
         againstRevision = std::atoi(against->attribute("revision").c_str());

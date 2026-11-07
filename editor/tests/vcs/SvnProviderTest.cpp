@@ -7,7 +7,10 @@
 #include "VcsTestSupport.h"
 
 #include "vcs/SvnProvider.h"
+#include "vcs/VcsEditorOps.h"
 #include "vcs/SvnXml.h"
+
+#include <tuple>
 
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
@@ -204,8 +207,9 @@ TEST(SvnProvider, EndToEnd) {
 }
 
 // A scheduled add has no BASE to compare with (the scene diff lists all of it as added, as for a
-// git add); a move's new path compares with its source, as a git rename does; a copy is new, as
-// in git (which tracks no copies)
+// git add) and Revert unschedules it, keeping the file; a move (of the file, its folder, or onto a
+// deleted path) compares with its source, as a git rename does; a copy is new with its source's
+// text as BASE, which svn cat and svn diff read at its own path
 TEST(SvnProvider, AddedMovedAndCopiedFiles) {
     VcsSandbox box;
     ASSERT_FALSE(box.svn.empty()) << "svn is in the build image";
@@ -214,7 +218,10 @@ TEST(SvnProvider, AddedMovedAndCopiedFiles) {
     const fs::path wc = box.path("wc");
     box.svnOk(box.dir.path(), {"checkout", "-q", "--username", "alice", fileUrl(repo), wc.string()});
     writeFile(wc / "Level.scene", "base\n");
-    box.svnOk(wc, {"add", "-q", "Level.scene"});
+    writeFile(wc / "Old.scene", "old\n");
+    writeFile(wc / "Swap.scene", "swap\n");
+    writeFile(wc / "levels/a.scene", "a\n");
+    box.svnOk(wc, {"add", "-q", "Level.scene", "Old.scene", "Swap.scene", "levels"});
     box.svnOk(wc, {"commit", "-q", "--username", "alice", "-m", "one"});
     SvnProvider alice(svnConfig(box, wc, "alice"));
 
@@ -222,25 +229,50 @@ TEST(SvnProvider, AddedMovedAndCopiedFiles) {
     box.svnOk(wc, {"add", "-q", "New.scene"});
     box.svnOk(wc, {"move", "-q", "Level.scene", "Moved.scene"});
     box.svnOk(wc, {"copy", "-q", "Moved.scene", "Copy.scene"});
+    writeFile(wc / "Copy.scene", "base\ncopy\n");
+    box.svnOk(wc, {"delete", "-q", "Old.scene"});
+    box.svnOk(wc, {"move", "-q", "Swap.scene", "Old.scene"});
+    box.svnOk(wc, {"move", "-q", "levels", "moved-levels"});
+    writeFile(wc / "moved-levels/a.scene", "a\nedited\n");
     const VcsSnapshot snapshot = statusOf(alice);
 
     const VcsChange* added = snapshot.find("New.scene");
     ASSERT_NE(added, nullptr);
     EXPECT_EQ(added->worktree, FileState::Added);
     EXPECT_TRUE(added->newFile());
+    EXPECT_FALSE(added->hasBaseline());
+    EXPECT_EQ(revertRefusal(snapshot, {"New.scene"}, true), "");
+    EXPECT_NE(revertRefusal(snapshot, {"New.scene"}, false), "");
 
-    const VcsChange* moved = snapshot.find("Moved.scene");
-    ASSERT_NE(moved, nullptr);
-    EXPECT_EQ(moved->oldPath, "Level.scene");
-    EXPECT_FALSE(moved->newFile());
     std::string base;
-    ASSERT_TRUE(offMain([&]() { return alice.baseContent(moved->oldPath, "BASE", base); }).ok);
-    EXPECT_EQ(base, "base\n");
-    ASSERT_NE(snapshot.find("Level.scene"), nullptr);
-    EXPECT_TRUE(snapshot.find("Level.scene")->deleted());
+    const std::vector<std::tuple<RepoPath, RepoPath, std::string>> moves = {
+        {"Moved.scene", "Level.scene", "base\n"}, {"Old.scene", "Swap.scene", "swap\n"}, {"moved-levels/a.scene", "levels/a.scene", "a\n"}};
+    for (const auto& [path, from, text] : moves) {
+        const VcsChange* moved = snapshot.find(path);
+        ASSERT_NE(moved, nullptr) << path;
+        EXPECT_EQ(moved->worktree, FileState::Renamed) << path;
+        EXPECT_EQ(moved->oldPath, from) << path;
+        EXPECT_FALSE(moved->newFile()) << path;
+        ASSERT_TRUE(offMain([&]() { return alice.baseContent(moved->diffSource(), "BASE", base); }).ok) << path;
+        EXPECT_EQ(base, text) << path;
+    }
 
     const VcsChange* copy = snapshot.find("Copy.scene");
     ASSERT_NE(copy, nullptr);
-    EXPECT_TRUE(copy->oldPath.empty());
+    EXPECT_TRUE(copy->copied);
     EXPECT_TRUE(copy->newFile());
+    EXPECT_TRUE(copy->hasBaseline());
+    EXPECT_EQ(copy->diffSource(), "Copy.scene");
+    ASSERT_TRUE(offMain([&]() { return alice.baseContent(copy->diffSource(), "BASE", base); }).ok);
+    EXPECT_EQ(base, "base\n");
+    std::string diff;
+    ASSERT_TRUE(offMain([&]() { return alice.textDiff("Copy.scene", "BASE", diff); }).ok);
+    EXPECT_NE(diff.find(" base\n+copy\n"), std::string::npos) << diff;
+
+    // Revert of the add: unscheduled, the file kept
+    ASSERT_TRUE(offMain([&]() { return alice.revert(std::vector<RepoPath>{"New.scene"}); }).ok);
+    EXPECT_EQ(readFile(wc / "New.scene"), "new\n");
+    const VcsChange* unscheduled = statusOf(alice).find("New.scene");
+    ASSERT_NE(unscheduled, nullptr);
+    EXPECT_EQ(unscheduled->worktree, FileState::Untracked);
 }
