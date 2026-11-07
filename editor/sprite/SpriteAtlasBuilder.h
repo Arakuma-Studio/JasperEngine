@@ -30,7 +30,6 @@
 #include "pixelart/PixelProblem.h"
 
 #include "asset/Guid.h"
-#include "io/watch/FileWatchService.h"
 #include "jobs/Primitives.h"
 #include "jobs/Task.h"
 #include "sprite/SpriteSheet.h"
@@ -177,6 +176,8 @@ namespace jasperengine::editor::sprite {
         void rebuild(const std::string& atlasPath);
         // a member's pixels or settings changed: the atlases that pack it build again
         void memberChanged(const std::string& memberPath);
+        // an atlas file went away: its build is dropped and its members draw their sources again
+        void forget(const std::string& atlasPath);
         // the project's Sprite Atlas mode changed
         void modeChanged();
         AtlasMode mode() const;
@@ -247,14 +248,12 @@ namespace jasperengine::editor::sprite {
         std::set<std::string> again;
         std::set<std::string> waitingImports;   // atlases waiting for a member's import
         AtlasMode currentMode = AtlasMode::Enabled;
-        FileWatchSubscription watch;
 
         void start(const std::string& atlasPath);
         void adopt(const std::shared_ptr<AtlasBuildResult>& result);
         void finishSwap(Swap& swap);
         void refreshRemaps();
         std::string assetPathOf(const std::string& path) const;
-        void onFileChanges(std::span<const FileChange> changes);
     };
 
 }

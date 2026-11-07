@@ -3016,6 +3016,10 @@ bool editor::Exporter::gatherSpriteAtlases(const std::vector<std::string>& platf
     if (platforms.size() == 1) {
         const std::string& p = platforms[0];
         family = p == "web" ? "web" : (p == "android" || p == "ios") ? "mobile" : "desktop";
+    } else if (config.mode == ExportMode::SourceCode && config.selectedBackends.size() == 1 &&
+               *config.selectedBackends.begin() == ShaderBackend::GLES3) {
+        // a source export for GLES3 / WebGL2 only: the web family's layout
+        family = "web";
     }
     struct Gathered {
         std::vector<sprite::AtlasBuildInput> inputs;

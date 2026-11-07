@@ -4806,17 +4806,18 @@ bool editor::ProjectWindow::hasAudioSelection() const {
 
 namespace {
     // a new atlas packing `members` (asset-relative files), written as one undo step
-    bool writeNewSpriteAtlas(Project* project, const fs::path& file, const std::vector<std::string>& members, std::string& error) {
-        sprite::SpriteAtlasDocument doc;
-        doc.guid = Guid::parse(AssetDatabase::generateGuid());
+    bool writeNewSpriteAtlas(jasperengine::editor::Project* project, const std::filesystem::path& file, const std::vector<std::string>& members, std::string& error) {
+        namespace je = jasperengine::editor;
+        je::sprite::SpriteAtlasDocument doc;
+        doc.guid = jasperengine::Guid::parse(je::AssetDatabase::generateGuid());
         for (const std::string& path : members) {
-            sprite::SpriteAtlasMember m;
+            je::sprite::SpriteAtlasMember m;
             m.path = path;
             m.guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(project->getAssetsPath() / path));
             doc.members.push_back(m);
         }
-        return ProjectFileWrites::writeUndoable(project, {{file, sprite::writeSpriteAtlas(doc)}}, error, nullptr, nullptr, {}, false,
-                                                "Create Sprite Atlas " + file.filename().string());
+        return je::ProjectFileWrites::writeUndoable(project, {{file, je::sprite::writeSpriteAtlas(doc)}}, error, nullptr, nullptr, {}, false,
+                                                    "Create Sprite Atlas " + file.filename().string());
     }
 }
 

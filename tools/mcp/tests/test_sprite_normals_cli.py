@@ -411,7 +411,7 @@ async def test_sprite_frames(ed: Editor):
     art = ed.project / "assets" / "art"
     art.mkdir(parents=True, exist_ok=True)
     shutil.copy(FIXTURES / "sheet.png", art / "sheet.png")
-    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture="assets/art/sheet.png", slice={"tile_size": [32, 32]})
+    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture="assets/art/sheet.png", slice={"tile_size": [32, 32]}, inline=True)
     await ed.call("wait", frames=3)   # the Sprite's first update makes its submesh (saved with it)
     await ed.call("save_scene", path="scenes/Main.scene")
     await ed.call("save_project")

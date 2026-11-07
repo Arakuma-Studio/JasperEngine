@@ -336,7 +336,6 @@ namespace jasperengine::editor::sprite {
             running.clear();
             again.clear();
             waitingImports.clear();
-            watch.reset();
             ImportedAssets::setSheetProvider(nullptr);
             SetAssetMetaCmd::removeWriteListener(this);
             pixelart::aseprite::AsepriteImporter::get().removeImportListener(this);
@@ -361,36 +360,22 @@ namespace jasperengine::editor::sprite {
             memberChanged(assetPath);
         });
         pixelart::aseprite::AsepriteImporter::get().addImportListener(this, [this](const std::string& assetPath) { memberChanged(assetPath); });
-        WatchFilter filter;
-        filter.root = project->getAssetsPath();
-        filter.extensions = {".spriteatlas", ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd", ".meta"};
-        filter.deliverEditorWrites = true;
-        watch = FileWatchService::get().subscribe(std::move(filter), [this](std::span<const FileChange> changes) { onFileChanges(changes); });
         requestAll();
     }
 
-    void SpriteAtlasBuilder::onFileChanges(std::span<const FileChange> changes) {
-        for (const FileChange& change : changes) {
-            if (change.directory) continue;
-            std::string assetPath = assetPathOf(change.path.string());
-            if (assetPath.empty() || assetPath.rfind(".jasperengine", 0) == 0) continue;
-            if (assetPath.size() > 5 && assetPath.compare(assetPath.size() - 5, 5, ".meta") == 0) assetPath = assetPath.substr(0, assetPath.size() - 5);
-            if (SpriteSheetSources::isAtlasPath(assetPath)) {
-                if (change.kind == FileChangeKind::Removed) {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    results.erase(assetPath);
-                } else {
-                    rebuild(assetPath);
-                }
-                if (change.kind == FileChangeKind::Removed) {
-                    refreshRemaps();
-                    SpriteSheetPool::invalidate(assetPath);
-                }
-            } else if (isImagePath(assetPath)) {
-                SpriteSheetBuilder::get().invalidate(assetPath);
-                memberChanged(assetPath);
-            }
+    void SpriteAtlasBuilder::forget(const std::string& path) {
+        const std::string atlasPath = assetPathOf(path);
+        auto it = running.find(atlasPath);
+        if (it != running.end()) it->second.cancel->cancel();
+        again.erase(atlasPath);
+        waitingImports.erase(atlasPath);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            results.erase(atlasPath);
+            attempts.erase(atlasPath);
         }
+        refreshRemaps();
+        SpriteSheetPool::invalidate(atlasPath);
     }
 
     AtlasMode SpriteAtlasBuilder::mode() const {

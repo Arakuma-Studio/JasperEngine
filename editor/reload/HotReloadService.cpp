@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "HotReloadService.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetSources.h"
 
 #include "handlers/ReloadHandlers.h"
 
@@ -314,6 +317,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
+            if (SpriteSheetSources::isAtlasPath(change.path.string()) && sprite::SpriteAtlasBuilder::get().getProject() == project) {
+                sprite::SpriteAtlasBuilder::get().forget(change.path.string());
+            }
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
             continue;
@@ -331,6 +337,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             const std::string assetPath = project->normalizeToAssetsRelative(asset).generic_string();
             if (ModelCookQueue::get().getProject() == project) ModelCookQueue::get().settingsChanged(assetPath);
             if (TextureCookQueue::get().getProject() == project) TextureCookQueue::get().settingsChanged(assetPath);
+            // S45: a texture's Sprite Mode, an atlas member's settings
+            if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
+                sprite::SpriteSheetBuilder::get().invalidate(assetPath);
+                sprite::SpriteAtlasBuilder::get().memberChanged(assetPath);
+            }
+        }
+        // S45: a Sprite Atlas written (by an agent, a pull, the inspector) builds again
+        if (SpriteSheetSources::isAtlasPath(change.path.string()) && sprite::SpriteAtlasBuilder::get().getProject() == project) {
+            sprite::SpriteAtlasBuilder::get().rebuild(change.path.string());
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;

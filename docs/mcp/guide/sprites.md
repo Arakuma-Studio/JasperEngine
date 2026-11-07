@@ -1,10 +1,12 @@
 # Sprites: sheets, frames and Aseprite files
 
-A Sprite shows frames of a **sheet** (an `.aseprite` file's import, or a texture: one frame), or
-the inline frames of its texture (the Texture Slicer). `set_sprite_frames` sets either kind;
-`set_sprite_import_settings` (group `sprites`) changes how an `.aseprite` file imports. People
-have the same things as the Sprite's **Sprite Sheet** field, the **Aseprite Importer** Inspector
-of a selected `.aseprite` file and **Window > 2D > Sprite Preview**.
+A Sprite shows frames of a **sheet**: an `.aseprite` file's import, a texture (one frame, or the
+frames of its **Sprite Mode**), or a **Sprite Atlas** (`.spriteatlas`). Old sprites may still carry
+**inline frames** of their texture (legacy). `set_sprite_frames` sets a Sprite's frames;
+`set_sprite_import_settings`, `edit_sprite_atlas` and `get_sprite_atlas` are in group `sprites`.
+People have the same things as the Sprite's **Sprite** field, the texture importer's **Sprite
+Mode**, the **Aseprite Importer** and the **Sprite Atlas** Inspector of a selected file, and
+**Window > 2D > Sprite Preview**.
 
 ## Import
 
@@ -75,6 +77,10 @@ Every error has `kind`, `field`, `message` and `fix`:
 | `invalid_settings` | a key or value is wrong (`field`: the key) |
 | `read_only_clip` | `edit_animation` on a tag clip |
 | `unknown_frame`, `not_a_sheet` | `set_sprite_frames` named a frame or sheet that is not there |
+| `sheet_conflict` | `convert`: the texture already has another Sprite Mode; `fix` says to keep the sprite inline |
+| `frame_too_large` | an atlas frame does not fit `max_size` (`field`: the frame) |
+| `missing_member`, `double_packed` | an atlas member is gone; a source is packed by two atlases in use |
+| `atlas_version` | the `.spriteatlas` was written by a newer editor (read-only) |
 | `import_failed` | anything else; the message says what |
 
 ## Sprites from sheets: `set_sprite_frames`
@@ -88,7 +94,13 @@ Every error has `kind`, `field`, `message` and `fix`:
   `light2d.intensity`), as dropping the file in the Scene view does.
 - Without `sheet`: `texture` with `slice` (row-major cells: `tile_size`, `columns`, `rows`,
   `offset`, `padding`, `count`, `names`, `prefix`, `sheet_size` when the image is unreadable) or
-  `frames` (pixel rects `[x, y, w, h]` from the image's top-left).
+  `frames` (pixel rects `[x, y, w, h]` from the image's top-left). They write the texture's
+  Sprite Mode (Multiple) and make the Sprite show one of its frames, so every sprite of that texture
+  can use them; `inline: true` keeps them in the Sprite instead (legacy).
+- `convert: true` moves a legacy Sprite's inline frames into its texture's Sprite Mode (names and
+  order kept, so clip keys and Sprite Animations keep their indices); `all_users: true` converts
+  every sprite of the project using that texture with the same frames (open and closed scenes,
+  prefabs). One `undo {scope: "project"}` restores all of it.
 - `frame` picks the frame shown; `resize` (default true) sizes the Sprite to it (`0` width and
   height for a sheet: the frame's own size); `size` sets it; `pivot` takes a preset or `frame` (the
   frame's own pivot).
@@ -102,3 +114,60 @@ Sprite (rebuilt when the box changes) and has no shape on frames where the slice
 Sprite Inspector's **Create Colliders from Slices** adds one per slice (Is Trigger when the slice's
 user data has `sensor: true`). Over MCP set the collider list with `set_properties`
 (`rigidbody2d.colliders`) giving each collider a `slice`.
+
+## Sheets: a texture's Sprite Mode
+
+A texture is a sheet of its own frames when its import settings say so (`import.spriteSheet` in
+its meta), with no atlas needed:
+
+| Mode | Frames |
+|---|---|
+| `single` (default) | the whole image, named by its stem |
+| `grid` | `cell [w, h]`, `offset [x, y]`, `spacing [x, y]`, `count` (0: all), `skip_empty` (default true), `prefix` |
+| `multiple` | `frames: [{name, rect: [x, y, w, h], pivot?: [x, y], border?: [l, t, r, b]}]` |
+
+`pivot` is the default of frames without their own: a preset (`bottom_center`, ...) or `[x, y]`
+normalized from the bottom-left. A file named `name@WxH.png` (`coin@16x16.png`) is a grid of
+`W x H` cells named `coin_0`, `coin_1`... without anything written. `get_asset_info` on a texture
+reports `sprite_mode` (the settings, where they come from, the frames) and `packed_in`. A frame
+with a `border` can be drawn **Sliced** (`set_properties` `{component: "sprite", property: "drawMode", value: "sliced"}` with a
+`width` and `height`): corners keep their size, edges and centre stretch.
+
+## Atlases
+
+A `.spriteatlas` packs textures, `.aseprite` files and folders of them into a few shared pages,
+lossless for pixel art. Sprites keep referencing their source (`sheet: assets/items/sword.png`):
+once an atlas in use packs it, they draw it from the atlas page, with the same frame names, order,
+sizes and pivots. Key clips on the source sheet, not the atlas. Load an atlas by path in Lua:
+`SpriteSheet.load("ui/icons.spriteatlas"):getFrame("sword")`.
+
+1. `edit_sprite_atlas {path, create: true, add: ["assets/items", "assets/sprites/hero.aseprite"]}`
+   without `output`: a pack in memory (pages, frames, usage, duplicates, warnings, page images
+   unless `include_pages: false`). Nothing is written.
+2. The same arguments with `output: true`: the file is written (one project undo step) and built.
+3. `get_sprite_atlas {path}` reads the build: pages (size, frames, `used_percent`, VRAM), frames
+   (`search` by name, `member:<path>`, `page:<n>`; `limit`, `page`), warnings, `build_state`. A
+   texture or `.aseprite` path gives the atlas that packs it and its placements.
+
+`remove` drops a member, or excludes a file inside a folder member. `settings` (partial; with
+`platform` only that family's `max_size`): `max_size` 32-8192 (2048), `padding` 0-16 (1),
+`extrude` 0-4 (1), `trim` (true; bordered frames never), `keep_members_together` (true),
+`power_of_two`, `square` (false), `compression` `auto` (lossless when a member is an `.aseprite`
+file, a lossless or Sprite-Mode texture) / `lossless` / `platform_default`, `filter` `auto` /
+`point` / `bilinear` (bilinear extrudes at least 2), `include_in_build` (true).
+
+Reading waste: `usage_percent` is the trimmed frame area over the page area; `worst_members` lists
+the members with the most transparent pixels trimmed away; a page far below the others is a
+member that would fit elsewhere with a larger `max_size` or `keep_members_together: false`.
+
+Project setting `sprite_atlas.mode` (Project Settings > 2D): `enabled` (the editor, Play and
+builds draw from atlases), `enabled_for_builds` (only builds), `disabled`. Exports build each atlas
+for their platform family (`max_size` overrides) and leave out a packed texture that only sprites
+read.
+
+## Legacy inline frames
+
+`jasperengine-editor check --project P --sprites` lists the sprites that still carry inline
+frames and the atlas problems (exit 1 on an atlas error). Convert them with
+`set_sprite_frames {entity, convert: true, all_users: true}`, the Inspector's **Convert to Sprite
+Sheet** or **Assets > Convert Inline Sprite Frames...**.

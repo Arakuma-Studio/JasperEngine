@@ -1967,14 +1967,15 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
-| sheet sprites: `sheet` (rw path: an `.aseprite` file or a texture; setting it shows frame 0), `frame` (rw index, 0-based), `frameName` (rw), `frameCount` | properties |
+| sheet sprites: `sheet` (rw path: an `.aseprite` file, a texture or a `.spriteatlas`; setting it shows frame 0), `frame` (rw index, 0-based), `frameName` (rw), `frameCount` | properties |
+| `drawMode` | rw `SpriteDrawMode.SIMPLE` / `SLICED` (a bordered frame as 9 parts at the sprite's size) |
 | `getSheet()` -> `SpriteSheet` or nil | method |
 | `playTag(name, speed)`, `stopTag()`; `tag` (name or nil), `isTagPlaying` | tags at the sheet's durations, direction and repeat (no clip events) |
 | `getTag(name)` -> `{name, from, to, direction, repeat, durationMs, color, userData}`, `getTags()` | methods |
 | `getSlice(name)` -> `{name, rect, center, pivot, visible, userData}` on the shown frame in local units, `getSlices()`, `getUserData()` | methods |
 | plus Mesh: `color`, `alpha`, `setColor`, `setTexture`, ... | |
 
-`SpriteSheet.load(path)` (nil and a logged error when there is none) gives `path`, `frameCount`,
+`SpriteSheet.load(path)` (any sheet: an `.aseprite` file, a texture, a `.spriteatlas`; nil and a logged error when there is none) gives `path`, `frameCount`,
 `pageCount`, `frameNames`, `tags`, `slices`, `properties` and `findFrame(name)` (-1 when absent),
 `getFrame(nameOrIndex)`, `getTag(name)`, `getSlice(name, frame)` (pixels, y down).
 

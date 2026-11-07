@@ -705,7 +705,9 @@ Json applyArgs(Project* project, const NormalsCall& state, const std::vector<std
                 frames.push_back({{"name", "frame_" + std::to_string(i)}, {"rect", Json::array({c.x, c.y, c.width, c.height})}});
             }
             calls.push_back({{"tool", "set_sprite_frames"},
-                             {"arguments", {{"scene", scene->id}, {"entity", state.sourceEntity}, {"texture", atlas}, {"frames", frames}}}});
+                             {"arguments", {{"scene", scene->id}, {"entity", state.sourceEntity}, {"texture", atlas}, {"frames", frames},
+                                            // its normal map pairs with the mesh texture: the frames stay the Sprite's (S45)
+                                            {"inline", true}}}});
             values["submeshes[0].material.normalTexture"] = textureValue(normal, 0);
             Json ms = Json::array();
             for (const sn::Delay& d : p.source.delays) ms.push_back(d.playbackMs());
