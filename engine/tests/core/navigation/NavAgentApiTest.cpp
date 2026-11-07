@@ -388,8 +388,8 @@ TEST_F(NavAgentApiTest, StuckFiresAndRepaths){
 }
 
 // AC25: why a destination fails: no surface, a surface never baked, a destination on another island,
-// a door closed on the way without Auto Repath; lastPathFailure goes back to None after a path that
-// succeeds
+// a door closed or a bridge deactivated on the way without Auto Repath (P2's replan drop);
+// lastPathFailure goes back to None after a path that succeeds
 TEST_F(NavAgentApiTest, PathFailedReason){
     std::vector<nav::PathFailure> reasons;
     const auto listen = [&](Entity entity) {
@@ -477,4 +477,34 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     EXPECT_EQ(reasons[0], nav::PathFailure::BlockedByArea);
     EXPECT_FALSE(door.hasPath());
     EXPECT_EQ(door.getLastPathFailure(), nav::PathFailure::BlockedByArea);
+
+    // a bridge (the only way across) deactivated under it, Auto Repath off: blocked by an area too
+    scene = std::make_unique<Scene>();
+    test::disableSubSystems(*scene);
+    scene->getScheduler().setEnabled("NavigationSystem", true);
+    nav = scene->getSystem<NavigationSystem>().get();
+    plane(*scene, Vector3(-6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
+    plane(*scene, Vector3(6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
+    const Entity bridge = transformEntity(*scene, Vector3(), NULL_ENTITY, "Bridge");
+    NavMeshLinkComponent link;
+    link.startPoint = Vector3(-2.5f, 0.0f, 0.0f);
+    link.endPoint = Vector3(2.5f, 0.0f, 0.0f);
+    scene->addComponent<NavMeshLinkComponent>(bridge, link);
+    const Entity bridgeSurface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+    addSurface(*scene, bridgeSurface, CELL, 32);
+    bake(bridgeSurface);
+    const Entity crosser = agent(*scene, Vector3(-8.0f, 0.0f, 0.0f));
+    scene->getComponent<NavMeshAgentComponent>(crosser).autoRepath = false;
+    reasons.clear();
+    listen(crosser);
+    step();
+    NavMeshAgent across(scene.get(), crosser);
+    ASSERT_TRUE(across.setDestination(Vector3(8.0f, 0.0f, 0.0f)));
+    stepUntil([&]() { return !across.isPathPending(); }, 60);
+    ASSERT_EQ(across.getPathStatus(), nav::PathStatus::Complete);
+    scene->getComponent<NavMeshLinkComponent>(bridge).activated = false;
+    stepUntil([&]() { return !reasons.empty(); }, 60);
+    ASSERT_EQ(reasons.size(), 1u);
+    EXPECT_EQ(reasons[0], nav::PathFailure::BlockedByArea);
+    EXPECT_FALSE(across.hasPath());
 }
