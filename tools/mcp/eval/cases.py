@@ -800,85 +800,6 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
-    {
-        "id": "guard_navigation_door_in_play",
-        "playing": True,
-        "kind": "guard",
-        "what_happened": "S55 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
-                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
-                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
-        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
-                         "links[].activated; visualize_navigation show.area_overrides",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R45 (no failure on record)",
-        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
-                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
-        "groups_enabled": ["navigation"],
-        "mocks": [
-            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
-                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
-                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
-            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
-             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
-                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
-            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
-                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
-                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
-            {"tool": "get_navigation_info", "result": ok(
-                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
-                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
-                                                      "applied": True, "polygons": 6}]})},
-        ],
-        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
-                                                                       "value": True}},
-                             {"tool": "query_navigation", "args": {"op": "path"}}],
-                   "order": [["set_runtime_property", "query_navigation"]],
-                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
-        "max_turns": 12,
-    },
-    {
-        "id": "guard_navigation_random_point",
-        "kind": "guard",
-        "what_happened": "S55 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
-                         "agents use it instead of sampling guessed points or writing Lua.",
-        "text_at_issue": "query_navigation: 'path (corners, length, status, cost), sample, raycast, closest_edge, reachable, "
-                         "random, move_along'; max_distance: 'sample (2), closest_edge, random.'; seed: 'random.'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
-        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
-                  "agent standing there can walk to. Make it repeatable (seed 3).",
-        "mocks": [
-            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
-                "Random point [6.12,0,-4.3]",
-                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
-                 "position": [6.12, 0, -4.3], "area": 0})},
-            {"tool": "query_navigation", "result": ok(
-                "Nearest navmesh point [4,0,-2], 0 away",
-                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
-        ],
-        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
-                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
-        "max_turns": 12,
-    },
-    {
-        "id": "guard_navigation_move_along",
-        "kind": "guard",
-        "what_happened": "S55 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
-                         "guards that agents use it rather than a raycast or a path for a one-step move.",
-        "text_at_issue": "query_navigation: '... random, move_along'; to: 'path, raycast, reachable, move_along.'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
-        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
-                  "does it end up on the navmesh surface, and does a wall stop it?",
-        "mocks": [
-            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
-                "Stopped at [19.5,0,3] after 1.5",
-                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
-                 "distance": 1.5, "area": 0})},
-            {"tool": "query_navigation", "result": ok(
-                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
-        ],
-        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
-                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
-        "max_turns": 12,
-    },
 
     # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {
@@ -993,5 +914,86 @@ CASES = [
         "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "reachable"}}], "max_calls": {"query_navigation": 2},
                    "reply_must": [r"0,\s*0,\s*15"]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_random_point",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S55 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
+                         "agents use it instead of sampling guessed points or writing Lua.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'; from: 'Optional for random.'; max_distance: "
+                         "'Default: sample 2, locate 5. closest_edge, random.'; seed: 'random.'",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
+                  "agent standing there can walk to. Make it repeatable (seed 3).",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
+                "Random point [6.12,0,-4.3]",
+                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
+                 "position": [6.12, 0, -4.3], "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Nearest navmesh point [4,0,-2], 0 away",
+                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_move_along",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S55 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
+                         "guards that agents use it rather than a raycast or a path for a one-step move.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
+                  "does it end up on the navmesh surface, and does a wall stop it?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
+                "Stopped at [19.5,0,3] after 1.5",
+                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
+                 "distance": 1.5, "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_door_in_play",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S55 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
+                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
+                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
+        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
+                         "links[].activated; visualize_navigation show.area_overrides",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R45 (no failure on record)",
+        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
+                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
+                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
+                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
+            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
+             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
+                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
+            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
+                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
+                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
+                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
+                                                      "applied": True, "polygons": 6}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
+                                                                       "value": True}},
+                             {"tool": "query_navigation", "args": {"op": "path"}}],
+                   "order": [["set_runtime_property", "query_navigation"]],
+                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
+        "max_turns": 12,
     },
 ]

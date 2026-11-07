@@ -715,6 +715,13 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   costs of their own keep S19's flags (and S19's behaviour with project costs).
 - S55 P1: AC8 compares the raycast's cost with length x cost to 1e-3 *relative*: Detour prices the
   polygons' 3D segments (their detail heights), while `distance` stays S19's planar length.
+- S55 P1: *around* keeps Detour's polygon pick, but when its point lands past the radius (a
+  polygon much larger than the circle: one polygon covers an open 40 m floor) the point is drawn
+  again in the circle until it falls in that polygon (8 draws) before another polygon is picked
+  (8 picks). Detour's draw alone missed a 3 m circle on such a floor for most seeds
+  (`test_navigation_gameplay.py::test_query_ops`, the first run).
+- S55 P1: R5's three new vectors (corner areas, corner flags, the corridor) are three more
+  allocations per path: S54's `NavIslandTest.QueriesNeverRelabel` now expects four per path.
 - S55 P1: AC2's red control is a run with `findRandomPoint` temporarily calling Detour's
   `dtNavMeshQuery::findRandomPoint` (the unit tests cannot include Detour's headers); the log is
   kept with the package's evidence.
@@ -757,6 +764,13 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   `query_navigation` implemented; tests in `NavGameplayQueryTest.cpp`, `NavQueryTest.cpp`,
   `NavCrowdTest.cpp`, `NavStubTest.cpp`, `test_navigation_gameplay.py::test_query_ops`; NavBench
   query lines and their thresholds.
+- S55 P1: merged all of S54 (labels, locate, reasons): *same island* random points use S54's
+  `locate` and labels (AC4); `query_navigation` keeps S54's references, target lists and `next`
+  hints and adds `random`, `move_along`, `seed`, `closest_edge`'s `max_distance` and the costs
+  (measured offline at about 1480 of 1500 characters, description 397 of 400). Eval cases
+  `guard_navigation_random_point` and `guard_navigation_move_along` (not run live: the integrator
+  decides). `NavStubTest` (the JASPERENGINE_NAVIGATION=OFF build) has no build preset on this
+  host and was not run.
 - S55 P2: `NavPolyState` (overrides and link states over `storeTileState` snapshots, re-applied in
   `create`, `replaceTiles`, `updateCarving`, `updateLink`), the runtime volume boundary in the bake
   (Recast ids 33-48), `NavigationAreas.cpp` (modifier volumes, script volumes, Activated; step 1b

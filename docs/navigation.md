@@ -234,7 +234,7 @@ local found, hit = nav:randomPoint(filter, {sameIslandAs = p, seed = 7}) -- on p
   link). The first call on a navmesh builds an area table (8 bytes per polygon, kept until the
   navmesh changes).
 - *Around* (`center` with `radius`) picks among the polygons reachable from the centre through the
-  filter, then a point in one; points past the radius are drawn again (8 tries, then false). It is
+  filter, then a point of that polygon within the radius (8 polygon picks, then false). It is
   **not** uniform: use it for wandering, not for statistics.
 - *Same island* keeps to the part of the navmesh connected to `sameIslandAs` (false when nothing is
   under it); it combines with *around*.
@@ -260,6 +260,7 @@ query or an agent out of an area, clear the area's bit in its `areaMask`. A crow
 filters, one per area mask and costs, shared by the agents with the same ones and freed when no
 agent uses them; a 17th combination uses a filter with the agent's mask (its areas kept, other
 costs) or, with none, every area, with one warning per crowd.
+
 ## Why navigation fails
 
 Every path that is not Complete says why in `reason` (Lua, MCP; `NavPath::failure` in C++), with
