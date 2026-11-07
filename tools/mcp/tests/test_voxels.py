@@ -422,7 +422,8 @@ async def test_generate_job(ed: Editor):
     # Cancel: everything as it was, and the volume is free again
     big = await volume(ed, "BigGenerated", size=(512, 128, 512))
     before = await content_hash(ed, big)
-    long = await ed.call("generate_voxels", entity=big, source="preset", preset="solid_ground", params={"size_scale": 0.5}, keep_edits=False)
+    # overhangs: a Noise Graph over 512 x 128 x 512 takes seconds, solid ground is done before the next call
+    long = await ed.call("generate_voxels", entity=big, source="preset", preset="overhangs", params={"size_scale": 0.5}, keep_edits=False)
     busy = await refused(ed, "edit_voxels", "volume_busy", entity=big, ops=[{"op": "dig", "shape": {"type": "sphere", "center": [32, 32, 32], "radius": 3}}])
     ed.check("get_job" in busy["next"], f"{busy}")
     await ed.call("cancel_job", job_id=long["job_id"])
@@ -502,8 +503,8 @@ async def test_presets(ed: Editor):
             comps = comps.get("result", comps)
             ed.check(comps["component_count"] >= 1 and comps["air_components"], f"{comps}")
         if preset == "overhangs":
-            # stride 4: a result over 1 MB loses its structured content
-            grid = await finished(ed, await ed.call("sample_voxels", entity=entity, mode="box", min=[0, 0, 0], max=[124, 60, 124], stride=4))
+            # the band around the surface at stride 2: a result over 1 MB loses its structured content
+            grid = await finished(ed, await ed.call("sample_voxels", entity=entity, mode="box", min=[0, 20, 0], max=[126, 44, 126], stride=2))
             grid = grid.get("result", grid)
             nx, ny, nz = grid["counts"]
             values = grid["values"]
