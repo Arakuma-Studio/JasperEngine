@@ -6,7 +6,7 @@
 // bind slots on GL, so declare only what is read):
 //
 //   SHADOW_DATA_POINT   the point-light block and atlas (lightShadow of a point light)
-//   SHADOW_DATA_RAW     the raw-depth view of the atlas (PCSS; one texture unit more, of the 16 GLES3 has)
+//   SHADOW_DATA_RAW     the raw-depth view of the atlas (PCSS; one texture and sampler more)
 //   SHADOW_SAMPLING_HQ  (includes/shadow_sampling.glsl) the High filters, the Vogel disk and
 //                       PCSS; without it a soft light filters with the Medium 5x5 grid
 //

@@ -1107,13 +1107,16 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 #ifdef JASPERENGINE_RUNTIME_SHADERS
 namespace {
 
-// a fragment stage past the 16 texture units GLES3 and WebGL2 guarantee
-bool isOverGlesTextureUnits(const ShaderData& data){
+// past what every backend can bind: the 16 samplers sokol has for both stages together
+// (SG_MAX_SAMPLER_BINDSLOTS), or the 16 fragment texture units of GLES3, WebGL2 and macOS GL
+bool isOverBindLimits(const ShaderData& data){
+    size_t samplers = 0;
     for (const ShaderStage& stage : data.stages){
+        samplers += stage.samplers.size();
         if (stage.type == ShaderStageType::FRAGMENT && (stage.textures.size() > 16 || stage.textureSamplerPairs.size() > 16))
             return true;
     }
-    return false;
+    return samplers > 16;
 }
 
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
@@ -1242,37 +1245,23 @@ bool ShaderVariantCompiler::preprocess(ShaderKey key, ShaderBackend backend, con
 
     retainCompilerProcess();
 
-    auto run = [&](bool rawViewOff) -> std::string {
-        shadercompiler::args_t args;
-        std::string setupError;
-        if (!prepareVariantArgs(key, backend, customSources, args, setupError))
-            return setupError;
-        if (rawViewOff)
-            args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
-        std::string log;
-        args.error_output = &log;
+    shadercompiler::args_t args;
+    std::string setupError;
+    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+        return fail(setupError);
+    std::string log;
+    args.error_output = &log;
 
-        std::vector<shadercompiler::input_t> inputs;
-        if (!shadercompiler::load_input(inputs, args))
-            return "Error loading shader input";
+    std::vector<shadercompiler::input_t> inputs;
+    if (!shadercompiler::load_input(inputs, args))
+        return fail("Error loading shader input");
 
-        std::vector<std::string> outputs;
-        if (!shadercompiler::preprocess(outputs, inputs, args))
-            return "Error preprocessing: " + log;
+    std::vector<std::string> outputs;
+    if (!shadercompiler::preprocess(outputs, inputs, args))
+        return fail("Error preprocessing: " + log);
 
-        for (size_t i = 0; i < inputs.size(); i++)
-            (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
-        return "";
-    };
-    std::string failure = run(false);
-    // the variant compile() builds without the raw-depth view (GLES3's texture units)
-    if (failure.empty() && backend == ShaderBackend::GLES3 && fragmentSource.find("u_shadowAtlasRaw") != std::string::npos){
-        ShaderData compiled;
-        if (compile(key, backend, customSources, compiled) && compiled.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first < 0)
-            failure = run(true);
-    }
-    if (!failure.empty())
-        return fail(failure);
+    for (size_t i = 0; i < inputs.size(); i++)
+        (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
     return true;
 #else
     (void)key; (void)backend; (void)customSources;
@@ -1344,7 +1333,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        report(0.3f);
+        if (!rawViewOff)
+            report(0.3f);
 
         std::vector<shadercompiler::input_t> inputs;
         if (!shadercompiler::load_input(inputs, args))
@@ -1352,7 +1342,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        report(0.5f);
+        if (!rawViewOff)
+            report(0.5f);
 
         std::vector<shadercompiler::spirv_t> spirvvec;
         spirvvec.resize(inputs.size());
@@ -1361,7 +1352,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        report(0.8f);
+        if (!rawViewOff)
+            report(0.8f);
 
         std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
         spirvcrossvec.resize(inputs.size());
@@ -1376,7 +1368,8 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        report(0.9f);
+        if (!rawViewOff)
+            report(0.9f);
 
         // A deterministic basename names the stages
         args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
@@ -1386,13 +1379,12 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     };
 
     std::string failure = build(false);
-    // GLES3 and WebGL2 guarantee 16 fragment texture units: a variant the raw-depth view of the
-    // shadow atlas (PCSS) takes past them is built without it, and filters the Ultra tier's
+    // a variant the raw-depth view of the shadow atlas (PCSS) takes past the bind limits is built
+    // without it (on every backend: the same program everywhere), and filters the Ultra tier's
     // shadows with the High tier's Vogel disk
-    if (failure.empty() && backend == ShaderBackend::GLES3 && isOverGlesTextureUnits(out) &&
-            out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
-        compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would be over GLES3's 16 fragment texture units; "
-                      "this variant filters Ultra shadows with the Vogel disk\n";
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
+        compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would take the variant past 16 samplers or "
+                      "16 fragment textures; it filters Ultra shadows with the Vogel disk\n";
         failure = build(true);
     }
     if (!failure.empty()) {
@@ -1449,6 +1441,14 @@ std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {
         check(stage.textures.size(), 16, "textures");
         check(stage.samplers.size(), 16, "samplers");
         check(stage.textureSamplerPairs.size(), 16, "texture-sampler pairs");
+    }
+    // sokol's sampler slots are shared by the stages (SG_MAX_SAMPLER_BINDSLOTS)
+    size_t samplers = 0;
+    for (const ShaderStage& stage : data.stages)
+        samplers += stage.samplers.size();
+    if (samplers > 16) {
+        if (!over.empty()) over += "; ";
+        over += "all stages: " + std::to_string(samplers) + " samplers (limit 16)";
     }
     return over;
 }

@@ -808,8 +808,8 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     if (scene->isShadowCascadeBlend()){
         flags += (tier.transition == CascadeTransition::DITHER) ? 2.0f : ((tier.transition == CascadeTransition::BLEND) ? 4.0f : 0.0f);
     }
-    // (on every backend: a variant without the raw-depth view, a GLES3 one it would take past 16
-    // textures, filters with the Vogel disk whatever the flag)
+    // (on every backend: a variant without the raw-depth view, one it would take past the bind
+    // limits, filters with the Vogel disk whatever the flag)
     if (tier.softFilter == ShadowSoftFilter::PCSS && !shadowHardOnly)
         flags += 8.0f;
     float debugView = 0.0f;

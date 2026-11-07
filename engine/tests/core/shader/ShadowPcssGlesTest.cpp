@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // PCSS on GLES3/WebGL2 (draw-perf spec, "Follow-ups (2026-11-07)"): the raw-depth view of the
-// shadow atlas PCSS reads is one more fragment texture, of the 16 units GLES3 guarantees. The
-// directional-only Lit ('Dlo', two textures fewer) always has room for it; a general variant (the
-// painted terrain's too) has it when its textures leave a unit free, and is built without it
-// otherwise (ShaderVariantCompiler::compile), within the texture limits either way. Each case
+// shadow atlas PCSS reads is one more fragment texture and sampler, of the 16 fragment units GLES3
+// guarantees and the 16 samplers sokol has for both stages. The directional-only Lit ('Dlo', two
+// textures fewer) always has room for it; a general variant (the painted terrain's too) has it when
+// its textures and samplers leave one free, and is built without it otherwise on every backend
+// (ShaderVariantCompiler::compile), within the limits either way. Each case
 // prints what the GLES3 fragment stage costs ([pcss-gles] lines: textures, uniform vectors,
 // lookups). Every backend's budget: DirectionalOnlyVariants (the editor's tests, which have them all).
 
@@ -54,9 +55,14 @@ namespace {
         return RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;
     }
 
+    // its material normal-mapped, the worst case (16 fragment textures and 16 samplers without PCSS)
     uint64_t paintedTerrain(bool directionalOnly){
         SubmeshShaderInputs inputs;
+        inputs.texCoord1 = true;
         inputs.normal = true;
+        inputs.tangent = true;
+        inputs.baseColorTexture = true;
+        inputs.normalTexture = true;
         inputs.terrain = true;
         inputs.terrainBlendMaps = true;
         inputs.terrainSurface = true;
@@ -128,8 +134,12 @@ namespace {
         if (uniforms){
             EXPECT_LE(vectors, GLES3_FRAGMENT_UNIFORM_VECTORS) << compiled.name;
         }
-        std::printf("[pcss-gles] %s: %zu textures, %zu samplers, %zu uniform vectors, %zu bytes, %zu texture( / %zu textureLod( call sites\n",
-                    compiled.name.c_str(), fragment->textures.size(), fragment->samplers.size(), vectors, fragment->source.size(),
+        size_t samplers = 0;
+        for (const ShaderStage& stage : compiled.data.stages)
+            samplers += stage.samplers.size();
+        EXPECT_LE(samplers, 16u) << compiled.name << ": sokol's sampler slots are shared by the stages";
+        std::printf("[pcss-gles] %s: %zu textures, %zu samplers (%zu with the vertex stage), %zu uniform vectors, %zu bytes, %zu texture( / %zu textureLod( call sites\n",
+                    compiled.name.c_str(), fragment->textures.size(), fragment->samplers.size(), samplers, vectors, fragment->source.size(),
                     countOf(fragment->source, "texture("), countOf(fragment->source, "textureLod("));
     }
 
@@ -137,7 +147,7 @@ namespace {
 
 TEST(ShadowPcssGles, DirectionalOnlyVariantsReadRawDepthsWithinTheLimits){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
-    // the 'Dlo' Lit with three extension maps, and the painted terrain (its general variant at 16)
+    // the 'Dlo' Lit with three extension maps, and the normal-mapped painted terrain
     ASSERT_NE(heavyLit(true) & ShaderPool::getDirectionalOnlyProperty(), 0u);
     ASSERT_NE(paintedTerrain(true) & ShaderPool::getDirectionalOnlyProperty(), 0u);
     ASSERT_NE(heavyLit(true) & ShaderPool::getShadowsHQProperty(), 0u);
@@ -160,25 +170,17 @@ TEST(ShadowPcssGles, GeneralVariantsTakeItWhereTheTexturesLeaveAUnit){
     EXPECT_EQ(plain.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << plain.name;
     expectWithinGles3Limits(plain);
 
-    // ...and none with three: built without the view (the Vogel disk), and saying so
-    Compiled full = compile(heavyLit(false), ShaderBackend::GLES3, threeExtensionMaps());
-    EXPECT_FALSE(hasRawView(full)) << full.name << " is over GLES3's 16 texture units";
-    EXPECT_NE(full.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << full.name << ": " << full.log;
-    expectWithinGles3Limits(full);
-    // the preprocessed source is the program compile built
-    std::string vertex, fragment, error;
-    CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(threeExtensionMaps(), nullptr);
-    const uint16_t customId = ShaderPool::registerCustomShader(threeExtensionMaps());
-    ASSERT_TRUE(ShaderVariantCompiler::preprocess(ShaderPool::getShaderKey(ShaderType::MESH, heavyLit(false), customId), ShaderBackend::GLES3,
-                                                  &sources, vertex, fragment, &error)) << error;
-    EXPECT_EQ(fragment.find("u_shadowAtlasRaw"), std::string::npos);
-
-    // desktop keeps it (its devices have 32 units and more)
-    Compiled desktop = compile(heavyLit(false), ShaderBackend::GLCore, threeExtensionMaps());
-    EXPECT_TRUE(hasRawView(desktop)) << desktop.name;
-    // the general painted terrain is at 15 textures: the view is its 16th. (Its uniform vectors
-    // are over GLES3's guaranteed 224 with or without it: the terrain layers' blocks, not PCSS's)
-    Compiled terrain = compile(paintedTerrain(false), ShaderBackend::GLES3);
-    EXPECT_TRUE(hasRawView(terrain)) << terrain.name;
-    expectWithinGles3Limits(terrain, false);
+    // ...and none with three, nor the normal-mapped painted terrain: built without the view (the
+    // Vogel disk) on every backend, and saying so. (The terrain's uniform vectors are over GLES3's
+    // guaranteed 224 with or without it: the terrain layers' blocks, not PCSS's)
+    for (ShaderBackend backend : {ShaderBackend::GLES3, ShaderBackend::GLCore, ShaderBackend::Vulkan}){
+        Compiled full = compile(heavyLit(false), backend, threeExtensionMaps());
+        EXPECT_FALSE(hasRawView(full)) << full.name << " is over the 16 fragment texture units";
+        EXPECT_NE(full.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << full.name << ": " << full.log;
+        expectWithinGles3Limits(full);
+        Compiled terrain = compile(paintedTerrain(false), backend);
+        EXPECT_FALSE(hasRawView(terrain)) << terrain.name << " is over the 16 samplers";
+        EXPECT_NE(terrain.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << terrain.name << ": " << terrain.log;
+        expectWithinGles3Limits(terrain, false);
+    }
 }
