@@ -12877,6 +12877,9 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' element never
+        // batches: its snap mode is per draw)
+        const BatchGeometry* batch = passBatchGeometry;
         if (ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)){
             // the snap of the draw after its matrix (S41, includes/pixel_snap.glsl)
             float block[20];
@@ -12888,9 +12891,6 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             block[19] = 0.0f;
             render.applyUniformBlock(ui.slotVSParams, uniformUploadSize(sizeof(block), ui.sizeVSParams), block);
         }else{
-            // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' element
-            // never batches: its snap mode is per draw)
-            const BatchGeometry* batch = passBatchGeometry;
             render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
         }
         //Color, faded by the element's Canvas Groups (a Text Effect writes each glyph's colour in its
