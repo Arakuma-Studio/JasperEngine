@@ -1188,13 +1188,15 @@ Recorded while implementing (`feature/s43-palettes`).
   swap-texture build and the quantize bake (one thread and the job system). This host has no GPU (Mesa
   llvmpipe/lavapipe), so the GPU budgets (swap ≤ 1.25×, quantize ≤ 0.15 ms) and the headless-Chrome bake time
   are not measured and no `palette` case is in `tools/perf/gpu_campaign.py` yet: a follow-up for a GPU host.
-- **AC21** ran as `SMOKE_METHOD=compile tools/smoke-test.sh` on a scratch project an MCP script made (three
-  library:sprite heroes, Palette Swap rows chosen by a Lua script in Play, Palette Quantize on PICO-8 with
-  Bayer 4×4), not on a committed fixture. The exported game's 1280×720 frame equals the editor's Play frame
-  at a 1280×720 Game view pixel for pixel. Without the scene's fixed resolution: in the editor's Play Game
-  view the scene's Fixed Resolution does not reduce the render size (a 320×180 fixed resolution still dithers
-  per screen pixel, where the exported game dithers per 4×4 art pixel), which is the editor's fixed-resolution
-  path, not this spec's; recorded for S41/S42.
+- **AC21** ran on a scratch project an MCP script made (three library:sprite heroes whose Palette
+  Swap rows a Lua script picks in Play, Palette Quantize on PICO-8 with Bayer 4×4), not a committed
+  fixture: `tools/smoke-test.sh` with the default method (a prebuilt glcore release player, the full
+  variant, `--device-tier=ultra` so the player draws at the editor's own quality) and with
+  `SMOKE_METHOD=compile`; each exported game's 1280×720 frame equals the editor's Play frame at a
+  1280×720 Game view pixel for pixel. Without the scene's fixed resolution: in the editor's Play Game
+  view the scene's Fixed Resolution does not reduce the render size (a 320×180 fixed resolution still
+  dithers per screen pixel, where the exported game dithers per 4×4 art pixel), which is the editor's
+  fixed-resolution path, not this spec's; recorded for S41/S42.
 - **AC19** is `tools/mcp/tests/test_palette_regressions.py`, not `test_runtime_regressions.py`: its
   fixtures (three 2D scenes with library:sprite's COLOR_REPLACE and the library:gameboy and
   library:posterize post passes, their textures, and their Game views at 640 x 360) were made by the
