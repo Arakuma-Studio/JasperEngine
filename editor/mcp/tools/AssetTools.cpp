@@ -4142,7 +4142,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite: frames, layers, tags, slices, import outputs; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
