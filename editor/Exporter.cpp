@@ -26,6 +26,7 @@
 #include <regex>
 #include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
+#include "util/ApplePrivacy.h"
 #include "util/PngEditorChunks.h"
 #include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
@@ -522,43 +523,6 @@ namespace {
         plist.replace(replaceStart, valueEnd - replaceStart, array);
     }
 
-    // Removes a top-level key holding a string, if present
-    void removePlistStringValue(std::string& plist, const std::string& key) {
-        const std::string keyTag = "\t<key>" + key + "</key>";
-        const size_t keyPos = plist.find(keyTag);
-        if (keyPos == std::string::npos) return;
-
-        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
-        if (valueStart == std::string::npos || plist.compare(valueStart, 8, "<string>") != 0) return;
-        const size_t valueEnd = plist.find("</string>", valueStart);
-        if (valueEnd == std::string::npos) return;
-
-        size_t eraseEnd = valueEnd + std::string("</string>").size();
-        if (eraseEnd < plist.size() && plist[eraseEnd] == '\n') eraseEnd++;
-        plist.erase(keyPos, eraseEnd - keyPos);
-    }
-
-    // Whether an export compiles in Google Mobile Ads for a platform. Without an App ID
-    // the SDK stops the app at launch, and Google's sample app would ship test ads, so
-    // AdMob is left out until the project has its own.
-    bool isAdMobIncluded(bool enabled, const std::string& appId, const char* platform,
-                         const char* sampleAppId, bool warn) {
-        if (!enabled) return false;
-        if (appId.empty()) {
-            if (warn) {
-                editor::Out::warning("%s AdMob is enabled but has no App ID, so the export leaves AdMob out. "
-                             "Set the App ID from the AdMob console in Project Settings (Google's test App ID %s serves test ads only)",
-                             platform, sampleAppId);
-            }
-            return false;
-        }
-        if (warn && !editor::isAdMobAppIdValid(appId)) {
-            editor::Out::warning("%s AdMob App ID \"%s\" is not an app ID like ca-app-pub-0000000000000000~0000000000 (ad unit IDs have a / instead)",
-                         platform, appId.c_str());
-        }
-        return true;
-    }
-
     void replacePlistBoolValue(std::string& plist, const std::string& key, bool value) {
         const std::string keyTag = "\t<key>" + key + "</key>";
         const std::string boolTag = value ? "\t<true/>\n" : "\t<false/>\n";
@@ -716,7 +680,7 @@ namespace {
     void writeNativePlistEntries(std::string& plist, const std::map<std::string, editor::NativePlistValue>& entries, const std::string& rawXml) {
         for (const auto& [key, value] : entries) setPlistValue(plist, key, plistValueXml(value));
         if (rawXml.find_first_not_of(" \t\r\n") == std::string::npos) return;
-        // the fragment's keys replace the export's (one SKAdNetworkItems)
+        // the fragment's keys replace the export's (one dictionary of each key)
         for (const std::string& key : plistFragmentKeys(rawXml)) removePlistKey(plist, key);
         const size_t dictEnd = plist.rfind("</dict>");
         if (dictEnd == std::string::npos) return;
@@ -1144,6 +1108,17 @@ void editor::Exporter::runExport() {
     if (!copyCppScripts()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyNativePlugins()) return;
+    // a macOS build without Xcode compiles no Swift: its Swift plugins answer "unavailable"
+    if (config.mode == ExportMode::Desktop && hostBuildPlatform() == BuildPlatform::MacOS) {
+        const NativePlugins::Scan scan = NativePlugins::scan(project->getProjectPath());
+        std::vector<std::string> swift = scan.filesWith("apple", {".swift"});
+        for (const std::string& file : scan.filesWith("macos", {".swift"})) swift.push_back(file);
+        if (!swift.empty()) {
+            warn("W-NATIVE-SWIFT-CMAKE", "Swift plugins (" + swift.front() + (swift.size() > 1 ? ", +" + std::to_string(swift.size() - 1) + " more" : "") +
+                                         ") build only in the Xcode project (File > Build Settings > Export source, then Xcode): "
+                                         "this build answers them with \"unavailable\"");
+        }
+    }
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyEngine()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -3567,12 +3542,18 @@ namespace {
 }
 
 bool editor::Exporter::copyNativePlugins() {
-    const fs::path source = NativePlugins::root(project->getProjectPath());
-    const fs::path destination = getExportProjectRoot() / NativePlugins::relativeRoot();
-    std::error_code ec;
+    std::vector<std::string> platforms;
+    // C++ plugins are a script root: copyCppScripts ships them under scripts/
     for (const std::string& platform : NativePlugins::platformNames()) {
-        // C++ plugins are a script root: copyCppScripts ships them under scripts/
-        if (platform == "cpp") continue;
+        if (platform != "cpp") platforms.push_back(platform);
+    }
+    return copyNativePluginFolders(getExportProjectRoot() / NativePlugins::relativeRoot(), platforms);
+}
+
+bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, const std::vector<std::string>& platforms) {
+    const fs::path source = NativePlugins::root(project->getProjectPath());
+    std::error_code ec;
+    for (const std::string& platform : platforms) {
         const fs::path from = source / platform;
         const fs::path to = destination / platform;
         // a real folder only (a link to one is not followed)
@@ -3908,10 +3889,6 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANG_WATCHDOG ") + (crash.hangWatchdog ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_CRASH_HANG_MS " + std::to_string(crash.hangSeconds * 1000) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_WEB_OVERLAY ") + (crash.webCrashOverlay ? "ON" : "OFF") + ")";
-        // iOS only: the Android Gradle build is switched in writeAndroidProjectSettings()
-        const IOSProjectSettings& ios = project->getIOSProjectSettings();
-        const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
-        projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
         // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
         projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
                            (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
@@ -3932,6 +3909,36 @@ bool editor::Exporter::copyEngine() {
     FileUtils::writeIfChanged(cmakeDst, cmakeContent);
 
     return true;
+}
+
+const char* editor::Exporter::webNativeStub() {
+    return "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
+           "register: function(n, o) { this._pending.push([n, o]); }, "
+           "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>";
+}
+
+std::vector<std::string> editor::Exporter::webNativePluginFiles(const fs::path& webPluginsDir) {
+    std::vector<std::string> files;
+    std::error_code ec;
+    if (!fs::is_directory(webPluginsDir, ec)) return files;
+    for (const auto& entry : fs::directory_iterator(webPluginsDir, ec)) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const std::string name = entry.path().filename().string();
+        if (entry.is_regular_file(ec) && ext == ".js" && !name.empty() && name[0] != '.') files.push_back(genericUtf8Path(entry.path().filename()));
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+std::string editor::Exporter::webNativeScripts(const std::vector<std::string>& scriptUrls, const std::vector<std::string>& files) {
+    std::string scripts;
+    for (const std::string& url : scriptUrls) {
+        if (url.find_first_not_of(" \t") == std::string::npos) continue;
+        scripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
+    }
+    for (const std::string& file : files) scripts += "<script src=\"plugins/" + escapeXmlAttribute(file) + "\"></script>\n";
+    return scripts;
 }
 
 bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
@@ -3970,38 +3977,13 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
     value("categories", stripDesktopEntryControlChars(linuxSettings.categories));
     // native plugins (web): the JasperNative stub first (plugin scripts register before the
     // engine starts), the SDK URLs of web.script_urls, then plugins/native/web/*.js in name order
-    std::string nativeScripts;
-    std::vector<std::string> nativeFiles;
-    {
-        const fs::path webPlugins = getExportProjectRoot() / NativePlugins::relativeRoot() / "web";
-        if (fs::is_directory(webPlugins, ec)) {
-            for (const auto& entry : fs::directory_iterator(webPlugins, ec)) {
-                std::string ext = entry.path().extension().string();
-                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                const std::string name = entry.path().filename().string();
-                // a CMake list holds the names: no ';'
-                if (entry.is_regular_file(ec) && ext == ".js" && name[0] != '.' && name.find(';') == std::string::npos) {
-                    nativeFiles.push_back(genericUtf8Path(entry.path().filename()));
-                }
-            }
-            std::sort(nativeFiles.begin(), nativeFiles.end());
-        }
-        {
-            for (const std::string& url : web.scriptUrls) {
-                if (url.find_first_not_of(" \t") == std::string::npos) continue;
-                nativeScripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
-            }
-            for (const std::string& file : nativeFiles) {
-                nativeScripts += "<script src=\"plugins/" + escapeXmlAttribute(file) + "\"></script>\n";
-            }
-        }
-    }
-    value("native_scripts", nativeScripts);
+    // (a CMake list holds the file names: none with ';')
+    std::vector<std::string> nativeFiles = webNativePluginFiles(getExportProjectRoot() / NativePlugins::relativeRoot() / "web");
+    std::erase_if(nativeFiles, [](const std::string& file) { return file.find(';') != std::string::npos; });
+    value("native_scripts", webNativeScripts(web.scriptUrls, nativeFiles));
     // first in <head>, always: web.head_include snippets and plugin scripts may register before
     // the engine starts (it adopts what they queued)
-    value("native_stub", "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
-                         "register: function(n, o) { this._pending.push([n, o]); }, "
-                         "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>");
+    value("native_stub", webNativeStub());
     {
         std::string files;
         for (const std::string& file : nativeFiles) files += (files.empty() ? "" : ";") + file;
@@ -4327,30 +4309,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         "                abiFilters \"x86_64\"",
         abiLine);
 
-    // Matched without versions, so SDK updates in the template keep working
-    auto removeGradleLine = [&](const std::string& needle) -> bool {
-        const size_t match = gradle.find(needle);
-        if (match == std::string::npos) {
-            setError("Incompatible Android Gradle export template: missing " + needle);
-            return false;
-        }
-        const size_t lineStart = gradle.rfind('\n', match);
-        const size_t eraseStart = (lineStart == std::string::npos) ? 0 : lineStart + 1;
-        const size_t lineEnd = gradle.find('\n', match);
-        const size_t eraseEnd = (lineEnd == std::string::npos) ? gradle.size() : lineEnd + 1;
-        gradle.erase(eraseStart, eraseEnd - eraseStart);
-        return true;
-    };
-
-    // MainActivity creates the AdMob wrapper by name, so its source goes with the SDK
-    const bool admob = isAdMobIncluded(android.admobEnabled, android.admobAppId, "Android", androidSampleAdMobAppId, true);
-    if (!admob) {
-        if (!removeGradleLine("// the editor export drops this and the ads SDK below")
-                || !removeGradleLine("/platform/android/java-admob'")
-                || !removeGradleLine("\"com.google.android.gms:play-services-ads:")) {
-            return false;
-        }
-    }
     // native plugins: the bridge and nativeplugins modules, repositories, gradle.properties,
     // and the manifest additions below
     NativeExportAndroid::Result nativeExport;
@@ -4481,11 +4439,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     // plain http:// (cleartext): Project Settings > Player > Allow Insecure HTTP; localhost always
     manifest += "        android:networkSecurityConfig=\"@xml/network_security_config\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
-    if (admob) {
-        manifest += "        <meta-data\n";
-        manifest += "            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n";
-        manifest += "            android:value=\"" + escapeXmlAttribute(android.admobAppId) + "\"/>\n\n";
-    }
     manifest += "        <activity android:name=\".MainActivity\"\n";
     manifest += "            android:label=\"@string/app_name\"\n";
     // rotations, locale and display changes reach the running game, which never restarts
@@ -4822,25 +4775,6 @@ bool editor::Exporter::writeAppleProjectSettings() {
         if (!unlinkBackend("shadercompiler")) return false;
     }
 
-    // Without AdMob the iOS app neither links Google Mobile Ads nor compiles its adapter
-    const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, true);
-    if (!iosAdMob) {
-        removeProjectLinesContaining("JASPERENGINE_ADMOB,");
-        for (const char* buildFile : {"AdMobAdapter.m in Sources",
-                "GoogleMobileAds.xcframework in Frameworks", "UserMessagingPlatform.xcframework in Frameworks",
-                "GoogleAppMeasurement.xcframework in Frameworks", "GoogleAppMeasurementIdentitySupport.xcframework in Frameworks",
-                "GoogleUtilities.xcframework in Frameworks", "FBLPromises.xcframework in Frameworks",
-                "nanopb.xcframework in Frameworks"}) {
-            const size_t match = xcodeProject.find(std::string("/* ") + buildFile + " */ = {isa = PBXBuildFile;");
-            if (match == std::string::npos) {
-                setError(std::string("Apple export template has no ") + buildFile + " entry to remove");
-                return false;
-            }
-            const size_t lineStart = xcodeProject.rfind('\n', match) + 1;
-            if (!removeProjectEntriesWithId(leadingObjectId(xcodeProject.substr(lineStart, match - lineStart)))) return false;
-        }
-    }
-
     // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
     // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)
     if (!project->getNavigationSettings().includeInBuilds) {
@@ -4892,9 +4826,28 @@ bool editor::Exporter::writeAppleProjectSettings() {
         setError("Apple export template has no CLANG_CXX_LANGUAGE_STANDARD setting");
         return false;
     }
-    if (!addXcodeProjectSources(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) || !addNativePluginsToXcode(xcodeProject)) return false;
+    XcodeNativeLayout layout;
+    layout.nativeRoot = getExportProjectRoot() / NativePlugins::relativeRoot();
+    layout.pluginsPath = "$(SRCROOT)/../../project/plugins/native";
+    layout.engineHeaders = "$(SRCROOT)/../../platform/apple";
+    layout.entitlements = "ios/JasperEngine.entitlements";
+    if (!addXcodeProjectSources(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) || !addNativePluginsToXcode(xcodeProject, layout)) return false;
     if (!writeNativeAppleFiles()) return false;
-    FileUtils::writeIfChanged(projectFile, xcodeProject);
+    // the privacy manifests (the template's resources): the engine's, the project's and the plugins'
+    for (const char* platform : {"ios", "macos"}) {
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), platform,
+                                                                      iosDeclaresTrackingUsage());
+        warnPrivacy(std::string(platform) == "ios" ? "iOS" : "macOS", composed.warnings);
+        const fs::path manifest = config.targetDir / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy";
+        if (!FileUtils::writeIfChanged(manifest, ApplePrivacy::toXml(composed.manifest))) {
+            setError("Cannot write " + manifest.string());
+            return false;
+        }
+    }
+    if (!FileUtils::writeIfChanged(projectFile, xcodeProject)) {
+        setError("Cannot write " + projectFile.string());
+        return false;
+    }
     std::string iosPlist;
     if (!readText(iosPlistPath, iosPlist)) {
         return false;
@@ -4928,11 +4881,6 @@ bool editor::Exporter::writeAppleProjectSettings() {
         }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
         writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
-        if (iosAdMob) {
-            replacePlistStringValue(iosPlist, "GADApplicationIdentifier", ios.admobAppId);
-        } else {
-            removePlistStringValue(iosPlist, "GADApplicationIdentifier");
-        }
         // Project Settings > Native Plugins > iOS (ios.plist_entries, ios.plist_xml)
         const std::string plistError = NativePlugins::xmlFragmentError(ios.plistXml);
         if (!plistError.empty()) {
@@ -5183,74 +5131,10 @@ bool editor::Exporter::addXcodeProjectSources(std::string& xcodeProject) {
 
 namespace {
 
-    // The system frameworks the engine's own code calls into, per app target: sokol and the
-    // renderer (Metal, MetalKit, QuartzCore), miniaudio (AVFoundation's AVAudioSession and
-    // AudioToolbox on iOS; CoreAudio and AudioToolbox on macOS, also loaded at run time),
-    // vibration (AudioToolbox), video decoding (AVFoundation, CoreMedia, CoreVideo), haptics and
-    // the view (UIKit / AppKit), the display (CoreGraphics), gamepads (GameController); the native
-    // bridge needs Foundation and UIKit / AppKit. What the template's phase links already is kept.
-    const std::vector<std::string>& appleEngineFrameworksIOS() {
-        static const std::vector<std::string> frameworks = {"AVFoundation", "AudioToolbox", "CoreGraphics", "CoreMedia", "CoreVideo", "Foundation",
-                                                            "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"};
-        return frameworks;
-    }
-
-    const std::vector<std::string>& appleEngineFrameworksMacOS() {
-        static const std::vector<std::string> frameworks = {"AVFoundation", "AppKit", "AudioToolbox", "CoreAudio", "CoreGraphics", "CoreMedia", "CoreVideo",
-                                                            "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore"};
-        return frameworks;
-    }
-
     std::string lowerExtension(const fs::path& path) {
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
-    }
-
-    // An SDK bundle or archive's binary is a static archive ("!<arch>\n"): linked, not embedded
-    bool isStaticArchive(const fs::path& binary) {
-        std::ifstream in(binary, std::ios::binary);
-        char magic[8] = {0};
-        in.read(magic, 8);
-        return in.gcount() == 8 && std::memcmp(magic, "!<arch>\n", 8) == 0;
-    }
-
-    // The binary of a .framework (X.framework/X, or Versions/Current/X on macOS)
-    fs::path frameworkBinary(const fs::path& framework) {
-        const std::string name = framework.stem().string();
-        std::error_code ec;
-        for (const fs::path& candidate : {framework / name, framework / "Versions" / "Current" / name, framework / "Versions" / "A" / name}) {
-            if (fs::is_regular_file(candidate, ec)) return candidate;
-        }
-        return {};
-    }
-
-    // The binary of an .xcframework's first library (its Info.plist AvailableLibraries[0])
-    fs::path xcframeworkBinary(const fs::path& xcframework) {
-        tinyxml2::XMLDocument doc;
-        if (doc.LoadFile(genericUtf8Path(xcframework / "Info.plist").c_str()) != tinyxml2::XML_SUCCESS) return {};
-        const tinyxml2::XMLElement* dict = doc.FirstChildElement("plist") ? doc.FirstChildElement("plist")->FirstChildElement("dict") : nullptr;
-        auto valueOf = [](const tinyxml2::XMLElement* d, const char* key) -> const tinyxml2::XMLElement* {
-            for (const tinyxml2::XMLElement* e = d ? d->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")) {
-                if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
-            }
-            return nullptr;
-        };
-        const tinyxml2::XMLElement* libraries = valueOf(dict, "AvailableLibraries");
-        const tinyxml2::XMLElement* first = libraries ? libraries->FirstChildElement("dict") : nullptr;
-        if (!first) return {};
-        auto text = [&](const char* key) {
-            const tinyxml2::XMLElement* e = valueOf(first, key);
-            return e && e->GetText() ? std::string(e->GetText()) : std::string();
-        };
-        const std::string identifier = text("LibraryIdentifier");
-        const std::string library = text("LibraryPath");
-        const std::string binary = text("BinaryPath");
-        if (identifier.empty() || library.empty()) return {};
-        const fs::path base = xcframework / identifier;
-        if (!binary.empty()) return base / binary;
-        if (fs::path(library).extension() == ".framework") return frameworkBinary(base / library);
-        return base / library;
     }
 
     // Sets the scalar build setting `key` in a buildSettings range (added when missing)
@@ -5307,15 +5191,35 @@ namespace {
 
 }
 
-bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
+// The system frameworks the engine's own code calls into, per app target: sokol and the renderer
+// (Metal, MetalKit, QuartzCore), miniaudio (AVFoundation's AVAudioSession and AudioToolbox on iOS;
+// CoreAudio and AudioToolbox on macOS, also loaded at run time), vibration (AudioToolbox), video
+// decoding (AVFoundation, CoreMedia, CoreVideo), haptics and the view (UIKit / AppKit), the
+// display (CoreGraphics), gamepads (GameController); the native bridge needs Foundation and
+// UIKit / AppKit. What the template's phase links already is kept.
+void editor::Exporter::applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
+                                               const std::string& rawXml) {
+    writeNativePlistEntries(plist, entries, rawXml);
+}
+
+const std::vector<std::string>& editor::Exporter::appleEngineFrameworks(bool ios) {
+    static const std::vector<std::string> iosFrameworks = {"AVFoundation", "AudioToolbox", "CoreGraphics", "CoreMedia", "CoreVideo", "Foundation",
+                                                           "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"};
+    static const std::vector<std::string> macosFrameworks = {"AVFoundation", "AppKit", "AudioToolbox", "CoreAudio", "CoreGraphics", "CoreMedia",
+                                                             "CoreVideo", "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore"};
+    return ios ? iosFrameworks : macosFrameworks;
+}
+
+bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const XcodeNativeLayout& layout) {
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
     const MacOSProjectSettings& macOS = project->getMacOSProjectSettings();
-    const fs::path nativeRoot = getExportProjectRoot() / NativePlugins::relativeRoot();
+    const fs::path& nativeRoot = layout.nativeRoot;
     std::error_code ec;
 
     // the files of each Apple folder, relative to plugins/native, sorted; bundles are one entry
     std::map<std::string, std::vector<std::string>> folderFiles;
     for (const char* folder : {"apple", "ios", "macos"}) {
+        if (layout.player && std::string(folder) == "macos") continue;
         const fs::path dir = nativeRoot / folder;
         if (!fs::is_directory(dir, ec)) continue;
         std::vector<std::string>& list = folderFiles[folder];
@@ -5328,7 +5232,8 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 continue;
             }
             const std::string ext = lowerExtension(it->path());
-            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework");
+            // an SDK's resource bundle (Foo_Privacy.bundle) is copied into the app whole
+            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework" || ext == ".bundle");
             if (bundle) it.disable_recursion_pending();
             if (bundle || (!directory && it->is_regular_file(ec))) {
                 list.push_back(std::string(folder) + "/" + genericUtf8Path(it->path().lexically_relative(dir)));
@@ -5353,25 +5258,32 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
 
     struct AppTarget {
         std::string name;
-        std::string sourcesPhaseId, frameworksPhaseId;
+        std::string sourcesPhaseId, frameworksPhaseId, resourcesPhaseId;
         std::vector<std::string> configurationIds;
         std::vector<std::string> folders;         // its plugin folders
         const std::vector<std::string>* systemFrameworks = nullptr;
-        std::vector<std::string> sources, frameworks, embedded;
+        std::vector<std::string> sources, frameworks, embedded, resources;
         std::set<std::string> frameworkDirs, libraryDirs, headerDirs;
         bool swift = false;
+        bool ios = true;
         std::string runpath;
         std::string bridgingHeader;
     };
-    AppTarget targets[2] = {{"JasperEngine iOS"}, {"JasperEngine macOS"}};
+    // the source export's two app targets, or the prebuilt iOS template's one (the iOS target first)
+    std::vector<AppTarget> targets(layout.player ? 1 : 2);
+    targets[0].name = layout.player ? "JasperEnginePlayer" : "JasperEngine iOS";
     targets[0].folders = {"apple", "ios"};
     targets[0].systemFrameworks = &ios.frameworks;
     targets[0].runpath = "\"@executable_path/Frameworks\"";
     targets[0].bridgingHeader = "JasperNative-Bridging-Header-iOS.h";
-    targets[1].folders = {"apple", "macos"};
-    targets[1].systemFrameworks = &macOS.frameworks;
-    targets[1].runpath = "\"@executable_path/../Frameworks\"";
-    targets[1].bridgingHeader = "JasperNative-Bridging-Header-macOS.h";
+    if (!layout.player) {
+        targets[1].name = "JasperEngine macOS";
+        targets[1].ios = false;
+        targets[1].folders = {"apple", "macos"};
+        targets[1].systemFrameworks = &macOS.frameworks;
+        targets[1].runpath = "\"@executable_path/../Frameworks\"";
+        targets[1].bridgingHeader = "JasperNative-Bridging-Header-macOS.h";
+    }
     for (AppTarget& target : targets) {
         if (!findXcodeTarget(xcodeProject, target.name, target.sourcesPhaseId, target.configurationIds)) {
             setError("Apple export template has no \"" + target.name + "\" target");
@@ -5381,6 +5293,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         for (const std::string& phaseId : pbxListIds(xcodeProject, object, "buildPhases")) {
             const PbxRange phase = findPbxObject(xcodeProject, phaseId);
             if (phase.found() && xcodeProject.find("\t\t\tisa = PBXFrameworksBuildPhase;\n", phase.start) < phase.end) target.frameworksPhaseId = phaseId;
+            if (phase.found() && xcodeProject.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) target.resourcesPhaseId = phaseId;
         }
         if (target.frameworksPhaseId.empty()) {
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
@@ -5425,7 +5338,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             const std::string name = baseName(path);
             const std::string ext = lowerExtension(FileUtils::pathFromUtf8(name));
             std::string type;
-            bool source = true, linked = false;
+            bool source = true, linked = false, resource = false;
             if (ext == ".m") type = "sourcecode.c.objc";
             else if (ext == ".mm") type = "sourcecode.cpp.objcpp";
             else if (ext == ".swift") type = "sourcecode.swift";
@@ -5437,7 +5350,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 // the engine's.
                 for (AppTarget& target : targets) {
                     if (std::find(target.folders.begin(), target.folders.end(), folder) != target.folders.end()) {
-                        target.headerDirs.insert(pbxPath("$(SRCROOT)/../../project/plugins/native/" + parentDir(path)));
+                        target.headerDirs.insert(pbxPath(layout.pluginsPath + "/" + parentDir(path)));
                     }
                 }
                 continue;
@@ -5445,9 +5358,10 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             else if (ext == ".framework") { type = "wrapper.framework"; source = false; linked = true; }
             else if (ext == ".xcframework") { type = "wrapper.xcframework"; source = false; linked = true; }
             else if (ext == ".a") { type = "archive.ar"; source = false; linked = true; }
+            else if (ext == ".bundle") { type = "wrapper.plug-in"; source = false; resource = true; }
             else continue;
             const std::string fileId = addObject("file:" + path, fileReferences, [&](const std::string& id) {
-                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked ? "" : "fileEncoding = 4; ") +
+                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked || resource ? "" : "fileEncoding = 4; ") +
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
@@ -5455,22 +5369,26 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             bool embed = false;
             if (linked && ext != ".a") {
                 const fs::path bundle = nativeRoot / FileUtils::pathFromUtf8(path);
-                const fs::path binary = ext == ".framework" ? frameworkBinary(bundle) : xcframeworkBinary(bundle);
-                embed = !binary.empty() && !isStaticArchive(binary);
+                const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(bundle) : NativePlugins::xcframeworkBinary(bundle);
+                embed = !binary.empty() && !NativePlugins::isStaticArchive(binary);
             }
             for (AppTarget& target : targets) {
                 if (std::find(target.folders.begin(), target.folders.end(), folder) == target.folders.end()) continue;
-                const std::string phase = source ? "Sources" : "Frameworks";
+                const std::string phase = resource ? "Resources" : source ? "Sources" : "Frameworks";
                 const std::string buildId = addObject("build:" + target.name + ":" + path, buildFiles, [&](const std::string& id) {
                     return "\t\t" + id + " /* " + name + " in " + phase + " */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " + name + " */; };\n";
                 });
+                if (resource) {
+                    target.resources.push_back(buildId + " /* " + name + " in Resources */");
+                    continue;
+                }
                 if (source) {
                     target.sources.push_back(buildId + " /* " + name + " in Sources */");
                     if (ext == ".swift") target.swift = true;
                     continue;
                 }
                 target.frameworks.push_back(buildId + " /* " + name + " in Frameworks */");
-                const std::string dir = "\"$(SRCROOT)/../../project/plugins/native/" + parentDir(path) + "\"";
+                const std::string dir = "\"" + layout.pluginsPath + "/" + parentDir(path) + "\"";
                 if (ext == ".a") target.libraryDirs.insert(dir);
                 else target.frameworkDirs.insert(dir);
                 if (embed) {
@@ -5486,14 +5404,15 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
 
     // system frameworks: the engine's own (linked explicitly: its C++ and Objective-C++ files
     // import no modules, so clang autolinks nothing for them; miniaudio's AVAudioSession symbols
-    // came only through the AdMob SDK's module, and an iOS export without AdMob failed to link),
+    // once came only through an ads SDK's module, and an iOS export without it failed to link),
     // then ios.frameworks / macos.frameworks: "StoreKit", "AppTrackingTransparency?" (weak). One
     // entry per name (strong wins), none for what the template's phase links already.
     std::vector<std::string> systemFrameworkRefs;
     for (AppTarget& target : targets) {
-        const bool iosTarget = &target == &targets[0];
         std::vector<std::pair<std::string, bool>> wanted;
-        for (const std::string& framework : iosTarget ? appleEngineFrameworksIOS() : appleEngineFrameworksMacOS()) wanted.push_back({framework, false});
+        if (layout.engineFrameworks) {
+            for (const std::string& framework : appleEngineFrameworks(target.ios)) wanted.push_back({framework, false});
+        }
         for (std::string framework : *target.systemFrameworks) {
             framework.erase(0, framework.find_first_not_of(" \t"));
             framework.erase(framework.find_last_not_of(" \t") + 1);
@@ -5510,7 +5429,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         for (const auto& [framework, weak] : wanted) {
             const std::string name = framework + ".framework";
             if (phaseText.find("/* " + name + " in Frameworks */") != std::string::npos) continue;
-            const std::string sdk = target.name == "JasperEngine iOS" ? "ios" : "macos";
+            const std::string sdk = target.ios ? "ios" : "macos";
             const std::string fileId = addObject("system:" + sdk + ":" + name, fileReferences, [&](const std::string& id) {
                 return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = " + pbxString(name) +
                     "; path = " + pbxString("System/Library/Frameworks/" + name) + "; sourceTree = SDKROOT; };\n";
@@ -5632,7 +5551,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         return false;
     }
     if (!nativeGroupId.empty()) {
-        const PbxRange projectGroup = findPbxObjectContaining(xcodeProject, "PBXGroup", "\n\t\t\tpath = ../../project;\n");
+        // the source export's project group; the template's main group
+        const PbxRange projectGroup = layout.player
+            ? findPbxObject(xcodeProject, pbxValueId(xcodeProject, findPbxObject(xcodeProject, pbxValueId(xcodeProject, {0, xcodeProject.size()}, "rootObject")),
+                                                     "mainGroup"))
+            : findPbxObjectContaining(xcodeProject, "PBXGroup", "\n\t\t\tpath = ../../project;\n");
         if (!addPbxListEntries(xcodeProject, projectGroup, "children", {nativeGroupId + " /* native plugins */"})) {
             setError("Apple export template has no project group");
             return false;
@@ -5668,6 +5591,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
             return false;
         }
+        if (!target.resources.empty() &&
+            (target.resourcesPhaseId.empty() || !addPbxListEntries(xcodeProject, findPbxObject(xcodeProject, target.resourcesPhaseId), "files", target.resources))) {
+            setError("Apple export template has no Resources phase in \"" + target.name + "\"");
+            return false;
+        }
         if (!target.embedded.empty()) {
             addPbxListEntries(xcodeProject, findPbxObjectContaining(xcodeProject, "PBXNativeTarget", "\n\t\t\tname = " + pbxString(target.name) + ";\n"),
                               "buildPhases", target.embedded);
@@ -5679,7 +5607,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             auto settings = [&]() { return findPbxBuildSettings(xcodeProject, configurationId); };
             if (hasSources) {
                 // plugin code imports "JasperNative.h"
-                addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {pbxPath("$(SRCROOT)/../../platform/apple")});
+                addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {pbxPath(layout.engineHeaders)});
             }
             addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {target.headerDirs.begin(), target.headerDirs.end()});
             addPbxBuildSettingList(xcodeProject, settings(), "FRAMEWORK_SEARCH_PATHS", {target.frameworkDirs.begin(), target.frameworkDirs.end()});
@@ -5688,13 +5616,13 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 setPbxBuildSetting(xcodeProject, settings(), "SWIFT_VERSION", "5.0");
                 setPbxBuildSetting(xcodeProject, settings(), "CLANG_ENABLE_MODULES", "YES");
                 setPbxBuildSetting(xcodeProject, settings(), "SWIFT_OBJC_BRIDGING_HEADER",
-                                   pbxString("$(SRCROOT)/../../project/plugins/native/" + target.bridgingHeader));
+                                   pbxString(layout.pluginsPath + "/" + target.bridgingHeader));
             }
             if (target.swift || !target.embedded.empty() || (&target == &targets[0] && !productDeps.empty())) {
                 addPbxBuildSettingList(xcodeProject, settings(), "LD_RUNPATH_SEARCH_PATHS", {target.runpath});
             }
             if (&target == &targets[0] && ios.entitlementsXml.find_first_not_of(" \t\r\n") != std::string::npos) {
-                setPbxBuildSetting(xcodeProject, settings(), "CODE_SIGN_ENTITLEMENTS", "ios/JasperEngine.entitlements");
+                setPbxBuildSetting(xcodeProject, settings(), "CODE_SIGN_ENTITLEMENTS", pbxString(layout.entitlements));
             }
         }
         // the Swift bridging header: JasperNative.h and every plugin header of the target
@@ -5717,13 +5645,97 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
     return true;
 }
 
-bool editor::Exporter::writeNativeAppleFiles() {
+bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
-    const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
-    std::error_code ec;
+    // the plugins next to the project, as the source export has them next to its workspace
+    const fs::path nativeRoot = projectDir / NativePlugins::relativeRoot();
+    if (!copyNativePluginFolders(nativeRoot, {"apple", "ios"})) return false;
 
-    // entitlements
-    const fs::path entitlementsPath = xcodeDir / "ios" / "JasperEngine.entitlements";
+    const fs::path pbxFile = projectDir / "JasperEnginePlayer.xcodeproj" / "project.pbxproj";
+    std::string pbx;
+    {
+        std::ifstream in(pbxFile, std::ios::binary);
+        if (!in) {
+            setError("Cannot read the iOS player's " + pbxFile.string());
+            return false;
+        }
+        pbx.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    XcodeNativeLayout layout;
+    layout.nativeRoot = nativeRoot;
+    layout.pluginsPath = "$(SRCROOT)/plugins/native";
+    layout.engineHeaders = "$(SRCROOT)/include";
+    layout.entitlements = "JasperEnginePlayer.entitlements";
+    layout.player = true;
+    layout.engineFrameworks = false;
+    if (!addNativePluginsToXcode(pbx, layout)) return false;
+
+    // the privacy manifest's resource: a runtime packaged before privacy manifests lacks it
+    if (pbx.find("/* PrivacyInfo.xcprivacy in Resources */") == std::string::npos) {
+        const std::string refId = xcodeObjectId("privacy:ref");
+        const std::string buildId = xcodeObjectId("privacy:build");
+        const PbxRange target = findPbxObjectContaining(pbx, "PBXNativeTarget", "\n\t\t\tname = JasperEnginePlayer;\n");
+        std::string resourcesId;
+        for (const std::string& phaseId : pbxListIds(pbx, target, "buildPhases")) {
+            const PbxRange phase = findPbxObject(pbx, phaseId);
+            if (phase.found() && pbx.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) resourcesId = phaseId;
+        }
+        const size_t buildFiles = pbx.find("/* End PBXBuildFile section */");
+        const size_t fileRefs = pbx.find("/* End PBXFileReference section */");
+        if (resourcesId.empty() || buildFiles == std::string::npos || fileRefs == std::string::npos) {
+            setError("The iOS player template has no Resources phase for PrivacyInfo.xcprivacy");
+            return false;
+        }
+        pbx.insert(fileRefs, "\t\t" + refId + " /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; "
+                             "path = PrivacyInfo.xcprivacy; sourceTree = \"<group>\"; };\n");
+        pbx.insert(pbx.find("/* End PBXBuildFile section */"), "\t\t" + buildId + " /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; "
+                                                                 "fileRef = " + refId + " /* PrivacyInfo.xcprivacy */; };\n");
+        const PbxRange mainGroup = findPbxObject(pbx, pbxValueId(pbx, findPbxObject(pbx, pbxValueId(pbx, {0, pbx.size()}, "rootObject")), "mainGroup"));
+        addPbxListEntries(pbx, mainGroup, "children", {refId + " /* PrivacyInfo.xcprivacy */"});
+        addPbxListEntries(pbx, findPbxObject(pbx, resourcesId), "files", {buildId + " /* PrivacyInfo.xcprivacy in Resources */"});
+        warn("W-IOS-PRIVACY-RUNTIME", "the iOS player runtime predates privacy manifests (its template has no PrivacyInfo.xcprivacy): "
+                                      "the build adds one; reinstall the runtime");
+    }
+    if (FileUtils::writeFile(pbxFile, pbx) == FileUtils::WriteResult::Failed) {
+        setError("Cannot write " + pbxFile.string());
+        return false;
+    }
+    if (!writeEntitlements(projectDir / "JasperEnginePlayer.entitlements")) return false;
+
+    // Info.plist: Project Settings > Native Plugins > iOS (ios.plist_entries, ios.plist_xml)
+    const fs::path plistFile = projectDir / "Info.plist";
+    std::string plist;
+    {
+        std::ifstream in(plistFile, std::ios::binary);
+        plist.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string plistError = NativePlugins::xmlFragmentError(ios.plistXml);
+    if (!plistError.empty()) {
+        setError("Project Settings > Native Plugins > iOS > Info.plist XML (ios.plist_xml) is " + plistError);
+        return false;
+    }
+    if (!plist.empty()) {
+        writeNativePlistEntries(plist, ios.plistEntries, ios.plistXml);
+        if (FileUtils::writeFile(plistFile, plist) == FileUtils::WriteResult::Failed) {
+            setError("Cannot write " + plistFile.string());
+            return false;
+        }
+    }
+
+    // the privacy manifest: the engine's, the project's and the plugins'
+    const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "ios",
+                                                                  iosDeclaresTrackingUsage());
+    warnPrivacy("iOS", composed.warnings);
+    if (FileUtils::writeFile(projectDir / "PrivacyInfo.xcprivacy", ApplePrivacy::toXml(composed.manifest)) == FileUtils::WriteResult::Failed) {
+        setError("Cannot write the iOS privacy manifest");
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeEntitlements(const fs::path& entitlementsPath) {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    std::error_code ec;
     const std::string entitlementsError = NativePlugins::xmlFragmentError(ios.entitlementsXml);
     if (!entitlementsError.empty()) {
         setError("Project Settings > Native Plugins > iOS > Entitlements (ios.entitlements_xml) is " + entitlementsError);
@@ -5740,6 +5752,14 @@ bool editor::Exporter::writeNativeAppleFiles() {
     } else if (fs::exists(entitlementsPath, ec)) {
         fs::remove(entitlementsPath, ec);
     }
+    return true;
+}
+
+bool editor::Exporter::writeNativeAppleFiles() {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
+    std::error_code ec;
+    if (!writeEntitlements(xcodeDir / "ios" / "JasperEngine.entitlements")) return false;
 
     // CocoaPods
     const fs::path podfilePath = xcodeDir / "Podfile";

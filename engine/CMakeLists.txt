@@ -21,9 +21,6 @@ option(JE_JOLT_OWN_POOL "Run Jolt physics jobs on Jolt's own thread pool" OFF)
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
 option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
-# The editor export turns it off unless the project enables AdMob for iOS (Android's
-# Gradle build gets the same switch from the export)
-option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
 # Plain http:// to hosts other than localhost (the export sets it from player.allow_insecure_http):
 # App Transport Security of bare macOS executables; Http itself enforces the policy everywhere
 option(JASPERENGINE_ALLOW_INSECURE_HTTP "Allow plain http:// in Apple's App Transport Security" OFF)
@@ -679,8 +676,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/JasperEngineGameController.mm
             )
 
+            # the privacy manifest (Contents/Resources): the engine's, or the export's composed one
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
+                ${JASPERENGINE_ROOT}/workspaces/xcode/macos/PrivacyInfo.xcprivacy
             )
             set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_CONTENT_DIR:${APP_NAME}>/Resources)
 
@@ -774,6 +773,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             # executable left the players-apple job and the packaging without one.
             if(JASPERENGINE_PLAYER)
                 set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+                # the engine's privacy manifest; an export writes the game's over it
+                list(APPEND PLATFORM_RESOURCES ${JASPERENGINE_ROOT}/workspaces/xcode/macos/PrivacyInfo.xcprivacy)
                 list(APPEND PLATFORM_PROPERTIES
                     MACOSX_BUNDLE_BUNDLE_NAME "JasperEnginePlayer"
                     MACOSX_BUNDLE_GUI_IDENTIFIER "com.jaspergameengine.player"
@@ -816,38 +817,32 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/JasperEngineGameController.mm
         )
 
+        # the privacy manifest at the bundle root: the engine's, or the export's composed one
         list(APPEND PLATFORM_RESOURCES
             ${PLATFORM_ROOT}/ios/LaunchScreen.storyboard
             ${PLATFORM_ROOT}/ios/Main.storyboard
+            ${JASPERENGINE_ROOT}/workspaces/xcode/ios/PrivacyInfo.xcprivacy
         )
         set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_DIR:${APP_NAME}>)
 
+        # The system frameworks the engine's code calls into, linked explicitly: the C++ and
+        # Objective-C++ files import no modules, so clang autolinks nothing for them (miniaudio's
+        # AudioUnit calls need AudioToolbox). The same list as the Xcode export's
+        # (Exporter::appleEngineFrameworks, checked by AppleTemplatesTest).
         list(APPEND PLATFORM_LIBS
             -ObjC
-
-            # GameController framework for gamepad input (JasperEngineGameController.mm)
+            "-framework AVFoundation"
+            "-framework AudioToolbox"
+            "-framework CoreGraphics"
+            "-framework CoreMedia"
+            "-framework CoreVideo"
+            "-framework Foundation"
             "-framework GameController"
+            "-framework Metal"
+            "-framework MetalKit"
+            "-framework QuartzCore"
+            "-framework UIKit"
         )
-
-        if(JASPERENGINE_ADMOB)
-            add_definitions("-DJASPERENGINE_ADMOB")
-
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/ios/AdMobAdapter.h
-                ${PLATFORM_ROOT}/ios/AdMobAdapter.m
-            )
-
-            # To run on iOS simulator
-            list(APPEND PLATFORM_LIBS
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
-                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
-            )
-        endif()
 
         add_compile_options(-fmodules)
 

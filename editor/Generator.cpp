@@ -2639,6 +2639,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
             mainContent += "#else\n" + desktop;
             mainContent += "#endif\n";
+            // a shipped game: a Lua mock standing in for one of them says so once
+            mainContent += "    NativeBridge::setMockWarnings(true);\n";
         }
     }
 

@@ -37,8 +37,7 @@ from pathlib import Path, PurePosixPath
 # Scope
 # --------------------------------------------------------------------------------------
 
-THIRD_PARTY = ("libs/", "engine/libs/", "editor/external/", "shadercompiler/libs/",
-               "engine/platform/apple/GoogleMobileAdsSdkiOS-")
+THIRD_PARTY = ("libs/", "engine/libs/", "editor/external/", "shadercompiler/libs/")
 # History docs are not rewritten; this script and the glossary name the old identifiers.
 EXCLUDED_PREFIXES = THIRD_PARTY + ("docs/superpowers/", "build/")
 EXCLUDED_FILES = {"LICENSE", "NOTICE.md", "tools/unity_rename.py", "tools/rebrand.py",

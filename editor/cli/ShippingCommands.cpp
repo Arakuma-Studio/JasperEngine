@@ -290,6 +290,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         report["ok"] = ok;
         report["method_used"] = buildMethodName(result.methodUsed);
         report["compile_reasons"] = result.compileReasons;
+        report["carried"] = result.carried;
         report["player_id"] = result.playerId;
         report["modules"] = result.modules;
         report["modules_left_out"] = result.modulesLeftOut;
@@ -318,6 +319,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     } else {
         if (result.methodUsed != BuildMethod::Auto) std::printf("method: %s\n", buildMethodName(result.methodUsed));
         for (const std::string& reason : result.compileReasons) std::printf("compile_reason: %s\n", reason.c_str());
+        for (const std::string& item : result.carried) std::printf("carried: %s\n", item.c_str());
         if (ok) {
             if (!result.playerId.empty()) std::printf("player: %s\n", result.playerId.c_str());
             auto joined = [](const std::vector<std::string>& names) {

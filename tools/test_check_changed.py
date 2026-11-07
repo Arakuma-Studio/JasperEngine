@@ -141,7 +141,8 @@ class Builds(unittest.TestCase):
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
         # an engine event's holder, or a clear walking them: the event clears lint
-        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests, ["tools/check_event_clears.py"])
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
         self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests, ["tools/check_event_clears.py"])
         self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, [])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",

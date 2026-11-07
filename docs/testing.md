@@ -225,7 +225,7 @@ The cache cannot hide a bug:
   game's first configure takes as the option's default) except `test_build.py`'s (`lto=True`).
 
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
-game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
+game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, native plugins a player cannot carry, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
 ### Linked folders in a web game (S68 AC2)

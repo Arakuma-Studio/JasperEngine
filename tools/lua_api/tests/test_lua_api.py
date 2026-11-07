@@ -169,7 +169,10 @@ class Emitters(unittest.TestCase):
     #    initializers, modifiers and colour gradient are gone (deprecated setters stay on the
     #    ParticleSystem object, S20 D9), and so is ActionSystem::particleActionReset;
     #  - the lattice merge moved setTimes/setEasings/setEasing to KeyframeTracks, where every
-    #    tracks class inherits them (a base class's member counts for the derived one).
+    #    tracks class inherits them (a base class's member counts for the derived one);
+    #  - mobile-shipping retired built-in AdMob (ads go through the native bridge).
+    ADMOB_SYSTEM_STATICS = {'initializeAdMob', 'setMaxAdContentRating', 'loadInterstitialAd', 'isInterstitialAdLoaded',
+                            'showInterstitialAd'}
     S20_LEGACY_PARTICLE_FIELDS = {
         'accelerationInitializer', 'accelerationModifier', 'alphaInitializer', 'alphaModifier', 'bursts',
         'colorGradient', 'colorInitializer', 'colorModifier', 'currentBurst', 'emitter', 'lastUsedParticle',
@@ -184,6 +187,8 @@ class Emitters(unittest.TestCase):
         if re.fullmatch(r'Particle\w*(Initializer|Modifier)|ParticleColorGradient', owner):
             return True
         if parent == 'ParticleSystemComponent' and kind == 'Property' and name in cls.S20_LEGACY_PARTICLE_FIELDS:
+            return True
+        if owner == 'AdMobRating' or (parent == 'System' and name in cls.ADMOB_SYSTEM_STATICS):
             return True
         # SYNC#4: upstream's collider vectors replaced PhysicsSystem::loadCollider2D
         return (kind, parent, name) in (('CppMethod', 'ActionSystem', 'particleActionReset'),

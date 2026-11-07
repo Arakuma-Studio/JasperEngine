@@ -11,7 +11,7 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
 
 - **method** `auto` (default: the project's Build Settings choice): a **prebuilt player** (no
   compiler, seconds) unless the project needs native code: C++ scripts, `ProjectBuild.cmake`,
-  AdMob, or `method: compile` (content size never is: components have no fixed capacities). Then it compiles
+  native plugins the player cannot carry, or `method: compile` (content size never is: components have no fixed capacities). Then it compiles
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.
@@ -24,6 +24,13 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
   `JASPER_ANDROID_KS_PASS` / `JASPER_ANDROID_KEY_PASS` in the editor's environment; without a
   keystore the debug key signs it (warning `W-ANDROID-DEBUG-KEY`).
 - iOS needs a Mac with Xcode; elsewhere the result is the Xcode project and a note.
+- **Native plugins**: a prebuilt build carries what it can and lists it in `carried` (also
+  `get_build_info` `platforms[*].carried`); the rest is a `compile_reasons` entry naming the files.
+  iOS carries Objective-C/Swift plugins, SDKs, Swift packages, frameworks, Info.plist entries,
+  entitlements; Web carries `plugins/native/web/*.js` and `web.script_urls`; Android carries
+  `extra_permissions` and the manifest XML; C++ plugins, Java/Kotlin, Gradle dependencies, CocoaPods
+  and macOS plugins compile. Warning `W-NATIVE-MOCK`: a Lua mock would answer for a plugin with no
+  code on that platform. Details: `jasper://docs/native-bridge` section 8.
 
 The result adds `player_id`, `modules` (the engine modules the game ships: Strip Engine Code
 leaves out the HTML UI, video, the runtime shader compiler, 3D or 2D physics when nothing reaches
@@ -46,6 +53,17 @@ pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops 
 
 Before exporting: the scenes saved, the Console clean in play, the start scene right
 (`edit_build_scenes`).
+
+## Privacy manifest
+
+Every iOS and macOS build ships one: the engine's required-reason APIs plus `set_project_settings`
+`apple.privacy_tracking` (bool), `apple.privacy_tracking_domains` (host names),
+`apple.privacy_collected_data` (`[{type: "DeviceID", linked, tracking, purposes:
+["ThirdPartyAdvertising"]}]`), `apple.privacy_accessed_apis` (`[{type: "DiskSpace", reasons:
+["E174.1"]}]`), plus the `PrivacyInfo.xcprivacy` files of static plugins and SDK bundles.
+Undoable (scope project). Read the result: `native_plugins {action: "privacy_manifest", platform:
+"ios"}` (`xml`, `sources`, `warnings`: `W-PRIVACY-DOMAINS`, `W-PRIVACY-ATT`). Never write
+`PrivacyInfo.xcprivacy` into an export: the next build replaces it.
 
 ## Running a build
 

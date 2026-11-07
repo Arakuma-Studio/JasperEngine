@@ -920,6 +920,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CMakeText.cpp
     ${EDITOR_DIR}/util/VersionControlFiles.cpp
     ${EDITOR_DIR}/util/NativePlugins.cpp
+    ${EDITOR_DIR}/util/ApplePrivacy.cpp
+    ${EDITOR_DIR}/util/NativeNeeds.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
@@ -1371,6 +1373,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/ApplePrivacySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp

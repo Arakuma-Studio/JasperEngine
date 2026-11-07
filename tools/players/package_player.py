@@ -221,6 +221,10 @@ def package(args: argparse.Namespace) -> Path:
         # the modules the player was built with (the variant's); tracy only in development
         features = list(variant["modules"]) + (["tracy"] if args.flavour == "development" else [])
         libraries, manifest, third_party = notices(features)
+        # an iOS runtime whose template takes the game's Objective-C/Swift native plugins
+        # (ios_player.sh ships include/JasperNative.h): the editor carries them into the build
+        if args.platform == "ios" and (temp / "ios" / "template" / "include" / "JasperNative.h").is_file():
+            features.append("nativeplugins")
         for source, name in manifest:
             copy_file(source, temp / "licenses" / name)
         (temp / "THIRD-PARTY-NOTICES.txt").write_text(third_party, encoding="utf-8")

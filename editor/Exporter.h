@@ -107,12 +107,18 @@ namespace jasperengine::editor {
     struct BuildMethodChoice {
         BuildMethod method = BuildMethod::Prebuilt;
         std::vector<std::string> reasons;
+        // the native inputs a prebuilt build carries (NativeNeeds), so nothing is dropped silently
+        std::vector<std::string> carried;
+        // W-NATIVE-MOCK: plugins only a Lua mock answers on the platform
+        std::vector<std::string> nativeWarnings;
     };
 
     // What a Player build produced (the CLI's, MCP's and UI's report)
     struct ExportResult {
         BuildMethod methodUsed = BuildMethod::Auto;
         std::vector<std::string> compileReasons;
+        // what a prebuilt build carried of plugins/native and the native settings
+        std::vector<std::string> carried;
         std::string playerId;
         fs::path outputDir;
         fs::path contentManifest;
@@ -272,6 +278,10 @@ namespace jasperengine::editor {
         bool swapStagingIntoPlace();
         void discardStaging();
         void warn(const std::string& code, const std::string& message);
+        // ApplePrivacy::compose's warnings ("W-PRIVACY-...: message", else a plugin manifest's) as build warnings
+        void warnPrivacy(const std::string& platform, const std::vector<std::string>& warnings);
+        // NSUserTrackingUsageDescription in ios.plist_entries or ios.plist_xml
+        bool iosDeclaresTrackingUsage() const;
         // where the content steps' shaderlib notices come from (copyEngine's copy, else the editor's)
         fs::path shaderlibSourceDir() const;
         // the engine sources a build's notices come from (the export's engine copy, or the editor's)
@@ -374,6 +384,8 @@ namespace jasperengine::editor {
         // plugins/native/{android,apple,ios,macos,web} -> <export>/project/plugins/native/...
         // (mirrored: what the project no longer has goes); cpp/ ships as a script root
         bool copyNativePlugins();
+        // the given platform folders of plugins/native mirrored below `destination`
+        bool copyNativePluginFolders(const fs::path& destination, const std::vector<std::string>& platforms);
         bool copyEngine();
         bool writeExportSettingsScript(std::string& cmakeContent);
         bool writeAndroidProjectSettings();
@@ -383,11 +395,26 @@ namespace jasperengine::editor {
         bool addXcodeProjectSources(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
+        // Where the native plugins sit in an Xcode project: the source export's workspace (both
+        // app targets, the copy in ../../project) or the prebuilt iOS player's template (its one
+        // target, the copy next to it, JasperNative.h in include/)
+        struct XcodeNativeLayout {
+            fs::path nativeRoot;              // the copied plugins/native
+            std::string pluginsPath;          // the same as a build setting path
+            std::string engineHeaders;        // the folder of JasperNative.h
+            std::string entitlements;         // CODE_SIGN_ENTITLEMENTS, relative to the project
+            bool player = false;
+            bool engineFrameworks = true;     // link appleEngineFrameworks (the template links its own)
+        };
         // native plugins: plugins/native/{apple,ios,macos} sources and SDKs, system frameworks,
         // Swift packages, Swift settings, entitlements, deployment target
-        bool addNativePluginsToXcode(std::string& xcodeProject);
+        bool addNativePluginsToXcode(std::string& xcodeProject, const XcodeNativeLayout& layout);
         // workspaces/xcode: the entitlements file and the CocoaPods Podfile (removed when unset)
         bool writeNativeAppleFiles();
+        // ios.entitlements_xml as an entitlements plist at `path` (removed when unset)
+        bool writeEntitlements(const fs::path& path);
+        // The prebuilt iOS player's staged project: the game's Apple plugins, settings and privacy manifest
+        bool addNativeToIosPlayer(const fs::path& projectDir);
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
@@ -474,6 +501,12 @@ namespace jasperengine::editor {
         // Sets every CLANG_CXX_LANGUAGE_STANDARD of an Xcode project to gnu++<standard>;
         // false when the project has none
         static bool applyXcodeCxxStandard(std::string& pbxproj, int standard);
+        // The system frameworks the engine links on iOS (true) or macOS: every Apple build path
+        // links them (engine/CMakeLists.txt keeps the iOS list too, AppleTemplatesTest)
+        static const std::vector<std::string>& appleEngineFrameworks(bool ios);
+        // Native Plugins Info.plist entries (replacing keys), then raw <key>..</key> pairs
+        static void applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
+                                            const std::string& rawXml);
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
@@ -483,7 +516,15 @@ namespace jasperengine::editor {
         static std::string escapeXml(const std::string& value);
         // a prebuilt web page: the markers filled, the head additions of the Compile shell, the loader tag
         static std::string composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
-                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads);
+                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads,
+                                          const std::string& nativeScripts = "");
+        // Web native plugins, the same for both build methods: the JasperNative stub (first in
+        // <head>: scripts may register before the engine starts), the plugins/native/web/*.js
+        // file names in name order, and the <script> tags of web.script_urls then of those files
+        // (served from plugins/ next to the page)
+        static const char* webNativeStub();
+        static std::vector<std::string> webNativePluginFiles(const fs::path& webPluginsDir);
+        static std::string webNativeScripts(const std::vector<std::string>& scriptUrls, const std::vector<std::string>& files);
         // What emcmake.py adds to a CMake configure: the Emscripten toolchain file, node as the
         // cross-compiling emulator, and on Windows a generator (emscriptenWindowsGeneratorArgs).
         // `env` is the environment CMake runs in (emscriptenEnvironment). error set when it can't.

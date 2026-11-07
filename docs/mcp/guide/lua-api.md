@@ -869,13 +869,11 @@ local price = Items.sword.price
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
-`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
-export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
-`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
+`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); web ads:
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
-`loadingStopCrazyGames()`.
+`loadingStopCrazyGames()`. Ads and purchases on Android and iOS: the native bridge
+([native-bridge.md](native-bridge.md), section 10).
 
 Platform services ([platform-services.md](platform-services.md) has the per-platform details):
 
@@ -3207,7 +3205,6 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
-| `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
 | `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
 | `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
 | `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |

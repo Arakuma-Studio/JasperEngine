@@ -28,6 +28,9 @@
 #include "publish/PayloadValidator.h"
 #include "serialization/CookedScene.h"
 #include "util/FileUtils.h"
+#include "util/ApplePrivacy.h"
+#include "util/NativePlugins.h"
+#include "util/NativeNeeds.h"
 #include "util/Sha256.h"
 #include "EditorVersion.h"
 
@@ -101,6 +104,21 @@ void editor::Exporter::warn(const std::string& code, const std::string& message)
     Out::warning("%s: %s", code.c_str(), message.c_str());
 }
 
+void editor::Exporter::warnPrivacy(const std::string& platform, const std::vector<std::string>& warnings) {
+    for (const std::string& warning : warnings) {
+        const size_t colon = warning.find(": ");
+        const bool coded = warning.compare(0, 2, "W-") == 0 && colon != std::string::npos;
+        warn(coded ? warning.substr(0, colon) : "W-PRIVACY-PLUGIN", platform + " privacy manifest: " + (coded ? warning.substr(colon + 2) : warning));
+    }
+}
+
+bool editor::Exporter::iosDeclaresTrackingUsage() const {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    std::vector<std::string> keys;
+    for (const auto& [key, value] : ios.plistEntries) keys.push_back(key);
+    return ApplePrivacy::declaresTrackingUsage(keys, ios.plistXml);
+}
+
 std::string editor::Exporter::playerIdFor(const ExportConfig& cfg, bool development) {
     std::string backend = normalizeBackend(cfg.graphicBackend);
     if (backend.empty()) backend = platformBackends(cfg.platform).front();
@@ -163,11 +181,11 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     if (playerInfo && !playerInfo->capacities.empty())
         choice.reasons.push_back("player " + playerInfo->id + " holds fixed array capacities (built before " +
                                  "they were removed): use a player of this editor's version");
-    // (d) a compile-time feature the player lacks: Google Mobile Ads
-    const bool ads = (cfg.platform == BuildPlatform::Android && proj->getAndroidProjectSettings().admobEnabled) ||
-                     (cfg.platform == BuildPlatform::IOS && proj->getIOSProjectSettings().admobEnabled);
-    if (ads && !(playerInfo && std::find(playerInfo->features.begin(), playerInfo->features.end(), "ads") != playerInfo->features.end()))
-        choice.reasons.push_back("Google Mobile Ads (AdMob)");
+    // (d) native plugins and settings the player cannot carry (NativeNeeds: the rest is carried)
+    const NativeNeeds native = nativeNeedsFor(*proj, cfg.platform, playerInfo);
+    choice.reasons.insert(choice.reasons.end(), native.compileReasons.begin(), native.compileReasons.end());
+    choice.carried = native.carried;
+    choice.nativeWarnings = native.mockWarnings;
     // (e) forced
     if (cfg.method == BuildMethod::Compile) choice.reasons.push_back("Compile chosen in Build Settings");
     choice.method = choice.reasons.empty() ? BuildMethod::Prebuilt : BuildMethod::Compile;
@@ -233,7 +251,9 @@ void editor::Exporter::runPlayerBuild() {
         std::lock_guard<std::mutex> lock(progressMutex);
         result.compileReasons = choice.reasons;
         result.methodUsed = choice.method;
+        if (choice.method == BuildMethod::Prebuilt) result.carried = choice.carried;
     }
+    for (const std::string& warning : choice.nativeWarnings) warn("W-NATIVE-MOCK", warning);
     Out::info("Build method: %s%s", choice.method == BuildMethod::Prebuilt ? "prebuilt player" : "compile from source",
               choice.reasons.empty() ? "" : (": " + choice.reasons.front()).c_str());
 
@@ -247,9 +267,12 @@ void editor::Exporter::runPlayerBuild() {
     if (choice.method == BuildMethod::Compile) {
         const bool hostDesktop = config.platform == hostBuildPlatform();
         if (!hostDesktop && config.platform != BuildPlatform::Web) {
-            setError(std::string("needs a C++ toolchain (") + choice.reasons.front() + "): a " + buildPlatformName(config.platform) +
-                     " build of native code is made from the source project (File > Build Settings > Export source, then " +
-                     (config.platform == BuildPlatform::Android ? "Android Studio" : config.platform == BuildPlatform::IOS ? "Xcode" : "CMake") + ")");
+            setError(std::string("needs to compile native code (") + choice.reasons.front() + "): a " + buildPlatformName(config.platform) +
+                     " build with native code is made from the source project (File > Build Settings > Export source, then " +
+                     (config.platform == BuildPlatform::Android ? "Android Studio"
+                      : config.platform == BuildPlatform::IOS ? "Xcode"
+                      // Objective-C and Swift plugins build in the Xcode project
+                      : config.platform == BuildPlatform::MacOS ? "Xcode on a Mac" : "CMake") + ")");
             return;
         }
         if (config.platform != BuildPlatform::Web) {
@@ -563,6 +586,9 @@ bool editor::Exporter::writeGameConfig() {
                : getAppName();
     if (game.appId.empty()) game.appId = getAppName();
     game.version = project->getAndroidProjectSettings().versionName;
+    // the native plugins the player's platform has no code of (a Compile build's generated init sets the same)
+    game.nativePlatformOnly = NativePlugins::platformOnlyPlugins(NativePlugins::listPlugins(NativePlugins::scan(project->getProjectPath())),
+                                                                 nativeRunningName(config.platform));
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
     game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {
@@ -976,6 +1002,13 @@ bool editor::Exporter::finalizeMacOS() {
     fs::path icon = mac.icon.empty() ? project->getWindowIcon() : mac.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     settings.iconPng = icon;
+    // the privacy manifest and Info.plist entries (macos.plist_entries) the source export has too
+    const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "macos");
+    warnPrivacy("macOS", privacy.warnings);
+    settings.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
+    if (!mac.plistEntries.empty()) {
+        settings.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
+    }
     std::string error;
     std::vector<BuildWarning> warnings;
     if (!platform::finishMacBundle(bundle, settings, warnings, error)) {
@@ -992,17 +1025,19 @@ bool editor::Exporter::finalizeMacOS() {
 // ---------------------------------------------------------------- web (R15)
 
 std::string editor::Exporter::composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
-                                             bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads) {
+                                             bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads,
+                                             const std::string& nativeScripts) {
     auto replaceAll = [&page](const std::string& marker, const std::string& value) {
         for (size_t at = page.find(marker); at != std::string::npos; at = page.find(marker, at + value.size())) page.replace(at, marker.size(), value);
     };
-    // what the Compile build's apply.cmake adds to the head
-    std::string extra = headInclude + "\n";
+    // what the Compile build's apply.cmake adds to the head: the native bridge's stub first
+    std::string extra = std::string(webNativeStub()) + "\n" + headInclude + "\n";
     if (favicon) extra += "<link rel=\"icon\" href=\"favicon.png\">\n";
     if (resize)
         extra += "<style>html, body { margin: 0; width: 100%; min-height: 100%; } #canvas { width: 100% !important; height: 100vh !important; "
                  "height: 100dvh !important; display: block; border: 0; padding: 0; }</style>\n";
     if (hideUi) extra += "<style>#status { display: none !important; }</style>\n";
+    extra += nativeScripts;
     if (page.find("{{JASPERENGINE_HEAD_INCLUDE}}") == std::string::npos) {
         const size_t head = page.find("</head>");
         if (head != std::string::npos) page.insert(head, extra);
@@ -1061,9 +1096,23 @@ bool editor::Exporter::finalizeWeb() {
         }
         page = text.replace(marker, std::string("{{JASPERENGINE_DEFAULT_HTML}}").size(), page);
     }
+    // the native plugins (plugins/native/web/*.js, web.script_urls), as the Compile build has them:
+    // copied to plugins/ next to the page
+    const std::vector<std::string> nativeFiles = webNativePluginFiles(NativePlugins::root(project->getProjectPath()) / "web");
+    if (!nativeFiles.empty()) {
+        fs::create_directories(stagingDir / "plugins", ec);
+        for (const std::string& file : nativeFiles) {
+            fs::copy_file(NativePlugins::root(project->getProjectPath()) / "web" / FileUtils::pathFromUtf8(file), stagingDir / "plugins" / FileUtils::pathFromUtf8(file),
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                setError("Cannot copy the web native plugin " + file + ": " + ec.message());
+                return false;
+            }
+        }
+    }
     page = composeWebPage(page, project->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
                           web.hideEmscriptenUI, fs::is_regular_file(contentDir / "icon.png", ec) || !web.favicon.empty(),
-                          project->getCanvasWidth(), project->getCanvasHeight(), threads);
+                          project->getCanvasWidth(), project->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
     if (page.find("player-loader.js") == std::string::npos) {
         setError("The web page does not load player-loader.js (a custom shell keeps {{JASPERENGINE_DEFAULT_HTML}} or {{JASPERENGINE_LOADER}})");
         return false;
@@ -1184,6 +1233,13 @@ bool editor::Exporter::finalizeIOS() {
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
     std::vector<BuildWarning> warnings;
+    if (!platform::stageIosProject(settings, error)) {
+        setError(error);
+        return false;
+    }
+    // the game's Objective-C/Swift plugins, SDKs, packages, Info.plist entries, entitlements and
+    // privacy manifest: the template is an Xcode project, so they are carried, not dropped
+    if (!addNativeToIosPlayer(settings.projectDir)) return false;
     if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;

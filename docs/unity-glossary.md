@@ -301,6 +301,8 @@ Details: jasper://docs/native-bridge.
 | External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
 | `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
 | `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
+| `PrivacyInfo.xcprivacy` in `Assets/Plugins/iOS` (Unity copies plugin privacy manifests into the Xcode project) | `PrivacyInfo.xcprivacy` in `plugins/native/ios` (or `apple`, `macos`), merged into the app's; the game's own entries: Project Settings > Player > iOS > Privacy Manifest (`apple.privacy_*`) |
+| Google Mobile Ads Unity plugin, Unity IAP | a native plugin (`plugins/native`): docs/mcp/guide/native-bridge.md section 10 has an interstitial ads example |
 
 ## UI (Canvas Group)
 

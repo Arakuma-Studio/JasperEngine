@@ -333,6 +333,12 @@ JASPERENGINE_INIT void init() {
     }
     // the voices and the project's mixer, before the first scene (as a Compile build's init)
     player::applyAudio(game);
+    // native plugins with code for other platforms only: "unavailable" here, and a Lua mock
+    // standing in for one says so once (as a Compile build's init)
+    if (!game.nativePlatformOnly.empty()) {
+        NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
+        NativeBridge::setMockWarnings(true);
+    }
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;
