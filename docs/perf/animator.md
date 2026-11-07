@@ -151,36 +151,36 @@ S74; with async loading a file of 64 KB or more now does this on a worker where 
 
 `tools/perf/bench-anim-wasm.sh`: the same program, Emscripten Release in the web image, under the image's
 node 24 (V8, not a browser), one thread (`--workers 0`, the single-thread web path), on the machine named above;
-three runs, medians with the range, at `6a2d1c51a`. The kernels column is `JASPERENGINE_WASM_SIMD`:
+three runs, medians with the range, at `66322d571` (the merged tree). The kernels column is `JASPERENGINE_WASM_SIMD`:
 `-msimd128` applies to the pose kernels only (`AnimatorPose.cpp`), as in a shipped web build, so the sampler is
 scalar wasm in both.
 
 | Metric | With `-msimd128` | Without | Budget |
 |---|---|---|---|
-| **Web30, one thread, p95** | **1.65 ms (1.54-1.81)** | **2.19 ms (2.15-2.27)** | under 4 ms (R44): holds |
-| Web30, one thread, p50 | 1.16 ms (1.15-1.21) | 1.45 ms (1.40-1.46) | |
-| **Web30's clips, heap** | **446 KB** | **446 KB** | under 16 MB (R44): holds |
-| Crowd200, one thread, p50 | 9.70 ms (8.93-9.85) | 10.89 ms (10.57-11.02) | |
-| Two-pose blend, 128 bones | 1.49 µs | 3.41 µs | |
-| One 65-bone clip sample | 2.10 µs | 2.14 µs | |
-| Rig space, 65 bones | 2.30 µs | 2.33 µs | |
-| Skin matrices, 65 bones | 5.09 µs | 4.85 µs | |
-| `real_pab_walk` (dense), sample + hierarchy | 8.17 µs | 8.72 µs | |
-| `real_walk_1mm` (reduced), sample + hierarchy | 5.94 µs | 6.53 µs | |
-| `real_pab_atlas` (4.3 MB), parse + build | 655 ms | 686 ms | |
-| `real_pab_atlas`, heap | 1.99 MB | 1.99 MB | |
-| Animation Player crowd of 200, p50 | 2.46 ms | 2.35 ms | |
+| **Web30, one thread, p95** | **1.30 ms (1.24-1.41)** | **1.44 ms (1.39-1.46)** | under 4 ms (R44): holds |
+| Web30, one thread, p50 | 1.15 ms (1.15-1.16) | 1.36 ms (1.34-1.36) | |
+| **Web30's clips, memory** | **308 KB** | **308 KB** | under 16 MB (R44): holds |
+| Crowd200, one thread, p50 | 8.18 ms (8.09-8.34) | 10.53 ms (10.03-10.55) | |
+| Two-pose blend, 128 bones | 1.36 µs | 3.15 µs | |
+| One 65-bone clip sample | 2.13 µs | 2.15 µs | |
+| Rig space, 65 bones | 2.27 µs | 2.26 µs | |
+| Skin matrices, 65 bones | 4.74 µs | 4.94 µs | |
+| `real_pab_walk` (dense), sample + hierarchy | 8.18 µs | 8.29 µs | |
+| `real_walk_1mm` (reduced), sample + hierarchy | 5.91 µs | 6.04 µs | |
+| `real_pab_atlas` (4.3 MB), parse + build | 643 ms | 649 ms | |
+| `real_pab_atlas`, memory | 1.26 MB | 1.26 MB | |
+| Animation Player crowd of 200, p50 | 2.22 ms | 2.22 ms | |
 
-Against `Quaternion::slerp` in the same process, with `-msimd128`: `sampleQuaternion` is 34 against 56 ns with
-keys 4 degrees apart, 46 against 54 ns at 20 degrees, and **80 against 54 ns at 60 degrees**, where it calls slerp.
+Against `Quaternion::slerp` in the same process, with `-msimd128`: `sampleQuaternion` is 32 against 54 ns with
+keys 4 degrees apart, 46 against 53 ns at 20 degrees, and **78 against 54 ns at 60 degrees**, where it calls slerp.
 There is no run of the old sampler on wasm, so R43's 1.79 x is a native number; the wasm gain is what these rows show.
 
 What these numbers do not say:
 
 - **The budgets hold on this x64 VM under node. No phone or browser was measured.** The owner's budgets are for
   the web; a low-end device can be several times slower, and ARM is unmeasured.
-- The 446 KB is the bench character's seven clips, not a game: a project's own figure is its clip memory
-  (R7's monitor). One dense 90,000-key clip alone is 2 MB.
+- The 308 KB is the bench character's seven clips, not a game: a project's own figure is its clip memory
+  (R7's monitor). One dense 90,000-key clip alone is 1.26 MB.
 - These are not comparable with the native table, which is a RelWithDebInfo build with its allocator and
   libm: wasm beating it on a row does not mean wasm is faster than a native Release build.
 - A `.anim` parses about 2.8 x slower here than natively, about 150 ms per MB. Without threads that happens in
