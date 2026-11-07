@@ -206,6 +206,7 @@ TEST(GraphCanvas, ADragWithoutEscReportsItsMove) {
 TEST(GraphCanvas, ADataflowNodeIsSizedByItsPortsAndThumbnail) {
     GraphCanvas::Node node;
     node.position = ImVec2(10, 20);
+    node.size = ImVec2(0, 0);       // no width asked for: the canvas' least
     node.inputs = {{"a"}, {"b"}, {"c"}};
     node.outputs = {{"out"}};
     const ImVec2 size = GraphCanvas::nodeSize(node);
@@ -217,6 +218,8 @@ TEST(GraphCanvas, ADataflowNodeIsSizedByItsPortsAndThumbnail) {
     EXPECT_EQ(b.x, 10.0f) << "an input on the left edge";
     EXPECT_EQ(b.y, 20.0f + GraphCanvas::HEADER_HEIGHT + 1.5f * GraphCanvas::PORT_ROW);
     EXPECT_EQ(GraphCanvas::portPosition(node, "out", true).x, 10.0f + GraphCanvas::MIN_WIDTH) << "an output on the right";
+    node.size = ImVec2(240, 0);
+    EXPECT_EQ(GraphCanvas::nodeSize(node).x, 240.0f) << "a wider node keeps its width";
     GraphCanvas::Node box;
     box.size = ImVec2(120, 34);
     EXPECT_EQ(GraphCanvas::nodeSize(box).x, 120.0f) << "a state machine's box keeps its size";
