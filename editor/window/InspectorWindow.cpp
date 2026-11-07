@@ -53,6 +53,7 @@
 #include "component/VideoPlayerComponent.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "procmat/ProceduralBake.h"
 #include "util/ScriptAttach.h"
 #include "component/ScriptComponent.h"
 #include "util/ProjectChecks.h"
@@ -13213,6 +13214,21 @@ void editor::InspectorWindow::show(){
             : std::filesystem::path();
         if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
+        }
+        // a PNG a Procedural Material baked: where from, and whether the graph changed since (S90 R16)
+        if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string())) {
+            if (const std::optional<procmat::BakeStatus> bake = procmat::cachedBakeStatus(project->getProjectPath(), inspectedImage)) {
+                ImGui::TextWrapped("Baked from %s: %s, %d px, seed %u, %s (%s).", bake->recipe.graphPath.c_str(), bake->recipe.output.c_str(),
+                                   bake->recipe.size, bake->recipe.seed, bake->recipe.tier.c_str(), bake->recipe.device.c_str());
+                if (bake->state != procmat::BakeState::Fresh) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+                    ImGui::TextWrapped("Stale: %s. Bake it again.", bake->reason.c_str());
+                    ImGui::PopStyleColor();
+                    UIProbe::rect("inspector.procmatStale", ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().x,
+                                  ImGui::GetItemRectMax().y);
+                }
+                ImGui::Separator();
+            }
         }
         const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
         if (assetsLocked) ImGui::EndDisabled();

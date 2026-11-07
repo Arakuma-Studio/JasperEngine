@@ -54,6 +54,7 @@
 #include "util/ProjectChecks.h"
 #include "util/QaChecks.h"
 #include "particles/ParticleEffectPreview.h"
+#include "procmat/ProceduralBake.h"
 #include "particles/ParticlePreviewSource.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
@@ -2132,6 +2133,7 @@ struct CheckOptions {
     bool normals = false;
     bool videos = false;
     bool particles = false;
+    bool materials = false;
     std::string failOn = "fail";
     bool all = false;
     bool filesGiven = false;
@@ -2177,9 +2179,12 @@ void printCheckUsage(const std::string& commandName) {
         << "                           invisible, pop, never_ends, platform_budget; cost is an estimate).\n"
         << "                           A FAIL is an error, a WARN a warning. An effect used as a sub-emitter\n"
         << "                           is checked through the effects that use it, not alone.\n"
+        << "      --materials          Procedural Materials (.procmat): graph problems (with the fix), a graph that\n"
+        << "                           does not bake (errors), and baked PNGs whose graph changed since or is gone\n"
+        << "                           (warnings: bake again).\n"
         << "      --fail-on <verdict>  fail (default) or warn: --particles reports WARN rows as errors too.\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos\n"
-        << "                           and particle effects.\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos,\n"
+        << "                           particle effects and Procedural Materials.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
@@ -2230,6 +2235,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.videos = true;
         } else if (arg == "--particles") {
             options.particles = true;
+        } else if (arg == "--materials") {
+            options.materials = true;
         } else if (arg == "--fail-on") {
             if (!requireValue(argc, argv, i, options.failOn, error)) return false;
             if (options.failOn != "fail" && options.failOn != "warn") {
@@ -3241,8 +3248,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
     const bool particles = options.particles || options.all;
+    const bool materials = options.materials || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.particles && !options.all) {
+        !options.videos && !options.particles && !options.materials && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
@@ -3278,6 +3286,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
     std::vector<fs::path> particleFiles;
+    std::vector<fs::path> materialFiles;    // .procmat files and PNGs (baked ones)
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3320,6 +3329,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
+            // a Procedural Material, or a PNG it baked
+            if (materials && (Util::isProceduralMaterialFile(name) || Util::isImageFile(name))) materialFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -3339,6 +3350,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
     const bool particlesWanted = fileMode ? !particleFiles.empty() : particles;
+    const bool materialsWanted = fileMode ? !materialFiles.empty() : materials;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -3382,6 +3394,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (materialsWanted) {
+        // the graphs planned and the PNGs' recipe chunks: no engine, no device
+        const procmat::MaterialsCheck materialsCheck = procmat::checkMaterials(root, fileMode ? materialFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), materialsCheck.findings.begin(), materialsCheck.findings.end());
+        run.checked.push_back({"materials", materialsCheck.graphs + materialsCheck.bakes});
     }
     if (videosWanted) {
         // the scene and prefab YAML and the clips' header boxes: no engine
@@ -3448,7 +3466,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"materials", "file"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);

@@ -34,7 +34,9 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
-        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
+        {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
+        {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
+        {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
     };

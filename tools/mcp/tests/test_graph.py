@@ -51,8 +51,9 @@ async def test_graph_tools():
         kinds = await ed.call("list_graph_kinds")
         test = [k for k in kinds["kinds"] if k["id"] == "test"]
         ed.check(test, f"the test kind is registered: {kinds}")
-        types = await ed.call("list_graph_node_types", kind="test")
+        types = await ed.call("list_graph_node_types", kind="test", detail=True)
         ed.check_eq(sorted(t["id"] for t in types["node_types"]), ["blend", "label", "speed"], "node types")
+        ed.check_eq(len(types["signatures"]), 3, f"a signature line each: {types['signatures']}")
         unknown = await ed.call_raw("list_graph_node_types", {"kind": "nope"})
         ed.check(unknown.is_error and "list_graph_kinds" in unknown.text, f"an unknown kind: {unknown.text[:200]}")
 
@@ -347,3 +348,25 @@ async def test_a_failed_write_is_not_a_success():
         ed.check(far.is_error, f"the write did not happen: {far.text[:300]}")
         ed.check("added" not in (far.structured or {}), f"no ids of nodes that do not exist: {far.structured}")
         ed.check_eq(outside.read_text(), text, "the file outside is untouched")
+
+
+async def test_a_procedural_material_is_strict_and_names_new_ids():
+    """S90 AC12 on the procedural_material kind: a misspelled parameter is refused with its did-you-mean, edit_graph
+    returns the ids it made, and a symbolic id such as `bricks` stays legal (R31). The positionless graph's layout
+    is the graph window's (s90-canvas)."""
+    async with Editor(create=True, name="Graph Procmat CI") as ed:
+        path = "assets/mats/wall.procmat"
+        target = ed.project / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"formatVersion": 1, "kind": "procedural_material", "kindVersion": 1, "nextId": 2,
+                                      "nodes": [{"id": "out", "type": "material_output", "position": [400, 0]}]}) + "\n")
+        added = await ed.call("edit_graph", path=path, ops=[
+            {"op": "addNode", "node": {"id": "bricks", "type": "bricks3", "position": [0, 0]}},
+            {"op": "addNode", "node": {"type": "perlin", "position": [0, 200]}},
+            {"op": "connect", "from": {"node": "bricks", "port": "bricks_pattern"}, "to": {"node": "out", "port": "height"}}])
+        ed.check_eq([a["op_index"] for a in added["added"]], [0, 1, 2], f"every new node and edge: {added['added']}")
+        ed.check_eq(added["added"][0]["id"], "bricks", "a symbolic id is kept")
+        perlin = added["added"][1]["id"]
+        typo = await ed.call_raw("edit_graph", {"path": path, "ops": [{"op": "setParam", "node": perlin, "name": "scale_z", "value": 3}]})
+        ed.check(typo.is_error, f"refused: {typo.text[:300]}")
+        ed.check("did you mean 'scale_x'" in typo.text or "did you mean 'scale_y'" in typo.text, f"with its suggestion: {typo.text[:400]}")

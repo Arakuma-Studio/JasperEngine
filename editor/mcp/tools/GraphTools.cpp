@@ -20,9 +20,13 @@
 #include "procmat/ProceduralMaterialKind.h"
 #include "util/ProjectChecks.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <set>
+#include <sstream>
 
 namespace jasperengine::editor::mcp {
 
@@ -137,16 +141,113 @@ void listGraphKindsTool(const CallPtr& call) {
     call->ok(std::to_string(kinds.size()) + " graph kind(s).", Json{{"kinds", kinds}});
 }
 
+// a kind with more node types than this answers an unfiltered list with its categories (R33)
+constexpr size_t CATALOG_LIST_LIMIT = 40;
+
+std::string lowered(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return text;
+}
+
+// 8, .5, 0.25, 1e+03: as short as a number reads
+std::string shortNumber(double value) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.4g", value);
+    std::string out = text;
+    if (out.rfind("0.", 0) == 0) out.erase(0, 1);
+    else if (out.rfind("-0.", 0) == 0) out.erase(1, 1);
+    return out;
+}
+
+// One node type as a line: stones(in:f; scale=8[1..64] mode=a{a|b} seed:int) -> height:f mask:f
+std::string signatureLine(const graph::NodeTypeDesc& type) {
+    std::string inputs, outputs, params;
+    for (const graph::Port& port : type.ports) {
+        std::string& list = port.direction == graph::PortDirection::In ? inputs : outputs;
+        list += (list.empty() ? "" : " ") + port.id + ":" + port.type;
+    }
+    for (const graph::ParamDesc& param : type.params) {
+        std::string text = param.name;
+        const graph::Json& value = param.defaultValue;
+        if (value.is_number()) text += "=" + shortNumber(value.get<double>());
+        else if (value.is_boolean()) text += value.get<bool>() ? "=true" : "=false";
+        else if (value.is_string()) text += "=" + value.get<std::string>();
+        else text += ":" + param.kind;
+        if (param.min && param.max) text += "[" + shortNumber(*param.min) + ".." + shortNumber(*param.max) + "]";
+        if (!param.enumValues.empty()) {
+            std::string values;
+            for (const std::string& v : param.enumValues) values += (values.empty() ? "" : "|") + v;
+            text += "{" + values + "}";
+        }
+        params += (params.empty() ? "" : " ") + text;
+    }
+    return type.id + "(" + inputs + (inputs.empty() || params.empty() ? "" : "; ") + params + ") -> " + (outputs.empty() ? "nothing" : outputs);
+}
+
 void listGraphNodeTypesTool(const CallPtr& call) {
-    const std::string id = call->args().value("kind", std::string());
+    const Json& args = call->args();
+    const std::string id = args.value("kind", std::string());
     auto kind = GraphRegistry::get().kind(id);
     if (!kind) {
         call->fail("No graph kind '" + id + "' (list_graph_kinds lists them).");
         return;
     }
-    Json types = Json::array();
-    for (const graph::NodeTypeDesc& type : kind->nodeTypes) types.push_back(toMcp(graph::toJson(type)));
-    call->ok(std::to_string(types.size()) + " node type(s) of " + id + ".", Json{{"kind", id}, {"node_types", types}});
+    const std::string category = lowered(args.value("category", std::string()));
+    std::vector<std::string> words;
+    {
+        std::istringstream search(lowered(args.value("search", std::string())));
+        for (std::string word; search >> word;) words.push_back(word);
+    }
+    std::set<std::string> ids;
+    if (args.contains("ids") && args["ids"].is_array()) {
+        for (const Json& item : args["ids"]) {
+            if (item.is_string()) ids.insert(item.get<std::string>());
+        }
+    }
+    const bool detail = args.value("detail", false);
+    const bool filtered = !category.empty() || !words.empty() || !ids.empty();
+    std::map<std::string, size_t> categories;
+    std::vector<const graph::NodeTypeDesc*> matched;
+    for (const graph::NodeTypeDesc& type : kind->nodeTypes) {
+        categories[type.category.empty() ? "Other" : type.category]++;
+        if (!ids.empty() && !ids.count(type.id)) continue;
+        if (!category.empty() && lowered(type.category) != category) continue;
+        const std::string haystack = lowered(type.id + " " + type.displayName + " " + type.category);
+        if (std::any_of(words.begin(), words.end(), [&](const std::string& word) { return haystack.find(word) == std::string::npos; })) continue;
+        matched.push_back(&type);
+    }
+    if (!filtered && kind->nodeTypes.size() > CATALOG_LIST_LIMIT) {
+        Json list = Json::array();
+        std::string text;
+        for (const auto& [name, count] : categories) {
+            list.push_back({{"category", name}, {"count", count}});
+            text += (text.empty() ? "" : ", ") + name + " " + std::to_string(count);
+        }
+        call->ok(std::to_string(kind->nodeTypes.size()) + " node types of " + id + " in " + std::to_string(categories.size()) +
+                 " categories: " + text + ". Pass category, search or ids for their signatures.",
+                 Json{{"kind", id}, {"total", kind->nodeTypes.size()}, {"categories", list}});
+        return;
+    }
+    for (const std::string& wanted : ids) {
+        if (std::none_of(matched.begin(), matched.end(), [&](const graph::NodeTypeDesc* type) { return type->id == wanted; })) {
+            call->fail("No node type '" + wanted + "' in " + id + " (search finds types by name).");
+            return;
+        }
+    }
+    Json data = {{"kind", id}, {"total", kind->nodeTypes.size()}, {"matched", matched.size()}};
+    std::string text = std::to_string(matched.size()) + " of " + std::to_string(kind->nodeTypes.size()) + " node type(s) of " + id + ":";
+    if (detail) {
+        Json types = Json::array();
+        for (const graph::NodeTypeDesc* type : matched) types.push_back(toMcp(graph::toJson(*type)));
+        data["node_types"] = types;
+    }
+    Json lines = Json::array();
+    for (const graph::NodeTypeDesc* type : matched) {
+        lines.push_back(signatureLine(*type));
+        text += "\n" + signatureLine(*type);
+    }
+    data["signatures"] = lines;
+    call->ok(text, data);
 }
 
 void getGraphTool(const CallPtr& call) {
@@ -277,8 +378,10 @@ void registerGraphTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "list_graph_node_types";
         tool.title = "List Graph Node Types";
-        tool.description = "A kind's node types: ports [{id, direction, type}], params [{name, kind, default, min, max, values}].";
-        tool.inputSchema = object({{"kind", string("")}}, {"kind"});
+        tool.description = "A kind's node types, one signature line each: id(inputs; param=default[min..max]) -> outputs. A large "
+                           "kind lists its categories until category, search or ids narrows it; detail adds the full ports and params.";
+        tool.inputSchema = object({{"kind", string("")}, {"category", string("")}, {"search", string("Words in the id or name.")},
+                                   {"ids", array(string(""), "")}, {"detail", withDefault(boolean(""), false)}}, {"kind"});
         tool.annotations.readOnly = true;
         tool.handler = listGraphNodeTypesTool;
         registry.addTool(std::move(tool));

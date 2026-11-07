@@ -139,6 +139,7 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "particles/ParticleEffectPreview.h"
+#include "procmat/ProceduralRun.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -2430,6 +2431,7 @@ void editor::App::setup() {
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
     ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
 
     // Initialize application settings
     initializeSettings();
@@ -4205,6 +4207,9 @@ void editor::App::engineRender(){
     // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
     // private scenes step and draw here, whether a view shows or not
     ParticleEffectPreview::processFrame();
+    // Procedural Material evaluations and their lit balls (preview_procedural_material, bake_procedural_material):
+    // the evaluator draws its own passes here, outside any render pass
+    procmat::ProceduralRun::processFrame();
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -5060,6 +5065,7 @@ void editor::App::shutdownBackgroundWork() {
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
     ParticleEffectPreview::setFrameRequester(nullptr);
+    procmat::ProceduralRun::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -5073,6 +5079,7 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
+    procmat::ProceduralRun::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();

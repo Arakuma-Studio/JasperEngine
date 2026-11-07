@@ -409,6 +409,9 @@ namespace jasperengine::editor {
         // Sprite Normal Map: a generated PNG's badge and tooltip (its recipe, the watcher's
         // staleness), and the image context menu's items
         void updateSpriteNormalsBadge(FileEntry& file, const fs::path& path);
+        // a PNG a Procedural Material baked (its jasper.procmat recipe): the badge, yellow once the graph
+        // changed since (S90 R16), and what the tooltip says
+        void updateProceduralBakeBadge(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
         void collectSearchResults();
 

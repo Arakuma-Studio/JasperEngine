@@ -722,6 +722,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
+    ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
@@ -877,6 +878,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProceduralMaterialTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp

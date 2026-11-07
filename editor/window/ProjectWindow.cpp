@@ -51,6 +51,7 @@
 #include "camera/ShakePresets.h"
 #include "animation/AnimationClipIO.h"
 #include "util/ProjectFileWrites.h"
+#include "procmat/ProceduralBake.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -2879,6 +2880,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)
             updateSpriteNormalsBadge(fileEntry, path);
+            if (!fileEntry.generated) updateProceduralBakeBadge(fileEntry, path);
         }else if (Util::isSceneFile(fileEntry.extension)){
             fileEntry.type = FileType::SCENE;
             fileEntry.icon = sceneIcon.getRender();
@@ -4162,6 +4164,18 @@ void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::
             file.generatedStale = true;
             file.generatedBy += "\nThe source " + spritenormalsentry::fileName(head.source) + " is missing";
         }
+    }
+}
+
+void editor::ProjectWindow::updateProceduralBakeBadge(FileEntry& file, const fs::path& path) {
+    const std::optional<procmat::BakeStatus> status = procmat::cachedBakeStatus(project->getProjectPath(), path);
+    if (!status) return;
+    file.generated = true;
+    file.generatedBy = "Baked from " + status->recipe.graphPath + " (" + status->recipe.output + ", " + std::to_string(status->recipe.size) +
+                       ", seed " + std::to_string(status->recipe.seed) + ", " + status->recipe.tier + " " + status->recipe.device + ")";
+    if (status->state != procmat::BakeState::Fresh) {
+        file.generatedStale = true;
+        file.generatedBy += "\nStale: " + status->reason + ". Bake it again.";
     }
 }
 
