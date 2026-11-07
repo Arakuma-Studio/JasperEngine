@@ -1550,6 +1550,12 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/asset/ImportedAssets.cpp
+    # sprite sheets (S44): the record, its IO, the pool, frame geometry
+    core/sprite/SpriteSheetIO.cpp
+    core/sprite/SpriteSheetPool.cpp
+    core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/AsepriteClips.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp

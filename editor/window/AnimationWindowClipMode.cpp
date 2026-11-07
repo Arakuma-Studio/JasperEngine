@@ -15,6 +15,7 @@
 
 #include "AnimationWindow.h"
 #include "audio/TimelineAudioPreview.h"
+#include "sprite/SpriteSheetPool.h"
 #include "AnimationWindowClip.h"
 
 #include "Out.h"
@@ -170,7 +171,9 @@ void editor::AnimationWindow::acceptClipDrop(SceneProject* sceneProject){
     const ImGuiPayload* payload = ImGui::GetDragDropPayload();
     if (payload && payload->IsDataType("resource_files")){
         const std::vector<std::string> paths = Util::getStringsFromPayload(payload);
-        const bool clips = std::any_of(paths.begin(), paths.end(), [](const std::string& path){ return Util::isAnimationClipFile(path); });
+        const bool clips = std::any_of(paths.begin(), paths.end(), [](const std::string& path){
+            return Util::isAnimationClipFile(path) || SpriteSheetPool::isAsepritePath(path);
+        });
         if (clips && ImGui::AcceptDragDropPayload("resource_files")){
             std::string error;
             if (!dropClipFiles(sceneProject, paths, &error)) Out::error("Animation window: can't take the dropped clip: " + error);

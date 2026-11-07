@@ -90,6 +90,7 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/SpriteSheetRenderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp

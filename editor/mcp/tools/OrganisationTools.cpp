@@ -796,7 +796,7 @@ void registerOrganisationTools(McpRegistry& registry) {
             "menu_shortcut, conflicts, shadowed_by}. Ctrl means Cmd on macOS.";
         tool.inputSchema = object({
             {"group", string("File, Edit, Tools, Scene View...")},
-            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve", "color_picker"})},
+            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve", "color_picker", "sprite_preview"})},
             {"conflicts_only", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
