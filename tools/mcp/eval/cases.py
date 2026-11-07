@@ -1728,6 +1728,8 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
         "max_turns": 14,
+    },
+    {
         "id": "guard_duplicate_asset_beside",
         "kind": "guard",
         "what_happened": "Duplicating an asset: move_asset copy without `to` lands beside it under Unity's free name "
