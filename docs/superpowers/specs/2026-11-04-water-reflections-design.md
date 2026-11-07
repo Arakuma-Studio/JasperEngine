@@ -729,3 +729,7 @@ Recorded during implementation (branch `dc/water-reflections`):
     viewer's pass (fixed resolution, or the render scale with dynamic resolution), and the scene keeps its
     render-to-texture pipelines whatever the resolution, so turning it Off and on reloads nothing; the shared MVPs are
     rewritten per camera only while the camera sees a planar water from above.
+16. **With `@require environment` as well, the planar members end `u_fs_environment`** (`planarViewProjection`,
+    `planarParams`) instead of `u_fs_planarReflection`: a lit, shadowed and fogged library:water with every feature had
+    nine fragment uniform blocks, one over the budget (fix/main-green). A shader requiring only the planar reflection
+    keeps `u_fs_planarReflection`.
