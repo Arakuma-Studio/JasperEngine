@@ -885,4 +885,47 @@ CASES = [
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
     },
+    # -- T3: holes and tiers (docs/mcp/guide/terrain.md) ---------------------------------------------
+    {
+        "id": "terrain_cut_hole_check",
+        "kind": "guard",
+        "what_happened": "A hole that draws can still stop a ball: the agent checks the collider, not only the picture.",
+        "text_at_issue": "docs/mcp/guide/terrain.md: Check a hole end to end; sample_terrain collision_gap",
+        "source": "T3 AC51",
+        "prompt": "Cut a cave mouth in the terrain at local (0, 0), 6 m across, and check a ball falls in.",
+        "results": [
+            {"tool": "edit_terrain", "result": ok("Applied 1 op.", {"ops": [{"op": "cut_holes", "changed_texels": 113, "hole_texels": 113,
+                "map_created": True, "collision_samples_open": 64}]})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": True, "collision_gap": True, "nav_excluded": True}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", "sample_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_mobile_budget",
+        "kind": "bad",
+        "what_happened": "Asked why a terrain is slow on phones, an agent listed materials instead of reading what the pixels cost.",
+        "text_at_issue": "docs/mcp/guide/terrain.md: Check a budget; sample_terrain info.material",
+        "source": "T3 AC51",
+        "prompt": "Why is this terrain slow on phones?",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"info": {"material": {"quality": "high", "quality_source": "project",
+                "fetches": {"flat": 9, "slope": 27, "worst": 111, "by_tier": {"high": {"worst": 111}, "medium": {"worst": 21}, "low": {"worst": 6}}}}}})},
+        ],
+        "checks": {"calls": ["sample_terrain"], "must_not_call": ["list_materials"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_set_quality_tier",
+        "kind": "guard",
+        "what_happened": "A tier per platform is a project setting, not a file edit.",
+        "text_at_issue": "docs/mcp/guide/terrain.md: Check a budget; graphics.terrainQuality.<platform>",
+        "source": "T3 AC51",
+        "prompt": "Use the Low terrain quality on Android.",
+        "results": [
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.", {"changed": ["graphics.terrainQuality.android"]})},
+        ],
+        "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 8,
+    },
 ]

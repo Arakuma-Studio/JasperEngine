@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
+#include "terrain/TerrainQuality.h"
+#include "TerrainQualityPanel.h"
 #include "TerrainEditWindow.h"
 #include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
@@ -115,6 +119,9 @@ static std::string makeMapSuffix(const TerrainMapRef& ref){
     if (ref.target == TerrainMapTarget::HeightMap){
         return "height";
     }
+    if (ref.target == TerrainMapTarget::HoleMap){
+        return "holes";
+    }
     return ref.target == TerrainMapTarget::BlendMap ? "blend" : "density";
 }
 
@@ -183,7 +190,7 @@ ColorFormat editor::TerrainEditWindow::expectedFormat(TerrainMapTarget target){
     if (target == TerrainMapTarget::HeightMap){
         return ColorFormat::RED16;
     }
-    return target == TerrainMapTarget::DensityMap ? ColorFormat::RED : ColorFormat::RGBA;
+    return target == TerrainMapTarget::DensityMap || target == TerrainMapTarget::HoleMap ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
 // Encode a normalized [0,1] height into a raw pixel buffer (single channel), 8- or 16-bit.
@@ -586,6 +593,9 @@ std::vector<unsigned char> editor::TerrainEditWindow::makeInitialMapPixels(Terra
         for (size_t i = 0; i < texelCount; i++){
             encodeHeightTexel(pixels.data(), i, bytesPerChannel, 0.5f);
         }
+    }else if (target == TerrainMapTarget::HoleMap){
+        // all solid: a stroke cuts what it reaches (T3 R18)
+        std::fill(pixels.begin(), pixels.end(), static_cast<unsigned char>(terrain::SOLID_VALUE));
     }else if (target == TerrainMapTarget::BlendMap){
         // Opaque alpha, no painted channels yet. A density map starts empty and keeps the zeros.
         for (size_t i = 3; i < pixels.size(); i += 4){
@@ -1421,10 +1431,21 @@ int editor::TerrainEditWindow::mapResolutionFor(TerrainMapTarget target) const{
     if (target == TerrainMapTarget::HeightMap){
         return heightMapResolution;
     }
+    if (target == TerrainMapTarget::HoleMap){
+        // the height map's (T3 R18), which a query takes in UV whatever it comes to
+        return heightMapResolution;
+    }
     return target == TerrainMapTarget::DensityMap ? densityMapResolution : blendMapResolution;
 }
 
+bool editor::TerrainEditWindow::isHoleBrush() const{
+    return brushMode == TerrainBrushMode::CutHole || brushMode == TerrainBrushMode::FillHole;
+}
+
 editor::TerrainMapRef editor::TerrainEditWindow::getBrushMapRef() const{
+    if (isHoleBrush()){
+        return TerrainMapRef(TerrainMapTarget::HoleMap);
+    }
     if (isHeightBrush()){
         return TerrainMapRef(TerrainMapTarget::HeightMap);
     }
@@ -1786,7 +1807,10 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
 
     auto applyTexel = [&](int x, int y, float weight){
         const size_t texelIndex = static_cast<size_t>(y) * width + x;
-        if (target == TerrainMapTarget::DensityMap){
+        if (target == TerrainMapTarget::HoleMap){
+            // T3 R27: absolute, so a second pass changes nothing
+            stroke.workingPixels[texelIndex] = mode == TerrainBrushMode::CutHole ? 0.0f : 1.0f;
+        }else if (target == TerrainMapTarget::DensityMap){
             const float current = stroke.workingPixels[texelIndex];
             const float targetValue = mode == TerrainBrushMode::EraseDensity ? 0.0f : 1.0f;
             stroke.workingPixels[texelIndex] = current + (targetValue - current) * weight;
@@ -1855,6 +1879,16 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
     }else{
         for (int y = minY; y <= maxY; y++){
             for (int x = minX; x <= maxX; x++){
+                if (target == TerrainMapTarget::HoleMap){
+                    // a texel is in it when its centre is (T3 R27): no falloff, no strength
+                    const float dx = (static_cast<float>(x) - centerX) / radiusX;
+                    const float dy = (static_cast<float>(y) - centerY) / radiusY;
+                    if (dx * dx + dy * dy <= 1.0f && !(useMask && maskedOut(x, y))){
+                        applyTexel(x, y, 1.0f);
+                        touched = true;
+                    }
+                    continue;
+                }
                 const float falloff = brushWeight(x, y);
                 if (falloff <= 0.0f){
                     continue;
@@ -2471,6 +2505,9 @@ float editor::TerrainEditWindow::drawAssetThumbnail(const std::string& path, con
 // The blend map channels as a material list, so nobody has to remember which one is the rock
 void editor::TerrainEditWindow::drawTextureLayers(TerrainComponent& terrain){
     SceneProject* sceneProject = getTargetSceneProject();
+    // T3 R39: what the layers cost, for the effective tier or another one
+    static int shownTier = -1;
+    drawTerrainCostStrip(terrain, shownTier);
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
     const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
     const ImVec2 detailsSpacing(spacing.x * 0.5f, spacing.y * 0.5f);
@@ -3280,6 +3317,21 @@ void editor::TerrainEditWindow::show(){
         ImGui::Spacing();
     }
 
+    // T3 R41: the Holes overlay comes on with the brush, and goes with it
+    {
+        static bool overlayFromBrush = false;
+        if (isHoleBrush() && terrain::TerrainQualitySettings::getDebugView() == terrain::TerrainDebugView::SHADED && !overlayFromBrush){
+            terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::HOLES);
+            overlayFromBrush = true;
+        }else if (!isHoleBrush() && overlayFromBrush){
+            terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::SHADED);
+            overlayFromBrush = false;
+        }
+        if (isHoleBrush()){
+            drawHoleBrushInfo(terrain);
+        }
+    }
+
     if (toolCategory == TerrainToolCategory::Sculpt && beginTerrainProperties("sculpt_properties")){
         drawMapSettings(TerrainMapTarget::HeightMap, "Heightmap", heightMapResolution);
         terrainPropertyRow("Tool");
@@ -3292,6 +3344,10 @@ void editor::TerrainEditWindow::show(){
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Flatten, ICON_FA_GRIP_LINES, "terrain_flatten", "Set Height (Shift smooths)");
 
+        brushButton(TerrainBrushMode::CutHole, ICON_FA_CIRCLE_NOTCH, "terrain_cut_hole", "Cut Hole: no falloff or strength (Ctrl fills)");
+        ImGui::SameLine();
+        brushButton(TerrainBrushMode::FillHole, ICON_FA_CIRCLE, "terrain_fill_hole", "Fill Hole (Ctrl cuts)");
+        ImGui::SameLine();
         brushButton(TerrainBrushMode::Sharpen, ICON_FA_CHART_LINE, "terrain_sharpen", "Sharpen terrain, pulling ridges back out of a smoothed surface");
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Noise, ICON_FA_HILL_ROCKSLIDE, "terrain_noise", "Break up the surface with fractal noise");
@@ -3747,6 +3803,9 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
                 stroke.effectiveMode = TerrainBrushMode::Raise;
             }
         }
+    }else if (isHoleBrush() && io.KeyCtrl){
+        // T3 R41: Ctrl inverts (programme D16)
+        stroke.effectiveMode = brushMode == TerrainBrushMode::CutHole ? TerrainBrushMode::FillHole : TerrainBrushMode::CutHole;
     }else if (isDensityBrush() && io.KeyCtrl){
         stroke.effectiveMode = brushMode == TerrainBrushMode::PaintDensity ? TerrainBrushMode::EraseDensity : TerrainBrushMode::PaintDensity;
     }
@@ -3818,7 +3877,10 @@ void editor::TerrainEditWindow::endStroke(){
         TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(stroke.entity);
         if (terrain){
             Texture* texture = TerrainMapUtils::findTexture(*terrain, stroke.ref);
-            if (texture && !addStrokePatchCommand(sceneProject, *texture)){
+            // T3 R29: a stroke that filled the last hole takes the map away, whole, and its undo brings it back
+            if (texture && stroke.ref.target == TerrainMapTarget::HoleMap){
+                finishHoleStroke(sceneProject, *terrain);
+            }else if (texture && !addStrokePatchCommand(sceneProject, *texture)){
                 TerrainMapSnapshot after = captureSnapshot(project, *texture, true);
                 if (!snapshotsEqual(stroke.beforeSnapshot, after)){
                     CommandHandle::get(stroke.sceneId)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, stroke.sceneId, stroke.entity, stroke.ref, stroke.beforeSnapshot, after));
@@ -3828,6 +3890,39 @@ void editor::TerrainEditWindow::endStroke(){
     }
 
     clearStroke();
+}
+
+void editor::TerrainEditWindow::drawHoleBrushInfo(TerrainComponent& terrain){
+    const terrain::HoleMapView view = terrainSurfaceView(terrain).holes;
+    const int samples = terrain.heightMap.hasData() ? std::clamp(std::min(terrain.heightMap.getData().getWidth(), terrain.heightMap.getData().getHeight()), 4, 1025) : 4;
+    const float cell = terrain.terrainSize / static_cast<float>(samples - 1);
+    const float texel = view.width > 0 ? terrain.terrainSize / static_cast<float>(view.width) : cell;
+    ImGui::Text("Texel %.2f m, collision cell %.2f m", texel, cell);
+    if (hoverValid){
+        const terrain::SurfaceSample sample = querySurface(terrain, hoverLocal.x, hoverLocal.z);
+        ImGui::Text("Under the cursor: %s", sample.hole ? "hole" : "solid");
+    }
+    if (view.texels){
+        std::vector<uint8_t> open;
+        std::vector<uint8_t> gaps;
+        terrain::openSquares(view, samples, 1.0f, 1.0f, open);
+        if (terrain::noCollisionSamples(open, samples, gaps) == 0 && terrain::countHoleTexels(view, 0, 0, view.width, view.height) > 0){
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "This hole opens no collision sample: a body stays on it. Cut at least 3 collision cells across.");
+        }
+    }
+}
+
+void editor::TerrainEditWindow::finishHoleStroke(SceneProject* sceneProject, TerrainComponent& terrain){
+    const terrain::HoleMapView view = terrainSurfaceView(terrain).holes;
+    if (view.texels && terrain.holeMapHolds == 0 && terrain::countHoleTexels(view, 0, 0, view.width, view.height) == 0){
+        terrain.holeMap = Texture();
+        terrain.needUpdateTexture = true;
+        terrain.needUpdateFoliage = true;
+    }
+    TerrainMapSnapshot after = captureSnapshot(project, terrain.holeMap, true);
+    if (!snapshotsEqual(stroke.beforeSnapshot, after)){
+        CommandHandle::get(stroke.sceneId)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, stroke.sceneId, stroke.entity, stroke.ref, stroke.beforeSnapshot, after));
+    }
 }
 
 bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, TerrainBrushCursor& cursor) const{
@@ -3843,6 +3938,8 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         return false;
     }
 
+    hoverValid = true;
+    hoverLocal = localPoint;
     Transform& transform = scene->getComponent<Transform>(entity);
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
 
@@ -3901,6 +3998,33 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         }
     };
 
+    // T3 R41: the hole brush's texels, when there are few enough to see
+    if (isHoleBrush()){
+        cursor.holeBrush = true;
+        TerrainComponent& holeTerrain = scene->getComponent<TerrainComponent>(entity);
+        const int side = heightMapResolution > 0 ? heightMapResolution : 256;
+        const float texel = holeTerrain.terrainSize / static_cast<float>(side);
+        if (brushSize / texel <= 12.0f){
+            const float half = holeTerrain.terrainSize * 0.5f;
+            const int cx = static_cast<int>(std::floor((localPoint.x + half) / texel));
+            const int cz = static_cast<int>(std::floor((localPoint.z + half) / texel));
+            const int reach = static_cast<int>(std::ceil(brushSize / texel));
+            const auto corner = [&](int x, int z){
+                const float lx = static_cast<float>(x) * texel - half;
+                const float lz = static_cast<float>(z) * texel - half;
+                return transform.modelMatrix * Vector3(lx, querySurface(holeTerrain, lx, lz).height + 0.02f, lz);
+            };
+            for (int z = cz - reach; z <= cz + reach; z++){
+                for (int x = cx - reach; x <= cx + reach; x++){
+                    const float dx = (static_cast<float>(x) + 0.5f) * texel - half - localPoint.x;
+                    const float dz = (static_cast<float>(z) + 0.5f) * texel - half - localPoint.z;
+                    if (dx * dx + dz * dz <= brushSize * brushSize && x >= 0 && z >= 0 && x < side && z < side){
+                        cursor.texelLoops.push_back({corner(x, z), corner(x + 1, z), corner(x + 1, z + 1), corner(x, z + 1)});
+                    }
+                }
+            }
+        }
+    }
     cursor.visible = true;
     buildLoop(brushSize, 16, cursor.outerPoints);
     // Placement has no falloff — the ring is the area objects can scatter into.

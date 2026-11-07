@@ -614,6 +614,8 @@ bool editor::Exporter::writeGameConfig() {
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
+    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
+    game.terrainShippedTiers = project->getShippedTerrainTiers();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {

@@ -24,6 +24,9 @@ Texture* editor::TerrainMapUtils::findTexture(TerrainComponent& terrain, const T
         }
         return &terrain.blendMaps[ref.layer];
     }
+    if (ref.target == TerrainMapTarget::HoleMap){
+        return &terrain.holeMap;
+    }
     if (ref.layer < 0 || ref.layer >= static_cast<int>(terrain.foliageLayers.size())){
         return nullptr;
     }
@@ -36,6 +39,9 @@ std::string editor::TerrainMapUtils::getPropertyName(const TerrainMapRef& ref){
     }
     if (ref.target == TerrainMapTarget::BlendMap){
         return "blendMaps[" + std::to_string(ref.layer) + "]";
+    }
+    if (ref.target == TerrainMapTarget::HoleMap){
+        return "holeMap";
     }
     return "foliageLayers[" + std::to_string(ref.layer) + "].densityMap";
 }
@@ -102,6 +108,11 @@ void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity,
         terrain->needUpdateFoliage = true;
     }else if (ref.target == TerrainMapTarget::BlendMap){
         terrain->needUpdateTexture = true;
+    }else if (ref.target == TerrainMapTarget::HoleMap){
+        // T3 R26, R28: what stood over it goes, and comes back with a fill
+        terrain->needUpdateTexture = true;
+        terrain->needUpdateFoliage = true;
+        terrain->holeMapRevision++;
     }else{
         terrain->needUpdateFoliage = true;
     }

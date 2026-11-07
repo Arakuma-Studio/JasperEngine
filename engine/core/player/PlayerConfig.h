@@ -86,6 +86,10 @@ namespace jasperengine::player {
         PbrTier mobilePbrTier = PbrTier::REDUCED;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
+        // T3 R2, R34: terrain::TerrainQuality by Engine::Platform (absent: High), and the tiers the
+        // build ships, which the tier a terrain asks for clamps to
+        std::array<int, 6> terrainQualityTiers{};
+        uint32_t terrainShippedTiers = 7;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         std::array<uint32_t, MAX_LAYERS> collision3D{};

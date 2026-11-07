@@ -4,10 +4,14 @@
 set(JASPERENGINE_TERRAIN_SRCS
     core/terrain/OverlayMapStore.cpp
     core/terrain/RawMapStore.cpp
+    core/terrain/TerrainDetailBuilder.cpp
     core/terrain/TerrainErosion.cpp
     core/terrain/TerrainHoles.cpp
+    core/terrain/TerrainMacroNormal.cpp
+    core/terrain/TerrainMaterialCost.cpp
     core/terrain/TerrainOps.cpp
     core/terrain/TerrainPlacement.cpp
+    core/terrain/TerrainQuality.cpp
     core/terrain/TerrainShape.cpp
     core/terrain/TerrainStroke.cpp
     core/terrain/TerrainSurface.cpp

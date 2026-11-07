@@ -843,6 +843,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
@@ -1134,6 +1135,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainQualityPanel.cpp
+    ${EDITOR_DIR}/texture/TerrainSliceCook.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp

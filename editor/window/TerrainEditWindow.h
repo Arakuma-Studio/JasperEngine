@@ -33,7 +33,10 @@ namespace jasperengine::editor{
         PaintDensity,
         EraseDensity,
         PlaceObject,
-        EraseObject
+        EraseObject,
+        // T3 R41: no falloff, no strength: a texel is in the brush or it is not
+        CutHole,
+        FillHole
     };
 
     // Unity's terrain tool bar: the tool whose settings the window shows.
@@ -61,6 +64,9 @@ namespace jasperengine::editor{
         // boundary and (when the falloff has a gradient) the half-strength contour.
         std::vector<Vector3> outerPoints;
         std::vector<Vector3> innerPoints;
+        // T3 R41: a hole brush's colour, and when close the texels it will change, one loop each
+        bool holeBrush = false;
+        std::vector<std::vector<Vector3>> texelLoops;
     };
 
     struct TerrainMapSnapshot{
@@ -271,6 +277,9 @@ namespace jasperengine::editor{
         int mapResolutionFor(TerrainMapTarget target) const;
         TerrainMapRef getBrushMapRef() const;
         bool isHeightBrush() const;
+        // the point under the brush's cursor, for the hole brush's info (T3 R41)
+        mutable bool hoverValid = false;
+        mutable Vector3 hoverLocal;
         bool isBlendBrush() const;
         bool isDensityBrush() const;
         bool isPlacementBrush() const;
@@ -281,6 +290,10 @@ namespace jasperengine::editor{
         void captureStrokeHeightReference(TerrainComponent& terrain);
         bool findTerrainHit(Scene* scene, const Ray& ray, Entity& entity, Vector3& localPoint, Vector3& worldPoint, float& localHeight, const ActiveStroke* activeStroke = nullptr) const;
         bool applyBrush(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
+        bool isHoleBrush() const;
+        void finishHoleStroke(SceneProject* sceneProject, TerrainComponent& terrain);
+        // T3 R41: hole or solid under the cursor, the texel and collision cell, and the small hole's warning
+        void drawHoleBrushInfo(TerrainComponent& terrain);
         bool stampBrush(TerrainComponent& terrain, TextureData& data, TerrainMapTarget target, const Vector3& localPoint, float deltaTime);
         bool addStrokePatchCommand(SceneProject* sceneProject, Texture& texture);
         std::vector<Vector2> collectPlacedPoints(SceneProject* sceneProject, Entity terrainEntity) const;

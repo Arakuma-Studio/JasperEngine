@@ -5,6 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "TerrainMaterialInfo.h"
 #include "util/ProjectUtils.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
@@ -530,7 +531,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"height_map_loaded", terrain.heightMap.hasData()},
         // false until the editor has rebuilt the mesh (and collision) from the current height map
         {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
-        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage}
+        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage},
+        {"material", terrainMaterialJson(scene, entity)}, {"holes", terrainHolesJson(terrain)}
     };
 }
 
@@ -883,9 +885,24 @@ void sampleTerrainTool(const CallPtr& call) {
                 call->fail("points: each point is [x, z] or [x, y, z] numbers.");
                 return;
             }
-            samples.push_back(terrainSample(scene, target.entity, local));
+            Json sample = terrainSample(scene, target.entity, local);
+            addTerrainPointMaterial(scene, target.entity, local.x, local.z, sample);
+            samples.push_back(std::move(sample));
         }
         data["samples"] = samples;
+    }
+    // T3 R43: the hole fraction and layer-count histogram of a local rectangle
+    if (has(args, "stats") && args["stats"].is_array() && std::find(args["stats"].begin(), args["stats"].end(), "coverage") != args["stats"].end()) {
+        const float half = terrain.terrainSize * 0.5f;
+        float bounds[4] = {-half, -half, half, half};
+        if (has(args, "region")) {
+            if (!args["region"].is_array() || args["region"].size() != 4) {
+                call->fail("region is [min_x, min_z, max_x, max_z] in local metres.");
+                return;
+            }
+            for (int i = 0; i < 4; i++) bounds[i] = args["region"][static_cast<size_t>(i)].get<float>();
+        }
+        data["stats"] = {{"coverage", terrainCoverageJson(terrain, bounds[0], bounds[1], bounds[2], bounds[3])}};
     }
     const int grid = intOr(args, "grid", has(args, "points") ? 0 : 9);
     if (grid >= 2) {
@@ -5506,7 +5523,9 @@ void registerWorldTools(McpRegistry& registry) {
             {"entity", entityRef("Default: the only terrain.")},
             {"points", array(array(numberItem, ""), "[x, z] points.")},
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
-            {"grid", integer("Default 9 without points.", 0, 65)}
+            {"grid", integer("Default 9 without points.", 0, 65)},
+            {"stats", array(stringEnum("", {"coverage"}), "")},
+            {"region", array(numberItem, "[min_x, min_z, max_x, max_z], local, for stats.")}
         }),
         sampleTerrainTool, true, true);
     group.clear();

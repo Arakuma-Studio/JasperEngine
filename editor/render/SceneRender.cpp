@@ -2849,8 +2849,11 @@ void editor::SceneRender::updateTerrainBrushCursor(){
 
     // Brush boundary plus the (dimmer) half-strength falloff contour, both draped
     // over the terrain surface by updateCursor.
-    addLoop(cursor.outerPoints, Vector4(1.0f, 0.78f, 0.22f, 1.0f));
+    addLoop(cursor.outerPoints, cursor.holeBrush ? Vector4(0.95f, 0.1f, 0.75f, 1.0f) : Vector4(1.0f, 0.78f, 0.22f, 1.0f));
     addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
+    for (const std::vector<Vector3>& loop : cursor.texelLoops){
+        addLoop(loop, Vector4(0.95f, 0.1f, 0.75f, 0.6f));
+    }
 
     terrainBrushLines->setVisible(true);
 }

@@ -472,3 +472,15 @@ TEST(ShaderKey, TerrainHolesBitIsPinned) {
         EXPECT_NE(candidate & shaderPropertyBit(36), 0u);
     }
 }
+
+// T3 D2: Medium and Low are Lit defines on MESH, and on a G-buffer, which they do not reach, these bits
+TEST(ShaderKey, TerrainTierBitsArePinned) {
+    using terrain::TerrainQuality;
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::MEDIUM), shaderPropertyBit(17));
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::LOW), shaderPropertyBit(18));
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::HIGH), 0u);
+    EXPECT_EQ(ShaderPool::getTerrainExtendedProperty(), shaderPropertyBit(19));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 17, true), "Tqm");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 18, true), "Tql");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 19, true), "Txl");
+}

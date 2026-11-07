@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "SceneWindow.h"
 #include "widget/ColorField.h"
 #include "util/EditorScripts.h"
@@ -2753,6 +2755,11 @@ void editor::SceneWindow::show() {
                 // align to surface, Scene Camera
                 if (!isCameraPreview) {
                     viewController->drawToolbar(sceneProject, rightX);
+                    // T3 R42: the terrain's preview, for scenes with a terrain
+                    if (sceneProject->scene && sceneProject->scene->getComponentArray<TerrainComponent>()->size() > 0) {
+                        ImGui::SameLine();
+                        drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject->id));
+                    }
                 }
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {

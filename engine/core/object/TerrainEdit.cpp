@@ -191,8 +191,9 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // S53 sets nothing a struct default does not: S55 R53 and S57 F12 add theirs here
-    (void)terrain;
+    // T3 R53: a new terrain keeps the strongest layers of a pixel; the struct default stays off, so an
+    // old terrain draws what it drew. T5's F12 adds its own here.
+    terrain.limitLayersPerPixel = true;
 }
 
 void jasperengine::applyLayerOrder(TerrainComponent& terrain, std::span<const int> order) {

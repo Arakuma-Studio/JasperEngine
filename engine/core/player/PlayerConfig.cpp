@@ -100,6 +100,8 @@ json PlayerConfig::toJson() const {
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
+    out["terrainQualityTiers"] = terrainQualityTiers;
+    out["terrainShippedTiers"] = terrainShippedTiers;
     out["tags"] = tags;
     out["layers"] = layerNames;
     out["collision3D"] = collision3D;
@@ -231,6 +233,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             for (size_t i = 0; i < config.shadowTiers.size() && i < tiers->size(); i++)
                 valueOf(kShadowTier, (*tiers)[i].get<std::string>(), config.shadowTiers[i]);
         }
+        if (const auto terrainTiers = in.find("terrainQualityTiers"); terrainTiers != in.end() && terrainTiers->is_array()) {
+            for (size_t i = 0; i < config.terrainQualityTiers.size() && i < terrainTiers->size(); i++)
+                config.terrainQualityTiers[i] = (*terrainTiers)[i].get<int>();
+        }
+        config.terrainShippedTiers = in.value("terrainShippedTiers", config.terrainShippedTiers);
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
         const std::vector<uint32_t> collision3D = in.value("collision3D", std::vector<uint32_t>{});

@@ -1,10 +1,34 @@
+// The tiers (T3 R1): TERRAIN_QUALITY_MEDIUM and _LOW; no define is High, as before T3. A tier below High
+// reads one projection per fragment (TERRAIN_ONE_PLANE) and caps the layers by TERRAIN_KEEP, as High does
+// with Limit Layers Per Pixel (TERRAIN_LAYER_LIMIT).
+#if defined(TERRAIN_QUALITY_MEDIUM)
+    #define TERRAIN_TIER_READS
+    #define TERRAIN_KEEP 3
+#elif defined(TERRAIN_QUALITY_LOW)
+    #define TERRAIN_TIER_READS
+    #define TERRAIN_KEEP 2
+#elif defined(TERRAIN_LAYER_LIMIT)
+    #define TERRAIN_KEEP 4
+#endif
+
+// A terrain of more than 9 layers takes a block of 12 (T3 R15); up to 9 keeps the 9-entry block
+#ifdef TERRAIN_EXTENDED_LAYERS
+    #undef MAX_TERRAIN_LAYERS
+    #define MAX_TERRAIN_LAYERS 12
+#endif
+
 uniform texture2D u_blendMap;
-uniform texture2D u_blendMap1;
-uniform texture2D u_blendMap2;
-uniform texture2DArray u_terrainDetail;
 uniform sampler u_blendMap_smp;
-uniform sampler u_blendMap1_smp;
-uniform sampler u_blendMap2_smp;
+// Medium and Low read only the blend maps that hold layers (T3 R7), and the others are not declared
+#if !defined(TERRAIN_BLENDMAPS_1)
+    uniform texture2D u_blendMap1;
+    uniform sampler u_blendMap1_smp;
+#endif
+#if !defined(TERRAIN_BLENDMAPS_1) && !defined(TERRAIN_BLENDMAPS_2)
+    uniform texture2D u_blendMap2;
+    uniform sampler u_blendMap2_smp;
+#endif
+uniform texture2DArray u_terrainDetail;
 uniform sampler u_terrainDetail_smp;
 
 in vec2 v_terrainTextureCoords;
@@ -34,7 +58,32 @@ const float TERRAIN_TRIPLANAR_CUTOFF = 0.02;
 const float TERRAIN_HEIGHT_CONTRAST = 6.0;
 
 // Each blend map weights three layers of the detail array in its RGB
-const int TERRAIN_BLENDMAPS = 3;
+#if defined(TERRAIN_BLENDMAPS_1)
+    const int TERRAIN_BLENDMAPS = 1;
+#elif defined(TERRAIN_BLENDMAPS_2)
+    const int TERRAIN_BLENDMAPS = 2;
+#else
+    const int TERRAIN_BLENDMAPS = 3;
+#endif
+// and on a terrain of more than 9 layers its alpha, inverted, a tenth to a twelfth
+#ifdef TERRAIN_EXTENDED_LAYERS
+    #define TERRAIN_BLEND_TYPE vec4
+    #define TERRAIN_BLEND_SWIZZLE
+#else
+    #define TERRAIN_BLEND_TYPE vec3
+    #define TERRAIN_BLEND_SWIZZLE .rgb
+#endif
+
+// One-plane band at Medium, a narrow slope range where the flat projection and the side plane cross
+const float TERRAIN_ONE_PLANE_SLOPE = 0.7071;
+const float TERRAIN_ONE_PLANE_BAND = 0.02;
+
+#ifdef TERRAIN_HEIGHT_BLEND
+    #include "includes/terrain_height_blend.glsl"
+#endif
+#ifdef TERRAIN_KEEP
+    #include "includes/terrain_select.glsl"
+#endif
 
 #ifdef HAS_TERRAIN_PBR
     // One entry per layer. Every map a layer owns is a slice of the same detail array,
@@ -48,13 +97,44 @@ const int TERRAIN_BLENDMAPS = 3;
         // off), blend sharpness, contrast, rotation. A uniform per draw, so the branch on it
         // is coherent and no variant is needed.
         vec4 stochastic[MAX_TERRAIN_LAYERS];
+        // T3 R33: the features' parameters end the block, so a variant without them has the block it
+        // had, and the upload takes the reflected size (RenderSystem::applyTerrainLayersUniform)
+        #ifdef TERRAIN_MACRO
+            vec4 macroParams; // x = 1 / scale, y = strength, z = slope fade, w = 1 for the base map's mode
+            vec4 macroTintA;  // rgb; w = the terrain's size, which takes its UV to metres
+            vec4 macroTintB;
+        #endif
+        #ifdef TERRAIN_RESAMPLE
+            vec4 resampleParams; // near and far in detail tiles, x and y; z = the far tiling's rate
+        #endif
+        #ifdef TERRAIN_CLIFF
+            vec4 flatOnly[3]; // per layer: 1 = Flat Only, never a side plane (R11)
+        #endif
+        #ifdef TERRAIN_HEIGHT_BLEND
+            vec4 heightBlendParams; // x = sharpness
+        #endif
+        #ifdef TERRAIN_MACRO_NORMAL
+            vec4 macroNormalParams; // x = strength: 0 until the bake is ready
+        #endif
+        #ifdef TERRAIN_DEBUG_VIEW
+            vec4 debugParams; // x = the view: 1 layer count, 2 fetch cost, 3 holes
+        #endif
     } terrainLayers;
+
+    #if defined(TERRAIN_MACRO) && !defined(TERRAIN_QUALITY_LOW)
+        #include "includes/terrain_macro.glsl"
+    #endif
 
     #include "includes/stochastic.glsl"
 
     #ifdef HAS_NORMALS
         in vec3 v_terrainAxisX;
         in vec3 v_terrainAxisZ;
+    #endif
+
+    #if defined(TERRAIN_MACRO) && defined(TERRAIN_QUALITY_LOW)
+        // T3 R9: Low's noise is the vertex stage's, one varying and no fragment cost
+        in vec3 v_terrainMacroTint;
     #endif
 
     struct TerrainSurface{
@@ -66,8 +146,26 @@ const int TERRAIN_BLENDMAPS = 3;
     };
 #endif
 
+// The Debug View's readback (TERRAIN_DEBUG_VIEW, editor only): every read of a terrain map counts here
+#ifdef TERRAIN_DEBUG_VIEW
+    float terrainDebugFetches = 0.0;
+    float terrainDebugLayers = 0.0;
+    #define TERRAIN_COUNT_FETCHES(n) terrainDebugFetches += (n)
+    #define TERRAIN_COUNT_LAYER() terrainDebugLayers += 1.0
+#else
+    #define TERRAIN_COUNT_FETCHES(n)
+    #define TERRAIN_COUNT_LAYER()
+#endif
+
 vec2 terrainFarUV;
 float terrainFarAmount;
+// the far tiling's rate: the fixed break, or Distance Resampling's
+#ifdef TERRAIN_RESAMPLE
+    float terrainFarRate;
+    #define TERRAIN_FAR_RATE terrainFarRate
+#else
+    #define TERRAIN_FAR_RATE TERRAIN_TILE_BREAK_RATE
+#endif
 // Only the painted layers are fetched, and a branch around a fetch has no derivatives of
 // its own, so the gradients are taken here where every layer still shares them
 vec2 terrainFlatDX;
@@ -81,6 +179,10 @@ vec2 terrainFlatDY;
     vec2 terrainSideZDY;
     vec2 terrainSideWeight;
     float terrainSideAmount;
+    // the fragment's before a layer's Flat Only took it away (R11)
+    #ifdef TERRAIN_CLIFF
+        float terrainSideAmountAll;
+    #endif
     // Which way each side plane faces, so a normal map can be mirrored back with its UV
     float terrainFaceX;
     float terrainFaceZ;
@@ -88,20 +190,43 @@ vec2 terrainFlatDY;
 
 // A layer costs four fetches, so the projections are resolved once for all of them
 void setupTerrainDetail(){
-    terrainFarUV = v_terrainTextureDetailTiled * TERRAIN_TILE_BREAK_RATE;
-    terrainFarAmount = smoothstep(TERRAIN_TILE_BREAK_NEAR, TERRAIN_TILE_BREAK_FAR, v_terrainEyeTiles) * TERRAIN_TILE_BREAK_MIX;
+    #ifdef TERRAIN_RESAMPLE
+        // T3 R10: replaces the fixed break: near only below resampleNear, a crossfade between, and far
+        // only past resampleFar, where the near read is skipped
+        terrainFarRate = terrainLayers.resampleParams.z;
+        terrainFarUV = v_terrainTextureDetailTiled * terrainFarRate;
+        terrainFarAmount = smoothstep(terrainLayers.resampleParams.x, terrainLayers.resampleParams.y, v_terrainEyeTiles);
+    #else
+        terrainFarUV = v_terrainTextureDetailTiled * TERRAIN_TILE_BREAK_RATE;
+        terrainFarAmount = smoothstep(TERRAIN_TILE_BREAK_NEAR, TERRAIN_TILE_BREAK_FAR, v_terrainEyeTiles) * TERRAIN_TILE_BREAK_MIX;
+    #endif
     terrainFlatDX = dFdx(v_terrainTextureDetailTiled);
     terrainFlatDY = dFdy(v_terrainTextureDetailTiled);
 
     #ifdef HAS_NORMALS
         vec3 normal = normalize(v_terrainNormal);
-        vec3 weights = pow(abs(normal), vec3(TERRAIN_TRIPLANAR_SHARPNESS));
-        weights /= max(weights.x + weights.y + weights.z, 0.0001);
-        weights *= step(vec3(TERRAIN_TRIPLANAR_CUTOFF), weights);
-        weights /= max(weights.x + weights.y + weights.z, 0.0001);
-        // The flat projection takes weights.y, the side planes share the rest
-        terrainSideAmount = weights.x + weights.z;
-        terrainSideWeight = vec2(weights.x, weights.z) / max(terrainSideAmount, 0.0001);
+        #ifdef TERRAIN_TIER_READS
+            // T3 R11: one plane, flat where abs(n.y) >= 0.7071, else the larger of x and z. It reuses
+            // the side UVs, gradients and whiteout normals, so it adds no fetch: it removes them
+            vec3 facing = abs(normal);
+            terrainSideWeight = facing.x > facing.z ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            #ifdef TERRAIN_QUALITY_LOW
+                terrainSideAmount = facing.y >= TERRAIN_ONE_PLANE_SLOPE ? 0.0 : 1.0;
+            #else
+                terrainSideAmount = 1.0 - smoothstep(TERRAIN_ONE_PLANE_SLOPE - TERRAIN_ONE_PLANE_BAND, TERRAIN_ONE_PLANE_SLOPE + TERRAIN_ONE_PLANE_BAND, facing.y);
+            #endif
+        #else
+            vec3 weights = pow(abs(normal), vec3(TERRAIN_TRIPLANAR_SHARPNESS));
+            weights /= max(weights.x + weights.y + weights.z, 0.0001);
+            weights *= step(vec3(TERRAIN_TRIPLANAR_CUTOFF), weights);
+            weights /= max(weights.x + weights.y + weights.z, 0.0001);
+            // The flat projection takes weights.y, the side planes share the rest
+            terrainSideAmount = weights.x + weights.z;
+            terrainSideWeight = vec2(weights.x, weights.z) / max(terrainSideAmount, 0.0001);
+        #endif
+        #ifdef TERRAIN_CLIFF
+            terrainSideAmountAll = terrainSideAmount;
+        #endif
 
         // The side U axis follows the face direction, or opposite faces come out mirrored
         terrainFaceX = (normal.x < 0.0) ? -1.0 : 1.0;
@@ -119,6 +244,7 @@ void setupTerrainDetail(){
 }
 
 vec4 sampleTerrainSlice(float slice, vec2 uv, vec2 dx, vec2 dy){
+    TERRAIN_COUNT_FETCHES(1.0);
     return textureGrad(sampler2DArray(u_terrainDetail, u_terrainDetail_smp), vec3(uv, slice), dx, dy);
 }
 
@@ -136,10 +262,21 @@ vec4 getTerrainSlice(float slice, vec2 scale, vec2 offset){
     #endif
 
     if (flatAmount > 0.0){
-        color = mix(
-            sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy),
-            sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE),
-            terrainFarAmount) * flatAmount;
+        // The far read is skipped where its share is 0, which is exact: mix(a, b, 0.0) is a (T3 R4). And
+        // the near read where its share is 0, which only Distance Resampling reaches.
+        #ifdef TERRAIN_RESAMPLE
+            if (terrainFarAmount >= 1.0){
+                color = sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE) * flatAmount;
+            }else
+        #endif
+        if (terrainFarAmount > 0.0){
+            color = mix(
+                sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy),
+                sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE),
+                terrainFarAmount) * flatAmount;
+        }else{
+            color = sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy) * flatAmount;
+        }
     }
 
     #ifdef HAS_NORMALS
@@ -158,19 +295,129 @@ vec4 getTerrainSlice(float slice, vec2 scale, vec2 offset){
     return color;
 }
 
+#ifdef TERRAIN_TIER_READS
+    // getTerrainSlice under a tier's reads per map (T3 R1): at Low one read; at Medium two at most, the
+    // far tiling on colour only (every map with Distance Resampling), and it yields to a side plane in
+    // the one-plane band.
+    vec4 getTerrainSliceTier(float slice, vec2 scale, vec2 offset, bool colourMap){
+        vec2 dx = terrainFlatDX * scale;
+        vec2 dy = terrainFlatDY * scale;
+        vec4 color = vec4(0.0);
+        float flatAmount = 1.0;
+        float sideAmount = 0.0;
+        #ifdef HAS_NORMALS
+            sideAmount = terrainSideAmount;
+            flatAmount = 1.0 - sideAmount;
+        #endif
+
+        if (flatAmount > 0.0){
+            #ifdef TERRAIN_QUALITY_LOW
+                color = sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy) * flatAmount;
+            #else
+                #ifdef TERRAIN_RESAMPLE
+                    bool readFar = sideAmount <= 0.0 && terrainFarAmount > 0.0;
+                #else
+                    bool readFar = colourMap && sideAmount <= 0.0 && terrainFarAmount > 0.0;
+                #endif
+                #ifdef TERRAIN_RESAMPLE
+                    if (readFar && terrainFarAmount >= 1.0){
+                        color = sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE) * flatAmount;
+                    }else
+                #endif
+                if (readFar){
+                    color = mix(
+                        sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy),
+                        sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE),
+                        terrainFarAmount) * flatAmount;
+                }else{
+                    color = sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy) * flatAmount;
+                }
+            #endif
+        }
+
+        #ifdef HAS_NORMALS
+            if (sideAmount > 0.0){
+                vec4 side = terrainSideWeight.x > 0.0
+                    ? sampleTerrainSlice(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale)
+                    : sampleTerrainSlice(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale);
+                color += side * sideAmount;
+            }
+        #endif
+        return color;
+    }
+#endif
+
 vec4 getTerrainLayer(float layer){
-    return getTerrainSlice(layer, vec2(1.0), vec2(0.0));
+    #ifdef TERRAIN_TIER_READS
+        return getTerrainSliceTier(layer, vec2(1.0), vec2(0.0), true);
+    #else
+        return getTerrainSlice(layer, vec2(1.0), vec2(0.0));
+    #endif
 }
+
+// The blend maps a fragment reads, in place: an array passed out of a function is one more held through
+// the layer loop
+#if defined(TERRAIN_BLENDMAPS_1)
+    #define TERRAIN_READ_BLEND_MAPS(blend) \
+        blend[0] = texture(sampler2D(u_blendMap, u_blendMap_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE
+#elif defined(TERRAIN_BLENDMAPS_2)
+    #define TERRAIN_READ_BLEND_MAPS(blend) \
+        blend[0] = texture(sampler2D(u_blendMap, u_blendMap_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE; \
+        blend[1] = texture(sampler2D(u_blendMap1, u_blendMap1_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE
+#else
+    #define TERRAIN_READ_BLEND_MAPS(blend) \
+        blend[0] = texture(sampler2D(u_blendMap, u_blendMap_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE; \
+        blend[1] = texture(sampler2D(u_blendMap1, u_blendMap1_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE; \
+        blend[2] = texture(sampler2D(u_blendMap2, u_blendMap2_smp), v_terrainTextureCoords) TERRAIN_BLEND_SWIZZLE
+#endif
+
+// The layers in a blend map's channels: RGB's m * 3 + c, and with more than 9 layers the alpha's 9 + m,
+// inverted so that an opaque map means weight 0 (terrain::terrainLayerChannel)
+#ifdef TERRAIN_EXTENDED_LAYERS
+    const int TERRAIN_BLEND_CHANNELS = 4;
+    float terrainChannelWeight(TERRAIN_BLEND_TYPE map, int c){
+        return c == 3 ? 1.0 - map.a : map[c];
+    }
+    int terrainChannelLayer(int m, int c){
+        return c == 3 ? 9 + m : m * 3 + c;
+    }
+#else
+    const int TERRAIN_BLEND_CHANNELS = 3;
+    float terrainChannelWeight(TERRAIN_BLEND_TYPE map, int c){
+        return map[c];
+    }
+    int terrainChannelLayer(int m, int c){
+        return m * 3 + c;
+    }
+#endif
+
+#ifdef TERRAIN_KEEP
+    // the picks of this fragment (includes/terrain_select.glsl)
+    void terrainSelectLayers(TERRAIN_BLEND_TYPE blend[TERRAIN_BLENDMAPS]){
+        float kept[TERRAIN_KEEP + 1];
+        int order[TERRAIN_KEEP + 1];
+        for (int i = 0; i <= TERRAIN_KEEP; i++){
+            kept[i] = 0.0;
+            order[i] = 0;
+        }
+        terrainPickSum = 0.0;
+        for (int m = 0; m < TERRAIN_BLENDMAPS; m++){
+            for (int c = 0; c < TERRAIN_BLEND_CHANNELS; c++){
+                terrainPickInsert(terrainChannelWeight(blend[m], c), terrainChannelLayer(m, c), kept, order);
+            }
+        }
+        terrainPickFinish(kept, order);
+    }
+#endif
 
 // Detail alpha carries layer height and biases the blend toward the taller layer, so it takes
 // the contact zone. An opaque detail has no height and blends on its map weight alone.
 vec4 getTerrainColor(vec4 color){
     setupTerrainDetail();
 
-    vec3 blend[TERRAIN_BLENDMAPS];
-    blend[0] = texture(sampler2D(u_blendMap, u_blendMap_smp), v_terrainTextureCoords).rgb;
-    blend[1] = texture(sampler2D(u_blendMap1, u_blendMap1_smp), v_terrainTextureCoords).rgb;
-    blend[2] = texture(sampler2D(u_blendMap2, u_blendMap2_smp), v_terrainTextureCoords).rgb;
+    TERRAIN_BLEND_TYPE blend[TERRAIN_BLENDMAPS];
+    TERRAIN_READ_BLEND_MAPS(blend);
+    TERRAIN_COUNT_FETCHES(float(TERRAIN_BLENDMAPS));
 
     // The base holds whatever weight the layers leave unclaimed, and stands as solid as an
     // opaque detail
@@ -178,18 +425,34 @@ vec4 getTerrainColor(vec4 color){
     vec4 sum = vec4(0.0);
     float total = 0.0;
 
+    #ifdef TERRAIN_KEEP
+        terrainSelectLayers(blend);
+        weightBase -= terrainPickSum;
+        for (int pick = 0; pick < TERRAIN_KEEP; pick++){
+            float mapWeight = terrainPickWeight[pick];
+            if (mapWeight > 0.0){
+                TERRAIN_COUNT_LAYER();
+                vec4 layer = getTerrainLayer(float(terrainPickLayer[pick]));
+                float weight = mapWeight * pow(layer.a, TERRAIN_HEIGHT_CONTRAST);
+                sum += layer * weight;
+                total += weight;
+            }
+        }
+    #else
     for (int m = 0; m < TERRAIN_BLENDMAPS; m++){
-        for (int c = 0; c < 3; c++){
-            float mapWeight = blend[m][c];
+        for (int c = 0; c < TERRAIN_BLEND_CHANNELS; c++){
+            float mapWeight = terrainChannelWeight(blend[m], c);
             weightBase -= mapWeight;
             if (mapWeight > 0.0){
-                vec4 layer = getTerrainLayer(float(m * 3 + c));
+                TERRAIN_COUNT_LAYER();
+                vec4 layer = getTerrainLayer(float(terrainChannelLayer(m, c)));
                 float weight = mapWeight * pow(layer.a, TERRAIN_HEIGHT_CONTRAST);
                 sum += layer * weight;
                 total += weight;
             }
         }
     }
+    #endif
 
     weightBase = max(weightBase, 0.0);
     sum += color * weightBase;
@@ -240,6 +503,7 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
     #endif
 
     if (flatAmount > 0.0){
+        TERRAIN_COUNT_FETCHES(3.0);
         color = luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling)
                           : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling);
         color *= flatAmount;
@@ -249,10 +513,12 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
         if (terrainSideAmount > 0.0){
             vec4 side = vec4(0.0);
             if (terrainSideWeight.x > 0.0){
+                TERRAIN_COUNT_FETCHES(3.0);
                 side += (luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX)
                                    : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX)) * terrainSideWeight.x;
             }
             if (terrainSideWeight.y > 0.0){
+                TERRAIN_COUNT_FETCHES(3.0);
                 side += (luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ)
                                    : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ)) * terrainSideWeight.y;
             }
@@ -264,6 +530,15 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
 }
 
 #ifdef HAS_NORMALS
+    // The whiteout's base (T3 R14): the macro normal replaces the vertex normal in it and as the shading
+    // base, not in the projections' weights, which stay with the geometry
+    #ifdef TERRAIN_MACRO_NORMAL
+        vec3 terrainMacroGeom;
+        #define TERRAIN_GEOM terrainMacroGeom
+    #else
+        #define TERRAIN_GEOM normalize(v_terrainNormal)
+    #endif
+
     // Terrain object space into whichever space the pass shades in
     vec3 terrainShadingNormal(vec3 objectNormal){
         vec3 axisY = cross(v_terrainAxisZ, v_terrainAxisX);
@@ -279,16 +554,26 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
     // Whiteout blending: a tangent normal is added to the geometric normal on its own
     // projection plane, never mixed as raw RGB across planes that face different ways.
     vec3 getTerrainLayerNormal(float slice, vec2 scale, vec2 offset, float strength){
-        vec3 geom = normalize(v_terrainNormal);
+        vec3 geom = TERRAIN_GEOM;
         vec2 dx = terrainFlatDX * scale;
         vec2 dy = terrainFlatDY * scale;
         vec3 normal = vec3(0.0);
 
         if (terrainSideAmount < 1.0){
-            vec3 flatNormal = mix(
-                sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength),
-                sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE, strength),
-                terrainFarAmount);
+            vec3 flatNormal;
+            #ifdef TERRAIN_RESAMPLE
+                if (terrainFarAmount >= 1.0){
+                    flatNormal = sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE, strength);
+                }else
+            #endif
+            if (terrainFarAmount > 0.0){
+                flatNormal = mix(
+                    sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength),
+                    sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE, strength),
+                    terrainFarAmount);
+            }else{
+                flatNormal = sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength);
+            }
             normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy * (1.0 - terrainSideAmount);
         }
 
@@ -311,10 +596,54 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
         return normalize(normal);
     }
 
+    #ifdef TERRAIN_TIER_READS
+        // getTerrainLayerNormal under a tier's reads per map: one plane, and at Medium the far tiling
+        // only with Distance Resampling and away from the band, as getTerrainSliceTier reads
+        vec3 getTerrainLayerNormalTier(float slice, vec2 scale, vec2 offset, float strength){
+            vec3 geom = TERRAIN_GEOM;
+            vec2 dx = terrainFlatDX * scale;
+            vec2 dy = terrainFlatDY * scale;
+            vec3 normal = vec3(0.0);
+
+            if (terrainSideAmount < 1.0){
+                vec3 flatNormal;
+                #if defined(TERRAIN_RESAMPLE) && !defined(TERRAIN_QUALITY_LOW)
+                    if (terrainSideAmount <= 0.0 && terrainFarAmount >= 1.0){
+                        flatNormal = sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE, strength);
+                    }else if (terrainSideAmount <= 0.0 && terrainFarAmount > 0.0){
+                        flatNormal = mix(
+                            sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength),
+                            sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_FAR_RATE, dy * TERRAIN_FAR_RATE, strength),
+                            terrainFarAmount);
+                    }else
+                #endif
+                {
+                    flatNormal = sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength);
+                }
+                normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy * (1.0 - terrainSideAmount);
+            }
+
+            if (terrainSideAmount > 0.0){
+                vec3 sideNormal;
+                if (terrainSideWeight.x > 0.0){
+                    vec3 sideX = sampleTerrainTangentNormal(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale, strength);
+                    sideX.x *= terrainFaceX;
+                    sideNormal = vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx;
+                }else{
+                    vec3 sideZ = sampleTerrainTangentNormal(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale, strength);
+                    sideZ.x *= terrainFaceZ;
+                    sideNormal = vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz;
+                }
+                normal += sideNormal * terrainSideAmount;
+            }
+            return normalize(normal);
+        }
+    #endif
+
     // getTerrainLayerNormal of a stochastic layer: each projection's taps are blended as
     // derivatives with the weights its color taps set, then whiteout-blended as above
     vec3 getTerrainLayerNormalStochastic(float slice, TerrainStochastic ts, float strength){
-        vec3 geom = normalize(v_terrainNormal);
+        vec3 geom = TERRAIN_GEOM;
         vec3 normal = vec3(0.0);
 
         if (terrainSideAmount < 1.0){
@@ -463,7 +792,7 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
     #ifdef HAS_NORMALS
         // getTerrainLayerNormal with the flat normal from the hex taps, each turned back by its tile
         vec3 getTerrainLayerNormalHex(float slice, vec2 scale, vec2 offset, float strength, HexTaps taps, vec3 weights){
-            vec3 geom = normalize(v_terrainNormal);
+            vec3 geom = TERRAIN_GEOM;
 
             vec3 n0 = hexNormalBack(terrainHexTap(slice, taps, 0, scale).xyz * 2.0 - 1.0, taps.cs0);
             vec3 n1 = hexNormalBack(terrainHexTap(slice, taps, 1, scale).xyz * 2.0 - 1.0, taps.cs1);
@@ -497,10 +826,18 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
 TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoughness, float baseMetallic){
     setupTerrainDetail();
 
-    vec3 blend[TERRAIN_BLENDMAPS];
-    blend[0] = texture(sampler2D(u_blendMap, u_blendMap_smp), v_terrainTextureCoords).rgb;
-    blend[1] = texture(sampler2D(u_blendMap1, u_blendMap1_smp), v_terrainTextureCoords).rgb;
-    blend[2] = texture(sampler2D(u_blendMap2, u_blendMap2_smp), v_terrainTextureCoords).rgb;
+    TERRAIN_BLEND_TYPE blend[TERRAIN_BLENDMAPS];
+    TERRAIN_READ_BLEND_MAPS(blend);
+    TERRAIN_COUNT_FETCHES(float(TERRAIN_BLENDMAPS));
+
+    #if defined(TERRAIN_MACRO_NORMAL) && defined(HAS_NORMALS)
+        // T3 R14: 1 read of the slot the base material's normal map had. Strength 0 until the bake is ready
+        vec2 macroXZ = texture(sampler2D(u_normalTexture, u_normal_smp), v_terrainTextureCoords).rg * 2.0 - 1.0;
+        TERRAIN_COUNT_FETCHES(1.0);
+        vec3 macroNormal = vec3(macroXZ.x, sqrt(max(1.0 - dot(macroXZ, macroXZ), 0.0)), macroXZ.y);
+        terrainMacroGeom = normalize(mix(normalize(v_terrainNormal), macroNormal, terrainLayers.macroNormalParams.x));
+        baseNormal = terrainShadingNormal(terrainMacroGeom);
+    #endif
 
     #ifdef TERRAIN_HEX_TILING
         setupTerrainHexShared();
@@ -513,25 +850,93 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
     float sumOcclusion = 0.0;
     float total = 0.0;
 
+    // T3 R9: the two values or the base map tint the layers, the base weight staying as it is
+    #ifdef TERRAIN_KEEP
+        terrainSelectLayers(blend);
+        weightBase -= terrainPickSum;
+        for (int pick = 0; pick < TERRAIN_KEEP; pick++){
+            int index = terrainPickLayer[pick];
+            float mapWeight = terrainPickWeight[pick];
+    #else
     for (int m = 0; m < TERRAIN_BLENDMAPS; m++){
-        for (int c = 0; c < 3; c++){
-            int index = m * 3 + c;
+        for (int c = 0; c < TERRAIN_BLEND_CHANNELS; c++){
+            int index = terrainChannelLayer(m, c);
             #ifdef TERRAIN_HEX_TILING
                 // picked, not indexed: an array indexed by the loop's counters lives in local memory
                 // where the loop is not unrolled (NVIDIA GL), and the hex variant measured faster so
                 // (GPU campaign perf3; the same weights)
-                vec3 mapWeights = m == 0 ? blend[0] : (m == 1 ? blend[1] : blend[2]);
-                float mapWeight = c == 0 ? mapWeights.x : (c == 1 ? mapWeights.y : mapWeights.z);
+                TERRAIN_BLEND_TYPE mapWeights = m == 0 ? blend[0] : (m == 1 ? blend[1] : blend[2]);
+                #ifdef TERRAIN_EXTENDED_LAYERS
+                    float mapWeight = c == 0 ? mapWeights.x : (c == 1 ? mapWeights.y : (c == 2 ? mapWeights.z : 1.0 - mapWeights.w));
+                #else
+                    float mapWeight = c == 0 ? mapWeights.x : (c == 1 ? mapWeights.y : mapWeights.z);
+                #endif
             #else
-                float mapWeight = blend[m][c];
+                float mapWeight = terrainChannelWeight(blend[m], c);
             #endif
             weightBase -= mapWeight;
+    #endif
             if (mapWeight <= 0.0){
                 continue;
             }
+            TERRAIN_COUNT_LAYER();
 
             vec2 scale = terrainLayers.uvTransform[index].xy;
             vec2 offset = terrainLayers.uvTransform[index].zw;
+
+            #ifdef TERRAIN_CLIFF
+                // T3 R11: this layer's Flat Only never reads a side plane
+                #ifdef HAS_NORMALS
+                    terrainSideAmount = terrainLayers.flatOnly[index / 4][index % 4] > 0.5 ? 0.0 : terrainSideAmountAll;
+                #endif
+            #endif
+
+            #ifdef TERRAIN_TIER_READS
+                // Medium and Low: drawn plain, read by the tier's rule, and the same blend as below
+                vec4 rawColor = getTerrainSliceTier(terrainLayers.slices[index].x, scale, offset, true);
+                vec4 color = rawColor;
+                float height = color.a;
+                float roughness = baseRoughness;
+                float metallic = baseMetallic;
+                float occlusion = 1.0;
+                vec3 normal = baseNormal;
+
+                if (terrainLayers.colorFactor[index].a > 0.5){
+                    color = vec4(sRGBToLinear(rawColor.rgb) * terrainLayers.colorFactor[index].rgb, baseColor.a);
+                    roughness = terrainLayers.surface[index].x;
+                    metallic = terrainLayers.surface[index].y;
+                    #ifdef TERRAIN_QUALITY_LOW
+                        // T3 R6: a PBR layer's colour slice carries its height in alpha: no surface read
+                        height = rawColor.a;
+                    #else
+                        height = 1.0;
+                        float surfaceSlice = terrainLayers.slices[index].z;
+                        if (surfaceSlice >= 0.0){
+                            vec4 orm = getTerrainSliceTier(surfaceSlice, scale, offset, false);
+                            occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
+                            roughness *= orm.g;
+                            metallic *= orm.b;
+                            height = orm.a;
+                        }
+                    #endif
+
+                    #ifdef HAS_NORMALS
+                        float normalSlice = terrainLayers.slices[index].y;
+                        #ifdef TERRAIN_QUALITY_LOW
+                            // T3 R5: the strongest layer's normal, fading to none where the top two swap
+                            if (pick == 0 && normalSlice >= 0.0){
+                                float strongest = terrainPickWeight[0];
+                                float strength = terrainLayers.surface[index].z * (strongest > 0.0 ? (strongest - terrainPickWeight[1]) / strongest : 0.0);
+                                normal = terrainShadingNormal(getTerrainLayerNormalTier(normalSlice, scale, offset, strength));
+                            }
+                        #else
+                            if (normalSlice >= 0.0){
+                                normal = terrainShadingNormal(getTerrainLayerNormalTier(normalSlice, scale, offset, terrainLayers.surface[index].z));
+                            }
+                        #endif
+                    #endif
+                }
+            #else
 
             #if defined(TERRAIN_HEX_TILING) && !defined(TERRAIN_HEX_STOCHASTIC)
                 // no layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC otherwise), so the
@@ -626,16 +1031,45 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                     }
                 #endif
             }
+            #endif
 
-            float weight = mapWeight * pow(height, TERRAIN_HEIGHT_CONTRAST);
+            #ifdef TERRAIN_HEIGHT_BLEND
+                float weight = terrainHeightBlend(mapWeight, height, terrainLayers.heightBlendParams.x);
+            #else
+                float weight = mapWeight * pow(height, TERRAIN_HEIGHT_CONTRAST);
+            #endif
             sumColor += color * weight;
             sumNormal += normal * weight;
             sumRoughness += roughness * weight;
             sumMetallic += metallic * weight;
             sumOcclusion += occlusion * weight;
             total += weight;
+    #ifdef TERRAIN_KEEP
+        }
+    #else
         }
     }
+    #endif
+
+    #ifdef TERRAIN_MACRO
+        // Base Map (T3 R9): the base material's colour, already read, multiplies the layers with a neutral
+        // at 0.5 grey. No new slot and no read.
+        if (terrainLayers.macroParams.w > 0.5){
+            sumColor.rgb *= mix(vec3(1.0), baseColor.rgb * 2.0, terrainLayers.macroParams.y);
+        }else{
+            #ifdef TERRAIN_QUALITY_LOW
+                sumColor.rgb *= v_terrainMacroTint;
+            #else
+                vec2 macroLocalXZ = v_terrainTextureCoords * float(terrainLayers.macroTintA.w);
+                #ifdef HAS_NORMALS
+                    float macroUp = abs(normalize(v_terrainNormal).y);
+                #else
+                    const float macroUp = 1.0;
+                #endif
+                sumColor.rgb *= terrainMacroTint(macroLocalXZ, macroUp, terrainLayers.macroParams, terrainLayers.macroTintA.rgb, terrainLayers.macroTintB.rgb);
+            #endif
+        }
+    #endif
 
     weightBase = max(weightBase, 0.0);
     sumColor += baseColor * weightBase;

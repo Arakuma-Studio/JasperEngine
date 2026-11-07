@@ -14,7 +14,8 @@ namespace jasperengine::editor{
     enum class TerrainMapTarget{
         HeightMap,
         BlendMap,
-        DensityMap
+        DensityMap,
+        HoleMap     // T3 R18: the hole map, R8
     };
 
     // Names one editable map. "layer" picks the blend map or the foliage layer.

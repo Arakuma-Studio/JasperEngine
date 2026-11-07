@@ -210,7 +210,8 @@ namespace {
     }
 
     uint32_t environmentBits(const MeshShaderEnvironment& e){
-        return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
+        // T3 R34: the tier a build may force
+        return (e.terrainForced ? (1u << (static_cast<int>(e.terrainForcedTier) + 26)) : 0u) | (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
@@ -253,7 +254,7 @@ namespace {
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
                                                              bool allLightCapacities, const std::vector<bool>& postColor,
                                                              const std::vector<bool>& shadowHQ, bool allLitQualities,
-                                                             PbrTier mobilePbrTier){
+                                                             PbrTier mobilePbrTier, uint32_t terrainTiers){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -319,7 +320,20 @@ namespace {
                 }
             }
         }
-        return environments;
+        // T3 R34: every tier the build ships. Only a terrain's keys differ by it, and the set of keys
+        // takes each other key once.
+        std::vector<MeshShaderEnvironment> tiered;
+        for (const MeshShaderEnvironment& environment : environments){
+            for (int tier = 0; tier < terrain::TERRAIN_QUALITY_COUNT; tier++){
+                if (terrainTiers & (1u << tier)){
+                    MeshShaderEnvironment withTier = environment;
+                    withTier.terrainForced = true;
+                    withTier.terrainForcedTier = static_cast<terrain::TerrainQuality>(tier);
+                    tiered.push_back(withTier);
+                }
+            }
+        }
+        return tiered;
     }
 
     // A texture standing for one a model file gives a material: only whether there is one
@@ -1151,7 +1165,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
                                                   const std::vector<std::string>& scriptPostProcessingFields,
                                                   bool scriptsSetShadowQuality, bool scriptsSetLitQuality,
-                                                  PbrTier mobilePbrTier){
+                                                  PbrTier mobilePbrTier, uint32_t terrainTiers){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -1173,7 +1187,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
 
     const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
                                                                                   shadowHQStates(scene, scriptsSetShadowQuality),
-                                                                                  scriptsSetLitQuality, mobilePbrTier);
+                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers);
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);

@@ -90,6 +90,11 @@ out vec4 g_finalColor;
         uniform sampler u_normal_smp;
     #endif
 #endif
+// T3 R14: the macro normal map takes the base material's normal map's place: no new slot
+#ifdef TERRAIN_MACRO_NORMAL
+    uniform texture2D u_normalTexture;
+    uniform sampler u_normal_smp;
+#endif
 
 // the built-in Lit's extended lobes (includes/pbr_ext_slots.glsl): their values end this block
 #if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
@@ -254,7 +259,62 @@ const float M_PI = 3.141592653589793;
     #include "includes/terrain_holes_fs.glsl"
 #endif
 
+#ifdef TERRAIN_DEBUG_VIEW
+    float terrainHoleClass = 1.0;
+
+    // T3 R42, R44: what a pixel of the terrain costs, for people on a ramp and for a readback in R: the
+    // count itself, at 8/255 a step. In the Holes view holes stand, hatched on a ghost of the surface.
+    vec4 terrainDebugOutput(vec4 shaded){
+        int view = int(terrainLayers.debugParams.x + 0.5);
+        if (view == 3){
+            // the classes of terrain::holeOverlayClasses: 0 a hole, 64 its rim over the collider, 200 a
+            // cell the navmesh leaves out, 255 solid ground
+            float stripes = mod(floor((gl_FragCoord.x + gl_FragCoord.y) / 6.0), 2.0);
+            if (terrainHoleClass < 0.125){
+                return vec4(mix(shaded.rgb * 0.35, vec3(0.95, 0.1, 0.75), stripes * 0.8), 1.0);
+            }
+            if (terrainHoleClass < 0.5){
+                return vec4(mix(shaded.rgb * 0.35, vec3(1.0, 0.55, 0.05), stripes * 0.8), 1.0);
+            }
+            if (terrainHoleClass < 0.9){
+                return vec4(mix(shaded.rgb, vec3(0.1, 0.45, 1.0), 0.45), 1.0);
+            }
+            return shaded;
+        }
+        float count = view == 1 ? terrainDebugLayers : terrainDebugFetches;
+        float position = clamp(count / 24.0, 0.0, 1.0);
+        vec3 ramp = position < 0.5 ? mix(vec3(0.05, 0.1, 0.8), vec3(0.1, 0.8, 0.2), position * 2.0)
+                                   : mix(vec3(0.1, 0.8, 0.2), vec3(0.9, 0.1, 0.05), (position - 0.5) * 2.0);
+        return vec4(count * 8.0 / 255.0, ramp.g, ramp.b, 1.0);
+    }
+
+    bool terrainDebugHoleView(){
+        return int(terrainLayers.debugParams.x + 0.5) == 3;
+    }
+#endif
+
+// T3 R20: a fragment in a hole goes, at the end of the shader rather than the top: on llvmpipe's 256-bit
+// path a discard ahead of the lit code crashed in its JIT (T3-terrain-materials-holes.md, Deviations)
+#ifdef TERRAIN_HOLES
+    void terrainFinishHole(){
+        #ifdef TERRAIN_DEBUG_VIEW
+            // the Holes view draws them (the bound map holds its classes: terrain::holeOverlayClasses)
+            if (!terrainDebugHoleView() && terrainHoleClass < 0.5){
+                discard;
+            }
+        #else
+            terrainDiscardHole();
+        #endif
+    }
+#endif
+
 void main() {
+    #if defined(TERRAIN_HOLES) && defined(TERRAIN_DEBUG_VIEW)
+        ivec2 holeSize = textureSize(sampler2D(u_terrainHoles, u_terrainHoles_smp), 0);
+        ivec2 holeTexel = clamp(ivec2(floor(v_terrainHoleUV * vec2(holeSize))), ivec2(0), holeSize - ivec2(1));
+        terrainHoleClass = texelFetch(sampler2D(u_terrainHoles, u_terrainHoles_smp), holeTexel, 0).r;
+        TERRAIN_COUNT_FETCHES(1.0);
+    #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();
     #endif
@@ -299,8 +359,11 @@ void main() {
         #else
             g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
         #endif
+        #ifdef TERRAIN_DEBUG_VIEW
+            g_finalColor = terrainDebugOutput(g_finalColor);
+        #endif
         #ifdef TERRAIN_HOLES
-            terrainDiscardHole();
+            terrainFinishHole();
         #endif
         return;
     #endif
@@ -546,10 +609,11 @@ void main() {
         #else
             g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
         #endif
+        #ifdef TERRAIN_DEBUG_VIEW
+            g_finalColor = terrainDebugOutput(g_finalColor);
+        #endif
     #endif
-    // T3 R20: at the end of the shader rather than the top: on llvmpipe's 256-bit path a discard ahead
-    // of the lit code crashed in its JIT (T3-terrain-materials-holes.md, Deviations)
     #ifdef TERRAIN_HOLES
-        terrainDiscardHole();
+        terrainFinishHole();
     #endif
 }

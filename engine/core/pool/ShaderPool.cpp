@@ -643,6 +643,18 @@ uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     }
 }
 
+uint64_t ShaderPool::getTerrainTierProperty(terrain::TerrainQuality quality){
+    switch (quality) {
+        case terrain::TerrainQuality::MEDIUM: return shaderPropertyBit(17);
+        case terrain::TerrainQuality::LOW:    return shaderPropertyBit(18);
+        default:                              return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainExtendedProperty(){
+    return shaderPropertyBit(19);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -660,7 +672,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 37;
         case ShaderType::DEPTH:  return 19;
-        case ShaderType::GBUFFER: return 17;
+        case ShaderType::GBUFFER: return 20;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -797,6 +809,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
             case 16: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 17: return shortName ? "Tqm" : "Terrain Quality Medium"; // T3 D2
+            case 18: return shortName ? "Tql" : "Terrain Quality Low";
+            case 19: return shortName ? "Txl" : "Terrain Extended Layers"; // T3 R15
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

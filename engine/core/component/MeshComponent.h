@@ -245,6 +245,7 @@ namespace jasperengine{
         std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        int slotVSTerrainMacro = -1;    // u_vs_terrainMacro: Low's Macro Variation (T3 R9)
         // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
         // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
         uint16_t pbrParamsSize = 0;

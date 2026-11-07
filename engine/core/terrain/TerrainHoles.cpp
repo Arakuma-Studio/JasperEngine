@@ -120,6 +120,38 @@ int jasperengine::terrain::navHoleCells(const HoleMapView& map, int samples, std
     return count;
 }
 
+void jasperengine::terrain::holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out) {
+    out.assign(map.texels && map.width > 0 && map.height > 0 ? static_cast<size_t>(map.width) * map.height : 0, SOLID_VALUE);
+    if (out.empty()) return;
+    std::vector<uint8_t> open, gaps, cells;
+    openSquares(map, collisionSamples, 1.0f, 1.0f, open);
+    noCollisionSamples(open, collisionSamples, gaps);
+    navHoleCells(map, navSamples, cells);
+    const int gapSpans = collisionSamples - 1;
+    const int navSpans = navSamples - 1;
+    const auto sampleGap = [&](int x, int y) {
+        return gaps[static_cast<size_t>(y) * collisionSamples + x] != 0;
+    };
+    for (int y = 0; y < map.height; y++) {
+        const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(map.height);
+        for (int x = 0; x < map.width; x++) {
+            const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(map.width);
+            const size_t at = static_cast<size_t>(y) * map.width + x;
+            if (holeTexel(map, x, y)) {
+                // a texel over a square whose triangles all lost a corner has no collider left under it
+                const int i = std::min(static_cast<int>(u * static_cast<float>(gapSpans)), gapSpans - 1);
+                const int j = std::min(static_cast<int>(v * static_cast<float>(gapSpans)), gapSpans - 1);
+                const bool open0 = sampleGap(i, j) || sampleGap(i + 1, j + 1) || (sampleGap(i + 1, j) && sampleGap(i, j + 1));
+                out[at] = open0 ? HOLE_OVERLAY_DEEP : HOLE_OVERLAY_RIM;
+            } else {
+                const int i = std::min(static_cast<int>(u * static_cast<float>(navSpans)), navSpans - 1);
+                const int j = std::min(static_cast<int>(v * static_cast<float>(navSpans)), navSpans - 1);
+                if (cells[static_cast<size_t>(j) * navSpans + i]) out[at] = HOLE_OVERLAY_NAV;
+            }
+        }
+    }
+}
+
 int64_t jasperengine::terrain::countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1) {
     if (!map.texels || map.width <= 0 || map.height <= 0) return 0;
     x0 = std::max(x0, 0);

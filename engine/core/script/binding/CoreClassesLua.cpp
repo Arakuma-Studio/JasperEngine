@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/TerrainComponent.h"
+#include "terrain/TerrainQuality.h"
 #include "LuaBinding.h"
 #include <optional>
 #include "log/Logger.h"
@@ -1705,6 +1707,26 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("TerrainQualitySetting")
+        .addVariable("AUTO", TerrainQualitySetting::AUTO)
+        .addVariable("HIGH", TerrainQualitySetting::HIGH)
+        .addVariable("MEDIUM", TerrainQualitySetting::MEDIUM)
+        .addVariable("LOW", TerrainQualitySetting::LOW)
+        .endNamespace()
+        .beginNamespace("TerrainOffscreenShadows")
+        .addVariable("AUTO", TerrainOffscreenShadows::AUTO)
+        .addVariable("ON", TerrainOffscreenShadows::ON)
+        .addVariable("OFF", TerrainOffscreenShadows::OFF)
+        .endNamespace()
+        .beginNamespace("TerrainMacroMode")
+        .addVariable("OFF", TerrainMacroMode::OFF)
+        .addVariable("NOISE", TerrainMacroMode::NOISE)
+        .addVariable("BASE_MAP", TerrainMacroMode::BASE_MAP)
+        .endNamespace()
+        .beginNamespace("TerrainCliffProjection")
+        .addVariable("AUTO", TerrainCliffProjection::AUTO)
+        .addVariable("FLAT_ONLY", TerrainCliffProjection::FLAT_ONLY)
+        .endNamespace()
         .beginNamespace("MaterialLighting")
         .addVariable("AUTO", MaterialLighting::AUTO)
         .addVariable("PIXEL", MaterialLighting::PIXEL)
@@ -2152,6 +2174,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Engine>("Engine")
 
+        // T3 R48: a tier for every terrain, until cleared; a tier the build did not ship clamps to the nearest
+        .addStaticFunction("setTerrainQuality", +[](TerrainQualitySetting quality){
+            switch (quality){
+                case TerrainQualitySetting::HIGH: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::HIGH); break;
+                case TerrainQualitySetting::MEDIUM: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::MEDIUM); break;
+                case TerrainQualitySetting::LOW: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::LOW); break;
+                default: terrain::TerrainQualitySettings::clearGlobalOverride(); break;
+            }
+        })
+        .addStaticFunction("clearTerrainQuality", +[](){ terrain::TerrainQualitySettings::clearGlobalOverride(); })
         .addStaticProperty("scene", &Engine::getScene, &Engine::setScene)
         .addStaticFunction("setScene", &Engine::setScene)
         .addStaticFunction("getScene", &Engine::getScene)

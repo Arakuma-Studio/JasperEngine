@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "window/TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
@@ -948,6 +950,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
     }
+    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        m_terrainTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
+    }
+    m_shipAllTerrainTiers = project->isShipAllTerrainTiers();
+    m_compressTerrainLayers = project->isCompressTerrainLayers();
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -1884,6 +1891,7 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         }
 
         drawShaderCreationSettings();
+        drawTerrainQualitySettings();
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
@@ -4346,6 +4354,16 @@ bool ProjectSettingsWindow::applySettings() {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
     }
+    // an old project writes no key until a tier moves from High (T3 R51)
+    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        const terrain::TerrainQuality tier = static_cast<terrain::TerrainQuality>(m_terrainTiers[platform]);
+        if (tier != m_project->getTerrainQualityTier(platform)) {
+            m_project->setTerrainQualityTier(platform, tier);
+            m_project->setTerrainQualityWritten(true);
+        }
+    }
+    m_project->setShipAllTerrainTiers(m_shipAllTerrainTiers);
+    m_project->setCompressTerrainLayers(m_compressTerrainLayers);
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);
@@ -4961,3 +4979,50 @@ void ProjectSettingsWindow::drawShaderGlobals() {
 }
 
 } // namespace jasperengine::editor
+
+// T3 R40, R51: Graphics > Terrain: Quality per platform, what an export ships, and the cost of the open scene's terrains
+void ProjectSettingsWindow::drawTerrainQualitySettings() {
+    if (!settingsFoldout("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
+    static const char* const tierNames[] = {"High", "Medium", "Low"};
+    static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
+    static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
+    for (int platform : platformOrder) {
+        const std::string key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+        if (!settingsui::beginRow(key.c_str())) continue;
+        const std::string label = std::string(platformLabels[platform]) + " Terrain Quality";
+        const std::string id = std::string("##TerrainQuality") + platformLabels[platform];
+        drawComboSetting(label.c_str(), id.c_str(), tierNames, 3, m_terrainTiers[platform], 0,
+            "The terrain material's tier on this platform for terrains whose Quality is Auto: how many layers a pixel keeps, and what each reads.");
+    }
+    if (m_project && !m_project->isTerrainQualityWritten()) {
+        ImGui::TextDisabled("Recommended for new projects: Desktop High, Web Medium, Android and iOS Low.");
+    }
+    if (settingsui::beginRow("graphics.ship_all_terrain_tiers")) {
+        if (projectBeginSettingsRow("Ship All Terrain Tiers", m_shipAllTerrainTiers)) {
+            m_shipAllTerrainTiers = false;
+        }
+        ImGui::Checkbox("##ShipAllTerrainTiers", &m_shipAllTerrainTiers);
+        endSettingsRow("Export the variants of all three tiers, for a game that changes them at runtime.");
+    }
+    if (settingsui::beginRow("graphics.compress_terrain_layers")) {
+        if (projectBeginSettingsRow("Compress Terrain Layers", m_compressTerrainLayers)) {
+            m_compressTerrainLayers = false;
+        }
+        ImGui::Checkbox("##CompressTerrainLayers", &m_compressTerrainLayers);
+        endSettingsRow("Exports cook each terrain layer map as a compressed array slice; the sources no longer ship. Hint: a raw array of a big terrain takes the heap on the web.");
+    }
+    if (m_project) {
+        if (SceneProject* sceneProject = m_project->getSelectedScene(); sceneProject && sceneProject->scene) {
+            auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+            for (size_t i = 0; i < terrains->size(); i++) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TextUnformatted(sceneProject->scene->getEntityName(terrains->getEntity(i)).c_str());
+                int shown = -1;
+                drawTerrainCostStrip(terrains->getComponentFromIndex(i), shown);
+                ImGui::PopID();
+            }
+        }
+    }
+}

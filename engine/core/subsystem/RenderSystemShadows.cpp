@@ -1401,6 +1401,7 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
         target.pointAtlas = &target.ownPoint;
         target.drawPoint = true;
     }
+    selectTerrainShadowCuts(target, cameraTransform);
 }
 void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     if (!target.drawProjective || !target.ownShadowInstances)

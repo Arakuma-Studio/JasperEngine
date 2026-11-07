@@ -52,6 +52,14 @@ namespace jasperengine::terrain {
     // T3 R43: how many hole texels of the map lie in texels [x0, x1) x [y0, y1), clipped to the map
     JASPERENGINE_API int64_t countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1);
 
+    // T3 R30: what the Holes overlay draws, per texel of the map: HOLE_OVERLAY_DEEP where the collider is
+    // open, HOLE_OVERLAY_RIM where it stays under the drawn hole, HOLE_OVERLAY_NAV on ground the navmesh
+    // leaves out, SOLID_VALUE elsewhere. Read as a hole map (under one half is a hole).
+    inline constexpr uint8_t HOLE_OVERLAY_DEEP = 0;
+    inline constexpr uint8_t HOLE_OVERLAY_RIM = 64;
+    inline constexpr uint8_t HOLE_OVERLAY_NAV = 200;
+    JASPERENGINE_API void holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out);
+
     struct HoleRegionResult {
         int changed = 0;             // texels that took the value
         int64_t holeTexels = 0;      // holes in the map after the call

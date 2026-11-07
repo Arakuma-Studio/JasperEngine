@@ -46,6 +46,11 @@ namespace jasperengine::editor {
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
         int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
+        // T3 R40: Project Settings > Graphics > Terrain
+        int m_terrainTiers[6] = {0, 0, 0, 0, 0, 0};
+        bool m_shipAllTerrainTiers = false;
+        bool m_compressTerrainLayers = false;
+        void drawTerrainQualitySettings();
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;
