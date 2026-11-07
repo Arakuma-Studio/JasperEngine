@@ -5509,6 +5509,10 @@ unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const 
     if (signature.test(registry->getComponentId<TerrainComponent>())) {
         return std::max(mesh.numSubmeshes, 2u);
     }
+    // a Spline Extrude's template has the one holding its chunks' material only once SplineSystem ran
+    if (signature.test(registry->getComponentId<SplineExtrudeComponent>())) {
+        return std::max(mesh.numSubmeshes, 1u);
+    }
     return mesh.numSubmeshes;
 }
 
