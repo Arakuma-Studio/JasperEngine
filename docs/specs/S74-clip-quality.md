@@ -306,3 +306,8 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 - **R31, `Add to Animator...`:** the states go to the first layer of the controller picked from the project's list, or of a
   new one (`New Animator Controller...`, created with its states in the same undo step). Each state plays the model clip and
   inherits its Wrap Mode.
+- **R30, calibrated and Mixamo names:** 10 mm kept. On JasperArcade-Ported (kept outside the repo) the cycles read 0 to 6.7 mm
+  (Mixamo `Idle` 2.5, `Happy Idle` 6.7, `Running` 0.0; jellyfish `Idle_A`, `Run` 0.0), one-shots 270 to 3,062 mm (`RunToDive`
+  3,062, `StandingUp` 1,069, `Standing Greeting` 270), and one `Idle` 17.5 mm, left unsuggested. Mixamo names every clip
+  `mixamo.com` and the action after the file name's `@` (`granjero@Running.fbx`), so that part also names the file's longest
+  clip (its other clips are one-frame T-poses), or no Mixamo cycle would ever be suggested.

@@ -76,12 +76,14 @@ namespace {
         return name.empty() ? std::string("Clip") : name;
     }
 
-    // a cell the row's selectable spans: its text is an item, so find_ui_item reads it
-    void clipCell(const std::string& text, const std::string& id, bool subtle){
+    // a cell of a row: a selectable of its own column (an item whole inside its cell, which
+    // find_ui_item reads and a click reaches), highlighted with its row; true when clicked
+    bool clipCell(const std::string& text, const std::string& id, bool selected, bool subtle){
         ImGui::TableNextColumn();
         if (subtle) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        ImGui::Selectable((text + "##" + id).c_str(), false, ImGuiSelectableFlags_None);
+        const bool clicked = ImGui::Selectable((text + "##" + id).c_str(), selected, ImGuiSelectableFlags_None);
         if (subtle) ImGui::PopStyleColor();
+        return clicked;
     }
 
     void clipSettingLabel(const char* label, const char* tooltip){
@@ -303,10 +305,25 @@ void ModelClipSettingsView::drawTable(){
         const std::string& name = row.info.name;
         const std::string id = std::to_string(row.info.index);
         ImGui::TableNextRow();
-        ImGui::TableNextColumn();
         const bool isSelected = selected.count(name) > 0;
-        if (ImGui::Selectable((name + "##model_clip." + id).c_str(), isSelected,
-                              ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)){
+        const bool known = row.measured && row.report.ok;
+        const bool seam = known && row.report.loopSeam.has_value();
+        const std::string pending = row.measured ? "-" : "...";
+        bool clicked = clipCell(name, "model_clip." + id, isSelected, false);
+        UIProbe::item("modelClips.row." + id);
+        clicked |= clipCell(inspectorclips::formatSeconds(row.info.duration), "model_clip.length." + id, isSelected, true);
+        clicked |= clipCell(inspectorclips::wrapLabel(wrapOf(name)), "model_clip.wrap." + id, isSelected, false);
+        clicked |= clipCell(clipRootMotionText(rootMotionOf(name)), "model_clip.root_motion." + id, isSelected, false);
+        clicked |= clipCell(known ? anim::formatClipField("runtime_bytes", (double)row.report.runtimeBytes) : pending,
+                            "model_clip.memory." + id, isSelected, true);
+        clicked |= clipCell(known ? anim::formatClipField("keys", (double)row.report.keys) : pending, "model_clip.keys." + id, isSelected, true);
+        clicked |= clipCell(seam ? anim::formatClipField("loop_seam.max_error_mm", row.report.loopSeam->maxErrorMm) : pending,
+                            "model_clip.loop_match." + id, isSelected, true);
+        if (seam && ImGui::IsItemHovered() && !row.report.loopSeam->worstJoint.empty()){
+            ImGui::SetTooltip("The pose at the end against the start, the root's travel taken out: worst at %s",
+                              row.report.loopSeam->worstJoint.c_str());
+        }
+        if (clicked){
             const ImGuiIO& io = ImGui::GetIO();
             if (io.KeyShift && !anchor.empty()){
                 // the rows from the anchor to this one
@@ -324,22 +341,6 @@ void ModelClipSettingsView::drawTable(){
                 selected = {name};
                 anchor = name;
             }
-        }
-        UIProbe::item("modelClips.row." + id);
-        clipCell(inspectorclips::formatSeconds(row.info.duration), "model_clip.length." + id, true);
-        clipCell(inspectorclips::wrapLabel(wrapOf(name)), "model_clip.wrap." + id, false);
-        clipCell(clipRootMotionText(rootMotionOf(name)), "model_clip.root_motion." + id, false);
-        const bool known = row.measured && row.report.ok;
-        clipCell(known ? anim::formatClipField("runtime_bytes", (double)row.report.runtimeBytes) : std::string(row.measured ? "-" : "..."),
-             "model_clip.memory." + id, true);
-        clipCell(known ? anim::formatClipField("keys", (double)row.report.keys) : std::string(row.measured ? "-" : "..."),
-             "model_clip.keys." + id, true);
-        const bool seam = known && row.report.loopSeam.has_value();
-        clipCell(seam ? anim::formatClipField("loop_seam.max_error_mm", row.report.loopSeam->maxErrorMm) : std::string(row.measured ? "-" : "..."),
-             "model_clip.loop_match." + id, true);
-        if (seam && ImGui::IsItemHovered() && !row.report.loopSeam->worstJoint.empty()){
-            ImGui::SetTooltip("The pose at the end against the start, the root's travel taken out: worst at %s",
-                              row.report.loopSeam->worstJoint.c_str());
         }
         if (bakeColumn){
             // Bake ▾ › Vertex Animation… of this clip (no scene: the model file is the source)
