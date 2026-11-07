@@ -13,7 +13,6 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 #include "foliage/FoliageOpRunner.h"
 #include "foliage/TerrainOverlay.h"
 #include "foliage/TreeDataFile.h"

@@ -6,13 +6,13 @@
 #include "Project.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
+#include "object/GameObject.h"
 #include "object/Mesh.h"
 #include "object/TerrainEdit.h"
 #include "subsystem/FoliageSystem.h"
 #include "subsystem/MeshSystem.h"
-#include "subsystem/RenderSystem.h"
 #include "terrain/FoliageRules.h"
+#include "window/TerrainEditWindow.h"
 
 #include <algorithm>
 #include <map>
@@ -61,8 +61,8 @@ void editor::TerrainOverlay::show(SceneProject* sceneProject, Entity entity, Kin
         return;
     }
     TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-    const Transform* transform = scene->findComponent<Transform>(entity);
-    if (!terrain || !transform) return;
+    if (!terrain) return;
+    const Matrix4 model = GameObject(scene, entity).getModelMatrix();
 
     // the values, per grid cell, per square unit
     std::vector<float> values(static_cast<size_t>(OVERLAY_GRID) * OVERLAY_GRID, 0.0f);
@@ -102,7 +102,7 @@ void editor::TerrainOverlay::show(SceneProject* sceneProject, Entity entity, Kin
     if (!state.mesh) {
         ScopedDefaultEntityPool system(*scene, EntityPool::System);
         state.mesh = std::make_unique<Mesh>(scene);
-        scene->getSystem<RenderSystem>()->setEditorOverlay(state.mesh->getEntity(), true);
+        TerrainEditWindow::markEditorOverlay(scene, state.mesh->getEntity());
         state.mesh->setTransparent(true);
         state.mesh->setReceiveLights(false);
         state.mesh->setCastShadows(false);
@@ -129,7 +129,7 @@ void editor::TerrainOverlay::show(SceneProject* sceneProject, Entity entity, Kin
     const auto corner = [&](int x, int y) {
         const float lx = -half + static_cast<float>(x) * cell;
         const float lz = -half + static_cast<float>(y) * cell;
-        return transform->modelMatrix * Vector3(lx, querySurface(*terrain, lx, lz).height + lift, lz);
+        return model * Vector3(lx, querySurface(*terrain, lx, lz).height + lift, lz);
     };
     const float scaleTop = top > 0.0f ? 1.0f / top : 0.0f;
     std::vector<uint16_t> indices;

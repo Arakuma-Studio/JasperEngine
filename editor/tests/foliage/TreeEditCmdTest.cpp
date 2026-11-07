@@ -10,7 +10,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/TreeEditCmd.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
+#include "object/Terrain.h"
 #include "subsystem/FoliageSystem.h"
 #include "AppSettings.h"
 #include "Engine.h"
@@ -67,6 +67,7 @@ namespace {
     struct TreeScene {
         Project& project;
         uint32_t sceneId = NULL_PROJECT_SCENE;
+        std::unique_ptr<Terrain> terrainObject;
         Entity entity = NULL_ENTITY;
         FoliageSystem* foliage = nullptr;
         std::shared_ptr<TreeStore> store;
@@ -78,9 +79,8 @@ namespace {
             sceneId = project.createSceneNow("Trees", SceneType::SCENE_3D, {}, false, UnsavedChoice::Discard, &error);
             EXPECT_NE(sceneId, NULL_PROJECT_SCENE) << error;
             Scene* scene = project.getScene(sceneId)->scene;
-            entity = scene->createEntity();
-            scene->addComponent<Transform>(entity);
-            scene->addComponent<TerrainComponent>(entity);
+            terrainObject = std::make_unique<Terrain>(scene);
+            entity = terrainObject->getEntity();
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
             terrain.terrainSize = 128.0f;
             TerrainTreePrototype prototype;

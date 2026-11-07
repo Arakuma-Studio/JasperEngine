@@ -7,7 +7,6 @@
 
 #include "FoliageTools.h"
 #include "McpTools.h"
-#include "component/Transform.h"
 
 #include "foliage/FoliageOpRunner.h"
 #include "component/TerrainComponent.h"
@@ -27,6 +26,7 @@
 #include "terrain/TerrainShape.h"
 #include "util/ImpostorBaker.h"
 
+#include <functional>
 #include <map>
 
 using namespace jasperengine;
@@ -78,16 +78,17 @@ namespace {
     }
 
     // T1's shape, in world or local XZ: all, circle or rect are what T5's ops take here
-    bool shapeFromJson(const Json& value, const Vector3& origin, bool world, Shape& shape, std::string& error) {
+    // toLocal: a world point to the Terrain's local space, or null for points already local
+    bool shapeFromJson(const Json& value, const std::function<Vector3(const Vector3&)>& toLocal, Shape& shape, std::string& error) {
         if (!value.is_object()) {
             error = "shape must be {type, ...}: all, circle {center, radius}, rect {min, max}, polyline {points, radius}.";
             return false;
         }
-        const float offsetX = world ? origin.x : 0.0f;
-        const float offsetZ = world ? origin.z : 0.0f;
         const auto point = [&](const Json& json, Vector2& out) {
             if (!json.is_array() || json.size() != 2 || !json[0].is_number() || !json[1].is_number()) return false;
-            out = Vector2(json[0].get<float>() - offsetX, json[1].get<float>() - offsetZ);
+            const Vector3 given(json[0].get<float>(), 0.0f, json[1].get<float>());
+            const Vector3 local = toLocal ? toLocal(given) : given;
+            out = Vector2(local.x, local.z);
             return true;
         };
         const std::string type = value.value("type", std::string("all"));
@@ -190,8 +191,9 @@ namespace {
         }
         const Json& args = call->args();
         Scene* scene = target.engineScene();
-        const Transform& transform = scene->getComponent<Transform>(target.entity);
         const bool world = args.value("space", std::string("world")) != "local";
+        std::function<Vector3(const Vector3&)> toLocal;
+        if (world) toLocal = [scene, entity = target.entity](const Vector3& point) { return FoliageOpRunner::toTerrainLocal(scene, entity, point); };
 
         if (!args.contains("ops") || !args["ops"].is_array() || args["ops"].empty()) {
             call->fail("ops must be a non-empty array of {op, ...}. Ops and fields: jasper://docs/terrain.");
@@ -221,7 +223,7 @@ namespace {
                 if (it.key() == "op") continue;
                 if (it.key() == "shape") {
                     std::string error;
-                    if (!shapeFromJson(it.value(), transform.worldPosition, world, op.shape, error)) {
+                    if (!shapeFromJson(it.value(), toLocal, op.shape, error)) {
                         call->fail(index + "." + error);
                         return;
                     }

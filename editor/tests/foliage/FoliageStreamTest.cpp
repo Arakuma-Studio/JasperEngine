@@ -10,7 +10,7 @@
 #include "Stream.h"
 #include "asset/AssetTypes.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
+#include "object/Terrain.h"
 
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
@@ -131,9 +131,9 @@ TEST(StreamTerrainFoliage, FactoryEmitsTheNewFields) {
     layer.windBend = 0.6f;
     terrain.foliageLayers.push_back(layer);
     Scene scene;
-    const Entity entity = scene.createEntity();
-    scene.addComponent<Transform>(entity);
-    scene.addComponent<TerrainComponent>(entity, terrain);
+    Terrain terrainObject(&scene);
+    const Entity entity = terrainObject.getEntity();
+    scene.getComponent<TerrainComponent>(entity) = terrain;
     const std::string code = Factory::createTerrainComponent(0, &scene, entity, std::filesystem::temp_directory_path());
     EXPECT_NE(code.find("treeDistance"), std::string::npos) << code;
     EXPECT_NE(code.find("maxMeshTrees"), std::string::npos);

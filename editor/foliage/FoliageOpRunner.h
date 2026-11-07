@@ -8,6 +8,7 @@
 // step. Mass Place and edit_terrain both come through here, so a dry run and a real run are one path.
 
 #include "ecs/Entity.h"
+#include "math/Vector3.h"
 #include "terrain/FoliageOps.h"
 #include "terrain/RawMapStore.h"
 
@@ -17,12 +18,19 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    class Scene;
+}
+
 namespace jasperengine::editor {
 
     class Project;
 
     class FoliageOpRunner {
     public:
+        // A world point's place on a Terrain, in its local space (what ops' shapes are in)
+        static Vector3 toTerrainLocal(Scene* scene, Entity terrain, const Vector3& world);
+
         struct Request {
             uint32_t sceneId = 0;
             Entity terrain = NULL_ENTITY;

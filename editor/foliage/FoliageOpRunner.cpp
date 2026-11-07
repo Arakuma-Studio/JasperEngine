@@ -12,7 +12,7 @@
 #include "component/ModelComponent.h"
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
+#include "object/GameObject.h"
 #include "foliage/FoliageMapPatchCmd.h"
 #include "foliage/TreeDataFile.h"
 #include "jobs/JobSystem.h"
@@ -20,6 +20,7 @@
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageScatter.h"
 
+#include <optional>
 #include <algorithm>
 #include <filesystem>
 
@@ -103,20 +104,18 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
     }
 
     // the scene's splines by name, terrain-local, as polylines of their stations
-    const Transform& terrainTransform = scene->getComponent<Transform>(entity);
-    const Matrix4 inverse = terrainTransform.modelMatrix.inverse();
+    const Matrix4 inverse = GameObject(scene, entity).getModelMatrix().inverse();
     auto splines = scene->getComponentArray<SplineComponent>();
     for (int i = 0; i < splines->size(); i++) {
         const Entity splineEntity = splines->getEntity(i);
         const SplineComponent& spline = splines->getComponentFromIndex(i);
-        const Transform* transform = scene->findComponent<Transform>(splineEntity);
-        if (!transform) continue;
+        const Matrix4 splineModel = GameObject(scene, splineEntity).getModelMatrix();
         std::vector<Vector2> line;
         const float length = spline::length(spline.spline);
         const int samples = std::clamp(static_cast<int>(length / 2.0f) + 2, 2, 2048);
         for (int s = 0; s < samples; s++) {
             const float t = static_cast<float>(s) / static_cast<float>(samples - 1);
-            const Vector3 world = transform->modelMatrix * spline::evaluatePosition(spline.spline, t);
+            const Vector3 world = splineModel * spline::evaluatePosition(spline.spline, t);
             const Vector3 local = inverse * world;
             line.emplace_back(local.x, local.z);
         }
@@ -128,11 +127,12 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
     for (int i = 0; i < instancedMeshes->size(); i++) {
         const Entity child = instancedMeshes->getEntity(i);
         const InstancedMeshComponent* instmesh = &instancedMeshes->getComponentFromIndex(i);
-        const Transform* parent = scene->findComponent<Transform>(child);
-        if (!parent || parent->parent != entity) continue;
+        const GameObject childObject(scene, child);
+        const std::optional<GameObject> parent = childObject.getParent();
+        if (!parent || parent->getEntity() != entity) continue;
         const ModelComponent* model = scene->findComponent<ModelComponent>(child);
-        const Transform* transform = scene->findComponent<Transform>(child);
-        if (!instmesh || !model || !transform || instmesh->foliage) continue;
+        if (!instmesh || !model || instmesh->foliage) continue;
+        const Matrix4 childLocal = childObject.getLocalMatrix();
         FoliageOpHost::PlacedHost placed;
         placed.name = scene->getEntityName(child);
         const std::string stem = fs::path(model->filename.str()).stem().string();
@@ -141,7 +141,7 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
         }
         for (const InstanceData& instance : instmesh->instances) {
             FoliageOpHost::PlacedInstance entry;
-            const Vector3 local = transform->localMatrix * instance.position;
+            const Vector3 local = childLocal * instance.position;
             entry.position[0] = local.x;
             entry.position[1] = local.y;
             entry.position[2] = local.z;
@@ -157,6 +157,11 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
         }
         host.placedHosts[std::to_string(child)] = std::move(placed);
     }
+}
+
+Vector3 editor::FoliageOpRunner::toTerrainLocal(Scene* scene, Entity terrain, const Vector3& world) {
+    const Matrix4 inverse = GameObject(scene, terrain).getModelMatrix().inverse();
+    return inverse.isValid() ? inverse * world : world;
 }
 
 std::shared_ptr<editor::FoliageOpRunner> editor::FoliageOpRunner::start(Project* project, Request request, Finished finished, Progress progress) {

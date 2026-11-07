@@ -324,6 +324,8 @@ namespace jasperengine::editor{
         template<typename T> bool setFoliageLayerProperty(const char* field, const T& value);
 
     public:
+        // Marks an editor-only entity (T5's overlay mesh): no picking, no game view (RenderSystem::setEditorOverlay)
+        static void markEditorOverlay(Scene* scene, Entity entity);
         // A layer with no density map gets an empty one, in memory until something paints it (T5: edit_terrain)
         bool ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer);
         static constexpr const char* WINDOW_NAME = "Terrain";

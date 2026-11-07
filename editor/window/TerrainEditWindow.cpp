@@ -3,6 +3,7 @@
 
 #include "TerrainEditWindow.h"
 #include "TerrainFoliagePanel.h"
+#include "subsystem/RenderSystem.h"
 #include "foliage/TreeDataFile.h"
 #include "component/PrefabComponent.h"
 #include "component/InstancedMeshComponent.h"
@@ -1434,6 +1435,10 @@ bool editor::TerrainEditWindow::hasValidTarget(SceneProject* sceneProject) const
            targetScene->scene->isEntityCreated(selectedEntity) &&
            targetScene->scene->findComponent<TerrainComponent>(selectedEntity) &&
            targetScene->scene->findComponent<Transform>(selectedEntity);
+}
+
+void editor::TerrainEditWindow::markEditorOverlay(Scene* scene, Entity entity){
+    scene->getSystem<RenderSystem>()->setEditorOverlay(entity, true);
 }
 
 bool editor::TerrainEditWindow::ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer){
