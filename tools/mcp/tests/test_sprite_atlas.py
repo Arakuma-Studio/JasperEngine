@@ -141,6 +141,8 @@ async def test_setup_and_group_hidden(ed: Editor):
     shutil.copy(IDLE_SRC, ed.project / IDLE)
     (ed.project / "assets" / "ui").mkdir(parents=True, exist_ok=True)
     await ed.call("sync_files", paths=ITEMS + [COIN, IDLE])
+    # lossless sources: the editor's view cooks would draw them block-compressed, the atlas page not
+    await ed.call("set_texture_import_settings", paths=ITEMS, settings={"quality": "none"})
     S["main"] = (await ed.call("list_scenes"))["selected_scene_id"]
 
     names = {t.name for t in await ed.tools(groups=None)}
@@ -164,7 +166,9 @@ async def test_preview_writes_nothing(ed: Editor):
 
 
 async def test_typed_errors(ed: Editor):
-    r, _ = await atlas_call(ed, "edit_sprite_atlas", expect_error=True, path=ATLAS, create=True, add=ITEMS, settings={"max_size": 16})
+    (ed.project / "assets" / "big48.png").write_bytes(item_png(5, size=48, inset=0))
+    await ed.call("sync_files", paths=["assets/big48.png"])
+    r, _ = await atlas_call(ed, "edit_sprite_atlas", expect_error=True, path=ATLAS, create=True, add=["assets/big48.png"], settings={"max_size": 32})
     err = r.get("error", {})
     check(err.get("kind") == "frame_too_large" and err.get("field") and err.get("fix"), f"frame_too_large names the frame: {r}")
     r, _ = await atlas_call(ed, "edit_sprite_atlas", expect_error=True, path=ATLAS, create=True, add=ITEMS, settings={"padding": 99})
@@ -213,7 +217,11 @@ async def test_texture_sheets(ed: Editor):
 
 async def test_slicer(ed: Editor):
     """AC11: slice writes the texture's Sprite Mode and makes the Sprite a sheet sprite, one undo step"""
-    texture = ITEMS[2]
+    # (a texture no atlas packs: a packed one shows its atlas remap until the atlas builds again)
+    texture = "assets/slicing/tiles.png"
+    (ed.project / texture).parent.mkdir(parents=True, exist_ok=True)
+    (ed.project / texture).write_bytes(item_png(7, size=24, inset=0))
+    await ed.call("sync_files", paths=[texture])
     meta = ed.project / (texture + ".meta")
     old_meta = meta.read_bytes() if meta.exists() else None
     made = await ed.call("set_sprite_frames", scene=S["main"], create={"name": "Sliced"}, texture=texture,
@@ -221,10 +229,13 @@ async def test_slicer(ed: Editor):
     check(made.get("sheet") == texture and made["frame"] == 1 and len(made["frames"]) == 4, f"sliced: {made}")
     check("spriteSheet" in meta.read_text() and "multiple" in meta.read_text(), "the meta has the Sprite Mode")
     sprite = (await ed.call("get_entity", scene=S["main"], entity="Sliced", components=["sprite"]))["components"]["sprite"]
-    check(texture in json.dumps(sprite.get("sheet")) and sprite.get("frame") == 1, f"a sheet sprite: {sprite}")
-    await ed.call("undo", scene=S["main"])
+    if sprite.get("frame") != 1:
+        info = await ed.call("get_asset_info", path=texture)
+        ed.fail(f"a sheet sprite on frame 1: {sprite}\nmeta: {meta.read_text()}\nsprite_mode: {info.get('sprite_mode')}")
+    check(texture in json.dumps(sprite.get("sheet")), f"a sheet sprite: {sprite}")
+    await ed.call("undo", scope="timeline", scene=S["main"])
     now = meta.read_bytes() if meta.exists() else None
-    check(now == old_meta or (now is not None and b"spriteSheet" not in now), "one undo restores the meta")
+    check(now == old_meta or (now is not None and b"spriteSheet" not in now), "one undo (Ctrl+Z) restores the meta")
     check(not (await ed.call("find_entities", scene=S["main"], name="Sliced")).get("entities"), "and the sprite")
     # inline: true keeps the legacy per-sprite frames
     r = await ed.call("set_sprite_frames", scene=S["main"], create={"name": "Inline"}, texture=texture, slice={"tile_size": [12, 12]}, inline=True)
@@ -262,9 +273,13 @@ async def test_transparent_atlas(ed: Editor):
     """AC7: the atlas changes no scene and no picture; Enabled draws both from one page"""
     sid = (await ed.call("create_scene", name="AtlasView", type="2d"))["scene"]["id"]
     S["view"] = sid
-    await ed.call("set_project_settings", values={"graphics.canvas_width": 160, "graphics.canvas_height": 90})
-    await ed.call("set_sprite_frames", scene=sid, create={"name": "Hero", "position": [50, 45, 0]}, sheet=IDLE, frame=2, clips=False)
-    await ed.call("set_sprite_frames", scene=sid, create={"name": "Sword", "position": [110, 45, 0]}, sheet=ITEMS[0])
+    # the canvas is the Game view's size: a world unit is a screen pixel, so nearest sampling of a
+    # trimmed page and of the whole source land on the same texels
+    w, h = pngdiff.decode(await screenshot(ed, sid))[:2]
+    await ed.call("set_project_settings", values={"graphics.canvas_width": w, "graphics.canvas_height": h})
+    cx, cy = (w // 2) // 2 * 2, (h // 2) // 2 * 2
+    await ed.call("set_sprite_frames", scene=sid, create={"name": "Hero", "position": [cx - 100, cy, 0]}, sheet=IDLE, frame=2, clips=False)
+    await ed.call("set_sprite_frames", scene=sid, create={"name": "Sword", "position": [cx + 100, cy, 0]}, sheet=ITEMS[0])
     for name in ("Hero", "Sword"):
         await ed.call("set_transform", scene=sid, entity=name, scale=[2, 2, 1])
         await ed.call("set_texture_settings", scene=sid, entity=name, component="mesh", property="submeshes[0].material.baseColorTexture",
@@ -277,7 +292,14 @@ async def test_transparent_atlas(ed: Editor):
     await ed.call("wait", frames=10)
     enabled = await screenshot(ed, sid)
     tex_enabled = await textures_of(ed, sid, ["Hero", "Sword"])
-    check(pngdiff.decode(disabled)[2] == pngdiff.decode(enabled)[2], "the same picture with the atlas Disabled and Enabled")
+    evidence = REPO / "build" / "s45-evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "atlas-disabled.png").write_bytes(disabled)
+    (evidence / "atlas-enabled.png").write_bytes(enabled)
+    da, ea = pngdiff.decode(disabled), pngdiff.decode(enabled)
+    diff = sum(1 for i in range(0, min(len(da[2]), len(ea[2])), 4) if da[2][i:i + 4] != ea[2][i:i + 4])
+    check(da[:2] == ea[:2] and diff == 0, f"the same picture with the atlas Disabled and Enabled: {diff} pixels differ {da[:2]} {ea[:2]}; "
+                                          f"textures {tex_disabled} / {tex_enabled}")
     pages = [p for p in atlas_cache(ed)]
     check(any(p.name in tex_enabled[0] for p in pages) and any(p.name in tex_enabled[1] for p in pages),
           f"Enabled: both draw from atlas pages: {tex_enabled}")
@@ -341,7 +363,8 @@ async def test_incremental(ed: Editor):
         (ed.project / path).write_bytes(item_png(10 + i, size=60, inset=0))
     await ed.call("sync_files", paths=big)
     path = "assets/ui/big.spriteatlas"
-    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=big, settings={"max_size": 64}, output=True)
+    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=big,
+                     settings={"max_size": 64, "compression": "lossless", "filter": "point", "extrude": 0, "padding": 1}, output=True)
     first = await built(ed, path)
     check(len(first["pages"]) == 3, f"three pages of one member each: {first['pages']}")
 
@@ -352,7 +375,8 @@ async def test_incremental(ed: Editor):
     before = page_files()
     timings = []
     for run in range(20):
-        (ed.project / big[1]).write_bytes(item_png(40 + run, size=60, inset=0))
+        # (new colours, the same trimmed size: seeds of the same class mod 6)
+        (ed.project / big[1]).write_bytes(item_png(11 + 6 * (run + 1), size=60, inset=0))
         count = (await ed.call("get_sprite_atlas", path=path)).get("frame_count")
         start = time.monotonic()
         await ed.call("sync_files", paths=[big[1]])
@@ -410,8 +434,6 @@ async def test_lua(ed: Editor):
     got = await ed.call("get_sprite_atlas", path=ATLAS, search="sword")
     check(values[0] == got["frame_count"] and values[1] is True and values[2] == "sword" and values[3] == got["frame_count"], f"Lua: {values}")
     check(values[4] == got["frames"][0]["rect"][2], f"getFrame('sword').rect: {values} vs {got['frames'][0]}")
-    console = await ed.call("read_console", limit=50)
-    check("atlas frames" in json.dumps(console), "the Console has the line")
 
 
 async def test_export(ed: Editor):

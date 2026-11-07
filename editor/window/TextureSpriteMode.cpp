@@ -96,6 +96,7 @@ void TextureImporterView::drawSpriteMode(const std::string& assetPath) {
     if (info.readOnly) ImGui::TextColored(Theme::Colors::WarningText, "Sprite Mode from a newer editor: read only here.");
     if (info.source == sprite::TextureSheetInfo::Source::FileName) {
         ImGui::TextDisabled("Grid from file name (%d\xC3\x97%d)", info.cellWidth, info.cellHeight);
+        UIProbe::item("textureImporter.gridFromFileName");
         ImGui::SetItemTooltip("name@WxH: a grid of W x H cells, empty cells skipped; nothing is written until you change the Sprite Mode");
     }
     for (const pixelart::PixelProblem& p : info.problems) ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", p.message.c_str());

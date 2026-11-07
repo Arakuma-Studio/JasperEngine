@@ -72,6 +72,8 @@ async def test_setup(ed: Editor):
     # one in a prefab (its instance removed: the prefab file holds it)
     await ed.call("select_scene", scene=S["main"])
     await legacy(ed, S["main"], "Prefabbed")
+    # (drawn once first: a Sprite's mesh has its texture slot once it was built)
+    await ed.call("wait", frames=5)
     made = await ed.call("create_prefab", scene=S["main"], entity="Prefabbed", path="prefabs/Walker.prefab")
     S["prefab"] = ed.project / "prefabs" / "Walker.prefab"
     check(S["prefab"].is_file(), f"the prefab: {made}")
@@ -116,7 +118,7 @@ async def test_convert_all_users_and_undo(ed: Editor):
     check(abs(before[3] - 32.0 / 48.0) < 1e-4, f"legacy: the clip's frame 2 shows the third rect: {before}")
 
     r = await ed.call("set_sprite_frames", scene=S["main"], entity="Walker", convert=True, all_users=True)
-    check(len(r["converted"]) == 4 and r["frames"] == 3, f"all four converted: {r}")
+    check(len(r["converted"]) == 4 and r["frames"] == 3, f"all four converted: {r}\nprefab: {prefab_before.decode()[:3000]}")
     check("undo" in r.get("next", ""), f"the result says how to undo: {r}")
     check("spriteSheet" in meta.read_text() and "walk_2" in meta.read_text(), "the texture's Sprite Mode holds the frames")
     closed = S["closed"].read_text()
@@ -127,8 +129,8 @@ async def test_convert_all_users_and_undo(ed: Editor):
     if "sheet" not in prefab_now:
         await ed.call("save_project")
         prefab_now = S["prefab"].read_text()
-    inst = await ed.call("instantiate_prefab", scene=S["main"], prefab="prefabs/Walker.prefab")
-    got = (await ed.call("get_entity", scene=S["main"], entity=inst["entity"]["id"], components=["sprite"]))["components"]["sprite"]
+    await ed.call("instantiate_prefab", scene=S["main"], prefab="prefabs/Walker.prefab", name="FromPrefab")
+    got = (await ed.call("get_entity", scene=S["main"], entity="FromPrefab", components=["sprite"]))["components"]["sprite"]
     check(WALK in json.dumps(got.get("sheet")), f"the prefab's sprite converted: {got}")
     await ed.call("undo", scene=S["main"])
     after = await play_frame(ed)

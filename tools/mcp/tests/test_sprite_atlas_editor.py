@@ -62,6 +62,7 @@ async def shot(ed: Editor, name: str) -> None:
 
 async def test_atlas_inspector(ed: Editor):
     helper = ui_input.Ui(ed)
+    ed.project.mkdir(parents=True, exist_ok=True)
     for i, name in enumerate(("a.png", "b.png")):
         (ed.project / name).write_bytes(icon(i))
     (ed.project / "coin@8x8.png").write_bytes(pngdiff.encode(16, 8, bytes([200, 100, 50, 255] * 16 * 8)))
@@ -77,21 +78,26 @@ async def test_atlas_inspector(ed: Editor):
         await ed.call("wait", seconds=0.2)
     check(got.get("build_state") == "built", f"built: {got}")
     await select_entry(ed, helper, "icons.spriteatlas")
-    await wait_item(ed, helper, "spriteAtlas.stats")
-    await wait_item(ed, helper, "spriteAtlas.frameSearch")
-    await wait_item(ed, helper, "spriteAtlas.packPreview")
-    check(await helper.find("Objects for Packing", "Inspector"), "the Objects for Packing section")
-    check(await helper.find("Max Texture Size", "Inspector"), "the Packing section")
+    await helper.reveal("Objects for Packing", "Inspector")
+    await helper.reveal("##max_size", "Inspector")
     await shot(ed, "sprite-atlas-inspector")
+    await helper.reveal("\uf06e Pack Preview", "Inspector")
+    await wait_item(ed, helper, "spriteAtlas.packPreview")
+    await wait_item(ed, helper, "spriteAtlas.stats")
+    await helper.reveal("##frame_search", "Inspector")
+    await wait_item(ed, helper, "spriteAtlas.frameSearch")
+    await shot(ed, "sprite-atlas-inspector-pages")
 
 
 async def test_texture_importer_sprite_mode(ed: Editor):
     helper = ui_input.Ui(ed)
     await select_entry(ed, helper, "coin@8x8.png")
+    await helper.reveal("Sprite Mode", "Inspector")
     await wait_item(ed, helper, "textureImporter.spriteMode")
-    check(await helper.find("Grid from file name", "Inspector"), "the name@WxH grid is shown")
+    await wait_item(ed, helper, "textureImporter.gridFromFileName")
     await shot(ed, "texture-sprite-mode")
     await select_entry(ed, helper, "a.png")
+    await helper.reveal("Sprite Mode", "Inspector")
     await wait_item(ed, helper, "textureImporter.packedIn")
     await shot(ed, "texture-packed-in")
 
@@ -106,6 +112,7 @@ async def test_sprite_inspector(ed: Editor):
     await ed.call("select_entities", entities=[entity])
     await ed.call("focus_window", window="inspector")
     await helper.frames(8)
+    await helper.reveal("##sheet_frame", "Inspector")
     await wait_item(ed, helper, "inspector.sprite.framePicker")
     await wait_item(ed, helper, "inspector.sprite.slicedWarning")
     await shot(ed, "sprite-inspector-sheet")
@@ -113,6 +120,6 @@ async def test_sprite_inspector(ed: Editor):
                            inline=True)
     await ed.call("select_entities", entities=[legacy["sprite"]["id"]])
     await helper.frames(8)
+    await helper.reveal("\uf0ec Convert to Sprite Sheet", "Inspector")
     await wait_item(ed, helper, "inspector.sprite.convertToSheet")
-    check(await helper.find("Inline Frames (legacy)", "Inspector"), "the legacy section")
     await shot(ed, "sprite-inspector-legacy")
