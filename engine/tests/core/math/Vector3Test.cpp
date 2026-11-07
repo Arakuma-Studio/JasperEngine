@@ -138,6 +138,21 @@ TEST(Vector3, LerpInterpolatesLinearly){
     EXPECT_EQ(a.lerp(b, 0.5f), Vector3(5, -5, 2));
 }
 
+// Unity's Lerp clamps t; LerpUnclamped extrapolates
+TEST(Vector3, LerpClampsAndUnclampedExtrapolates){
+    const Vector3 a(1, 2, 3);
+    const Vector3 b(3, 6, -1);
+    EXPECT_EQ(a.lerp(b, 2.0f), b);
+    EXPECT_EQ(a.lerp(b, -1.0f), a);
+    EXPECT_EQ(a.lerpUnclamped(b, 2.0f), Vector3(5, 10, -5));
+    EXPECT_EQ(a.lerpUnclamped(b, -1.0f), Vector3(-1, -2, 7));
+    EXPECT_EQ(a.lerpUnclamped(b, 0.5f), a.lerp(b, 0.5f));
+}
+
+TEST(Vector3, MoveTowardsWithANegativeDeltaMovesAway){
+    EXPECT_EQ(Vector3(1, 0, 0).moveTowards(Vector3(5, 0, 0), -2.0f), Vector3(-1, 0, 0));
+}
+
 TEST(Vector3, MoveTowardsStepsWithoutOvershooting){
     const Vector3 from(0, 0, 0);
     const Vector3 to(10, 0, 0);

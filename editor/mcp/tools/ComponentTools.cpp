@@ -499,6 +499,18 @@ void setPropertiesTool(const CallPtr& call) {
     Json data = {{"scene_id", sceneId}, {"entities", Json::array()}};
     for (Entity entity : entities) data["entities"].push_back(McpRefs::entityJson(current, entity));
     data["values"] = readBack(project, current, entities[0], changes);
+    // a model made of parts draws its parts' meshes, not the empty one of its own GameObject
+    if (std::any_of(changes.begin(), changes.end(), [](const McpValues::Change& c) { return c.component == ComponentType::MeshComponent; })) {
+        for (Entity entity : entities) {
+            const MeshComponent* mesh = current->scene->findComponent<MeshComponent>(entity);
+            const std::vector<Entity> parts = current->scene->getSystem<MeshSystem>()->getModelParts(entity);
+            if (!mesh || mesh->numSubmeshes > 0 || parts.empty()) continue;
+            std::string refs;
+            for (Entity part : parts) refs += (refs.empty() ? "" : ", ") + McpRefs::entityPath(current, part);
+            warnings.push_back("\"" + McpRefs::entityPath(current, entity) + "\" draws " + std::to_string(parts.size()) +
+                               " part(s) (" + refs + "): set the mesh on them, or use the Model API in Lua");
+        }
+    }
     std::string warningText;
     if (!warnings.empty()) {
         data["warnings"] = warnings;

@@ -167,6 +167,8 @@ namespace jasperengine{
         void setAllowedDOFsAll();
         void setAllowedDOFs2DPlane();
         void setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ);
+        // what setAllowedDOFs set (all true by default)
+        void getAllowedDOFs(bool& translationX, bool& translationY, bool& translationZ, bool& rotationX, bool& rotationY, bool& rotationZ) const;
 
         // kg: the explicit mass (automaticMass off), else the colliders' volume x density
         float getMass() const;
@@ -217,6 +219,8 @@ namespace jasperengine{
         std::string getMaterialPath() const;
 
         void setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity);
+        // setOverrideMassAndInertia was called: the mass and inertia come from its solid box
+        bool isOverrideMassProperties() const;
 
         float getGravityFactor() const;
         void setGravityFactor(float gravityFactor);

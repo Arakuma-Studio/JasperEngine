@@ -1554,6 +1554,18 @@ bool MeshSystem::isModelPreloading(const std::string& filename){
     return isAsyncModelLoadPending(nullptr, filename);
 }
 
+std::vector<Entity> MeshSystem::getModelParts(Entity model) const{
+    std::vector<Entity> parts;
+    const ModelComponent* modelcomp = scene->findComponent<ModelComponent>(model);
+    if (!modelcomp)
+        return parts;
+    for (const auto& node : modelcomp->meshNodesMapping){
+        if (node.second != model && scene->isEntityCreated(node.second) && scene->findComponent<MeshComponent>(node.second))
+            parts.push_back(node.second);
+    }
+    return parts;
+}
+
 bool MeshSystem::hasPendingAsyncModelLoads() const{
     const std::string scenePrefix = getAsyncModelLoadScenePrefix(scene);
     std::lock_guard<std::mutex> lock(getAsyncModelMutex());
