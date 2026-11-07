@@ -61,6 +61,7 @@ jasperengine_skip_unity_build(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorPropertyThreadTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp

@@ -464,14 +464,14 @@ namespace {
     template<typename C>
     Row enabledRow(const char* component){
         return {component, "enabled", "Enabled", "m_Enabled", B, 1, true, false, ID, false,
-                &hasComponent<C>, &readEnabled<C>, &writeEnabled<C>, nullptr, nullptr};
+                &hasComponent<C>, &readEnabled<C>, &writeEnabled<C>, nullptr, nullptr, true};
     }
 
     template<typename C, typename T, T C::*Field, DirtyFn<C> Dirty = nullptr>
     Row fieldRow(const char* component, const char* property, const char* label, const char* unity, PropertyKind kind,
                  PropertyDisplay display = ID, bool interpolateInt = false){
         return {component, property, label, unity, kind, anim::kindWidth(kind), anim::kindIsDiscrete(kind) && !interpolateInt,
-                interpolateInt, display, false, &hasComponent<C>, &readField<C, T, Field>, &writeField<C, T, Field, Dirty>, nullptr, nullptr};
+                interpolateInt, display, false, &hasComponent<C>, &readField<C, T, Field>, &writeField<C, T, Field, Dirty>, nullptr, nullptr, true};
     }
 
     template<typename C, typename T, T C::*Field>
@@ -485,7 +485,7 @@ namespace {
     template<typename T, T Material::*Field>
     Row materialRow(const char* property, const char* label, const char* unity, PropertyKind kind, PropertyDisplay display = ID){
         return {"mesh", property, label, unity, kind, anim::kindWidth(kind), false, false, display, false,
-                &hasSubmesh, &readMaterial<T, Field>, &writeMaterial<T, Field>, nullptr, nullptr};
+                &hasSubmesh, &readMaterial<T, Field>, &writeMaterial<T, Field>, nullptr, nullptr, true};
     }
 
     template<typename C>
@@ -529,7 +529,7 @@ namespace {
         static const char* const groupLabels[] = {"Alpha", "Interactable", "Blocks Raycasts", "Ignore Parent Groups", "Enabled"};
         for (size_t i = 0; i < groupCount; i++){
             Row row = {"canvasgroup", group[i].property, i < 5 ? groupLabels[i] : group[i].property, group[i].unityName,
-                       group[i].isBool ? B : F, 1, group[i].isBool, false, ID, false, &hasComponent<CanvasGroupComponent>, nullptr, nullptr, nullptr, nullptr};
+                       group[i].isBool ? B : F, 1, group[i].isBool, false, ID, false, &hasComponent<CanvasGroupComponent>, nullptr, nullptr, nullptr, nullptr, true};
             rows.push_back(row);
         }
 
@@ -543,7 +543,7 @@ namespace {
         rows.push_back(materialRow<float, &Material::roughnessFactor>("submeshes[N].material.roughnessFactor", "Roughness Factor", "material._Glossiness", F));
         rows.push_back(materialRow<float, &Material::alphaCutoff>("submeshes[N].material.alphaCutoff", "Alpha Cutoff", "material._Cutoff", F));
         rows.push_back({"mesh", "submeshes[N].textureRect", "Texture Rect", "material._MainTex_ST", V4, 4, false, false, ID, false,
-                        &hasSubmesh, &readTextureRect, &writeTextureRect, nullptr, nullptr});
+                        &hasSubmesh, &readTextureRect, &writeTextureRect, nullptr, nullptr, true});
         rows.push_back({"mesh", "submeshes[N].material.shaderParams.<member>", "Shader Param", "material.<_Property>", PropertyKind::None, 0, false, false, ID, false,
                         &hasShaderParam, &readShaderParam, &writeShaderParam, nullptr, nullptr});
         rows.push_back(enabledRow<MeshComponent>("mesh"));
@@ -555,7 +555,7 @@ namespace {
         // lights (the Light Lua setters: range and cones update the shadow camera)
         rows.push_back(fieldRow<LightComponent, Vector3, &LightComponent::color>("light", "color", "Color", "m_Color", C3, SRGB));
         rows.push_back({"light", "intensity", "Intensity", "m_Intensity", F, 1, false, false, ID, false,
-                        &hasComponent<LightComponent>, &readField<LightComponent, float, &LightComponent::intensity>, &writeLightIntensity, nullptr, nullptr});
+                        &hasComponent<LightComponent>, &readField<LightComponent, float, &LightComponent::intensity>, &writeLightIntensity, nullptr, nullptr, true});
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::range, &shadowCameraDirty>("light", "range", "Range", "m_Range", F));
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::innerConeCos, &shadowCameraDirty>("light", "innerConeCos", "Inner Cone", "m_InnerSpotAngle", F, PropertyDisplay::ConeDegrees));
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::outerConeCos, &shadowCameraDirty>("light", "outerConeCos", "Outer Cone", "m_SpotAngle", F, PropertyDisplay::ConeDegrees));
@@ -603,7 +603,10 @@ namespace {
         rows.push_back(enabledRow<TrailRendererComponent>("trailrenderer"));
         rows.push_back(enabledRow<ParticleSystemComponent>("particlesystem"));
         rows.push_back(enabledRow<InstancedMeshComponent>("instancedmesh"));
-        rows.push_back(enabledRow<Rigidbody2DComponent>("rigidbody2d"));
+        // (a loaded body leaves or joins the Box2D world in the write: the main thread's)
+        Row rigidbody2dEnabled = enabledRow<Rigidbody2DComponent>("rigidbody2d");
+        rigidbody2dEnabled.workerSafe = false;
+        rows.push_back(rigidbody2dEnabled);
         rows.push_back(enabledRow<RigidbodyComponent>("rigidbody"));
         rows.push_back(enabledRow<Joint2DComponent>("joint2d"));
         rows.push_back(enabledRow<Joint3DComponent>("joint3d"));
