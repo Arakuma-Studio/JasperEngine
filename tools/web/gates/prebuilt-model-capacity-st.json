@@ -1,0 +1,16 @@
+{
+  "description": "S65: the same as prebuilt-model-capacity.json in the single-thread web player, which has no thread for Engine.startAsyncThread: nothing is dropped either.",
+  "isolated": false,
+  "expect": [
+    "[MC] nodes=40 root=0",
+    "[MC] obj=24",
+    "JasperEngine exit code 0"
+  ],
+  "query": [
+    "quit-after=3",
+    "fixed-fps=60",
+    "after-ready"
+  ],
+  "seconds": 20,
+  "capture_timeout": 300
+}

@@ -4,7 +4,7 @@ image of docker/runtime.Dockerfile:
 
     tools/build.sh linux                      # the editor install (build/linux/editor-install)
     tools/build.sh players                    # Linux runtimes; PLAYER_PLATFORM=web for the web ones
-    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,components,variants,web,fallback]
+    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,audio,components,variants,web,model-capacity,fallback]
 
 - linux (AC1): `jasperengine-editor build --platform linux` of tools/fixtures/unified-lighting
   with each Linux backend whose runtime is installed (--backends), timed (R28: <= 20 s with a warm
@@ -31,6 +31,11 @@ image of docker/runtime.Dockerfile:
   missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
   variant's build and the full player's run headless to the same frame, pixel for pixel (not
   atmosphere: its clouds differ between two runs of one player).
+- model-capacity (S65 AC1, AC2): a script in the prebuilt players loads a model of many nodes and an OBJ of
+  more materials than a mesh held, once as it is and once under Engine.startAsyncThread (all a Lua
+  script has of a loading thread): every node and material in the Linux players, each frame as the
+  other's (pngdiff --tolerance 24 --max-fraction 0.01), and in the web players (pthreads and
+  single-thread), by the browser gate.
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -47,6 +52,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -402,13 +408,180 @@ def check_fallback(args, players: Path, out: Path) -> None:
     print("ok: C++ scripts compile (and say why); --method prebuilt refuses them")
 
 
+MODEL_PLATES = 40
+OBJ_PLATES = 24
+MODEL_CAPACITY_SCRIPT = """local UnifiedLighting = { properties = {} }
+local LOADING_THREAD = @LOADING_THREAD@
+
+function UnifiedLighting:init()
+    RegisterEngineEvent(self, "onUpdate")
+    local scene = self.scene
+    scene:setGlobalIllumination(0.5, Vector3(1, 1, 1))
+    self.camera = Camera(scene)
+    self.camera.type = CameraType.CAMERA_PERSPECTIVE
+    self.camera.position = Vector3(0, 9, 5)
+    self.camera.target = Vector3(0, 0, 0)
+    scene:setCamera(self.camera)
+    self.sun = Light(scene)
+    self.sun.type = LightType.DIRECTIONAL
+    self.sun:setDirection(0, -1, 0)
+    self.sun.shadows = false
+
+    -- here, in the scene's load: the player is ready once they and their shaders are
+    if LOADING_THREAD then Engine.startAsyncThread() end
+    self.nodes = Model(scene)
+    self.nodes.position = Vector3(0, 0, -2.5)
+    self.nodes:loadModel("nodes.gltf")
+    self.obj = Model(scene)
+    self.obj.position = Vector3(0, 0, 2.5)
+    self.obj:loadModel("plates.obj")
+    if LOADING_THREAD then Engine.endAsyncThread() end
+    self.frames = 0
+end
+
+function UnifiedLighting:onUpdate(dt)
+    self.frames = self.frames + 1
+    if self.frames == 2 then
+        local nodes = 0
+        for i = 0, @PLATES@ - 1 do
+            if self.scene:findEntity("Plate " .. i) ~= NULL_ENTITY then nodes = nodes + 1 end
+        end
+        print(string.format("[MC] nodes=%d root=%d", nodes, self.nodes:getNumSubmeshes()))
+        print(string.format("[MC] obj=%d", self.obj:getNumSubmeshes()))
+    end
+end
+
+return UnifiedLighting
+"""
+MODEL_CAPACITY_WHOLE = (f"[MC] nodes={MODEL_PLATES} root=0", f"[MC] obj={OBJ_PLATES}")
+
+
+def write_plates_gltf(path: Path, count: int) -> None:
+    """`count` plates in a row, a node ("Plate <n>"), mesh, material and buffer views of their own each."""
+    binary = bytearray()
+    views, accessors, primitives, materials = [], [], [], []
+
+    def add(data: bytes, target: int, kind: str, component: int, elements: int, **bounds) -> int:
+        views.append({"buffer": 0, "byteOffset": len(binary), "byteLength": len(data), "target": target})
+        accessors.append({"bufferView": len(views) - 1, "componentType": component, "count": elements, "type": kind, **bounds})
+        binary.extend(data)
+        return len(views) - 1
+
+    for p in range(count):
+        x0 = -4.0 + 8.0 * p / count
+        x1 = x0 + 8.0 * 0.8 / count
+        position = add(struct.pack("<12f", x0, 0, -1, x1, 0, -1, x1, 0, 1, x0, 0, 1), 34962, "VEC3", 5126, 4,
+                       min=[x0, 0, -1], max=[x1, 0, 1])
+        normal = add(struct.pack("<12f", *([0, 1, 0] * 4)), 34962, "VEC3", 5126, 4)
+        index = add(struct.pack("<6H", 0, 2, 1, 0, 3, 2), 34963, "SCALAR", 5123, 6)
+        primitives.append({"attributes": {"POSITION": position, "NORMAL": normal}, "indices": index, "material": p})
+        materials.append({"pbrMetallicRoughness": {"baseColorFactor": [0.2 + 0.8 * p / count, 0.3, 1.0 - 0.8 * p / count, 1],
+                                                   "metallicFactor": 0, "roughnessFactor": 1}})
+    meshes = [{"primitives": [primitive]} for primitive in primitives]
+    nodes = [{"mesh": p, "name": f"Plate {p}"} for p in range(count)]
+    bin_name = path.with_suffix(".bin")
+    bin_name.write_bytes(bytes(binary))
+    path.write_text(json.dumps({
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}], "nodes": nodes, "meshes": meshes,
+        "materials": materials, "accessors": accessors, "bufferViews": views,
+        "buffers": [{"uri": bin_name.name, "byteLength": len(binary)}]}))
+
+
+def write_plates_obj(path: Path, count: int) -> None:
+    mtl = path.with_suffix(".mtl")
+    obj = [f"mtllib {mtl.name}", "vn 0 1 0"]
+    materials = []
+    for p in range(count):
+        x0 = -4.0 + 8.0 * p / count
+        x1 = x0 + 8.0 * 0.8 / count
+        materials += [f"newmtl plate{p}", f"Kd {0.2 + 0.8 * p / count} 0.8 {1.0 - 0.8 * p / count}", "Ns 0", "d 1"]
+        v = p * 4
+        obj += [f"v {x0} 0 -1", f"v {x1} 0 -1", f"v {x1} 0 1", f"v {x0} 0 1", f"usemtl plate{p}",
+                f"f {v + 1}//1 {v + 3}//1 {v + 2}//1", f"f {v + 1}//1 {v + 4}//1 {v + 3}//1"]
+    mtl.write_text("\n".join(materials) + "\n")
+    path.write_text("\n".join(obj) + "\n")
+
+
+def model_capacity_project(target: Path, loading_thread: bool) -> Path:
+    project = fresh_copy(FIXTURES / "unified-lighting", target)
+    (project / "scripts" / "UnifiedLighting.lua").write_text(
+        MODEL_CAPACITY_SCRIPT.replace("@LOADING_THREAD@", "true" if loading_thread else "false").replace("@PLATES@", str(MODEL_PLATES)))
+    write_plates_gltf(project / "assets" / "nodes.gltf", MODEL_PLATES)
+    write_plates_obj(project / "assets" / "plates.obj", OBJ_PLATES)
+    return project
+
+
+def check_model_capacity(args, players: Path, out: Path) -> None:
+    installed = {p.name for p in players.iterdir()} if players.is_dir() else set()
+    backends = [b for b in args.backends.split(",") if f"linux-x64-{b}-release" in installed]
+    if not backends:
+        raise Failure(f"no Linux player runtime in {players} for {args.backends}: run tools/build.sh players")
+    # every case runs: one player's failure says nothing of the others'
+    failures: list[str] = []
+
+    def linux_case(name: str, backend: str, loading_thread: bool) -> Path:
+        project = model_capacity_project(out / f"{name}-project", loading_thread)
+        result = build(args.editor, players, project, out / name, "linux", "--backend", backend)
+        if lines(result, "method") != ["prebuilt"]:
+            raise Failure(f"{name}: not built with the prebuilt player:\n{result.stdout}")
+        exe = Path(lines(result, "executable")[0])
+        shot = out / f"{name}.png"
+        game = run([exe, "--headless", "--after-ready", "--quit-after", "30", "--fixed-fps", "60", "--screenshot", shot],
+                   cwd=exe.parent, timeout=600, check=False)
+        log = game.stdout + game.stderr
+        if game.returncode != 0 or not shot.is_file():
+            raise Failure(f"{name}: the player exited {game.returncode}\n{log[-3000:]}")
+        if pngdiff.flat(pngdiff.load(shot), tolerance=8):
+            raise Failure(f"{name}: the frame is one colour (nothing drawn): {shot}")
+        for line in MODEL_CAPACITY_WHOLE:
+            if line in log:
+                print(f"ok: {name}: {line}")
+            else:
+                found = [text for text in log.splitlines() if "[MC]" in text or "ERROR" in text.upper()]
+                failures.append(f"{name}: the player did not log {line!r}: {found[:10]}")
+        return shot
+
+    with Xvfb():
+        for backend in backends:
+            shots = {}
+            for loading_thread in (False, True):
+                name = f"model-capacity-{backend}-{'thread' if loading_thread else 'main'}"
+                try:
+                    shots[loading_thread] = linux_case(name, backend, loading_thread)
+                except Failure as failure:
+                    failures.append(str(failure))
+            if len(shots) == 2:
+                try:
+                    run([sys.executable, REPO / "tools/mcp/pngdiff.py", shots[True], shots[False], "--tolerance", "24", "--max-fraction", "0.01",
+                         "--diff", out / f"model-capacity-{backend}-diff.png"])
+                    print(f"ok: linux {backend}: the loading thread's frame is the main thread's")
+                except Failure as failure:
+                    failures.append(f"linux {backend}: the loading thread's frame is not the main thread's: {failure}")
+
+    project = model_capacity_project(out / "model-capacity-web-project", True)
+    for threads, target, baseline, extra in ((True, "model-capacity-web", "prebuilt-model-capacity", ()),
+                                             (False, "model-capacity-web-st", "prebuilt-model-capacity-st", ("--no-isolation",))):
+        try:
+            set_web_threads(project, threads)
+            result = build(args.editor, players, project, out / target, "web")
+            if lines(result, "method") != ["prebuilt"]:
+                raise Failure(f"{target}: not built with the prebuilt player")
+            gate(out / target, baseline, out / f"{target}.png", *extra)
+            print(f"ok: {target}: {MODEL_CAPACITY_WHOLE}")
+        except Failure as failure:
+            failures.append(f"{target}: {failure}")
+
+    if failures:
+        raise Failure("model-capacity:\n" + "\n".join(failures))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--editor", type=Path, default=REPO / "build/linux/editor-install/bin/jasperengine-editor")
     parser.add_argument("--players", type=Path, default=REPO / "build/players")
     parser.add_argument("--out", type=Path, default=REPO / "build/player-cli")
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
-    parser.add_argument("--only", default="linux,audio,components,variants,web,fallback")
+    parser.add_argument("--only", default="linux,audio,components,variants,web,model-capacity,fallback")
     parser.add_argument("--write-goldens", action="store_true")
     args = parser.parse_args()
     if not args.editor.is_file():
@@ -416,7 +589,7 @@ def main() -> int:
         return 1
     args.out.mkdir(parents=True, exist_ok=True)
     checks = {"linux": check_linux, "audio": check_audio, "components": check_components, "variants": check_variants, "web": check_web,
-              "fallback": check_fallback}
+              "model-capacity": check_model_capacity, "fallback": check_fallback}
     try:
         for name in args.only.split(","):
             if name not in checks:

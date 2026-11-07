@@ -27,3 +27,24 @@ too many materials is cut off with an error. Users expect the model they importe
 - AC2. Screenshot comparison: same model main thread vs loading thread, within golden tolerance.
 - AC3. Vulkan and GLES checked through existing lanes. S34's size check unchanged or within budget.
 - AC4. `tools/check-changed`, smoke test, docs.
+
+## Deviations
+- D1. Design (R2's "simplest design"). A game's loading thread owns a scene the frames do not run, so it runs the main thread's
+  code on it (the same entities, no commit step). For a scene the frames do run, it only parses the file into `ModelPool`
+  and the main thread makes the tree in a coming frame (`MeshSystem::prepareLoadOnMainThread`, `MainThreadQueue`): `loadModel`
+  returns true before those entities exist. Only a thumbnail (off the main thread with `setImageDecodeMaxDimension`) still
+  bakes the nodes into one mesh, because a picture needs no entities; with `dc/mesh-memory`'s growing arrays it leaves
+  nothing out (`ModelCapacityGpu.APreviewOffTheMainThreadKeepsEveryPrimitive`, which loads as a preview for this reason).
+- D2. R1's OBJ test (`ModelLoadingThreadGpu.AnObjOfManyMaterialsLoadsWhole`, the OBJ line of `test_player_cli.py --only
+  model-capacity`) was red while `MAX_SUBMESHES` (16) held a mesh, and is green on the merge of `dc/mesh-memory`, which removed
+  the capacities. The merge dropped this spec's capacity report (the "bakes into one mesh ... left out" warning and its error
+  in `MeshSystem::loadGLTF`): with no capacity there is nothing to report. `ModelCapacityGpuTest.cpp` is mesh-memory's.
+- D3. R4's real limits here are a primitive's blend shapes (vertex inputs) and a file's vertex and index buffers (the GPU buffer
+  pool). `MAX_BONES` is not one: the shader reads a palette of any size, and mesh-memory removes it. The editor shows them in the
+  Console when the asset database first sees or re-reads a model or an FBX is converted. No modal dialog and no new MCP text: agents
+  read them with `read_console`.
+- D4. AC1 on the players: Lua has no thread, so a script reaches this path with `Engine.startAsyncThread` on the main thread. A real
+  second thread is tested in `jasperengine-core-tests`, a build without the editor (`ModelLoadingThreadGpuTest`). In the
+  single-thread web player `startAsyncThread` is a warning and the load is an ordinary one.
+- D5. Fixed on the way (AC1 ran into it): `Engine.endAsyncThread` in a script's init hung the player, the commit waiting for a queue
+  that the view's load starts on that same thread.

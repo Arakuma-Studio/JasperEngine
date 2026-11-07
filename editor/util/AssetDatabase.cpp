@@ -1256,6 +1256,7 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
     }
     ModelContents contents;
     scanModelFile(projectPath / entry.path, contents);
+    reportModelLimits(entry.path, contents);
 
     // §6.4: match by key, then an unmatched old entry to an unmatched new one of the same
     // kind at the same index; what stays unmatched is dropped

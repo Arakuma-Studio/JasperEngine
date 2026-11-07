@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // A mesh holds as many submeshes and buffers as its model has (mesh-memory spec): no capacity in a
-// game or the editor. The main thread gives each mesh node of a model its own mesh; off the main
-// thread the nodes bake into one mesh (MeshSystem::loadGLTF's flatten path: a preview, a game's
-// loading thread), which held at most 16 submeshes and 30 buffers before and left the rest out.
+// game or the editor. The main thread and a game's loading thread give each mesh node of a model its
+// own mesh (S65); a preview off the main thread bakes the nodes into one mesh (MeshSystem::loadGLTF's
+// flatten path), which held at most 16 submeshes and 30 buffers before and left the rest out.
 // Whole primitives either way (a primitive without some of its buffers drew with no position and
 // made a pipeline with a hole in its attributes). glcore and Vulkan.
 

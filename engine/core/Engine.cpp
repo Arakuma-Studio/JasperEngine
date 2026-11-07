@@ -1223,6 +1223,10 @@ void Engine::startAsyncThread(){
 }
 
 void Engine::commitThreadQueue(){
+    // a commit waits for the queue, which the view's load starts: on the thread that loads the view
+    // (a script's init, which runs first) that would never come
+    if (!viewLoaded && MainThreadQueue::isMainThread())
+        return;
     SystemRender::commitQueue();
 }
 
