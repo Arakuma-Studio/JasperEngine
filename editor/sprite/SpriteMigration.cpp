@@ -7,7 +7,7 @@
 
 #include "Catalog.h"
 #include "Out.h"
-#include "Prefab.h"
+#include "util/Prefab.h"
 #include "PrefabStage.h"
 #include "Project.h"
 #include "Stream.h"

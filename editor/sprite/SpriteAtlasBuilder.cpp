@@ -692,6 +692,10 @@ namespace jasperengine::editor::sprite {
             result->error = packed.error;
             if (result->error.kind == "too_large") {
                 result->error.kind = "frame_too_large";
+                // field: the frame (the packer names it "frame '<name>' of '<member>'")
+                const size_t open = result->error.message.find("frame '");
+                const size_t close = open == std::string::npos ? open : result->error.message.find('\'', open + 7);
+                if (close != std::string::npos) result->error.field = result->error.message.substr(open + 7, close - open - 7);
                 if (result->error.fix.empty()) result->error.fix = "raise max_size (at most 8192), or split the frame";
             }
             result->ms = elapsed();

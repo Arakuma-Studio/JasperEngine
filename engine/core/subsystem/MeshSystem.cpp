@@ -970,6 +970,15 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         }
     }
 
+    // the quad (a sheet sprite's frame change): its indices without an allocation (S45 R26)
+    if (grid == 1){
+        static const uint16_t quadIndices[] = {0, 1, 3, 0, 3, 2};
+        mesh.indices.clear();
+        mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&quadIndices[0], sizeof(uint16_t));
+        calculateMeshAABB(mesh);
+        return;
+    }
+
     // two triangles per cell, wound as the quad's (0, 1, 2) (0, 2, 3)
     std::vector<uint16_t> indices;
     indices.reserve((size_t)grid * grid * 6);
@@ -7470,7 +7479,11 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     }
     const SpritePage& page = sheet.pages[frame.page];
     Texture& texture = mesh.submeshes[0].material.baseColorTexture;
-    if (texture.getPath() != page.texture){
+    // a frame on the page already bound needs no path comparison (it copies the path: S45 R26's
+    // zero allocations per frame change)
+    const bool samePage = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount &&
+                          sheet.frames[(size_t)sprite.builtFrame].page == frame.page;
+    if (!samePage && texture.getPath() != page.texture){
         // the page as the base colour texture; the texture keeps the sprite's sampler settings
         texture.setAlphaBorderAuto(true);
         texture.setPath(page.texture);
