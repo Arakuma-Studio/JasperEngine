@@ -9,6 +9,8 @@
 
 #include "AnimationWindowClip.h"
 #include "component/Transform.h"
+#include "animation/ModelSubClips.h"
+#include "sprite/SpriteSheetPool.h"
 #include "animation/ClipPropertyNames.h"
 #include "animation/PropertyBindings.h"
 #include "AnimationWindowClipUtil.h"
@@ -689,9 +691,17 @@ bool AnimationWindowClip::dropClips(SceneProject* sceneProject, Entity fallback,
     std::vector<std::string> clips;
     for (const std::string& path : paths){
         if (Util::isAnimationClipFile(path)) clips.push_back(path);
+        // an .aseprite file (S44 R33): its tag clips
+        if (SpriteSheetPool::isAsepritePath(path) && project->isInsideAssetsPath(path)){
+            const std::string asset = project->normalizeToAssetsRelative(path).generic_string();
+            std::vector<anim::ModelClipInfo> infos;
+            if (anim::listModelFileClips(asset, infos, nullptr)){
+                for (const anim::ModelClipInfo& info : infos) clips.push_back(asset + "#" + info.name);
+            }
+        }
     }
     if (clips.empty()){
-        if (error) *error = "only animation clips (.anim) can be dropped on the Animation window";
+        if (error) *error = "only animation clips (.anim) and imported .aseprite files can be dropped on the Animation window";
         return false;
     }
     AnimationClipController& c = controller();

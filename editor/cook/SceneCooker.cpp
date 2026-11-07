@@ -13,8 +13,10 @@
 #include "serialization/RuntimeFields.h"
 #include "serialization/SceneSettingsCodec.h"
 #include "util/Fnv.h"
+#include "component/MeshComponent.h"
 #include "util/ProjectUtils.h"
 #include "component/SkyboxComponent.h"
+#include "component/SpriteComponent.h"
 #include "resources/sky/Daylight_Box_Back_png.h"
 #include "resources/sky/Daylight_Box_Bottom_png.h"
 #include "resources/sky/Daylight_Box_Front_png.h"
@@ -81,6 +83,17 @@ namespace {
             if (noParent && std::string_view(table->cppName) == "Transform") {
                 Transform copy = *static_cast<const Transform*>(component);
                 copy.parent = NULL_ENTITY;
+                rt::writeComponent(w, *table, &copy, ctx);
+            } else if (std::string_view(table->cppName) == "MeshComponent" && registry->findComponent<SpriteComponent>(entity) &&
+                       !registry->findComponent<SpriteComponent>(entity)->sheet.empty()) {
+                // a sheet sprite's page is its sheet's (S44 R48): the game resolves it, never the editor's cache path
+                MeshComponent copy = *static_cast<const MeshComponent*>(component);
+                Texture pageless;
+                pageless.setMinFilter(copy.submeshes[0].material.baseColorTexture.getMinFilter());
+                pageless.setMagFilter(copy.submeshes[0].material.baseColorTexture.getMagFilter());
+                pageless.setWrapU(copy.submeshes[0].material.baseColorTexture.getWrapU());
+                pageless.setWrapV(copy.submeshes[0].material.baseColorTexture.getWrapV());
+                copy.submeshes[0].material.baseColorTexture = pageless;
                 rt::writeComponent(w, *table, &copy, ctx);
             } else if (std::string_view(table->cppName) == "SkyboxComponent" &&
                        isDefaultSky(static_cast<const SkyboxComponent*>(component)->texture)) {
