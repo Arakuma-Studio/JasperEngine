@@ -1338,3 +1338,73 @@ rest of S82 lands in 6B.
 5. **Reconciled: `title_fx` gains the ANIM feature and texture-rect frames here** (S85's A2), and
    the component gains `qualityTier` and `runtimeEnvironments` (S86), so the wave-6C and same-wave
    specs need nothing new from S81's files.
+6. **Implementation: budgets on S56's platform groups.** Frame Budget, Release Delay and Cache
+   Budget are per S56 `DevicePlatformGroup` (`QualityResolver::getPlatformGroup()`: Desktop,
+   Mobile, Web; the editor's Game view simulation follows it in Play), with the editor's Edit mode
+   apart; the §6.3 platform factor is the group's (desktop 1, mobile 6, web 4). S86's `qualityTier`
+   "auto" maps from the S56 `DeviceTier` (`titleQualityTierFor`: Low → low, Medium → medium, High and
+   Ultra → high). No parallel tier system.
+7. **Implementation: the image is lent at draw time.** As `FluidSystem::getMaterialTexture` does,
+   `TitleArtSystem::getDisplayTexture` lends the companion its image in RenderSystem's loads and draws
+   (`RenderSystem::lentTexture` serves both): the companion's texture field is never written, so it
+   is never saved and never becomes a prefab override. Only a Live Effect writes companion fields
+   (custom shader, uniforms, shader textures and features); `TitleArtCompanionScope` gives the
+   editor's encoders and the exported code the companion's own values while they are driven.
+8. **Implementation: Pivot From Title applies with Set Native Size** (and at creation), as an
+   undoable edit, instead of driving the pivot every frame (a driven pivot would be saved). Sprites
+   have no free pivot: they take the nearest of the nine presets.
+9. **Implementation: world sizes.** `SpriteComponent` sizes are whole units and a 2D scene's unit is
+   a pixel; S41's project Pixels Per Unit is not in this tree, so Pixels Per Unit 0 means 1 pixel per
+   unit (a value > 0 divides the frame).
+10. **Implementation: glints stay inside the frame.** A companion's vertices (nine-slice Images,
+    sprite rects) are not a plain quad, so the vertex stage does not grow the quad by the star
+    radius; the bake frame's padding holds most stars and a larger one is cut at the frame edge.
+11. **Implementation: field shapes.** `title` is an `AssetRef` (path and GUID in one value); the
+    `overrides` entries save as a list of `{name, type, value, text}` and list as one property per
+    entry, `overrides.<name>` (a String for text, font, image and color_scheme; a Float for number
+    and bool; a linear Vector4 for color); prefab overrides copy an entry by name
+    (`Catalog::copyPropertyValue`), set_properties writes entries by name into the component's YAML.
+12. **Implementation: title_fx names.** Its textures are `u_glowTexture` and `u_prevTexture`; ANIM
+    packs the opacity in `animAffine0.w`, the flipbook blend in `animAffine1.w`, and `animColor` is
+    the flash colour (rgb) and amount (a). The anchors are `anchors[16]`, written through the custom
+    block's array members (`anchors[i]` values).
+13. **Implementation: Realtime renders the bake's frame.** `RenderRequest::region` is the sidecar's
+    frame, so the display image covers the rectangle the PNG covers and the companion's native size
+    stays right; the resolution multiplies the main output's own scale. The display scale is the UI
+    rect's in reference units (so a build's prebaked state matches any device resolution); a world
+    title renders at its canvas pixels.
+14. **Implementation: the prebake key leaves out the pixel path** (`TitleArtRuntime::prebakeKeyOf`):
+    the export renders each distinct state once and a device of either path finds it at
+    `<title>.prebake-<16 hex>.png` beside the document.
+15. **Implementation: Realtime's glow output** is S80's Glow content rendered RGBA8 at half the
+    resolution (no R8 output format exists in the renderer).
+16. **Implementation: CPU stages run as S80's job steps.** The scheduler steps a job one step at a
+    time; how a CPU stage uses the job system is S80's renderer's.
+17. **Implementation: TITLE_ART_TEST_FAIL_TARGETS** (bit 6) fails the request's first step with
+    `out_of_target_memory` in S81's job wrapper (`RendererJob`), and `TITLE_ART_TEST_SLOW_STEPS` (bit
+    7) multiplies its estimates by 64; neither touches S80's pool.
+18. **Implementation: `render_title {entity}`** renders the instance's state (or a what-if) through
+    S80's render sheet, cut to the bake frame, and answers `live_layers_composited: false`: the live
+    layers draw in the companion only.
+19. **Implementation: Realtime anchors** are the sidecar's (the bake's analysis) until S83's runtime
+    analysis lands in the tree; the render job does no readback.
+20. **Implementation: hot reload** goes through `TitleArtSystem::notifyTitleChanged`, called by the
+    editor's document change hook (commits, undo, outside edits, assets a document reads) and by
+    every finished bake (the sidecar and PNGs).
+21. **Implementation: the web gate's project** is `tools/test-projects/title-art` (a C++ test project,
+    as every gate of `tools/web/gates/` is: `WEB_PROJECT` names a directory of `tools/test-projects`),
+    not `tools/fixtures/title-art-runtime`. Its document is a plate shape (no font, so the gate needs
+    no font file); the gate checks two ready lines (the second after an Exposed colour changes from
+    C++) and the centre pixel in the second colour.
+22. **Implementation: the Android render gate's `titleart` scene** draws a Realtime and a Glyph Atlas
+    title of a plate (Glyph Atlas renders through the Realtime path, Deviation 23) with
+    the sweep at a fixed position and the tint; no glints, as the gate's document has no bake sidecar
+    to take anchors from. `golden/titleart.png` is not in the tree: no emulator ran in this stream; the
+    first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
+    `debug.jasperengine.titleart_rgba8=1`) makes it.
+23. **Not done: the Glyph Atlas compositor** (R26-R29, R32: the per-glyph atlas pages, the cell
+    pass and the compose pass). A Glyph Atlas title gets its plan (`planTitleGlyphAtlas`: the text
+    layer, the fallbacks, the unsafe and approximate effects), the `glyph_atlas` check, the Inspector
+    and `get_title` rows and the warnings, and renders through the Realtime path, so it shows the
+    same pixels at Realtime's cost. The compositor is renderer work (new passes in S80's graph) left
+    to a follow-up.

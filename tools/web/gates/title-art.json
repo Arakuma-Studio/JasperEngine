@@ -1,0 +1,11 @@
+{
+  "description": "tools/test-projects/title-art (WEB_PROJECT=title-art tools/build.sh web): a Realtime Title Art Renderer (S81 AC19) renders its document through the titleart module, time sliced, then again with an Exposed colour changed; the canvas centre is the plate in its second colour (#20c0ff).",
+  "isolated": true,
+  "rgb": [32, 192, 255],
+  "tolerance": 24,
+  "console": [
+    {"text": "[title-art] ready 1", "level": "log"},
+    {"text": "[title-art] ready 2", "level": "log"}
+  ],
+  "ordered": true
+}

@@ -7,6 +7,10 @@
 //   lit3d   a lit 3D scene: coloured boxes and a sphere on a floor under a directional light
 //   ui2d    2D and UI: a textured Image (the logo), coloured Polygons and a Text
 //   htmlui  an HTML UI document: a gradient panel with rounded swatches, a bar, text, a button
+//   titleart  Title Art Renderers (S81 AC19): a Realtime and a Glyph Atlas title (a plate, so the
+//             Glyph Atlas one renders through the Realtime path) with the sweep at a fixed
+//             position and the tint; debug.jasperengine.titleart_rgba8=1 forces the RGBA8 pixel path,
+//             which must match the same golden
 // tools/android-emulator-test.sh runs it once per scene (--scene) and compares the screen with
 // golden/<scene>.png (--golden); ANDROID_PROJECT=render-gate tools/build.sh android builds it (see
 // docs/testing.md, "Android emulator").
@@ -38,6 +42,10 @@ Text caption(&ui2dScene);
 
 Scene htmluiScene;
 UIDocument document(&htmluiScene);
+
+Scene titleartScene;
+Image realtimeTitle(&titleartScene);
+Image atlasTitle(&titleartScene);
 
 namespace {
 
@@ -109,6 +117,36 @@ namespace {
         Engine::setScene(&ui2dScene);
     }
 
+    void addTitle(Image& image, TitleArtRenderMode mode, float yOffset){
+        image.setAnchorPreset(AnchorPreset::CENTER);
+        image.setPositionYOffset(yOffset);
+        image.setSize(768, 384);
+        TitleArtRendererComponent title;
+        title.title = AssetRef("titles/gate.titleart");
+        title.renderMode = mode;
+        title.prebakeInitialState = false;
+        // the sweep at a fixed position (not Auto) and the tint read no time: every frame is the golden's
+        title.sweepEnabled = true;
+        title.sweepPosition = 0.45f;
+        title.tintEnabled = true;
+        title.tintColor = Vector4(0.2f, 0.4f, 1.0f, 1.0f);
+        title.tintAmount = 0.3f;
+        titleartScene.addComponent<TitleArtRendererComponent>(image.getEntity(), std::move(title));
+        TitleArt art(&titleartScene, image.getEntity());
+        const std::string label = mode == TitleArtRenderMode::REALTIME ? "realtime" : "glyph_atlas";
+        art.getOnReady().add("gate", [label, &image](){
+            TitleArt ready(&titleartScene, image.getEntity());
+            Log::print("[render-gate] title %s ready %s", label.c_str(), ready.getPixelPath().c_str());
+        });
+    }
+
+    void setupTitleart(){
+        titleartScene.setBackgroundColor(0.1f, 0.11f, 0.14f);
+        addTitle(realtimeTitle, TitleArtRenderMode::REALTIME, -300.0f);
+        addTitle(atlasTitle, TitleArtRenderMode::GLYPH_ATLAS, 300.0f);
+        Engine::setScene(&titleartScene);
+    }
+
     void setupHtmlui(){
         htmluiScene.setBackgroundColor(0.08f, 0.09f, 0.12f);
         document.setFilename("ui/gate.html");
@@ -127,8 +165,10 @@ JASPERENGINE_INIT void init(){
         setupUi2d();
     }else if (scene == "htmlui"){
         setupHtmlui();
+    }else if (scene == "titleart"){
+        setupTitleart();
     }else{
         setupLit3d();
     }
-    Log::print("[render-gate] scene %s", scene == "ui2d" || scene == "htmlui" ? scene.c_str() : "lit3d");
+    Log::print("[render-gate] scene %s", scene == "ui2d" || scene == "htmlui" || scene == "titleart" ? scene.c_str() : "lit3d");
 }
