@@ -163,6 +163,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- Follow-ups outside the programme (for their owners, not fixed here): `RagdollWizardDialog::instance().show()` is drawn only from
+  the Inspector, the same bug T2 found and fixed for Create Terrain (a dialog opened from another tab is never drawn).
 - Shader undefined behaviour or driver bug, found by T3's merged MCP run: a new terrain limits layers per pixel (R53), and that
   variant at High tier and High Lit Quality (the editor default) had never been drawn by any GPU test. llvmpipe kills it with an
   illegal instruction. A rewrite of the layer selection didn't fix it; checks at 128-bit llvmpipe width, on lavapipe and with
