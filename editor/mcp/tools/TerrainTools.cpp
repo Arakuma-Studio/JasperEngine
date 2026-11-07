@@ -7,6 +7,7 @@
 
 #include "FoliageTools.h"
 #include "McpTools.h"
+#include "component/Transform.h"
 
 #include "foliage/FoliageOpRunner.h"
 #include "component/TerrainComponent.h"

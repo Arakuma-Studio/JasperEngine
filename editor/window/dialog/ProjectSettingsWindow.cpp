@@ -2035,13 +2035,13 @@ void ProjectSettingsWindow::drawQualitySettings() {
 
         // what foliage scales and caps (docs/mcp/guide/terrain.md); never written to a Terrain
         static const char* const foliageNames[] = {"Low", "Medium", "High"};
-        static const char* const foliageRows[3] = {"Foliage Quality (Desktop)", "Foliage Quality (Mobile)", "Foliage Quality (Web)"};
-        static const char* const foliageIds[3] = {"##FoliageDesktop", "##FoliageMobile", "##FoliageWeb"};
-        static const char* const foliageKeys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
-        const char* const foliageTooltip = "Detail density and fade scales, caps on visible details, trees and draws, detail shadows and impostor blending, per platform group.";
+        static const char* const qualityRows[3] = {"Foliage Quality (Desktop)", "Foliage Quality (Mobile)", "Foliage Quality (Web)"};
+        static const char* const qualityIds[3] = {"##FoliageDesktop", "##FoliageMobile", "##FoliageWeb"};
+        static const char* const qualityKeys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+        const char* const qualityTooltip = "Detail density and fade scales, caps on visible details, trees and draws, detail shadows and impostor blending, per platform group.";
         for (int i = 0; i < 3; i++) {
-            if (!settingsui::beginRow(foliageKeys[i])) continue;
-            drawComboSetting(foliageRows[i], foliageIds[i], foliageNames, 3, m_foliageQuality[i], (int)Project::defaultFoliageQuality[i], foliageTooltip);
+            if (!settingsui::beginRow(qualityKeys[i])) continue;
+            drawComboSetting(qualityRows[i], qualityIds[i], foliageNames, 3, m_foliageQuality[i], (int)Project::defaultFoliageQuality[i], qualityTooltip);
         }
         // the scale of every terrain foliage layer's draw distances (Unity's
         // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)

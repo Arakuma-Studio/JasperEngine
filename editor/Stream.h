@@ -58,6 +58,7 @@ namespace jasperengine{
     struct Submesh;
     struct TerrainFoliageLayer;
     struct TerrainSurfaceLayer;
+    struct TerrainTreePrototype;
     struct TileData;
     struct TileRectData;
 }

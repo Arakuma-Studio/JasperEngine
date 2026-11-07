@@ -4,6 +4,7 @@
 #include "window/TerrainFoliagePanel.h"
 
 #include "Backend.h"
+#include "component/MeshComponent.h"
 #include "App.h"
 #include "Project.h"
 #include "command/CommandHandle.h"

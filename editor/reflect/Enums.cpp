@@ -3,6 +3,7 @@
 
 #include "reflect/Enums.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/FogComponent.h"

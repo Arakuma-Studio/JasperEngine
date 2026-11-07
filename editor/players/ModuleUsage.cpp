@@ -4,6 +4,7 @@
 #include "ModuleUsage.h"
 
 #include "ShaderNeutralApi.h"
+#include "component/TerrainComponent.h"
 #include "Project.h"
 #include "DocumentFile.h"
 #include "util/Prefab.h"
