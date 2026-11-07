@@ -609,3 +609,9 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   the default); a graph gradient whose colour and alpha keys sit at more than 32 places is refused
   with a status line, since a file point holds both. Interpolations 2 and 3 show as Blend and are
   kept unless the mode is changed.
+- **Review round 1.** The window's edits follow `edit_graph`'s rule: an edit (a paste, a value, a
+  wire) that adds an error issue is refused, and a pasted node takes only its type, place and
+  values from the clipboard. `layout` spaces each node by its port rows (`LAYOUT_ROW` 180 plus 20
+  per row), room for a 112-unit image. `focus_window` takes `path` for `graph_editor`, so an agent
+  can show a human a given graph. A Preset saved from a 32-key graph ramp still reloads as 8 keys
+  (the swatch library's gradients are the particles' format); that stays for M4.

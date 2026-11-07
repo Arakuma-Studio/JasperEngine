@@ -344,11 +344,11 @@ TEST_F(GraphEditorWindowTest, AWireDroppedOnTheCanvasSearchesWhatFitsAndPlacesIt
     ASSERT_TRUE(window.openGraph(writeGraph("drop")));
     Frames frames;
     frames.frame(window);
-    // Speed's float output: only nodes with an input a float feeds (Blend; Tint by the implicit vector3)
+    // Speed's float output: only nodes with an input a float feeds (Blend, Mix Six; Tint by the implicit vector3)
     const GraphCanvas::PortRef source{1, "value", true};
     std::vector<std::string> types;
     for (const auto& entry : window.searchNodes("", &source)) types.push_back(entry.type);
-    EXPECT_EQ(types, (std::vector<std::string>{"tint", "blend"})) << "by category: Color, then Math";
+    EXPECT_EQ(types, (std::vector<std::string>{"tint", "blend", "mix6"})) << "by category: Color, then Math (by name)";
     // Vector's output feeds no Blend input (vector3 does not become float)
     ASSERT_EQ(window.addNode("vec", ImVec2(0, 300)), "n3");
     frames.frame(window);

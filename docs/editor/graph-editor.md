@@ -34,7 +34,9 @@ Right click a parameter's name to copy or paste its value as JSON text.
 ## Copy, Paste, Duplicate, Delete
 
 Ctrl+C copies the selected nodes and the wires between them as JSON text, so a graph fragment can
-be pasted into another graph of the same kind, a text file or a message. Ctrl+V pastes at the
+be pasted into another graph of the same kind, a text file or a message. A paste takes each node's
+type, place and values; a node type the graph's kind does not have, or a paste that would add an
+error, is refused with the reason in the toolbar. Ctrl+V pastes at the
 mouse with new ids; Ctrl+D duplicates; Delete removes the selected nodes (with their wires) or the
 selected wire.
 
@@ -46,6 +48,7 @@ a wire to a node that is gone.
 
 ## Undo and files
 
-Every edit is written at once as one project undo step (no Save), like every asset window. A
+Every edit is written at once as one project undo step (no Save), like every asset window. As with
+`edit_graph`, an edit that would add an error to the graph is refused. A
 change made outside the window (`edit_graph`, another program, an undo) shows at once; a file that
 stops parsing keeps the last good graph on screen with the error in the Problems strip.
