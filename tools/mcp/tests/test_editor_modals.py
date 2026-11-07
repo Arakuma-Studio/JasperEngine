@@ -89,6 +89,7 @@ SITES = {
     ("window/vcs/VcsUi.cpp", "popupId"): "not driven: needs a repository with a conflict; the vcs tools answer for agents",
     ("window/dialog/TextureSlicerToolDialog.cpp", "popupTitle"): "test_texture_slicer",
     ("window/dialog/ProjectSettingsWindow.cpp", "Project Settings##ProjectSettingsModal"): "test_project_settings_merges_edits",
+    ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -172,8 +173,8 @@ async def test_sites_table_is_complete(ed: Editor):
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
-    # Change Asset Directories came: 71
-    ed.check_eq(sum(found.values()), 71, "the 71 sites")
+    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72
+    ed.check_eq(sum(found.values()), 72, "the 72 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
