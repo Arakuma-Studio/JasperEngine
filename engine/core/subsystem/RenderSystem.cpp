@@ -18955,6 +18955,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     struct DrawnReader{ Vector4 rect; int rank; };
     std::vector<DrawnReader> readersSinceCopy;
     unsigned int passColorCopies = passSceneColor ? 1u : 0u;
+    // (the draws the batcher still holds from the hierarchy loop, its UI and sprites, drawn first:
+    // the count sees them)
+    if (batchPassActive)
+        batcher.flush();
     const bool recopies = !passSceneColor || Engine::getFrameDrawCalls() == drawsAtCopy;
     bool queueCopied = false;
     bool queueDrawnSinceCopy = false;
