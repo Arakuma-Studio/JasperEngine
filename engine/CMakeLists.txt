@@ -1968,6 +1968,7 @@ endif()
 # Title Art (S80-S87): the module's sources, globbed per directory
 if(JASPERENGINE_TITLE_ART)
     include(core/titleart/TitleArtSources.cmake)
+    include(core/titleart/three_d/Title3DSources.cmake)
     list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TITLE_ART_SRCS})
 endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
@@ -2175,6 +2176,8 @@ target_compile_definitions(jasperengine
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
         JASPERENGINE_TITLE_ART=$<BOOL:${JASPERENGINE_TITLE_ART}>
+        JASPERENGINE_TITLE_ART_3D=$<BOOL:${JASPERENGINE_TITLE_ART_3D}>
+        JASPERENGINE_TITLE_ART_MESHER=$<BOOL:${JASPERENGINE_TITLE_ART_MESHER}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )

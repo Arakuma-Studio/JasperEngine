@@ -20,6 +20,10 @@ file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR
 if(NOT JASPERENGINE_TITLE_ART)
     list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/titleart/")
 endif()
+# 3D titles' tests (titleart/three_d/) need its sub-options (S86)
+if(NOT JASPERENGINE_TITLE_ART_3D OR NOT JASPERENGINE_TITLE_ART_MESHER)
+    list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/titleart/three_d/")
+endif()
 
 # The allocation counter of the zero-allocation tests and the benches. It counts at malloc,
 # wrapped by GNU ld (it replaces the plain operator new with malloc), so it counts on Linux;
