@@ -180,7 +180,7 @@ TEST(SplineStream, APreSplineSceneLoadsUnchanged){
     EXPECT_EQ(decoded.report.preserved(), 0u);
     const std::string first = encodeSceneText(decoded);
     const YAML::Node saved = YAML::Load(first);
-    EXPECT_EQ(saved["formatVersion"].as<int>(), 7);
+    EXPECT_EQ(saved["formatVersion"].as<int>(), 8);
     EXPECT_EQ(saved["entities"][0]["name"].as<std::string>(), "Box");
     EXPECT_EQ(saved["entities"][0]["components"]["transform"]["position"][2].as<float>(), 3.0f);
     DecodedScene again = decodeSceneText(first, "pre-s18.scene");

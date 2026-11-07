@@ -17,6 +17,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/AsepriteImporterView.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -206,6 +207,7 @@ namespace jasperengine::editor{
         std::unique_ptr<TextureImporterView> textureImporter;
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
+        std::unique_ptr<AsepriteImporterView> asepriteImporter;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -891,6 +893,8 @@ namespace jasperengine::editor{
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
+        void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

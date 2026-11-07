@@ -28,6 +28,8 @@
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "sprite/SpriteSheetPool.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
@@ -807,7 +809,8 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         pivotPos.y = sprite.height / 2.0;
     }else if (sprite.pivotPreset == PivotPreset::LEFT_CENTER){
         pivotPos.y = sprite.height / 2.0;
-    }else if (sprite.pivotPreset == PivotPreset::CENTER){
+    }else if (sprite.pivotPreset == PivotPreset::CENTER || sprite.pivotPreset == PivotPreset::FRAME){
+        // inline frames carry no pivot: From Frame is the centre on a legacy sprite
         pivotPos.x = sprite.width / 2.0;
         pivotPos.y = sprite.height / 2.0;
     }
@@ -917,11 +920,11 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 // exactly, so the AABB is the quad's
 void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                                   Vector2 pivotPos, int grid){
-    const float x0 = -pivotPos.x;
-    const float x1 = sprite.width - pivotPos.x;
-    const float y0 = -pivotPos.y;
-    const float y1 = sprite.height - pivotPos.y;
+    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y, sprite.width - pivotPos.x, sprite.height - pivotPos.y, grid);
+}
 
+void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                                 float x0, float y0, float x1, float y1, int grid){
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
@@ -7295,7 +7298,177 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
     }
 }
 
+// Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
+// a zero-duration frame shows for one update
+void MeshSystem::stepSpriteTag(SpriteComponent& sprite, double dt){
+    if (!sprite.sheetData || sprite.tagFrames.empty()){
+        return;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const double step = dt * 1000.0 * sprite.tagSpeed;
+    if (step <= 0.0){
+        return;
+    }
+    if (!std::isfinite(step)){
+        return;
+    }
+    if (sprite.tagStep >= sprite.tagFrames.size()){
+        sprite.tagStep = 0;
+    }
+    auto durationOf = [&](size_t i) -> double {
+        const int f = sprite.tagFrames[i];
+        return (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
+    };
+    sprite.tagElapsedMs += step;
+    // a large step (a high speed, a long frame) goes round whole loops at once, or ends the
+    // tag, instead of stepping frame by frame: the loop below runs at most one pass
+    double loop = 0.0, rest = 0.0;
+    for (size_t i = 0; i < sprite.tagFrames.size(); i++){
+        loop += durationOf(i);
+        if (i >= sprite.tagStep) rest += durationOf(i);
+    }
+    if (sprite.tagLoop && loop > 0.0 && sprite.tagElapsedMs >= loop){
+        sprite.tagElapsedMs = std::fmod(sprite.tagElapsedMs, loop);
+    }else if (!sprite.tagLoop && sprite.tagElapsedMs >= rest){
+        sprite.tagStep = sprite.tagFrames.size() - 1;
+        sprite.tagPlaying = false;
+        sprite.tagElapsedMs = 0.0;
+        sprite.frame = sprite.tagFrames[sprite.tagStep];
+        return;
+    }
+    while (true){
+        const double duration = durationOf(sprite.tagStep);
+        if (sprite.tagElapsedMs < duration){
+            break;
+        }
+        if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
+            if (!sprite.tagLoop){
+                // finished: the last frame stays
+                sprite.tagPlaying = false;
+                sprite.tagElapsedMs = 0.0;
+                break;
+            }
+            sprite.tagStep = 0;
+        }else{
+            sprite.tagStep++;
+        }
+        sprite.tagElapsedMs -= duration;
+        if (duration <= 0.0){
+            break;
+        }
+    }
+    sprite.frame = sprite.tagFrames[sprite.tagStep];
+}
+
+bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
+    // previous one stays drawn until the new one is there (no flicker)
+    // another sheet (the Inspector, a script, a drop): its frames from now on
+    if (sprite.sheetData && sprite.loadedSheet != sprite.sheet.path){
+        sprite.sheetData.reset();
+        sprite.builtFrame = -1;
+    }
+    const uint64_t revision = SpriteSheetPool::revision();
+    if (!sprite.sheetData || sprite.sheetRevision != revision){
+        sprite.sheetRevision = revision;
+        const uint64_t generation = SpriteSheetPool::generation(sprite.sheet.path);
+        if (!sprite.sheetData || generation != sprite.sheetGeneration){
+            std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+            if (sheet){
+                sprite.sheetData = std::move(sheet);
+                sprite.loadedSheet = sprite.sheet.path;
+                sprite.sheetGeneration = SpriteSheetPool::generation(sprite.sheet.path);
+                sprite.resolveFrameName = true;
+                sprite.needUpdateSprite = true;
+            }
+        }
+    }
+    if (!sprite.sheetData || sprite.sheetData->frames.empty()){
+        return false;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const int frameCount = (int)sheet.frames.size();
+    // the frame by its saved name (a renamed file or a reordered atlas keeps the frame), else by index
+    if (sprite.resolveFrameName){
+        sprite.resolveFrameName = false;
+        if (!sprite.frameName.empty()){
+            const int named = sheet.findFrame(sprite.frameName);
+            if (named >= 0){
+                sprite.frame = named;
+            }else if (sprite.frame < 0 || sprite.frame >= frameCount){
+                Log::warn("Sprite sheet %s has no frame '%s' and %d frames: showing frame %d",
+                          sprite.sheet.path.c_str(), sprite.frameName.c_str(), frameCount, std::clamp(sprite.frame, 0, frameCount - 1));
+            }
+        }
+    }
+    sprite.frame = std::clamp(sprite.frame, 0, frameCount - 1);
+
+    const int grid = requestedSpriteGrid(mesh);
+    const int previousGrid = builtSpriteGrid(mesh);
+    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid){
+        return true;
+    }
+
+    const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
+    if (frame.page >= sheet.pages.size()){
+        return false;
+    }
+    const SpritePage& page = sheet.pages[frame.page];
+    Texture& texture = mesh.submeshes[0].material.baseColorTexture;
+    if (texture.getPath() != page.texture){
+        // the page as the base colour texture; the texture keeps the sprite's sampler settings
+        texture.setAlphaBorderAuto(true);
+        texture.setPath(page.texture);
+        mesh.submeshes[0].needUpdateTexture = true;
+    }
+
+    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    if (sprite.automaticFlipY){
+        changeFlipY(sprite.flipY, camera, mesh);
+    }
+    SpriteFrameGeometryInput input;
+    input.width = sprite.width;
+    input.height = sprite.height;
+    input.pivot = sprite.pivotPreset;
+    input.pixelsPerUnit = sheet.pixelsPerUnit;
+    input.pixelRatio = sheet.pixelRatio;
+    input.uiCamera = camera.type == CameraType::CAMERA_UI;
+    input.flipY = sprite.flipY;
+    input.pageWidth = page.width;
+    input.pageHeight = page.height;
+    const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+
+    bool rebuild = sprite.needUpdateSprite || sprite.builtFrame < 0 || sprite.builtFrame >= frameCount || previousGrid != grid;
+    if (!rebuild){
+        // frames with the same trim geometry only swap the texture rect
+        rebuild = !spriteFrameQuad(sheet.frames[(size_t)sprite.builtFrame], input).sameGeometry(quad);
+    }
+    mesh.submeshes[0].textureRect = quad.textureRect;
+    mesh.submeshes[0].hasTextureRect = true;
+    sprite.frameName = frame.name;
+    sprite.needUpdateFrameRect = false;
+    if (rebuild){
+        prepareSpriteMesh(mesh);
+        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        if (mesh.loaded){
+            // a GPU buffer keeps the size it was created with: another grid reloads the mesh
+            if (previousGrid != 0 && previousGrid != grid){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+    }
+    sprite.builtFrame = sprite.frame;
+    sprite.needUpdateSprite = false;
+    return true;
+}
+
 bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    if (!sprite.sheet.empty()){
+        return updateSheetSprite(sprite, mesh);
+    }
+
     // a lattice started or stopped deforming it, or asks for another grid
     if (!sprite.needUpdateSprite){
         const int built = builtSpriteGrid(mesh);
@@ -7507,6 +7680,9 @@ void MeshSystem::update(double dt){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
+            if (sprite.tagPlaying){
+                stepSpriteTag(sprite, dt);
+            }
             createOrUpdateSprite(sprite, mesh);
         }
     }

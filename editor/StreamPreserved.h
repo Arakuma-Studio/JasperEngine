@@ -172,6 +172,8 @@ namespace jasperengine::editor {
         // before it threw there, S03 then kept the authored text): kept as a stand-in at a
         // component's top level, reported dropped below it ("invalid value (reason)")
         void unreadableValue(const YAML::Node& value, const std::string& reason);
+        // A value read, but resolved another way than it says (an Info issue: nothing is lost)
+        void fallbackValue(const YAML::Node& value, const std::string& message);
         // The keys of a nested structure inside a component: an unknown one is reported dropped
         void checkNestedKeys(const YAML::Node& node, NestedKind kind);
         // An entity node of a type this editor does not decode (dropped)
