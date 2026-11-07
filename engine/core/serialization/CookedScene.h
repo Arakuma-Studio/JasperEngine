@@ -15,7 +15,8 @@
 // An entity record: u32 length, entity reference, flags, name, active, tag, layer, component
 // count, the component records (RuntimeFields.h). A scene's entities keep their editor ids (as
 // a Compile build's do); a prefab's are numbered from 1 (its root) and made when instantiated.
-// Readers refuse a newer major version; a newer minor adds only fields and records they skip.
+// A newer minor adds fields and records an older reader would skip, so the content would load
+// without them: readers refuse a newer major or minor version and read every older minor.
 
 #include "Export.h"
 #include "ecs/Entity.h"
@@ -24,6 +25,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine {
@@ -45,6 +47,9 @@ namespace jasperengine {
 
         // "1.0": the content-manifest's and player-info's contentFormatVersion
         JASPERENGINE_API std::string contentFormatVersion();
+        // A reader of format `reader` ("1.5") reads content of format `content`: the same major and
+        // no newer a minor. False for a version that is not "<major>.<minor>".
+        JASPERENGINE_API bool readsContentFormat(std::string_view reader, std::string_view content);
 
         struct FileHeader {
             char magic[4] = {};
@@ -57,7 +62,7 @@ namespace jasperengine {
         };
 
         // A cooked file split into its parts; false (with a message naming what to do) when it
-        // is not one, or of a newer major version
+        // is not one, or of a format this build does not read (readsContentFormat)
         struct CookedFile {
             FileHeader header;
             std::vector<std::string> strings;

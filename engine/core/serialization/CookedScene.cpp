@@ -140,6 +140,31 @@ std::string cook::contentFormatVersion() {
     return std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR);
 }
 
+namespace {
+
+    bool parseFormatVersion(std::string_view text, unsigned long& major, unsigned long& minor) {
+        const size_t dot = text.find('.');
+        if (dot == std::string_view::npos) return false;
+        auto number = [](std::string_view digits, unsigned long& out) {
+            if (digits.empty() || digits.size() > 5) return false;
+            out = 0;
+            for (char c : digits) {
+                if (c < '0' || c > '9') return false;
+                out = out * 10 + static_cast<unsigned long>(c - '0');
+            }
+            return true;
+        };
+        return number(text.substr(0, dot), major) && number(text.substr(dot + 1), minor);
+    }
+
+}
+
+bool cook::readsContentFormat(std::string_view reader, std::string_view content) {
+    unsigned long readerMajor = 0, readerMinor = 0, contentMajor = 0, contentMinor = 0;
+    if (!parseFormatVersion(reader, readerMajor, readerMinor) || !parseFormatVersion(content, contentMajor, contentMinor)) return false;
+    return readerMajor == contentMajor && contentMinor <= readerMinor;
+}
+
 bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[4], std::string& error) {
     if (bytes.size() < HEADER_BYTES) {
         error = "too small to be a cooked file";
@@ -156,9 +181,9 @@ bool CookedFile::parse(std::span<const uint8_t> bytes, const char expectedMagic[
     header.entityCount = le32(bytes.data() + 12);
     header.flags = le32(bytes.data() + 16);
     header.stringsOffset = le64(bytes.data() + 20);
-    if (header.major != FORMAT_MAJOR) {
+    if (header.major != FORMAT_MAJOR || header.minor > FORMAT_MINOR) {
         error = "content format " + std::to_string(header.major) + "." + std::to_string(header.minor) + "; this player reads " +
-                contentFormatVersion() + " (build the game with the editor of this player's version)";
+                std::to_string(FORMAT_MAJOR) + ".0 to " + contentFormatVersion() + " (build the game with the editor of this player's version)";
         return false;
     }
     if (header.stringsOffset < HEADER_BYTES || header.stringsOffset > bytes.size()) {

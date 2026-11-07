@@ -615,6 +615,32 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
+// A newer minor adds fields this player would skip (the scene would load without them): its header
+// is refused, naming the fix; an older minor's header reads
+TEST(CookedScene, RefusesANewerFormatMinor) {
+    using namespace jasperengine::cook;
+    DecodedScene source = emptyScene();
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, SceneResources{});
+    ASSERT_GE(bytes.size(), HEADER_BYTES);
+    auto withMinor = [&](uint16_t minor) {
+        std::vector<uint8_t> out = bytes;
+        out[6] = static_cast<uint8_t>(minor);
+        out[7] = static_cast<uint8_t>(minor >> 8);
+        return out;
+    };
+    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR + 1);
+    const std::vector<uint8_t> newer = withMinor(static_cast<uint16_t>(FORMAT_MINOR + 1));
+    std::string error;
+    DecodedScene loaded = emptyScene();
+    EXPECT_FALSE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(newer.data(), newer.size()), &error));
+    EXPECT_NE(error.find("content format " + newerVersion), std::string::npos) << error;
+    EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
+
+    const std::vector<uint8_t> older = withMinor(0);
+    DecodedScene oldScene = emptyScene();
+    EXPECT_TRUE(CookedSceneLoader::loadScene(oldScene.scene->scene, std::span<const uint8_t>(older.data(), older.size()), &error)) << error;
+}
+
 TEST(RuntimeFields, Generated) {
     std::vector<std::string> errors;
     const std::string emitted = editor::cook::emitRuntimeFields(errors);

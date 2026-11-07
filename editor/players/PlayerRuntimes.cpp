@@ -45,10 +45,6 @@ namespace {
         return total;
     }
 
-    std::string majorOf(const std::string& version) {
-        return version.substr(0, version.find('.'));
-    }
-
 }
 
 bool PlayerInfo::fromJson(const std::string& text, PlayerInfo& out, std::string& error) {
@@ -244,8 +240,10 @@ std::optional<PlayerInfo> PlayerRuntimes::find(const std::string& id, const fs::
             rejected.push_back(info.dir.string() + " is for editor " + info.engineVersion);
             continue;
         }
-        if (majorOf(info.contentFormatVersion) != majorOf(jasperengine::cook::contentFormatVersion())) {
-            rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion);
+        // the content this editor cooks must not have fields the player would skip
+        if (!jasperengine::cook::readsContentFormat(info.contentFormatVersion, jasperengine::cook::contentFormatVersion())) {
+            rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion + ", this editor writes " +
+                               jasperengine::cook::contentFormatVersion());
             continue;
         }
         return info;

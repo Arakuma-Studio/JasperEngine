@@ -98,9 +98,9 @@ std::vector<std::string> player::missingModules(const ContentManifest& manifest,
 
 bool player::checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access, bool verifyHashes,
                           std::vector<std::string>& problems, const std::vector<std::string>* playerModules) {
-    const std::string major = manifest.contentFormatVersion.substr(0, manifest.contentFormatVersion.find('.'));
-    if (major != std::to_string(cook::FORMAT_MAJOR)) {
-        problems.push_back("content format " + manifest.contentFormatVersion + ", this player reads " + cook::contentFormatVersion() +
+    if (!cook::readsContentFormat(cook::contentFormatVersion(), manifest.contentFormatVersion)) {
+        problems.push_back("content format " + (manifest.contentFormatVersion.empty() ? std::string("(none)") : manifest.contentFormatVersion) +
+                           ", this player reads " + std::to_string(cook::FORMAT_MAJOR) + ".0 to " + cook::contentFormatVersion() +
                            ": build the game with the editor of this player's version");
     }
     if (!playerId.empty() && manifest.playerId != playerId && !manifest.allowPlayerMismatch) {
