@@ -2125,9 +2125,9 @@ void registerViewTools(McpRegistry& registry) {
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Click the row of this message id.")}
+                {"select", integer("Click this message id's row.")}
             })},
-            {"page", string("preferences: a page's title.")},
+            {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
             {"path", string("graph_editor: file to open")},
