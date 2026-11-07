@@ -2289,6 +2289,32 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // the thresholds of the particle checks (S91 R28)
+        for (const ParticleQaField& field : particleQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const ParticleQaSettings& qa = ctx.project()->getParticleQaSettings();
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    ParticleQaSettings settings = ctx.project()->getParticleQaSettings();
+                    if (field.real) settings.*field.real = value.get<float>();
+                    else settings.*field.whole = value.get<int>();
+                    ctx.project()->setParticleQaSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
@@ -3506,6 +3532,16 @@ const Placement placements[] = {
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
     {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
+    {"particles.qa.overdraw_mobile", "Graphics", "Particle Checks", "Overdraw Layers Mobile", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_web", "Graphics", "Particle Checks", "Overdraw Layers Web", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_desktop", "Graphics", "Particle Checks", "Overdraw Layers Desktop", "particles check overdraw fill rate"},
+    {"particles.qa.cpu_ms_mobile", "Graphics", "Particle Checks", "CPU Budget Mobile (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_web", "Graphics", "Particle Checks", "CPU Budget Web (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_desktop", "Graphics", "Particle Checks", "CPU Budget Desktop (ms)", "particles check platform budget cost"},
+    {"particles.qa.blown_out_percent", "Graphics", "Particle Checks", "Blown Out (%)", "particles check additive saturated white"},
+    {"particles.qa.invisible_percent", "Graphics", "Particle Checks", "Invisible Below (%)", "particles check blank empty"},
+    {"particles.qa.pop_percent", "Graphics", "Particle Checks", "Pop (%)", "particles check death fade"},
+    {"particles.qa.fix_rounds", "Graphics", "Particle Checks", "Fix Rounds", "particles check agent"},
     {"graphics.shadow_tier.windows", "Graphics", "Shadows", "Windows Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.linux", "Graphics", "Shadows", "Linux Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.macos", "Graphics", "Shadows", "macOS Shadow Tier", "shadow quality"},

@@ -74,6 +74,9 @@ for a given seed and frame-rate independent.
   one undo step. `null` removes a key (a module: removes it); arrays are replaced whole. A patch
   that leaves the effect invalid is refused with its diagnostics `[{severity, path, message}]`.
 - `add_particle_module {module, fields}` / `remove_particle_module {module}`.
+- `edit_particle_effect {dry_run: true}` validates a patch and returns the effect it would make,
+  changing nothing. `get_particle_effect {module_fields: ["emission", "effect"]}` lists a module's
+  fields with their defaults and ranges (no path or entity needed).
 - A GameObject with an asset edits the **asset**: every system playing it changes. Make it
   inline first (`set_particle_effect effect: "inline"`) to change one GameObject only.
 - An edit that changes values only keeps the live particles (the system rebinds); one that
@@ -90,8 +93,54 @@ for a given seed and frame-rate independent.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
   put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
   same hash, which is how to tell that two runs are the same one.
+- `with_children: true` on `control_particles` and `capture_particles` acts on every Particle System
+  of the GameObject's subtree, so a multi-system effect plays, seeks and captures as a whole.
 - `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
+
+## Previewing and checking an effect
+
+`preview_particle_effect {path | entity}` is how to look at an effect and check it: it runs the
+effect (an asset, or a GameObject's whole subtree) in a private scene from a fixed seed, changing
+nothing, and returns a filmstrip (`frames`, default 6, or `times`; one framing from the whole run's
+bounds; labels `t=<seconds> <live particles>`), metrics and checks. Use `capture_particles` only to
+see the effect in its scene, from its camera.
+
+- The same request gives the same image bytes and `state_hash` on one device. Seeds: `seed` (plus
+  the system's index in a subtree), else each system's pinned one, else its effect's, else 1 plus its
+  index; the result lists them. Each cell is the middle of its share of the run.
+- `frames: 0` returns the metrics and checks only (no graphics needed, and fewer tokens).
+- Checks share S35's row: `{id, kind, status, round, measured, threshold, threshold_source,
+  limited_by, at, fix_hint, method}`. `capacity_hit` (FAIL: Max Particles refused births; a run
+  with it lifted counts them), `overdraw_budget` (peak layers per platform, WARN over
+  `particles.qa.overdraw_<platform>`, FAIL over twice), `invisible` (FAIL: nothing visible in any
+  cell), `blown_out` (WARN: additive layers clip to white; needs cells), `pop` (WARN: particles
+  dying at full alpha), `never_ends` (WARN: a one-shot still running at the end), `platform_budget`.
+- Fix what `fix_hint` says and preview again. `fixes` holds the single edits (a patch) the Particle
+  Effect window's Fix button applies. After `particles.qa.fix_rounds` failures in a row of one
+  check, stop and report the numbers. Never loosen a `particles.qa.*` threshold to pass: a result
+  lists every changed one in `thresholds.changed`.
+- **Cost is an estimate** from the bench table of docs/perf/particles.md (`cost.method:
+  estimate_from_bench_table`; mobile has no measured row). Never report it as measured, and never
+  say an effect runs on a phone from it: device sign-off is manual.
+- `scene_context` lists what the private scene does not have: colliders, force fields, the world
+  budget, triggers. Preview the effect in its scene (Play, `capture_particles`) for those.
+- `overdraw_map: true` adds a GPU heat row under the cells (layers as a ramp) and
+  `metrics.overdraw.heat`, a cross-check of the analytic layers.
+- `fail_on: fail|warn` makes the result an error at that verdict (`jasperengine-editor call` exits
+  1). Longer runs are jobs: `wait: false` returns `job_id`; `get_job` has the metrics, not the
+  image, so pass `save_path` to keep it. Do not batch previews: `batch` drops images.
+- `jasperengine-editor check --project <dir> --particles [--fail-on warn]` reports the checks of
+  every `.particles` (or `--files`) at its default seed, compiler style; a FAIL is an error (exit 1).
+
+### Bake Sprite Sheet
+
+`bake_particle_sheet {path | entity, columns, rows, cell_size, seconds}` runs the same preview and
+draws `columns x rows` frames (each the middle of its share of the run) into one PNG with straight alpha (additive light
+keeps its brightest channel as alpha). Without `output` nothing is written; with `output:
+"assets/fx/smoke_sheet"` it writes `smoke_sheet.png` and `smoke_sheet.particles` (one particle the
+size of the frame playing the sheet through Texture Sheet Animation) as one undo step
+`undo {scope: "project"}` removes. `set_particle_effect` then plays it.
 
 ## Lua
 

@@ -1285,6 +1285,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp
     ${EDITOR_DIR}/window/widget/SelectableTextView.cpp
+    ${EDITOR_DIR}/window/widget/ParticleChecksPanel.cpp
 
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
@@ -1372,6 +1373,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundSearch.cpp
     ${EDITOR_DIR}/audio/AudioBaseline.cpp
     ${EDITOR_DIR}/audio/AudioQa.cpp
+    ${EDITOR_DIR}/util/QaChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleQaSettings.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectPreview.cpp
+    ${EDITOR_DIR}/particles/ParticlePreviewSource.cpp
+    ${EDITOR_DIR}/particles/ParticleSheetBake.cpp
     ${EDITOR_DIR}/audio/AudioQaSettings.cpp
     ${EDITOR_DIR}/audio/AudioSessionReader.cpp
     ${EDITOR_DIR}/audio/AudioTimelineImage.cpp
