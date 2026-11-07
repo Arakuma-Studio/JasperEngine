@@ -55,6 +55,22 @@ shaderKeys:
     properties: 8589935704
   - type: mesh
     properties: 8589935706
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 68719477850
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 77309412442
+  - type: mesh
+    properties: 4398046512216
+  - type: mesh
+    properties: 4398046512218
+  - type: mesh
+    properties: 4406636446808
+  - type: mesh
+    properties: 4406636446810
   - type: sky
   - type: depth
   - type: blit
@@ -68,10 +84,34 @@ shaderKeys:
     properties: 8589935704
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 4398046512216
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 4406636446808
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
     properties: 1114
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8589935706
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477850
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412442
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 4398046512218
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 4406636446810
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity
