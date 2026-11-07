@@ -16,10 +16,14 @@ ProcMatThumbnails::~ProcMatThumbnails() = default;
 
 void ProcMatThumbnails::setGraph(const graph::Graph& graph) {
     current = graph;
+    // their keys were the graph's before: drawn from this one they would picture what the key does not
+    wanted.clear();
 }
 
 void ProcMatThumbnails::setRequests(std::vector<Request> requests) {
     std::stable_sort(requests.begin(), requests.end(), [](const Request& a, const Request& b) { return a.priority > b.priority; });
+    // more than the cache holds would drop a wanted image to draw another, forever: the most wanted only
+    if (requests.size() > CAPACITY) requests.resize(CAPACITY);
     wanted = std::move(requests);
     clock++;
     for (const Request& request : wanted) {
@@ -118,7 +122,8 @@ void ProcMatThumbnails::evict() {
     while (images.size() > CAPACITY) {
         auto oldest = images.end();
         for (auto it = images.begin(); it != images.end(); ++it) {
-            if (it->first == drawing) continue;
+            const bool isWanted = std::any_of(wanted.begin(), wanted.end(), [&](const Request& r) { return r.id == it->first; });
+            if (it->first == drawing || isWanted) continue;
             if (oldest == images.end() || it->second.used < oldest->second.used) oldest = it;
         }
         if (oldest == images.end()) return;
@@ -145,8 +150,10 @@ bool ProcMatThumbnails::update(double budgetMs) {
         if (done) finish(result);
     }
     if (!drawing.empty()) return true;
+    // an image whose plan failed for its key is not waited for
     for (const Request& request : wanted) {
-        if (isOutOfDate(request.id)) return true;
+        auto it = images.find(request.id);
+        if (it == images.end() || it->second.image.key != request.key) return true;
     }
     return false;
 }
@@ -175,6 +182,8 @@ bool ProcMatThumbnails::isOutOfDate(const std::string& id) const {
     auto want = std::find_if(wanted.begin(), wanted.end(), [&](const Request& r) { return r.id == id; });
     auto it = images.find(id);
     if (it == images.end()) return true;
+    // a plan that failed leaves the picture of the graph before
+    if (!it->second.image.error.empty()) return true;
     if (want == wanted.end()) return false;
     return it->second.image.key != want->key;
 }

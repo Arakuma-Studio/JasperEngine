@@ -134,7 +134,14 @@ bool ProceduralMaterialWindow::processFrame(){
     bool busy = false;
     const std::vector<ProceduralMaterialWindow*> all = windows();
     for (ProceduralMaterialWindow* window : all){
-        if (window->isOpen() && window->getDocument()) busy = window->update(t) || busy;
+        if (window->isOpen() && window->getDocument()){
+            busy = window->update(t) || busy;
+            continue;
+        }
+        // closed: it keeps no evaluator, image or texture (a disabled feature costs nothing)
+        if (window->material) window->dropSessions();
+        for (Texture& texture : window->retired) texture.destroy();
+        window->retired.clear();
     }
     // the passes drawn here are committed as a view's are: a read back waits for the commit of the
     // frame that drew, and an editor whose scenes are idle commits nothing else
@@ -200,8 +207,11 @@ bool ProceduralMaterialWindow::update(double time){
     bool busy = false;
 
     const bool stale = material->isStale();
-    if (stale && !material->isRebuildPending() && evaluationStarted < 0.0) evaluationStarted = now;
+    const bool pendingBefore = material->isRebuildPending();
     material->update(now, FRAME_BUDGET_MS * 0.5);
+    // a rebuild started (its debounce ran out): the estimate times those, never a value edit, which
+    // redraws only from the pass it changed
+    if (pendingBefore && !material->isRebuildPending()) evaluationStarted = now;
     if (stale && !material->isStale() && material->hasImage()){
         materialSerial++;
         if (evaluationStarted >= 0.0) lastEvaluationSeconds = now - evaluationStarted;
@@ -245,6 +255,19 @@ bool ProceduralMaterialWindow::setMetadata(const std::string& key, const GraphJs
 }
 
 void ProceduralMaterialWindow::documentChanged(){
+    const graph::Graph& current = getDocument()->graph();
+    // a pin of a node that is gone
+    for (int slot = 0; slot < PIN_SLOTS; slot++){
+        if (!pins[(size_t)slot].node.empty() && !current.findNode(pins[(size_t)slot].node)) clearPin(slot);
+    }
+    // the rows (and their fixes) were of the image before this revision
+    report = nlohmann::json();
+    reportProblems.clear();
+    // a closed window replans nothing: its frameStarted does when it shows again
+    if (!isOpen()){
+        dropSessions();
+        return;
+    }
     ensureSessions();
     if (!material) return;
     const graph::Graph& g = getDocument()->graph();
@@ -269,6 +292,8 @@ void ProceduralMaterialWindow::documentChanged(){
 
 void ProceduralMaterialWindow::documentClosed(){
     dropSessions();
+    // the next graph's ball starts from no texture, not the last graph's
+    if (ballMaterial) *ballMaterial = Material();
     pins = {};
     activePin = -1;
     variationsOpen = false;
@@ -387,9 +412,15 @@ std::vector<int> ProceduralMaterialWindow::variationSeeds() const{
     return out;
 }
 
+bool ProceduralMaterialWindow::isVariationCurrent(size_t index) const{
+    const std::string id = VARIATION_PREFIX + std::to_string(index);
+    return thumbs->image(id) && !thumbs->isOutOfDate(id);
+}
+
 bool ProceduralMaterialWindow::adoptVariation(size_t index){
     const std::vector<int> seeds = variationSeeds();
-    if (index >= seeds.size() || seedLocked()) return false;
+    // a click adopts the seed it pictures: not while the cell still shows other seeds' image
+    if (index >= seeds.size() || seedLocked() || !isVariationCurrent(index)) return false;
     return setMetadata(META_SEED, seeds[index], "Use Variation Seed");
 }
 
@@ -521,11 +552,33 @@ procmat::EvaluatorTier ProceduralMaterialWindow::tier() const{
     return materialDevice ? materialDevice->tier() : procmat::EvaluatorTier::Gpu;
 }
 
+bool ProceduralMaterialWindow::tierKnown() const{
+    return services.tierKnown;
+}
+
+std::string ProceduralMaterialWindow::tierLabel() const{
+    return tierKnown() ? procmat::evaluatorTierName(tier()) : "unknown";
+}
+
+procmat::EvaluatorTier ProceduralMaterialWindow::budgetTier() const{
+    // a device nobody named may be a software renderer: R24's tier 2 budget, never every node per frame
+    return tierKnown() ? tier() : procmat::EvaluatorTier::Software;
+}
+
+std::vector<std::string> ProceduralMaterialWindow::ballOutputs() const{
+    std::vector<std::string> out;
+    for (const auto& [name, upload] : outputUploads){
+        if (upload.serial != 0) out.push_back(name);
+    }
+    return out;
+}
+
 std::string ProceduralMaterialWindow::deviceName() const{
     return materialDevice ? materialDevice->deviceName() : std::string();
 }
 
 std::string ProceduralMaterialWindow::tierReason() const{
+    if (!tierKnown()) return std::string();
     switch (tier()){
         case procmat::EvaluatorTier::Cpu: return "No GPU available, baking on the CPU.";
         case procmat::EvaluatorTier::Software: return "No GPU available, baking on the software renderer.";
@@ -549,8 +602,10 @@ bool ProceduralMaterialWindow::canBake(std::string* why) const{
     if (!getDocument()) return refuse("No graph is open.");
     if (!services.startBake) return refuse("This editor has no bake.");
     if (services.bakeState && services.bakeState().running) return refuse("A bake is running.");
-    for (const Problem& problem : problems()){
-        if (problem.severity == graph::Severity::Error) return refuse("The graph has errors: fix them first.");
+    // the graph's own errors refuse it; a quality check's FAIL is the user's (or the agent's) to weigh
+    if (!getDocument()->loadError().empty()) return refuse("The graph does not load.");
+    for (const graph::Issue& issue : getDocument()->issues()){
+        if (issue.severity == graph::Severity::Error) return refuse("The graph has errors: fix them first.");
     }
     return true;
 }
@@ -652,7 +707,7 @@ void ProceduralMaterialWindow::buildRequests(){
     if (!getDocument()) return;
     const graph::Graph& g = getDocument()->graph();
     const double s = graphSeed();
-    const procmat::EvaluatorTier t = tier();
+    const procmat::EvaluatorTier t = budgetTier();
     std::set<std::string> added;
     const auto add = [&](const std::string& id, int priority){
         if (!added.insert(id).second) return;
@@ -761,7 +816,18 @@ void ProceduralMaterialWindow::upload(Upload& target, const std::vector<uint8_t>
 
 void ProceduralMaterialWindow::uploadImages(){
     if (material && material->hasImage()){
-        for (const procmat::OutputImage& image : material->latest().outputs){
+        const auto& outputs = material->latest().outputs;
+        // an output the material no longer has (a disconnected Emission) leaves the ball too
+        for (auto it = outputUploads.begin(); it != outputUploads.end();){
+            const bool kept = std::any_of(outputs.begin(), outputs.end(), [&](const procmat::OutputImage& image){ return image.name == it->first; });
+            if (kept){
+                ++it;
+            }else{
+                retire(it->second);
+                it = outputUploads.erase(it);
+            }
+        }
+        for (const procmat::OutputImage& image : outputs){
             Upload& shown = outputUploads[image.name];
             if (shown.serial != materialSerial) upload(shown, image.rgba, image.width, materialSerial);
         }
@@ -807,7 +873,7 @@ void ProceduralMaterialWindow::updateBall(){
 // ---------------------------------------------------------------- the frame
 
 void ProceduralMaterialWindow::frameStarted(){
-    ensureSessions();
+    if (!material) documentChanged();
     // the nodes whose image slot the canvas drew last frame: tier 1 draws those
     visible = std::move(nextVisible);
     nextVisible.clear();
@@ -876,10 +942,10 @@ void ProceduralMaterialWindow::drawImage(ImTextureID texture, const ImVec2& size
 }
 
 void ProceduralMaterialWindow::drawDevice(){
-    const procmat::EvaluatorTier t = tier();
+    const std::string label = tierLabel();
     const std::string name = deviceName();
-    ImGui::TextDisabled("Device: %s", procmat::evaluatorTierName(t));
-    UIProbe::item(std::string("procmat.tier.") + procmat::evaluatorTierName(t));
+    ImGui::TextDisabled("Device: %s", tierKnown() ? label.c_str() : "tier unknown");
+    UIProbe::item("procmat.tier." + label);
     if (!name.empty()){
         // a renderer's name is long ("llvmpipe (LLVM 15.0.7, 256 bits)"): its own wrapped line
         ImGui::PushTextWrapPos(0.0f);
@@ -907,13 +973,19 @@ void ProceduralMaterialWindow::drawVariations(){
         ImGui::PushID(i);
         const std::string id = VARIATION_PREFIX + std::to_string(i);
         const ImVec2 at = ImGui::GetCursorScreenPos();
-        ImGui::BeginDisabled(locked);
+        const bool current = isVariationCurrent((size_t)i);
+        ImGui::BeginDisabled(locked || !current);
         const bool clicked = ImGui::InvisibleButton("##variation", ImVec2(cell, cell));
         ImGui::EndDisabled();
         UIProbe::item("procmat.variation." + std::to_string(i));
+        if (current) UIProbe::item("procmat.variation." + std::to_string(i) + ".current");
         ImDrawList* list = ImGui::GetWindowDrawList();
         list->AddRectFilled(at, ImVec2(at.x + cell, at.y + cell), IM_COL32(24, 24, 24, 255));
         Widgets::addImage(list, thumbnailTexture(id), at, ImVec2(at.x + cell, at.y + cell));
+        if (!current){
+            list->AddRectFilled(at, ImVec2(at.x + cell, at.y + cell), IM_COL32(0, 0, 0, 110));
+            list->AddText(ImVec2(at.x + 4.0f, at.y + 2.0f), IM_COL32(255, 220, 120, 255), ICON_FA_CLOCK);
+        }
         if (ImGui::IsItemHovered()) list->AddRect(at, ImVec2(at.x + cell, at.y + cell), IM_COL32(255, 255, 255, 160));
         ImGui::SetItemTooltip("Seed %d: click to use it", seeds[(size_t)i]);
         if (clicked) adoptVariation((size_t)i);
@@ -1016,8 +1088,15 @@ void ProceduralMaterialWindow::drawPreviewPane(){
         Texture rendered = ball->getTexture();
         ballTexture = Backend::getImGuiTexture(rendered.getRender());
     }
+    const ImVec2 ballAt = ImGui::GetCursorScreenPos();
     Widgets::image(ballTexture, ImVec2(half, half), IM_COL32(24, 24, 24, 255));
     UIProbe::item("procmat.preview.ball");
+    const bool ballOutOfDate = !ball || ball->isPending() || !material || material->isStale() || !material->hasImage();
+    if (ballOutOfDate){
+        ImGui::GetWindowDrawList()->AddText(ImVec2(ballAt.x + 4.0f, ballAt.y + 2.0f), IM_COL32(255, 220, 120, 255), ICON_FA_CLOCK);
+    }else if (ballTexture != ImTextureID{}){
+        UIProbe::item("procmat.preview.ball.current");
+    }
     ImGui::SameLine();
 
     // the output shown, as a 2×2 tile
@@ -1073,7 +1152,7 @@ void ProceduralMaterialWindow::drawPreviewPane(){
     ImGui::SameLine();
     std::string label = ICON_FA_FILE_EXPORT " Bake";
     const double estimate = bakeEstimateSeconds(bakeSizeValue);
-    if (tier() != procmat::EvaluatorTier::Gpu && estimate >= 0.0){
+    if (budgetTier() != procmat::EvaluatorTier::Gpu && estimate >= 0.0){
         char text[48];
         if (estimate < 60.0) std::snprintf(text, sizeof(text), " (about %.0f s)", std::max(1.0, std::ceil(estimate)));
         else std::snprintf(text, sizeof(text), " (about %.0f min)", std::ceil(estimate / 60.0));

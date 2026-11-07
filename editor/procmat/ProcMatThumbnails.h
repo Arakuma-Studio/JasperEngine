@@ -65,8 +65,9 @@ namespace jasperengine::editor::procmat {
         ProcMatThumbnails& operator=(const ProcMatThumbnails&) = delete;
 
         void setGraph(const graph::Graph& graph);
-        // the frame's requests, replacing the last frame's; what is not asked for again is never
-        // started, and one in flight that is no longer asked for is cancelled (the CPU tier's job)
+        // the frame's requests, replacing the last frame's (the CAPACITY most wanted); what is not asked
+        // for again is never started, and one in flight that is no longer asked for is cancelled (the
+        // CPU tier's job). A new graph drops them: their keys were the graph's before.
         void setRequests(std::vector<Request> requests);
         // Starts or advances the image in flight within budgetMs; at most one finishes per call.
         // True while a request still waits for its image.
@@ -76,7 +77,8 @@ namespace jasperengine::editor::procmat {
 
         // the latest image of `id` (whatever its key), null for none
         const Image* image(const std::string& id) const;
-        // `id`'s image is not of its latest key (or there is none yet)
+        // `id`'s image is not of its latest key, its plan failed (the picture is of the graph before), or
+        // there is none yet
         bool isOutOfDate(const std::string& id) const;
         // the request being drawn, "" for none
         const std::string& inFlight() const { return drawing; }

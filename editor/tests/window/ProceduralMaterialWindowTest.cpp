@@ -118,12 +118,14 @@ namespace {
     struct Fake {
         std::vector<std::shared_ptr<ImageEvaluator::Counts>> made;
         EvaluatorTier tier = EvaluatorTier::Gpu;
+        bool tierKnown = true;
         int slices = 1;
         nlohmann::json report;
         std::vector<ProceduralMaterialWindow::BakeRequest> bakes;
 
         ProceduralMaterialWindow::Services services() {
             ProceduralMaterialWindow::Services out;
+            out.tierKnown = tierKnown;
             out.makeEvaluator = [this]() {
                 made.push_back(std::make_shared<ImageEvaluator::Counts>());
                 return std::unique_ptr<procmat::ProceduralEvaluator>(new ImageEvaluator(made.back(), tier, slices));
@@ -479,4 +481,123 @@ TEST_F(ProceduralMaterialWindowTest, TheStarterGraphIsValidAndDraws) {
     EXPECT_TRUE(window.problems().empty());
     window.prepareForProjectSwitch();
     EXPECT_FALSE(window.materialSession()) << "a project switch drops the sessions";
+}
+
+// review I3: the ball takes only the outputs the material has now: a disconnected Emission leaves it
+TEST_F(ProceduralMaterialWindowTest, TheBallDropsAnOutputTheMaterialNoLongerHas) {
+    Fake fake;
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("ball")));
+    ASSERT_TRUE(window.connect("n1", "output", "n3", "emission"));
+    Frames frames;
+    settle(window, frames);
+    std::vector<std::string> outputs = window.ballOutputs();
+    EXPECT_NE(std::find(outputs.begin(), outputs.end(), "emission"), outputs.end());
+    const graph::Edge* wire = nullptr;
+    for (const graph::Edge& edge : window.getDocument()->graph().edges) {
+        if (edge.to.port == "emission") wire = &edge;
+    }
+    ASSERT_TRUE(wire);
+    ASSERT_TRUE(window.getDocument()->apply({{"disconnect", {{"id", wire->id}}}}, "Disconnect", nullptr));
+    settle(window, frames);
+    outputs = window.ballOutputs();
+    EXPECT_EQ(std::find(outputs.begin(), outputs.end(), "emission"), outputs.end()) << "Emission is gone from the ball";
+    EXPECT_NE(std::find(outputs.begin(), outputs.end(), "base_color"), outputs.end());
+}
+
+// review I4: a device whose tier nobody detected is shown as such, with R24's tier 2 budget, never as a GPU
+TEST_F(ProceduralMaterialWindowTest, AnUndetectedTierIsUnknownAndBudgetedAsSoftware) {
+    Fake fake;
+    fake.tierKnown = false;
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("unknown_tier")));
+    Frames frames;
+    step(window, frames);
+    window.selectNodes({"n1"});
+    step(window, frames);
+    step(window, frames);
+    EXPECT_FALSE(window.tierKnown());
+    EXPECT_EQ(window.tierLabel(), "unknown");
+    EXPECT_FALSE(has(window.thumbnailRequests(), "n2")) << "no image of every visible node on a device that may be software";
+    EXPECT_TRUE(has(window.thumbnailRequests(), "n3"));
+    EXPECT_EQ(window.tierReason(), "");
+}
+
+// review I5: a Variations cell adopts only the seed it pictures: not while its image is of other seeds
+TEST_F(ProceduralMaterialWindowTest, AVariationIsAdoptedOnlyOnceItsImageIsCurrent) {
+    Fake fake;
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("cells")));
+    window.setVariationsOpen(true);
+    Frames frames;
+    settle(window, frames);
+    ASSERT_TRUE(window.isVariationCurrent(2));
+    ASSERT_TRUE(window.setSeed(77));
+    step(window, frames);
+    EXPECT_FALSE(window.isVariationCurrent(2)) << "the cell pictures the previous seeds";
+    EXPECT_FALSE(window.adoptVariation(2));
+    EXPECT_EQ(window.seed(), 77);
+    settle(window, frames);
+    EXPECT_TRUE(window.isVariationCurrent(2));
+    EXPECT_TRUE(window.adoptVariation(2));
+}
+
+// review M2: the estimate is a rebuild's: a value edit, which redraws from the edited pass, leaves it
+TEST_F(ProceduralMaterialWindowTest, AValueEditLeavesTheBakeEstimate) {
+    Fake fake;
+    fake.slices = 3;
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("estimate")));
+    Frames frames;
+    for (int i = 0; i < 10; i++) step(window, frames, 0.1);
+    const double estimate = window.bakeEstimateSeconds(1024);
+    ASSERT_GT(estimate, 0.0);
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.7));
+    for (int i = 0; i < 10; i++) step(window, frames, 0.5);
+    EXPECT_DOUBLE_EQ(window.bakeEstimateSeconds(1024), estimate);
+}
+
+// review M5, M7, M8, M9: a closed window keeps no sessions; a quality FAIL does not block a bake; a
+// pinned node deleted unpins; check rows go with the image they were made from
+TEST_F(ProceduralMaterialWindowTest, ClosedPinsRowsAndBake) {
+    Fake fake;
+    fake.report = {{"checks", nlohmann::json::array({{{"id", "tileability"}, {"kind", "metric"}, {"status", "FAIL"}, {"measured", 3.2}}})}};
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("closed")));
+    Frames frames;
+    settle(window, frames);
+    auto hasRow = [&](const std::string& code) {
+        for (const auto& row : window.problems()) if (row.code == code) return true;
+        return false;
+    };
+    ASSERT_TRUE(hasRow("tileability"));
+    EXPECT_TRUE(window.canBake()) << "a quality check's FAIL is the agent's to weigh, not a refusal";
+
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.6));
+    EXPECT_FALSE(hasRow("tileability")) << "rows of the image before the edit";
+    settle(window, frames);
+    EXPECT_TRUE(hasRow("tileability"));
+
+    window.selectNodes({"n1"});
+    window.clickPin(0);
+    window.selectNodes({"n1"});
+    ASSERT_TRUE(window.removeSelection());
+    EXPECT_TRUE(window.pinnedTarget(0).node.empty()) << "the pin of a deleted node";
+    EXPECT_EQ(window.shownSlot(), -1);
+
+    window.setOpen(false);
+    ProceduralMaterialWindow::processFrame();
+    EXPECT_FALSE(window.materialSession()) << "a closed window keeps no sessions";
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.2));
+    EXPECT_FALSE(window.materialSession());
+    window.setOpen(true);
+    frames.frame(window);
+    ASSERT_TRUE(window.materialSession());
+    settle(window, frames);
+    EXPECT_TRUE(window.materialSession()->hasImage());
 }

@@ -168,9 +168,11 @@ async def test_double_click_opens_the_material_with_its_images_and_device(ed: Ed
     await rect_of(ed, "procmat.thumb.n3", "the Material Output's image", 60)
     await rect_of(ed, "procmat.preview.current", "the material's image", 60)
     await rect_of(ed, "procmat.preview.output.base_color", "the Base Color image")
+    await rect_of(ed, "procmat.preview.ball.current", "the lit ball of the material, drawn", 60)
     tiers = [name for name in ed.ui_items() if name.startswith("procmat.tier.") and name != "procmat.tier.reason"]
-    # the harness' editor draws on llvmpipe: software once the tiers detect it (S90 R8)
-    ed.check(tiers and tiers[0] in ("procmat.tier.gpu", "procmat.tier.software"), f"the tier line: {tiers}")
+    # the harness' editor draws on llvmpipe: never "gpu"; "unknown" until the tiers are detected, then "software"
+    ed.check("procmat.tier.gpu" not in tiers and tiers and tiers[0] in ("procmat.tier.unknown", "procmat.tier.software"),
+             f"the tier line on llvmpipe: {tiers}")
     await shot(ed, "opened")
 
 
@@ -240,7 +242,7 @@ async def test_a_variation_click_adopts_its_seed(ed: Editor):
     before = graph_file(ed).get("metadata", {}).get("seed", 0)
     await click(ed, center(await rect_of(ed, "procmat.variations", "the Variations button")))
     cell = await rect_of(ed, "procmat.variation.3", "the fourth variation")
-    await rect_of(ed, "procmat.thumb.n3", "the material's image")
+    await rect_of(ed, "procmat.variation.3.current", "the fourth variation's image, of its seed", 60)
     await shot(ed, "variations")
     await click(ed, center(cell))
     seed = graph_file(ed).get("metadata", {}).get("seed")

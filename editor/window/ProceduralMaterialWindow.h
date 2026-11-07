@@ -79,6 +79,8 @@ namespace jasperengine::editor{
 
         // What the window takes from the rest of S90, so each part stays where it is made
         struct Services{
+            // the evaluators' tier was detected (R8); false: the device is named, its tier is not claimed
+            bool tierKnown = false;
             // an evaluator for one view of a graph, on the editor's device in R8's order
             std::function<std::unique_ptr<procmat::ProceduralEvaluator>()> makeEvaluator;
             // the device image of an output its evaluation left there (no read back); null: the
@@ -116,6 +118,8 @@ namespace jasperengine::editor{
         bool rerollSeed();
         // the 9 seeds the Variations grid shows: the same until the seed changes
         std::vector<int> variationSeeds() const;
+        // cell `index` pictures its seed of the graph as it is
+        bool isVariationCurrent(size_t index) const;
         void setVariationsOpen(bool open) { variationsOpen = open; }
         bool isVariationsOpen() const { return variationsOpen; }
         // the seed of cell `index` becomes the graph's (refused while locked)
@@ -151,6 +155,9 @@ namespace jasperengine::editor{
 
         // ---- device and bake (R27)
         procmat::EvaluatorTier tier() const;
+        bool tierKnown() const;
+        // "gpu", "software", "cpu", or "unknown" while no detection names it
+        std::string tierLabel() const;
         std::string deviceName() const;
         // "No GPU available, baking on the CPU." on tier 3, the software renderer's on tier 2, else ""
         std::string tierReason() const;
@@ -165,6 +172,8 @@ namespace jasperengine::editor{
         // one op on the row's node is its Fix
         static std::vector<Problem> problemsFromReport(const nlohmann::json& report);
 
+        // (tests) the outputs of the material the ball shows
+        std::vector<std::string> ballOutputs() const;
         // (tests) the sessions and the images
         const procmat::ProceduralSession* materialSession() const { return material.get(); }
         const procmat::ProceduralSession* focusSession() const { return focus.get(); }
@@ -237,6 +246,8 @@ namespace jasperengine::editor{
         void ensureSessions();
         void dropSessions();
         double graphSeed() const;
+        // the tier R24's budget follows: the detected one, tier 2 while none is
+        procmat::EvaluatorTier budgetTier() const;
         bool setMetadata(const std::string& key, const graph::Json& value, const std::string& undoName);
         const graph::Json& metadata(const std::string& key) const;
         void computeKeys();

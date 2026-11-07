@@ -645,12 +645,15 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   (`ProceduralMaterialWindow::processFrame`) and commit what they drew there: a read back waits for the commit of the
   frame that drew, and an editor whose scenes are idle commits nothing else (the first MCP run found the preview stuck
   out of date).
-- **The Bake estimate** is the preview's last evaluation time scaled by pixels, `t · (size / 256)²`, shown on tiers 2
-  and 3 as "about N s" (R25: both tiers scale with pixels).
+- **The Bake estimate** is the preview's last rebuild (from its debounce to its image, wall clock, so frame pacing is
+  in it) scaled by pixels, `t · (size / 256)²`, shown on tiers 2 and 3 as "about N s" (R25: both tiers scale with
+  pixels). A value edit's redraw is not timed.
+- **Variations** cells take a click only once their image is of their seed (a clock marks the others).
 - **Seams to the bake and the tiers** (`ProceduralMaterialWindow::Services`): the evaluator factory, the device image,
   the check report (`{checks, fixes: [{check, node, op}]}`: a fix of one op is the row's Fix) and the bake. Until
-  s90-bake and s90-tiers land, the defaults are the GPU evaluator named `gpu`, no check rows and no bake (the button
-  says why).
+  s90-bake and s90-tiers land, the defaults are the GPU evaluator with its tier not claimed (the pane names the
+  device, "tier unknown", and R24's tier 2 budget applies, since the device may be a software renderer), no check rows
+  and no bake (the button says why). A check FAIL does not refuse a bake; the graph's own errors do.
 - **M6's preset finding.** A gradient preset saved from a 32-key ramp reloads with its 32 keys on this base
   (`SwatchLibrary.AGradientPresetKeepsAGraphRampsKeys` passes without a change): the swatch library's native format
   is read without `normalize()`, which only the upstream dialect calls. Dropped.

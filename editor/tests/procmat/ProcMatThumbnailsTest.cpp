@@ -158,3 +158,65 @@ TEST_F(ProcMatThumbnailsTest, ANodeThatCannotBePlannedIsTriedOncePerKey) {
     EXPECT_FALSE(thumbs->update(8.0));
     EXPECT_EQ(counts->prepares, 0);
 }
+
+// review I1: more images wanted at once than the cache holds: the most wanted CAPACITY are kept and
+// drawn once, and the cache settles (no image is dropped and drawn again forever)
+TEST_F(ProcMatThumbnailsTest, MoreImagesWantedThanTheCacheHoldsSettle) {
+    auto thumbs = make();
+    graph::Graph many;
+    many.kind = PROCEDURAL_MATERIAL_KIND;
+    std::vector<ProcMatThumbnails::Request> all;
+    for (size_t i = 0; i < ProcMatThumbnails::CAPACITY + 10; i++) {
+        graph::Node node;
+        node.id = "p" + std::to_string(i);
+        node.type = "perlin";
+        many.nodes.push_back(node);
+        all.push_back(request(node.id, 1, (int)i));
+    }
+    std::sort(many.nodes.begin(), many.nodes.end(), [](const graph::Node& a, const graph::Node& b) { return graph::idLess(a.id, b.id); });
+    thumbs->setGraph(many);
+    int frames = 0;
+    do {
+        thumbs->setRequests(all);
+        frames++;
+    } while (thumbs->update(8.0) && frames < 1000);
+    EXPECT_LT(frames, 1000) << "it settles";
+    EXPECT_EQ(thumbs->finishedCount(), ProcMatThumbnails::CAPACITY) << "each kept image drawn once";
+    EXPECT_EQ(thumbs->size(), ProcMatThumbnails::CAPACITY);
+    EXPECT_TRUE(thumbs->image("p" + std::to_string(ProcMatThumbnails::CAPACITY + 9))) << "the most wanted kept";
+    EXPECT_FALSE(thumbs->image("p0")) << "the least wanted left out";
+}
+
+// review I2: requests keyed to the graph before an edit are not drawn from the edited graph
+TEST_F(ProcMatThumbnailsTest, AnEditedGraphDrawsNothingUnderTheOldKeys) {
+    auto thumbs = make();
+    thumbs->setGraph(file);
+    thumbs->setRequests({request("n1", 1)});
+    file.nodes[0].params["scale_x"] = 9.0;
+    thumbs->setGraph(file);
+    EXPECT_FALSE(thumbs->update(8.0)) << "the old requests are gone with the old graph";
+    EXPECT_FALSE(thumbs->image("n1"));
+    EXPECT_EQ(counts->prepares, 0);
+    thumbs->setRequests({request("n1", 2)});
+    while (thumbs->update(8.0)) {}
+    ASSERT_TRUE(thumbs->image("n1"));
+    EXPECT_EQ(thumbs->image("n1")->key, 2u);
+}
+
+// review M6: an image whose new plan fails is out of date (its picture is of the graph before), and
+// nothing waits for it
+TEST_F(ProcMatThumbnailsTest, AnImageWhoseNewPlanFailsIsOutOfDate) {
+    auto thumbs = make();
+    thumbs->setGraph(file);
+    thumbs->setRequests({request("n1", 1)});
+    while (thumbs->update(8.0)) {}
+    ASSERT_FALSE(thumbs->isOutOfDate("n1"));
+    file.nodes[0].params["iterations"] = "many";
+    thumbs->setGraph(file);
+    thumbs->setRequests({request("n1", 2)});
+    EXPECT_FALSE(thumbs->update(8.0));
+    ASSERT_TRUE(thumbs->image("n1"));
+    EXPECT_FALSE(thumbs->image("n1")->error.empty());
+    EXPECT_TRUE(thumbs->isOutOfDate("n1"));
+    EXPECT_FALSE(thumbs->update(8.0));
+}

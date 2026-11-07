@@ -11,8 +11,8 @@ search, the Inspector rows, Copy and Paste, Arrange and Esc work as they do ther
 Every node shows the image of its first output and what drawing it took on this device ("1.2 ms",
 the node and everything that feeds it, at 128²). An image whose node changed stays, dimmed with a
 clock, until its new one is drawn. One image is finished per frame, the selected node first, so a
-large graph fills in over a few frames. On a software renderer (tier 2) only the selected node and
-the Material Output get images; with no GPU at all (tier 3) only the selected node does, and
+large graph fills in over a few frames. On a software renderer (tier 2), and on a device whose tier
+is not detected, only the selected node and the Material Output get images; with no GPU at all (tier 3) only the selected node does, and
 selecting another node stops it.
 
 ## Preview
@@ -33,7 +33,7 @@ previous image stays, marked Out of date.
 
 **Seed** is the graph's seed: every node's random values derive from it and from the node's own
 seed. **Reroll** picks a new one. **Variations** shows the material at 9 other seeds; click one to
-use its seed. **Lock** keeps the seed: the field, Reroll and Variations leave it alone, so a bake
+use its seed; a cell whose image is still of the previous seeds shows a clock and takes no click. **Lock** keeps the seed: the field, Reroll and Variations leave it alone, so a bake
 gives the same images. Each change is one undo step, stored in the file.
 
 ## Exposed Properties and Presets
@@ -50,7 +50,8 @@ the generator refuses) and the rows of the material's checks (the agent's
 `preview_procedural_material`); **Fix** applies a check's fix when it is a single edit, and a click
 selects the node it is about.
 
-The pane always says which device draws (`gpu`, `software` or `cpu`, and its name). On a software
+The pane always says which device draws: its name, and its tier (`gpu`, `software` or `cpu`) when it
+is detected, "tier unknown" otherwise. On a software
 renderer or the CPU it says why ("No GPU available, baking on the CPU.") and **Bake** shows its
 estimated time at the size picked, from how long the preview took. A graph with errors cannot be
 baked.
