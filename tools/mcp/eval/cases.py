@@ -1304,6 +1304,8 @@ CASES = [
         "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"pass_index": 0, "name": "strength"}}],
                    "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
         "max_turns": 10,
+    },
+    {
         "id": "bad_batch_breaks",
         "kind": "bad",
         "playing": True,
