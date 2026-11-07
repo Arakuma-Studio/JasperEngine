@@ -111,7 +111,34 @@ namespace jasperengine {
         bool surfaceMoved = false;
         double lastRevisionAt = -REVISION_SECONDS;
         int strokes = 0;
+        // R79: the terrain-local rectangle whose heights or holes the colliders have yet to take,
+        // before the next physics step (physics/JoltTerrainRefresh)
+        bool collisionDirty = false;
+        float collisionMinX = 0.0f, collisionMinZ = 0.0f, collisionMaxX = 0.0f, collisionMaxZ = 0.0f;
+
+        // DC9: an image goes up at most once a frame, and a map bigger than the frame's budget at
+        // most every ceil(bytes / budget) frames; the last edit always goes
+        struct Upload {
+            terrain::MapId map;
+            uint64_t lastFrame = 0;
+            bool waiting = false;
+        };
+        std::vector<Upload> uploads;
+        uint64_t frame = 0;
+        // bytes a frame's uploads may take; 0: Engine::defaultTerrainUploadBytes() (R64: the editor
+        // sets its own)
+        size_t uploadBudget = 0;
+        // R78: the maps were moved under private ids before the first runtime write
+        bool runtimeDetached = false;
     };
+
+    // DC9: the frames between two uploads of a map of this many bytes
+    JASPERENGINE_API uint64_t terrainUploadInterval(size_t mapBytes, size_t budget);
+
+    // R78: before a game's first write, every map of the terrain moves under a private id
+    // (__terrain_runtime_<n>_<entity>_<map>), so the authored files and another terrain sharing
+    // them never see the change. Once per terrain; false when a map could not be copied.
+    JASPERENGINE_API bool detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity);
 
     // The map a store's id names on this component; null when the terrain has no such slot
     JASPERENGINE_API Texture* terrainMapTexture(TerrainComponent& terrain, terrain::MapId map);

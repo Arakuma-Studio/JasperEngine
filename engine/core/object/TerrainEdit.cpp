@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::terrain;
@@ -242,6 +244,41 @@ Texture* jasperengine::terrainMapTexture(TerrainComponent& terrain, MapId map) {
     return nullptr;
 }
 
+namespace {
+
+    // The terrain-local rectangle a map's texels reach: a height texel is read bilinearly up to a
+    // texel away, a hole texel only where it lies (T3 R19). A map gone (the last fill) reaches it all.
+    void markCollision(TerrainComponent& terrain, MapId map, TexelRect rect) {
+        const float half = terrain.terrainSize * 0.5f;
+        float minX = -half, minZ = -half, maxX = half, maxZ = half;
+        Texture* texture = terrainMapTexture(terrain, map);
+        if (texture && !texture->empty() && texture->hasData() && texture->getData().getWidth() > 0 && texture->getData().getHeight() > 0) {
+            const float width = static_cast<float>(texture->getData().getWidth());
+            const float height = static_cast<float>(texture->getData().getHeight());
+            const int reach = map.kind == MapKind::Height ? 1 : 0;
+            minX = static_cast<float>(rect.x - reach) / width * terrain.terrainSize - half;
+            maxX = static_cast<float>(rect.right() + reach) / width * terrain.terrainSize - half;
+            minZ = static_cast<float>(rect.y - reach) / height * terrain.terrainSize - half;
+            maxZ = static_cast<float>(rect.bottom() + reach) / height * terrain.terrainSize - half;
+        }
+        if (!terrain.editState) terrain.editState = std::make_shared<TerrainEditState>();
+        TerrainEditState& state = *terrain.editState;
+        if (!state.collisionDirty) {
+            state.collisionDirty = true;
+            state.collisionMinX = minX;
+            state.collisionMinZ = minZ;
+            state.collisionMaxX = maxX;
+            state.collisionMaxZ = maxZ;
+            return;
+        }
+        state.collisionMinX = std::min(state.collisionMinX, minX);
+        state.collisionMinZ = std::min(state.collisionMinZ, minZ);
+        state.collisionMaxX = std::max(state.collisionMaxX, maxX);
+        state.collisionMaxZ = std::max(state.collisionMaxZ, maxZ);
+    }
+
+}
+
 void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, MapId map, TexelRect rect) {
     switch (map.kind) {
         case MapKind::Height: {
@@ -249,22 +286,77 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
             terrain.editState->refit = unite(terrain.editState->refit, rect);
             terrain.editState->surfaceMoved = true;
             terrain.needUpdateTexture = true;
+            markCollision(terrain, map, rect);
             break;
         }
-        case MapKind::Blend:
         case MapKind::Hole:
+            terrain.needUpdateTexture = true;
+            markCollision(terrain, map, rect);
+            break;
+        case MapKind::Blend:
             terrain.needUpdateTexture = true;
             break;
         case MapKind::Density:
             terrain.needUpdateFoliage = true;
             break;
     }
-    // The drawn image still shows an edit by being made again, until the rest of T1 adds stream
-    // images (DC9): only the node tree stopped rebuilding
-    if (Texture* texture = terrainMapTexture(terrain, map)) {
-        texture->invalidateRender();
+    // DC9: the image follows from MeshSystem's flush, paced; the CPU pixels and the query are
+    // current already
+    if (!terrain.editState) terrain.editState = std::make_shared<TerrainEditState>();
+    bool queued = false;
+    for (TerrainEditState::Upload& upload : terrain.editState->uploads) {
+        if (upload.map == map) {
+            upload.waiting = true;
+            queued = true;
+        }
     }
+    if (!queued) terrain.editState->uploads.push_back(TerrainEditState::Upload{map, 0, true});
     TerrainEditEvents::publish(scene, entity, map, rect);
+}
+
+uint64_t jasperengine::terrainUploadInterval(size_t mapBytes, size_t budget) {
+    if (budget == 0 || mapBytes <= budget) return 1;
+    return static_cast<uint64_t>((mapBytes + budget - 1) / budget);
+}
+
+bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity) {
+    if (!terrain.editState) terrain.editState = std::make_shared<TerrainEditState>();
+    if (terrain.editState->runtimeDetached) return true;
+
+    static std::atomic<uint32_t> nextId{0};
+    const std::string prefix = "__terrain_runtime_" + std::to_string(nextId.fetch_add(1)) + "_" + std::to_string(entity) + "_";
+    std::vector<MapId> maps = {MapId{MapKind::Height, 0}, MapId{MapKind::Hole, 0}};
+    for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back(MapId{MapKind::Blend, static_cast<int>(i)});
+    for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back(MapId{MapKind::Density, static_cast<int>(i)});
+
+    for (const MapId& map : maps) {
+        Texture* texture = terrainMapTexture(terrain, map);
+        if (!texture || texture->empty() || texture->isFramebuffer()) continue;
+        if (!texture->hasData()) {
+            texture->setReleaseDataAfterLoad(false);
+            texture->load();
+        }
+        if (!texture->hasData() || !texture->getData().getData()) continue;
+        TextureData& source = texture->getData();
+        const size_t size = source.getSize();
+        unsigned char* raw = static_cast<unsigned char*>(std::malloc(size));
+        if (!raw) return false;
+        std::memcpy(raw, source.getData(), size);
+        TextureData copy(source.getWidth(), source.getHeight(), static_cast<unsigned int>(size), source.getColorFormat(), source.getChannels(), raw);
+        copy.setDataOwned(false);
+        const char* kind = map.kind == MapKind::Height ? "height" : map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density";
+        texture->setData(prefix + kind + std::to_string(map.index), copy);
+        texture->setReleaseDataAfterLoad(false);
+        if (texture->hasData() && texture->getData().getData() == raw) {
+            texture->getData().setDataOwned(true);
+        } else {
+            std::free(raw);
+            return false;
+        }
+    }
+    terrain.needUpdateTexture = true;
+    terrain.editState->runtimeDetached = true;
+    return true;
 }
 
 void jasperengine::beginTerrainStroke(TerrainComponent& terrain) {
@@ -415,8 +507,8 @@ WriteResult TerrainComponentStore::removeMap(MapId map) {
     if (!canRemoveMap(map)) return WriteResult{false, "this map stays with the terrain", 0};
     const MapFormat before = format(map);
     terrainPtr->holeMap = Texture();
-    terrainPtr->needUpdateTexture = true;
-    TerrainEditEvents::publish(scene, entity, map, before.bounds);
+    // the colliders take the whole terrain back, as the map is gone
+    noteTerrainMapEdited(scene, entity, *terrainPtr, map, before.bounds);
     return WriteResult{true, "", 0};
 }
 

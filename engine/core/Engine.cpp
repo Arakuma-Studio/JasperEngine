@@ -1299,6 +1299,10 @@ int Engine::defaultStreamStagingBytes(){
     return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
 }
 
+int Engine::defaultTerrainUploadBytes(){
+    return (smallGpuMemoryPlatform() ? 2 : 8) * 1024 * 1024;
+}
+
 int Engine::defaultDescriptorBytes(){
     return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
 }

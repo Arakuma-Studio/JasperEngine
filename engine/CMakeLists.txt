@@ -1680,6 +1680,7 @@ set(JASPERENGINE_SRCS
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
     core/physics/RagdollBuilder.cpp

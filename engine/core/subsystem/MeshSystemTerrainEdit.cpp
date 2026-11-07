@@ -7,9 +7,11 @@
 
 #include "MeshSystem.h"
 
+#include "Engine.h"
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "object/TerrainEdit.h"
+#include "texture/Texture.h"
 #include "texture/TextureData.h"
 
 #include <algorithm>
@@ -81,11 +83,30 @@ void MeshSystem::flushTerrainEdit(TerrainComponent& terrain, double nowSeconds) 
         refitTerrainNodes(terrain, state.refit.x, state.refit.y, state.refit.w, state.refit.h);
         state.refit = TexelRect{};
     }
-    if (state.surfaceMoved && (state.strokes == 0 || nowSeconds - state.lastRevisionAt >= TerrainEditState::REVISION_SECONDS)) {
+    // R79: a game's edits move the revision (and the foliage it flags) at the stroke rate too
+    const bool paced = state.strokes > 0 || state.runtimeDetached;
+    if (state.surfaceMoved && (!paced || nowSeconds - state.lastRevisionAt >= TerrainEditState::REVISION_SECONDS)) {
         state.surfaceMoved = false;
         state.lastRevisionAt = nowSeconds;
         terrain.surfaceRevision++;
         // instances sit on the surface: they wait for the revision, not for every stamp
         terrain.needUpdateFoliage = true;
+    }
+
+    // DC9: whole-image uploads, paced by the frame's budget
+    state.frame++;
+    const size_t budget = state.uploadBudget > 0 ? state.uploadBudget : static_cast<size_t>(Engine::defaultTerrainUploadBytes());
+    for (TerrainEditState::Upload& upload : state.uploads) {
+        if (!upload.waiting) continue;
+        Texture* texture = terrainMapTexture(terrain, upload.map);
+        if (!texture) {
+            upload.waiting = false;
+            continue;
+        }
+        const size_t bytes = texture->hasData() ? texture->getData().getSize() : 0;
+        if (upload.lastFrame != 0 && state.frame - upload.lastFrame < terrainUploadInterval(bytes, budget)) continue;
+        texture->invalidateRender();
+        upload.lastFrame = state.frame;
+        upload.waiting = false;
     }
 }
