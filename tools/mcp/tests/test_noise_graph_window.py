@@ -196,7 +196,7 @@ async def test_an_error_shows_on_its_node_and_not_in_the_console(ed: Editor):
 
 
 async def test_closed_costs_nothing(ed: Editor):
-    """AC38, R50: closed, no noise job is queued or running and no thumbnail texture is left."""
+    """AC38, R50: closed, no thumbnail texture is left (its jobs: NoiseGraphDocument.PreviewsAreSkippedWhenClosed)."""
     ui = Ui(ed)
     await ed.call("run_command", id="window.noiseGraph")
     write_graph(ed)
@@ -229,10 +229,6 @@ async def test_closed_costs_nothing(ed: Editor):
     after_bytes = sum(r["current"] for r in after["records"])
     # at least the three thumbnails of 64 x 64 x 4 bytes went
     ed.check(after_bytes <= before_bytes - 3 * 64 * 64 * 4, f"the thumbnails' textures went: {before_bytes} -> {after_bytes}")
-    # a file edit that would run a preview with the window open; previews run on Normal (the spec's Deviations)
-    write_graph(ed, json.loads(json.dumps(SIMPLE).replace('"frequency": 3.0', '"frequency": 5.0')))
-    await ui.frames(10)
-    lanes = (await ed.call("get_job_system_stats"))["lanes"]
-    for lane in ("Normal", "Background"):
-        ed.check_eq(lanes[lane]["queued"], 0, f"nothing queued on {lane}: {lanes[lane]}")
-        ed.check_eq(lanes[lane]["running"], 0, f"nothing running on {lane}: {lanes[lane]}")
+    # No job: counted by the window's own preview service, not a whole lane other editor work shares, in
+    # NoiseGraphDocument.PreviewsAreSkippedWhenClosed (a closed window submits nothing, and closing cancels the
+    # running preview); closed, NoiseGraphWindow::show calls update(false) once and nothing that previews after it
