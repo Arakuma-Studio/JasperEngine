@@ -2449,8 +2449,14 @@ namespace jasperengine{
 		bool getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const;
 		bool isTerrainMacroNormalReady(Entity entity);
 	private:
-		// the Holes view's classes (T3 R30), made when the view is on
-		TextureRender terrainHoleOverlay;
+		// the Holes view's classes (T3 R30), one per hole map (its pixels' address), made when the view is on
+		// and again when the map changes: every render of the terrain binds the same one
+		struct TerrainHoleOverlay{
+			TextureRender render;
+			uint32_t revision = 0;
+		};
+		std::unordered_map<const void*, TerrainHoleOverlay> terrainHoleOverlays;
+		void destroyTerrainHoleOverlays();
 		void updateTerrainMacroNormal(Entity entity, TerrainComponent& terrain, const MeshComponent& mesh);
 		void destroyTerrainMacroNormal(Entity entity);
 

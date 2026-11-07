@@ -56,25 +56,31 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
             if (!textureRender || !textureRender->isCreated()){
                 return false;
             }
-            // T3 R30: the Holes view reads the map's classes where the passes read 0 and 255. Editor only
-            if (terrain::TerrainQualitySettings::getDebugView() == terrain::TerrainDebugView::HOLES){
+            // T3 R30: the Holes view reads the map's classes where the passes read 0 and 255. A terrain with no
+            // layer draws its base material alone, views included, so it keeps the map itself
+            if (terrain::TerrainQualitySettings::getDebugView() == terrain::TerrainDebugView::HOLES && !terrain.surfaceLayers.empty()){
                 TextureData& data = terrain.holeMap.getData();
-                const terrain::HoleMapView view{static_cast<const uint8_t*>(data.getData()), data.getWidth(), data.getHeight()};
-                const int samples = terrain.heightMap.hasData() ? std::clamp(std::min(terrain.heightMap.getData().getWidth(), terrain.heightMap.getData().getHeight()), 4, 1025) : 4;
-                std::vector<uint8_t> classes;
-                terrain::holeOverlayClasses(view, samples, samples, classes);
-                void* faces[1] = {classes.data()};
-                size_t sizes[1] = {classes.size()};
-                terrainHoleOverlay.destroyTexture();
-                if (terrainHoleOverlay.createTexture("terrain|holeoverlay", data.getWidth(), data.getHeight(), ColorFormat::RED, TextureType::TEXTURE_2D, 1,
-                                                     faces, sizes, TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
-                    textureRender = &terrainHoleOverlay;
+                TerrainHoleOverlay& overlay = terrainHoleOverlays[data.getData()];
+                if (!overlay.render.isCreated() || overlay.revision != terrain.holeMapRevision){
+                    const terrain::HoleMapView view{static_cast<const uint8_t*>(data.getData()), data.getWidth(), data.getHeight()};
+                    const int samples = terrain.heightMap.hasData() ? std::clamp(std::min(terrain.heightMap.getData().getWidth(), terrain.heightMap.getData().getHeight()), 4, 1025) : 4;
+                    auto* classes = new std::vector<uint8_t>();
+                    terrain::holeOverlayClasses(view, samples, samples, *classes);
+                    void* faces[1] = {classes->data()};
+                    size_t sizes[1] = {classes->size()};
+                    overlay.render.destroyTexture();
+                    overlay.render.createTexture("terrain|holeoverlay", data.getWidth(), data.getHeight(), ColorFormat::RED, TextureType::TEXTURE_2D, 1,
+                                                 faces, sizes, TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+                    overlay.revision = terrain.holeMapRevision;
+                    // sokol copied the classes, or the loading thread's queue reads them when it runs: they live till then
+                    SystemRender::scheduleCleanup([](void* pixels){ delete static_cast<std::vector<uint8_t>*>(pixels); }, classes);
                 }
-                // sokol copied the classes, or the loading thread's queue reads them when it runs: they live till then
-                if (Engine::isAsyncThread()){
-                    auto* keep = new std::vector<uint8_t>(std::move(classes));
-                    SystemRender::scheduleCleanup([](void* pixels){ delete static_cast<std::vector<uint8_t>*>(pixels); }, keep);
+                if (overlay.render.isCreated()){
+                    textureRender = &overlay.render;
                 }
+            }else if (terrain::TerrainQualitySettings::getDebugView() != terrain::TerrainDebugView::HOLES && !terrainHoleOverlays.empty()){
+                // the view went off: the terrains it drew take their variants again, and their maps with them
+                destroyTerrainHoleOverlays();
             }
         }else if (!terrain.holeMapWarned){
             terrain.holeMapWarned = true;
@@ -332,6 +338,13 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
     }
 
     render.applyUniformBlock(slot, sizeof(Vector4) * (size_t)size, block);
+}
+
+void RenderSystem::destroyTerrainHoleOverlays(){
+    for (auto& [pixels, overlay] : terrainHoleOverlays){
+        overlay.render.destroyTexture();
+    }
+    terrainHoleOverlays.clear();
 }
 
 // Low's Macro Variation is the vertex stage's (T3 R9): its block, in u_vs_terrainMacro

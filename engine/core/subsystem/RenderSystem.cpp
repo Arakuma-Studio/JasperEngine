@@ -1194,6 +1194,7 @@ void RenderSystem::destroy(){
     while (!terrainDetailArrays.empty()){
         destroyTerrainDetailArray(terrainDetailArrays.begin()->first);
     }
+    destroyTerrainHoleOverlays();
 }
 
 void RenderSystem::updateFramebuffer(CameraComponent& camera){
