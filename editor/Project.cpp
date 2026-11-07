@@ -6719,6 +6719,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         pauseEngineScene(sceneProject->scene, true);
+        // the wakes the game left go with it (paused, the system would hold them in edit mode)
+        if (auto water = sceneProject->scene->findSystem<WaterInteractionSystem>()) water->clearWakes();
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot

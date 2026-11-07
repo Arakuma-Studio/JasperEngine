@@ -160,6 +160,9 @@ namespace jasperengine{
         const std::vector<uint8_t>* getHullMap(Entity excluder) const;
         uint64_t getHullMapsVersion() const { return hullMapsVersion; }
 
+        // every wake gone (the editor's Stop: the scene stays, paused, in edit mode)
+        void clearWakes() { releaseWakes(); }
+
         EmitterInfo getEmitterInfo(Entity emitter) const;
         WakeMapInfo getWakeMapInfo() const;
         const WaterWakeMap& getWakeMap() const { return wakeMap; }
