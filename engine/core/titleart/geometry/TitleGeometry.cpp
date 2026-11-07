@@ -332,7 +332,9 @@ void TitleGeometry::Impl::applyOps(const Json& layer, Built& b, TitleRect frame)
             Path weighted = weightPath(b.glyphs[i].path, delta, b.size);
             // glyphs whose strokes are thinner than 2 |delta| vanish
             if (!hasInk(weighted)) continue;
-            kept.push_back({b.glyphs[i].cluster, std::move(weighted)});
+            GlyphOutline g = b.glyphs[i];
+            g.path = std::move(weighted);
+            kept.push_back(std::move(g));
             if (i < b.charIndex.size()) keptChars.push_back(b.charIndex[i]);
         }
         b.glyphs = std::move(kept);
@@ -353,7 +355,8 @@ void TitleGeometry::Impl::buildText(const Json& layer, Built& b) {
     for (size_t c = 0; c < laid.clusters.size(); c++) {
         for (const LaidOutGlyph& g : laid.clusters[c].glyphs) {
             if (!hasInk(g.outline)) continue;
-            b.glyphs.push_back({(uint32_t)c, g.outline});
+            const TitleRect& cell = laid.clusters[c].emCell;
+            b.glyphs.push_back({(uint32_t)c, g.outline, laid.clusters[c].index, {cell.x + cell.width / 2, cell.y + cell.height / 2}});
             b.charIndex.push_back(laid.clusters[c].index);
             lines.push_back(laid.clusters[c].line);
         }

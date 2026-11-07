@@ -60,6 +60,15 @@ namespace {
             return geometry::shapePath(geometry::decodeShape(shape));
         }
 
+        bool outlines(const Json& layer, const TitleArtDoc& doc, const AssetResolver* assets, Outlines& out) override {
+            geometry::TitleGeometry& g = geometryFor(assets);
+            out.glyphs = g.outlines(layer, doc);
+            const geometry::LayerElements els = g.elements(layer, doc);
+            out.spans = layerTypeOf(layer) == LayerType::Text ? els.spans : std::vector<geometry::GlyphSpan>();
+            out.problems = els.problems;
+            return true;
+        }
+
     private:
         // TitleGeometry reads its fonts, images and SVGs through one resolver: a request with
         // another resolver (another project, a transient preview) starts a geometry of its own.

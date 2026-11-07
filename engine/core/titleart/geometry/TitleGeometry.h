@@ -117,6 +117,8 @@ namespace jasperengine::titleart::geometry {
     struct GlyphOutline {
         uint32_t cluster = 0;                   // LaidOutText cluster index (shapes and SVGs: 0)
         Path path;
+        uint32_t charIndex = 0;                 // text: the cluster's CharAdjust key (its first code point index)
+        TitleVec2 pivot;                        // text: the em-cell centre (S86's rig pivot)
     };
 
     class JASPERENGINE_API TitleGeometry {
