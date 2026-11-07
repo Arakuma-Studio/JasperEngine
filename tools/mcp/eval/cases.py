@@ -800,41 +800,6 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
-    {
-        "id": "guard_navigation_door_in_play",
-        "playing": True,
-        "kind": "guard",
-        "what_happened": "S55 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
-                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
-                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
-        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
-                         "links[].activated; visualize_navigation show.area_overrides",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R45 (no failure on record)",
-        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
-                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
-        "groups_enabled": ["navigation"],
-        "mocks": [
-            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
-                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
-                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
-            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
-             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
-                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
-            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
-                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
-                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
-            {"tool": "get_navigation_info", "result": ok(
-                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
-                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
-                                                      "applied": True, "polygons": 6}]})},
-        ],
-        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
-                                                                       "value": True}},
-                             {"tool": "query_navigation", "args": {"op": "path"}}],
-                   "order": [["set_runtime_property", "query_navigation"]],
-                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
-        "max_turns": 12,
-    },
 
     # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {
@@ -994,6 +959,41 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
                    "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_door_in_play",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S55 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
+                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
+                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
+        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
+                         "links[].activated; visualize_navigation show.area_overrides",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R45 (no failure on record)",
+        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
+                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
+                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
+                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
+            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
+             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
+                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
+            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
+                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
+                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
+                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
+                                                      "applied": True, "polygons": 6}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
+                                                                       "value": True}},
+                             {"tool": "query_navigation", "args": {"op": "path"}}],
+                   "order": [["set_runtime_property", "query_navigation"]],
+                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
         "max_turns": 12,
     },
 ]

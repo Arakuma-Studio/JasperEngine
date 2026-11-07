@@ -1077,7 +1077,6 @@ void queryNavigationTool(const CallPtr& call) {
                 item.update({{"position", vec3Json(hit.position)}, {"distance", rounded(hit.distance)}});
             }
             item["blocked"] = blocked;
-            item["cost"] = rounded(hit.cost);
             return item;
         }
         const nav::NavPath path = targetEntity != NULL_ENTITY ? system->calculatePathOn(targetEntity, from.position, to.position, filter)

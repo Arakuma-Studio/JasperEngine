@@ -791,6 +791,13 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   `query_navigation` implemented; tests in `NavGameplayQueryTest.cpp`, `NavQueryTest.cpp`,
   `NavCrowdTest.cpp`, `NavStubTest.cpp`, `test_navigation_gameplay.py::test_query_ops`; NavBench
   query lines and their thresholds.
+- S55 P1: merged all of S54 (labels, locate, reasons): *same island* random points use S54's
+  `locate` and labels (AC4); `query_navigation` keeps S54's references, target lists and `next`
+  hints and adds `random`, `move_along`, `seed`, `closest_edge`'s `max_distance` and the costs
+  (measured offline at about 1480 of 1500 characters, description 397 of 400). Eval cases
+  `guard_navigation_random_point` and `guard_navigation_move_along` (not run live: the integrator
+  decides). `NavStubTest` (the JASPERENGINE_NAVIGATION=OFF build) has no build preset on this
+  host and was not run.
 - S55 P2: `NavPolyState` (overrides and link states over `storeTileState` snapshots, re-applied in
   `create`, `replaceTiles`, `updateCarving`, `updateLink`), the runtime volume boundary in the bake
   (Recast ids 33-48), `NavigationAreas.cpp` (modifier volumes, script volumes, Activated; step 1b
@@ -811,10 +818,3 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   (`GameplayZeroCost`, `GameplayReplay`), `NavigationEditorTest.cpp` (agent rows of AC29),
   `test_navigation_gameplay.py` (`test_path_failed_callbacks`, the Guard of the doors test); NavBench
   `stuck_100_extra_ms`.
-- S55 P1: merged all of S54 (labels, locate, reasons): *same island* random points use S54's
-  `locate` and labels (AC4); `query_navigation` keeps S54's references, target lists and `next`
-  hints and adds `random`, `move_along`, `seed`, `closest_edge`'s `max_distance` and the costs
-  (measured offline at about 1480 of 1500 characters, description 397 of 400). Eval cases
-  `guard_navigation_random_point` and `guard_navigation_move_along` (not run live: the integrator
-  decides). `NavStubTest` (the JASPERENGINE_NAVIGATION=OFF build) has no build preset on this
-  host and was not run.
