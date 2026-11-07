@@ -138,6 +138,9 @@ namespace jasperengine{
         // the waiting rows of one Animator: `callbackRows` the ones that run user callbacks
         void applyWaitingProperties(anim::AnimatorInstance& instance, bool callbackRows);
         void finalize(Job& job, float dt);
+        // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
+        void fireCues(Entity entity, anim::AnimatorInstance& instance);
+        bool warnedNoSoundLayer = false;
         void release(Entity entity, anim::AnimatorInstance& instance);
         void setSkinsDriven(anim::AnimatorInstance& instance, bool driven);
         std::string modelPathOf(Entity entity) const;

@@ -252,8 +252,9 @@ TEST(RenderRecordTest, ResourcesReleasedMidFrameLiveUntilTheReplay){
             const Rml::CompiledGeometryHandle redHandle = red.handle;
             red.release(r);
             Quad green(r, 60, 10, 40, 30, Rml::ColourbPremultiplied(0, 255, 0, 255));
-            if (recording)
+            if (recording){
                 EXPECT_NE(green.handle, redHandle) << "a geometry released while recording is not reused before the replay";
+            }
             r.RenderGeometry(green.handle, Rml::Vector2f(0, 0), 0);
             green.release(r);
 

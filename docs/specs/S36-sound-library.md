@@ -524,6 +524,96 @@ None (R29).
   clip of any licence (64 bounded renders, no model, no audio copied), the reference recorded in
   `provenance.reference`.
 
+## Progress
+
+- The squashed library commit is 21.5 MiB of files (`du -sb editor/resources/sound-library/library`: 22,538,857 bytes): 927 clips, manifest v4, analysis v1, 11 licence files (R34).
+
+AC13, measured with `time` on the same files (`je-evidence/s36/mac-bench-before.log`, `it17.measure.log`, `it18.*.log`). The
+63 ms and 6.3 s that started this came from a loaded H and say nothing either way. Server F no longer exists: A is a quiet
+16-vCPU VPS (load 1), the Mac an idle M-series machine.
+
+| R31, R32 | Budget | Mac, CPU | A, CPU | A, wall |
+|---|---|---|---|---|
+| `analyze_audio` 1 s clip, uncached, over startup | 40 ms | 10 ms | 30 ms | 30 ms |
+| 3-minute stereo OGG, before | 1.2 s | 0.95 s | 7.0 s | 7.0 s |
+| the same, the meter beside the spectral stages | 1.2 s | | 7.1 s | 5.8 s (load 9) |
+| of which `AudioMeter` on `main` | | 0.51 s | 4.8 s | |
+| of which `AudioMeter` on S38's branch (70e471bf2) | | 0.24 s | 1.3 s | |
+| `AudioClipSource` over a `Wav` voice, the mix, Release, gain and trim | 3 % | | +0.2 % | |
+| the same, trim only | 3 % | | +0.6 % | |
+| Editor start, new project to the first MCP reply, 15 alternating pairs, against `main` | 2 % | | +1.8 % | +0.9 % |
+
+The 1 s clip is inside its budget. The 3-minute file is real on A: the meter's 44 biquads a sample were 4.8 s of its 7.0, and S38's
+branch replaces them. Inferred, not measured together: with S38 merged A takes about 2.1 s of wall time, decode 0.45 s then the
+longer of the meter and the spectral stages, and the Mac well under 1.2 s. So A stays over R31 until the decode and the meter
+get faster; both are below this spec.
+
+The clip voice was +7.5 % at the unit tests' default -O2, where GCC leaves the gain loop scalar. Players ship at -O3, which is
+what the bench now asks for.
+
+`soundlayer` on Linux: the Release engine sample is 159,776 bytes larger with the module than without (40,020,944 against
+39,861,168, with S37 M1-M7 in it), and `lib_size.py --modules` names 34,295 bytes of S36's own. A build with the option off
+compiles under WERROR (`it17.off.log`).
+
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The class is `AudioClipSource` (R10)**, in `engine/core/audio/ClipSource.{h,cpp}`: `jasperengine::ClipSource` is already an
+  enum of the animation clips (`animation/AnimationClip.h`). S37, S39 and S40 read "ClipSource" as this class.
+- **`AssetMeta::isKnown` is unchanged (R8).** The spec asked it to list `provenance`, but that list holds the sections
+  `AssetMeta` writes itself, and `setSection` refuses them. Being unknown is what keeps `provenance` byte for byte.
+- **Files and their `.meta` go through `WriteFilesCmd` (R15, R18).** `generate_sound` and built-in imports write the
+  clip and a complete `.meta` (minted GUID, or the existing one and its other sections) as items of one command: one
+  undo step that needs no second command, and no moment with a clip that has a GUID but no sections. `AssetOps` has no
+  create operation. `set_audio_import_settings` and the Inspector use `SetAssetMetaCmd` as R9 says.
+- **R4 cache of a clip as it plays.** The file `<sha1>-i<hash>-v<N>.json` holds the whole played analysis (R3), so
+  sound-layer's per-file list of four played regions is gone, and with it its eviction.
+- **`AudioImportTable::find` returns a copy (`std::optional`), not a pointer.** The pool's load jobs read the table while
+  the main thread sets it.
+- **The table loads on the first `SoundPool::loadClip` (R12),** once per process, not at engine start: that is the one
+  place every platform and export method passes before a clip plays, and a game with no table pays one failed open.
+- **`analyze_audio` and `search_sounds` wait 60 s, then hand over the job (R28)**, through `replyWhenJobDone`, with no
+  `wait` parameter: the budget has no room for it, and images only travel in the reply. A job an agent polls has the items.
+- **A `kind event` filter finds nothing until S37 M6 lands** (its branch lists events in `SoundSearch`), and `analyze_audio capture` reads sessions from disk with no
+  running capture known until S35 lands (tested on session directories written by the test).
+- **`test_audio_ogg` cuts ffmpeg's decode to the last page's granule.** The Vorbis spec makes the last page's granule the
+  stream's length, and an encoder ends a clip that way. ffmpeg 4.4.2 (the image's) does not trim: it hands over whole
+  decoded packets. Verified on 61 of the 967 OGGs, sampled evenly (`je-evidence/s36/ogg-overrun.log`): libsndfile, which
+  decodes through libvorbisfile, returned exactly the granule on 61 of 61, while ffmpeg returned 41 to 978 frames more on
+  61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). ffmpeg 6.1.1 on this host instead returns 128 frames fewer on
+  `wood.ogg` and `error.ogg`, so ffmpeg's end depends on its version. Where both decode, every channel matches libsndfile
+  within 3e-7. The editor loads each at the granule, as libsndfile does, so the difference is ffmpeg's and not ours.
+- **This branch merges `feat/s37-sound-events` (M9).** `edit_sound_event` and S37's writer are S37 M1 and M5, which were on
+  its branch and not on `main`, so the branch holds S37 M1-M5 and whichever of the two lands second has nothing to merge
+  but its own commits.
+- **`soundlayer` is wired in both streams.** S37 §6.6 defines the module; S36 added the option, the module name, the variants and
+  `engine/core/audio/SoundLayerSources.cmake`, S37 M7 its own detections and sources. The merge keeps one of each.
+- **`like` refuses `params`,** which the search owns: a fit's result can be adjusted afterwards with `params` and its seed.
+  `compare` is the default image of one fitted file and not a value of `image`, which keeps the schema inside its budget.
+- **`SoundFit` measures a file's head and tail at -60 dB re its peak,** not dBFS: phase 7 §2.3.2 calls every measure
+  level-independent, which the raw render and the written file need.
+- **`force` applies to `noise` layers, `brightness` to `sweep` too:** phase 7 §2.2.3 names noise layers for force, and §2.2.4
+  every filter for brightness, and a sweep's band-pass is a filter.
+- **The variety report has its own near-duplicate limit, `VARIETY_NEAR_DUPLICATE_DISTANCE` 0.020** (phase 7 §2.2.5 uses A4's
+  `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
+  At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
+  whose advice is empty: a preset's seeds are close by design.
+- **A new game's AGENTS.md names the sound tools and their group.** `generate_sound` is in group `audio`, and with only core
+  listed agents wrote a WAV by script or gave up: `guard_placeholder_coin_finds_the_group` 0/2 without the line, 4/4 with it
+  (`je-evidence/eval/runs/s36-coin-without2`, `s36-coin-line2`, `s36-coin-line3`; one more sample only hit an account's limit). A
+  Sound section in the guide was tried first and cut: it left the placeholder, layered, fit, search and "too quiet" prompts at
+  0 of 10. The other six sound cases set `groups_enabled` and measure the tools' own text. A project written before this line
+  has none until its AGENTS.md is regenerated.
+- **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
+  300 characters, and S37 §6.1 reserves 150.
+- **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
+- **`test_d3_licence_files_match_the_pinned_zips` and the tests that need the zips skip, accepted.** kenney.nl now answers the pinned
+  URLs with its asset pages, which hold no zip link (`it17.zips.log`), so no pinned zip can be fetched. The committed licence
+  files are byte for byte the reference's (`diff -r`). They skip by name with this reason. The real-model semantic tests also need
+  a 776 MB model.
+- **R31's 3-minute OGG is open until S38 lands.** A is not the reference. Measure again by CPU time on H or the Mac after S38; the
+  Mac's 0.95 s, before S38, is the number to beat.
+- **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
+  and one undo step.
+- **The pipeline's pins run on Python 3.12, fetched by uv.** `numpy==2.5.4` needs Python 3.12 and the build image has 3.10, so
+  the tests' `uv run` and the scripts' documented commands pass `--python 3.12`. Older pins that install on 3.10 move values
+  by up to 0.01, so the committed data would no longer be reproduced byte for byte.

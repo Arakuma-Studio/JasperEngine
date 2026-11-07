@@ -155,8 +155,8 @@ which leaves room for later screen effects. Samplers cannot be indexed dynamical
 branch.
 
 D4. **Slots go to the probes covering the most screen, with hysteresis.** Coverage = the sum, over the drawn
-probe-lit meshes of each probe, of their world bounds' projected screen fraction (1 when a corner is behind the
-camera). A probe that held a slot last frame competes with 1.25x its coverage. Ties: lower entity id. *Why:* Doriax
+probe-lit meshes of each probe, of their world bounds' projected screen fraction (the bounds clipped to the space in front of
+the camera). A probe that held a slot last frame competes with 1.25x its coverage. Ties: lower entity id. *Why:* Doriax
 gives slots in transform order, so a far vase can take a slot from the floor; ranking by coverage keeps SSR on what
 the player sees, and hysteresis stops SSR flickering on small objects when two probes trade places.
 
@@ -260,7 +260,8 @@ rule of `:34-43` kept (no texcoord attributes on terrain).
 
 `SokolObject.cpp:770-787` `PIP_GBUFFER`: `color_count = 4`, `colors[3].pixel_format = SG_PIXELFORMAT_R8`;
 comments and `Render.h:429` updated. `ensureGBufferFramebuffer` (`RenderSystem.cpp:9805-9831`): four attachments,
-`ColorFormat::RED` last. The clear colour (1,1,1,1) gives occlusion 1. R8 is colour-renderable on GL 3.3, GLES3,
+`ColorFormat::RED` last. The pass clears color[0] only to its own value (depth 1); the other attachments take
+sokol's default clear, and the composite never reads them where color[0] says background. R8 is colour-renderable on GL 3.3, GLES3,
 WebGL2, Metal, D3D11 and Vulkan; four draw buffers is the GLES3/WebGL2 minimum.
 
 ### 6.4 Probe slots: `engine/core/render/SSRProbeSlots.{h,cpp}` (new, pure, unit-tested)
@@ -277,7 +278,7 @@ namespace jasperengine {
     }
     static_assert(SSRCode::PROBE_BASE + SSR_PROBE_SLOTS * SSR_PROBE_WEIGHT_STEPS <= 256);
 
-    // the screen fraction (0..1) of a world box's projection; 1 when a corner is behind the eye
+    // the screen fraction (0..1) of a world box's projection, clipped to the space in front of the eye
     float screenCoverage(const AABB& box, const Matrix4& viewProjection);
 
     struct SSRProbeCandidate { Entity probe; float coverage; };
@@ -443,7 +444,12 @@ vertex normal: normal-map detail of the environment stays visible under a confid
 specular AA roughness, extended lobes (clearcoat's own environment lobe stays, which is right; anisotropy's bent
 reflection and specular/IOR f0 are approximated by the base lobe), probe weight quantisation (at most 1/124 of the
 probe-sky difference, only inside a probe's blend band), R8 occlusion quantisation (1/510 of the swap), the
-volumetric fog's marched segment, the post-processing colour tail.
+volumetric fog's marched segment, the post-processing colour tail, the G-buffer's 8-bit normal (Deviation 8), and
+saturated pixels: the RGBA8 scene colour is clipped at 1, so the swap fades out from 0.94 of the brightest channel
+to 1 (a clipped pixel keeps its colour pass's colour; a bright, not yet clipped one gets part of the swap). The
+light over the per-object cap that Lit folds into its ambient (`ambientLight(n) - ambient`, mesh.frag) stays under
+SSR, as it does in the IBL path: it stands for direct lights, which SSR does not replace (Unity's SSR replaces the
+indirect specular only).
 
 7.5 A mesh loaded before SSR was turned on has no G-buffer shader and is skipped (today's rule); it takes no slot.
 
@@ -632,3 +638,49 @@ are per backend (glcore, lavapipe).
 - `export-pipeline`: GBUFFER shader keys gain `Occ`/`Uv2`; the collector's path is unchanged.
 - Shader cache version (`editor/App.cpp`): every feature that edits shaders bumps it; merge by taking the next
   number with both comment lines.
+
+## Deviations
+
+Recorded during implementation (branch `dc/ssr-probes`).
+
+1. **G-buffer fallback order** (6.2): `{16, 17, 8, 0}` (Occ, Uv2, Mrt, Bct) instead of `{16, 8, 0}`. Dropping
+   `Uv2` keeps every uniform block prefix the draw uploads (the material block is uploaded at its reflected
+   size) and only reads the maps on UV1, so it is a valid, nearer fallback than dropping the base colour.
+2. **G-buffer Stochastic Tiling with two UV sets**: both lattices are set up whenever `Uv2` is on (Lit sets up
+   only the sets its maps use). The set-up is a pure function of the UV and the material, so the taps are the
+   same.
+3. **"SSR off" in the GPU tests** (10.3) is the same SSR path at Intensity 0 (every pixel returned as the colour
+   pass drew it), so a comparison measures the composite alone, not the offscreen-versus-direct colour pass.
+4. **GPU test files**: the composite tests (`SSRCompositeGpuTest.cpp`) use only engine API older than the change,
+   so the same file runs on the parent commit as the red control; the slot and stats tests are in
+   `SSRProbeSlotsGpuTest.cpp`. 10.3 #3 (occlusion on UV2) is part of #12 (`GBufferReadsTheMaterialsUVSets`, both
+   maps on UV2). #7's planar mirror is covered by `SSRSourceVariant.UnlitAndMirrorSkip` (the variant decides
+   Skip; a Mirror scene adds nothing the unlit case does not test). #9 checks the stats and the one log line,
+   not the far tile's pixels (the far tile reflects nothing to compare).
+5. **`getSSRStats()`** reports the frame's view (`primaryView`, the Game view in the editor); `get_render_stats`
+   reports it for the selected scene whatever `view` names.
+6. **Agent guide** (lean MCP rules, lead decision on the guide): one entry in "Other areas", `reflections (SSR
+   replaces probe reflections; check with ssr_debug_mode 7)`, instead of a line in the docs list; the eval case
+   `guard_ssr_reflection_source` (`tools/mcp/eval/cases.py`) covers it and the new `ssr_debug_mode` help.
+7. **Bits and cache version after the merges**: GBUFFER keeps bits 16 (`Occ`) and 17 (`Uv2`), free on `main`
+   (S55 left GBUFFER at 16 bits); render-correctness also claims 16 ("Instance Fade"), and the second branch
+   to land renumbers. The shader cache is v49, after S54, S55 and S57's v45-v48.
+8. **Residual found by the probe test**: the G-buffer's 8-bit octahedral normal turns the rebuilt reflection by a
+   fraction of a degree, enough to cross a sharp edge of a probe's capture (measured: the box-projected direction
+   0.2 degrees above the reflected box's top edge). Added to 7.4's residuals and the user doc; the GPU test's
+   capture is one colour, so it checks the swap and not that edge. A higher-precision normal is the follow-up
+   (with the shading-normal one of section 2).
+9. **Review fixes (2026-11-07)**: the swap fades out on clipped scene colour (7.4); the light over the per-object
+   cap stays under SSR, as in the IBL path (7.4: it stands for direct lights); probe coverage clips the bounds to
+   the space in front of the camera; `get_render_stats` reports the SSR stats of the frame the pass ran in only.
+   Measured residuals (core GPU tests on glcore, build box B): probe swap 2/255 (tolerance 3, AC1), material and
+   screen occlusion 0 (2), distance and height fog 0 (2), ambient swap 2 (3), Stochastic Tiling occlusion 0 (2),
+   saturated pixels 0 (2). The two-probe test (authored cubemaps of a smooth elevation field, two slots, capture
+   positions off the box centres) measured 3 and keeps 6/255: its field changes with the reflection's elevation,
+   which the 8-bit normal turns. Each test prints its measured value (`[measured]`).
+10. **AC2's terrain occlusion** has no GPU test: the painted-terrain setup is the terrain suites' own; the G-buffer
+   multiplies `terrainSurface.occlusion` into color[3] where it already evaluates the layers
+   (`gbuffer.frag`), and `SSRSourceVariant.TerrainNeverTakesUv2` checks a terrain takes 'Occ' and no 'Uv2'.
+   Stochastic Tiling occlusion has one (`StochasticTilingOcclusionOccludesTheSwap`).
+11. **AC13** is checked by `test_ssr_off_costs_no_pass`: with SSR off, `get_render_stats` has no `ssr` object and
+   at least three passes fewer (G-buffer, march, composite).

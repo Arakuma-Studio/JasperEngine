@@ -2,6 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "component/AnimatorComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -185,7 +200,7 @@ namespace {
 
     // The properties of a component come from its reflection table (docs/specs/S08-reflection.md
     // R7, editor/reflect/Properties.cpp)
-    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
+    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, bool append) {
         const reflect::ComponentDesc* desc = reflect::find(component);
         if (!desc || !registry) {
             return PropertyData();
@@ -194,7 +209,7 @@ namespace {
         if (!comp) {
             return PropertyData();
         }
-        return reflect::property(*desc, comp, propertyName);
+        return reflect::property(*desc, comp, propertyName, append);
     }
 
     bool tryEnumerateProperties(ComponentType component, void* compRef, std::map<std::string, PropertyData>& ps) {
@@ -372,7 +387,7 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
             if (!mesh) {
                 return false;
             }
-            for (size_t s = 0; s < mesh->submeshes.size(); s++) {
+            for (size_t s = 0; s < mesh->numSubmeshes; s++) {
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
@@ -397,104 +412,8 @@ std::map<std::string, editor::PropertyData> editor::Catalog::findEntityPropertie
 
 uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* oldComp, void* newComp) {
     if (!oldComp || !newComp) return 0;
-
-    uint64_t flags = 0;
-
-    auto oldProps = Catalog::getProperties(compType, oldComp);
-    auto newProps = Catalog::getProperties(compType, newComp);
-
-    for (auto& [name, newProp] : newProps) {
-        auto it = oldProps.find(name);
-        if (it == oldProps.end()) continue;
-
-        PropertyData& oldProp = it->second;
-        if (!oldProp.ref || !newProp.ref) continue;
-
-        // A script property can change type between the two, the casts below would read
-        // the old value as the new type
-        if (oldProp.type != newProp.type) {
-            flags |= newProp.updateFlags;
-            continue;
-        }
-
-        bool changed = false;
-        switch (newProp.type) {
-            case PropertyType::Bool:
-                changed = *static_cast<bool*>(oldProp.ref) != *static_cast<bool*>(newProp.ref);
-                break;
-            case PropertyType::Float:
-                changed = *static_cast<float*>(oldProp.ref) != *static_cast<float*>(newProp.ref);
-                break;
-            case PropertyType::Double:
-                changed = *static_cast<double*>(oldProp.ref) != *static_cast<double*>(newProp.ref);
-                break;
-            case PropertyType::Int:
-                changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
-                break;
-            case PropertyType::UInt:
-                changed = *static_cast<unsigned int*>(oldProp.ref) != *static_cast<unsigned int*>(newProp.ref);
-                break;
-            case PropertyType::String:
-                changed = *static_cast<std::string*>(oldProp.ref) != *static_cast<std::string*>(newProp.ref);
-                break;
-            case PropertyType::Asset:
-                changed = *static_cast<AssetRef*>(oldProp.ref) != *static_cast<AssetRef*>(newProp.ref);
-                break;
-            case PropertyType::Shader:
-                changed = *static_cast<ShaderRef*>(oldProp.ref) != *static_cast<ShaderRef*>(newProp.ref);
-                break;
-            case PropertyType::Curve:
-                changed = *static_cast<Curve*>(oldProp.ref) != *static_cast<Curve*>(newProp.ref);
-                break;
-            case PropertyType::Font:
-                changed = *static_cast<FontArray*>(oldProp.ref) != *static_cast<FontArray*>(newProp.ref);
-                break;
-            case PropertyType::Vector2:
-                changed = *static_cast<Vector2*>(oldProp.ref) != *static_cast<Vector2*>(newProp.ref);
-                break;
-            case PropertyType::Vector3:
-                changed = *static_cast<Vector3*>(oldProp.ref) != *static_cast<Vector3*>(newProp.ref);
-                break;
-            case PropertyType::Vector4:
-                changed = *static_cast<Vector4*>(oldProp.ref) != *static_cast<Vector4*>(newProp.ref);
-                break;
-            case PropertyType::Quat:
-                changed = *static_cast<Quaternion*>(oldProp.ref) != *static_cast<Quaternion*>(newProp.ref);
-                break;
-            case PropertyType::Enum:
-                changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
-                break;
-            case PropertyType::Ease:
-                changed = *static_cast<Ease*>(oldProp.ref) != *static_cast<Ease*>(newProp.ref);
-                break;
-            case PropertyType::Texture:
-                changed = *static_cast<Texture*>(oldProp.ref) != *static_cast<Texture*>(newProp.ref);
-                break;
-            case PropertyType::Material:
-                changed = *static_cast<Material*>(oldProp.ref) != *static_cast<Material*>(newProp.ref);
-                break;
-            case PropertyType::Entity:
-                changed = *static_cast<Entity*>(oldProp.ref) != *static_cast<Entity*>(newProp.ref);
-                break;
-            case PropertyType::EntityReference:
-                changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
-                          static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
-                break;
-            case PropertyType::Gradient:
-                changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
-                break;
-            case PropertyType::Custom:
-                // Conservative: assume changed for complex types
-                changed = true;
-                break;
-        }
-
-        if (changed) {
-            flags |= newProp.updateFlags;
-        }
-    }
-
-    return flags;
+    const reflect::ComponentDesc* desc = reflect::find(compType);
+    return desc ? reflect::changedUpdateFlags(*desc, oldComp, newComp) : 0;
 }
 
 uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compType) {
@@ -1659,8 +1578,8 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
-editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
-    return tableProperty(registry, entity, component, propertyName);
+editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append){
+    return tableProperty(registry, entity, component, propertyName, append);
 }
 
 editor::PropertyData editor::Catalog::getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

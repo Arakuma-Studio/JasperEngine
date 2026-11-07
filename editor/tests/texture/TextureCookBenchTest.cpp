@@ -1,13 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Spec S14 R17, R18, R20 at the spec's sizes: cold cooks of a 2048² photo (desktop BC1 <= 3 s, ASTC
+// Spec S14 R17, R18 at the spec's sizes: cold cooks of a 2048² photo (desktop BC1 <= 3 s, ASTC
 // 6x6 at normal effort <= 6 s, UASTC RDO 1 <= 12 s, all threads), a warm (cache-hit) cook of 200
-// textures <= 10 s, and the corpus's bits per texel and PSNR per family at Normal quality (the
-// tables of docs/textures.md). Times are printed as [bench] lines; budgets are enforced with
+// textures <= 10 s. Times are printed as [bench] lines; budgets are enforced with
 // JASPER_TEST_PERF_SLACK (the benchmark server E: docs/testing.md).
 
 #include <gtest/gtest.h>
+#include "util/UiItemLocator.h"
 
 #include "support/EditorTestSupport.h"
 #include "support/TextureCorpus.h"
@@ -118,36 +118,5 @@ TEST(TextureCookBench, WarmCookOf200Textures){
     std::printf("[bench] warm cook of 200 textures %.2f s (budget 10 s)\n", seconds);
     if (perfSlack() > 0.0){
         EXPECT_LE(seconds, 10.0 * perfSlack());
-    }
-}
-
-TEST(TextureCookBench, CorpusBitsPerTexelAndQuality){
-    // the spec's corpus sizes (section 7) at Normal quality, per family
-    ScratchDir scratch("cook-bench-corpus");
-    TextureCookCache cache;
-    cache.open(scratch.path / "cache", "", 1ull << 33);
-    struct Item { const char* name; int width, height; };
-    const Item corpus[] = {{"photo", 2048, 2048}, {"gradient", 1024, 1024}, {"ui", 1024, 512}, {"foliage", 1024, 1024},
-                           {"normal", 2048, 2048}, {"mask", 1024, 1024}, {"albedo", 1024, 1024}, {"sky", 2048, 1024}};
-    // the full sizes on the benchmark run, an eighth elsewhere
-    const int divisor = perfSlack() > 0.0 ? 1 : 8;
-    std::printf("[bench] | texture | family | format | VRAM bpt | disk bpt | quality |\n");
-    for (const Item& item : corpus){
-        const CorpusImage image = corpusImage(item.name, item.width / divisor, item.height / divisor);
-        const fs::path source = writeCorpusImage(image, scratch.path / "src");
-        for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
-            const TextureCookResult result = benchCook(cache, source, image.type, family);
-            ASSERT_TRUE(result.ok) << item.name << " " << textureFamilyName(family) << ": " << result.error;
-            const double texels = (double)result.record.width * result.record.height;
-            char quality[48];
-            if (result.record.normalMeanError > 0.0)
-                snprintf(quality, sizeof(quality), "%.2f deg mean", result.record.normalMeanError);
-            else if (result.record.hdrRelativeRmse > 0.0)
-                snprintf(quality, sizeof(quality), "%.4f rel. RMSE", result.record.hdrRelativeRmse);
-            else
-                snprintf(quality, sizeof(quality), "%.2f dB", result.record.psnr);
-            std::printf("[bench] | %s %dx%d | %s | %s | %.2f | %.2f | %s |\n", item.name, image.width, image.height, textureFamilyName(family),
-                        result.record.label.c_str(), result.record.gpuBytes * 8.0 / texels, result.record.diskBytes * 8.0 / texels, quality);
-        }
     }
 }

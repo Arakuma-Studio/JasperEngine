@@ -37,8 +37,4 @@ namespace jasperengine::editor::hub {
     // why a new project cannot go to `dir` ("" when it can: absent or an empty folder)
     std::string targetProblem(const std::filesystem::path& dir);
 
-    // a free folder name in `parent` to build a copy in before it is renamed to its place
-    // ("<name>.importing", then numbered)
-    std::filesystem::path stagingFolder(const std::filesystem::path& parent, const std::string& name);
-
 }

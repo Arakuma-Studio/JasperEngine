@@ -39,6 +39,7 @@ namespace jasperengine::editor {
         bool pickerOpen = false;
         AssetType pickerType = AssetType::Unknown;
         std::string pickerFilter;
+       std::string pickerMiss;      // an agent's path that is no asset of the list
         std::function<void(const AssetDatabase::AssetInfo&)> pickerDone;
 
         void drawGroup(const MissingAssetTracker::Group& group, size_t index);

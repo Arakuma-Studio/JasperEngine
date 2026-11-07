@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ToolsLayer.h"
+#include "component/Transform.h"
+#include "component/CameraComponent.h"
 
 using namespace jasperengine;
 

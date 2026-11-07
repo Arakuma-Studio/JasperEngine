@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "CodeEditor.h"
+#include "component/ScriptComponent.h"
+#include "io/watch/LinkedFolders.h"
+#include "EditorModal.h"
 
 #include "reload/HotReloadService.h"
 #include "DocumentFile.h"
@@ -436,7 +439,7 @@ void collectProjectSources(const fs::path& projectPath, const std::unordered_set
     if (projectPath.empty() || !fs::exists(projectPath)) return;
 
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+    for (watch::LinkedDirectoryIterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         const fs::directory_entry& entry = *it;
 
@@ -642,7 +645,13 @@ void editor::CodeEditor::handleFileChangePopup() {
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
-    if (ImGui::BeginPopupModal("Files Changed###FilesChanged", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Files Changed###FilesChanged", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        std::string changedNames;
+        for (const auto& change : changedFilesQueue) {
+            changedNames += (changedNames.empty() ? "" : ", ") + change.filepath.filename().string();
+        }
+        EditorModal::message("Modified externally while the code editor has unsaved edits: " + changedNames +
+                             ". Do you want to reload the modified files? (yes = take the disk version, no = keep the editor's text)");
         if (changedFilesQueue.size() == 1) {
             ImGui::Text("The file '%s' has been modified externally.",
                 changedFilesQueue[0].filepath.filename().string().c_str());
@@ -667,7 +676,7 @@ void editor::CodeEditor::handleFileChangePopup() {
 
         ImGui::SetCursorPosX((windowWidth - buttonWidth * 2 - ImGui::GetStyle().ItemSpacing.x) * 0.5f);
 
-        if (ImGui::Button("Yes", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("Yes", "yes", ImVec2(buttonWidth, 0))) {
             for (const auto& change : changedFilesQueue) {
                 auto it = editors.find(change.filepath.string());
                 if (it != editors.end()) {
@@ -681,7 +690,7 @@ void editor::CodeEditor::handleFileChangePopup() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("No", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("No", "no", ImVec2(buttonWidth, 0))) {
             for (const auto& change : changedFilesQueue) {
                 auto it = editors.find(change.filepath.string());
                 if (it != editors.end()) {

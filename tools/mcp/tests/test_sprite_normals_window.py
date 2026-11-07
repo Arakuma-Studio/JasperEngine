@@ -33,6 +33,8 @@ import harness
 from harness import Editor
 
 EDITOR = {"create": True, "xvfb": "harness", "ui_probe": True}
+CI_EXCLUDED = ("long-running (about 4 minutes on a loaded server: 11 tests of the window with real X input); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 S: dict = {}
@@ -291,7 +293,8 @@ async def test_stale_badge_and_regenerate(ed: Editor):
     await shot(ed, "p4-project-stale")
     # the Inspector's asset view of the stale map
     await click(ed, await rect_of(ed, "project.file.hero_normal.png", "hero_normal.png"))
-    await rect_of(ed, "snAsset.stale", "the asset view's stale line", seconds=10.0)
+    # (the Inspector keeps the scroll the wand's row took, test_inspector_wand_shift_click_assigns)
+    await rect_of(ed, "snAsset.stale", "the asset view's stale line", panel="inspector", seconds=10.0)
     await shot(ed, "p4-inspector-asset")
     await click(ed, await rect_of(ed, "project.file.hero_normal.png", "hero_normal.png"), button="3")
     await click(ed, await rect_of(ed, "project.menu.regenerateNormalMap", "Regenerate Normal Map in the context menu"))

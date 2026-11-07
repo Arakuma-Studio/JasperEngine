@@ -392,6 +392,15 @@ TEST(TextureSynthesisRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
 
 namespace {
 
+    // The child's end, on failure too: the answer is the exit code. exit() would destroy the static
+    // App while the open project's background work (thumbnails, the asset index) still reads it, and
+    // LeakSanitizer would report what is set up for good and change the code
+    [[noreturn]] void endChild(int code) {
+        std::fflush(stderr);
+        std::fflush(stdout);
+        std::_Exit(code);
+    }
+
     // In a child process (the editor's App, Platform and project set up for good; no MCP server):
     // the Texture Synthesis window's Save is one project undo step (ProjectFileWrites), its undo
     // and redo work, and a scene texture reading the output is released each time so it loads the
@@ -408,11 +417,11 @@ namespace {
         Engine::systemInit(1, argv, platform);
         Engine::pauseGameEvents(true);
         Engine::setAsyncLoading(false);
-        if (!p->loadProject(dir, false)) std::exit(2);
+        if (!p->loadProject(dir, false)) endChild(2);
         Engine::setAsyncLoading(false);
-        if (mcp::McpServer::get().isStarted()) std::exit(3);
+        if (mcp::McpServer::get().isStarted()) endChild(3);
         std::vector<uint8_t> png;
-        if (!ts::encodePng(smallImage(32, 3), png)) std::exit(4);
+        if (!ts::encodePng(smallImage(32, 3), png)) endChild(4);
         writeBytes(dir / "assets" / "rock.png", png);
 
         // a Sprite drawing the output (as a scene would once it is assigned)
@@ -437,43 +446,46 @@ namespace {
         std::string error;
         if (!window.generate(error)) {
             std::fprintf(stderr, "generate: %s\n", error.c_str());
-            std::exit(5);
+            endChild(5);
         }
         for (int i = 0; i < 2000 && !(window.currentRun() && window.currentRun()->finished()); i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (!window.hasResult()) std::exit(6);
+        if (!window.hasResult()) endChild(6);
         CommandHistory* history = p->getProjectCommandHistory();
         const size_t before = history->position();
         std::vector<std::string> written;
         if (!window.save(false, written, error)) {
             std::fprintf(stderr, "save: %s\n", error.c_str());
-            std::exit(7);
+            endChild(7);
         }
         const fs::path out = dir / "assets" / "rock_tile.png";
-        if (written != std::vector<std::string>{"assets/rock_tile.png"} || !fs::is_regular_file(out)) std::exit(8);
-        if (history->position() != before + 1) std::exit(9);
+        if (written != std::vector<std::string>{"assets/rock_tile.png"} || !fs::is_regular_file(out)) endChild(8);
+        if (history->position() != before + 1) endChild(9);
         texture.load();
-        if (!texture.hasData()) std::exit(10);
+        if (!texture.hasData()) endChild(10);
         // undo: gone, the texture released; redo: back, released again
-        if (!history->undo() || fs::exists(out) || texture.hasData()) std::exit(11);
-        if (!history->redo() || !fs::is_regular_file(out)) std::exit(12);
+        if (!history->undo() || fs::exists(out) || texture.hasData()) endChild(11);
+        if (!history->redo() || !fs::is_regular_file(out)) endChild(12);
         texture.load();
-        if (!texture.hasData()) std::exit(13);
+        if (!texture.hasData()) endChild(13);
         // a replacing Save: released for the new pixels
-        if (!window.save(true, written, error) || texture.hasData()) std::exit(14);
-        // (the child's own folders: an exec'd death test runs the test's body again)
-        fs::remove_all(dir);
-        fs::remove_all(config);
-        std::exit(0);
+        if (!window.save(true, written, error) || texture.hasData()) endChild(14);
+        endChild(0);
     }
 
 }
 
 TEST(TextureSynthesisWindowDeathTest, SaveNeedsNoMcpServer) {
-    const fs::path dir = tempProject("window-save");
+    // An exec'd death test runs this body again in the child. It takes the parent's folders, and the
+    // parent removes them once the child is gone: the child's jobs write there until it ends
+    static const char* const inherited = "JASPER_SYNTHESIS_WINDOW_SAVE_DIR";
+    const char* given = std::getenv(inherited);
+    const fs::path dir = given ? fs::path(given) : tempProject("window-save");
     const fs::path config = dir.parent_path() / (dir.filename().string() + "-config");
     fs::create_directories(config);
+    setenv(inherited, dir.c_str(), 1);
     // (exec'd: the Objective-C runtime refuses a forked child of a process with threads)
     GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(windowSaveWithoutTheServer(dir, config), ::testing::ExitedWithCode(0), "");
+    unsetenv(inherited);
     fs::remove_all(dir);
     fs::remove_all(config);
 }

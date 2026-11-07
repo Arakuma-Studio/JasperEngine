@@ -6,6 +6,9 @@
 // current side. Each revert is one undo step, and its undo gives the encoding it had before.
 
 #include "VcsTestSupport.h"
+#include "spritenormals/SpriteNormalsField.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/CommandHandle.h"

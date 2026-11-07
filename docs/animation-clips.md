@@ -301,6 +301,42 @@ jasperengine::AnimationEvent&)` and `onFinish(const std::string& state)` with
 `REGISTER_COMPONENT_EVENT` (the script editor's event list has an "Animation Player" entry). When
 the GameObject has a C++ script, the edit-time handler check is skipped.
 
+## Audio cues
+
+A clip's Audio lane holds **audio cues**: at a time in the clip, play a sound (Unity's Timeline
+audio clip, or an animation event that plays a sound, without the script). A cue is one of:
+
+- **sound**: an audio clip or a Sound Event (`.soundevent`) played as its own voice, 2D or, with
+  Spatial, following a GameObject of the animated hierarchy (a path from the root, `""` = the root),
+  with its own volume (dB, -60 to 12), pitch (semitones, -24 to 24) and mixer group (default the
+  event's, else Master). A Sound Event's own picks and ranges apply first;
+- **source**: plays the AudioSource of a GameObject of the hierarchy (its clip or event, group and
+  3D settings), so the clip's `audiosource` property tracks on the same GameObject shape it (an
+  engine loop whose volume and pitch follow curves);
+- **snapshot**: moves the project's mixer to a snapshot over Seconds (Unscaled: on unscaled time).
+
+**Stop** is None (plays to its end) or State Exit (a 10 ms fade-out when the state that fired it
+stops, is left or finishes its crossfade out; a source cue stops its source). **Follow Speed**
+also scales the pitch by the state's speed.
+
+Cues fire exactly as events do: forward, backward, across loop and ping-pong boundaries, once per
+crossing, only for states that fire events; the Animator fires the leader clip's cues per layer
+(Event Mode) and a montage its clip's. A cue starts on the sample its crossing falls on inside the
+frame, so a footstep at 0.35 s plays at 0.35 s whatever the frame rate; the state's speed and the
+time scale are already in that place. Pausing the scene pauses cue voices, a scene that unloads
+stops them, `Audio.stopAll` stops sound cues. Edit-mode previews play nothing, except the Animation
+window's playing preview, which plays the cues on preview voices outside the mixer (scrubbing is
+silent; a snapshot cue does nothing there). A cue whose sound, path or snapshot does not resolve
+does nothing and warns once per Play (`Audio: cue 2 of anim/run.anim: Body/LeftFoot binds nothing`).
+
+The legacy action timeline (an entity Animation) plays the same sounds as **audio actions** (an
+action GameObject with an AudioSource) and **Mixer Snapshot actions** (an `AudioSnapshotComponent`:
+`snapshot`, `seconds`, `unscaled`, `revert` back to the previous snapshot on stop while the mixer
+still shows its own, `revertSeconds`, -1 = `seconds`). They start once per loop pass, placed to
+the sample by the same rule, and last their frame: an automatic duration is the sound's length, a
+shorter one cuts it. Both paths start their voices through one function, so the same footsteps
+placed either way give the same samples.
+
 ## Lua
 
 ```lua
@@ -737,14 +773,15 @@ before every MCP call), and the open window, the Inspector and running players p
 
 | key | meaning |
 |---|---|
-| `format`, `version` | required (`"jasperengine.anim"`, `1`; `2` for a humanoid clip, the only clips written as version 2). A missing or different format, a newer version, text that isn't JSON (reported with `line:col`) or a Unity YAML clip fail to load |
+| `format`, `version` | required (`"jasperengine.anim"`, `1`; `2` for a humanoid clip without cues; `3` for a clip with audio cues, the only clips written as version 3, so an older engine refuses them instead of dropping their sounds). A missing or different format, a newer version, text that isn't JSON (reported with `line:col`) or a Unity YAML clip fail to load |
 | `guid` | the clip's identity for references. The editor adds one to a clip without it. Don't copy it into another file: a copy made in the Project window gets its own |
 | `frame_rate` | samples per second, 1 to 240 (default 30): the snapping grid only. Key times are seconds |
 | `wrap` | `once` (default), `loop`, `ping_pong`, `clamp_forever` |
-| `length` | optional, in seconds. Without it, the last key or event time. Longer holds the end pose, shorter cuts the tracks |
+| `length` | optional, in seconds. Without it, the last key, event or cue time. Longer holds the end pose, shorter cuts the tracks |
 | `additive_reference` | optional, in seconds (default 0, written only when not 0): on an Additive layer the clip adds its change from the pose at this time. Clamped to the clip |
 | `tracks[]` | `path`, `channel`, `keys`; optional `relative` (position, rotation, scale only) and `loop` (the track's keys repeat inside a longer clip) |
 | `events[]` | `time`, `function` (a Lua identifier, not a keyword), `args` (at most 8 numbers, strings, booleans) |
+| `audio[]` | written only when not empty, sorted by time: `time` and exactly one of `sound` (`{"guid", "path"}`, asset-relative), `source` (a path), `snapshot` (a name); sound: `path` + `spatial`, `volume_db`, `pitch_semitones`, `group`; snapshot: `seconds`, `unscaled`; any: `stop` (`none`, `state_exit`), `follow_speed`, `name`. A cue's time may pass the keys: it extends the length like an event. An invalid cue is dropped with a warning |
 | `preview.model` | editor only: the model or prefab (asset-relative) to preview on when no GameObject is bound |
 | `source` | written by Extract, Convert and Bake (`{"kind": "model" / "entity" / "pose", "path", "name"}`); ignored at runtime, except that a Retarget entry (or an Animator) retargets a `.anim` from its `source.path` model when `kind` is `model` (else from its `preview.model`) |
 | `humanoid` | humanoid clips: `{"source_model", "human_scale"}` of the rig it was made on (informational: the reports' scale ratio) |

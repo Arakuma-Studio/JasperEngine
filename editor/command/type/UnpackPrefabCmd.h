@@ -8,6 +8,7 @@
 #include "Project.h"
 
 #include <vector>
+#include "project/PrefabUnpackRecord.h"
 
 namespace jasperengine::editor{
 

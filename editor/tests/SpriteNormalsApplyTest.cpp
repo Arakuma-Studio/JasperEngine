@@ -436,11 +436,12 @@ TEST(SpriteNormalsApply, AnimatedRefusals) {
     r.entity = hero;
     r.normalPath = dir + "/sheet_normal.png";
     r.atlasPath = dir + "/sheet.png";
-    for (int i = 0; i < 129; i++) r.frames.push_back({0, 0, 1, 1});
+    // (a sprite holds any number of frames: only past ARRAY_INDEX_LIMIT is a count refused)
+    r.frames.assign(ARRAY_INDEX_LIMIT + 1, {0, 0, 1, 1});
     sn::ApplyResult result = sn::applyToSprite(project(), r);
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.error.kind, "too_many_frames");
-    EXPECT_EQ(result.error.message, "The animation has 129 frames; a Sprite holds at most 128.");
+    EXPECT_EQ(result.error.message, "The animation has 65537 frames; a Sprite holds at most 65536.");
 
     // frames outside the atlas
     r.frames = {{0, 0, 32, 32}, {48, 0, 32, 32}};

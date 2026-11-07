@@ -7,6 +7,7 @@
 
 #include "script/LuaReload.h"
 #include "script/LuaBinding.h"
+#include "util/Scheduler.h"
 #include "component/ScriptComponent.h"
 #include "Engine.h"
 #include "Log.h"
@@ -321,9 +322,17 @@ return S
 )";
     ASSERT_EQ(lua("reloadLog = {}"), "");
     instantiate("scripts/timers.lua", v1, {}, "reloadTimers");
+    Scheduler& scheduler = Scheduler::game();
+    scheduler.advance(TimeDomain::Game, 0.001);
+    scheduler.process(TimeDomain::Game);
+    ASSERT_EQ(number("reloadLog.ticks"), 1);
+
     const lua_reload::Report report = lua_reload::reloadScript(L, "scripts/timers.lua", "return {}", refs(), {});
     ASSERT_FALSE(report.keptOld) << report.error;
     EXPECT_EQ(report.droppedCallbacks, 1);
+    scheduler.advance(TimeDomain::Game, 0.001);
+    scheduler.process(TimeDomain::Game);
+    EXPECT_EQ(number("reloadLog.ticks"), 1);
 }
 
 TEST_F(LuaReloadTest, ModulePatchedInPlace) {
