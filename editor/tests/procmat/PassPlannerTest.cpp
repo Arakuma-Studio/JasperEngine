@@ -281,8 +281,7 @@ TEST(PassPlanner, AnIterateBufferIsOneStepPerIteration) {
 TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
     const auto library = repositoryLibrary();
     ASSERT_TRUE(library);
-    // auto_tones is the library's one shrinking Iterate Buffer; R20 leaves it out of the catalog, so it
-    // is planned from the expander, as a library graph holding it would be
+    // auto_tones is the library's one shrinking Iterate Buffer
     Expander expander(library);
     NodeInstance tones = expander.instantiate("auto_tones", Json::object());
     NodeInstance noise = expander.instantiate("perlin", Json::object());
@@ -297,17 +296,6 @@ TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
     for (const PlannedStep& step : plan.steps) sizes.insert(step.size);
     EXPECT_TRUE(sizes.count(2048) != 0) << "auto_tones's Buffer";
     EXPECT_TRUE(sizes.count(4) != 0) << "halved each iteration, down to 4";
-}
-
-TEST(PassPlanner, ALeftOutNodeIsNotPlanned) {
-    const auto library = repositoryLibrary();
-    ASSERT_TRUE(library);
-    ASSERT_NE(NodeLibrary::leftOutReason("height_to_angle"), nullptr);
-    const graph::Graph file = graphOf({{"h", "height_to_angle"}}, {});
-    PassPlan plan;
-    std::string error;
-    EXPECT_FALSE(planGraph(file, library, {{"out", "h", "output"}}, PlanOptions(), plan, error));
-    EXPECT_NE(error.find("does not have"), std::string::npos) << error;
 }
 
 TEST(PassPlanner, ACycleIsAnError) {

@@ -210,7 +210,7 @@ TEST_F(GraphProcMatTest, AValueOfTheWrongTypeIsAnError) {
     EXPECT_EQ(paramIssues("perlin", {{"scale_x", "$(expr:1+1)"}}), paramType);
     EXPECT_EQ(paramIssues("perlin", {{"scale_x", true}}), paramType);
     EXPECT_EQ(paramIssues("perlin", {{"seed", 1.5}}), paramType);
-    EXPECT_EQ(paramIssues("blend", {{"blend_type", "not_a_mode"}}), paramType);
+    EXPECT_EQ(paramIssues("blend", {{"blend_type", "not_a_mode"}}), std::vector<std::string>{"param-range"}) << "S23's strict check, once";
     EXPECT_EQ(paramIssues("blend", {{"blend_type", 99}}), paramType);
     EXPECT_TRUE(paramIssues("blend", {{"blend_type", "multiply"}}).empty());
     EXPECT_TRUE(paramIssues("blend", {{"blend_type", 2}}).empty());

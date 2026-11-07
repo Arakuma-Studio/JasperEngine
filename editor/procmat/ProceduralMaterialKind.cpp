@@ -357,6 +357,8 @@ std::vector<std::string> jasperengine::editor::procmat::checkNodeParameters(cons
         const std::string name = definition.at("name").get<std::string>();
         auto value = node.params.find(name);
         if (value == node.params.end()) continue;
+        // an enum named wrong is S23's strict param-range error, with its did-you-mean: not twice
+        if (!checkRange && definition.value("type", std::string()) == "enum" && value->is_string()) continue;
         std::string problem = valueProblem(definition, *value);
         if (problem.empty() && checkRange) {
             const std::string kind = definition.value("type", std::string());

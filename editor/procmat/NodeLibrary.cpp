@@ -80,12 +80,7 @@ const Json* NodeLibrary::catalogEntry(const std::string& id) const {
 
 const std::vector<LeftOutNode>& NodeLibrary::leftOutNodes() {
     // decided by ProcMatNodeImageGpuSlow on llvmpipe against SpirvInterpreter (S90 R20, AC8; the spec's Deviations)
-    static const std::vector<LeftOutNode> nodes = {
-        {"auto_tones", "its loop pass differs between tiers by 4.3 mean, 47 at p99 when wired (cause not traced)"},
-        {"bricks", "pattern=1's Direction output takes sign() of a value that is zero up to rounding: 27 mean, 128 at p99"},
-        {"height_to_angle", "unconnected, it is atan(0, 0), which each tier defines its own way: 191 apart"},
-        {"morphology3", "differs by 2.4 mean, 12 at p99 once its Buffers feed each other (cause not traced)"},
-    };
+    static const std::vector<LeftOutNode> nodes = {};
     return nodes;
 }
 
