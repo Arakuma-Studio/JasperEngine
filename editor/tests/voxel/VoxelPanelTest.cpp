@@ -210,9 +210,6 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
     // over_budget: a budget below what the volume holds, named per target. A small cavity or mound in
     // every level-0 block, painted, makes each one hold both channels: 64 blocks of 16 KB, and the
     // coarser level
-    VoxelProjectSettings lower;
-    lower.cpuBudgetMB = 1;
-    project->setVoxelSettings(lower);
     scene->getComponent<VoxelVolumeComponent>(owner).materialSlots.resize(2);
     std::vector<voxel::EditOp> everyBlock;
     for (int z = 0; z < 4; z++) {
@@ -233,12 +230,16 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
             }
         }
     }
-    // one call of 128 ops: past a Play edit's budget, which this is not about
+    // one call of 128 ops, not held to a per-call voxel budget; the lower memory budget comes after it,
+    // as the store refuses an edit past its own budget
     voxel::EditOptions unbudgeted;
     unbudgeted.maxVoxels = int64_t(1) << 30;
     const voxel::EditResult everyBlockResult = system->edit(owner, everyBlock, unbudgeted);
     ASSERT_TRUE(everyBlockResult.ok) << static_cast<int>(everyBlockResult.error);
     ASSERT_GT(asset->store->memory().total(), int64_t(1) << 20);
+    VoxelProjectSettings lower;
+    lower.cpuBudgetMB = 1;
+    project->setVoxelSettings(lower);
     EXPECT_TRUE(has(VoxelProblemCode::OverBudget));
     project->setVoxelSettings(VoxelProjectSettings{});
 
