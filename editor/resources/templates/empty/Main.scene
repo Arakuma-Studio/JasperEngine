@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 5b404207006a08d1386dcf0ed03d5b09
-id: 1524315949
+guid: f1a384cf09a6c8c3662977f47290282c
+id: 416095441
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -37,5 +37,7 @@ mainCamera: 0
 shaderKeys:
   - type: sky
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
 entities: ~
