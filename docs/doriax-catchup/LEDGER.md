@@ -79,7 +79,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 |---|---|---|---|
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
-| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
+| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | merged |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
@@ -94,7 +94,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
-| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
+| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
@@ -225,3 +225,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   eval cases for the new text). Landing tree = main + sprite-batching + branch, conflicts resolved by its agent;
   box D: WERROR editor (0 warnings), fanout, budget (core 98966), unit 60 core + 44 editor incl. RuntimeFields and
   CookedScene, MCP 32, lints, test_grade.
+- 2026-11-07 03:xx: **agent-authoring and export-pipeline merged** (landing train 1), each after an independent review
+  and its fixes, each pre-checked on main + sprite-batching, then together on main + scripting (box: WERROR editor,
+  gen_tool_docs and budget with the guide's client cut, unit filters of both plus RuntimeFields/CookedScene and
+  scripting's parts tests, MCP 122 passed across both features plus scripting's overlap, lints and test_grade).
+  Conflicts at landing: eval cases (union, graded), the shipping guide (both paragraphs).
