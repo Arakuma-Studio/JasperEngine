@@ -972,14 +972,18 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 
 Recorded as the implementation found them. T3-dependent items name what to swap when T3 lands.
 
-- **R34 and R37, noise.** T2's runtime was not linkable while T6 was built (coordinator's note, commit `7f47e4024`); see the report for what landed.
+- **R34 and R37, noise.** Built on T2 at `a43bedd29`. The `overhangs` preset is a Noise Graph held as a string in `VoxelGeneration.cpp` rather than a `.noisegraph` file, since T2's preset list is T2's; `caves` and `cave_entrance` are ops declared in code, as R37 allows. Noise hashes are not pinned while T2's kernel table may change: the tests hold R5's and R34's properties instead.
 - **R50, `TerrainDetailBuilder`.** T3 had not landed it. `RenderSystemVoxel.cpp` builds the array itself with the same slices and `MipChain` path as `getTerrainDetailArray`, and a volume whose slots are all linked uses the terrain's array through that function. Swap to the builder when T3 lands, which also brings cooked compressed slices and height in colour alpha.
 - **R42 and R51, the height formula.** `terrain_height_blend.glsl` is T3's; `voxel_fs.glsl` applies today's formula (`weight * pow(height, 6)`) in `VOXEL_ACCUMULATE`. Low reads height from colour alpha as T3 R6 will fill it; until then that alpha is the map's own.
 - **R49, G-buffer tier.** T3's `Tqm` and `Tql` do not exist yet, so the G-buffer variant uses Medium.
 - **R51, High's reads.** 28 worst case, under the budget of 32: colour 12 near and 4 far, normal and surface 6 each. No far normal.
 - **R51, attached tier.** `Auto` follows R7's table, since T3's `TerrainQuality` is not there yet; it must follow the terrain's effective tier when it is.
 - **R36.** `MeshBvh` has no nearest-triangle query, so `voxelizeMesh` visits the samples around each triangle's box directly. Same distances and sign; it runs as a job in the editor.
-- **R40.** Cuts use `terrain::rasterizeRegion` per run of texels, T1's implementation of `cut_holes` and `fill_holes`, not the R8 mask form: a run is exact on the texel-centre rule, and the mask form resamples. `holeMapHolds` is added here in T3's named place, and `canRemoveMap` honours it.
+- **R40.** Cuts use `terrain::rasterizeRegion` per run of texels, T1's implementation of `cut_holes` and `fill_holes`, not the R8 mask form: a run is exact on the texel-centre rule, and the mask form resamples. `holeMapHolds` is T3's, at `c9c369693`; it was added here in T3's named place, and `canRemoveMap` honours it.
 - **R74 header, base hash.** In a delta it is the trailing FNV-1a of the asset it was made over (R79's `base_changed`): the decoded content hash would have to resolve every base block on each save. Non-delta files store 0.
 - **AC16 option.** `ChangeSetOptions::dirtyPadding` is a plain option, not compiled for tests only: the core tests link the same static engine as a game, so there is no test-only build to compile it in. Engine code never sets it.
 - **R17, when a view is taken.** Each mesh job's read view is taken with its request, in the edit call, not when the job starts: `VoxelChangeSet.AtMostTwoInFlight` cracked otherwise, since a job started later read a newer version than its set.
+- **Shader bits after upstream's.** GBUFFER `Vox` is bit 20, after upstream's `Occ`, `Uv2`, `Ifd` and T3's `Thl` (19); the Lit defines are bits 20-23 after `PBR_HAIR`. `ShaderKey.VoxelBitIsPinned` pins them. T3's `Thl` moved to MESH 42, DEPTH 19, GBUFFER 19 in the same merge, and its pin test with it.
+- **R1, the component fields.** `overlapDepth` and `cutTolerance` default to -1, meaning 0.02 and 0.25 of the asset's voxel size: the component cannot know the voxel size, which belongs to the asset.
+- **AC50, `VoxelCook.BakedLoadsWithoutSources`.** The editor test cooks and loads a baked file with no source and counts no evaluation. Its `run_build` and `smoke-test` half is left for the end of the programme (owner's rule: no full suites or smoke tests in streams).
+- **AC35, `CollisionHoleAfterCollider`.** Waits for T1's `JoltTerrainRefresh` (`29bb7a78b`), which is not merged here yet.
