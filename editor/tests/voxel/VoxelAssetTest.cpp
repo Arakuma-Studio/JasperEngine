@@ -273,6 +273,8 @@ TEST_F(VoxelAssetTest, AutoSaveRecovery) {
     asset.reset();
     history->clear();
     const uint32_t sceneId = sceneProject->id;
+    // a crash closes nothing: closing a modified scene would discard its backup (S03 R16)
+    sceneProject->isModified = false;
     project->closeScene(sceneId, true);
     sceneProject = nullptr;
 
