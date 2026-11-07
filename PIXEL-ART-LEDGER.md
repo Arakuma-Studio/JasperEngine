@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -219,6 +219,11 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-07: `dc/sprite-batching` landed on origin/main (885cddc46, 81ffe9f3d). The batcher
+  draws pixel-snapped sprites one by one, unbatched, until S41's snap is wired into its batch key.
+  That wiring belongs to the narrowed S52, so S41 lands as is. The S52 worktree was recreated
+  from `main` 81ffe9f3d, and its spec is being re-scoped onto the landed batcher. Shader cache on
+  `main` is v50; S41 took v51 at its final merge.
 - 2026-11-07: S44 review fixes are done at `5e68ac54b` (main `cbc4ee7fb` merged).
   - Passing: `WERROR` builds; filtered unit tests (core 15, editor 252); 183 MCP tests across 20
     files; `aseprite_compat.py` against real Aseprite (637/640 pass, 3 skipped where Aseprite's
