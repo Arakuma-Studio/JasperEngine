@@ -346,3 +346,30 @@ Step 5 solvers (stream `solvers`):
   field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
   fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so
   the fields are `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`.
+
+- **D3, the field table:** `kClipReportFields` holds what `clipReportJson` and `clipOptimizeJson` print, each row with the
+  section it lives in, and more keys than D3's list (`reference`, `within_tolerance`, `joints`, ...), since the gtest holds the table and the
+  JSON equal. Reach Error, Pelvis Offset, Lock Drift and Slide are `makeSnapshot`'s (R36), not a clip's: they join with that stream.
+- **R24, `optimize`:** the block also has `source` (`"assets/anim/walk.anim"`, `"<model>#<clip>"`), what `source_sha1` is the hash of:
+  `anim-optimize-stale` cannot find it otherwise for an `.anim` source. An in-place reduction keeps the block it had, or names none:
+  the file it replaced is gone.
+- **R25, `anim-rotation-flip`:** `normalize` flips signs on slerp tracks, so a parsed clip can never hold D's negative dot. It fires on the signs
+  the parser saw (`ClipParseResult::rotationSignFlips`), on Hermite tracks, and on keys more than 160 degrees apart, where the short way round
+  is a coin toss.
+- **R22, measured limit:** every joint answers to its own limit (`clipJointLimits`), a foot's half included, not only the clip's max. An
+  override above `tolerance_mm` can therefore put the clip's max over it, on purpose; `optimize_animation`'s re-read bound applies without `joints`.
+- **D6, `compare_to`:** a clip only, as D6 says; the plan's `"source"` needs step 6's cook. Without `limits.error_mm` the limit is the clip's own record,
+  and with neither `within_tolerance` is null and nothing fails.
+- **D6, `root`:** switches that GameObject's Animation Player entries of the source to the new file in one scene undo step, the plan's meaning.
+- **`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed`, `limits.foot_slide_mm`, `limits.pop_mm`:** in the schema now, answering
+  `not_available` until stream `debug` flips their row in `kChecks`. Nothing about the schema changes then.
+- **Calibration (risks table), JasperArcade-Ported through the real importer, 69 clips of 25 models:** at 1 mm the median
+  key ratio is 1.19x and the median `runtime_bytes` ratio 1.03x (0.96x to 1.90x); 7 clips grow, since tracks that lose
+  different keys stop sharing key times. Every measured max is within 1 mm (worst 0.99). R50's gate is not met. Loop Match's
+  median is 6.6 mm (p90 well over 10 mm, all on Once clips, which get no finding); `anim-loop-seam` stays at 10 mm, on Loop
+  clips only. No clip drifts: the in-place root speed is under 0.02 m/s at p90, so the 0.25 m/s in-place threshold holds.
+- **R53, core budget:** `get_asset_info`'s `skeleton` has no description and its text lists no result fields, so the always-listed
+  group stays within 99,000; `get_model_info`'s `bones[i].parent` is in the guide, not its description. `focus_window` gets no
+  `animation_statistics` for the same reason: the window opens from Window > Analysis.
+- **R46, the dialog:** Reduce Keys... is an `EditorModal` (S69): `editor_status.dialog` carries its numbers, `respond_dialog` sets
+  `tolerance_mm`, `skin_distance_mm`, `output`, `replace`, `overwrite` and answers `ok` (Reduce) or `cancel`.

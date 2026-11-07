@@ -15,7 +15,8 @@ TIMEOUT = 600
 MODEL = "assets/models/hero_animated.gltf"
 CLIP = "assets/anim/s74_stats.anim"
 CONTROLLER = "assets/anim/s74.controller"
-STAT_KEYS = {"runtime_bytes", "file_bytes", "keys", "tracks", "length_s", "constant_tracks"}
+# S74 step 3 adds audio_cues (S40's cues, counted like the rest of the table)
+STAT_KEYS = {"runtime_bytes", "file_bytes", "keys", "tracks", "length_s", "constant_tracks", "audio_cues"}
 MONITORS = ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms", "Anim Wave ms", "Anim Finalize ms", "Clip memory"]
 
 

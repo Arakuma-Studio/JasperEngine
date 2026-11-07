@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/BoneOverlay.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
@@ -6207,6 +6208,11 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
     }
     if (posedBones){
         ImGui::TextColored(Theme::Colors::WarningText, "Posed by the Pose Animation window (read-only)");
+    }
+    // Write Bones: Exposed leaves this Transform at rest while the bone moves in the pose
+    if (sceneProject && sceneProject->scene && entities.size() == 1 && sceneProject->scene->findComponent<BoneComponent>(entities[0]) &&
+            isUnwrittenAnimatorBone(sceneProject->scene, entities[0])){
+        ImGui::TextColored(Theme::Colors::WarningText, "Not written to this GameObject (Write Bones: Exposed)");
     }
 
     // a Lattice Follower's driven channels: LatticeSystem puts them back every frame, so they

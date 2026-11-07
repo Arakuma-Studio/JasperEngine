@@ -43,6 +43,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 
@@ -424,6 +425,7 @@ void editor::App::registerPanelClaims(){
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")}}});

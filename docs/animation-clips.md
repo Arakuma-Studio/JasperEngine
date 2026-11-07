@@ -918,6 +918,51 @@ report the result as `stats.runtime_bytes`, Jobs & Memory lists what is loaded a
 and the profiler has it as the `Clip memory` monitor. They are one number. `.anim` files do not
 change: this is only how a loaded clip is held.
 
+Select a clip in the Project window and the Inspector's first line says what it costs:
+`1.20 s · 30 Hz · 65 tracks · 2,340 keys · Memory 31 KB · File 112 KB · 9 constant tracks`. Memory is
+the heap it takes once loaded, File its size on disk, and a constant track one that holds a single value
+across several keys.
+
+**Window > Analysis > Animation Statistics** lists every clip: **Scan project** (or Scope **Open
+scenes**: the clips their Animation Players list), with Length, Tracks, Keys, Memory, Max Error (from its last
+reduction, `-` when it has none), Users and Loaded, the largest first, and the totals above. Show **All**,
+**Loaded**, **Unused** or **Over budget** (the Budget per clip beside it). Double-click a row to select its
+file. **Unused** means no Animation Player in an open scene lists the clip: scripts can name clips, so check
+before you delete one. The window changes nothing.
+
+### Reduce Keys...
+
+The Inspector's **Reduce Keys...** removes keys a skeleton does not need and measures what that does.
+**Error Tolerance** is the most any joint, or a point **Skin Distance** from it, may end up from where it was;
+the numbers are measured through the runtime's own sampler as you change them: **Memory** and **Keys** before and
+after, **Max Error**, **Mean Error** and **Worst Joint**. The preview writes nothing.
+
+**Expect a small gain, and sometimes none.** Clips that came through an FBX import are usually thin already: on
+one real project (51 clips) the median was 1.1x fewer keys at 1 mm. Tracks that lose different keys also stop
+sharing their key times, so Memory can stay as it was or grow while Keys falls. The dialog says so; keep the source
+when the numbers do not pay.
+
+- **Reduce** writes a new `.anim` (`walk.opt.anim`) as one undo step and shows the numbers again, read from the
+  file. **Replace This Clip** writes over the source instead, also one undo step. A model's clip always
+  becomes a new `.anim`: a model file is never changed.
+- Keys that stay keep their values, in order. Length, events, audio cues and every track stay. A track that never moves keeps
+  one key, a moving one its first and last. Tracks with tangents, eases or steps, and morph, lattice, property and
+  humanoid tracks keep all their keys.
+- Feet and toes get half the tolerance: a planted foot's slide shows under far less error than a hand's.
+- The error is measured on the clip's model: a model's clip knows it; an `.anim` needs its **Preview Model**.
+- The new file records how it was made (`optimize` in the file). `check --anims` warns when its source has
+  changed since (`anim-optimize-stale`).
+
+`check --anims` also warns of keys that only repeat their neighbours (`anim-redundant-keys`), tracks that never
+move (`anim-constant-track`) and rotations that flip between two keys (`anim-rotation-flip`): `docs/mcp/checks.md`.
+
+### Root Motion
+
+The Inspector's **Root Motion** section sets what the Animator takes from an `.anim`: **Root Motion Node** (empty:
+Auto, the Animator's bone, the hips, then the shallowest bone the clip moves), and **Bake Into Pose** for **Root
+Transform Rotation**, **Root Transform Position (Y)** and **Root Transform Position (XZ)**. Each change is one
+undo step.
+
 ## Not in this version
 
 For the Animator's features (sub-state machines, 2D and direct blend trees, IK, root motion,
