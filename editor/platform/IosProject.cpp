@@ -12,6 +12,8 @@
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <fstream>
 
 using namespace jasperengine;
@@ -42,6 +44,72 @@ namespace {
 
 }
 
+XcodeChoice platform::chooseXcode(const std::string& developerDirVariable, const std::string& activeDeveloperDir,
+                                  const std::vector<fs::path>& applications) {
+    XcodeChoice choice;
+    if (!developerDirVariable.empty()) {
+        choice.developerDir = developerDirVariable;
+        return choice;
+    }
+    if (!activeDeveloperDir.empty() && activeDeveloperDir.find("CommandLineTools") == std::string::npos) {
+        choice.developerDir = activeDeveloperDir;
+        return choice;
+    }
+    // Xcode.app first, then the newest looking of Xcode-16.app, Xcode_26.app...
+    std::vector<fs::path> sorted = applications;
+    std::sort(sorted.begin(), sorted.end(), [](const fs::path& a, const fs::path& b) {
+        const bool plainA = a.filename() == "Xcode.app", plainB = b.filename() == "Xcode.app";
+        return plainA != plainB ? plainA : b.filename() < a.filename();
+    });
+    if (!sorted.empty()) {
+        choice.developerDir = sorted.front() / "Contents" / "Developer";
+        choice.throughEnvironment = true;
+        return choice;
+    }
+    choice.missing = activeDeveloperDir.empty() ? "no Xcode is installed"
+                                                : "the active developer directory is the Command Line Tools (" + activeDeveloperDir +
+                                                      "), and no Xcode is in /Applications; install Xcode from the App Store";
+    return choice;
+}
+
+XcodeChoice platform::findXcode() {
+#ifdef __APPLE__
+    const char* variable = std::getenv("DEVELOPER_DIR");
+    std::vector<fs::path> applications;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator("/Applications", ec)) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("Xcode", 0) == 0 && entry.path().extension() == ".app" &&
+            fs::exists(entry.path() / "Contents" / "Developer" / "usr" / "bin" / "xcodebuild", ec))
+            applications.push_back(entry.path());
+    }
+    return chooseXcode(variable ? variable : "", CommandRunner::capture({"xcode-select", "-p"}, 5000), applications);
+#else
+    XcodeChoice choice;
+    choice.missing = "a Mac with Xcode";
+    return choice;
+#endif
+}
+
+std::string platform::describeXcodeFailure(const std::string& log, const std::string& teamId) {
+    const auto says = [&log](const char* text) { return log.find(text) != std::string::npos; };
+    if (says("requires a development team"))
+        return "signing needs a team: set Project Settings > iOS > Team ID (or build for the simulator, which needs none)";
+    if (says("No Account for Team") || says("No Accounts"))
+        return "Xcode has no account for the team " + teamId + ": add one in Xcode > Settings > Accounts, or correct Project Settings > iOS > Team ID";
+    if (says("No profiles for") || says("requires a provisioning profile") || says("No signing certificate") || says("doesn't include signing certificate") ||
+        says("no signing identity") || says("No provisioning profile"))
+        return "no certificate or provisioning profile to sign with for the team " + teamId +
+               ": sign in with that team in Xcode > Settings > Accounts and let it manage signing";
+    if (says("agreed to the Xcode") || says("Xcode license"))
+        return "the Xcode licence is not accepted yet: open Xcode once, or run sudo xcodebuild -license accept";
+    if (says("is not installed. Please download") || says("is not installed. To use"))
+        return "this Xcode has not installed the iOS platform yet: add it in Xcode > Settings > Components";
+    if (says("requires Xcode, but active developer directory"))
+        return "the active developer directory is the Command Line Tools, which cannot build for iOS: install Xcode, or set DEVELOPER_DIR to it";
+    return "";
+}
+
 std::string platform::fillIosTemplate(std::string text, const IosProjectSettings& s) {
     replaceAll(text, "{{PRODUCT_NAME}}", s.appName);
     replaceAll(text, "{{DISPLAY_NAME}}", Exporter::escapeXml(s.displayName));
@@ -53,8 +121,7 @@ std::string platform::fillIosTemplate(std::string text, const IosProjectSettings
     return text;
 }
 
-bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
-                               std::vector<fs::path>& artifacts, std::vector<std::string>& notes, std::string& error) {
+bool platform::stageIosProject(const IosProjectSettings& settings, std::string& error) {
     std::error_code ec;
     const fs::path templateDir = settings.runtimeDir / "template";
     if (!fs::is_directory(templateDir, ec) || !fs::exists(settings.runtimeDir / "JasperEnginePlayer.xcframework", ec)) {
@@ -93,16 +160,18 @@ bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner
                                 "    \"version\" : 1\n  }\n}\n");
         }
     }
+    return true;
+}
+
+bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
+                               std::vector<fs::path>& artifacts, std::vector<std::string>& notes, std::vector<BuildWarning>& warnings,
+                               std::string& error) {
+    const fs::path project = settings.projectDir / "JasperEnginePlayer.xcodeproj";
     artifacts.push_back(project);
 
-    const ToolLocation xcodebuild = ExternalTools::xcodebuild();
-#ifdef __APPLE__
-    const bool mac = true;
-#else
-    const bool mac = false;
-#endif
-    if (!mac || !xcodebuild.found()) {
-        notes.push_back("iOS needs a Mac with Xcode: open " + project.string() + " on a Mac with Xcode to build and sign it");
+    const XcodeChoice xcode = findXcode();
+    if (!xcode.found()) {
+        notes.push_back("iOS needs a Mac with Xcode (" + xcode.missing + "): open " + project.string() + " on a Mac with Xcode to build and sign it");
         return true;
     }
     if (cancelled()) {
@@ -115,39 +184,55 @@ bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner
         log += line + "\n";
         if (log.size() > 8000) log.erase(0, log.size() - 8000);
     };
-    int code = -1;
+    CommandRunner::Environment environment;
+    if (xcode.throughEnvironment) {
+        environment = CommandRunner::currentEnvironment();
+        environment.emplace_back("DEVELOPER_DIR", xcode.developerDir.string());
+    }
+    const std::string program = ExternalTools::xcodebuild().path.string();
+    auto xcodebuild = [&](const std::vector<std::string>& args) {
+        std::vector<std::string> argv = {program};
+        argv.insert(argv.end(), args.begin(), args.end());
+        return runner.run(argv, settings.projectDir, collect, xcode.throughEnvironment ? &environment : nullptr);
+    };
+    auto failed = [&](const std::string& what) {
+        const std::string reason = describeXcodeFailure(log, settings.teamId);
+        error = cancelled() ? "Build cancelled" : reason.empty() ? what + " failed:\n" + log : what + " failed: " + reason + "\n\n" + log;
+        return false;
+    };
+    const std::vector<std::string> common = {"-project", project.string(), "-scheme", "JasperEnginePlayer", "-configuration", "Release"};
+    auto with = [&common](std::vector<std::string> args) {
+        args.insert(args.begin(), common.begin(), common.end());
+        return args;
+    };
     const fs::path derived = settings.projectDir / "build";
     if (settings.simulator) {
-        runner.runArgs({xcodebuild.path.string(), "-project", project.string(), "-scheme", "JasperEnginePlayer", "-sdk", "iphonesimulator",
-                        "-configuration", "Release", "-derivedDataPath", derived.string(), "CODE_SIGNING_ALLOWED=NO", "build"},
-                       settings.projectDir, collect, &code);
-        if (code != 0) {
-            error = "xcodebuild failed:\n" + log;
-            return false;
-        }
+        if (!xcodebuild(with({"-sdk", "iphonesimulator", "-derivedDataPath", derived.string(), "CODE_SIGNING_ALLOWED=NO", "build"})))
+            return failed("xcodebuild");
         artifacts.insert(artifacts.begin(), derived / "Build" / "Products" / "Release-iphonesimulator" / (settings.appName + ".app"));
         return true;
     }
-    const fs::path archive = settings.projectDir / (settings.appName + ".xcarchive");
-    runner.runArgs({xcodebuild.path.string(), "-project", project.string(), "-scheme", "JasperEnginePlayer", "-configuration", "Release",
-                    "-archivePath", archive.string(), "archive", "DEVELOPMENT_TEAM=" + settings.teamId},
-                   settings.projectDir, collect, &code);
-    if (code != 0) {
-        error = "xcodebuild archive failed (a device build needs the team id in Project Settings > iOS):\n" + log;
-        return false;
+    if (settings.teamId.empty()) {
+        // no team, no signature: as far as a device build can go, and the project is still the result
+        if (!xcodebuild(with({"-sdk", "iphoneos", "-derivedDataPath", derived.string(), "CODE_SIGNING_ALLOWED=NO", "build"})))
+            return failed("xcodebuild");
+        artifacts.insert(artifacts.begin(), derived / "Build" / "Products" / "Release-iphoneos" / (settings.appName + ".app"));
+        warnings.push_back({"W-IOS-NO-TEAM", "the device build is compiled but not signed, so it installs on no device: set Project Settings > iOS > Team ID "
+                                             "for a signed .ipa, or build for the simulator"});
+        return true;
     }
+    const fs::path archive = settings.projectDir / (settings.appName + ".xcarchive");
+    if (!xcodebuild(with({"-destination", "generic/platform=iOS", "-archivePath", archive.string(), "-allowProvisioningUpdates", "archive",
+                          "DEVELOPMENT_TEAM=" + settings.teamId})))
+        return failed("xcodebuild archive");
     const fs::path options = settings.projectDir / "ExportOptions.plist";
     io::writeFileAtomic(options, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
                                  "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>method</key>\n\t<string>" +
                                  settings.exportMethod + "</string>\n\t<key>teamID</key>\n\t<string>" + settings.teamId + "</string>\n</dict>\n</plist>\n");
     const fs::path exportDir = settings.projectDir / "export";
-    runner.runArgs({xcodebuild.path.string(), "-exportArchive", "-archivePath", archive.string(), "-exportOptionsPlist", options.string(),
-                    "-exportPath", exportDir.string()},
-                   settings.projectDir, collect, &code);
-    if (code != 0) {
-        error = "xcodebuild -exportArchive failed:\n" + log;
-        return false;
-    }
+    if (!xcodebuild({"-exportArchive", "-archivePath", archive.string(), "-exportOptionsPlist", options.string(), "-exportPath", exportDir.string(),
+                     "-allowProvisioningUpdates"}))
+        return failed("xcodebuild -exportArchive");
     artifacts.insert(artifacts.begin(), exportDir / (settings.appName + ".ipa"));
     return true;
 }

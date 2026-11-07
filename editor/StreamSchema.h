@@ -29,6 +29,53 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include "component/AudioSourceComponent.h"
+#include "navigation/NavCrowd.h"
+#include "navigation/GridPathfinder.h"
+#include "navigation/NavGridMap.h"
+#include "particles/LegacyParticleSystem.h"
+
+namespace jasperengine{
+    enum class LodFadeMode;
+}
+
+namespace jasperengine{
+    enum class ActionState;
+    enum class AnchorPreset;
+    enum class BuoyancyColumns;
+    enum class CloudsPreset;
+    enum class Collider2DType;
+    enum class Collider3DType;
+    enum class FluidOutput;
+    enum class FogColorMode;
+    enum class FogType;
+    enum class FogVolumeFalloff;
+    enum class FogVolumeShape;
+    enum class ForceFieldKind;
+    enum class ForceFieldShapeType;
+    enum class Joint2DType;
+    enum class Joint3DType;
+    enum class LatticeInterpolation;
+    enum class LatticeJiggleAnchor;
+    enum class LatticeMaskChannel;
+    enum class LatticeOutside;
+    enum class LatticeStage;
+    enum class LayoutGroupType;
+    enum class LightShading;
+    enum class LightType;
+    enum class LightUnit;
+    enum class NavAgentDriver;
+    enum class NavCollectObjects;
+    enum class NavGridSource;
+    enum class NavModifierInclusion;
+    enum class NavObstacleShape;
+    enum class NavUseGeometry;
+    enum class ProgressbarType;
+    enum class ScrollbarType;
+    enum class ShadowCaster2DShape;
+    enum class UIDocumentRenderMode;
+    enum class WaterVolumeWaves;
+}
 
 namespace jasperengine::editor {
 
@@ -160,6 +207,7 @@ namespace jasperengine::editor {
         static const EnumTable<Collider2DType>& collider2DType();
         static const EnumTable<Collider3DType>& collider3DType();
         static const EnumTable<CullingMode>& cullingMode();
+        static const EnumTable<LodFadeMode>& lodFadeMode();
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<AtmosphereQuality>& atmosphereQuality();
@@ -215,6 +263,7 @@ namespace jasperengine::editor {
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();
         static const EnumTable<Scaling>& scalingMode();
         static const EnumTable<SceneColorScale>& sceneColorScale();
+        static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<SceneType>& sceneType();
         static const EnumTable<ScriptPropertyType>& scriptPropertyType();
         static const EnumTable<ScriptType>& scriptType();

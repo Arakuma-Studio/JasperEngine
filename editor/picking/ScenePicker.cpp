@@ -7,6 +7,13 @@
 // Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "ScenePicker.h"
+#include "component/AudioSourceComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
+#include "component/CameraComponent.h"
 #include "IconPicker.h"
 
 #include "component/LineRendererComponent.h"
@@ -260,8 +267,9 @@ ScenePickResult ScenePicker::pick(uint32_t viewSceneId, const ScenePickRequest& 
     SceneRender* sceneRender = viewScene->sceneRender;
     const std::vector<Project::SceneViewLayer> layers = project->getSceneViewLayers(viewSceneId);
 
-    // icons first: they are drawn over everything (the view's own scene draws them)
-    {
+    // icons first: they are drawn over everything (the view's own scene draws them; not while
+    // a game load has replaced it in the view)
+    if (!project->getReplacingMainScene(viewSceneId)) {
         IconPickFilter iconFilter;
         iconFilter.lights = !(viewScene->sceneType == SceneType::SCENE_3D && viewScene->displaySettings.hideLightIcons);
         iconFilter.audio = !viewScene->displaySettings.hideSoundIcons;

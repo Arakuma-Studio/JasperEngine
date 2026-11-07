@@ -85,34 +85,14 @@
 #define MAX_POINT_SHADOW_LIGHTS (MAX_POINT_SHADOW_ATLAS_SLOTS / SHADOW_CUBE_FACES)
 #endif
 
-#ifndef MAX_SUBMESHES
-#define MAX_SUBMESHES 16
-#endif
-
 // detail levels per submesh, level 0 being the source geometry
 #ifndef MAX_MESH_LODS
 #define MAX_MESH_LODS 4
 #endif
 
-#ifndef MAX_TILEMAP_TILESRECT
-#define MAX_TILEMAP_TILESRECT 200
-#endif
-
-#ifndef MAX_TILEMAP_TILES
-#define MAX_TILEMAP_TILES 2048
-#endif
-
-#ifndef MAX_SPRITE_FRAMES
-#define MAX_SPRITE_FRAMES 128
-#endif
-
 // main font of a text plus its fallbacks
 #ifndef MAX_TEXT_FONTS
 #define MAX_TEXT_FONTS 4
-#endif
-
-#ifndef MAX_BONES
-#define MAX_BONES 128
 #endif
 
 #ifndef MAX_MORPHTARGETS
@@ -123,10 +103,6 @@
 // SSAO_KERNEL_SIZE define injected for the ssao.frag shader (ShaderBuilder)
 #ifndef SSAO_KERNEL_SIZE
 #define SSAO_KERNEL_SIZE 32
-#endif
-
-#ifndef MAX_EXTERNAL_BUFFERS
-#define MAX_EXTERNAL_BUFFERS 30
 #endif
 
 #ifndef MAX_BROADPHASELAYER_3D
@@ -227,6 +203,10 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
+            // mesh draws the passes' visible lists kept and culled (spec S55 R4)
+            uint32_t visible = 0;
+            uint32_t culled = 0;
+            uint64_t vertices = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -328,6 +308,9 @@ namespace jasperengine {
         };
 
     private:
+        // TEST-ONLY seam: a view loaded without a GPU (canvas refresh tests)
+        friend struct EngineTestAccess;
+
         //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
         static std::unordered_set<Scene*> oneTimeScenes;
@@ -366,6 +349,7 @@ namespace jasperengine {
         static float framerate;
         static double framePeriod;
         static double frameCpuTime;
+        static double frameDrawCpuTime;
         static FrameStats frameStats;
         static FrameStats currentFrameStats;
         
@@ -400,11 +384,22 @@ namespace jasperengine {
         static bool nativePaused;
         static void applyPause();
         static std::atomic<bool> focused;
+        // systemVisibilityChanged: the window can be seen
+        static std::atomic<bool> visible;
+
+        // Dynamic Batching: what draws now (Engine.dynamicBatching) and the project's setting it
+        // goes back to with the application state
+        static bool dynamicBatching;
+        static bool dynamicBatchingDefault;
 
         // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
+        // Engine.setTextureQuality's value (the pool drops QualityResolver's resolution of it)
+        static int textureQuality;
+        // the QualityResolver revision the frame pacing, texture quality and upload budget follow
+        static uint32_t qualityRevision;
         // last orientation systemOrientationChanged saw (0: none yet), and since when (system
         // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
@@ -423,6 +418,10 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static float foliageDistanceScaleDefaults[3];
+        static bool foliageDistanceScaleOverridden;
+        static float foliageDistanceScaleOverride;
+        static bool gpuInstancingEnabled;
 
         static Semaphore drawSemaphore;
 
@@ -447,11 +446,17 @@ namespace jasperengine {
         // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
         static void cancelUIPointer(int pointerOrButton, bool touch);
         static void cancelAllUIPointers();
-        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
         static void flushCharInput();
+        // whole typed code points to Input.inputString, the documents, onCharInput and the
+        // component UI (systemCharInput, flushCharInput)
+        static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
-        static void calculateCanvas();
+        // the canvas and view rect for the current screen, then what follows them: every scene's
+        // and the debug overlay's camera (Canvas Scaler), Screen.safeArea; with notify, the events
+        // of a view change when the canvas or the view rect changed (a nested call does not notify)
+        static void refreshCanvas(bool notify);
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
@@ -468,6 +473,9 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // a new device tier, thermal step or memory drop: the pacing, texture quality and upload
+        // budget again (once a frame, one compare when nothing changed)
+        static void applyQualityChanges();
         // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
         static void applySimulatedSafeArea();
         
@@ -493,6 +501,9 @@ namespace jasperengine {
         static bool isSceneRunning(Scene* scene);
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
+        // The scene drawn first, which clears the frame: the main scene, or before there is one
+        // (a loading scene covering the start scene) the bottom running scene
+        static Scene* getBaseScene();
         static Scene* getLastScene();
         // every running scene: the main scene and its layers (child scenes), bottom first
         static std::vector<Scene*> getSceneLayers();
@@ -625,6 +636,24 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
+
+        // Foliage Distance (Unity's QualitySettings.terrainDetailDistanceFactor): multiplies every
+        // terrain foliage layer's Draw Distance and Min Draw Distance. The project's scale per
+        // platform group (Project Settings > Quality, 1 by default), which a game may override at
+        // runtime (0 draws no foliage; clamped to [0, 10], non-finite values ignored).
+        // getFoliageDistanceScale is the scale in effect: the override, else this platform's default.
+        static void setFoliageDistanceScaleDefaults(float desktop, float mobile, float web);
+        static float getFoliageDistanceScaleDefault(Platform platform);
+        static float getFoliageDistanceScaleDefault();
+        static void setFoliageDistanceScale(float scale);
+        static float getFoliageDistanceScale();
+        // back to the platform default (the editor calls it when Play stops)
+        static void resetFoliageDistanceScale();
+        // GPU Instancing (Project Settings > Graphics, spec S55): MeshComponent draws of one mesh,
+        // material and pipeline become instanced draws, and constant state is applied once. On by
+        // default; off submits every draw as before S55
+        static void setGpuInstancingEnabled(bool enabled);
+        static bool isGpuInstancingEnabled();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
@@ -633,10 +662,16 @@ namespace jasperengine {
         // without the wait to present), seconds: dynamic resolution's frame law reads them
         static double getFramePeriod();
         static double getFrameCpuTime();
+        // of it, the scenes' draw and the commit: the render submission (benchmark renderCpuMs)
+        static double getFrameDrawCpuTime();
 
         static void beginFrameStats();
-        static void addDrawStats(uint32_t instances, uint64_t triangles);
+        // vertices: the vertex shader runs, indices or vertices drawn times the instances
+        static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
+        static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
+        // the draw calls of the frame being drawn, so far
+        static uint32_t getFrameDrawCalls();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
 
@@ -674,6 +709,9 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+        // whether the shader clock is pinned, and at what (Scene::getSceneTime follows it)
+        static bool hasPinnedShaderTime();
+        static double getPinnedShaderTime();
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render
@@ -800,6 +838,8 @@ namespace jasperengine {
             int atmosphereQuality = -1;
             // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
             bool shadows = true;
+            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
+            uint8_t drawMode = 0;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its
@@ -823,8 +863,12 @@ namespace jasperengine {
         // With the ready signal on, logs "Engine presented: N frames since ready" once N frames
         // reached the screen after the ready line (tools/android-emulator-test.sh screenshots then)
         static void systemFramePresented();
-        // systemDraw() without drawing, for a view that can't be seen (a minimized window)
+        // systemDraw() without drawing, for a view that can't be seen (a minimized window). On
+        // Metal it first waits for the GPU (SystemRender::waitGpuIdle): a frame without passes
+        // frees what earlier frames released without waiting for them
         static void systemUpdate();
+        // Nothing when no view is loaded (a launch that failed before systemViewLoaded, a second
+        // destroy)
         static void systemViewDestroyed();
         static void systemShutdown();
 
@@ -842,6 +886,11 @@ namespace jasperengine {
         // dialog, the notification shade, another window (false). Idempotent; gaining focus
         // while the OS holds the pause resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
+        // The platform's window can (not) be seen: minimized, unmapped or hidden by the window
+        // manager, fully covered (macOS), a hidden page (web). Desktop platforms then call
+        // systemUpdate at getHiddenUpdateFps() instead of systemDraw; the web pauses as before.
+        // Idempotent; logs the change and fires onVisibilityChanged.
+        static void systemVisibilityChanged(bool visible);
         // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
         // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
         // quarter turn reported before the view size flips waits for it (at most
@@ -853,10 +902,19 @@ namespace jasperengine {
         static bool isOrientationPending();
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
-        // Play stop / start in the editor: focused, not paused (neither hold), no orientation
+        // Play stop / start in the editor: focused, visible, not paused (neither hold), no orientation
         // seen yet, and the default frame pacing again, without any event (nothing listens any
         // more)
         static void resetApplicationState();
+
+        //-----Dynamic Batching (docs/rendering/batching.md)-----
+        // Consecutive Sprites, small meshes and UI elements that share pipeline, textures and
+        // their unbaked values are drawn as one draw call (the same image: turn it off to compare).
+        // The project's setting (Project Settings > Graphics > Dynamic Batching) is the default the
+        // application state goes back to; Engine.dynamicBatching changes it while the game runs.
+        static void setDynamicBatchingDefault(bool enabled);
+        static void setDynamicBatching(bool enabled);
+        static bool isDynamicBatching();
 
         //-----Frame pacing and application state-----
         // Unity's Application.targetFrameRate: -1 (default) is the platform's rate (60 on
@@ -874,6 +932,12 @@ namespace jasperengine {
         // Unity's Application.isFocused (true at start)
         static bool isFocused();
         static bool isPaused();
+        // false while the window can't be seen (systemVisibilityChanged); true at start and on
+        // Android and iOS, whose pause is the signal there
+        static bool isVisible();
+        // the update rate of a hidden window: the game's own frame rate (targetFrameRate, or the
+        // display's refresh rate over vSyncCount), at most 60 (PlatformRules::hiddenUpdateFps)
+        static double getHiddenUpdateFps();
 
         // The platform window gained or lost the keyboard focus. On a loss what is held comes
         // up (key, mouse button: their events and Input edges) and the fingers are cancelled,
@@ -899,9 +963,10 @@ namespace jasperengine {
         static void systemKeyDown(int key, bool repeat, int mods);
         static void systemKeyUp(int key, bool repeat, int mods);
 
-        // One UTF-16 unit where wchar_t is 16 bits (Windows): surrogate pairs are combined
-        // before HTML UI documents see them, the game and component UI get each unit
-        static void systemCharInput(wchar_t codepoint);
+        // One UTF-16 unit (Windows WM_CHAR, Android's keyboard) or one whole code point:
+        // surrogate pairs are combined here, so documents, Input.inputString, onCharInput and the
+        // component UI all get whole code points (a lone surrogate is U+FFFD)
+        static void systemCharInput(char32_t unit);
         // Committed text: an IME commit, a paste, a platform string. Documents get the whole
         // string; unless a document consumed it, each code point then goes to onCharInput and
         // the component UI.
@@ -928,9 +993,13 @@ namespace jasperengine {
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
-        // an element of a document has focus, so the d-pad, the left stick and A go to the UI
-        // (a game that polls Input can check it)
+        // an element of a document has focus, or a component UI Button is selected, so the d-pad,
+        // the left stick and A go to the UI (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a component UI Button is selected: the arrows, Tab, Enter, keypad Enter and Space are the UI's
+        static bool wantsKeyboardNavigation();
+        // both at once, from one look at the scenes (Input::beginFrame)
+        static void getUINavigationWants(bool& gamepad, bool& keyboard);
         // a text field has keyboard focus (a native InputField or a document text control): the
         // keyboard does not drive input actions then (Input::beginFrame)
         static bool isTextInputFocused();
@@ -952,6 +1021,8 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onShutdown;
         // systemFocus: the app gained (true) or lost (false) focus
         static FunctionSubscribe<void(bool)> onFocus;
+        // systemVisibilityChanged: the window can (true) or can't (false) be seen
+        static FunctionSubscribe<void(bool)> onVisibilityChanged;
         // the interface rotated: the new ScreenOrientation, after onCanvasChanged
         static FunctionSubscribe<void(int)> onOrientationChanged;
         // the system is short of memory (Android, iOS)
@@ -974,7 +1045,9 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onMouseLeave;
         static FunctionSubscribe<void(int,bool,int)> onKeyDown;
         static FunctionSubscribe<void(int,bool,int)> onKeyUp;
-        static FunctionSubscribe<void(wchar_t)> onCharInput;
+        // one whole character per call, on every platform (a one-character string in Lua). A C++
+        // handler declared with wchar_t still compiles but is deprecated: 16 bits on Windows.
+        static FunctionSubscribe<void(char32_t)> onCharInput;
         static FunctionSubscribe<void(int)> onGamepadConnect;
         static FunctionSubscribe<void(int)> onGamepadDisconnect;
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;

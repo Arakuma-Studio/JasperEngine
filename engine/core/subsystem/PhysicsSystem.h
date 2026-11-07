@@ -5,26 +5,22 @@
 #define PHYSICSSYSTEM_H
 
 #include "SubSystem.h"
+#include "ecs/ComponentFwd.h"
 #include "component/PhysicsCommon.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #ifdef JASPERENGINE_PHYSICS_2D
-#include "component/Rigidbody2DComponent.h"
-#include "component/Joint2DComponent.h"
-#include "component/CharacterController2DComponent.h"
 #include "object/physics/Contact2D.h"
 #include "object/physics/Manifold2D.h"
 #include "box2d/box2d.h"
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-#include "component/Joint3DComponent.h"
 #include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "object/physics/Contact3D.h"
 #include "object/physics/ControllerColliderHit.h"
-#include "component/CharacterControllerComponent.h"
 #include "Jolt/Jolt.h"
 #include "Jolt/Core/JobSystemThreadPool.h"
 #include "Jolt/Physics/Body/MotionQuality.h"
@@ -463,6 +459,20 @@ namespace jasperengine{
 		bool isInterpolation() const;
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
+
+		// every event, for the two clears above (tools/check_event_clears.py)
+		template<typename F> void forEachEvent(F&& f) {
+#ifdef JASPERENGINE_PHYSICS_2D
+			f(beginContact2D); f(endContact2D); f(beginSensorContact2D); f(endSensorContact2D); f(hitContact2D);
+			f(preSolve2D); f(shouldCollide2D); f(stayContact2D); f(staySensorContact2D);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+			f(onBodyActivated3D); f(onRagdollBeforeAnimatedRestore3D); f(onBodyDeactivated3D); f(onContactAdded3D);
+			f(onContactPersisted3D); f(onContactRemoved3D); f(shouldCollide3D); f(onContactModify3D);
+			f(onControllerColliderHit);
+#endif
+			(void)f;
+		}
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		float getPointsToMeterScale2D() const;

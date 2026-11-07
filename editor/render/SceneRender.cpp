@@ -2,6 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender.h"
+#include "LayerViewCamera.h"
+#include "component/AudioSourceComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "component/TextComponent.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/UIDocumentSystem.h"
+#include "subsystem/UISystem.h"
+#include "object/Sprite.h"
 #include "spline/SplineEditor.h"
 #include "profiler/Profile.h"
 
@@ -122,6 +138,10 @@ void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current
     }
 }
 
+void editor::SceneRender::setEditorOverlay(Entity entity){
+    scene->getSystem<RenderSystem>()->setEditorOverlay(entity, true);
+}
+
 editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
@@ -174,6 +194,7 @@ editor::SceneRender::~SceneRender(){
     destroyLatticeCages();
     navigationOverlay.reset();
     destroySplineOverlay();
+    delete wireframeLines;
     for (auto& pair : particleShapeLines) {
         delete pair.second;
     }
@@ -584,6 +605,15 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
     return result;
 }
 
+void editor::SceneRender::hideEntityGizmos(Entity entity){
+    auto shape = particleShapeLines.find(entity);
+    if (shape != particleShapeLines.end()) shape->second->setVisible(false);
+}
+
+bool editor::SceneRender::gizmoActive(Entity entity) const{
+    return !scene->hasInactiveEntities() || scene->isEntityActiveInHierarchy(entity);
+}
+
 void editor::SceneRender::hideAllGizmos(){
     // (also the subclasses' gizmos: they hide theirs after calling this)
     dropGoneGizmos();
@@ -697,7 +727,8 @@ void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layer
 void editor::SceneRender::drawOverlayTargets(){
 }
 
-void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers){
+void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+        Scene* replacingBase, Entity replacingCamera){
     if (width <= 0 || height <= 0){
         return;
     }
@@ -734,15 +765,19 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // the Scene view's own fog and face culling toggles hold while playing too, and in this
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
-    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
+    // after a game load replaced this scene, the level it runs now, through the editor camera
+    const bool replaced = replacingBase && replacingCamera != NULL_ENTITY;
+    layers.push_back({replaced ? replacingBase : scene, replaced ? replacingCamera : viewCamera, full, !previewing, false,
+                      displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
+    layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
         // canvas aspect as the editor frames a child scene over the scene
         const Rect gameRect = getGameLayerRect(width, height);
         for (Scene* gameLayer : layerScenes){
-            if (gameLayer && gameLayer != scene){
+            if (gameLayer && gameLayer != scene && gameLayer != replacingBase){
                 layers.push_back({gameLayer, gameLayer->getCamera(), gameRect, false, false});
             }
         }
@@ -815,6 +850,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.postProcessing = flags.postProcessing;
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
+    base.drawMode = (uint8_t)displaySettings.drawMode;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -908,6 +944,14 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             clearLinePointSelection();
         }
     }
+    // a capsule handle the same: its GameObject selected, its capsule there
+    if (selectedCapsuleHandleIndex >= 0){
+        const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(selectedCapsuleHandleEntity);
+        if (!caster || selectedCapsuleHandleIndex >= (int)caster->capsules.size() * CAPSULE_HANDLES ||
+                std::find(selEntities.begin(), selEntities.end(), selectedCapsuleHandleEntity) == selEntities.end()){
+            clearCapsuleHandleSelection();
+        }
+    }
 
     displaySettings = settings;
 
@@ -944,6 +988,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // the frame is the game, which keeps its culling, and the Scene view asks for it as a
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
+    // the Draw Mode the same way (spec S54 R11)
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
@@ -1204,6 +1250,19 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected Capsule Shadow Caster handle (3D translate)
+        if (selectedCapsuleHandleIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedCapsuleHandleEntity
+            && tools.getGizmoSelected() == GizmoSelected::TRANSLATE && !editLayer.active){
+            OBB pointOBB = getCapsuleHandleOBB(selectedCapsuleHandleEntity, selectedCapsuleHandleIndex);
+            if (!pointOBB.isNull()){
+                Vector3 pointCenter = pointOBB.getCenter();
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }else{
+                // its bone renamed or gone: drop the stale sub-selection
+                clearCapsuleHandleSelection();
+            }
+        }
+
         // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
         if (latticePointsSelected){
             Vector3 pivot;
@@ -1281,6 +1340,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     updateLatticeCages(selEntities, entities, editedLattice);
     updateSplineOverlay(selEntities, editedSpline);
+    updateWireframeOverlay();
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
 
@@ -1496,6 +1556,17 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 gizmoStartPosition = pointOBB.getCenter();
                 cursorStartOffset = gizmoStartPosition - rretrun.point;
             }
+        }
+
+        // Override gizmo start position to the selected Capsule Shadow Caster handle
+        if (selectedCapsuleHandleIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedCapsuleHandleEntity){
+            OBB pointOBB = getCapsuleHandleOBB(selectedCapsuleHandleEntity, selectedCapsuleHandleIndex);
+            if (!pointOBB.isNull()){
+                gizmoStartPosition = pointOBB.getCenter();
+                cursorStartOffset = gizmoStartPosition - rretrun.point;
+            }
+            const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(selectedCapsuleHandleEntity);
+            capsuleDragBase = caster ? caster->capsules : std::vector<CapsuleShadowShape>();
         }
 
         // Override gizmo start position to the selected track keyframe point
@@ -2011,6 +2082,14 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 const Vector2 value = joint2DAnchorFromWorld(target, *joint, selectedJointAnchorIndex == 1, newPos);
                                 dragCommand = new PropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::Joint2DComponent, anchorProp, value);
                             }
+                        }
+                    }else if (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity){
+                        // move the selected capsule end or radius handle: the whole list is the
+                        // property, so the drag is one undo step whichever capsule fields it changes
+                        std::vector<CapsuleShadowShape> capsules;
+                        if (capsulesWithHandleAt(entity, selectedCapsuleHandleIndex, newPos, capsuleDragBase, capsules)){
+                            dragCommand = new PropertyCmd<std::vector<CapsuleShadowShape>>(project, commandSceneId, entity,
+                                ComponentType::CapsuleShadowCasterComponent, "capsules", capsules);
                         }
                     }else{
                         Matrix4 gizmoMatrix = Matrix4::translateMatrix(newPos) * gizmoRMatrix * Matrix4::scaleMatrix(Vector3(1,1,1));
@@ -2599,6 +2678,7 @@ bool editor::SceneRender::hasToolSubSelection(const std::vector<Entity>& selEnti
         || (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity)
         || (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity)
         || (selectedJointAnchorIndex >= 0 && entity == selectedJointAnchorEntity)
+        || (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity)
         || (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity)
         || (getPointEditLattice(selEntities) == entity && getLatticeSceneId() != NULL_PROJECT_SCENE &&
             !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty())
@@ -3122,6 +3202,7 @@ void editor::SceneRender::setEditLayer(uint32_t sceneId, Scene* layerScene, cons
         clearLinePointSelection();
         clearPolygonPointSelection();
         clearJointAnchorSelection();
+        clearCapsuleHandleSelection();
         clearTrackPointSelection();
     }
     if (!wasActive || editLayer.sceneId != sceneId){
@@ -3603,6 +3684,146 @@ OBB editor::SceneRender::getJointAnchorOBB(Entity entity, int index){
     return aabb.getOBB();
 }
 
+void editor::SceneRender::selectCapsuleHandle(Entity entity, int index){
+    selectedCapsuleHandleEntity = entity;
+    selectedCapsuleHandleIndex = index;
+}
+
+void editor::SceneRender::clearCapsuleHandleSelection(){
+    selectedCapsuleHandleEntity = 0;
+    selectedCapsuleHandleIndex = -1;
+    capsuleDragBase.clear();
+}
+
+Entity editor::SceneRender::findCapsuleBone(Entity entity, const std::string& bone){
+    if (!scene->findComponent<Transform>(entity)) return NULL_ENTITY;
+    if (bone.empty()) return entity;
+    // the GameObject's branch is contiguous in the Transforms (hierarchy order)
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t first = transforms->getIndex(entity);
+    const size_t last = scene->findBranchLastIndex(entity);
+    for (size_t i = first + 1; i <= last && i < transforms->size(); i++){
+        const Entity candidate = transforms->getEntity(i);
+        if (scene->getEntityName(candidate) == bone) return candidate;
+    }
+    return NULL_ENTITY;
+}
+
+namespace {
+
+    // the radius handle's direction from the middle of a capsule: across its segment, level when
+    // the segment is not vertical
+    Vector3 capsuleRadiusDirection(const CapsuleShadows::World& capsule){
+        Vector3 axis = capsule.b - capsule.a;
+        if (axis.squaredLength() < 1e-12f) axis = Vector3(0.0f, 1.0f, 0.0f);
+        axis.normalize();
+        Vector3 across = axis.crossProduct(Vector3(0.0f, 1.0f, 0.0f));
+        if (across.squaredLength() < 1e-6f) across = axis.crossProduct(Vector3(1.0f, 0.0f, 0.0f));
+        return across.normalized();
+    }
+
+    // the world size of one unit of a shape's radius on a bone (the scale toWorld gives the radius)
+    float capsuleRadiusScale(const CapsuleShadowShape& shape, const Matrix4& boneModel){
+        CapsuleShadowShape unit = shape;
+        unit.radius = 1.0f;
+        return CapsuleShadows::toWorld(unit, boneModel).radius;
+    }
+
+}
+
+bool editor::SceneRender::getCapsuleWorld(Entity entity, size_t capsule, CapsuleShadows::World& world){
+    const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(entity);
+    if (!caster || capsule >= caster->capsules.size()) return false;
+    const Entity bone = findCapsuleBone(entity, caster->capsules[capsule].bone);
+    const Transform* boneTransform = bone != NULL_ENTITY ? scene->findComponent<Transform>(bone) : nullptr;
+    if (!boneTransform) return false;
+    world = CapsuleShadows::toWorld(caster->capsules[capsule], boneTransform->modelMatrix);
+    return true;
+}
+
+bool editor::SceneRender::getCapsuleHandleWorld(Entity entity, int index, Vector3& worldPoint){
+    if (index < 0) return false;
+    CapsuleShadows::World world;
+    if (!getCapsuleWorld(entity, (size_t)(index / CAPSULE_HANDLES), world)) return false;
+    const int handle = index % CAPSULE_HANDLES;
+    if (handle == 0){
+        worldPoint = world.a;
+    }else if (handle == 1){
+        worldPoint = world.b;
+    }else{
+        worldPoint = (world.a + world.b) * 0.5f + capsuleRadiusDirection(world) * world.radius;
+    }
+    return true;
+}
+
+// the capsule handle under the mouse (-1 when none)
+int editor::SceneRender::hitTestCapsuleHandle(Entity entity, float x, float y){
+    const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(entity);
+    if (!caster) return -1;
+    Ray ray = screenToRay(x, y);
+
+    int bestIndex = -1;
+    float bestDistance = FLT_MAX;
+    const int count = (int)caster->capsules.size() * CAPSULE_HANDLES;
+    for (int i = 0; i < count; i++){
+        Vector3 worldPoint;
+        if (!getCapsuleHandleWorld(entity, i, worldPoint)) continue;
+        float halfSize = getPointHandleHalfSize(worldPoint);
+        AABB handleAABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
+
+        RayReturn rr = ray.intersects(handleAABB);
+        if (rr && rr.distance < bestDistance){
+            bestDistance = rr.distance;
+            bestIndex = i;
+        }
+    }
+
+    return bestIndex;
+}
+
+OBB editor::SceneRender::getCapsuleHandleOBB(Entity entity, int index){
+    Vector3 worldPoint;
+    if (!getCapsuleHandleWorld(entity, index, worldPoint)) return OBB();
+
+    float halfSize = getPointHandleHalfSize(worldPoint);
+    AABB aabb(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
+    return aabb.getOBB();
+}
+
+bool editor::SceneRender::capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
+                                               std::vector<CapsuleShadowShape>& capsules){
+    if (index < 0) return false;
+    const size_t capsule = (size_t)(index / CAPSULE_HANDLES);
+    if (capsule >= base.size()) return false;
+    const CapsuleShadowShape& shape = base[capsule];
+    const Entity bone = findCapsuleBone(entity, shape.bone);
+    const Transform* boneTransform = bone != NULL_ENTITY ? scene->findComponent<Transform>(bone) : nullptr;
+    if (!boneTransform) return false;
+
+    const CapsuleShadows::World start = CapsuleShadows::toWorld(shape, boneTransform->modelMatrix);
+    capsules = base;
+    const int handle = index % CAPSULE_HANDLES;
+    if (handle == 2){
+        // the distance from the segment, in the bone's units
+        const Vector3 axis = start.b - start.a;
+        const float lengthSq = axis.squaredLength();
+        const float t = lengthSq > 0.0f ? std::clamp((world - start.a).dotProduct(axis) / lengthSq, 0.0f, 1.0f) : 0.0f;
+        const float worldRadius = (world - (start.a + axis * t)).length();
+        const float scale = capsuleRadiusScale(shape, boneTransform->modelMatrix);
+        capsules[capsule].radius = scale > 0.0f ? worldRadius / scale : worldRadius;
+        return true;
+    }
+
+    CapsuleShadows::Bone boneSpace;
+    boneSpace.position = boneTransform->worldPosition;
+    boneSpace.rotation = boneTransform->worldRotation;
+    boneSpace.scale = boneTransform->worldScale;
+    const Vector3 a = handle == 0 ? world : start.a;
+    const Vector3 b = handle == 1 ? world : start.b;
+    capsules[capsule] = CapsuleShadows::fromWorld(shape.bone, boneSpace, a, b, start.radius);
+    return true;
+}
+
 void editor::SceneRender::selectTrackPoint(Entity entity, int pointIndex){
     selectedTrackPointEntity = entity;
     selectedTrackPointIndex = pointIndex;
@@ -3846,7 +4067,7 @@ void editor::SceneRender::setupLight2DIcon(Light2DObjects& lo){
     lo.icon->setPivotPreset(PivotPreset::CENTER);
 }
 
-void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum){
+void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
     if (cameraComponent.type == CameraType::CAMERA_UI){
         co.lines->clearLines();
         co.type = CameraType::CAMERA_UI;
@@ -3856,6 +4077,7 @@ void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraCom
     bool changed = false;
     if (co.type != cameraComponent.type) changed = true;
     if (co.isMainCamera != isMainCamera) changed = true;
+    if (co.fullFrustum != fullFrustum) changed = true;
     if (cameraComponent.type == CameraType::CAMERA_PERSPECTIVE){
         if (co.yfov != cameraComponent.yfov || co.aspect != cameraComponent.aspect ||
             co.nearClip != cameraComponent.nearClip || co.farClip != cameraComponent.farClip){
@@ -3873,6 +4095,7 @@ void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraCom
 
     co.type = cameraComponent.type;
     co.isMainCamera = isMainCamera;
+    co.fullFrustum = fullFrustum;
     co.yfov = cameraComponent.yfov;
     co.aspect = cameraComponent.aspect;
     co.nearClip = cameraComponent.nearClip;
@@ -3882,10 +4105,52 @@ void editor::SceneRender::updateCameraFrustum(CameraObjects& co, const CameraCom
     co.bottomClip = cameraComponent.bottomClip;
     co.topClip = cameraComponent.topClip;
 
-    drawCameraFrustumLines(co.lines, cameraComponent, isMainCamera, fixedSizeFrustum);
+    drawCameraFrustumLines(co.lines, cameraComponent, isMainCamera, fullFrustum);
 }
 
-void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum){
+std::array<Vector3, 8> editor::cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum){
+    // near and far as rendered (a perspective near <= 0 draws with the clamped one)
+    const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
+    float nearClip = nearFar.x;
+    float farClip = nearFar.y;
+    if (nearClip > farClip)
+        std::swap(nearClip, farClip);
+
+    if (!fullFrustum){
+        // a compact gizmo for an unselected camera: a perspective one 2 units deep, an
+        // orthographic one as deep as half its view is wide, so a wide view does not draw flat
+        float depth = 2.0f;
+        if (camera.type == CameraType::CAMERA_ORTHO){
+            const float width = std::abs(camera.rightClip - camera.leftClip);
+            const float height = std::abs(camera.topClip - camera.bottomClip);
+            depth = std::max(width, height) / 2.0f;
+        }
+        if (std::isfinite(depth))
+            farClip = std::min(farClip, nearClip + depth);
+    }
+
+    float nl, nr, nb, nt, fl, fr, fb, ft;
+    if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+        const float tanHalfFov = std::tan(camera.yfov / 2.0f);
+        const float hNear = std::abs(nearClip) * tanHalfFov;
+        const float wNear = hNear * camera.aspect;
+        const float hFar = std::abs(farClip) * tanHalfFov;
+        const float wFar = hFar * camera.aspect;
+        nl = -wNear; nr = wNear; nb = -hNear; nt = hNear;
+        fl = -wFar; fr = wFar; fb = -hFar; ft = hFar;
+        nearClip = std::abs(nearClip);
+        farClip = std::abs(farClip);
+    }else{
+        nl = fl = camera.leftClip;
+        nr = fr = camera.rightClip;
+        nb = fb = camera.bottomClip;
+        nt = ft = camera.topClip;
+    }
+    return {Vector3(nl, nt, -nearClip), Vector3(nr, nt, -nearClip), Vector3(nl, nb, -nearClip), Vector3(nr, nb, -nearClip),
+            Vector3(fl, ft, -farClip), Vector3(fr, ft, -farClip), Vector3(fl, fb, -farClip), Vector3(fr, fb, -farClip)};
+}
+
+void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum){
     lines->clearLines();
 
     if (cameraComponent.type == CameraType::CAMERA_UI){
@@ -3897,111 +4162,44 @@ void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const Came
         color = Vector4(0.5f, 1.0f, 0.5f, 1.0f);
     }
 
-    float nearClip = cameraComponent.nearClip;
-    float farClip = cameraComponent.farClip;
+    const std::array<Vector3, 8> c = cameraGizmoCorners(cameraComponent, fullFrustum);
+    const Vector3 &ntl = c[0], &ntr = c[1], &nbl = c[2], &nbr = c[3], &ftl = c[4], &ftr = c[5], &fbl = c[6], &fbr = c[7];
 
-    if (fixedSizeFrustum){
-        farClip = nearClip + 2.0f;
-    }
+    lines->addLine(ntl, ntr, color);
+    lines->addLine(ntr, nbr, color);
+    lines->addLine(nbr, nbl, color);
+    lines->addLine(nbl, ntl, color);
 
-    if (nearClip > farClip) {
-        std::swap(nearClip, farClip);
-    }
+    lines->addLine(ftl, ftr, color);
+    lines->addLine(ftr, fbr, color);
+    lines->addLine(fbr, fbl, color);
+    lines->addLine(fbl, ftl, color);
+
+    lines->addLine(ntl, ftl, color);
+    lines->addLine(ntr, ftr, color);
+    lines->addLine(nbl, fbl, color);
+    lines->addLine(nbr, fbr, color);
 
     if (cameraComponent.type == CameraType::CAMERA_PERSPECTIVE){
-        float tanHalfFov = std::tan(cameraComponent.yfov / 2.0f);
-        float nearHeight = 2.0f * std::abs(nearClip) * tanHalfFov;
-        float nearWidth = nearHeight * cameraComponent.aspect;
-        float farHeight = 2.0f * std::abs(farClip) * tanHalfFov;
-        float farWidth = farHeight * cameraComponent.aspect;
-
-        float hNear = nearHeight / 2.0f;
-        float wNear = nearWidth / 2.0f;
-        float hFar = farHeight / 2.0f;
-        float wFar = farWidth / 2.0f;
-
-        Vector3 ntl(-wNear, hNear, -std::abs(nearClip));
-        Vector3 ntr(wNear, hNear, -std::abs(nearClip));
-        Vector3 nbl(-wNear, -hNear, -std::abs(nearClip));
-        Vector3 nbr(wNear, -hNear, -std::abs(nearClip));
-
-        Vector3 ftl(-wFar, hFar, -std::abs(farClip));
-        Vector3 ftr(wFar, hFar, -std::abs(farClip));
-        Vector3 fbl(-wFar, -hFar, -std::abs(farClip));
-        Vector3 fbr(wFar, -hFar, -std::abs(farClip));
-
-        lines->addLine(ntl, ntr, color);
-        lines->addLine(ntr, nbr, color);
-        lines->addLine(nbr, nbl, color);
-        lines->addLine(nbl, ntl, color);
-
-        lines->addLine(ftl, ftr, color);
-        lines->addLine(ftr, fbr, color);
-        lines->addLine(fbr, fbl, color);
-        lines->addLine(fbl, ftl, color);
-
-        lines->addLine(ntl, ftl, color);
-        lines->addLine(ntr, ftr, color);
-        lines->addLine(nbl, fbl, color);
-        lines->addLine(nbr, fbr, color);
-
+        // from the eye to the near plane
         lines->addLine(Vector3(0,0,0), ntl, color);
         lines->addLine(Vector3(0,0,0), ntr, color);
         lines->addLine(Vector3(0,0,0), nbl, color);
         lines->addLine(Vector3(0,0,0), nbr, color);
-
-        // Up marker
-        float markerSize = hFar * 0.5f;
-        Vector3 up1(0.0f, hFar + markerSize, -std::abs(farClip));
-        Vector3 up2(-markerSize / 2.0f, hFar, -std::abs(farClip));
-        Vector3 up3(markerSize / 2.0f, hFar, -std::abs(farClip));
-        lines->addLine(up1, up2, color);
-        lines->addLine(up2, up3, color);
-        lines->addLine(up3, up1, color);
-
-    }else if (cameraComponent.type == CameraType::CAMERA_ORTHO){
-        float l = cameraComponent.leftClip;
-        float r = cameraComponent.rightClip;
-        float b = cameraComponent.bottomClip;
-        float t = cameraComponent.topClip;
-        float n = -nearClip;
-        float f = -farClip;
-
-        Vector3 ntl(l, t, n);
-        Vector3 ntr(r, t, n);
-        Vector3 nbl(l, b, n);
-        Vector3 nbr(r, b, n);
-
-        Vector3 ftl(l, t, f);
-        Vector3 ftr(r, t, f);
-        Vector3 fbl(l, b, f);
-        Vector3 fbr(r, b, f);
-
-        lines->addLine(ntl, ntr, color);
-        lines->addLine(ntr, nbr, color);
-        lines->addLine(nbr, nbl, color);
-        lines->addLine(nbl, ntl, color);
-
-        lines->addLine(ftl, ftr, color);
-        lines->addLine(ftr, fbr, color);
-        lines->addLine(fbr, fbl, color);
-        lines->addLine(fbl, ftl, color);
-
-        lines->addLine(ntl, ftl, color);
-        lines->addLine(ntr, ftr, color);
-        lines->addLine(nbl, fbl, color);
-        lines->addLine(nbr, fbr, color);
-
-        // Up marker
-        float markerSize = std::abs(t - b) * 0.05f;
-        float cx = (l + r) / 2.0f;
-        Vector3 up1(cx, t + markerSize, f);
-        Vector3 up2(cx - markerSize / 2.0f, t, f);
-        Vector3 up3(cx + markerSize / 2.0f, t, f);
-        lines->addLine(up1, up2, color);
-        lines->addLine(up2, up3, color);
-        lines->addLine(up3, up1, color);
     }
+
+    // Up marker, on the far plane's top edge
+    const float halfHeight = std::abs(ftl.y - fbl.y) / 2.0f;
+    const float markerSize = (cameraComponent.type == CameraType::CAMERA_PERSPECTIVE) ? halfHeight * 0.5f : halfHeight * 2.0f * 0.05f;
+    const float cx = (ftl.x + ftr.x) / 2.0f;
+    const float top = ftl.y;
+    const float f = ftl.z;
+    Vector3 up1(cx, top + markerSize, f);
+    Vector3 up2(cx - markerSize / 2.0f, top, f);
+    Vector3 up3(cx + markerSize / 2.0f, top, f);
+    lines->addLine(up1, up2, color);
+    lines->addLine(up2, up3, color);
+    lines->addLine(up3, up1, color);
 }
 
 // the AI Navigation overlay of the scene this view shows (only built once a navigation
@@ -4022,4 +4220,33 @@ void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& sel
     if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
     const std::set<Entity> selected(selEntities.begin(), selEntities.end());
     navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
+}
+
+// The wires of Wireframe and Shaded Wireframe: the visible meshes' edges at the level the Scene
+// view draws each of them, rebuilt every update while the mode is on, released when it is not
+void editor::SceneRender::updateWireframeOverlay(){
+    if (!drawModeHasWires(displaySettings.drawMode) || !camera){
+        if (wireframeLines){
+            wireframeLines->clearLines();
+            wireframeLines->setVisible(false);
+        }
+        wireframe.release();
+        return;
+    }
+    if (!wireframeLines){
+        ScopedDefaultEntityPool scenePool(*scene, EntityPool::System);
+        wireframeLines = overlay(new LineRenderer(scene));
+    }
+    RenderSystem* render = scene->getSystem<RenderSystem>().get();
+    CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector3 eye = scene->getComponent<Transform>(camera->getEntity()).worldPosition;
+    // in Edit mode the Scene view is the frame's view, while playing a view of its own
+    const bool playing = isPlaying;
+    wireframe.update(scene, wireframeLines, cameraComponent, eye, [&](Entity entity) -> unsigned int{
+        if (playing)
+            return render->getViewMeshLod(SCENE_VIEW_ID, entity);
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        return mesh ? mesh->lodFade.plan.dominant() : 0u;
+    });
+    wireframeLines->setVisible(true);
 }

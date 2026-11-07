@@ -69,6 +69,8 @@ private:
                             ScriptType type);
 
     void selectExistingFile(bool selectHeader);
+    // what the picker's answer does, also when an agent gives the path as a field
+    void acceptExistingFile(const fs::path& selectedPath, bool selectHeader);
 
 public:
     void open(Scene* scene,
@@ -77,7 +79,8 @@ public:
               const fs::path& luaPath,
               const std::string& defaultBaseName,
               std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> onCreate,
-              std::function<void()> onCancel = nullptr);
+              std::function<void()> onCancel = nullptr,
+              bool startWithExisting = false);  // opens on Existing Script (the Inspector's Browse...)
 
     void show();
     bool isOpen() const { return m_isOpen; }

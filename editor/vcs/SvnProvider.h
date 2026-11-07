@@ -32,7 +32,7 @@ namespace jasperengine::editor::vcs {
 
         VcsResult status(VcsSnapshot& out, uint32_t depth, const jobs::CancelToken* cancel = nullptr) override;
         VcsResult branchInfo(VcsBranchInfo& out) override;
-        VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out) override;
+        VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out, size_t maxBytes = SIZE_MAX) override;
         VcsResult textDiff(const RepoPath& path, std::string_view rev, std::string& out) override;
 
         VcsResult stage(std::span<const RepoPath> paths) override;

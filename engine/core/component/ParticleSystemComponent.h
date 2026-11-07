@@ -90,6 +90,9 @@ namespace jasperengine{
         FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)> onCollision;
         FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)> onParticleDeath;
         FunctionSubscribe<void(const std::vector<ParticleSubEmitInfo>&)> onSubEmit;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onCollision); f(onParticleDeath); f(onSubEmit); }
     };
 
 }

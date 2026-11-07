@@ -167,10 +167,10 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | in review |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | implementing |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -195,11 +195,103 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
   - It runs in the current worktree and waits for one of 2 global slots, with `JOBS=4` and
     `DOCKER_CPUS=4` each.
   - ccache is shared between worktrees, since each worktree mounts at `/src`.
+- Real Aseprite 1.3.18.6, built from source in Docker for golden files (personal use, never
+  redistributed): `/var/lib/orquester/workspaces/jaspersito/tools-aseprite/aseprite -b <args>`.
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
+### Landing gate
+
+**Owner's order (2026-11-05): no full suites at all, not even at the end.** Verification uses the
+lighter, targeted runs below, for every spec and for the final check.
+
+Per spec, the merged tree passes:
+- `WERROR=1 tools/build.sh linux`, and the unit tests built with `RUN=0`;
+- `tools/check-changed`;
+- the spec's own unit tests and the suites it can affect, run with `UNIT_SUITE` and
+  `--gtest_filter`;
+- the spec's MCP test files, run as named files or with `-k`;
+- `web` and `android` builds when runtime code changed;
+- the area lints, plus the regenerated `TOOLS.md` and `tool_budget.py --check`.
+
+`build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
+list them. There is no CI.
+
 ## Log
 
+- 2026-11-07: On plain `main` ac10792fb, four MCP tests fail. They are pre-existing, not ours:
+  `test_reflection` (`test_golden_resave`, `test_codegen_golden`,
+  `test_inspector_layout_parity`) and
+  `test_saved_output_determinism::test_fixture_scenes_save_the_same_drawn_or_not` (7 passed,
+  4 failed). Their goldens show mesh fields from other programs' work, and the Doriax lead was
+  told. S44 is approved to land after a final merge of `main` 81ffe9f3d (with the dynamic sprite
+  batching) and a sheet-sprite batching parity test.
+- 2026-11-07: `dc/sprite-batching` landed on origin/main (885cddc46, 81ffe9f3d). The batcher
+  draws pixel-snapped sprites one by one, unbatched, until S41's snap is wired into its batch key.
+  That wiring belongs to the narrowed S52, so S41 lands as is. The S52 worktree was recreated
+  from `main` 81ffe9f3d, and its spec is being re-scoped onto the landed batcher. Shader cache on
+  `main` is v50; S41 took v51 at its final merge.
+- 2026-11-07: S44 review fixes are done at `5e68ac54b` (main `cbc4ee7fb` merged).
+  - Passing: `WERROR` builds; filtered unit tests (core 15, editor 252); 183 MCP tests across 20
+    files; `aseprite_compat.py` against real Aseprite (637/640 pass, 3 skipped where Aseprite's
+    own exports disagree); lints.
+  - `check-changed` was skipped, since its plan would be every test (no-full-suites rule).
+  - `test_reflection` and `test_saved_output_determinism` failed on the merged tree, with
+    differences in non-S44 fields. They're being checked on `main` `ac10792fb` to show whether
+    they already fail there.
+  - Three codec time budgets are over on this loaded host and are recorded in the spec.
+  - Scene/prefab versions are 8/9; `AsepriteSprite = 25` (`main` has `SoundEvent = 28`).
+- 2026-11-06: S41 review: 1 blocker (shader cache not bumped, so stale library shaders read a
+  zero post colour) and 7 should-fix issues (shadow maps snapped, uniform size, input mapping in
+  Integer Expand, test gaps, Vulkan/GLES3 not run, HiDPI, UI toggles). They were sent back to the
+  implementer.
+  - Shader bit rule: S41 keeps BLIT/uber bit 18 (`Psb`), and S43 renumbers `UBER_PALETTE`
+    (`Pal`) to the next free bit at its final merge.
+  - The S43 review (1 blocker: palette bindings missing from the cooked-scene runtime fields, so
+    the prebuilt player loses Palette Swap; 5 should-fix) was also sent back to its implementer.
+- 2026-11-06: S41 implementation reported at `47fdcec4d`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; 3,172 unit tests through `check-changed`; 8 `PixelPerfectGpu` tests
+    on glcore; the web gate at device pixel ratio 2; android; 62 named MCP tests; lints.
+  - Shader bits taken: `Pxs` = MESH 42 and DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Pixel-snapped draws are not auto-instanced, and batchers must keep `pixelSnapDraw` and use
+    `pixelSnapApply`. The Doriax lead was told, for `dc/sprite-batching`.
+  - An independent review is running.
+- 2026-11-06: S43 implementation reported at `b481a0454`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; filtered unit tests (core 248, editor 377); 12 MCP files; web and
+    android builds; lints and generators; the smoke test.
+  - Gaps it reported: AC7/AC12 verified only on glcore; AC11 waits for S52; AC14's GPU budgets
+    need a GPU; AC19 has no goldens; Aseprite palettes wait for S44's codec. An independent review
+    is running.
+- 2026-11-06: The implementers stopped on a revoked auth token, after merging the S53–S73 `main`
+  (S41 `5bb89cc5a`, S43 `872e0330e`, S44 `c17d9dd31`). `main` fast-forwarded again to `4f5899c00`
+  (187 commits) and all three were revived. To avoid repeated large merges, each merges `main`
+  once more only right before its final gate. `dc/sprite-batching` is still in progress (S52 keeps
+  waiting).
+- 2026-11-05: Owner: skip full suites entirely, even at the end. Work is verified with lighter
+  runs only: `check-changed`, filtered unit tests, named MCP files, and the `WERROR` builds.
+- 2026-11-05: The S41 implementer stopped on an API weekly rate limit, and the session
+  restarted. All background jobs died. `main` fast-forwarded to `origin/main` `547a6e964` (344
+  commits from other programs: S53–S73). The S41, S43 and S44 implementers were revived and told
+  to merge it. `dc/sprite-batching` is still in progress, so S52 keeps waiting. Branch heads at
+  revival: S41 `3323f4878`, S43 `6e5872eed`, S44 `d0f812e3c` (plus uncommitted review fixes).
+- 2026-11-04: Owner's order: no full suites until the very end. The S43 implementer's queued
+  unfiltered unit-test run was cancelled. The brief and the landing gate now use filtered runs
+  only, and all three implementers were told.
+- 2026-11-04: S44 implementation reported at `a06bf6491`, with `main` merged in.
+  - Passing: `WERROR=1` linux, unit-tests, web and android builds; 5,733 unit tests; the MCP
+    suite with `tools/fixtures/tween-curve` standing in for the missing fixture.
+  - Still open: the Sprite Preview editor test and screenshots, `aseprite_compat.py`, and
+    real-Aseprite goldens.
+  - An independent review is running. The Aseprite CLI is being built from source in Docker
+    (`/var/lib/orquester/workspaces/jaspersito/tools-aseprite/`) to author real goldens.
+- 2026-11-04: Baseline `tools/build.sh unit-tests` of `main` (87 min): core 2,808 passed and
+  1 failed (`NavBakeTest.RuntimeUpdateTiles`, failing on `main` before any pixel-art code);
+  editor 2,842 passed and 7 disabled.
+- 2026-11-04: Upstream rewrote `AGENTS.md` as the only manual (`CLAUDE.md` = `@AGENTS.md`)
+  and removed CI. It now requires `WERROR=1`, a `tools/mcp/eval` case for new MCP text, migration
+  fixtures, and the full suite before big pushes. `main` merged it and was pushed. The implementer
+  brief was updated, and the S41, S43 and S44 implementers were told to merge `main` and follow
+  the new rules.
 - 2026-11-04: The split with the Doriax catch-up program is agreed and recorded in both ledgers.
   - `dc/sprite-batching` (their program, started now) owns generic dynamic batching: sprites,
     small meshes and UI quads; 2D reordering; settled objects; buffers shared by content; and the

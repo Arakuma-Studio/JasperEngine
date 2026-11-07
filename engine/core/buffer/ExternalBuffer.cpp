@@ -16,6 +16,8 @@ ExternalBuffer::~ExternalBuffer(){
 ExternalBuffer::ExternalBuffer(const ExternalBuffer& rhs): Buffer(rhs){
     name = rhs.name;
     ownedData = rhs.ownedData;
+    modelBuffer = rhs.modelBuffer;
+    modelOffset = rhs.modelOffset;
     if (rhs.ownsData()){
         data = ownedData.data();
     }
@@ -30,6 +32,8 @@ ExternalBuffer& ExternalBuffer::operator=(const ExternalBuffer& rhs){
 
     name = rhs.name;
     ownedData = rhs.ownedData;
+    modelBuffer = rhs.modelBuffer;
+    modelOffset = rhs.modelOffset;
     if (rhs.ownsData()){
         data = ownedData.data();
     }
@@ -81,6 +85,8 @@ void ExternalBuffer::setData(unsigned char* data, size_t size){
 
     this->data = data;
     this->size = size;
+    modelBuffer = -1;
+    dataReleased = false;
     clearShareSource();
 }
 
@@ -88,6 +94,31 @@ void ExternalBuffer::setData(unsigned char* data, size_t size, const std::shared
     setData(data, size);
     // the bytes' address identifies them in the owner
     setShareSource(owner, (uint64_t)(uintptr_t)data);
+}
+
+void ExternalBuffer::setModelData(unsigned char* data, size_t size, const std::shared_ptr<const void>& owner, int buffer, size_t offset){
+    setData(data, size);
+    modelBuffer = buffer;
+    modelOffset = offset;
+    setShareSource(owner, ((uint64_t)(uint32_t)buffer << 40) | (uint64_t)offset);
+}
+
+int ExternalBuffer::getModelBuffer() const{
+    return modelBuffer;
+}
+
+size_t ExternalBuffer::getModelOffset() const{
+    return modelOffset;
+}
+
+void ExternalBuffer::releaseData(){
+    data = nullptr;
+    dataReleased = true;
+}
+
+void ExternalBuffer::restoreData(unsigned char* bytes){
+    data = bytes;
+    dataReleased = false;
 }
 
 void ExternalBuffer::copyToOwnData(){

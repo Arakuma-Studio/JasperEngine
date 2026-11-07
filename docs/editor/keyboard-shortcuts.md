@@ -50,6 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
+| Maximize On Play | F11 | Global |
 
 ## Assets
 
@@ -183,6 +184,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Frame Selected Keys | F | Animation |
 | Frame All Keys | A | Animation |
 | Record | R | Animation |
+| Align Peak to Playhead | Shift+A | Animation |
 
 ## Pose Animation
 
@@ -215,13 +217,46 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Copy Assets | Ctrl+C | Project |
 | Cut Assets | Ctrl+X | Project |
 | Paste Assets | Ctrl+V | Project |
+| Duplicate Assets | Ctrl+D | Project |
 | Select All Assets | Ctrl+A | Project |
 | Delete Assets | Delete / Backspace | Project |
 | Rename Asset | F2 | Project |
 | Resize Items | Ctrl+Mouse Wheel | Project |
+
+## Sound Browser
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play Moment | Enter | Audio Captures |
+| Stop | Escape | Audio Captures |
+| Next Moment | Down | Audio Captures |
+| Previous Moment | Up | Audio Captures |
+| Search Sounds | Ctrl+F | Sound Browser |
+| Next Sound | Down / Right | Sound Browser |
+| Previous Sound | Up / Left | Sound Browser |
+| Play or Stop Sound | Space | Sound Browser |
+| Play Sound Loudness-Matched | Shift+Space | Sound Browser |
+| Use Sound | Enter | Sound Browser |
+| Select All Sounds | Ctrl+A | Sound Browser |
+| Stop Sound or Clear Search | Escape | Sound Browser |
 
 ## Console
 
 | Command | Shortcut | Context |
 |---|---|---|
 | Copy Message | Ctrl+C | Console |
+
+## Curve
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Frame Curve | F | Curve |
+| Delete Curve Keys | Delete / Backspace | Curve |
+| Copy Curve Keys | Ctrl+C | Curve |
+| Paste Curve Keys | Ctrl+V | Curve |
+
+## Color Picker
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Eyedropper | I | Color Picker |

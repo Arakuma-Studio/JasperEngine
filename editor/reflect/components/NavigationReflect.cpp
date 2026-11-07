@@ -132,7 +132,7 @@ namespace {
         JE_FIELD(NavMeshSurfaceComponent, runtimeCarving, .tooltip = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)."),
         JE_FIELD(NavMeshSurfaceComponent, maxCarvingObstacles, .min = 1.0f, .max = 4096.0f,
                  .tooltip = "Carving NavMesh Obstacles it cuts at once (Runtime Carving); more are avoided instead, with a warning. Read when the navmesh is created."),
-        JE_FIELD(NavMeshSurfaceComponent, navMeshData, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
+        JE_FIELD(NavMeshSurfaceComponent, navMeshData, .asset = AssetKind::NavMesh, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
     };
 
     const ComponentCodec kNavMeshSurfaceCodec = JE_STREAM_CODEC(NavMeshSurfaceComponent, encodeNavMeshSurfaceComponent,
@@ -262,7 +262,7 @@ namespace {
         JE_FIELD(NavGridComponent, emptyCellArea, .label = "Cells Without Tiles", .tooltip = "The area of cells no tile covers."),
         JE_FIELD(NavGridComponent, collidersBlock, .tooltip = "Static Collider2D footprints block the cells under them."),
         JE_FIELD(NavGridComponent, autoRebuild),
-        JE_FIELD(NavGridComponent, gridData),
+        JE_FIELD(NavGridComponent, gridData, .asset = AssetKind::NavGrid),
     };
 
     const ComponentCodec kNavGridCodec = JE_STREAM_CODEC(NavGridComponent, encodeNavGridComponent, decodeNavGridComponent);

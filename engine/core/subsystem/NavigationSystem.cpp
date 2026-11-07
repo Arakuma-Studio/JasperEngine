@@ -4037,10 +4037,10 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                 Vector3 position;
                 Vector3 velocity;
                 if (agent.linkTravelled < first) {
-                    position = agent.linkFrom.lerp(agent.linkStart, agent.linkTravelled / std::max(first, 1e-6f));
+                    position = agent.linkFrom.lerpUnclamped(agent.linkStart, agent.linkTravelled / std::max(first, 1e-6f));
                     velocity = (agent.linkStart - agent.linkFrom) * (speed / std::max(first, 1e-6f));
                 } else if (agent.linkTravelled < first + second) {
-                    position = agent.linkStart.lerp(agent.linkEnd, (agent.linkTravelled - first) / std::max(second, 1e-6f));
+                    position = agent.linkStart.lerpUnclamped(agent.linkEnd, (agent.linkTravelled - first) / std::max(second, 1e-6f));
                     velocity = (agent.linkEnd - agent.linkStart) * (speed / std::max(second, 1e-6f));
                 } else {
                     position = agent.linkEnd;
@@ -4421,7 +4421,7 @@ void NavigationSystem::update(double dt) {
         // a Transform someone else moved since keeps that pose
         if (transform->worldPosition != agent.writtenPosition)
             continue;
-        const Vector3 position = agent.previousPosition.lerp(agent.currentPosition, (float)alpha);
+        const Vector3 position = agent.previousPosition.lerpUnclamped(agent.currentPosition, (float)alpha);
         const Quaternion rotation = agent.previousRotation == agent.currentRotation ? agent.currentRotation
                                                                                      : Quaternion::slerp((float)alpha, agent.previousRotation, agent.currentRotation);
         physics->writeTransformWorldPose(entry.first, position, rotation);

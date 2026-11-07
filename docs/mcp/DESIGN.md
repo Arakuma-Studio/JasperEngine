@@ -362,7 +362,9 @@ steps; the play-change tools (`get_play_changes`, `apply_play_changes`, `discard
 
 JSON ↔ every `PropertyType`: Bool, Int, UInt, Float, Double, String; Vector2/3/4 as
 `[x,y,(z,(w))]` (also accept `{x,y,z,w}`); Quat as `[x,y,z,w]` or `{"euler":[x,y,z]}`
-degrees; colors as Vector3/4; Enum by name (string) or int; Ease by name; Texture /
+degrees (a quaternion within 10% of unit length is normalized, one further off is refused as
+probable Euler degrees; an object form needs all of x, y, z, w; a read returns it normalized, and a
+read `{quat, euler}` written back with one edited takes the one that moved); colors as Vector3/4; Enum by name (string) or int; Ease by name; Texture /
 Font by asset path (or `{"camera": <entity>}` for render textures); Material as an object
 or a `.material` asset path; Entity / EntityReference by entity ref; Custom via the
 component's YAML encoding (Stream) round-trip so nothing is unsettable.
@@ -415,8 +417,8 @@ the same work and reports it itself):
 
 - **What changed**: the file watcher's journal (`FileWatchService::journalSince` after
   `flush(250 ms)`, S05 R29; `source: "watcher"`), its external changes to tracked files since
-  the last call. The editor's own writes (origin Editor) and changes stamped inside a writing
-  call's run are left out. When the watcher is off, degraded, fell behind its 65,536-entry
+  the last call. The editor's own writes (origin Editor) are left out; the baseline only follows
+  them. When the watcher is off, degraded, fell behind its 65,536-entry
   journal or the flush timed out, the stat scan (`source: "scan"`): stat-based against a cached
   map (mtime + size) of the project's tracked files (Lua, C++
   `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`, `.material`, HTML UI
@@ -463,10 +465,36 @@ the same work and reports it itself):
   (`editor_status.file_watcher.echoes_suppressed`). `syncFiles` (the funnel of `write_file`,
   `create_script`, the material and asset tools, `code_editor` save, undo of file writes)
   restamps what it handled (`McpAutoSync::filesSynced`). After a call that may write files (not
-  read-only, or with `save_path`), the settle scan stays as a safety net: changes stamped inside
-  the call's time window are the tool's (absorbed, not re-run: a texture reload would undo a
-  terrain tool's in-memory edit). While such a call runs the hot reload holds the watcher's
-  batches, so the call's writes reload once, with its sync.
+  read-only, or with `save_path`), the settle (`McpAutoSync::afterCall`) takes every change it
+  finds as the tool's (absorbed, not re-run: a texture reload would undo a terrain tool's in-memory
+  edit), except changes stamped before the handler started, which the next call reports. It reads
+  the journal behind `FileWatchService::flushJournal` where that barrier only drains what the
+  system holds (inotify, ReadDirectoryChangesW: no reload runs in it, the next pump delivers), and
+  scans where it does not (FSEvents' marker round trip, polling's walk) or the watcher is off.
+  While such a call runs the hot reload holds the watcher's batches, so the call's writes reload
+  once, with its sync.
+- **The result waits for its settle** (S70): the completion queues `{tool, start, respond}`
+  (`McpServer::queueSettle`) and the queue runs on the main thread where no handler is on the
+  stack: right after the handler returns (a synchronous call gains no frame), at the end of
+  `McpServer::tick` (`waitUntil` / `afterFrames` callbacks), in a task the completion posts when it
+  comes from anywhere else (a job's thread, another main-thread task), and in `McpServer::stop`.
+  So whatever the client writes once it has the result is newer than the settle: reported by the
+  next call, 0 ms later and whatever its stamp. Read-only calls answer at once. A call refused
+  before the main thread took it (`answerDuringFilePicker`, `onFilePickerOpened`) never started, so
+  it has no settle. A result completed while a file picker holds the main thread goes out at once,
+  because its client may have to answer the picker first, and its settle runs when the thread is back.
+- **Racy stamps** (S70): a stamp read less than 2 s after its mtime can't rule out a later write
+  in the same clock tick, and the watcher's journal can't either (it compares the same stat). A racy
+  file's content hash (FNV-1a; past 1 MB, of its first and last 64 KB) is recorded with its stamp and
+  checked by every pick-up and settle, newest first within the scan's time budget, until it is read
+  2 s after its mtime; the stat scan lists a racy folder again the same way (the journal has
+  the new file). Another hash with the same stamp is a modification, reloaded even if the hot reload's
+  applied stamp says current (`HotReloadService::forgetApplied`). A folder linked in from outside the
+  project (S68) is checked the same way, under the link's name; the watcher's journal names its
+  changes by that name too.
+- **Not told apart**: a program writing project files while a call runs, stamped from inside the
+  call, looks like the tool and is absorbed. Telling them apart would need every editor write path
+  (about 200 sites, undo and redo of file commands included) to report its writes.
 - **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
   snapshot when it stops; S23 will register a hook for Lua in Play). Script changes found then
   are reported with `deferred` (Lua syntax still checked) and picked up after play stops.

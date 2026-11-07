@@ -76,6 +76,13 @@ template<> struct Codec<MaterialPbrExtensions::Hex> {
 template<> struct TextureVisit<MaterialPbrExtensions::Hex> {
     static void visit(MaterialPbrExtensions::Hex& value, const TextureVisitor& f);
 };
+template<> struct Codec<MaterialPbrExtensions::Hair> {
+    static void write(Writer& w, const MaterialPbrExtensions::Hair& value);
+    static void read(Reader& r, MaterialPbrExtensions::Hair& value);
+};
+template<> struct TextureVisit<MaterialPbrExtensions::Hair> {
+    static void visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f);
+};
 template<> struct Codec<MaterialPbrExtensions> {
     static void write(Writer& w, const MaterialPbrExtensions& value);
     static void read(Reader& r, MaterialPbrExtensions& value);
@@ -262,6 +269,13 @@ template<> struct Codec<VertexAnimatorAttachment> {
 template<> struct TextureVisit<VertexAnimatorAttachment> {
     static void visit(VertexAnimatorAttachment& value, const TextureVisitor& f);
 };
+template<> struct Codec<CapsuleShadowShape> {
+    static void write(Writer& w, const CapsuleShadowShape& value);
+    static void read(Reader& r, CapsuleShadowShape& value);
+};
+template<> struct TextureVisit<CapsuleShadowShape> {
+    static void visit(CapsuleShadowShape& value, const TextureVisitor& f);
+};
 
 }
 
@@ -402,6 +416,23 @@ void Codec<MaterialPbrExtensions::Hex>::write(Writer& w, const MaterialPbrExtens
 void Codec<MaterialPbrExtensions::Hex>::read(Reader& r, MaterialPbrExtensions::Hex& value) { readStruct(r, kStruct_MaterialPbrExtensions__Hex, &value); }
 void TextureVisit<MaterialPbrExtensions::Hex>::visit(MaterialPbrExtensions::Hex& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Hex, &value, f); }
 
+const FieldEntry kStruct_MaterialPbrExtensions__Hair_fields[] = {
+    JE_RF(MaterialPbrExtensions::Hair, enabled, 0x97e67d8eu, Bool),
+    JE_RF(MaterialPbrExtensions::Hair, primaryColor, 0xd3d7c86cu, Vector3),
+    JE_RF(MaterialPbrExtensions::Hair, primaryShift, 0xb417eb03u, Float),
+    JE_RF(MaterialPbrExtensions::Hair, primaryWidth, 0x7cf904c3u, Float),
+    JE_RF(MaterialPbrExtensions::Hair, secondaryColor, 0x2bd00e24u, Vector3),
+    JE_RF(MaterialPbrExtensions::Hair, secondaryShift, 0x09b3f0cbu, Float),
+    JE_RF(MaterialPbrExtensions::Hair, secondaryWidth, 0x75613bebu, Float),
+    JE_RF(MaterialPbrExtensions::Hair, rotation, 0xc405970fu, Float),
+    JE_RF(MaterialPbrExtensions::Hair, flowMap, 0x46899e91u, Texture),
+    JE_RF(MaterialPbrExtensions::Hair, flowMapTexCoord, 0x574174d7u, Int),
+};
+const StructTable kStruct_MaterialPbrExtensions__Hair{"Hair", kStruct_MaterialPbrExtensions__Hair_fields, std::size(kStruct_MaterialPbrExtensions__Hair_fields)};
+void Codec<MaterialPbrExtensions::Hair>::write(Writer& w, const MaterialPbrExtensions::Hair& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Hair, &value); }
+void Codec<MaterialPbrExtensions::Hair>::read(Reader& r, MaterialPbrExtensions::Hair& value) { readStruct(r, kStruct_MaterialPbrExtensions__Hair, &value); }
+void TextureVisit<MaterialPbrExtensions::Hair>::visit(MaterialPbrExtensions::Hair& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Hair, &value, f); }
+
 const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, clearcoat, 0xabaa10f2u, Struct),
     JE_RF(MaterialPbrExtensions, sheen, 0xa0ae6679u, Struct),
@@ -411,6 +442,7 @@ const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, volume, 0x3a390f9au, Struct),
     JE_RF(MaterialPbrExtensions, specular, 0x32677989u, Struct),
     JE_RF(MaterialPbrExtensions, hex, 0x08ecd2f5u, Struct),
+    JE_RF(MaterialPbrExtensions, hair, 0xecf5b1a4u, Struct),
 };
 const StructTable kStruct_MaterialPbrExtensions{"MaterialPbrExtensions", kStruct_MaterialPbrExtensions_fields, std::size(kStruct_MaterialPbrExtensions_fields)};
 void Codec<MaterialPbrExtensions>::write(Writer& w, const MaterialPbrExtensions& value) { writeStruct(w, kStruct_MaterialPbrExtensions, &value); }
@@ -529,6 +561,7 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minHeight, 0xa922f6d3u, Float),
     JE_RF(TerrainFoliageLayer, maxHeight, 0x1dc468f1u, Float),
     JE_RF(TerrainFoliageLayer, drawDistance, 0xbd8cf49du, Float),
+    JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
 };
@@ -821,6 +854,18 @@ void Codec<VertexAnimatorAttachment>::write(Writer& w, const VertexAnimatorAttac
 void Codec<VertexAnimatorAttachment>::read(Reader& r, VertexAnimatorAttachment& value) { readStruct(r, kStruct_VertexAnimatorAttachment, &value); }
 void TextureVisit<VertexAnimatorAttachment>::visit(VertexAnimatorAttachment& value, const TextureVisitor& f) { visitStructTextures(kStruct_VertexAnimatorAttachment, &value, f); }
 
+const FieldEntry kStruct_CapsuleShadowShape_fields[] = {
+    JE_RF(CapsuleShadowShape, bone, 0xd90a565bu, String),
+    JE_RF(CapsuleShadowShape, radius, 0x6d7c9597u, Float),
+    JE_RF(CapsuleShadowShape, length, 0x71f10131u, Float),
+    JE_RF(CapsuleShadowShape, offset, 0x60f27db6u, Vector3),
+    JE_RF(CapsuleShadowShape, direction, 0xc5fae76eu, Enum),
+};
+const StructTable kStruct_CapsuleShadowShape{"CapsuleShadowShape", kStruct_CapsuleShadowShape_fields, std::size(kStruct_CapsuleShadowShape_fields)};
+void Codec<CapsuleShadowShape>::write(Writer& w, const CapsuleShadowShape& value) { writeStruct(w, kStruct_CapsuleShadowShape, &value); }
+void Codec<CapsuleShadowShape>::read(Reader& r, CapsuleShadowShape& value) { readStruct(r, kStruct_CapsuleShadowShape, &value); }
+void TextureVisit<CapsuleShadowShape>::visit(CapsuleShadowShape& value, const TextureVisitor& f) { visitStructTextures(kStruct_CapsuleShadowShape, &value, f); }
+
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
     JE_RF(Transform, rotation, 0x9ad00671u, Quat),
@@ -847,6 +892,11 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, staticShadowCaster, 0x72f14c54u, Bool),
     JE_RF(MeshComponent, lodEnabled, 0xe14c9cceu, Bool),
     JE_RF(MeshComponent, lodBias, 0xa7883134u, Float),
+    JE_RF(MeshComponent, allowGpuInstancing, 0x6e2e5003u, Bool),
+    JE_RF(MeshComponent, lodFadeMode, 0xb8aa480cu, Enum),
+    JE_RF(MeshComponent, lodAnimateCrossFading, 0x34cb1489u, Bool),
+    JE_RF(MeshComponent, lodFadeTransitionWidth, 0x1f4ff698u, Float),
+    JE_RF(MeshComponent, lodCullBelow, 0x719f5582u, Float),
     JE_RF(MeshComponent, renderInReflectionProbes, 0x189dfb8fu, Bool),
     JE_RF(MeshComponent, transparent, 0xec94f958u, Bool),
     JE_RF(MeshComponent, autoTransparency, 0x70c3bb7bu, Bool),
@@ -894,7 +944,6 @@ const FieldEntry kBody_LightComponent_fields[] = {
     JE_RF(LightComponent, enabled, 0x972110a8u, Bool),
     JE_RF(LightComponent, type, 0xd845926bu, Enum),
     JE_RF(LightComponent, direction, 0x29fae8dcu, Vector3),
-    JE_RF(LightComponent, worldDirection, 0xcd07003eu, Vector3),
     JE_RF(LightComponent, color, 0x5ebb5cf2u, Vector3),
     JE_RF(LightComponent, range, 0x69e249e8u, Float),
     JE_RF(LightComponent, intensity, 0x49535c50u, Float),
@@ -918,6 +967,10 @@ const FieldEntry kBody_LightComponent_fields[] = {
     JE_RF(LightComponent, shadowAngularDiameter, 0xb50c6a40u, Float),
     JE_RF(LightComponent, shadowSourceRadius, 0x06a30214u, Float),
     JE_RF(LightComponent, shadowUpdateMode, 0x93de43e9u, Enum),
+    JE_RF(LightComponent, contactShadows, 0x49c82cd6u, Bool),
+    JE_RF(LightComponent, contactShadowLength, 0x3736e5b9u, Float),
+    JE_RF(LightComponent, contactShadowThickness, 0xf20fe861u, Float),
+    JE_RF(LightComponent, contactShadowSampleCount, 0x7d01cfdau, Int),
     JE_RF(LightComponent, volumetricIntensity, 0x73bb927cu, Float),
     JE_RF(LightComponent, intensityUnit, 0xcbf60f3eu, Enum),
     JE_RF(LightComponent, useColorTemperature, 0xc5aafe45u, Bool),
@@ -1029,6 +1082,8 @@ const StructTable kBody_RectTransformComponent{"recttransform", kBody_RectTransf
 const FieldEntry kBody_ActionComponent_fields[] = {
     JE_RF(ActionComponent, state, 0xca7b2e94u, Enum),
     JE_RF(ActionComponent, speed, 0x0492459eu, Float),
+    JE_RF(ActionComponent, startOffset, 0x7c51346eu, Float),
+    JE_RF(ActionComponent, randomStart, 0x43832d28u, Bool),
     JE_RF_ENTITY(ActionComponent, target, 0x55190b06u, Entity),
     JE_RF(ActionComponent, ownedTarget, 0x5420ae55u, Bool),
 };
@@ -1084,6 +1139,12 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, priority, 0xd8e5ece2u, Int),
     JE_RF(AudioSourceComponent, maxVoices, 0x4ff0bbabu, Int),
     JE_RF(AudioSourceComponent, ignoreListenerPause, 0x6bb3160au, Bool),
+    JE_RF(AudioSourceComponent, event, 0xa0dbf9aau, AssetPath),
+    JE_RF(AudioSourceComponent, playOn, 0x917e5359u, UInt),
+    JE_RF(AudioSourceComponent, minImpactSpeed, 0x2b7c314bu, Float),
+    JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
+    JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
+    JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
@@ -1172,6 +1233,20 @@ const FieldEntry kBody_ButtonComponent_fields[] = {
     JE_RF(ButtonComponent, colorPressed, 0xc5a5fc56u, Vector4),
     JE_RF(ButtonComponent, colorDisabled, 0x04208fa8u, Vector4),
     JE_RF(ButtonComponent, disabled, 0x314a4b2du, Bool),
+    JE_RF(ButtonComponent, textureSelected, 0x5d4ca8f5u, Texture),
+    JE_RF(ButtonComponent, colorSelected, 0xba8f6da9u, Vector4),
+    JE_RF(ButtonComponent, transition, 0x8067a0fau, Enum),
+    JE_RF(ButtonComponent, fadeDuration, 0x8a75823fu, Float),
+    JE_RF(ButtonComponent, scaleHovered, 0xc324dcf8u, Float),
+    JE_RF(ButtonComponent, scalePressed, 0xcdab3f89u, Float),
+    JE_RF(ButtonComponent, scaleSelected, 0xf90a4298u, Float),
+    JE_RF(ButtonComponent, navigationMode, 0xe1276984u, Enum),
+    JE_RF(ButtonComponent, wrapAround, 0xfd8c6bd4u, Bool),
+    JE_RF_ENTITY(ButtonComponent, selectOnUp, 0x8a84c0ddu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnDown, 0xcd357e1cu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnLeft, 0xee234711u, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnRight, 0x04170632u, Entity),
+    JE_RF(ButtonComponent, selectOnEnable, 0xdb5cb9cfu, Bool),
 };
 const StructTable kBody_ButtonComponent{"button", kBody_ButtonComponent_fields, std::size(kBody_ButtonComponent_fields)};
 
@@ -1197,6 +1272,8 @@ const FieldEntry kBody_CameraComponent_fields[] = {
     JE_RF(CameraComponent, framebufferWidth, 0xd5ea99f5u, UInt),
     JE_RF(CameraComponent, framebufferHeight, 0xb5849a0cu, UInt),
     JE_RF(CameraComponent, framebufferFilter, 0xfb40220du, Enum),
+    JE_RF(CameraComponent, transparencyMode, 0xf9256005u, Enum),
+    JE_RF(CameraComponent, oitWeightScale, 0x73966c5au, Float),
 };
 const StructTable kBody_CameraComponent{"camera", kBody_CameraComponent_fields, std::size(kBody_CameraComponent_fields)};
 
@@ -1251,6 +1328,8 @@ const FieldEntry kBody_InstancedMeshComponent_fields[] = {
     JE_RF(InstancedMeshComponent, fadeStart, 0x538dcdd3u, Float),
     JE_RF(InstancedMeshComponent, cullDistance, 0xd41385ecu, Float),
     JE_RF(InstancedMeshComponent, fadeEnd, 0x3edf6206u, Float),
+    JE_RF(InstancedMeshComponent, nearFadeStart, 0xf6452e8du, Float),
+    JE_RF(InstancedMeshComponent, nearFadeEnd, 0x50cc90f4u, Float),
     JE_RF(InstancedMeshComponent, instancedBillboard, 0x9acf0bdbu, Bool),
     JE_RF(InstancedMeshComponent, instancedCylindricalBillboard, 0x50bfb9e3u, Bool),
     JE_RF(InstancedMeshComponent, instances, 0xdb94d2bdu, Array),
@@ -2295,6 +2374,22 @@ const FieldEntry kBody_SafeAreaComponent_fields[] = {
 };
 const StructTable kBody_SafeAreaComponent{"safearea", kBody_SafeAreaComponent_fields, std::size(kBody_SafeAreaComponent_fields)};
 
+const FieldEntry kBody_CapsuleShadowCasterComponent_fields[] = {
+    JE_RF(CapsuleShadowCasterComponent, enabled, 0x7cd7eff3u, Bool),
+    JE_RF(CapsuleShadowCasterComponent, castShadows, 0xfa1dc30eu, Enum),
+    JE_RF(CapsuleShadowCasterComponent, capsules, 0x64d83d16u, Array),
+};
+const StructTable kBody_CapsuleShadowCasterComponent{"capsuleshadowcaster", kBody_CapsuleShadowCasterComponent_fields, std::size(kBody_CapsuleShadowCasterComponent_fields)};
+
+const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
+    JE_RF(AudioSnapshotComponent, snapshot, 0x57c2b1cdu, String),
+    JE_RF(AudioSnapshotComponent, seconds, 0x4830312au, Float),
+    JE_RF(AudioSnapshotComponent, unscaled, 0x7ff40b5cu, Bool),
+    JE_RF(AudioSnapshotComponent, revert, 0xedc2bdc3u, Bool),
+    JE_RF(AudioSnapshotComponent, revertSeconds, 0x29739228u, Float),
+};
+const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2400,6 +2495,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TextEffectComponent, "texteffect", 0x3c28b233u),
     JE_RF_COMPONENT(VideoPlayerComponent, "videoplayer", 0x8938ef21u),
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
+    JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
+    JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
     JE_RF_COMPONENTS_END
 };
 

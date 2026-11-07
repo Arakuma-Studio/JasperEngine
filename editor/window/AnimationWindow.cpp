@@ -36,11 +36,18 @@
 #include "component/ScaleTweenComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/AlphaTweenComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "audio/AudioMixer.h"
+#include "audio/SoundDrop.h"
+#include "command/CommandNames.h"
+#include "audio/TimelineAudioPreview.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "action/Animation.h"
 #include "util/EntityPayload.h"
 #include "util/ProjectUtils.h"
+#include "util/Util.h"
 #include "util/LatticeTrackKeys.h"
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSolver.h"
@@ -49,6 +56,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <cmath>
 #include <memory>
 #include <numeric>
@@ -220,7 +228,222 @@ editor::AnimationWindow::AnimationWindow(Project* project){
     selectedSceneId = 0;
 
     clipMode = std::make_unique<AnimationWindowClip>(project);
+    actionAudio = std::make_unique<TimelineAudioPreview>();
+    clipMode->entityCommands = [this](std::string_view id, bool run) { return runAudioActionCommand(id, run); };
     installClipHooks();
+}
+
+// ---------------------------------------------------------------- timeline audio (S40 R22, R23)
+
+namespace {
+
+    // a frame edit named per S24 ("Align Peak to Playhead (Footsteps)")
+    class TimelineAudioActionsCmd : public editor::PropertyCmd<std::vector<ActionFrame>> {
+    public:
+        TimelineAudioActionsCmd(editor::Project* project, uint32_t sceneId, Entity entity, std::vector<ActionFrame> actions, std::string name)
+            : PropertyCmd<std::vector<ActionFrame>>(project, sceneId, entity, editor::ComponentType::AnimationComponent, "actions", std::move(actions)),
+              stepName(std::move(name)), stepProject(project), stepScene(sceneId), stepEntity(entity) {}
+        std::string describe() const override {
+            return stepName + " (" + editor::CommandNames::entity(stepProject, stepScene, stepEntity) + ")";
+        }
+    private:
+        std::string stepName;
+        editor::Project* stepProject;
+        uint32_t stepScene;
+        Entity stepEntity;
+    };
+
+}
+
+uint64_t editor::AnimationWindow::previewAudioStarts() const{
+    return actionAudio->startedCount();
+}
+
+bool editor::AnimationWindow::addAudioAction(SceneProject* sceneProject, Entity animEntity, EntityCreationType type, const std::string& content,
+                                             float time, uint32_t track, std::string* error){
+    if (!sceneProject || !sceneProject->scene || !sceneProject->scene->findComponent<AnimationComponent>(animEntity)){
+        if (error) *error = "select an Animation";
+        return false;
+    }
+    Scene* scene = sceneProject->scene;
+    const Entity target = scene->findComponent<ActionComponent>(animEntity) ? scene->getComponent<ActionComponent>(animEntity).target : NULL_ENTITY;
+    std::string name = "Audio";
+    std::string undo = "Add Audio Action";
+    if (type == EntityCreationType::SOUND_EVENT_ACTION){
+        name = "Sound Event";
+        undo = "Add Sound Event Action";
+    }else if (type == EntityCreationType::MIXER_SNAPSHOT_ACTION){
+        name = "Mixer Snapshot";
+        undo = "Add Mixer Snapshot Action";
+    }
+    if (!content.empty() && type != EntityCreationType::MIXER_SNAPSHOT_ACTION) name = std::filesystem::path(content).stem().string();
+    if (!content.empty() && type == EntityCreationType::MIXER_SNAPSHOT_ACTION) name = content;
+    auto* cmd = new AddActionFrameCmd(project, sceneProject->id, animEntity, target, type, name, track);
+    cmd->setStartTime(std::max(0.0f, time));
+    cmd->setUndoLabel(undo);
+    if (type == EntityCreationType::MIXER_SNAPSHOT_ACTION) cmd->setSnapshot(content);
+    else if (!content.empty()) cmd->setSound(TimelineSounds::reference(project, content), type == EntityCreationType::SOUND_EVENT_ACTION);
+    const size_t before = scene->getComponent<AnimationComponent>(animEntity).actions.size();
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(cmd);
+    AnimationComponent* anim = scene->findComponent<AnimationComponent>(animEntity);
+    if (!anim || anim->actions.size() == before){
+        if (error) *error = "the action could not be added";
+        return false;
+    }
+    selectedFrameIndex = (int)anim->actions.size() - 1;
+    sceneProject->isModified = true;
+    return true;
+}
+
+std::string editor::AnimationWindow::alignActionProblem(int align, float* time) const{
+    SceneProject* sceneProject = project->getScene(selectedSceneId);
+    if (!sceneProject || !sceneProject->scene || selectedEntity == NULL_ENTITY) return "select an Animation";
+    Scene* scene = sceneProject->scene;
+    const AnimationComponent* anim = scene->findComponent<AnimationComponent>(selectedEntity);
+    if (!anim || selectedFrameIndex < 0 || selectedFrameIndex >= (int)anim->actions.size()) return "select an audio action's block";
+    if (isPreviewing || sceneProject->playState != ScenePlayState::STOPPED) return "stop the preview to edit";
+    const Entity action = anim->actions[(size_t)selectedFrameIndex].action;
+    const AudioSourceComponent* audio = action != NULL_ENTITY && scene->isEntityCreated(action) ? scene->findComponent<AudioSourceComponent>(action) : nullptr;
+    const bool snapshot = action != NULL_ENTITY && scene->isEntityCreated(action) && scene->findComponent<AudioSnapshotComponent>(action);
+    if (!audio && !(snapshot && align == (int)AnimationWindowClip::CueAlign::Start)) return "select an audio action's block";
+    double length = 0.0;
+    double peakMs = -1.0;
+    if (audio){
+        const std::string sound = audio->event.empty() ? audio->filename.path : audio->event.path;
+        if (sound.empty()) return "the audio action plays no sound";
+        const TimelineSoundInfo info = TimelineSounds::get(project, sound);
+        if (info.pending && align != (int)AnimationWindowClip::CueAlign::Start) return "the sound is still being analysed";
+        const ActionComponent* childAction = scene->findComponent<ActionComponent>(action);
+        const double speed = std::max(1e-3, (double)audio->speed * (childAction && childAction->speed > 0.0f ? childAction->speed : 1.0f));
+        length = info.length / speed;
+        peakMs = info.peakMs >= 0.0 ? info.peakMs / speed : -1.0;
+        // an explicit frame duration is where it ends
+        const float frameDuration = anim->actions[(size_t)selectedFrameIndex].duration;
+        if (align == (int)AnimationWindowClip::CueAlign::End && frameDuration > 0.0f) length = std::min(length, (double)frameDuration);
+    }
+    float start = 0.0f;
+    std::string why;
+    if (!AnimationWindowClip::alignedStart((AnimationWindowClip::CueAlign)align, currentTime, length, peakMs, start, &why)) return why;
+    if (time) *time = start;
+    return std::string();
+}
+
+bool editor::AnimationWindow::runAudioActionCommand(std::string_view id, bool run){
+    SceneProject* sceneProject = project->getScene(selectedSceneId);
+    const bool editable = sceneProject && sceneProject->scene && selectedEntity != NULL_ENTITY &&
+                          sceneProject->scene->findComponent<AnimationComponent>(selectedEntity) && !isPreviewing &&
+                          sceneProject->playState == ScenePlayState::STOPPED && !clipModeActive;
+    if (id.rfind("animation.alignCue", 0) == 0){
+        const int align = id == "animation.alignCueStart" ? (int)AnimationWindowClip::CueAlign::Start
+                        : id == "animation.alignCuePeak" ? (int)AnimationWindowClip::CueAlign::Peak : (int)AnimationWindowClip::CueAlign::End;
+        float time = 0.0f;
+        const std::string problem = clipModeActive ? std::string("clip mode") : alignActionProblem(align, &time);
+        if (!run) return problem.empty();
+        if (!problem.empty()){
+            keyNotice = problem;
+            keyNoticeAt = ImGui::GetTime();
+            return false;
+        }
+        std::vector<ActionFrame> actions = sceneProject->scene->getComponent<AnimationComponent>(selectedEntity).actions;
+        actions[(size_t)selectedFrameIndex].startTime = time;
+        const char* name = align == (int)AnimationWindowClip::CueAlign::Start ? "Align Start to Playhead"
+                         : align == (int)AnimationWindowClip::CueAlign::Peak ? "Align Peak to Playhead" : "Align End to Playhead";
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(new TimelineAudioActionsCmd(project, sceneProject->id, selectedEntity, actions, name));
+        sceneProject->isModified = true;
+        return true;
+    }
+    EntityCreationType type = EntityCreationType::AUDIO_ACTION;
+    if (id == "animation.addSoundEventAction") type = EntityCreationType::SOUND_EVENT_ACTION;
+    else if (id == "animation.addSnapshotAction") type = EntityCreationType::MIXER_SNAPSHOT_ACTION;
+    else if (id != "animation.addAudioAction") return false;
+    if (!run) return editable;
+    if (!editable) return false;
+    std::string error;
+    if (!addAudioAction(sceneProject, selectedEntity, type, "", snapTime(currentTime), 0, &error)){
+        keyNotice = error;
+        keyNoticeAt = ImGui::GetTime();
+        return false;
+    }
+    return true;
+}
+
+void editor::AnimationWindow::previewAudioActions(Scene* scene, Entity animEntity, float from, float to, float dt){
+    const AnimationComponent* anim = scene->findComponent<AnimationComponent>(animEntity);
+    if (!anim) return;
+    if (to < from){
+        // the preview looped: what played in the last pass stops, the start of the next one plays
+        actionAudio->stopExit();
+        from = 0.0f - 1e-6f;
+    }
+    if (!TimelineAudioPreview::blocker().empty() || to == from) return;
+    const double frame = std::max(1e-6, (double)ImGui::GetIO().DeltaTime);
+    for (const ActionFrame& frameData : anim->actions){
+        if (frameData.action == NULL_ENTITY || !scene->isEntityCreated(frameData.action)) continue;
+        // a snapshot action previews nothing: preview voices are outside the mixer's groups
+        const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(frameData.action);
+        if (!audio || scene->findComponent<AnimationComponent>(frameData.action)) continue;
+        if (!(frameData.startTime > from && frameData.startTime <= to)) continue;
+        const std::string sound = audio->event.empty() ? audio->filename.path : audio->event.path;
+        const ActionComponent* childAction = scene->findComponent<ActionComponent>(frameData.action);
+        const float speed = audio->speed * (childAction && childAction->speed > 0.0f ? childAction->speed : 1.0f) * std::fabs(playbackSpeed);
+        const float volumeDb = audio->volume > 0.0 ? (float)(20.0 * std::log10(audio->volume)) : -80.0f;
+        const uint32_t delay = TimelineAudioPreview::delayFrames(frameData.startTime - std::max(from, 0.0f), to - std::max(from, 0.0f), frame);
+        actionAudio->play(project, sound, volumeDb, speed, delay, true);
+    }
+    (void)dt;
+}
+
+bool editor::AnimationWindow::drawSoundMenu(SceneProject* sceneProject, AnimationComponent& anim, uint32_t track){
+    (void)anim;
+    (void)sceneProject;
+    bool added = false;
+    const float time = snapTime(currentTime);
+    if (!ImGui::BeginMenu(ICON_FA_VOLUME_HIGH "  Sound")) return false;
+    const std::vector<std::string> sounds = TimelineSounds::projectSounds(project, "");
+    if (ImGui::BeginMenu("Audio Clip")){
+        bool any = false;
+        for (const std::string& path : sounds){
+            if (Util::isSoundEventFile(path)) continue;
+            any = true;
+            if (ImGui::MenuItem(path.c_str())){
+                pendingSoundAction = {true, EntityCreationType::AUDIO_ACTION, path, time, track};
+                added = true;
+            }
+        }
+        if (!any) ImGui::TextDisabled("No audio clip in the project");
+        ImGui::Separator();
+        if (ImGui::MenuItem("Empty Audio Action")){
+            pendingSoundAction = {true, EntityCreationType::AUDIO_ACTION, "", time, track};
+            added = true;
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Sound Event")){
+        bool any = false;
+        for (const std::string& path : sounds){
+            if (!Util::isSoundEventFile(path)) continue;
+            any = true;
+            if (ImGui::MenuItem(path.c_str())){
+                pendingSoundAction = {true, EntityCreationType::SOUND_EVENT_ACTION, path, time, track};
+                added = true;
+            }
+        }
+        if (!any) ImGui::TextDisabled("No Sound Event in the project");
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Mixer Snapshot")){
+        const std::vector<std::string> snapshots = AudioMixer::getSnapshotNames();
+        if (snapshots.empty()) ImGui::TextDisabled("The project's mixer has no snapshot");
+        for (const std::string& name : snapshots){
+            if (ImGui::MenuItem(name.c_str())){
+                pendingSoundAction = {true, EntityCreationType::MIXER_SNAPSHOT_ACTION, name, time, track};
+                added = true;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    ImGui::EndMenu();
+    return added;
 }
 
 
@@ -249,7 +472,7 @@ void editor::AnimationWindow::setOpen(bool open){
         if (previewSceneProject && previewSceneProject->scene) {
             stopPreview(previewSceneProject->scene, previewSceneProject);
         } else {
-            previewState.clear();
+            previewSnapshot.clear();
             isPreviewing = false;
         }
     }
@@ -328,6 +551,16 @@ std::string editor::AnimationWindow::getActionLabel(Entity actionEntity, Scene* 
         return "Animation";
     }
 
+    // the timeline's sound (S40 R22)
+    if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(actionEntity)) {
+        if (!audio->event.empty()) return "Audio: " + std::filesystem::path(audio->event.path).stem().string() + " (event)";
+        const std::string stem = std::filesystem::path(audio->filename.path).stem().string();
+        return "Audio: " + (stem.empty() ? std::string("(no clip)") : stem);
+    }
+    if (const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(actionEntity)) {
+        return "Mixer Snapshot: " + (snapshot->snapshot.empty() ? std::string("(none)") : snapshot->snapshot);
+    }
+
     return "Action";
 }
 
@@ -343,7 +576,7 @@ void editor::AnimationWindow::selectEntity(Entity entity, uint32_t sceneId) {
             if (previousSceneProject && previousSceneProject->scene) {
                 stopPreview(previousSceneProject->scene, previousSceneProject);
             } else {
-                previewState.clear();
+                previewSnapshot.clear();
                 isPreviewing = false;
             }
         }
@@ -417,64 +650,30 @@ void editor::AnimationWindow::collectPreviewEntitiesRecursive(Scene* scene, Enti
     }
 }
 
-editor::AnimationWindow::PreviewEntityState editor::AnimationWindow::buildPreviewEntityState(Scene* scene, Entity entity) const {
-    PreviewEntityState state;
-    state.entity = entity;
-
-    if (Transform* transform = scene->findComponent<Transform>(entity)) {
-        state.parent = transform->parent;
-    }
-
-    YAML::Node components = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
-    components.remove(Catalog::getComponentName(ComponentType::AnimationComponent, true));
-
-    // Preview playback reads authored key data but does not mutate it. Keeping
-    // these components in the restore snapshot would overwrite keys authored
-    // while a scrub preview is paused (Snapshot or right-click keying).
-    components.remove(Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::TranslateTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::RotateTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::ScaleTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::MorphTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::LatticeTracksComponent, true));
-    state.components = components;
-
-    return state;
+void editor::AnimationWindow::snapshotPreviewEntity(Scene* scene, Entity entity) {
+    previewSnapshot.add(selectedSceneId, scene, entity);
 }
 
 void editor::AnimationWindow::restorePreviewState(Scene* scene) const {
-    for (const PreviewEntityState& state : previewState) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-
-        Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-        ProjectUtils::clearPreviewParticles(scene, state.entity);
-
-        // tracks are left out of the snapshot: a relative one takes its base again from the
-        // restored pose when the preview starts it
-        if (KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
-            keyframe->hasBase = false;
-        }
-    }
+    previewSnapshot.restore(scene);
 }
 
 void editor::AnimationWindow::applyPreviewModelBindPose(Scene* scene) const {
     std::unordered_set<Entity> modelEntities;
 
-    for (const PreviewEntityState& state : previewState) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity)) {
+    for (Entity previewed : previewSnapshot.entities()) {
+        if (previewed == NULL_ENTITY || !scene->isEntityCreated(previewed)) {
             continue;
         }
 
-        if (BoneComponent* bone = scene->findComponent<BoneComponent>(state.entity)) {
+        if (BoneComponent* bone = scene->findComponent<BoneComponent>(previewed)) {
             if (bone->model != NULL_ENTITY) {
                 modelEntities.insert(bone->model);
             }
         }
 
-        if (scene->findComponent<ModelComponent>(state.entity)) {
-            modelEntities.insert(state.entity);
+        if (scene->findComponent<ModelComponent>(previewed)) {
+            modelEntities.insert(previewed);
         }
     }
 
@@ -1265,12 +1464,12 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
     CommandHandle::get(sceneProject->id)->addCommand(batch);
 
     // New track entities did not exist when this preview began. Save only their
-    // runtime state now; buildPreviewEntityState deliberately excludes key data.
+    // runtime state now; snapshotPreviewEntity leaves the key data out.
     if (isPreviewing){
         for (CreateTrackKeyCmd* cmd : createdCmds){
             Entity trackEntity = cmd->getEntity();
             if (trackEntity != NULL_ENTITY && scene->isEntityCreated(trackEntity)){
-                previewState.push_back(buildPreviewEntityState(scene, trackEntity));
+                snapshotPreviewEntity(scene, trackEntity);
             }
         }
     }
@@ -1426,15 +1625,8 @@ void editor::AnimationWindow::addAnimationToPreview(Scene* scene, Entity animEnt
     std::unordered_set<Entity> collectedEntities;
     collectPreviewEntitiesRecursive(scene, animEntity, previewEntities, visitedAnimations, collectedEntities);
 
-    std::unordered_set<Entity> alreadySnapshotted;
-    for (const PreviewEntityState& state : previewState) {
-        alreadySnapshotted.insert(state.entity);
-    }
-
     for (Entity entity : previewEntities) {
-        if (alreadySnapshotted.insert(entity).second) {
-            previewState.push_back(buildPreviewEntityState(scene, entity));
-        }
+        snapshotPreviewEntity(scene, entity);
     }
 
     // Reset this animation's child action entities to Stopped so animationUpdate calls
@@ -1463,7 +1655,7 @@ void editor::AnimationWindow::startPreview(Scene* scene) {
     // preview writes restore first (spec 9.R7)
     ownPreviewRoots(scene, {selectedEntity});
 
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
 
     addAnimationToPreview(scene, selectedEntity);
@@ -1544,6 +1736,7 @@ void editor::AnimationWindow::triggerTransitionPreview(Scene* scene, SceneProjec
 
 void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProject, bool applyBindPose) {
     if (!isPreviewing) return;
+    actionAudio->stopExit();
 
     // AnimationComponent/key data are intentionally excluded from preview-state
     // restoration, so finalize authored timeline changes before restoring poses.
@@ -1567,7 +1760,7 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
         }
     }
 
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
     previewPrimary = NULL_ENTITY;
     isPreviewing = false;
@@ -1599,7 +1792,7 @@ void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
     releasePreviewOwners();
 
     // The scene is already deleted, drop the snapshots instead of restoring them
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
     previewPrimary = NULL_ENTITY;
     transitionTarget = NULL_ENTITY;
@@ -2053,12 +2246,27 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
             entityName = "Lattice Tracks";
             selected = true;
         }
+        // the timeline's sound (S40 R22): an audio, Sound Event or Mixer Snapshot action at the playhead
+        ImGui::Separator();
+        uint32_t soundTrack = 0;
+        if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) soundTrack = laneOf(anim, (size_t)selectedFrameIndex);
+        if (drawSoundMenu(sceneProject, anim, soundTrack)) ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
     }
     ImGui::EndDisabled();
 
     // Done last: an Animation action adds an AnimationComponent, which can move anim
+    if (pendingSoundAction.active) {
+        const PendingSoundAction pending = pendingSoundAction;
+        pendingSoundAction = PendingSoundAction();
+        std::string error;
+        if (!addAudioAction(sceneProject, selectedEntity, pending.type, pending.content, pending.time, pending.track, &error)) {
+            keyNotice = error;
+            keyNoticeAt = ImGui::GetTime();
+        }
+        return;
+    }
     if (selected) {
         // If a frame is selected, add to the same track, otherwise track 0
         uint32_t targetTrack = 0;
@@ -2194,6 +2402,10 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         }
         if (sig.test(scene->getComponentId<AnimationComponent>()))
             return IM_COL32(180, 170, 70, 200);  // Gold: Animation
+        if (sig.test(scene->getComponentId<AudioSourceComponent>()))
+            return ImGui::GetColorU32(Theme::Colors::AnimationAudio);
+        if (sig.test(scene->getComponentId<AudioSnapshotComponent>()))
+            return ImGui::GetColorU32(Theme::Colors::AnimationSnapshot);
 
         return IM_COL32(140, 70, 180, 200);      // Purple: generic Action
     };
@@ -2401,6 +2613,22 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             }
             drawList->AddRectFilled(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot),
                                     blockColor, metrics.blockRounding);
+
+            // an audio action's sound: R9's waveform and peak between the frame's edges (S40 R22)
+            if (const AudioSourceComponent* audio = frame.action != NULL_ENTITY && scene->isEntityCreated(frame.action)
+                    ? scene->findComponent<AudioSourceComponent>(frame.action) : nullptr) {
+                const std::string sound = audio->event.empty() ? audio->filename.path : audio->event.path;
+                if (!sound.empty()) {
+                    TimelineSoundInfo info = TimelineSounds::get(project, sound);
+                    const ActionComponent* childAction = scene->findComponent<ActionComponent>(frame.action);
+                    const double speed = std::max(1e-3, (double)audio->speed * (childAction && childAction->speed > 0.0f ? childAction->speed : 1.0f));
+                    if (info.peakMs >= 0.0) info.peakMs /= speed;
+                    drawList->PushClipRect(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot), true);
+                    TimelineSounds::drawBlock(drawList, project, info, ImVec2(blockStart, blockTop), ImVec2(blockEnd, blockBot),
+                                              speed / (double)pixelsPerSecond, blockColor, false, "");
+                    drawList->PopClipRect();
+                }
+            }
 
             if ((int)i == selectedFrameIndex) {
                 drawList->AddRect(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot),
@@ -2834,14 +3062,41 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     if (allowSelection && allowEditing) {
         ImRect dropRect(ImVec2(canvasPos.x + labelWidth, canvasPos.y + rulerHeight),
                         ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y));
+        UIProbe::rect("entity.tracks", dropRect.Min.x, dropRect.Min.y, dropRect.Max.x, dropRect.Max.y);
         if (ImGui::BeginDragDropTargetCustom(dropRect, ImGui::GetID("##anim_tracks_drop"))) {
+            // a sound from the Project window or the Sound Browser: an audio action at the drop time (S40 R22)
+            const ImGuiPayload* sounds = ImGui::GetDragDropPayload();
+            if (sounds && SoundDrop::accepts(sounds)) {
+                const ImVec2 dropMousePos = ImGui::GetIO().MousePos;
+                const float dropTime = std::max(0.0f, snapTime(xToTime(dropMousePos.x, timeStart, ImVec2(canvasPos.x + labelWidth, 0))));
+                const int dropTrack = std::max(0, (int)std::floor((dropMousePos.y - canvasPos.y - rulerHeight) / (trackHeight + trackPadding)));
+                const float dropX = timeToX(dropTime, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
+                drawList->AddLine(ImVec2(dropX, canvasPos.y + rulerHeight), ImVec2(dropX, canvasPos.y + canvasSize.y),
+                                  ImGui::GetColorU32(Theme::Colors::AnimationAudio), 2.0f * metrics.scale);
+                ImGui::SetTooltip(ICON_FA_VOLUME_HIGH " Audio action | Track %d | %.2fs", dropTrack, dropTime);
+                if (const ImGuiPayload* accepted = ImGui::AcceptDragDropPayload(sounds->DataType)) {
+                    std::vector<std::string> paths;
+                    std::string error;
+                    if (!SoundDrop::resolve(project, accepted, paths, error)) {
+                        keyNotice = error;
+                    } else {
+                        UndoGroupScope group(CommandHandle::get(sceneProject->id));
+                        for (const std::string& path : paths) {
+                            const EntityCreationType type = Util::isSoundEventFile(path) ? EntityCreationType::SOUND_EVENT_ACTION : EntityCreationType::AUDIO_ACTION;
+                            if (!addAudioAction(sceneProject, selectedEntity, type, path, dropTime, (uint32_t)dropTrack, &error)) keyNotice = error;
+                        }
+                    }
+                    if (!keyNotice.empty()) keyNoticeAt = ImGui::GetTime();
+                }
+            }
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity dropped = entityPayload->entity;
 
+                const std::string otherScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id);
                 const char* invalidReason = nullptr;
-                if (entityPayload->entitySceneId != 0 && entityPayload->entitySceneId != sceneProject->id) {
-                    invalidReason = "GameObject belongs to another scene";
+                if (!otherScene.empty()) {
+                    invalidReason = otherScene.c_str();
                 } else if (dropped == NULL_ENTITY || !scene->isEntityCreated(dropped)) {
                     invalidReason = "Invalid GameObject";
                 } else if (!scene->findComponent<ActionComponent>(dropped)) {
@@ -2954,6 +3209,7 @@ void editor::AnimationWindow::show() {
     // the clip controller runs every frame (playback, re-applies after scene edits); clip mode
     // tells it again below whether the window takes its keys
     clipMode->update(ImGui::GetIO().DeltaTime, false, false);
+    clipMode->entityKeys = false;
 
     if (!windowOpen) {
         isWindowVisible = false;
@@ -2988,7 +3244,7 @@ void editor::AnimationWindow::show() {
         if (previewSceneProject && previewSceneProject->scene) {
             stopPreview(previewSceneProject->scene, previewSceneProject);
         } else {
-            previewState.clear();
+            previewSnapshot.clear();
             isPreviewing = false;
         }
 
@@ -3110,8 +3366,24 @@ void editor::AnimationWindow::show() {
             }
             selectedFrameIndex = -1;
             float dt = ImGui::GetIO().DeltaTime * playbackSpeed;
+            // the audio actions the playhead crosses play as preview voices (S40 R23)
+            const Entity audioClip = previewPrimary != NULL_ENTITY && scene->isEntityCreated(previewPrimary) &&
+                                     scene->findComponent<ActionComponent>(previewPrimary) ? previewPrimary : selectedEntity;
+            const float audioFrom = scene->findComponent<ActionComponent>(audioClip) ? scene->getComponent<ActionComponent>(audioClip).timecount : 0.0f;
             scene->getSystem<ActionSystem>()->updateAnimationPreview(dt, previewAnimations);
+            if (scene->isEntityCreated(audioClip) && scene->findComponent<ActionComponent>(audioClip)) {
+                previewAudioActions(scene, audioClip, audioFrom, scene->getComponent<ActionComponent>(audioClip).timecount, dt);
+            }
             sceneProject->needUpdateRender = true;
+        } else {
+            // paused, stopped or sought: the actions' preview voices stop
+            actionAudio->stopExit();
+        }
+
+        // a command wrote something the preview holds (an Inspector field, set_properties, an
+        // undo): it is authored now, and a paused preview shows its playhead over it again
+        if (previewSnapshot.takeChanged() && !isPlaying) {
+            seekPreview(scene, sceneProject, currentTime);
         }
 
         // Playback continues while any previewed clip is still running.
@@ -3151,6 +3423,9 @@ void editor::AnimationWindow::show() {
             }
         }
     }
+
+    // the entity mode's shared commands (Align, Add ... action) take keys while it has focus
+    clipMode->entityKeys = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
     // Draw toolbar
     drawToolbar(ImGui::GetContentRegionAvail().x, *animComp, scene, sceneProject);
@@ -3464,7 +3739,7 @@ void editor::AnimationWindow::stopTransientPreviews(){
     if (previewSceneProject && previewSceneProject->scene) {
         stopPreview(previewSceneProject->scene, previewSceneProject);
     } else {
-        previewState.clear();
+        previewSnapshot.clear();
         previewAnimations.clear();
         previewPrimary = NULL_ENTITY;
         isPreviewing = false;
@@ -3489,7 +3764,7 @@ void editor::AnimationWindow::ownPreviewRoots(Scene* scene, const std::vector<En
             previewOwnerTokens.push_back(token);
             // what it writes: the entities its snapshot holds
             PreviewOwner::setWrites(token, [this](Entity entity) {
-                return std::any_of(previewState.begin(), previewState.end(), [entity](const PreviewEntityState& state) { return state.entity == entity; });
+                return previewSnapshot.contains(entity);
             });
         }
     }

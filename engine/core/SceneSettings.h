@@ -58,6 +58,16 @@ namespace jasperengine{
         HIGH
     };
 
+    // Planar reflections (shaders requiring planarreflection: library:water's PLANAR_REFLECTION):
+    // the resolution of their reflection passes, per axis of the camera pass; OFF draws none
+    // (those shaders show their fallback, the environment). Stored as ints: append only.
+    enum class PlanarReflectionResolution {
+        OFF,
+        QUARTER,
+        HALF,
+        FULL
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -351,8 +361,12 @@ namespace jasperengine{
         bool shadowCascadeBlend = true;
 
         // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
-        bool meshLodEnabled = false;
+        bool meshLodEnabled = true;
         float meshLodThreshold = 1.0f;
+        // level changes cross-fade with a dither over this many seconds (spec S54 R6); off builds
+        // and ships no fade shader
+        bool meshLodCrossFade = true;
+        float meshLodCrossFadeDuration = 0.5f;
 
         // depth-only pass before the opaque draws; pays off with heavy overdraw
         bool depthPrepassEnabled = false;
@@ -360,6 +374,18 @@ namespace jasperengine{
         // resolution of the scene-colour copy that shaders requiring scenecolor sample (shader
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
+
+        // Planar reflections (RenderSystem's water reflection passes, one per water height and
+        // viewing camera): their resolution, the layers they draw (with the viewer's culling
+        // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
+        // how far above the water's rest level they start (Unity's Clip Plane Offset), and the
+        // most heights reflected per camera (the others show the environment)
+        PlanarReflectionResolution planarReflectionResolution = PlanarReflectionResolution::HALF;
+        uint32_t planarReflectionLayers = 0xFFFFFFFFu;
+        bool planarReflectionShadows = true;
+        float planarReflectionFarClip = 0.0f;
+        float planarReflectionClipOffset = 0.05f;
+        int maxPlanarReflections = 2;
 
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
@@ -371,6 +397,13 @@ namespace jasperengine{
 
         // new scenes shade at HIGH; a scene file without the key is STANDARD (as it was drawn)
         LitQuality litQuality = LitQuality::HIGH;
+        // Capsule shadows (spec S57 R2): the main directional light's soft occlusion by the
+        // capsules of the Capsule Shadow Casters nearest the camera (at most 4), on every lit
+        // receiver; intensity scales it, softness widens the penumbra per metre along the light
+        bool capsuleShadowsEnabled = false;
+        float capsuleShadowIntensity = 1.0f;
+        float capsuleShadowSoftness = 0.25f;
+
         // the camera exposure lights authored in physical units (lux, candela, lumen) are drawn
         // at (util/LightPhotometry.h): Sunny 15, Overcast 12, Interior 7, Night 2. Lights in
         // engine units ignore it.
@@ -393,7 +426,7 @@ namespace jasperengine{
         int ssrMaxSteps = 48;          // linear march sample count
         float ssrIntensity = 1.0f;     // reflection strength multiplier
         float ssrBlur = 0.0f;          // glossy blur amount [0..1] (0 = sharp/mirror)
-        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=IBL specular
+        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=environment specular,7=reflection source,8=occlusion
 
         // Initial physics gravity. The live value is owned by PhysicsSystem (it must be pushed
         // to the Box2D/Jolt worlds on change); this is the default it initializes from.
@@ -424,6 +457,14 @@ namespace jasperengine{
         ShaderRef defaultSkyShader;
         ShaderRef defaultPointsShader;
         ShaderRef defaultLinesShader;
+
+        // property values of the default shaders, inherited by the components (and mesh
+        // materials) that use them, under their own values (ShaderUniforms::resolve)
+        ShaderUniformValues defaultMeshShaderUniforms;
+        ShaderUniformValues defaultUIShaderUniforms;
+        ShaderUniformValues defaultSkyShaderUniforms;
+        ShaderUniformValues defaultPointsShaderUniforms;
+        ShaderUniformValues defaultLinesShaderUniforms;
 
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;

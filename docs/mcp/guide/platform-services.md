@@ -113,6 +113,8 @@ Screen.orientation = ScreenOrientation.AutoRotation
 | `Engine.onFocus` `(hasFocus)` | the app is frontmost and gets input, or something covers it (a system dialog, the notification shade, another window) |
 | `Engine.onPause`, `Engine.onResume` | the app goes to the background and comes back |
 | `Engine.onLowMemory` | the system is short of memory (Android, iOS): free caches |
+| `Device.onLowMemory` | the next frame, after the engine cleared its own caches (Android `onTrimMemory`, iOS, the web's heap heuristic; jasper://docs/device) |
+| `Device.thermalState`, `Device.onThermalStateChanged` `(state)` | the platform's thermal state (`ThermalState`; Android, iOS and macOS report one) |
 | script method `onApplicationFocus(focused)` / `onApplicationPause(paused)` | Unity's messages, called on every script of active GameObjects that defines them (Lua, and C++ `ScriptBase` overrides) |
 
 Order, on every platform: leaving, `onFocus(false)` then `onPause`; coming back, `onResume` then
@@ -126,6 +128,39 @@ the next frame, as the input guide says) and a pause saves `PlayerPrefs`.
 ```lua
 function Music:init() RegisterEngineEvent(self, "onFocus") end
 function Music:onFocus(hasFocus) self.sound.volume = hasFocus and 1 or 0 end
+```
+
+## Hidden windows
+
+| Lua | Meaning |
+|---|---|
+| `Engine.isVisible` | `false` while the game's window can't be seen; `true` at start (always on Android and iOS, whose pause is the signal) |
+| `Engine.onVisibilityChanged` `(visible)` | the window was hidden or shown again |
+
+A desktop game whose window can't be seen keeps running its logic **without drawing**: Windows when
+minimized; Linux when unmapped or minimized by a window manager that keeps it mapped
+(`_NET_WM_STATE_HIDDEN`, GNOME's mutter); macOS when its window is not visible at all (minimized,
+on another Space, the app hidden, or fully covered by other windows). It then updates at the game's
+own rate, at most 60 Hz: `Engine.targetFrameRate`, or the display rate divided by
+`Engine.vSyncCount`. `onUpdate`, `onFixedUpdate`, coroutines, timers, audio and scene loads go on;
+`onDraw` does not run and nothing reaches the GPU. Gamepads are released when the window hides (held
+buttons go up, sticks and triggers rest) and are not read while hidden; a button still held when it
+shows arrives as a new press. Keyboard and mouse come up through the focus loss. The log says
+`Window hidden: updating at 60 Hz without drawing` and `Window visible: drawing again`.
+
+A `--headless` run never hides. `--quit-after`, `--screenshot` and the ready signal count drawn
+frames, so a hidden non-headless run does not advance them. The web pauses in a hidden tab (browsers
+stop its frames) and reports `onVisibilityChanged(false)` before `onPause`, `(true)` after `onResume`.
+Linux limitation: a compositing window manager that keeps a window on another workspace mapped
+without `_NET_WM_STATE_HIDDEN` reports nothing, and the game draws there as before.
+
+Editor: Play behaves the same while the editor window is minimized or hidden (macOS: also fully
+covered): the game updates without drawing and its Game view keeps the last frame until the window
+shows again.
+
+```lua
+function Music:init() RegisterEngineEvent(self, "onVisibilityChanged") end
+function Music:onVisibilityChanged(visible) self.sound.volume = visible and 1 or 0.3 end
 ```
 
 ## Screen sleep
@@ -170,8 +205,9 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
 - `configure_game_view {device: "iphone_15_pro", orientation: "portrait", language: "es-MX"}`;
   `devices` in its reply lists the profiles. Simulation is editor only, never in builds; a script's
   rotation of the device ends with the Play.
-- `get_play_state` while playing: `platform: {focused, paused, orientation, requested_orientation,
-  target_frame_rate, vsync_count, language, system_language, device, opened_urls, vibrations, haptics}`.
+- `get_play_state` while playing: `platform: {focused, paused, visible, hidden_update_fps, orientation,
+  requested_orientation, target_frame_rate, vsync_count, language, system_language, device, opened_urls,
+  vibrations, haptics}`.
 - Project settings: `player.default_orientation`, `player.allowed_orientations`,
   `player.keep_screen_on`, `player.target_frame_rate` (`android.orientation` and
   `android.keep_screen_on` were renamed to these; older project.yaml files migrate on load).
@@ -201,5 +237,8 @@ On the next export:
   both landscapes as before, portrait now first (the launch orientation).
 - **iOS iPad**: `UIRequiresFullScreen` is true for restricted orientations (the default set has three),
   so iPad Split View is off unless all four orientations are allowed.
+- **Hidden desktop windows** (Linux, macOS) update without drawing, as Windows builds already did:
+  `onDraw` stops while the window can't be seen. Windows' hidden rate follows the game's frame rate
+  (at most 60 Hz) instead of a fixed 60 Hz.
 - **Frame rate**: `Engine.targetFrameRate` starts at Player > Target Frame Rate (-1: 60 on mobile as
   before); desktop and web exports start unsynchronized only when VSync is off, as before.

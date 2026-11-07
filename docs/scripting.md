@@ -6,6 +6,27 @@ jumping from a Console line to the source. The Lua API itself is in
 [mcp/guide/lua-api.md](mcp/guide/lua-api.md). C++ scripts are in
 [mcp/guide/cpp-scripting.md](mcp/guide/cpp-scripting.md).
 
+## Attaching scripts and their Inspector fields
+
+The Script component's **Add Script** lists the project's scripts: the Lua modules in the Lua
+directory and the C++ script classes of the script directories (a C++ subclass of an engine class,
+such as `Mesh`, only on GameObjects of that class). Type to filter, pick one, or use **New
+Script...** / **Browse...**. Add Component lists them in its Scripts category and its search, as
+Unity does, and a script file dragged from the Project window onto the Inspector or onto a
+GameObject in the Hierarchy is attached to it. Each is one undo step; a GameObject that already
+has the script keeps its entry. A Lua entry's name is its file name (the edit popup shows it as
+Module, read-only).
+
+The fields an entry shows are what its file declares:
+
+- a saved Lua file without a `properties` table has none (its old fields go);
+- while you edit the file in the code editor, the fields follow the buffer, but a buffer without
+  a `properties` table keeps them until you save (cutting the table to paste it elsewhere loses no
+  value); a buffer that does not load or run changes nothing;
+- a scene or a Prefab Mode stage you open shows the fields its scripts declare now, also when they
+  changed while it was closed; that refresh does not mark the scene modified (the next save writes
+  it). Each file runs once per refresh, however many GameObjects use it.
+
 ## Lua hot reload during Play
 
 Save a `.lua` file while the game plays and its new code runs in the objects that are already
@@ -260,6 +281,54 @@ function Guard:init()
     end
 end
 return Guard
+## Mesh detail levels from Lua
+
+A Mesh's detail level settings (docs/lod.md) are Lua properties, with the Inspector's names:
+
+| Lua | Inspector | Values |
+|---|---|---|
+| `mesh.lodEnabled`, `mesh.lodBias` | Detail Levels, Detail Bias | bool; above 1 keeps detail longer |
+| `mesh.fadeMode` | Fade Mode | `LodFadeMode.CROSS_FADE` (default), `LodFadeMode.NONE` |
+| `mesh.animateCrossFade` | Animate Cross-fading | bool (default true): fade over the scene's Cross-fade Duration |
+| `mesh.fadeTransitionWidth` | Fade Transition Width | 0..1 (default 0.1): the distance fade, and always an Instanced Mesh's |
+| `mesh.cullBelow` | Cull Below Screen Height | 0..1 share of the view's height (0: never culled) |
+| `mesh:forceLod(level)`, `mesh.forcedLod` | | draws that level in every view; -1 is automatic again |
+| `mesh.currentLod` (read-only) | | the level the main view drew last (4: culled for its size) |
+| `scene.meshLodEnabled`, `scene.meshLodThreshold` | Mesh Detail (LOD) Enabled, Threshold | bool; pixels |
+| `scene.crossFade`, `scene.crossFadeDuration` | Cross Fade, Cross-fade Duration | bool; 0.05..2 seconds |
+
+```lua
+local mesh = Mesh(scene, self.entity)
+mesh.fadeMode = LodFadeMode.CROSS_FADE
+mesh.cullBelow = 0.02      -- not drawn under 2 % of the screen's height
+mesh:forceLod(2)           -- a cutscene keeps it at LOD 2
+mesh:forceLod(-1)          -- automatic again
+print(mesh.currentLod)
+```
+
+A fading object draws twice for the fade's duration; with `scene.crossFade` off no fade shader
+is built or shipped.
+
+## Device tiers: Device
+
+`Device` is the device the game runs on (`docs/device-tiers.md`):
+
+- the Device Tier it gets: `Device.tier` (a `DeviceTier`), `Device.gpuName`, `Device.tierReason`,
+  and `Device.tierApplied`;
+- a graphics menu's choice: `Device.setTier(DeviceTier.Low)`, then `Device.resetTier()` to go back;
+- the platform's thermal state: `Device.thermalState` (a `ThermalState`) and the event
+  `Device.onThermalStateChanged(state)`;
+- `Device.onLowMemory`, after the engine cleared its caches for a low-memory warning.
+
+In the editor, a tier applies only in Play, and only when the Game view's Device menu simulates
+one or a script calls `Device.setTier`. Subscriptions end with Play, like the `Engine` events.
+
+```lua
+Device.onThermalStateChanged = function(state)
+    if state >= ThermalState.Serious then
+        Log.print("hot device, tier " .. tostring(Device.tier))
+    end
+end
 ```
 
 ## The Lua API as data

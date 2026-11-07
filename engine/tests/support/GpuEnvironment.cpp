@@ -3,6 +3,9 @@
 
 #include "GpuEnvironment.h"
 #include "render/SystemRender.h"
+#include "Engine.h"
+#include "Scene.h"
+#include "subsystem/RenderSystem.h"
 
 #include "HeadlessContext.h"
 #include "TestSystem.h"
@@ -102,6 +105,23 @@ void GpuEnvironment::setView(int screenWidth, int screenHeight, int canvasWidth,
     Engine::systemViewChanged();
 }
 
+void GpuEnvironment::resetView(){
+    setView(defaultWidth, defaultHeight, defaultWidth, defaultHeight, Scaling::FITWIDTH);
+}
+
+namespace {
+    // a mesh's detail levels still being built (Mesh LOD is on in a new Scene): a frame drawn now
+    // shows its finest level, and a later one its own
+    bool meshLodsPending(){
+        for (Scene* scene : Engine::getSceneLayers()){
+            std::shared_ptr<RenderSystem> render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+            if (render && render->hasPendingMeshLods())
+                return true;
+        }
+        return false;
+    }
+}
+
 bool GpuEnvironment::runFrames(std::function<bool()> ready, int maxFrames){
     // frames of a small scene are short: variants compiled and created off the render thread
     // (spec S32) get at least a minute whatever the frame count
@@ -111,7 +131,7 @@ bool GpuEnvironment::runFrames(std::function<bool()> ready, int maxFrames){
         Engine::systemDraw();
         // and nothing still being created off the render thread (spec S32): what is pending
         // is not drawn yet
-        if ((!ready || ready()) && SystemRender::isGpuCreationIdle()){
+        if ((!ready || ready()) && SystemRender::isGpuCreationIdle() && !meshLodsPending()){
             drawFrames(2);
             return true;
         }

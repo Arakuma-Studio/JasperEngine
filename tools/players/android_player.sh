@@ -11,7 +11,7 @@
 #                    a release build)
 #   symbols/lib/<abi>/*.so  the same libraries before stripping (the runtime's symbols)
 #
-#   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan] [variant]
+#   tools/players/android_player.sh <release|development> [OUT] [gles3] [variant]
 #
 # variant: a release variant of engine/player/variants.json (default full; S34 R4)
 #
@@ -23,7 +23,7 @@ FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/android-$FLAVOUR}"
 BACKEND="${3:-gles3}"
 PLAYER_VARIANT="${4:-full}"
-[[ "$BACKEND" == gles3 || "$BACKEND" == vulkan ]] || { echo "backend is gles3 or vulkan (got $BACKEND)" >&2; exit 1; }
+[[ "$BACKEND" == gles3 ]] || { echo "the backend is gles3 on Android: its platform layer makes an EGL context only (got $BACKEND)" >&2; exit 1; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
     release) TASK=assembleRelease; VARIANT=release ;;
@@ -35,7 +35,11 @@ APP="$ROOT/engine/workspaces/androidstudio/app"
 # no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
 # earlier run goes, the merged resources are rewritten by the build
 rm -rf "$APP/build/outputs/apk"
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" -PjasperPlayerVariant="$PLAYER_VARIANT" "$TASK")
+# a deprecation in our Gradle files fails the build (tools/ci/check_gradle_warnings.py)
+GRADLE_LOG="$(mktemp)"
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" -PjasperPlayerVariant="$PLAYER_VARIANT" "$TASK") 2>&1 | tee "$GRADLE_LOG"
+python3 "$ROOT/tools/ci/check_gradle_warnings.py" "$GRADLE_LOG"
+rm -f "$GRADLE_LOG"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"

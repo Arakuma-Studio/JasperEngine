@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "component/PrefabComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
 #include "util/FileUtils.h"
@@ -3199,6 +3203,9 @@ static editor::TerrainToolCategory toolCategoryFor(editor::TerrainBrushMode mode
 }
 
 void editor::TerrainEditWindow::show(){
+    // the saved settings before the first frame writes the members back (opened from the menu or
+    // the layout, not only from the Inspector)
+    loadSettings();
     if (windowOpen){
         updateTargetFromSelection();
     }
@@ -3417,12 +3424,13 @@ void editor::TerrainEditWindow::show(){
             ImGui::EndDisabled();
 
             terrainPropertyRow("Density", "Instances per square world unit at full painted density.");
-            if (ImGui::DragFloat("##foliage_density", &layer.density, 0.05f, 0.0f, 20.0f, "%.2f")){
-                setFoliageLayerProperty("density", std::max(0.0f, layer.density));
+            if (ImGui::DragFloat("##foliage_density", &layer.density, 0.05f, 0.0f, 128.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+                // the detail rules' range (the engine draws at most 8192 instances per 8 m cell)
+                setFoliageLayerProperty("density", std::clamp(layer.density, 0.0f, 128.0f));
             }
             const TerrainFoliageLayer& currentLayer = terrain.foliageLayers[selectedFoliageLayer];
             terrainPropertyRow("Scale range", "Minimum and maximum random scale per instance.");
-            if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f")){
+            if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp)){
                 layer.minScale = std::max(0.01f, layer.minScale);
                 layer.maxScale = std::max(layer.minScale, layer.maxScale);
                 if (layer.minScale != currentLayer.minScale){
@@ -3460,9 +3468,16 @@ void editor::TerrainEditWindow::show(){
             if (ImGui::SliderFloat("##foliage_align", &alignment, 0.0f, 100.0f, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)){
                 setFoliageLayerProperty("alignToNormal", alignment / 100.0f);
             }
-            terrainPropertyRow("Draw distance", "Detail visibility distance in world units. Ignored while editing terrain; restored when editing ends or play starts.");
-            if (ImGui::DragFloat("##foliage_distance", &layer.drawDistance, 1.0f, 1.0f, 500.0f, "%.0f")){
-                setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
+            terrainPropertyRow("Draw range", "Instances show between these distances, in world units, fading in after Min and out before Max. "
+                               "A copy of the layer with a cheaper mesh whose Min equals this layer's Max takes over with a cross-fade. "
+                               "Scaled by Project Settings > Quality > Foliage Distance. Ignored while editing terrain; restored when editing ends or play starts.");
+            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 500.0f, "Min %.0f", "Max %.0f", ImGuiSliderFlags_AlwaysClamp)){
+                if (layer.minDrawDistance != currentLayer.minDrawDistance){
+                    setFoliageLayerProperty("minDrawDistance", std::clamp(layer.minDrawDistance, 0.0f, std::max(1.0f, layer.drawDistance)));
+                }
+                if (layer.drawDistance != currentLayer.drawDistance){
+                    setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
+                }
             }
             terrainPropertyRow("Cast shadows", "Turn off for grass-scale scatter so it skips the shadow cascades.");
             if (ImGui::Checkbox("##foliage_cast_shadows", &layer.castShadows)){
@@ -3586,35 +3601,38 @@ void editor::TerrainEditWindow::show(){
     }
     ImGui::End();
 
-    TerrainEditorSettings& ts = project->getTerrainEditorSettings();
-    ts.brushMode = static_cast<int>(brushMode);
-    ts.brushShape = static_cast<int>(brushShape);
-    ts.brushFalloff = static_cast<int>(brushFalloff);
-    ts.brushSize = brushSize;
-    ts.brushStrength = brushStrength;
-    ts.brushRotation = brushRotation;
-    ts.brushMaskPath = brushMaskPath;
-    ts.flattenHeight = flattenHeight;
-    ts.terraceSteps = terraceSteps;
-    ts.noiseSize = noiseSize;
-    ts.heightMapResolution = heightMapResolution;
-    ts.blendMapResolution = blendMapResolution;
-    ts.densityMapResolution = densityMapResolution;
-    ts.normalizeBlendPaint = normalizeBlendPaint;
-    ts.heightMapStartAtMiddle = heightMapStartAtMiddle;
-    ts.flattenPickOnStroke = flattenPickOnStroke;
-    ts.paintUseMask = paintUseMask;
-    ts.paintMinSlope = paintMinSlope;
-    ts.paintMaxSlope = paintMaxSlope;
-    ts.paintMinHeight = paintMinHeight;
-    ts.paintMaxHeight = paintMaxHeight;
-    ts.placeAssetPath = placeAssetPath;
-    ts.placeInstanced = placeInstanced;
-    ts.placeSpacing = placeSpacing;
-    ts.placeMinScale = placeMinScale;
-    ts.placeMaxScale = placeMaxScale;
-    ts.placeRotationJitter = placeRotationJitter;
-    ts.placeAlignToNormal = placeAlignToNormal;
+    // only over the settings this window read: never constructor defaults or another project's
+    if (loadedSettingsGeneration == project->getTerrainEditorSettingsGeneration()){
+        TerrainEditorSettings& ts = project->getTerrainEditorSettings();
+        ts.brushMode = static_cast<int>(brushMode);
+        ts.brushShape = static_cast<int>(brushShape);
+        ts.brushFalloff = static_cast<int>(brushFalloff);
+        ts.brushSize = brushSize;
+        ts.brushStrength = brushStrength;
+        ts.brushRotation = brushRotation;
+        ts.brushMaskPath = brushMaskPath;
+        ts.flattenHeight = flattenHeight;
+        ts.terraceSteps = terraceSteps;
+        ts.noiseSize = noiseSize;
+        ts.heightMapResolution = heightMapResolution;
+        ts.blendMapResolution = blendMapResolution;
+        ts.densityMapResolution = densityMapResolution;
+        ts.normalizeBlendPaint = normalizeBlendPaint;
+        ts.heightMapStartAtMiddle = heightMapStartAtMiddle;
+        ts.flattenPickOnStroke = flattenPickOnStroke;
+        ts.paintUseMask = paintUseMask;
+        ts.paintMinSlope = paintMinSlope;
+        ts.paintMaxSlope = paintMaxSlope;
+        ts.paintMinHeight = paintMinHeight;
+        ts.paintMaxHeight = paintMaxHeight;
+        ts.placeAssetPath = placeAssetPath;
+        ts.placeInstanced = placeInstanced;
+        ts.placeSpacing = placeSpacing;
+        ts.placeMinScale = placeMinScale;
+        ts.placeMaxScale = placeMaxScale;
+        ts.placeRotationJitter = placeRotationJitter;
+        ts.placeAlignToNormal = placeAlignToNormal;
+    }
     if (!windowOpen){
         setOpen(false);
     }
@@ -3644,11 +3662,18 @@ void editor::TerrainEditWindow::setOpen(bool open){
 }
 
 void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
+    loadSettings();
     open();
     selectedSceneId = sceneId;
     selectedEntity = entity;
     updateFoliagePreview();
+}
 
+void editor::TerrainEditWindow::loadSettings(){
+    if (!project || loadedSettingsGeneration == project->getTerrainEditorSettingsGeneration()){
+        return;
+    }
+    loadedSettingsGeneration = project->getTerrainEditorSettingsGeneration();
     const TerrainEditorSettings& ts = project->getTerrainEditorSettings();
     brushMode     = static_cast<TerrainBrushMode>(ts.brushMode);
     toolCategory  = toolCategoryFor(brushMode);
@@ -3679,6 +3704,14 @@ void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
     placeMaxScale = std::max(placeMinScale, ts.placeMaxScale);
     placeRotationJitter = std::clamp(ts.placeRotationJitter, 0.0f, 1.0f);
     placeAlignToNormal = std::clamp(ts.placeAlignToNormal, 0.0f, 1.0f);
+}
+
+void editor::TerrainEditWindow::resetProjectState(){
+    brushActive = false;
+    endStroke();
+    selectedSceneId = 0;
+    selectedEntity = NULL_ENTITY;
+    loadedSettingsGeneration = 0;
 }
 
 bool editor::TerrainEditWindow::isOpen() const{
@@ -3958,6 +3991,8 @@ void editor::TerrainEditWindow::adjustBrushStrength(float factor){
 
 bool editor::TerrainEditWindow::scriptedStroke(uint32_t sceneId, Entity entity, const TerrainScriptedBrush& brush,
                                                const std::vector<Vector3>& localPoints, std::string& error, int* placed){
+    // the saved resolutions and settings, as the window would have them
+    loadSettings();
     if (placed){
         *placed = 0;
     }

@@ -60,6 +60,8 @@ grep -rn "setColor" .jasperengine/engine-api/lua/                     # who has 
   to change it: `obj.position = Vector3(...)`, not `obj.position.x = 1`), `(event)` is an event
   object (subscribe with `RegisterEvent`).
 - A name that is not in the stubs is not bound to Lua: do not guess C++ names.
+- A client without file access (or without MCP resources) reads the same API references through
+  `read_file`: `read_file jasper://docs/lua-api`, `read_file jasper://guide` (the agent guide, whole).
 - Lines starting with `---` above a declaration are its documentation (from the engine headers).
 
 ## Lua: lua-language-server
@@ -189,7 +191,7 @@ project, or empty the trash.
 
 `list_shortcuts {group?, context?, conflicts_only?}` is the command catalog: each command's
 `chords`, `default_chords`, `context` (`global`, `editor`, `scene_view`, `hierarchy`,
-`project`, `console`, `animation`, `pose_animation`), `menu_path` and the `menu_shortcut` its menu item shows, and
+`project`, `console`, `animation`, `pose_animation`, `curve`, `color_picker`), `menu_path` and the `menu_shortcut` its menu item shows, and
 `conflicts` / `shadowed_by` (a Global or Editor key over a window's own). `set_shortcut {id,
 chords}` rebinds (`[]` unbinds, `null` resets); a chord another command has in the same context
 fails unless `force: true`, which takes it from that command. Rebindings are the user's, in

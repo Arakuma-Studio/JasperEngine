@@ -1,6 +1,5 @@
 package com.jaspergameengine.jasperengine;
 
-import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -28,8 +27,6 @@ public class MainActivity extends GameActivity {
 	}
 
 	private UserSettings userSettings;
-	// Null when the export leaves AdMob out (its wrapper source is compiled only with it)
-	private Object admobWrapper;
 	private ClipboardManager clipboard;
 
 	private native void onBackPressedNative();
@@ -71,15 +68,6 @@ public class MainActivity extends GameActivity {
 				WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 	}
 
-	// The wrapper sources are compiled only when the export enables their service
-	private Object createOptionalWrapper(String className) {
-		try {
-			return Class.forName(className).getConstructor(Activity.class).newInstance(this);
-		} catch (ReflectiveOperationException | LinkageError e) {
-			return null;
-		}
-	}
-
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		if (metaFlag("jasperengine.keepScreenOn", false)) getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -89,7 +77,6 @@ public class MainActivity extends GameActivity {
 		hideSystemUI();
 
 		userSettings = new UserSettings(this);
-		admobWrapper = createOptionalWrapper("com.jaspergameengine.jasperengine.AdMobWrapper");
 		clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 
 		// Games get Back as Escape. A callback, since Android 16 no longer sends it as a key.
@@ -179,6 +166,17 @@ public class MainActivity extends GameActivity {
 		JasperNative.dispatchConfigurationChanged(newConfig);
 	}
 
+	// Device.onLowMemory (spec S56): RUNNING_LOW and above, and every level of an app in the
+	// background (UI_HIDDEN only says the UI went away, not that memory is short). The game
+	// thread sees the count change (NativeEngine::updateDeviceSignals).
+	@Override
+	public void onTrimMemory(int level) {
+		super.onTrimMemory(level);
+		if (level >= TRIM_MEMORY_RUNNING_LOW && level != TRIM_MEMORY_UI_HIDDEN) {
+			JasperPlatform.trimMemoryCount++;
+		}
+	}
+
 	// Player > Android > Fullscreen (android.fullscreen): the export writes false here for a game
 	// that shows the system bars; its safe area then keeps clear of them too (safe-area spec 6.5).
 	// Read once by the native side.
@@ -188,10 +186,6 @@ public class MainActivity extends GameActivity {
 
 	public UserSettings getUserSettings() {
 		return userSettings;
-	}
-
-	public Object getAdMobWrapper() {
-		return admobWrapper;
 	}
 
 	// Called from the native game thread (HTML UI copy/cut). The clip is set on the UI thread.

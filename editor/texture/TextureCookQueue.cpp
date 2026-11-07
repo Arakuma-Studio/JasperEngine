@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureCookQueue.h"
+#include "export/ExportFiles.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -88,8 +89,13 @@ TextureProjectSettings editor::textureProjectSettingsOf(const Project& project){
 std::vector<std::string> editor::projectTextureSources(const Project& project, bool cookableOnly){
     std::vector<std::string> paths;
     const fs::path assets = project.getAssetsPath().lexically_normal();
+    // an earlier export left in the project ships nothing, its cooks neither (Exporter: W-EXPORT-FOLDER-SKIPPED)
+    exportfiles::ExportFolderFinder exports(project.getProjectPath(), project.getName().empty() ? "jasperengine-project"
+                                                                                                 : project.getLibName());
     project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info){
         if (info.type != AssetType::Texture)
+            return;
+        if (exports.contains(project.getProjectPath() / info.path))
             return;
         const std::string relative = (project.getProjectPath() / info.path).lexically_normal().lexically_relative(assets).generic_string();
         if (relative.empty() || relative == "." || relative.rfind("..", 0) == 0)
@@ -171,7 +177,7 @@ void TextureCookQueue::attach(Project* newProject){
         swaps.clear();
         CookedTextures::setProvider(nullptr, "");
         TextureDataPool::setProcessingProvider(nullptr);
-        SetAssetMetaCmd::setWriteListener(nullptr);
+        SetAssetMetaCmd::removeWriteListener(this);
         cache.saveSources();
         cache.close();
         std::lock_guard<std::mutex> lock(mutex);
@@ -196,7 +202,7 @@ void TextureCookQueue::attach(Project* newProject){
     TextureDataPool::setProcessingProvider([this](const std::string& path, TextureProcessing& out){
         return processingFor(CookedTextures::normalize(path), out);
     });
-    SetAssetMetaCmd::setWriteListener([this](Project* writer, const fs::path& asset, const std::string& key){
+    SetAssetMetaCmd::addWriteListener(this, [this](Project* writer, const fs::path& asset, const std::string& key){
         if (writer != project || key.rfind("import", 0) != 0)
             return;
         const std::string assetPath = assetPathOf(writer->getProjectPath() / asset);

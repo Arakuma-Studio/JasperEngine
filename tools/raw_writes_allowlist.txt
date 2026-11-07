@@ -6,6 +6,7 @@ editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log
 
 # not a document
 editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once
+editor/Project.cpp :: std::ofstream probe(file, std::ios::binary | std::ios::app); :: asset-root preflight: opens a file the change will rewrite for appending to learn it is writable, writes nothing
 editor/htmlui/HttpClient.cpp :: std::ofstream out(config, std::ios::binary); :: private temporary curl config, removed after the request
 editor/vcs/SvnProvider.cpp :: std::ofstream out(file, std::ios::binary | std::ios::trunc); :: private temporary --targets list for one svn call, removed after it
 editor/vcs/SvnProvider.cpp :: std::ofstream out(messageFile, std::ios::binary | std::ios::trunc); :: private temporary commit message file for svn commit -F, removed after it
@@ -16,7 +17,7 @@ editor/Exporter.cpp :: std::ofstream(fs::path(path.string() + ".held")) :: the m
 editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary); :: SecretFile: a signing password's file in the package's work folder, created empty so it is owner-only before the secret goes in (a temporary sibling would hold it with default permissions), removed after the signing
 editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary | std::ios::trunc); :: SecretFile: the same file, now owner-only, takes the secret
 editor/recorder/RecorderSession.cpp :: void writeWavHeader(std::ofstream& out, uint32_t dataBytes) { :: the stream of the Sink's audio file below
-editor/recorder/RecorderSession.cpp :: std::ofstream wav; :: a movie's audio, streamed for the mux to the hidden .<movie>.audio.wav and its sizes patched at the end; FFmpeg's mux writes the movie and this file is removed, never published
+editor/recorder/RecorderSession.cpp :: std::ofstream wav; :: a movie's audio, streamed for the mux to a temporary sibling (every write checked) and its sizes patched at the end; FFmpeg's mux writes the movie and this file is removed, never published
 
 # output to a path the user named on the command line
 editor/App.cpp :: std::ofstream file(benchmarkOut); :: --benchmark-out report
@@ -26,32 +27,23 @@ editor/cli/CommandLine.cpp :: std::ofstream file(options.docFile :: --doc output
 editor/Exporter.cpp :: std::ofstream out(tempPath, std::ios::binary); :: resource pack streamed to resources.pak.tmp, then io::publishFile
 engine/core/physics/ConvexDecomposition.cpp :: std::ofstream out(temporary, :: hull cache entry under the cache's own temporary name (its cross-process cleanup reads them), then io::publishFile
 
+engine/core/audio/AudioCapture.cpp :: std::ofstream file; :: a capture's WAV, streamed to its temporary sibling with its sizes patched every second, then io::publishFile
+engine/core/audio/AudioCapture.cpp :: std::ofstream events; :: a capture's append-only log inside its session: a crash loses at most the last frame's lines
+engine/core/audio/AudioCapture.cpp :: std::ofstream levels; :: a capture's append-only log inside its session: a crash loses at most the last frame's lines
+engine/core/audio/AudioCapture.cpp :: void flushText(std::ofstream& file, :: the two logs above
+
 # export staging copies (S30 owns export staging and its swap)
 editor/Exporter.cpp :: fs::copy_file(source, targetPath :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(exePath, producedPath :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, ec); :: export staging (S30): the engine tree mirrored for a compile
 editor/Exporter.cpp :: fs::copy_file(from, to, fs::copy_options::overwrite_existing, copyError); :: export staging (S30): the engine tree mirrored for a compile
-editor/Exporter.cpp :: fs::copy_file(src, config.destinationDir :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(favicon, config.destinationDir :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(src, threadsDir :: export staging (S30): the pthreads web build (S06)
-editor/Exporter.cpp :: fs::copy_file(dataSrc, config.destinationDir :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec); :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(entry.path(), destination, :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(srcPath, dstPath :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(hdrPath, dstPath :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(entry.path(), dstPath :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(it->path(), dstPath :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(entry.path(), target, :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(sdkRoot / "jasperengine.py" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(glbPath, importPath :: export staging (S30): the FBX imports a build ships
-editor/ExporterPrebuilt.cpp :: fs::copy_file(icon, contentDir / "icon.png" :: prebuilt staging: <dest>.staging-<pid>, or the build cache's content/ for Web and Android, both emptied when the build starts; <dest> only changes in swapStagingIntoPlace
+editor/Exporter.cpp :: fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, copyError); :: export staging (S30): a native plugin link's target copied where links cannot be made
+editor/export/ExportFiles.cpp :: if (!ec) fs::copy_file(longPath(from), longPath(to), fs::copy_options::overwrite_existing, ec); :: export staging (S30): every copy of an export (exportfiles::copyFile), into its build tree or staging folder, never a project document
 editor/ExporterPrebuilt.cpp :: fs::copy_file(player->dir / "THIRD-PARTY-NOTICES.txt", contentDir :: prebuilt staging, as the icon above
-editor/ExporterPrebuilt.cpp :: fs::copy_file(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
-editor/ExporterPrebuilt.cpp :: fs::copy_file(favicon, stagingDir / "favicon.png" :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
-editor/ExporterPrebuilt.cpp :: fs::copy_file(contentDir / "icon.png", stagingDir / "favicon.png" :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole
 editor/platform/IosProject.cpp :: stbi_write_png((set / "AppIcon-1024.png") :: the Xcode project's icon, in finalizeIOS's <dest>.staging-<pid>/<app>, discarded on failure, swapped in whole
 editor/platform/AndroidPackager.cpp :: fs::copy_file(file, target, fs::copy_options::overwrite_existing, ec); :: an icon into the package's work folder, in the build cache and emptied when the package starts
 

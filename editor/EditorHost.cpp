@@ -46,6 +46,10 @@ bool EditorHost::shouldSyncEngineApi() const {
     return false;
 }
 
+bool EditorHost::recordsRecentProjects() const {
+    return false;
+}
+
 void EditorHost::updateResourcesPath() {
 }
 
@@ -108,6 +112,15 @@ void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, ui
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
 }
 
+void EditorHost::openBuildReport(const std::filesystem::path&) {
+}
+
+void EditorHost::openMeshAudit() {
+}
+
+void EditorHost::openConsole() {
+}
+
 void EditorHost::openAudioMixerWindow(const std::filesystem::path&) {
 }
 
@@ -127,9 +140,10 @@ void EditorHost::openSpriteNormalsForEntity(uint32_t, jasperengine::Entity, unsi
     Out::warning("Sprite Normal Map needs the editor window: use the generate_sprite_normals MCP tool or the generate-sprite-normals command");
 }
 
-void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {
+void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void(bool)> callback) {
+    // nobody to ask where: nothing is saved
     if (callback) {
-        callback();
+        callback(false);
     }
 }
 
@@ -145,9 +159,9 @@ bool EditorHost::confirmOpenLockedProject(const ProjectLockInfo&) {
     return false;
 }
 
-void EditorHost::registerProjectSaveDialog(std::function<void()> callback) {
+void EditorHost::registerProjectSaveDialog(std::function<void(bool)> callback) {
     if (callback) {
-        callback();
+        callback(false);
     }
 }
 

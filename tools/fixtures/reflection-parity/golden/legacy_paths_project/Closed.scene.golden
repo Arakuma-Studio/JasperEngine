@@ -42,8 +42,16 @@ maxValues:
   maxBones: 128
 shaderKeys:
   - type: mesh
-    properties: 33554504
+    properties: 33554440
+  - type: mesh
+    properties: 68753031176
+  - type: mesh
+    properties: 2199056809992
+  - type: mesh
+    properties: 2267776286728
   - type: blit
+  - type: blit
+    properties: 4096
   - type: htmlui
   - type: htmlui
     properties: 1

@@ -20,7 +20,10 @@
 #include "App.h"
 #include "Project.h"
 #include "render/RenderUtil.h"
+#include "subsystem/RenderSystem.h"
+#include "render/DrawBatcher.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/GpuMemory.h"
@@ -173,6 +176,9 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     // the device the frames render on (GL_RENDERER or the Vulkan device): benches record it
     gpuJson["backend"] = SystemRender::getBackendName();
     gpuJson["device"] = SystemRender::getDeviceName();
+    // Vulkan: whether the device reads out-of-range buffers as zeros (null elsewhere)
+    const int robust = SystemRender::getVulkanRobustBufferAccess();
+    gpuJson["robust_buffer_access"] = robust < 0 ? Json(nullptr) : Json(robust == 1);
     return Json{
         {"view", viewName},
         {"view_tag", tag == FRAME_TAG ? -1 : (long long)tag},
@@ -181,12 +187,26 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
         {"draw_calls", stats.drawCalls},
         {"instances", stats.instances},
         {"triangles", stats.triangles},
+        {"vertices", stats.vertices},
         {"passes", stats.passes},
         {"pipelines_applied", stats.pipelinesApplied},
         {"bindings_applied", stats.bindingsApplied},
         {"uniform_bytes", stats.uniformBytes},
         {"image_upload_bytes", stats.imageUploadBytes},
         {"buffer_upload_bytes", stats.bufferUploadBytes},
+        // by kind of pass (S55 R7): the cameras' colour passes, the shadow maps, the depth passes
+        {"main_triangles", stats.mainTriangles},
+        {"shadow_triangles", stats.shadowTriangles},
+        {"draw_calls_by_pass", {{"main", stats.mainDraws}, {"shadow", stats.shadowDraws}, {"depth", stats.depthDraws},
+                                {"other", stats.otherDraws}}},
+        // GPU Instancing: the instanced draws batches made and the draws they replaced, the
+        // uniform bytes not applied again (already in their slot)
+        {"instanced_draws", stats.instancedDraws},
+        {"batched_instances", stats.batchedInstances},
+        {"uniform_bytes_kept", stats.uniformBytesKept},
+        // the passes' visible lists: mesh draws kept and culled (the game frame)
+        {"visible", stats.visible},
+        {"culled", stats.culled},
         {"alive", {{"images", stats.aliveImages}, {"buffers", stats.aliveBuffers}, {"pipelines", stats.alivePipelines},
                    {"views", stats.aliveViews}, {"shaders", stats.aliveShaders}, {"samplers", stats.aliveSamplers}}},
         {"pipeline_cache", {{"misses", stats.pipelineCacheMisses}, {"applies", stats.pipelineCacheApplies},
@@ -199,6 +219,87 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     };
 }
 
+// Dynamic Batching of the scene's last frame in the view (RenderSystem::getBatchFrame): the
+// counters, and with breaks > 0 the first breaks with the entities involved
+Json batchingJson(Scene* scene, uint32_t tag, int breaks, uint32_t& savedOut){
+    Json batching = {{"enabled", Engine::isDynamicBatching()}};
+    std::shared_ptr<RenderSystem> render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+    const RenderSystem::BatchFrame* frame = render ? render->getBatchFrame(tag) : nullptr;
+    savedOut = 0;
+    if (!frame)
+        return batching;
+    const BatchStats& stats = frame->stats;
+    savedOut = stats.savedByBatching();
+    batching["batches"] = stats.batches;
+    batching["batched_objects"] = stats.batchedObjects;
+    batching["saved_by_batching"] = stats.savedByBatching();
+    batching["single_draws"] = stats.singleDraws;
+    batching["drawn_alone"] = stats.aloneDraws;
+    batching["settled"] = stats.settled;
+    batching["rebaked"] = stats.rebaked;
+    batching["replaced"] = stats.replaced;
+    batching["culled"] = stats.culled;
+    batching["cull_cache_hits"] = stats.cullCacheHits;
+    batching["reordered"] = stats.reordered;
+    batching["runs_skipped"] = stats.runsSkipped;
+    batching["stream_chunks"] = stats.streamChunks;
+    batching["upload_bytes"] = stats.uploadBytes;
+    Json reasons = Json::object();
+    for (size_t r = 1; r < (size_t)BatchBreak::COUNT; r++){
+        if (stats.breaks[r])
+            reasons[getBatchBreakName((BatchBreak)r)] = stats.breaks[r];
+    }
+    batching["breaks"] = reasons;
+    if (breaks > 0){
+        static const char* passNames[] = {"color", "ui", "depth_prepass", "scene_depth", "shadow"};
+        Json list = Json::array();
+        for (const BatchBreakEvent& event : frame->breaks){
+            if ((int)list.size() >= breaks)
+                break;
+            Json entry = {{"reason", getBatchBreakName(event.reason)}, {"pass", passNames[std::min<size_t>((size_t)event.pass, 4)]},
+                          {"entity", event.entity}, {"entity_name", scene->isEntityCreated(event.entity) ? scene->getEntityName(event.entity) : ""}};
+            if (event.previous != NULL_ENTITY){
+                entry["previous"] = event.previous;
+                entry["previous_name"] = scene->isEntityCreated(event.previous) ? scene->getEntityName(event.previous) : "";
+            }
+            list.push_back(entry);
+        }
+        batching["batch_breaks"] = list;
+    }
+    return batching;
+}
+
+// the lighting features and their passes (the pass list's "contact shadows" and "oit accumulation")
+Json lightingStatsJson(const RenderSystem::LightingStats& stats, uint32_t tag){
+    Json tiles = {{"active", stats.tiledLights}, {"columns", stats.tileColumns}, {"rows", stats.tileRows}};
+    if (stats.tileStatsValid){
+        tiles["lights"] = stats.tiles.lights;
+        tiles["max_per_tile"] = stats.tiles.maxPerTile;
+        tiles["average_per_tile"] = round3(stats.tiles.averagePerTile);
+        tiles["dropped_from_view"] = stats.tiles.droppedFromView;
+        tiles["dropped_from_tiles"] = stats.tiles.droppedFromTiles;
+    }
+    Json passes = Json::object();
+    const PassList list = SystemRender::getPassList(tag, true);
+    for (const PassRecord& pass : list.passes){
+        const std::string label = pass.label;
+        if (label != "contact shadows" && label != "oit accumulation")
+            continue;
+        std::string key = label;
+        std::replace(key.begin(), key.end(), ' ', '_');
+        passes[key + "_ms"] = pass.gpuValid ? Json(round3(pass.gpuMs)) : Json(nullptr);
+    }
+    return Json{
+        {"light_mode", LightingTiers::getModeName(stats.lightMode)},
+        {"tier", LightingTiers::getTierName(stats.tier)},
+        {"tiles", tiles},
+        {"capsule_shadows", {{"active", stats.capsuleShadows}, {"casters", stats.capsuleCasters}, {"capsules", stats.capsules}}},
+        {"contact_shadows", {{"active", stats.contactShadows}, {"width", stats.contactWidth}, {"height", stats.contactHeight}}},
+        {"oit", {{"active", stats.oit}, {"fallback", stats.oitFallback}, {"draws", stats.oitDraws}}},
+        {"passes", passes},
+    };
+}
+
 void getRenderStatsTool(const CallPtr& call){
     uint32_t tag = FRAME_TAG;
     std::string name;
@@ -208,7 +309,29 @@ void getRenderStatsTool(const CallPtr& call){
     // the selected (or playing) scene's HTML UI: HtmlUIRenderStats, as inspect_ui's render_stats (S16 R27)
     Project* project = call->ctx().project();
     const SceneProject* sceneProject = project ? project->getSelectedScene() : nullptr;
+    uint32_t savedByBatching = 0;
+    data["batching"] = batchingJson(sceneProject ? sceneProject->scene : nullptr, tag, call->args().value("batch_breaks", 0), savedByBatching);
+    // its detail levels in that view (S54 R12): the frame's main view (the Scene view in Edit
+    // mode, the game while playing), else the editor view the tag names
     if (sceneProject && sceneProject->scene){
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>()){
+            const LodFrameStats lod = tag == FRAME_TAG ? render->getLodStats() : render->getViewLodStats(tag);
+            Json histogram = Json::array();
+            for (uint32_t count : lod.levels) histogram.push_back(count);
+            data["lod"] = {{"lod_histogram", histogram}, {"fading", lod.fading}, {"culled_by_size", lod.culledBySize},
+                           {"fade_draws", lod.fadeDraws}};
+        }
+    }
+    if (sceneProject && sceneProject->scene){
+        // the water reflection passes and the scene colour copies of the last frame (only when any ran)
+        RenderSystem* render = sceneProject->scene->getSystem<RenderSystem>().get();
+        const RenderSystem::PlanarReflectionStats planar = render->getPlanarReflectionStats();
+        if (planar.planes > 0 || planar.passes > 0)
+            data["planar_reflections"] = Json{{"planes", planar.planes}, {"passes", planar.passes}, {"fallbacks", planar.fallbacks},
+                                              {"width", planar.width}, {"height", planar.height}};
+        const RenderSystem::SceneInputDetails inputs = render->getSceneInputDetails();
+        if (inputs.colorCopies > 0)
+            data["scene_color_copies"] = Json{{"copies", inputs.colorCopies}, {"recopies", inputs.colorRecopies}};
         if (std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>()){
             if (documents->hasDocuments()){
                 Json ui = Json::object();
@@ -216,9 +339,42 @@ void getRenderStatsTool(const CallPtr& call){
                 data["html_ui"] = ui;
             }
         }
+        // S57's lighting: the screen tiles' figures, capsule, contact and OIT, their passes' GPU time
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
+            data["lighting"] = lightingStatsJson(render->getLightingStats(), tag);
     }
-    std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws, " +
-        std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms";
+    // the SSR G-buffer pass's reflection probes and the composite's slots for them (the frame's
+    // view, when its last frame ran the pass): a probe without a slot keeps its probe reflection
+    // without SSR
+    std::string ssrText;
+    if (sceneProject && sceneProject->scene){
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>()){
+            const SSRViewStats& stats = render->getSSRStats();
+            if (stats.valid){
+                Json probes = Json::array();
+                for (const SSRViewStats::Probe& probe : stats.probes){
+                    probes.push_back({{"entity", probe.entity}, {"name", sceneProject->scene->getEntityName(probe.entity)},
+                                      {"slot", probe.slot >= 0 ? Json(probe.slot) : Json(nullptr)},
+                                      {"coverage", round3(probe.coverage)}});
+                }
+                const unsigned int withoutSlot = stats.probesWithoutSlot();
+                data["ssr"] = {{"probe_slots", SSR_PROBE_SLOTS}, {"probes_in_view", stats.probes.size()},
+                               {"probes_without_slot", withoutSlot}, {"meshes_drawn", stats.meshesDrawn}, {"probes", probes}};
+                if (!stats.probes.empty()){
+                    ssrText = ", SSR: " + std::to_string(stats.probes.size() - withoutSlot) + "/" + std::to_string(stats.probes.size()) +
+                              " probes with slots";
+                }
+            }
+        }
+    }
+    std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws (" +
+        std::to_string(data["draw_calls_by_pass"]["main"].get<uint32_t>()) + " main, " +
+        std::to_string(data["draw_calls_by_pass"]["shadow"].get<uint32_t>()) + " shadow; " +
+        std::to_string(data["instanced_draws"].get<uint32_t>()) + " instanced), " +
+        std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms" + ssrText;
+    if (data["batching"].contains("batches"))
+        text += ", " + std::to_string(data["batching"]["batches"].get<uint32_t>()) + " batches (saved by batching: " +
+                std::to_string(savedByBatching) + ")";
     if (!data["drawn"].get<bool>())
         text += " (this view has not drawn in a recorded frame)";
     call->ok(text + ".", data);
@@ -696,8 +852,15 @@ void replyPasses(const CallPtr& call, uint32_t tag, const std::string& viewName,
         for (const PassRecord& pass : list.passes){
             for (uint32_t d = 0; d < pass.numDraws && (int)draws.size() < maxDraws; d++){
                 const DrawRecord& draw = list.draws[pass.firstDraw + d];
-                draws.push_back({{"pass", pass.index}, {"pipeline", draw.pipeline}, {"shader", draw.shader},
-                                 {"elements", draw.elements}, {"instances", draw.instances}, {"base_element", draw.baseElement}});
+                Json entry = {{"pass", pass.index}, {"pipeline", draw.pipeline}, {"shader", draw.shader},
+                              {"elements", draw.elements}, {"instances", draw.instances}, {"base_element", draw.baseElement}};
+                // a Dynamic Batching draw: its objects, and why its first did not join the draw before it
+                if (draw.batchItems > 0){
+                    entry["batch_items"] = draw.batchItems;
+                    if (draw.batchBreak != 0)
+                        entry["batch_break"] = getBatchBreakName((BatchBreak)draw.batchBreak);
+                }
+                draws.push_back(entry);
             }
         }
         data["draws"] = draws;
@@ -1028,11 +1191,11 @@ void registerProfilerTools(McpRegistry& registry){
         tool.name = "get_render_stats";
         tool.title = "Get Render Stats";
         tool.description =
-            "A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive "
-            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,"
-            "max_main_ms,warmup}. One frame is one sample. "
+            "A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, "
+            "alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,"
+            "pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. "
             "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
-        tool.inputSchema = object({{"view", viewSchema()}});
+        tool.inputSchema = object({{"view", viewSchema()}, {"batch_breaks", integer("Lists the first N draws that did not batch and why.", 0, 100)}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getRenderStatsTool;

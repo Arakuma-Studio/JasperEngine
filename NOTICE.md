@@ -20,14 +20,14 @@ Libraries of the engine, the editor and the tools:
 | [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation |
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
-| [tinygltf](https://github.com/syoyo/tinygltf) | 2.x | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
 | [Tracy](https://github.com/wolfpld/tracy) | 0.11.1 (the client, `public/`) | `engine/libs/tracy/` (`LICENSE`) | BSD-3-Clause | optional remote profiling of development games (`JASPERENGINE_TRACY`, off by default; never in the editor or release games) |
-| [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.2 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
+| [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.3 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
 | [msdfgen](https://github.com/Chlumsky/msdfgen) | 1.13.0 (`master` at `1c106ed81178`), `core/` only; local change: `core/base.h` includes the hand-written `msdfgen-config.h` | `engine/libs/msdfgen/` (`LICENSE.txt`) | MIT | the HTML UI's MTSDF glyph atlas (scaling text, GPU text effects) |
 | [recastnavigation](https://github.com/recastnavigation/recastnavigation) (Recast, Detour, DetourCrowd, DetourTileCache, DebugUtils) | 1.6.0 (`v1.6.0`, `6dc1667f5803`) | `engine/libs/recastnavigation/` (`License.txt`, `README.jasper.md`; five local patches (`PATCHES.md`): the crowd's avoidance priority, upstream fixes `9147d09`, `599fd0f`, `9f4ce64`, and the proximity grid's unsigned hash) | zlib | navigation meshes, path queries, crowds and carving obstacles (`engine/core/navigation/`); games built with `JASPERENGINE_NAVIGATION` off leave it out |
 | [RmlUi](https://github.com/mikke89/RmlUi) | 6.3 (`ba95ffe8bfb6`), JasperEngine's fork | `engine/libs/rmlui/` (`LICENSE.txt`; Taffy's below, `LICENSE-taffy.txt`) | MIT | the HTML/CSS UI |
@@ -72,6 +72,11 @@ Layout of the HTML/CSS UI:
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid` and `src/compute/flexbox.rs`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*`, `engine/libs/rmlui/Source/Core/Layout/FlexFormattingContext.*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid and flexbox layout in the RmlUi fork |
+| [libebur128](https://github.com/jiixyj/libebur128) (the five numeric design constants of the K-weighting filters) | `master` | `engine/core/audio/AudioMeter.cpp` | MIT | BS.1770-4 K-weighting at any sample rate |
+
+Sounds: the editor embeds 40 CC0 clips by Kenney (`editor/resources/sound-library/essentials/`, each pack's licence in `licenses/`) and installs a CC0 starter library of 927 clips by Kenney and Freesound users next to itself (`editor/resources/sound-library/library/`, licences in `licenses/`, per clip author, URL and licence in `manifest.json`). No player carries them: a game holds only the clips a project imported, credited in its `licenses/THIRD-PARTY-AUDIO.txt`. The editor also compiles SoLoud's sfxr (`engine/libs/soloud/src/audiosource/sfxr/`, part of SoLoud, zlib/libpng) for placeholder sounds; players do not.
+
+The layered placeholder presets (`generate_sound`, `editor/audio/SoundDesign.cpp`): idea from earshot (MIT), reimplemented; no code of it is here.
 
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`). The audio tests' Ogg Vorbis clip is Kenney's "Sci-Fi Sounds" 1.0 (CC0, `engine/tests/core/fixtures/audio/License-kenney.txt`); their FLAC and MP3 sweeps are FFmpeg encodes of a synthetic source (tests only, never shipped).
 
@@ -137,6 +142,7 @@ Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Zstandard](https://github.com/facebook/zstd) | 1.5.7 | `engine/libs/zstd/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the supercompression of cooked KTX2 textures: the decoder in games, the encoder in the editor's cook |
+| [xxHash](https://github.com/Cyan4973/xxHash) | 0.8.2 (Zstandard 1.5.7's copy) | `engine/libs/xxhash/` (`LICENSE`, `README.jasper.md`; local change: Zstandard's prelude removed) | BSD (dual BSD / GPLv2) | content hashes of shared GPU buffers and mesh LOD keys (XXH3) |
 | [bcdec](https://github.com/iOrange/bcdec) | `main` at `80859ed3b7af` | `engine/libs/bcdec/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1-BC7 CPU decoding: the fallback when a GPU cannot sample a cooked BC format, editor previews |
 | [Basis Universal](https://github.com/BinomialLLC/basis_universal) | 2.50 (`v2_50`) | `engine/libs/basisu/` (`LICENSE`, `NOTICE`, `LICENSES/`, `README.jasper.md`; local change: `zstd/zstd.h` forwards to the engine's Zstandard) | Apache-2.0; its encoder's bundled tinyexr BSD-3-Clause, qoi and tinydds MIT, miniz MIT, jpgd public domain (`LICENSES/`) | ETC1S / UASTC / UASTC HDR encoding of web textures, UASTC to ETC2/EAC, `.exr` reading (editor); the transcoder of web textures (web games, editor) |
 | [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
@@ -148,6 +154,8 @@ Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a ga
 |---|---|---|---|---|
 | [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27) |
 | [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
+
+The code editor's line diff (`editor/util/LineDiff.cpp`, from Doriax) follows the clean-up passes of [Visual Studio Code](https://github.com/microsoft/vscode)'s line diff (`defaultLinesDiffComputer`: joining and sliding changes over repeated lines, better boundaries, joining across short matches; MIT, Copyright (c) Microsoft Corporation), so its change markers land where VS Code's do; the file names that origin.
 
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 

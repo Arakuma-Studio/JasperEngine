@@ -45,6 +45,10 @@ namespace jasperengine{
         // the Scene view's shadow debug view: editor state, not a setting (never saved)
         ShadowDebugView shadowDebugView = ShadowDebugView::NONE;
 
+        // the scene clock (getSceneTime), never saved
+        double sceneTime = 0.0;
+        bool sceneTimePaused = false;
+
         UIEventState uiEventState;
 
         // the Canvas Scaler's last result (updateCanvasScale)
@@ -236,11 +240,48 @@ namespace jasperengine{
         void setMeshLodThreshold(float pixels);
         float getMeshLodThreshold() const;
 
+        // Cross Fade and Cross-fade Duration (seconds, 0.05..2) of the detail levels
+        void setMeshLodCrossFade(bool crossFade);
+        bool isMeshLodCrossFade() const;
+        void setMeshLodCrossFadeDuration(float seconds);
+        float getMeshLodCrossFadeDuration() const;
+
         void setDepthPrepassEnabled(bool enabled);
         bool isDepthPrepassEnabled() const;
 
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
+
+        // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
+        void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
+        PlanarReflectionResolution getPlanarReflectionResolution() const;
+        void setPlanarReflectionLayers(uint32_t layers);
+        uint32_t getPlanarReflectionLayers() const;
+        void setPlanarReflectionShadows(bool shadows);
+        bool getPlanarReflectionShadows() const;
+        // metres, 0: the viewing camera's far clip (negative values read as 0)
+        void setPlanarReflectionFarClip(float farClip);
+        float getPlanarReflectionFarClip() const;
+        void setPlanarReflectionClipOffset(float offset);
+        float getPlanarReflectionClipOffset() const;
+        // 1..4 (clamped)
+        void setMaxPlanarReflections(int count);
+        int getMaxPlanarReflections() const;
+
+        // The clock of this scene's game-time animation (library:water's waves, ripples and
+        // caustics, any shader declaring a sceneTime member, Water.getTime): the seconds the scene
+        // has run, scaled by Time.timeScale. Engine::runFrame advances it with the game's frame
+        // delta, so it holds while the game, the editor's Play or this scene is paused, at time
+        // scale 0 and while the simulation is held; the editor moves a stopped scene's clock (the
+        // Scene view's Animate water). 0 when the scene is made. A pinned shader time
+        // (Engine::setPinnedShaderTime, golden tests) replaces it wherever it is read.
+        double getSceneTime() const;
+        void setSceneTime(double seconds);
+        // adds delta (seconds) unless the clock is paused (evenWhenPaused: the editor's clock of
+        // a stopped scene, whose engine clock is paused)
+        void advanceSceneTime(double delta, bool evenWhenPaused = false);
+        void setSceneTimePaused(bool paused);
+        bool isSceneTimePaused() const;
 
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;
@@ -275,6 +316,8 @@ namespace jasperengine{
         void setSSRBlur(float blur);
         float getSSRBlur() const;
 
+        // the SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo,
+        // 6 environment specular, 7 reflection source, 8 occlusion (docs/rendering/reflections.md)
         void setSSRDebugMode(int mode);
         int getSSRDebugMode() const;
 
@@ -314,6 +357,15 @@ namespace jasperengine{
         // the exposure (EV100, -6..24) lights in physical units are drawn at
         void setPhysicalLightEV100(float ev100);
         float getPhysicalLightEV100() const;
+
+        // capsule shadows (spec S57 R2): the lit variants take them while on (they reload);
+        // intensity 0..1, softness 0..2 (the penumbra's widening per metre along the light)
+        void setCapsuleShadowsEnabled(bool enabled);
+        bool isCapsuleShadowsEnabled() const;
+        void setCapsuleShadowIntensity(float intensity);
+        float getCapsuleShadowIntensity() const;
+        void setCapsuleShadowSoftness(float softness);
+        float getCapsuleShadowSoftness() const;
 
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
@@ -364,6 +416,22 @@ namespace jasperengine{
         // The default shader of a type with the asset GUIDs of its files (editor references)
         const ShaderRef& getDefaultShaderRef(ShaderType type) const;
         void setDefaultShaderRef(ShaderType type, const ShaderRef& ref);
+
+        // Property values of a default shader (mesh, UI, sky, points, lines), inherited by the
+        // objects that use it, under their own: Scene > Default Shaders > <Shader> Properties.
+        // Other types log an error and change nothing.
+        void setDefaultShaderUniforms(ShaderType type, const ShaderUniformValues& values);
+        const ShaderUniformValues& getDefaultShaderUniforms(ShaderType type) const;
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector4& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector3& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector2& value);
+        void setDefaultShaderUniform(ShaderType type, const std::string& name, float value);
+        Vector4 getDefaultShaderUniform(ShaderType type, const std::string& name) const;
+        bool hasDefaultShaderUniform(ShaderType type, const std::string& name) const;
+        bool removeDefaultShaderUniform(ShaderType type, const std::string& name);
+        // What an object whose own shader is ownShader inherits: null when it has a shader of its
+        // own, when the scene has no default shader of the type, or no values for it
+        const ShaderUniformValues* getInheritedShaderUniforms(ShaderType type, const std::string& ownShader) const;
 
         // ordered user post-process chain; setting it rebuilds the RenderSystem passes
         // unless only uniform values changed

@@ -37,6 +37,8 @@
 #include <thread>
 #include <cmath>
 #include <cstring>
+#include <iterator>
+#include <string>
 
 using namespace jasperengine;
 
@@ -201,10 +203,29 @@ namespace {
 
 }
 
-// Test 1: a player without layers keeps the v1 code path: 100 frames of a crossfade hash to the
-// value the pre-layers engine produced (recorded by this same test, which uses only the v1 API,
-// built against main before this feature)
+// Test 1: a player without layers keeps the v1 code path. On Linux x86-64 100 frames of a crossfade
+// hash to the value the pre-layers engine produced (recorded by this same test, which uses only
+// the v1 API, built against main before this feature); every target checks the frames below, the
+// values of that run. Bytes hold on one target only: on arm64 macOS 17 of the 3000 floats differ by
+// at most 2 ULP, 15 from Clang contracting a*b+c into a fused multiply-add (Quaternion's normalize)
+// and 2 from one sinf argument that glibc rounds up and Apple's libm rounds down.
 TEST_F(Layers, DefaultLayeringIsTheV1FastPath){
+    struct Sample { int frame; float armW, armX, armZ, legX; };
+    static constexpr Sample samples[] = {
+        {0, 0.995990515f, -0.000109092565f, 0.0894587934f, 0.230555564f},
+        {11, 0.987674475f, -0.0158358607f, 0.155718252f, 0.75f},
+        {22, 0.990842938f, -0.0595754646f, 0.121165149f, 1.60555601f},
+        {33, 0.990969777f, -0.132408008f, -0.021145314f, 2.7972219f},
+        {44, 0.941164792f, -0.221361771f, -0.255358487f, 4.32499886f},
+        {55, 0.882947564f, -0.281682968f, -0.375577331f, 5.59999847f},
+        {66, 0.998134851f, -0.0366290249f, -0.0488386974f, 0.699997902f},
+        {77, 0.987688422f, -0.0938605368f, -0.125147387f, 1.79999685f},
+        {88, 0.968147695f, -0.15022783f, -0.200303778f, 2.8999958f},
+        {99, 0.939692736f, -0.205211893f, -0.273615837f, 3.99999475f},
+    };
+    // 4 ULP at the largest value here (Leg x near 6): room for a target's rounding, far under any change of a blend
+    constexpr float tolerance = 2e-6f;
+    size_t nextSample = 0;
     ClipData run = walk();
     run.tracks[1].keys[1].value = {6, 0, 0};
     run.tracks[0].keys[1].value = axisAngle(-60, 0.6f, 0, 0.8f);
@@ -224,12 +245,25 @@ TEST_F(Layers, DefaultLayeringIsTheV1FastPath){
                                     t.scale.x, t.scale.y, t.scale.z};
             hash = fnv(hash, values, sizeof(values));
         }
+        if (nextSample < std::size(samples) && samples[nextSample].frame == frame){
+            const Sample& expected = samples[nextSample++];
+            SCOPED_TRACE("frame " + std::to_string(frame));
+            const Transform& a = transform(arm);
+            EXPECT_NEAR(a.rotation.w, expected.armW, tolerance);
+            EXPECT_NEAR(a.rotation.x, expected.armX, tolerance);
+            EXPECT_NEAR(a.rotation.y, 0.0f, tolerance);
+            EXPECT_NEAR(a.rotation.z, expected.armZ, tolerance);
+            EXPECT_NEAR(transform(leg).position.x, expected.legX, tolerance);
+            // what no track of these clips animates stays at its rest
+            EXPECT_NEAR(a.position.x, 5.0f, tolerance);
+            EXPECT_NEAR(transform(leg).position.y, 0.0f, tolerance);
+            EXPECT_NEAR(transform(hand).position.y, 7.0f, tolerance);
+        }
     }
+    EXPECT_EQ(nextSample, std::size(samples));
     EXPECT_TRUE(anim::isDefaultLayering(scene.getComponent<AnimationPlayerComponent>(root)));
 #if defined(__linux__) && defined(__x86_64__)
     EXPECT_EQ(hash, 0x79e15195f729cd77ull) << std::hex << hash;
-#else
-    GTEST_SKIP() << "the pinned hash is of Linux x86-64's floats and one ULP changes it (on arm64 macOS, turning FMA contraction off changes it by itself)";
 #endif
 }
 

@@ -475,6 +475,38 @@ void CurveWindow::drawPresets() {
     }
 }
 
+std::vector<CurveBinding> CurveWindow::bindings() {
+    std::vector<CurveBinding> out;
+    static const ImU32 kColors[2] = {IM_COL32(110, 220, 110, 255), IM_COL32(220, 160, 90, 255)};
+    for (size_t i = 0; i < curves.size(); i++) {
+        CurveBinding b;
+        b.curve = &curves[i];
+        b.color = i == 0 && options.color ? options.color : kColors[i % 2];
+        b.label = curves.size() > 1 ? (i == 0 ? "Min" : "Max") : "Curve";
+        b.partner = curves.size() > 1 ? (int)(1 - i) : -1;
+        out.push_back(b);
+    }
+    return out;
+}
+
+bool CurveWindow::canRun(CurveEditor::Command command) {
+    return target != 0 && editor.canRun(command, bindings());
+}
+
+void CurveWindow::run(CurveEditor::Command command) {
+    if (target != 0) editor.request(command);
+}
+
+CurveWindow::UiState CurveWindow::uiState() const {
+    UiState state;
+    state.open = target != 0;
+    state.focused = isFocused();
+    state.selectedKeys = editor.getSelection().size();
+    state.clipboardKeys = editor.clipboardSize();
+    state.view = editor.getView();
+    return state;
+}
+
 void CurveWindow::show() {
     // a field not drawn for a frame (its window closed): the window closes, its step committed
     if (target != 0 && ImGui::GetFrameCount() - lastSeenFrame > 1) close();
@@ -484,6 +516,7 @@ void CurveWindow::show() {
         closeAfterDelivery = false;
         close();
     }
+    windowFocused = false;
     if (target == 0) return;
 
     bool open = true;
@@ -494,19 +527,11 @@ void CurveWindow::show() {
     }
     const std::string windowTitle = title + "###" + WINDOW_NAME;
     if (ImGui::Begin(windowTitle.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
-        std::vector<CurveBinding> bindings;
-        static const ImU32 kColors[2] = {IM_COL32(110, 220, 110, 255), IM_COL32(220, 160, 90, 255)};
-        for (size_t i = 0; i < curves.size(); i++) {
-            CurveBinding b;
-            b.curve = &curves[i];
-            b.color = i == 0 && options.color ? options.color : kColors[i % 2];
-            b.label = curves.size() > 1 ? (i == 0 ? "Min" : "Max") : "Curve";
-            b.partner = curves.size() > 1 ? (int)(1 - i) : -1;
-            bindings.push_back(b);
-        }
+        windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
         const float presetsHeight = Theme::dpi(44.0f) * 0.6f + ImGui::GetFrameHeightWithSpacing() * 2.0f;
         const float graphHeight = std::max(Theme::dpi(80.0f), ImGui::GetContentRegionAvail().y - presetsHeight - ImGui::GetFrameHeightWithSpacing() * 2.0f);
-        const CurveEditorResult result = editor.draw("##curveEditor", bindings, ImVec2(0.0f, graphHeight));
+        std::vector<CurveBinding> shown = bindings();
+        const CurveEditorResult result = editor.draw("##curveEditor", shown, ImVec2(0.0f, graphHeight));
         if (result.began && !gestureOpen) beginGesture();
         if (result.cancelled) {
             if (history) {

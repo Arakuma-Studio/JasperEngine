@@ -2,6 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "component/ButtonComponent.h"
+#include "component/AnimatorComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -10,6 +26,7 @@
 #include "reflect/Reflect.h"
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
+#include "util/ProjectChecks.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
@@ -185,7 +202,7 @@ namespace {
 
     // The properties of a component come from its reflection table (docs/specs/S08-reflection.md
     // R7, editor/reflect/Properties.cpp)
-    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
+    PropertyData tableProperty(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, bool append) {
         const reflect::ComponentDesc* desc = reflect::find(component);
         if (!desc || !registry) {
             return PropertyData();
@@ -194,7 +211,7 @@ namespace {
         if (!comp) {
             return PropertyData();
         }
-        return reflect::property(*desc, comp, propertyName);
+        return reflect::property(*desc, comp, propertyName, append);
     }
 
     bool tryEnumerateProperties(ComponentType component, void* compRef, std::map<std::string, PropertyData>& ps) {
@@ -372,7 +389,7 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
             if (!mesh) {
                 return false;
             }
-            for (size_t s = 0; s < mesh->submeshes.size(); s++) {
+            for (size_t s = 0; s < mesh->numSubmeshes; s++) {
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
@@ -397,104 +414,8 @@ std::map<std::string, editor::PropertyData> editor::Catalog::findEntityPropertie
 
 uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* oldComp, void* newComp) {
     if (!oldComp || !newComp) return 0;
-
-    uint64_t flags = 0;
-
-    auto oldProps = Catalog::getProperties(compType, oldComp);
-    auto newProps = Catalog::getProperties(compType, newComp);
-
-    for (auto& [name, newProp] : newProps) {
-        auto it = oldProps.find(name);
-        if (it == oldProps.end()) continue;
-
-        PropertyData& oldProp = it->second;
-        if (!oldProp.ref || !newProp.ref) continue;
-
-        // A script property can change type between the two, the casts below would read
-        // the old value as the new type
-        if (oldProp.type != newProp.type) {
-            flags |= newProp.updateFlags;
-            continue;
-        }
-
-        bool changed = false;
-        switch (newProp.type) {
-            case PropertyType::Bool:
-                changed = *static_cast<bool*>(oldProp.ref) != *static_cast<bool*>(newProp.ref);
-                break;
-            case PropertyType::Float:
-                changed = *static_cast<float*>(oldProp.ref) != *static_cast<float*>(newProp.ref);
-                break;
-            case PropertyType::Double:
-                changed = *static_cast<double*>(oldProp.ref) != *static_cast<double*>(newProp.ref);
-                break;
-            case PropertyType::Int:
-                changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
-                break;
-            case PropertyType::UInt:
-                changed = *static_cast<unsigned int*>(oldProp.ref) != *static_cast<unsigned int*>(newProp.ref);
-                break;
-            case PropertyType::String:
-                changed = *static_cast<std::string*>(oldProp.ref) != *static_cast<std::string*>(newProp.ref);
-                break;
-            case PropertyType::Asset:
-                changed = *static_cast<AssetRef*>(oldProp.ref) != *static_cast<AssetRef*>(newProp.ref);
-                break;
-            case PropertyType::Shader:
-                changed = *static_cast<ShaderRef*>(oldProp.ref) != *static_cast<ShaderRef*>(newProp.ref);
-                break;
-            case PropertyType::Curve:
-                changed = *static_cast<Curve*>(oldProp.ref) != *static_cast<Curve*>(newProp.ref);
-                break;
-            case PropertyType::Font:
-                changed = *static_cast<FontArray*>(oldProp.ref) != *static_cast<FontArray*>(newProp.ref);
-                break;
-            case PropertyType::Vector2:
-                changed = *static_cast<Vector2*>(oldProp.ref) != *static_cast<Vector2*>(newProp.ref);
-                break;
-            case PropertyType::Vector3:
-                changed = *static_cast<Vector3*>(oldProp.ref) != *static_cast<Vector3*>(newProp.ref);
-                break;
-            case PropertyType::Vector4:
-                changed = *static_cast<Vector4*>(oldProp.ref) != *static_cast<Vector4*>(newProp.ref);
-                break;
-            case PropertyType::Quat:
-                changed = *static_cast<Quaternion*>(oldProp.ref) != *static_cast<Quaternion*>(newProp.ref);
-                break;
-            case PropertyType::Enum:
-                changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
-                break;
-            case PropertyType::Ease:
-                changed = *static_cast<Ease*>(oldProp.ref) != *static_cast<Ease*>(newProp.ref);
-                break;
-            case PropertyType::Texture:
-                changed = *static_cast<Texture*>(oldProp.ref) != *static_cast<Texture*>(newProp.ref);
-                break;
-            case PropertyType::Material:
-                changed = *static_cast<Material*>(oldProp.ref) != *static_cast<Material*>(newProp.ref);
-                break;
-            case PropertyType::Entity:
-                changed = *static_cast<Entity*>(oldProp.ref) != *static_cast<Entity*>(newProp.ref);
-                break;
-            case PropertyType::EntityReference:
-                changed = static_cast<EntityReference*>(oldProp.ref)->entity != static_cast<EntityReference*>(newProp.ref)->entity ||
-                          static_cast<EntityReference*>(oldProp.ref)->sceneId != static_cast<EntityReference*>(newProp.ref)->sceneId;
-                break;
-            case PropertyType::Gradient:
-                changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
-                break;
-            case PropertyType::Custom:
-                // Conservative: assume changed for complex types
-                changed = true;
-                break;
-        }
-
-        if (changed) {
-            flags |= newProp.updateFlags;
-        }
-    }
-
-    return flags;
+    const reflect::ComponentDesc* desc = reflect::find(compType);
+    return desc ? reflect::changedUpdateFlags(*desc, oldComp, newComp) : 0;
 }
 
 uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compType) {
@@ -639,6 +560,123 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
     }
 
     return false;
+}
+
+const char* editor::Catalog::getDefaultShaderUniformsProperty(ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   return "default_mesh_shader_uniforms";
+        case ShaderType::UI:     return "default_ui_shader_uniforms";
+        case ShaderType::SKYBOX: return "default_sky_shader_uniforms";
+        case ShaderType::POINTS: return "default_points_shader_uniforms";
+        case ShaderType::LINES:  return "default_lines_shader_uniforms";
+        default: return "";
+    }
+}
+
+bool editor::Catalog::getDefaultShaderUniformsType(const std::string& propertyName, ShaderType& type){
+    for (ShaderType candidate : {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES}){
+        if (propertyName == getDefaultShaderUniformsProperty(candidate)){
+            type = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+editor::Catalog::UniformChainRefs editor::Catalog::getShaderUniformChain(Scene* scene, Entity entity, ComponentType component, int submesh){
+    UniformChainRefs refs;
+    ShaderType type;
+    if (!scene || !ProjectChecks::shaderTypeForComponent(component, type))
+        return refs;
+    auto manifestOf = [](const std::string& shader) -> std::shared_ptr<const ShaderManifest> {
+        std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+        return manifest && manifest->present ? manifest : nullptr;
+    };
+    if (component == ComponentType::MeshComponent && submesh >= 0){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || submesh >= (int)mesh->numSubmeshes)
+            return refs;
+        Submesh& sub = mesh->submeshes[submesh];
+        refs.chain.values = &sub.material.shaderParams;
+        refs.chain.fallback = &mesh->shaderUniforms;
+        refs.chain.sceneDefault = sub.material.shader.empty() ? scene->getInheritedShaderUniforms(type, mesh->customShader.path) : nullptr;
+        refs.chain.bindings = sub.material.shaderGlobalBindings.empty() ? nullptr : &sub.material.shaderGlobalBindings;
+        refs.manifest = manifestOf(RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(type)));
+    }else{
+        const std::string* custom = getPropertyRef<std::string>(scene, entity, component, "customShader");
+        refs.chain.values = getPropertyRef<ShaderUniformValues>(scene, entity, component, "shaderUniforms");
+        if (!custom || !refs.chain.values)
+            return refs;
+        refs.chain.sceneDefault = scene->getInheritedShaderUniforms(type, *custom);
+        // a mesh keeps its global bindings on its materials
+        if (component != ComponentType::MeshComponent){
+            const ShaderGlobalBindings* bindings = getPropertyRef<ShaderGlobalBindings>(scene, entity, component, "shaderGlobalBindings");
+            refs.chain.bindings = bindings && !bindings->empty() ? bindings : nullptr;
+        }
+        refs.manifest = manifestOf(custom->empty() ? scene->getDefaultCustomShader(type) : *custom);
+    }
+    refs.chain.manifest = refs.manifest.get();
+    return refs;
+}
+
+namespace {
+    // the components of a type without a shader of their own, for getDefaultShaderUse
+    template<typename T>
+    void collectDefaultShaderUsers(Scene* scene, ComponentType component, editor::Catalog::DefaultShaderUse& use){
+        auto components = scene->getComponentArray<T>();
+        for (size_t i = 0; i < components->size(); i++){
+            T& item = components->getComponentFromIndex(i);
+            if (!item.customShader.empty())
+                continue;
+            const Entity entity = components->getEntity(i);
+            use.users++;
+            if (editor::Catalog::isCustomShaderBuildFailed(scene, entity, component))
+                use.failed++;
+            for (const CustomUniformBlock* block : editor::Catalog::getShaderUniformBlocks(scene, entity, component))
+                use.blocks.push_back(block);
+        }
+    }
+}
+
+editor::Catalog::DefaultShaderUse editor::Catalog::getDefaultShaderUse(Scene* scene, ShaderType type){
+    DefaultShaderUse use;
+    if (!scene || scene->getDefaultCustomShader(type).empty())
+        return use;
+    switch (type){
+        case ShaderType::MESH: {
+            auto meshes = scene->getComponentArray<MeshComponent>();
+            for (size_t i = 0; i < meshes->size(); i++){
+                MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                if (!mesh.customShader.empty())
+                    continue;
+                // the submeshes whose material names no shader draw with the scene's
+                bool uses = false;
+                for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                    const Submesh& sub = mesh.submeshes[s];
+                    if (!sub.material.shader.empty())
+                        continue;
+                    uses = true;
+                    for (const CustomUniformBlock* block : {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams})
+                        use.blocks.push_back(block);
+                }
+                if (!uses)
+                    continue;
+                use.users++;
+                if (isCustomShaderBuildFailed(scene, meshes->getEntity(i), ComponentType::MeshComponent))
+                    use.failed++;
+            }
+            break;
+        }
+        case ShaderType::UI: collectDefaultShaderUsers<UIComponent>(scene, ComponentType::UIComponent, use); break;
+        case ShaderType::SKYBOX: collectDefaultShaderUsers<SkyboxComponent>(scene, ComponentType::SkyboxComponent, use); break;
+        case ShaderType::POINTS: collectDefaultShaderUsers<PointsComponent>(scene, ComponentType::PointsComponent, use); break;
+        case ShaderType::LINES:
+            collectDefaultShaderUsers<LineRendererComponent>(scene, ComponentType::LineRendererComponent, use);
+            collectDefaultShaderUsers<TrailRendererComponent>(scene, ComponentType::TrailRendererComponent, use);
+            break;
+        default: break;
+    }
+    return use;
 }
 
 bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity) {
@@ -915,6 +953,11 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Button){
+        if (ButtonComponent* button = registry->findComponent<ButtonComponent>(entity)){
+            button->needUpdateButton = true;
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
@@ -1659,8 +1702,8 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     updateEntity(targetRegistry, targetEntity, updateFlags);
 }
 
-editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
-    return tableProperty(registry, entity, component, propertyName);
+editor::PropertyData editor::Catalog::findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append){
+    return tableProperty(registry, entity, component, propertyName, append);
 }
 
 editor::PropertyData editor::Catalog::getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

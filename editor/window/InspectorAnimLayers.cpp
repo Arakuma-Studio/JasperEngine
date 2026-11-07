@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorAnimLayers.h"
+#include "animation/AnimationClipIO.h"
 
 #include "Project.h"
 #include "Scene.h"

@@ -4,6 +4,7 @@
 #include "MoveEntityOrderCmd.h"
 
 #include "Out.h"
+#include "component/Transform.h"
 #include "animation/PreviewOwner.h"
 #include "pose/PoseEditSession.h"
 #include "subsystem/RenderSystem.h"
@@ -67,10 +68,25 @@ void editor::MoveEntityOrderCmd::prepareReparent(Scene* scene, Entity fromParent
     }
 }
 
+std::string editor::MoveEntityOrderCmd::transformAnchorProblem(EntityRegistry* registry, Entity source, Entity target, InsertionType type){
+    // a GameObject with a Transform follows the hierarchy: next to one without (a Skybox) only
+    // the list would change, and the next sort put it back
+    if (type == InsertionType::INTO || !registry->findComponent<Transform>(source) || !registry->isEntityCreated(target) ||
+        registry->findComponent<Transform>(target)){
+        return {};
+    }
+    return "Cannot place \"" + registry->getEntityName(source) + "\" next to \"" + registry->getEntityName(target) +
+           "\": GameObjects with a Transform follow the hierarchy; one without (a Skybox) keeps its own place";
+}
+
 bool editor::MoveEntityOrderCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
-    std::string reason;
+    std::string reason = transformAnchorProblem(sceneProject->scene, source, target, type);
+    if (!reason.empty()){
+        editor::Out::warning("%s", reason.c_str());
+        return false;
+    }
     if (!ProjectUtils::canMoveLockedEntityOrder(sceneProject->scene, source, target, type, &reason)){
         editor::Out::warning("Cannot move entity '%u': %s", source, reason.c_str());
         return false;

@@ -8,6 +8,9 @@
 // editor/project/PREFABS.md, section 16.
 
 #include "PrefabStage.h"
+#include "render/ViewCameraMirror.h"
+#include "util/ScriptPropertyCache.h"
+#include "component/PrefabComponent.h"
 
 #include "Project.h"
 #include "EditorHost.h"
@@ -296,6 +299,7 @@ bool editor::Project::canInstantiatePrefabIn(uint32_t sceneId, const std::filesy
 
 bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
     std::filesystem::path relative = path.is_absolute() ? normalizeToProjectRelative(path) : path.lexically_normal();
+    relative = getPrefabAssetPath(relative);
     if (relative.empty() || !Util::isPrefabFile(relative.string())) {
         Out::error("Not a prefab: %s", path.string().c_str());
         return false;
@@ -345,7 +349,9 @@ bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_
     return true;
 }
 
-bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
+bool editor::Project::pushPrefabStage(const std::filesystem::path& named, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
+    // the asset, at its path, whichever path of its file was named
+    const std::filesystem::path relative = getPrefabAssetPath(named);
     Prefab* prefab = loadPrefabAsset(relative);
     if (!prefab || !prefab->registry || prefab->root == NULL_ENTITY) {
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" could not be read.");
@@ -471,6 +477,18 @@ bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uin
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" could not be opened.");
         popPrefabStage();
         return false;
+    }
+
+    // the fields its scripts declare now (as a scene opened); not an edit of the prefab
+    {
+        const bool modified = sceneProject.isModified;
+        ScriptPropertyCache scriptCache;
+        for (Entity entity : sceneProject.entities) {
+            if (ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity)) {
+                updateScriptProperties(&sceneProject, entity, scripts->scripts, "", "", &scriptCache);
+            }
+        }
+        sceneProject.isModified = modified;
     }
 
     // In context the stage's view starts where the context's was (Unity keeps the camera)
@@ -1132,12 +1150,7 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
     }
 
     Scene* contextScene = context->scene;
-    if (stage->contextCamera == NULL_ENTITY || !contextScene->isEntityCreated(stage->contextCamera)) {
-        stage->contextCamera = contextScene->createSystemEntity();
-        contextScene->setEntityName(stage->contextCamera, "Prefab Mode Context Camera");
-        contextScene->addComponent<Transform>(stage->contextCamera, {});
-        contextScene->addComponent<CameraComponent>(stage->contextCamera, {});
-    }
+    ViewCameraMirror::ensure(contextScene, stage->contextCamera, "Prefab Mode Context Camera");
 
     Scene* veil = nullptr;
     if (prefabContextVisibility == PrefabContextVisibility::Gray) {
@@ -1156,12 +1169,6 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
     // The context camera sees the context as the stage's camera sees the stage, the
     // prefab's root standing where the instance is (Unity shows the prefab in its place)
     Scene* scene = sceneProject.scene;
-    const Entity viewCamera = scene->getCamera();
-    CameraComponent* from = scene->findComponent<CameraComponent>(viewCamera);
-    Transform* fromTransform = scene->findComponent<Transform>(viewCamera);
-    if (!from || !fromTransform) {
-        return;
-    }
     Matrix4 toContext;  // identity
     Transform* instanceTransform = contextScene->isEntityCreated(stage->contextRoot) ? contextScene->findComponent<Transform>(stage->contextRoot) : nullptr;
     Transform* rootTransform = scene->findComponent<Transform>(stage->root);
@@ -1169,33 +1176,7 @@ void editor::Project::preparePrefabStageView(uint32_t sceneId, int width, int he
         toContext = placement(instanceTransform->worldPosition, instanceTransform->worldRotation)
             * placement(rootTransform->position, rootTransform->rotation).inverse();
     }
-    CameraComponent& to = contextScene->getComponent<CameraComponent>(stage->contextCamera);
-    Transform& toTransform = contextScene->getComponent<Transform>(stage->contextCamera);
-    to.type = from->type;
-    to.leftClip = from->leftClip;
-    to.rightClip = from->rightClip;
-    to.bottomClip = from->bottomClip;
-    to.topClip = from->topClip;
-    to.yfov = from->yfov;
-    to.aspect = from->aspect;
-    to.nearClip = from->nearClip;
-    to.farClip = from->farClip;
-    to.useTarget = from->useTarget;
-    to.autoResize = false;
-    to.transparentSort = from->transparentSort;
-    to.depthTest = from->depthTest;
-    to.hasCustomViewMatrix = false;
-    const Vector3 position = toContext * fromTransform->worldPosition;
-    toTransform.position = position;
-    Vector3 dummyPosition;
-    Vector3 dummyScale;
-    Quaternion contextRotation;
-    toContext.decompose(dummyPosition, dummyScale, contextRotation);
-    toTransform.rotation = contextRotation * fromTransform->worldRotation;
-    to.target = toContext * from->worldTarget;
-    to.up = (toContext * (fromTransform->worldPosition + from->worldUp)) - position;
-    to.needUpdate = true;
-    toTransform.needUpdate = true;
+    ViewCameraMirror::copy(scene, scene->getCamera(), contextScene, stage->contextCamera, toContext);
 }
 
 void editor::Project::beginPrefabStageDraw(uint32_t sceneId) {

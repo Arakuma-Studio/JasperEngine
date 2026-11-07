@@ -449,4 +449,46 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The shared start path is `TimelineAudio`** (`engine/core/audio/TimelineAudio.{h,cpp}`, in the
+  `soundlayer` module), not an `AudioSystem::playFromTimeline` member: `AudioSystem.cpp` is shared with
+  S39, so it only gains `playFreeFromTimeline` (a free voice owned `cue`, cause `animation`, placed by
+  `delayFrames`), `freeStopFaded`, a faded-stop scope (the `cue_exit` fade) and the runtime fields
+  `timelineStart`/`timelineDelayFrames`/`timelineSpeedScale`/`timelineStopFade`/`timelineTarget` of
+  `AudioSourceComponent` that the source's next start or stop reads. Clip cues (`fireCue`) and the
+  legacy timeline's actions (`startSource`, `transition`, `logStart`) go through it; one placement rule
+  (`delayFrames`), one gain composition, the same capture lines.
+- **Capture lines:** the `cue` line's cue kind is the field `cue_kind` (every line's `kind` is its line
+  type, here `cue`): `sound`, `source` or `snapshot` for a clip's cue; an audio action's has `source` (it starts its AudioSource), a Mixer Snapshot action's `snapshot`, with
+  `timeline: "actions"`, `clip` the Animation's GameObject name and `cue` the frame index. A `cue_exit`
+  stop line is written when the 10 ms fade starts. An unknown snapshot of a snapshot cue warns once per
+  Play like the other unresolved cues.
+- **Loop-end tolerance:** R20's 1e-5 s applies to every frame's end test and the duration test, so a
+  legacy Animation whose frames end exactly at the loop length wraps on that frame, one frame earlier
+  than before when the float sum is exact (the cycle is now its length, not length + a frame).
+- **Auto-length audio frames end by themselves:** R20's stop at `T ≥ E` applies to a frame with an
+  explicit duration (it cuts the sound); an auto-length frame's sound plays to its end, because a Sound
+  Event's random pitch below 0 plays longer than its length at speed 1 (the clip cue path plays it out
+  too, so both timelines stay sample-equal, AC10). Every audio frame still stops before a loop wrap.
+- **Relinking (R3)** follows S04's move rule: a cue holds its sound's GUID (edit_animation, drops and
+  the popover stamp it), so a move relinks it at once (`get_animation`, Play and exports resolve the
+  GUID through the asset map) without rewriting the `.anim`; the path hint is refreshed when an open
+  clip document follows the move, or at the clip's next save. A cue written by hand without a GUID
+  follows only its path.
+- **No instructions line:** §6.1's "Clip property tracks" line is not in the server instructions on
+  this tree, so nothing was appended there; agents reach cues through `edit_animation`'s `audio`
+  parameter and `jasper://docs/sound`'s Timeline audio section (the eval case shows they do).
+- **Snapshots with music (S39):** cues and actions move the mixer through `AudioMixer::transitionTo`
+  with S39's `cause` parameter (`"animation"`; S39's switches say `"music"`), the one path both use.
+  In one frame cues fire in the animation update and a music switch at its boundary in the audio
+  update after it, so the music's snapshot is the last asked and holds; a Mixer Snapshot action's
+  revert then leaves it, since the mixer no longer shows the action's own snapshot (R18).
+- **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
+  when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
+- **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is
+  dropped from snapshot cues, as `stop` is.
+- **Firing outside the frame:** the Animator places a cue by where in its update's step it was crossed;
+  for an Animator in Animate Physics mode that is a fraction of the fixed step, not of the frame.
+- **A standalone Mixer Snapshot action** runs until stopped (its duration only sizes an auto-length
+  frame); a standalone audio action stops itself when its sound ends (R21).
+- **Edit-mode previews** of the legacy timeline (`updateAnimationPreview`) start no game sound: the
+  editor's `TimelineAudioPreview` plays it (R23).

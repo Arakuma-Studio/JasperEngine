@@ -6,6 +6,7 @@
 // ---------------------------------------
 
 #include "NativeEngine.h"
+#include "AndroidTextInput.h"
 #include "HttpBackendAndroid.h"
 #include "MediaCodecBackend.h"
 #include "NativePlatformAndroid.h"
@@ -16,6 +17,7 @@
 #include <linux/input-event-codes.h>
 #include <swappy/swappyGL.h>
 #include <algorithm>
+#include <chrono>
 #include <atomic>
 #include <cstddef>
 #include <memory>
@@ -35,6 +37,7 @@
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
 #include "player/Launch.h"
+#include "device/Device.h"
 
 #include <sys/system_properties.h>
 #include <cstdlib>
@@ -103,6 +106,9 @@ constexpr int getJasperEngineKey(int32_t key, int32_t scanCode) {
         return D_KEY_DOWN;
     if (key == AKEYCODE_DPAD_UP)
         return D_KEY_UP;
+    // a TV remote's centre (select) key: Enter, which submits a selected Button
+    if (key == AKEYCODE_DPAD_CENTER)
+        return D_KEY_ENTER;
     if (key == AKEYCODE_PAGE_UP)
         return D_KEY_PAGE_UP;
     if (key == AKEYCODE_PAGE_DOWN)
@@ -236,6 +242,7 @@ static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_0, 0) == D_KEY_KP_0, "Android n
 static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_9, 0) == D_KEY_KP_9, "Android numpad key range is broken");
 static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_COMMA, 0) == D_KEY_KP_DECIMAL, "Android localized decimal mapping is broken");
 static_assert(getJasperEngineKey(AKEYCODE_BACK, 0) == D_KEY_UNKNOWN, "Android Back must not masquerade as a keyboard key");
+static_assert(getJasperEngineKey(AKEYCODE_DPAD_CENTER, 0) == D_KEY_ENTER, "the TV remote's centre key must submit as Enter");
 static_assert(getJasperEngineKey(AKEYCODE_UNKNOWN, 0) == D_KEY_UNKNOWN, "Unknown Android keys must stay unknown");
 static_assert(getJasperEngineModifiers(0) == 0, "Empty Android modifiers must stay empty");
 static_assert(getJasperEngineModifiers(AMETA_CTRL_ON | AMETA_SHIFT_ON | AMETA_ALT_ON | AMETA_META_ON |
@@ -304,7 +311,14 @@ static NativeEngine *_singleton = NULL;
 // workaround for internal bug b/149866792
 static NativeEngineSavedState appState = {false};
 
-static std::wstring textInputBuffer;
+using jasperengine::android::codepointsToModifiedUtf8;
+using jasperengine::android::codepointsToUtf8;
+using jasperengine::android::decodeModifiedUtf8;
+using jasperengine::android::utf16ToCodepoints;
+using jasperengine::android::wideToCodepoints;
+
+// the component InputField's side of the soft keyboard's text
+static jasperengine::android::ComponentTextInput componentTextInput;
 
 // Set on the UI thread by MainActivity's back callback; Android 16 no longer sends Back as a key
 static std::atomic<bool> backPressed(false);
@@ -325,135 +339,6 @@ static size_t imeCaret = 0;
 static size_t imeCompStart = 0;
 static size_t imeCompEnd = 0;
 static int imeCompCursor = -1;
-
-// GameTextInput text is Java's modified UTF-8 (NUL as C0 80, characters outside the BMP as
-// two encoded surrogates) and its spans count UTF-16 units. Decodes to UTF-16 units; plain
-// 4-byte UTF-8 is accepted too and malformed bytes become U+FFFD.
-static std::u16string decodeModifiedUtf8(const char* text, int32_t length) {
-    std::u16string out;
-    if (!text || length <= 0)
-        return out;
-
-    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(text);
-    const size_t size = strnlen(text, (size_t)length);
-    out.reserve(size);
-
-    auto isCont = [&](size_t i) { return (bytes[i] & 0xC0) == 0x80; };
-
-    size_t i = 0;
-    while (i < size) {
-        unsigned char b0 = bytes[i];
-        if (b0 < 0x80) {
-            out.push_back(b0);
-            i += 1;
-        } else if ((b0 & 0xE0) == 0xC0 && i + 1 < size && isCont(i + 1)) {
-            out.push_back((char16_t)(((b0 & 0x1F) << 6) | (bytes[i + 1] & 0x3F)));
-            i += 2;
-        } else if ((b0 & 0xF0) == 0xE0 && i + 2 < size && isCont(i + 1) && isCont(i + 2)) {
-            out.push_back((char16_t)(((b0 & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F)));
-            i += 3;
-        } else if ((b0 & 0xF8) == 0xF0 && i + 3 < size && isCont(i + 1) && isCont(i + 2) && isCont(i + 3)) {
-            uint32_t cp = ((uint32_t)(b0 & 0x07) << 18) | ((uint32_t)(bytes[i + 1] & 0x3F) << 12) |
-                          ((uint32_t)(bytes[i + 2] & 0x3F) << 6) | (uint32_t)(bytes[i + 3] & 0x3F);
-            if (cp >= 0x10000 && cp <= 0x10FFFF) {
-                cp -= 0x10000;
-                out.push_back((char16_t)(0xD800 + (cp >> 10)));
-                out.push_back((char16_t)(0xDC00 + (cp & 0x3FF)));
-            } else {
-                out.push_back(0xFFFD);
-            }
-            i += 4;
-        } else {
-            out.push_back(0xFFFD);
-            i += 1;
-        }
-    }
-    return out;
-}
-
-// Code points of UTF-16 units. unitToCodepoint has units.size() + 1 entries: the code point
-// index at each unit (the second unit of a pair maps past it). Lone surrogates become U+FFFD.
-static void utf16ToCodepoints(const std::u16string& units, std::u32string& text, std::vector<size_t>& unitToCodepoint) {
-    text.clear();
-    text.reserve(units.size());
-    unitToCodepoint.assign(units.size() + 1, 0);
-
-    size_t i = 0;
-    while (i < units.size()) {
-        unitToCodepoint[i] = text.size();
-        char32_t unit = units[i];
-        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < units.size() &&
-                units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
-            text.push_back(0x10000 + ((unit - 0xD800) << 10) + (units[i + 1] - 0xDC00));
-            unitToCodepoint[i + 1] = text.size();
-            i += 2;
-        } else {
-            text.push_back((unit >= 0xD800 && unit <= 0xDFFF) ? 0xFFFD : unit);
-            i += 1;
-        }
-    }
-    unitToCodepoint[units.size()] = text.size();
-}
-
-// Code points of a wide string. wchar_t is 32 bits on Android, but surrogate pairs that
-// arrive as two units are combined too.
-static std::u32string wideToCodepoints(const std::wstring& text) {
-    std::u32string out;
-    out.reserve(text.size());
-    for (size_t i = 0; i < text.size(); i++) {
-        uint32_t cp = (uint32_t)text[i];
-        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < text.size() &&
-                (uint32_t)text[i + 1] >= 0xDC00 && (uint32_t)text[i + 1] <= 0xDFFF) {
-            cp = 0x10000 + ((cp - 0xD800) << 10) + ((uint32_t)text[i + 1] - 0xDC00);
-            i++;
-        } else if ((cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
-            cp = 0xFFFD;
-        }
-        out.push_back(cp);
-    }
-    return out;
-}
-
-// Java modified UTF-8 of code points, what GameTextInput hands to NewStringUTF;
-// utf16Length receives the length in UTF-16 units
-static std::string codepointsToModifiedUtf8(const std::u32string& text, int32_t& utf16Length) {
-    std::string out;
-    utf16Length = 0;
-
-    auto put3 = [&out](uint32_t unit) {
-        out.push_back((char)(0xE0 | (unit >> 12)));
-        out.push_back((char)(0x80 | ((unit >> 6) & 0x3F)));
-        out.push_back((char)(0x80 | (unit & 0x3F)));
-    };
-
-    for (char32_t c : text) {
-        uint32_t cp = c;
-        if (cp != 0 && cp < 0x80) {
-            out.push_back((char)cp);
-        } else if (cp < 0x800) {
-            out.push_back((char)(0xC0 | (cp >> 6)));
-            out.push_back((char)(0x80 | (cp & 0x3F)));
-        } else if (cp < 0x10000) {
-            put3(cp);
-        } else {
-            cp -= 0x10000;
-            put3(0xD800 + (cp >> 10));
-            put3(0xDC00 + (cp & 0x3FF));
-            utf16Length++;
-        }
-        utf16Length++;
-    }
-    return out;
-}
-
-static std::string codepointsToUtf8(const std::u32string& text, size_t start, size_t end) {
-    std::string out;
-    for (size_t i = start; i < end && i < text.size(); i++) {
-        // wchar_t is 32 bits on Android
-        out += jasperengine::StringUtils::toUTF8((wchar_t)text[i]);
-    }
-    return out;
-}
 
 // The document diff starts over from this text, with the caret at caret and nothing composed
 static void resetDocumentTextInput(const std::u32string& text, size_t caret) {
@@ -765,6 +650,29 @@ int NativeEngine::getDeviceDegrees(){
     return getJniEnv()->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDeviceDegrees);
 }
 
+void NativeEngine::updateDeviceSignals(){
+    if (!mJniData.platformClsRef) return;
+    JNIEnv* env = getJniEnv();
+    if (!env) return;
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (mJniData.platformGetThermalState && now - mLastThermalPoll >= 2.0) {
+        mLastThermalPoll = now;
+        env->CallStaticIntMethod(mJniData.platformClsRef, mJniData.platformGetThermalState, mJniData.gameActivityObjRef);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+    if (mJniData.platformThermalState) {
+        const int state = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformThermalState);
+        jasperengine::Device::reportThermalState((jasperengine::ThermalState)std::clamp(state, 0, jasperengine::THERMAL_STATE_COUNT - 1));
+    }
+    if (mJniData.platformTrimMemoryCount) {
+        const int count = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformTrimMemoryCount);
+        if (count != mTrimMemoryCount) {
+            mTrimMemoryCount = count;
+            jasperengine::Device::reportLowMemory();
+        }
+    }
+}
+
 bool NativeEngine::refreshDisplayRotation(){
     if (!mJniData.platformClsRef || !mJniData.platformDisplayRotation) return false;
     JNIEnv* env = getJniEnv();
@@ -845,10 +753,9 @@ void NativeEngine::updateSafeArea(){
 }
 
 void NativeEngine::showSoftInput(std::wstring text){
-    textInputBuffer = text;
-
     // GameTextInput takes Java modified UTF-8 and counts the selection in UTF-16 units
     std::u32string codepoints = wideToCodepoints(text);
+    componentTextInput.reset(codepoints);
     int32_t utf16Length = 0;
     std::string strInputBuffer = codepointsToModifiedUtf8(codepoints, utf16Length);
 
@@ -922,39 +829,27 @@ void NativeEngine::gameLoop() {
                 if (!context || !state) return;
 
                 std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
+                std::u32string text;
+                std::vector<size_t> unitToCodepoint;
+                utf16ToCodepoints(units, text, unitToCodepoint);
 
                 if (jasperengine::Engine::wantsTextComposition()) {
                     updateDocumentTextInput(units, state);
                     // the component InputField diff stays in step
-                    textInputBuffer.assign(units.begin(), units.end());
+                    componentTextInput.reset(text);
                     return;
                 }
 
-                // component InputField: UTF-16 units, '\b' per removed unit
-                std::wstring utf16Text(units.begin(), units.end());
-
-                while (textInputBuffer.length() > utf16Text.length()){
-                    textInputBuffer.pop_back();
+                // component InputField: '\b' per removed character, then each typed one
+                const jasperengine::android::TextEdit edit = componentTextInput.update(units);
+                for (size_t i = 0; i < edit.backspaces; i++){
                     jasperengine::Engine::systemCharInput('\b');
                 }
-
-                int pos = 0;
-                while (textInputBuffer[pos] == utf16Text[pos] and pos < textInputBuffer.length()){
-                    pos++;
+                for (char32_t typed : edit.typed){
+                    jasperengine::Engine::systemCharInput(typed);
                 }
-
-                for (int i = pos; i < textInputBuffer.length(); i++){
-                    jasperengine::Engine::systemCharInput('\b');
-                }
-                for (int i = pos; i < utf16Text.length(); i++){
-                    jasperengine::Engine::systemCharInput(utf16Text[i]);
-                }
-                textInputBuffer = utf16Text;
 
                 // the document diff stays in step, for a document field focused later
-                std::u32string text;
-                std::vector<size_t> unitToCodepoint;
-                utf16ToCodepoints(units, text, unitToCodepoint);
                 int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
                 resetDocumentTextInput(text, (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
 
@@ -975,14 +870,9 @@ void NativeEngine::setupJNI(){
     mJniData.gameActivityClsRef = env->GetObjectClass(mJniData.gameActivityObjRef);
 
     mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lcom/jaspergameengine/jasperengine/UserSettings;");
-    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Ljava/lang/Object;");
 
     mJniData.userSettingsObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getUserSettingsRef);
     mJniData.userSettingsClsRef = env->GetObjectClass(mJniData.userSettingsObjRef);
-
-    // null when the export leaves AdMob out
-    mJniData.adMobWrapperObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getAdMobWrapperRef);
-    mJniData.adMobWrapperClsRef = mJniData.adMobWrapperObjRef ? env->GetObjectClass(mJniData.adMobWrapperObjRef) : NULL;
 
     mJniData.getBoolForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getBoolForKey", "(Ljava/lang/String;Z)Z");
     mJniData.getIntegerForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getIntegerForKey", "(Ljava/lang/String;I)I");
@@ -1002,20 +892,6 @@ void NativeEngine::setupJNI(){
     mJniData.hasKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "hasKey", "(Ljava/lang/String;)Z");
     mJniData.removeAllKeysRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeAllKeys", "()V");
     mJniData.saveUserSettingsRef = env->GetMethodID(mJniData.userSettingsClsRef, "save", "()Z");
-
-    if (mJniData.adMobWrapperClsRef) {
-        mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
-        mJniData.setMaxAdContentRating = env->GetMethodID(mJniData.adMobWrapperClsRef, "setMaxAdContentRating","(I)V");
-        mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
-        mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
-        mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
-    } else {
-        mJniData.initializeAdMob = NULL;
-        mJniData.setMaxAdContentRating = NULL;
-        mJniData.loadInterstitialAd = NULL;
-        mJniData.isInterstitialAdLoaded = NULL;
-        mJniData.showInterstitialAd = NULL;
-    }
 
     // an activity without them (an older MainActivity) keeps the base in-process clipboard
     mJniData.setClipboardText = env->GetMethodID(mJniData.gameActivityClsRef, "setClipboardText", "(Ljava/lang/String;)V");
@@ -1123,6 +999,17 @@ void NativeEngine::setupPlatformJNI(JNIEnv* env){
         env->ExceptionClear();
         mJniData.platformSafeAreaInfo = NULL;
     }
+    mJniData.platformThermalState = env->GetStaticFieldID(mJniData.platformClsRef, "thermalState", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformThermalState = NULL;
+    }
+    mJniData.platformTrimMemoryCount = env->GetStaticFieldID(mJniData.platformClsRef, "trimMemoryCount", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformTrimMemoryCount = NULL;
+    }
+    mJniData.platformGetThermalState = withActivity("getThermalState", ")I");
 
     // Player > Android > Fullscreen as the export wrote it into MainActivity (true without it)
     jmethodID isFullscreenGame = env->GetMethodID(mJniData.gameActivityClsRef, "isFullscreenGame", "()Z");
@@ -1485,6 +1372,9 @@ void NativeEngine::doFrame() {
     // event comes at the start of this frame's update). During a quarter turn that waits for its
     // surface size Screen holds them for that size (Engine::isOrientationPending)
     updateSafeArea();
+
+    // the thermal state and memory warnings since the last frame (spec S56)
+    updateDeviceSignals();
 
     jasperengine::Engine::systemDraw();
 

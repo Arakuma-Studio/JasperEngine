@@ -42,6 +42,15 @@ namespace jasperengine {
         // resetIndexBuffer returns to the one bound at load
         void setIndexBuffer(BufferRender* buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
+        // for good: the buffer the load bound (original) was replaced by another of the same layout
+        // (MeshBufferPool gave the mesh's new bytes another shared buffer, or a private one)
+        void retargetVertexBuffer(uint32_t originalId, BufferRender* replacement);
+        void retargetIndexBuffer(uint32_t originalId, BufferRender* replacement);
+        // the view and sampler ids bound at a texture slot (0, 0 for slot -1): what two objects
+        // that draw as one must share (RenderSystem's Dynamic Batching)
+        void getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const;
+        // the vertex buffer bind slots its attributes use (diagnostics, tests)
+        size_t getVertexBindSlotCount() const;
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         // the texture through the sampler (filter, wrap) of another one: a pass that needs
         // bilinear taps of a target the user made NEAREST
@@ -63,6 +72,16 @@ namespace jasperengine {
         // Bindings may be swapped (replaceVertexBuffer, setIndexBuffer, addTexture) between
         // beginDraw and draw. Not mixed with endLoad on the same object
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
+        // Another variant of source's shader (the same vertex inputs, textures and blocks) drawn
+        // on source's vertex layout, bindings and render state: the OIT accumulation render of a
+        // submesh (RenderSystem). Creates no pipeline; beginAccumulationDraw makes its own
+        bool loadAlike(const ObjectRender& source, ShaderRender* shader);
+        // source's bindings as they are now (its material textures after a rebind)
+        void shareBindings(const ObjectRender& source);
+        // the weighted blended OIT accumulation draw: colorType's (PIP_RTT, PIP_MSAA) pipeline into
+        // RGBA16F and R16F targets, one blend state for both, no depth write (mirrored: the face
+        // winding reversed, as beginDraw's)
+        bool beginAccumulationDraw(PipelineType colorType, bool mirrored = false);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
         // first use and released by destroy() (the editor's Scene view debug toggle; ignored
@@ -70,11 +89,40 @@ namespace jasperengine {
         // built on first use too: a draw whose transform mirrors the mesh (its triangles turn on
         // screen) keeps culling its back faces and gl_FrontFacing true on its front
         // (RenderSystem::isMirroredDraw)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
+        // lodFadeShader draws with the pipeline's LOD cross-fade variant on that shader (the
+        // submesh's MESH 'Lfd' variant, whose bindings are its shader's; spec S54 R6), made on
+        // first use and shared like the mirrored one; false while it is not ready
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
+        // that fade variant made (asked for on the first call) and warm: a fade may start
+        bool isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader);
+        // the backend id of the pipeline the last beginDraw applied (0: none; diagnostics, tests)
+        uint32_t getAppliedPipelineId() const;
         // the pipeline of that state from the pipeline cache (created on first use), applied
         // unless it is the one applied last in this pass; false while the shader is not ready
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
+
+        // Automatic GPU instancing (spec S55, SystemRender::beginDrawBatch). An object loaded on the
+        // HAS_AUTO_INSTANCING variant of another's shader, with the other's attributes, then the
+        // per-instance vectors of layout at these locations (after every other attribute):
+        void addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout);
+        // after both loaded: true when this object can draw source's batches (objectBlock, the
+        // block it reads per instance instead; the shaders' other blocks, textures and vertex
+        // buffers the same)
+        bool linkBatchVariant(const ObjectRender& source, const ShaderData& sourceShader, const ShaderData& variantShader,
+                              const std::string& objectBlock);
+        bool isBatchVariant() const;
+        // what the last linkBatchVariant refused (null: linked or never tried; diagnostics)
+        const char* getBatchLinkFailure() const;
+        // the next draw() may join a batch of variant's (linked to this object), whose instances
+        // read the block in objectSlot, with this LOD fade (spec S54 C3: -1..1, 0 none)
+        void setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade = 0.0f);
+        // the per-instance data of this draw from the frame's stream buffer instead of original
+        // (the same layout; spec S55: a shadow slot's terrain nodes): false when it does not fit
+        bool bindStreamVertexBuffer(BufferRender* original, const void* data, size_t bytes);
+        // the first vertex buffer and the index buffer bound now (sort keys)
+        uint32_t getVertexBufferId() const;
+        uint32_t getIndexBufferId() const;
         // baseElement skips that many elements of the bound index (or vertex) range,
         // used to draw a single sub-range of a submesh, like one tilemap chunk
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
@@ -105,6 +153,9 @@ namespace jasperengine {
         // loads that left a vertex input of their shader without a buffer (diagnostics: zero
         // when every load binds what its shader reads)
         static int getUnfedVertexInputLoads();
+        // objects holding a load's working description, only kept from beginLoad to endLoad
+        // (diagnostics: zero once every object has loaded)
+        static int getLoadingDescCount();
     };
 }
 

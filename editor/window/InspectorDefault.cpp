@@ -379,6 +379,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::MeshComponent: return &InspectorWindow::drawMeshComponent;
         case ComponentType::ModelComponent: return &InspectorWindow::drawModelComponent;
         case ComponentType::UIComponent: return &InspectorWindow::drawUIComponent;
+        case ComponentType::ButtonComponent: return &InspectorWindow::drawButtonComponent;
         case ComponentType::InputFieldComponent: return &InspectorWindow::drawInputFieldComponent;
         case ComponentType::LayoutGroupComponent: return &InspectorWindow::drawLayoutGroupComponent;
         case ComponentType::ImageComponent: return &InspectorWindow::drawImageComponent;
@@ -387,12 +388,14 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::TerrainComponent: return &InspectorWindow::drawTerrainComponent;
         case ComponentType::LightComponent: return &InspectorWindow::drawLightComponent;
         case ComponentType::ShadowCaster2DComponent: return &InspectorWindow::drawShadowCaster2DComponent;
+        case ComponentType::CapsuleShadowCasterComponent: return &InspectorWindow::drawCapsuleShadowCasterComponent;
         case ComponentType::FogComponent: return &InspectorWindow::drawFogComponent;
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;
         case ComponentType::UIDocumentComponent: return &InspectorWindow::drawUIDocumentComponent;
         case ComponentType::CameraComponent: return &InspectorWindow::drawCameraComponent;
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
+        case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
         case ComponentType::SkyboxComponent: return &InspectorWindow::drawSkyboxComponent;
         case ComponentType::ParticleSystemComponent: return &InspectorWindow::drawParticleSystemComponent;
         case ComponentType::ForceFieldComponent: return &InspectorWindow::drawForceFieldComponent;

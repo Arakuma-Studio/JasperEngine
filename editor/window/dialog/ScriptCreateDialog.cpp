@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptCreateDialog.h"
+#include "window/EditorModal.h"
 #include "util/AtomicFileStream.h"
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
 #include "Factory.h"
 #include "Theme.h"
 #include "util/FileDialogs.h"
-#include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
+#include "util/ScriptTemplates.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
+#include "util/FileUtils.h"
 #include <algorithm>
 #include <fstream>
 #include <initializer_list>
@@ -57,7 +59,8 @@ void ScriptCreateDialog::open(Scene* scene,
                               const fs::path& luaPath,
                               const std::string& defaultBaseName,
                               std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> onCreate,
-                              std::function<void()> onCancel) {
+                              std::function<void()> onCancel,
+                              bool startWithExisting) {
     m_isOpen = true;
     m_scene = scene;
     m_entity = entity;
@@ -66,7 +69,7 @@ void ScriptCreateDialog::open(Scene* scene,
     m_selectedPath = projectPath.string();
     m_creationKind = CreationKind::CPP_SUBCLASS;
     m_existingScriptType = ScriptType::CPP;
-    m_attachExisting = false;
+    m_attachExisting = startWithExisting;
     m_existingHeaderPath.clear();
     m_existingSourcePath.clear();
     m_attachError.clear();
@@ -108,180 +111,21 @@ void ScriptCreateDialog::writeTemplateFiles(Scene* scene, Entity entity,
                                             const fs::path& sourcePath,
                                             const std::string& classOrModuleName,
                                             CreationKind kind) {
-    bool isCppSubclass = kind == CreationKind::CPP_SUBCLASS;
-    bool isCppScriptBase = kind == CreationKind::CPP_SCRIPT_CLASS;
-    bool isLua = kind == CreationKind::LUA;
-
-    if (isCppSubclass || isCppScriptBase) {
-        fs::create_directories(headerPath.parent_path());
-
-        if (isCppSubclass) {
-            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(scene, entity);
-            std::string parentClass = parentInfo.name;
-            bool hasTransform = parentInfo.derivesObject;
-            bool isMesh = parentInfo.derivesMesh;
-
-            // Header
-            {
-                AtomicFileStream h(headerPath);
-                if (h) {
-                    h << "#pragma once\n\n";
-                    h << "#include \"Primitive.h\"\n";
-                    h << "#include \"" << parentClass << ".h\"\n";
-                    h << "#include \"ScriptProperty.h\"\n\n";
-                    h << "class " << classOrModuleName << " : public jasperengine::" << parentClass << " {\n";
-                    h << "public:\n";
-                    h << "    // Example properties\n";
-                    h << "    DPROPERTY(\"Is Active\")\n";
-                    h << "    bool isActive = true;\n\n";
-                    if (hasTransform){
-                        h << "    DPROPERTY(\"Speed\")\n";
-                        h << "    float speed = 5.0f;\n\n";
-                        h << "    DPROPERTY(\"Target Position\")\n";
-                        h << "    jasperengine::Vector3 targetPosition = jasperengine::Vector3(0, 0, 0);\n\n";
-                        if (isMesh){
-                            h << "    DPROPERTY(\"Mesh Color\", Color4)\n";
-                            h << "    jasperengine::Vector4 meshColor = jasperengine::Vector4(1, 1, 1, 1);\n\n";
-                        }
-                    }
-                    h << "    " << classOrModuleName << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
-                    h << "    virtual ~" << classOrModuleName << "();\n\n";
-                    h << "    void onUpdate();\n";
-                    h << "};\n";
-                }
-            }
-
-            // Source
-            {
-                AtomicFileStream c(sourcePath);
-                if (c) {
-                    c << "#include \"" << headerPath.filename().string() << "\"\n\n";
-                    c << "using namespace jasperengine;\n\n";
-                    c << classOrModuleName << "::" << classOrModuleName << "(Scene* scene, Entity entity): " << parentClass << "(scene, entity) {\n";
-                    c << "    REGISTER_ENGINE_EVENT(onUpdate);\n\n";
-                    c << "}\n\n";
-                    c << classOrModuleName << "::~" << classOrModuleName << "() {\n";
-                    c << "\n";
-                    c << "}\n\n";
-                    c << "void " << classOrModuleName << "::onUpdate() {\n";
-                    c << "    if (!isActive) return;\n\n";
-                    if (hasTransform){
-                        c << "    // Example: move toward the target at 'speed' units per second.\n";
-                        c << "    // moveTowards() clamps the step to the remaining distance, so it\n";
-                        c << "    // never overshoots - even on the first frame where deltaTime is large.\n";
-                        c << "    float deltaTime = Engine::getDeltatime();\n";
-                        c << "    Vector3 currentPos = getPosition();\n";
-                        c << "    setPosition(currentPos.moveTowards(targetPosition, speed * deltaTime));\n";
-                        if (isMesh){
-                            c << "    setColor(meshColor);\n";
-                        }
-                    }
-                    c << "}\n\n";
-                }
-            }
-        } else if (isCppScriptBase) {
-            // Script Class
-            // Header
-            {
-                AtomicFileStream h(headerPath);
-                if (h) {
-                    h << "#pragma once\n\n";
-                    h << "#include \"ScriptBase.h\"\n";
-                    h << "#include \"Engine.h\"\n";
-                    h << "#include \"ScriptProperty.h\"\n\n";
-                    h << "class " << classOrModuleName << " : public jasperengine::ScriptBase {\n";
-                    h << "public:\n";
-                    h << "    // Example properties - you can add more!\n";
-                    h << "    DPROPERTY(\"Speed\")\n";
-                    h << "    float speed = 5.0f;\n\n";
-                    h << "    DPROPERTY(\"Is Active\")\n";
-                    h << "    bool isActive = true;\n\n";
-                    h << "    DPROPERTY(\"Counter\")\n";
-                    h << "    int counter = 0;\n\n";
-                    h << "    " << classOrModuleName << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
-                    h << "    ~" << classOrModuleName << "();\n\n";
-                    h << "    void onUpdate();\n";
-                    h << "};\n";
-                }
-            }
-
-            // Source
-            {
-                AtomicFileStream c(sourcePath);
-                if (c) {
-                    c << "#include \"" << headerPath.filename().string() << "\"\n\n";
-                    c << "using namespace jasperengine;\n\n";
-                    c << classOrModuleName << "::" << classOrModuleName << "(Scene* scene, Entity entity): ScriptBase(scene, entity) {\n";
-                    c << "    REGISTER_ENGINE_EVENT(onUpdate);\n\n";
-                    c << "}\n\n";
-                    c << classOrModuleName << "::~" << classOrModuleName << "() {\n";
-                    c << "\n";
-                    c << "}\n\n";
-                    c << "void " << classOrModuleName << "::onUpdate() {\n";
-                    c << "    if (!isActive) return;\n\n";
-                    c << "    // Example: Increment counter every frame\n";
-                    c << "    counter++;\n";
-                    c << "    if (counter % 60 == 0) {\n";
-                    c << "        Log::print(\"Counter: %d\\n\", counter);\n";
-                    c << "    }\n";
-                    c << "}\n\n";
-                }
-            }
-        }
+    auto write = [](const fs::path& path, const std::string& text) {
+        fs::create_directories(path.parent_path());
+        AtomicFileStream out(path);
+        if (out) out << text;
+    };
+    if (kind == CreationKind::LUA) {
+        write(sourcePath, ScriptTemplates::lua(classOrModuleName));
+        return;
     }
-
-    // Lua generation
-    if (isLua) {
-        fs::create_directories(sourcePath.parent_path());
-        AtomicFileStream f(sourcePath);
-        if (f) {
-            f << "-- " << classOrModuleName << ".lua\n";
-            f << "-- Auto-generated by JasperEngine Editor\n\n";
-
-            // The module as a ScriptInstance subclass, a field per property: lua-language-server
-            // then types self (self.scene, self.entity, the properties) and reports typos
-            f << "---@class " << classOrModuleName << " : ScriptInstance\n";
-            f << "---@field speed number\n";
-            f << "---@field isActive boolean\n";
-
-            // Script table used as the instance prototype
-            f << "local " << classOrModuleName << " = {\n";
-            f << "    -- Editor-exposed properties\n";
-            f << "    properties = {\n";
-            f << "        {\n";
-            f << "            name = \"speed\",\n";
-            f << "            displayName = \"Speed\",\n";
-            f << "            type = \"float\",\n";
-            f << "            default = 5.0\n";
-            f << "        },\n";
-            f << "        {\n";
-            f << "            name = \"isActive\",\n";
-            f << "            displayName = \"Is Active\",\n";
-            f << "            type = \"bool\",\n";
-            f << "            default = true\n";
-            f << "        }\n";
-            f << "    }\n";
-            f << "}\n\n";
-
-            // init(self) – called once by the engine (Project::initializeLuaScripts)
-            f << "function " << classOrModuleName << ":init()\n";
-            f << "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
-            f << "    RegisterEngineEvent(self, \"onUpdate\")\n";
-            f << "    self.counter = 0\n";
-            f << "end\n\n";
-
-            // onUpdate(self) – optional; engine may call this every frame
-            f << "function " << classOrModuleName << ":onUpdate()\n";
-            f << "    if not self.isActive then return end\n\n";
-            f << "    self.counter = self.counter + 1\n";
-            f << "    if self.counter % 60 == 0 then\n";
-            f << "        Log.print(\"[\" .. tostring(self.entity) .. \"] Counter: \" .. self.counter)\n";
-            f << "    end\n";
-            f << "end\n\n";
-
-            f << "return " << classOrModuleName << "\n";
-        }
-    }
+    const std::string headerFileName = headerPath.filename().string();
+    const ScriptTemplates::Files files = kind == CreationKind::CPP_SUBCLASS
+        ? ScriptTemplates::cppSubclass(scene, entity, classOrModuleName, headerFileName)
+        : ScriptTemplates::cppScript(classOrModuleName, headerFileName);
+    write(headerPath, files.header);
+    write(sourcePath, files.source);
 }
 
 void ScriptCreateDialog::finalizeCreation(const fs::path& headerPath,
@@ -344,8 +188,10 @@ void ScriptCreateDialog::selectExistingFile(bool selectHeader) {
         : currentPath.parent_path().string();
     const std::string selected = FileDialogs::openFileDialog(startDirectory, FILE_DIALOG_SCRIPT);
     if (selected.empty()) return;
+    acceptExistingFile(fs::path(selected).lexically_normal(), selectHeader);
+}
 
-    const fs::path selectedPath = fs::path(selected).lexically_normal();
+void ScriptCreateDialog::acceptExistingFile(const fs::path& selectedPath, bool selectHeader) {
     if (Util::isLuaFile(selectedPath.string())) {
         if (selectHeader) {
             m_attachError = "Select a C++ header (.h, .hh, .hpp, or .hxx).";
@@ -408,7 +254,7 @@ void ScriptCreateDialog::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    bool popupOpen = ImGui::BeginPopupModal(popupName, nullptr, flags);
+    bool popupOpen = EditorModal::begin(popupName, nullptr, flags);
     if (!popupOpen) {
         if (m_isOpen) {
             m_isOpen = false;
@@ -416,7 +262,16 @@ void ScriptCreateDialog::show() {
         }
         return;
     }
+    EditorModal::message("Add a new or existing script to the selected GameObject");
+    EditorModal::error(m_attachError);
 
+    {
+        int source = m_attachExisting ? 1 : 0;
+        if (EditorModal::enumField("source", source, {"New Script", "Existing Script"})) {
+            m_attachExisting = source == 1;
+            m_attachError.clear();
+        }
+    }
     if (ImGui::RadioButton("New Script", !m_attachExisting)) {
         m_attachExisting = false;
         m_attachError.clear();
@@ -430,6 +285,12 @@ void ScriptCreateDialog::show() {
     if (!m_attachExisting) {
         ImGui::Spacing();
         ImGui::TextUnformatted("Template");
+        {
+            std::string kind = m_creationKind == CreationKind::CPP_SUBCLASS ? "C++ Subclass" : m_creationKind == CreationKind::CPP_SCRIPT_CLASS ? "C++ Script Class" : "Lua Script";
+            if (EditorModal::enumField("template", kind, {"C++ Subclass", "C++ Script Class", "Lua Script"})) {
+                m_creationKind = kind == "C++ Subclass" ? CreationKind::CPP_SUBCLASS : kind == "C++ Script Class" ? CreationKind::CPP_SCRIPT_CLASS : CreationKind::LUA;
+            }
+        }
         ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS);
         ImGui::SetItemTooltip("C++ class deriving from the GameObject's engine class, with its methods at hand.");
         ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS);
@@ -452,6 +313,17 @@ void ScriptCreateDialog::show() {
         ImGui::TextWrapped("Choose an existing script to attach. Its files will not be changed.");
         ImGui::Spacing();
 
+        // the picker's answer, without the picker (relative: to the project)
+        {
+            std::string script = FileUtils::pathToUtf8(m_existingSourcePath);
+            if (EditorModal::pathField("script_file", script)) {
+                const fs::path given = FileUtils::pathFromUtf8(script);
+                acceptExistingFile(given.is_absolute() ? given : m_projectPath / given, false);
+                isLua = m_existingScriptType == ScriptType::LUA;
+                isCpp = !isLua;
+                rootPath = isLua ? m_luaPath : m_projectPath;
+            }
+        }
         ImGui::TextUnformatted("Script File");
         if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Script...##existing_source")) {
             selectExistingFile(false);
@@ -549,8 +421,9 @@ void ScriptCreateDialog::show() {
         : (isLua ? "Module Name" : "Class Name"));
     ImGui::SetNextItemWidth(-1);
 
-    bool enterPressed = ImGui::InputText(
+    bool enterPressed = EditorModal::inputText(
         "##basename",
+        "name",
         m_baseNameBuffer,
         sizeof(m_baseNameBuffer),
         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCharFilter,
@@ -641,18 +514,18 @@ void ScriptCreateDialog::show() {
 
     if (m_attachExisting) {
         ImGui::BeginDisabled(!hasBase || !attachFilesValid);
-        if (ImGui::Button("Add", ImVec2(actionButtonWidth, 0)) ||
+        if (EditorModal::button("Add", "yes", ImVec2(actionButtonWidth, 0)) ||
                 (enterPressed && hasBase && attachFilesValid)) {
             if (finalizeAttachment(m_existingHeaderPath, m_existingSourcePath, name, m_existingScriptType))
                 ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
+        if (EditorModal::button("Cancel", "cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     } else {
         ImGui::BeginDisabled(!hasBase);
-        if (ImGui::Button("Create and Add", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
+        if (EditorModal::button("Create and Add", "yes", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
             if (anyCreateFileExists) {
                 m_attachError.clear();
                 ImGui::OpenPopup("Script Files Already Exist");
@@ -663,7 +536,7 @@ void ScriptCreateDialog::show() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
+        if (EditorModal::button("Cancel", "cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     }
 
@@ -672,11 +545,13 @@ void ScriptCreateDialog::show() {
     ImGuiWindowFlags alertFlags = ImGuiWindowFlags_AlwaysAutoResize |
                                   ImGuiWindowFlags_NoSavedSettings |
                                   ImGuiWindowFlags_Modal;
-    if (ImGui::BeginPopupModal("Script Files Already Exist", nullptr, alertFlags)) {
+    if (EditorModal::begin("Script Files Already Exist", nullptr, alertFlags)) {
         if (allCreateFilesExist) {
             ImGui::TextUnformatted("These script files already exist.\nAdd them unchanged or replace their contents?");
+            EditorModal::message("These script files already exist. Add them unchanged or replace their contents?");
         } else {
             ImGui::TextUnformatted("Only part of this script exists.\nReplace the existing files and create the missing files?");
+            EditorModal::message("Only part of this script exists. Replace the existing files and create the missing files?");
         }
         if (!m_attachError.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
@@ -692,7 +567,7 @@ void ScriptCreateDialog::show() {
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - alertButtonsWidth));
 
         if (allCreateFilesExist) {
-            if (ImGui::Button("Add Existing", ImVec2(alertButtonWidth, 0))) {
+            if (EditorModal::button("Add Existing", "yes", ImVec2(alertButtonWidth, 0))) {
                 const ScriptType type = m_creationKind == CreationKind::LUA
                     ? ScriptType::LUA
                     : ScriptType::CPP;
@@ -705,12 +580,12 @@ void ScriptCreateDialog::show() {
             ImGui::SameLine();
         }
 
-        if (ImGui::Button("Replace Files", ImVec2(alertButtonWidth, 0))) {
+        if (EditorModal::button("Replace Files", allCreateFilesExist ? "no" : "yes", ImVec2(alertButtonWidth, 0))) {
             finalizeCreation(headerPath, sourcePath, name);
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(alertButtonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(alertButtonWidth, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

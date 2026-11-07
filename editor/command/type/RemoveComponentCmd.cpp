@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "RemoveComponentCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
 
 #include "Out.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -83,7 +86,6 @@ void editor::RemoveComponentCmd::restoreTransformPlace(Scene* scene, const Remov
         if (transform && transform->parent == parent) {
             transform->parent = entityData.entity;
             transform->needUpdate = true;
-            transform->needUpdateChildVisibility = true;
         }
     }
     if (!entityData.transformChildren.empty()) {

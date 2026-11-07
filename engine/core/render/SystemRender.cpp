@@ -10,6 +10,8 @@
 #include "sokol/SokolPipelineRecord.h"
 #include "ShaderRender.h"
 #include "sokol/SokolSystem.h"
+#include "sokol/SokolObject.h"
+#include "sokol/SokolCmdQueue.h"
 #include "Engine.h"
 #include "Log.h"
 
@@ -213,6 +215,30 @@ void SystemRender::executeQueue(){
     SokolSystem::executeQueue();
 }
 
+void SystemRender::setUploadBudget(uint64_t bytes){
+    SokolCmdQueue::set_upload_budget(bytes);
+}
+
+uint64_t SystemRender::getUploadBudget(){
+    return SokolCmdQueue::get_upload_budget();
+}
+
+uint64_t SystemRender::getUploadToken(){
+    return SokolCmdQueue::get_upload_token();
+}
+
+bool SystemRender::isUploadTokenComplete(uint64_t token){
+    return SokolCmdQueue::is_token_complete(token);
+}
+
+size_t SystemRender::getDeferredUploadCount(){
+    return SokolCmdQueue::get_deferred_count();
+}
+
+uint64_t SystemRender::getUploadBytesLastFrame(){
+    return SokolCmdQueue::get_last_frame_upload_bytes();
+}
+
 namespace {
     uint64_t committedFrames = 0;
 }
@@ -280,6 +306,10 @@ uint64_t SystemRender::getNestedPassCount(){
     return SokolSystem::getNestedPassCount();
 }
 
+void SystemRender::waitGpuIdle(){
+    SokolSystem::waitGpuIdle();
+}
+
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
 }
@@ -330,21 +360,97 @@ uint32_t SystemRender::getViewTag(){
     return SokolSystem::getViewTag();
 }
 
+namespace {
+    enum class PassKind { MAIN, SHADOW, DEPTH, OTHER };
+
+    PassKind passKind(const std::string& label){
+        if (label == "camera" || label == "camera layer")
+            return PassKind::MAIN;
+        if (label == "shadow" || label == "shadow static" || label == "point shadow" || label == "point shadow static")
+            return PassKind::SHADOW;
+        if (label == "depth pre-pass" || label == "gbuffer")
+            return PassKind::DEPTH;
+        return PassKind::OTHER;
+    }
+}
+
 RenderStats SystemRender::getRenderStats(uint32_t viewTag){
     RenderStats stats = SokolSystem::getRenderStats(viewTag);
-    if (viewTag == FRAME_STATS_FRAME){
+    const PassList list = SokolSystem::getPassList(viewTag, false);
+    const bool frameView = viewTag == FRAME_STATS_FRAME;
+    for (const PassRecord& pass : list.passes){
+        if (!frameView){
+            stats.drawCalls += pass.draws;
+            stats.instances += pass.instances;
+            stats.triangles += pass.triangles;
+            stats.vertices += pass.elements;
+        }
+        if (!pass.executed)
+            continue;
+        switch (passKind(pass.label)){
+        case PassKind::MAIN:
+            stats.mainDraws += pass.draws;
+            stats.mainTriangles += pass.triangles;
+            break;
+        case PassKind::SHADOW:
+            stats.shadowDraws += pass.draws;
+            stats.shadowTriangles += pass.triangles;
+            break;
+        case PassKind::DEPTH:
+            stats.depthDraws += pass.draws;
+            break;
+        case PassKind::OTHER:
+            stats.otherDraws += pass.draws;
+            break;
+        }
+    }
+    if (frameView){
         const Engine::FrameStats& frame = Engine::getFrameStats();
         stats.drawCalls = frame.drawCalls;
         stats.instances = frame.instances;
         stats.triangles = frame.triangles;
-    }else{
-        const PassList list = SokolSystem::getPassList(viewTag, false);
-        for (const PassRecord& pass : list.passes){
-            stats.drawCalls += pass.draws;
-            stats.instances += pass.instances;
-            stats.triangles += pass.triangles;
-        }
+        stats.vertices = frame.vertices;
+        stats.visible = frame.visible;
+        stats.culled = frame.culled;
     }
+    const DrawBatchStats batches = getDrawBatchStats();
+    stats.instancedDraws = batches.instancedDraws;
+    stats.batchedInstances = batches.batchedInstances;
+    stats.uniformBytesKept = batches.uniformBytesKept;
+    return stats;
+}
+
+void SystemRender::setDrawBatching(bool enabled){
+    SokolDrawBatch::setEnabled(enabled);
+}
+
+bool SystemRender::isDrawBatching(){
+    return SokolDrawBatch::isEnabled();
+}
+
+void SystemRender::beginDrawBatch(){
+    SokolDrawBatch::begin();
+}
+
+void SystemRender::endDrawBatch(){
+    SokolDrawBatch::end();
+}
+
+DrawBatchStats SystemRender::getDrawBatchStats(){
+    const SokolDrawBatch::FrameStats& frame = SokolDrawBatch::getLastFrameStats();
+    DrawBatchStats stats;
+    stats.instancedDraws = frame.instancedDraws;
+    stats.batchedInstances = frame.batchedInstances;
+    stats.uniformBytesKept = frame.uniformBytesKept;
+    stats.pipelinesKept = frame.pipelinesKept;
+    stats.instanceBytes = frame.instanceBytes;
+    stats.offeredDraws = frame.offeredDraws;
+    stats.splitPipeline = frame.splitPipeline;
+    stats.splitElements = frame.splitElements;
+    stats.splitBindings = frame.splitBindings;
+    stats.splitUniforms = frame.splitUniforms;
+    stats.splitUniformSlots = frame.splitUniformSlots;
+    stats.splitBindingParts = frame.splitBindingParts;
     return stats;
 }
 
@@ -410,6 +516,18 @@ TextureRender* SystemRender::getPassPreviewTexture(){
 
 void SystemRender::setVulkanHostQueryReset(bool enabled){
     SokolSystem::setVulkanHostQueryReset(enabled);
+}
+
+namespace {
+    int vulkanRobustBufferAccess = -1;
+}
+
+void SystemRender::setVulkanRobustBufferAccess(bool enabled){
+    vulkanRobustBufferAccess = enabled ? 1 : 0;
+}
+
+int SystemRender::getVulkanRobustBufferAccess(){
+    return vulkanRobustBufferAccess;
 }
 
 FramebufferRender* SystemRender::getPassPreviewTarget(){

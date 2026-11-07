@@ -31,7 +31,7 @@ and updates this page and the gates together.
 - Tool names: snake_case `verb_noun`, globally unique (`create_entity`, `list_shaders`,
   `edit_colliders`). The names registered before this rule keep their names
   (`PREDATING_NAMES` in `test_tool_conventions.py`), and so do upstream's absorbed tools
-  (`UPSTREAM_NAMES`: `audio_mixer`, `native_plugins`, `user_settings`); every new name starts with a verb of its
+  (`UPSTREAM_NAMES`: `audio_mixer` and its sibling `audio_session`, `native_plugins`, `user_settings`); every new name starts with a verb of its
   `VERBS` list. Add a verb there only when none of the listed ones fits.
 - Parameter keys: snake_case at every level (`job_id`, `undo_group`, `max_width`,
   `min_frame_ms`, `capture_id`). No camelCase, ever, including keys of nested objects.
@@ -77,7 +77,9 @@ Put state-dependent choices in the description or in the handler's error message
   400 characters (review rule, not gated). Shared conventions (addressing, value shapes, undo,
   `parent` and `max_width` defaults) go in the server instructions (`McpInstructions.cpp`) or
   in `docs/mcp/guide/*.md`, never repeated per tool.
-- A result has a text summary (`ToolResult::text`) and `structuredContent` with the data.
+- A result has a text summary (`ToolResult::text`) and `structuredContent` with the data. A hint the agent must
+  see goes in `next` in `structuredContent` on a success and in the text on an error: a client like Claude Code shows the
+  model only that part of each.
 - Work that can take longer than about 1 s runs as an `McpJobs` job: the call returns
   `job_id` and `status` (`running|succeeded|failed|cancelled`), polled with `get_job`.
 - Images are `ToolResult` images (base64 in MCP, files in the CLI), never base64 in text.
@@ -99,7 +101,9 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `diagnostics` | S06 (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`), S07, S09 (`get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`), S28 (`get_editor_health`, the one tool answered off the main thread: `ToolDef::offMainThread`; `get_crash_reports`, `dismiss_crash_notice`, `set_hang_watchdog`, `debug_crash`) |
 | `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S08 (`get_inspector_layout`), S25 (`search_editor`, `run_command`, `list_shortcuts`, `set_shortcut`, `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches`, `edit_bookmarks`), S26, `find_ui_item` (UI tests), upstream's ui-scaling-text / safe-area `configure_game_view` (out of core to fit the budget) |
 | `profiling` | S15 |
+| `device` | S56 (`get_device_info`, `set_device_simulation`; the tier table through `set_project_settings`) |
 | `rendering_fx` | S11 (`get_material_variant`, `set_light_unit`), S12, S13 |
+| `meshes` | S53 (model import and cook, render budgets), S54 (`capture_model_lods`) |
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |
@@ -108,7 +112,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `gameplay` | S22 |
 | `physics` | upstream's physics-3d: `create_ragdoll`, `edit_physics_material` (out of core to fit the budget) |
 | `audio` | upstream's audio-mixer: `audio_mixer` (out of core to fit the budget) |
-| `editor_tools` | S27 |
+| `editor_tools` | S27, S66 (`clear_project_leftovers`) |
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
@@ -202,6 +206,14 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
   physics, prefabs, shaders, HTML UI); every other area is one entry of the "Other areas" index
   (its key tool and `jasper://docs/<area>`). A guide line needs a case of `tools/mcp/eval` that
   fails without it (`tools/mcp/eval/README.md`).
+- **The client cut.** Clients may keep only the start of the instructions: Claude Code keeps the
+  first 4,096 characters and appends "… [truncated]" (`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`).
+  So the guide puts first what an agent needs before any call (the intro, Addressing, The loop,
+  Building scenes and the generated Tool groups line), and the intro tells an agent that cannot see
+  the last section ("## Other areas") to read the whole guide with `read_file jasper://guide`
+  (`read_file` reads any `jasper://` resource, for clients without MCP resources too). The
+  `client_cut` entry of the budget lists those sections; the gate fails when one ends after the
+  cut (counted in UTF-16 code units, as JavaScript counts) or the intro lacks the pointer.
 - An area's detail lives in `docs/mcp/guide/<area>.md`. A file there is embedded at build time
   and served as `jasper://docs/<area>` (`docs/mcp/guide/README.md` lists them); long ones split
   into `### ` section resources.

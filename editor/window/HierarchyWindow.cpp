@@ -2,10 +2,63 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "util/ScriptAttach.h"
+#include "audio/SoundDrop.h"
+#include "util/UIProbe.h"
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/BoneComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "window/ProjectWindow.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/FogComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "render/SceneRender.h"
+#include "component/CameraComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 #include "spline/SplineEditor.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
 #include "search/HierarchyFilter.h"
+#include "util/EntityLabels.h"
 #include "organisation/Bookmarks.h"
 #include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
@@ -40,6 +93,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
@@ -1151,6 +1205,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_LIGHTBULB;
     }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
         return ICON_FA_CIRCLE_HALF_STROKE;
+    }else if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>())){
+        return ICON_FA_CAPSULES;
     }else if (signature.test(scene->getComponentId<CameraComponent>())){
         return ICON_FA_VIDEO;
     }else if (signature.test(scene->getComponentId<Joint2DComponent>()) || signature.test(scene->getComponentId<Joint3DComponent>())){
@@ -1446,21 +1502,47 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
                 names.push_back(Catalog::getComponentDisplayName(type));
             }
             return names;
-        });
+        }, [](const TreeNode& node) { return nodeText(node); });
     }
 
     visibleEntitySelectionOrder.clear();
     collectVisibleEntitySelectionOrder(root, hasSearch);
 }
 
-std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& node) {
+std::string editor::HierarchyWindow::nodeText(const TreeNode& node) {
+    if (node.isScene || node.isChildScene) return node.name;
+    return entityDisplayName(node.name, node.id);
+}
+
+EntityPayload editor::HierarchyWindow::buildEntityPayload(const TreeNode& node, bool& allowed) {
+    EntityPayload payload{};
+    allowed = false;
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
+        return payload;
+    }
+    // Stop destroys runtime entities, so none can be moved, referenced or saved as a prefab
+    for (Entity entity : getTopLevelSelectedEntities(node.id)) {
+        if (cachedPlayCreatedEntities.count(entity) > 0) {
+            return payload;
+        }
+    }
+    payload.entity = node.id;
+    payload.parent = node.parent;
+    payload.order = node.order;
+    payload.hasTransform = node.hasTransform;
+    payload.entitySceneId = sceneProject->id;
+    allowed = true;
+    return payload;
+}
+
+std::string editor::HierarchyWindow::encodeDraggedSelection(uint32_t sceneId, Entity dragged) {
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene || sceneProject->id != sceneId || !sceneProject->scene->isEntityCreated(dragged)) {
         return {};
     }
 
-    std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(node.id);
-    // Stop destroys runtime entities, so none can be moved, referenced or saved as a prefab
+    std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(dragged);
     for (Entity entity : draggedEntities) {
         if (cachedPlayCreatedEntities.count(entity) > 0) {
             return {};
@@ -1478,27 +1560,11 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
     if (exportEntities.size() == 1) {
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
     } else {
-        // Embed the full export data (including virtual action children) in the entity payload.
-        // Hierarchy uses the EntityPayload header for reparenting; Resources uses the YAML tail.
         // With the project: prefab instances in it stay instances (their members are not
-        // copied as plain GameObjects).
+        // copied as plain GameObjects)
         entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene, project, sceneProject);
     }
-
-    std::string yamlString = YAML::Dump(entityData);
-
-    size_t yamlSize = yamlString.size();
-    std::vector<char> payloadData(sizeof(EntityPayload) + yamlSize);
-
-    EntityPayload* payload = reinterpret_cast<EntityPayload*>(payloadData.data());
-    payload->entity = node.id;
-    payload->parent = node.parent;
-    payload->order = node.order;
-    payload->hasTransform = node.hasTransform;
-    payload->entitySceneId = sceneProject->id;
-    memcpy(payloadData.data() + sizeof(EntityPayload), yamlString.data(), yamlSize);
-
-    return payloadData;
+    return YAML::Dump(entityData);
 }
 
 std::filesystem::path editor::HierarchyWindow::getPrefabSaveDirectory() const {
@@ -1517,9 +1583,9 @@ void editor::HierarchyWindow::saveNodeAsPrefab(const TreeNode& node) {
         return;
     }
 
-    std::vector<char> payloadData = buildEntityPayload(node);
-    if (!payloadData.empty()) {
-        projectWindow->saveEntityFile(getPrefabSaveDirectory(), payloadData.data(), payloadData.size());
+    const std::string yaml = encodeDraggedSelection(project->getSelectedSceneId(), node.id);
+    if (!yaml.empty()) {
+        projectWindow->saveEntityFile(getPrefabSaveDirectory(), project->getSelectedSceneId(), yaml);
     }
 }
 
@@ -1633,7 +1699,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     const bool renamingNode = isRenaming(node);
-    std::string nodeLabel = BidiText::toVisual(node.name);
+    // an object a script made without a name reads "GameObject <id>", dimmed (unless a colour
+    // rule above already took the row)
+    const bool unnamed = !node.isScene && !node.isChildScene && isUnnamedEntity(node.name);
+    if (unnamed && !pushedHighlightColor) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        pushedHighlightColor = true;
+    }
+    std::string nodeLabel = BidiText::toVisual(nodeText(node));
     SceneProject* headerScene = node.isScene ? project->getScene(node.id) : nullptr;
     if (node.isScene) {
         // Unity's scene header row: framed, always spans the panel, "*" while unsaved
@@ -1655,6 +1728,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeOpen = renamingNode
         ? ImGui::TreeNodeEx("##node", flags, "%s", node.icon.c_str())
         : ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
+    if (!node.isScene) UIProbe::item("hierarchy.node." + nodeLabel);
     if (dimInactive) {
         ImGui::PopStyleVar();
     }
@@ -1692,6 +1766,9 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }else if (node.isScene){
         if (const PrefabStage* stage = project->getPrefabStage(node.id)) {
             ImGui::SetItemTooltip("Prefab Mode: %s%s", stage->assetPath.generic_string().c_str(), stage->inContext() ? "\nIn Context" : "");
+        } else if (const SceneProject* loaded = project->getReplacingMainScene(node.id)) {
+            // the Scene view and the Game view show the scene the game loaded
+            ImGui::SetItemTooltip("Scene: %s\nId: %u\nNot running: the game loaded \"%s\"", node.name.c_str(), node.id, loaded->name.c_str());
         } else {
             ImGui::SetItemTooltip("Scene: %s\nId: %u", node.name.c_str(), node.id);
         }
@@ -1755,21 +1832,17 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
     if (!node.isChildScene && !isChildSceneEntity && !node.isPlayCreated) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            // Add entity drag drop payload for dragging to resources: encoded on the drag's first
-            // frame only (ImGui keeps the data), so a posed character is suspended once per drag
+            // the header only (ImGui keeps it): the Project window encodes the selection when
+            // it takes the drop, so a long drag over a big hierarchy encodes nothing
             if (!node.isScene) {
-                const ImGuiPayload* current = ImGui::GetDragDropPayload();
-                if (current && current->IsDataType("entity")) {
-                    ImGui::SetDragDropPayload("entity", nullptr, 0, ImGuiCond_Once);
-                } else {
-                    std::vector<char> payloadData = buildEntityPayload(node);
-                    if (!payloadData.empty()) {
-                        ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size(), ImGuiCond_Once);
-                    }
+                bool allowed = false;
+                const EntityPayload payload = buildEntityPayload(node, allowed);
+                if (allowed) {
+                    ImGui::SetDragDropPayload("entity", &payload, sizeof(payload), ImGuiCond_Once);
                 }
             }
 
-            ImGui::Text("Moving %s", node.name.c_str());
+            ImGui::Text("Moving %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -1780,25 +1853,18 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             SceneProject* childSceneProject = project->getScene(node.entitySceneId);
             if (childSceneProject && childSceneProject->scene) {
-                YAML::Node entityData = Stream::encodeEntity(node.id, childSceneProject->scene, project, childSceneProject);
-                std::string yamlString = YAML::Dump(entityData);
-
-                size_t yamlSize = yamlString.size();
-                size_t payloadSize = sizeof(EntityPayload) + yamlSize;
-                std::vector<char> payloadData(payloadSize);
-
-                EntityPayload* payload = reinterpret_cast<EntityPayload*>(payloadData.data());
-                payload->entity = node.id;
-                payload->parent = node.parent;
-                payload->order = node.order;
-                payload->hasTransform = node.hasTransform;
-                payload->entitySceneId = node.entitySceneId;
-                memcpy(payloadData.data() + sizeof(EntityPayload), yamlString.data(), yamlSize);
-
-                ImGui::SetDragDropPayload("entity", payloadData.data(), payloadSize);
+                // a reference only: its id means a GameObject of the child scene, never of this one
+                EntityPayload payload{};
+                payload.entity = node.id;
+                payload.parent = node.parent;
+                payload.order = node.order;
+                payload.hasTransform = node.hasTransform;
+                payload.entitySceneId = node.entitySceneId;
+                payload.referenceOnly = true;
+                ImGui::SetDragDropPayload("entity", &payload, sizeof(payload), ImGuiCond_Once);
             }
 
-            ImGui::Text("Reference %s", node.name.c_str());
+            ImGui::Text("Reference %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -1822,6 +1888,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 sourceParent = p->parent;
                 sourceOrder = p->order;
                 sourceHasTransform = p->hasTransform;
+                // a child scene's GameObject: its id names another GameObject here
+                const std::string problem = sameSceneDropProblem(*project, *p, project->getSelectedSceneId(), true);
+                if (!problem.empty()) {
+                    allowEntityDragDrop = false;
+                    ImGui::SetTooltip("%s", problem.c_str());
+                }
             }
 
             if (sourceHasTransform != node.hasTransform && !node.isScene) {
@@ -1957,6 +2029,22 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
 
+        // a sound from the Sound Browser or the Project window: onto a Button it plays on clicks
+        if (!node.isPlayCreated && !node.isScene && SoundDrop::accepts(ImGui::GetDragDropPayload())) {
+            const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+            SceneProject* dropScene = project->getScene(getNodeSceneId(node));
+            if (dropScene && dropScene->scene && dropScene->scene->findComponent<ButtonComponent>(static_cast<Entity>(node.id))) {
+                if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(payload->DataType)) {
+                    std::vector<std::string> sounds;
+                    std::string error;
+                    if (SoundDrop::resolve(project, dropped, sounds, error) && !sounds.empty()) {
+                        SoundDrop::assignToButton(project, dropScene->id, static_cast<Entity>(node.id), sounds.front(), error);
+                    }
+                    if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
+                }
+            }
+        }
+
         // Alt-drop of a prefab on an instance root: Replace Prefab (HierarchyPrefabRows.cpp)
         if (allowResourceDragDrop && !node.isScene && handlePrefabReplaceDrop(node)) {
             allowResourceDragDrop = false;
@@ -2013,6 +2101,19 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
             if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
                 Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
+        // a script onto a GameObject (Unity): attached to it, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && ScriptAttach::isScriptFile(received[0]) && ImGui::AcceptDragDropPayload("resource_files")) {
+                if (SceneProject* target = project->getScene(getNodeSceneId(node))) {
+                    ScriptAttach::attachFile(project, target, {node.id}, received[0]);
+                }
                 ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
             }
         }
@@ -2323,7 +2424,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     const bool restoreHierarchy = model->mergeStaticMeshes;
                     std::string mergeReason;
                     bool canChangeMerge = restoreHierarchy ||
-                        scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, *mesh, &mergeReason);
+                        scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, &mergeReason);
                     bool canEditHierarchy = ProjectUtils::hasCustomMeshParenting(scene, node.id) &&
                         scene->getSystem<MeshSystem>()->canEditModelHierarchy(*model);
                     if (!restoreHierarchy && canEditHierarchy) {
@@ -3240,8 +3341,12 @@ void editor::HierarchyWindow::show(){
                     const EntityPayload* p = reinterpret_cast<const EntityPayload*>(payload->Data);
                     Entity sourceEntity = p->entity;
                     bool sourceHasTransform = p->hasTransform;
+                    const std::string problem = sameSceneDropProblem(*project, *p, project->getSelectedSceneId(), true);
+                    if (!problem.empty()) {
+                        ImGui::SetTooltip("%s", problem.c_str());
+                    }
 
-                    if (sourceHasTransform) {
+                    if (sourceHasTransform && problem.empty()) {
                         std::vector<Entity> movableEntities = getMovableDraggedEntities(sourceEntity, root, InsertionType::AFTER);
                         if (!movableEntities.empty() && ImGui::AcceptDragDropPayload("entity")) {
                             if (payload->IsDelivery()) {
@@ -3250,6 +3355,18 @@ void editor::HierarchyWindow::show(){
                         }
                     }
                 }
+            }
+        }
+
+        // a sound onto the empty Hierarchy: a new GameObject with an AudioSource
+        if (const ImGuiPayload* soundPayload = ImGui::GetDragDropPayload(); SoundDrop::accepts(soundPayload)) {
+            if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(soundPayload->DataType)) {
+                std::vector<std::string> sounds;
+                std::string error;
+                if (SoundDrop::resolve(project, dropped, sounds, error)) {
+                    for (const std::string& sound : sounds) SoundDrop::createSource(project, project->getSelectedSceneId(), sound, false, Vector3(0, 0, 0), error);
+                }
+                if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
             }
         }
 

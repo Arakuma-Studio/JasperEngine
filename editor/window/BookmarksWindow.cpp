@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "BookmarksWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -162,7 +164,7 @@ void BookmarksWindow::acceptDrops() {
         if (payload->DataSize >= static_cast<int>(sizeof(EntityPayload))) {
             EntityPayload entity;
             std::memcpy(&entity, payload->Data, sizeof(EntityPayload));
-            const uint32_t sceneId = entity.entitySceneId ? entity.entitySceneId : project->getSelectedSceneId();
+            const uint32_t sceneId = payloadSceneId(entity, project->getSelectedSceneId());
             std::string error;
             if (!add(Bookmarks::forGameObject(project, sceneId, entity.entity), &error)) Out::warning("Bookmarks: %s", error.c_str());
         }

@@ -6,9 +6,63 @@
 // and changes a few fields, so a value that is written but not read back shows up.
 
 #include "Stream.h"
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/FogComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/ModelComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/PanelComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TextComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/PrefabComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/LineRendererComponent.h"
 #include "Scene.h"
 #include "Catalog.h"
 #include "component/BuoyancyComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -20,6 +74,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
+#include "component/ActionComponent.h"
 
 #include "LogCapture.h"
 
@@ -71,7 +126,7 @@ namespace {
 STABLE(Transform, Transform,
     component.position = Vector3(1, 2, 3); component.scale = Vector3(2, 2, 2);
     component.rotation = Quaternion(30.0f, Vector3::UNIT_Y); component.visible = false)
-STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false)
+STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false; component.allowGpuInstancing = false)
 STABLE(UIComponent, UIComponent, component.color = Vector4(0.5f, 0.25f, 1.0f, 0.75f))
 STABLE(ButtonComponent, ButtonComponent, component.colorHovered = Vector4(0.2f, 0.3f, 0.4f, 1.0f))
 STABLE(ScrollbarComponent, ScrollbarComponent, component.type = ScrollbarType::HORIZONTAL)
@@ -89,15 +144,22 @@ STABLE(TerrainComponent, TerrainComponent, component.surfaceLayers.resize(1); co
     component.surfaceLayers[0].stochasticCellSize = 2.0f)
 STABLE(LightComponent, LightComponent,
     component.type = LightType::SPOT; component.color = Vector3(1, 0.5f, 0.25f); component.direction = Vector3(0, -1, 0);
-    component.intensityUnit = LightUnit::LUMEN; component.useColorTemperature = true; component.colorTemperature = 3200.0f)
+    component.intensityUnit = LightUnit::LUMEN; component.useColorTemperature = true; component.colorTemperature = 3200.0f;
+    component.shadows = true; component.contactShadows = true; component.contactShadowLength = 0.3f; component.contactShadowThickness = 0.1f;
+    component.contactShadowSampleCount = 16)
 STABLE(Light2DComponent, Light2DComponent, )
 STABLE(ShadowCaster2DComponent, ShadowCaster2DComponent, )
+STABLE(CapsuleShadowCasterComponent, CapsuleShadowCasterComponent,
+    component.castShadows = CapsuleCastShadows::CAPSULES_ONLY;
+    component.capsules.push_back({"Hips", 0.15f, 0.4f, Vector3(0, 0.1f, 0), CapsuleDirection::Y_AXIS});
+    component.capsules.push_back({"", 0.05f, 0.2f, Vector3(0, 0, 0), CapsuleDirection::Z_AXIS}))
 STABLE(FogComponent, FogComponent, component.type = FogType::EXPONENTIAL; component.density = 0.05f)
 STABLE(MirrorComponent, MirrorComponent, )
 STABLE(ReflectionProbeComponent, ReflectionProbeComponent, )
 STABLE(UIDocumentComponent, UIDocumentComponent, )
 STABLE(CameraComponent, CameraComponent,
-    component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u)
+    component.type = CameraType::CAMERA_PERSPECTIVE; component.target = Vector3(0, 1, -5); component.cullingMask = 0x5u;
+    component.transparencyMode = TransparencyMode::ORDER_INDEPENDENT; component.oitWeightScale = 0.5f)
 STABLE(AudioSourceComponent, AudioSourceComponent, component.filename = "sounds/hit.wav")
 STABLE(ScriptComponent, ScriptComponent, )
 STABLE(SkyboxComponent, SkyboxComponent, )
@@ -296,6 +358,47 @@ TEST(StreamComponent, ParticleSystemUnscaledTimeOnlyWhenOn){
     // the old component decoded over: an absent key is off again
     const ParticleSystemComponent over = Stream::decodeParticleSystemComponent(plainNode, &unscaled);
     EXPECT_FALSE(over.useUnscaledTime);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// (runtime-core) an action's Start Offset and Random Start: written only away from their defaults
+// (scenes from before them read and write as they were), read back, exported when set
+TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
+    ActionComponent plain{};
+    const YAML::Node plainNode = reflect::encodeValue(ComponentType::ActionComponent, &plain);
+    EXPECT_FALSE(plainNode["startOffset"]) << "the default is not written";
+    EXPECT_FALSE(plainNode["randomStart"]);
+
+    ActionComponent set{};
+    set.startOffset = 0.35f;
+    set.randomStart = true;
+    set.phase = 0.2f;
+    set.runs = 3;
+    const YAML::Node node = reflect::encodeValue(ComponentType::ActionComponent, &set);
+    ASSERT_TRUE(node["startOffset"]);
+    EXPECT_FLOAT_EQ(node["startOffset"].as<float>(), 0.35f);
+    EXPECT_TRUE(node["randomStart"].as<bool>());
+    EXPECT_FALSE(node["phase"]) << "runtime state is not saved";
+    const ActionComponent decoded = roundTrip(ComponentType::ActionComponent, set);
+    EXPECT_FLOAT_EQ(decoded.startOffset, 0.35f);
+    EXPECT_TRUE(decoded.randomStart);
+    EXPECT_FLOAT_EQ(decoded.phase, 0.0f);
+    EXPECT_EQ(decoded.runs, 0u);
+
+    // a file from before them (no keys) decodes to the defaults
+    const ActionComponent old = reflect::decodeValue<ActionComponent>(ComponentType::ActionComponent, YAML::Load("speed: 2"));
+    EXPECT_FLOAT_EQ(old.startOffset, 0.0f);
+    EXPECT_FALSE(old.randomStart);
+
+    // exported code: only when set
+    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::ActionComponent);
+    reflect::CodegenContext ctx;
+    ctx.variable = "action";
+    EXPECT_EQ(reflect::cppAssignments(desc, &plain, ctx).find("startOffset"), std::string::npos);
+    const std::string code = reflect::cppAssignments(desc, &set, ctx);
+    EXPECT_NE(code.find("action.startOffset = 0.35"), std::string::npos) << code;
+    EXPECT_NE(code.find("action.randomStart = true"), std::string::npos) << code;
+    EXPECT_EQ(code.find("phase"), std::string::npos) << code;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

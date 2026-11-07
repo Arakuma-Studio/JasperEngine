@@ -11,7 +11,8 @@
 # budgets (S26 R28-R31, docs/scene-view-picking.md), je-bench-particles the particle system's
 # (S20 R20-R26, docs/perf/particles.md), je-bench-nav navigation's (S19 R25-R30,
 # docs/perf/navigation.md), je-bench-splines the splines' (S18 R18-R21, docs/perf/splines.md),
-# je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md)
+# je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md), je-bench-audio the loudness
+# meter's and the limiter's (S38 R16-R17)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -35,6 +36,9 @@ target_link_libraries(jasperengine-crash-test PRIVATE jasperengine Threads::Thre
 jasperengine_apply_cxx_standard(jasperengine-crash-test)
 jasperengine_target_warnings(jasperengine-crash-test)
 set_target_properties(jasperengine-crash-test PROPERTIES FOLDER "tests" ENABLE_EXPORTS ON)
+if(WIN32)
+    jasperengine_add_windows_manifest(jasperengine-crash-test)
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(JASPER_CRASH_TEST_FLAGS "")
 if(JASPERENGINE_SANITIZE_ADDRESS)
@@ -91,6 +95,9 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+jasperengine_skip_unity_build(
+    REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
@@ -98,7 +105,11 @@ jasperengine_add_test_target(jasperengine-core-tests
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
+    # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
+        # WebKeyMap.h, the web platform's key map (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
@@ -160,8 +171,20 @@ string(FIND "${WATER_WAVES_REST}" "\n}\n" WATER_WAVES_END)
 math(EXPR WATER_WAVES_LENGTH "${WATER_WAVES_END} + 2")
 string(SUBSTRING "${WATER_WAVES_REST}" 0 ${WATER_WAVES_LENGTH} WATER_WAVES_FUNCTION)
 string(SHA256 WATER_WAVES_GLSL_SHA256 "${WATER_WAVES_FUNCTION}")
+# and of waterGerstnerWave with waterGerstner (GERSTNER), from the first's signature to the
+# second's closing brace
+string(FIND "${WATER_GLSL_SOURCE}" "void waterGerstnerWave(" WATER_GERSTNER_BEGIN)
+string(FIND "${WATER_GLSL_SOURCE}" "vec3 waterGerstner(" WATER_GERSTNER_LAST)
+if(WATER_GERSTNER_BEGIN EQUAL -1 OR WATER_GERSTNER_LAST EQUAL -1)
+    message(FATAL_ERROR "library/water.glsl has no waterGerstnerWave / waterGerstner (WaterWavesTest, engine/core/util/WaterWaves.h)")
+endif()
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_LAST} -1 WATER_GERSTNER_REST)
+string(FIND "${WATER_GERSTNER_REST}" "\n}\n" WATER_GERSTNER_REST_END)
+math(EXPR WATER_GERSTNER_LENGTH "${WATER_GERSTNER_LAST} - ${WATER_GERSTNER_BEGIN} + ${WATER_GERSTNER_REST_END} + 2")
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_BEGIN} ${WATER_GERSTNER_LENGTH} WATER_GERSTNER_FUNCTIONS)
+string(SHA256 WATER_GERSTNER_GLSL_SHA256 "${WATER_GERSTNER_FUNCTIONS}")
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/util/WaterWavesTest.cpp PROPERTIES
-    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\"")
+    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\";WATER_GERSTNER_GLSL_SHA256=\"${WATER_GERSTNER_GLSL_SHA256}\"")
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
@@ -181,7 +204,9 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+# je-bench-audio: the loudness budgets (S38 R16-R17)
+add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

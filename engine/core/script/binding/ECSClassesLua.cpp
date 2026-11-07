@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/PanelComponent.h"
 
 #include "lua.hpp"
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
 #include "LuaComponentSetters.h"
+
+#include <optional>
 
 #include "ecs/Entity.h"
 #include "ecs/Signature.h"
@@ -29,11 +32,13 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "object/GameObject.h"
 #include "PointerEventData.h"
+#include "UIEventData.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/AudioSourceComponent.h"
@@ -206,6 +211,17 @@ namespace {
         return 1;
     }
 
+    // RenderSystem:getLoadCount() -> loaded, total
+    int luaRenderGetLoadCount(lua_State* L){
+        RenderSystem* self = luabridge::detail::Userdata::get<RenderSystem>(L, 1, true);
+        size_t loaded = 0;
+        size_t total = 0;
+        if (self) self->getLoadCount(loaded, total);
+        lua_pushinteger(L, static_cast<lua_Integer>(loaded));
+        lua_pushinteger(L, static_cast<lua_Integer>(total));
+        return 2;
+    }
+
 }
 
 void LuaBinding::registerECSClasses(lua_State *L){
@@ -280,6 +296,42 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("CanvasGroupRenderMode")
         .addVariable("PER_ELEMENT", CanvasGroupRenderMode::PER_ELEMENT)
         .addVariable("FLATTEN", CanvasGroupRenderMode::FLATTEN)
+        .endNamespace();
+
+    // ui-components: Unity's Selectable
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ButtonTransition")
+        .addVariable("NONE", ButtonTransition::NONE)
+        .addVariable("COLOR_TINT", ButtonTransition::COLOR_TINT)
+        .addVariable("SPRITE_SWAP", ButtonTransition::SPRITE_SWAP)
+        .addVariable("COLOR_TINT_AND_SPRITE_SWAP", ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("NavigationMode")
+        .addVariable("NONE", NavigationMode::NONE)
+        .addVariable("HORIZONTAL", NavigationMode::HORIZONTAL)
+        .addVariable("VERTICAL", NavigationMode::VERTICAL)
+        .addVariable("AUTOMATIC", NavigationMode::AUTOMATIC)
+        .addVariable("EXPLICIT", NavigationMode::EXPLICIT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SelectionState")
+        .addVariable("NORMAL", SelectionState::NORMAL)
+        .addVariable("HIGHLIGHTED", SelectionState::HIGHLIGHTED)
+        .addVariable("PRESSED", SelectionState::PRESSED)
+        .addVariable("SELECTED", SelectionState::SELECTED)
+        .addVariable("DISABLED", SelectionState::DISABLED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MoveDirection")
+        .addVariable("LEFT", MoveDirection::LEFT)
+        .addVariable("UP", MoveDirection::UP)
+        .addVariable("RIGHT", MoveDirection::RIGHT)
+        .addVariable("DOWN", MoveDirection::DOWN)
+        .addVariable("NONE", MoveDirection::NONE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -425,7 +477,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<ActionSystem>("ActionSystem")
-        .addFunction("actionStart", &ActionSystem::actionStart)
+        // an omitted newRun is C++'s default true (a missing Lua bool would read false)
+        .addFunction("actionStart", [] (ActionSystem* self, Entity entity, std::optional<bool> newRun) {
+            self->actionStart(entity, newRun.value_or(true));
+        })
+        .addFunction("getDuration", luabridge::overload<Entity>(&ActionSystem::getDuration))
+        .addFunction("getFrameDuration", &ActionSystem::getFrameDuration)
         .addFunction("actionStop", &ActionSystem::actionStop)
         .addFunction("actionPause", &ActionSystem::actionPause)
         .endClass();
@@ -440,6 +497,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addStaticFunction("preload", &luaAudioPreload)
         .addStaticFunction("isOutputAvailable", &AudioSystem::isOutputAvailable)
         .addStaticFunction("getVoiceCount", &AudioSystem::getVoiceCount)
+        // the sounds of this system's scene only (stopAll: every scene's)
+        .addFunction("stopSceneSounds", &AudioSystem::stopSceneSounds)
         .endClass();
 
     // Unity AudioListener: the pause of every source but the ignoreListenerPause ones, and the
@@ -506,8 +565,16 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("createCylinder", &MeshSystem::createCylinder)
         .addFunction("createCapsule", &MeshSystem::createCapsule)
         .addFunction("createTorus", &MeshSystem::createTorus)
-        .addFunction("loadGLTF", &MeshSystem::loadGLTF)
+        // an omitted changeRootTransform is C++'s default true (a missing Lua bool would read false)
+        .addFunction("loadGLTF", [] (MeshSystem* self, Entity entity, const std::string& filename, bool asyncLoad,
+                                     bool skipEntities, std::optional<bool> changeRootTransform, bool bakeSceneRoot) {
+            return self->loadGLTF(entity, filename, asyncLoad, skipEntities, changeRootTransform.value_or(true), bakeSceneRoot);
+        })
         .addFunction("loadOBJ", &MeshSystem::loadOBJ)
+        .addFunction("hasPendingAsyncModelLoads", &MeshSystem::hasPendingAsyncModelLoads)
+        .addFunction("isAsyncModelLoadPending", luabridge::overload<Entity, const std::string&>(&MeshSystem::isAsyncModelLoadPending))
+        .addFunction("cancelAsyncModelLoad", &MeshSystem::cancelAsyncModelLoad)
+        .addFunction("cancelAsyncModelLoads", &MeshSystem::cancelAsyncModelLoads)
         .addFunction("createInstancedMesh", &MeshSystem::createInstancedMesh)
         .addFunction("removeInstancedMesh", &MeshSystem::removeInstancedMesh)
         .endClass();
@@ -528,6 +595,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
             luabridge::overload<Vector3>(&PhysicsSystem::setGravity3D),
             luabridge::overload<float, float, float>(&PhysicsSystem::setGravity3D))
         .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
+        // every physics event callback of the scene (all scripts'), or those whose tag holds the substring
+        .addFunction("clearSubscriptions", &PhysicsSystem::clearSubscriptions)
+        .addFunction("removeSubscriptionsByTag", &PhysicsSystem::removeSubscriptionsByTag)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
         // Box2D sub-steps of each fixed step (1-16, the scene setting physics2DSubSteps)
@@ -600,6 +670,9 @@ void LuaBinding::registerECSClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<RenderSystem>("RenderSystem")
         .addFunction("updateCameraSize", &RenderSystem::updateCameraSize)
+        // loading screens: everything the scene waits for has loaded / how much of it
+        .addFunction("isAllLoaded", &RenderSystem::isAllLoaded)
+        .addFunction("getLoadCount", &luaRenderGetLoadCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -610,6 +683,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("getAnchorReferenceWidth", &UISystem::getAnchorReferenceWidth)
         .addFunction("getAnchorReferenceHeight", &UISystem::getAnchorReferenceHeight)
         .addFunction("isInputFieldFocused", &UISystem::isInputFieldFocused)
+        .addFunction("parentToLayoutSpace", &UISystem::parentToLayoutSpace)
+        .addFunction("layoutToParentSpace", &UISystem::layoutToParentSpace)
+        .addFunction("hasPendingImages", &UISystem::hasPendingImages)
+        .addFunction("resetButtonStates", &UISystem::resetButtonStates)
         .addFunction("eventOnCharInput", &UISystem::eventOnCharInput)
         .addFunction("eventOnKeyDown", &UISystem::eventOnKeyDown)
         // (x, y): the mouse's left button; (pointerId, button, x, y, touch): any pointer (ui-multitouch)
@@ -650,6 +727,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("state", &ActionComponent::state)
         .addProperty("timecount", &ActionComponent::timecount)
         .addProperty("speed", &ActionComponent::speed, &setTrackedMember<&ActionComponent::speed>)
+        .addProperty("startOffset", &ActionComponent::startOffset, &setTrackedMember<&ActionComponent::startOffset>)
+        .addProperty("randomStart", &ActionComponent::randomStart, &setTrackedMember<&ActionComponent::randomStart>)
         .addProperty("startTrigger", &ActionComponent::startTrigger, &setTrackedMember<&ActionComponent::startTrigger>)
         .addProperty("stopTrigger", &ActionComponent::stopTrigger, &setTrackedMember<&ActionComponent::stopTrigger>)
         .addProperty("pauseTrigger", &ActionComponent::pauseTrigger, &setTrackedMember<&ActionComponent::pauseTrigger>)
@@ -697,6 +776,16 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("right", &SafeAreaComponent::right, &SafeAreaComponent::right)
         .addProperty("bottom", &SafeAreaComponent::bottom, &SafeAreaComponent::bottom)
         .addProperty("includeExtraInsets", &SafeAreaComponent::includeExtraInsets, &SafeAreaComponent::includeExtraInsets)
+        .endClass();
+
+    // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AudioSnapshotComponent>("AudioSnapshotComponent")
+        .addProperty("snapshot", &AudioSnapshotComponent::snapshot, &AudioSnapshotComponent::snapshot)
+        .addProperty("seconds", &AudioSnapshotComponent::seconds, &AudioSnapshotComponent::seconds)
+        .addProperty("unscaled", &AudioSnapshotComponent::unscaled, &AudioSnapshotComponent::unscaled)
+        .addProperty("revert", &AudioSnapshotComponent::revert, &AudioSnapshotComponent::revert)
+        .addProperty("revertSeconds", &AudioSnapshotComponent::revertSeconds, &AudioSnapshotComponent::revertSeconds)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -787,9 +876,28 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("colorDisabled", &ButtonComponent::colorDisabled, &setTrackedMember<&ButtonComponent::colorDisabled>)
         .addProperty("onPress", [] (ButtonComponent* self, lua_State* L) { return &self->onPress; }, [] (ButtonComponent* self, lua_State* L) { self->onPress = L; })
         .addProperty("onRelease", [] (ButtonComponent* self, lua_State* L) { return &self->onRelease; }, [] (ButtonComponent* self, lua_State* L) { self->onRelease = L; })
+        // the click: released over it, or a Submit while selected (Unity's Button.onClick)
+        .addProperty("onClick", [] (ButtonComponent* self, lua_State* L) { return &self->onClick; }, [] (ButtonComponent* self, lua_State* L) { self->onClick = L; })
         .addProperty("pressed", &ButtonComponent::pressed)
         .addProperty("hovered", &ButtonComponent::hovered)
         .addProperty("disabled", &ButtonComponent::disabled, &setTrackedMember<&ButtonComponent::disabled>)
+        .addProperty("textureSelected", &ButtonComponent::textureSelected, &setTrackedMember<&ButtonComponent::textureSelected>)
+        .addProperty("colorSelected", &ButtonComponent::colorSelected, &setTrackedMember<&ButtonComponent::colorSelected>)
+        .addProperty("transition", &ButtonComponent::transition, &setTrackedMember<&ButtonComponent::transition>)
+        .addProperty("fadeDuration", &ButtonComponent::fadeDuration, &setTrackedMember<&ButtonComponent::fadeDuration>)
+        .addProperty("scaleHovered", &ButtonComponent::scaleHovered, &setTrackedMember<&ButtonComponent::scaleHovered>)
+        .addProperty("scalePressed", &ButtonComponent::scalePressed, &setTrackedMember<&ButtonComponent::scalePressed>)
+        .addProperty("scaleSelected", &ButtonComponent::scaleSelected, &setTrackedMember<&ButtonComponent::scaleSelected>)
+        .addProperty("navigationMode", &ButtonComponent::navigationMode, &setTrackedMember<&ButtonComponent::navigationMode>)
+        .addProperty("wrapAround", &ButtonComponent::wrapAround, &setTrackedMember<&ButtonComponent::wrapAround>)
+        .addProperty("selectOnUp", &ButtonComponent::selectOnUp, &setTrackedMember<&ButtonComponent::selectOnUp>)
+        .addProperty("selectOnDown", &ButtonComponent::selectOnDown, &setTrackedMember<&ButtonComponent::selectOnDown>)
+        .addProperty("selectOnLeft", &ButtonComponent::selectOnLeft, &setTrackedMember<&ButtonComponent::selectOnLeft>)
+        .addProperty("selectOnRight", &ButtonComponent::selectOnRight, &setTrackedMember<&ButtonComponent::selectOnRight>)
+        .addProperty("selectOnEnable", &ButtonComponent::selectOnEnable, &setTrackedMember<&ButtonComponent::selectOnEnable>)
+        // runtime: the scene's selection is this Button, the state shown
+        .addProperty("selected", &ButtonComponent::selected)
+        .addProperty("state", &ButtonComponent::state)
         .addProperty("needUpdateButton", &ButtonComponent::needUpdateButton, &setTrackedMember<&ButtonComponent::needUpdateButton>)
         .endClass();
 
@@ -819,6 +927,19 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerDrag); })
         .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
         .addFunction("use", &PointerEventData::use)
+        .endClass();
+
+    // ui-components: the selection callbacks' arguments (Unity's BaseEventData, AxisEventData)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<BaseEventData>("BaseEventData")
+        .addProperty("used", &BaseEventData::used)
+        .addProperty("target", [] (const BaseEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
+        .addProperty("selectedObject", [] (const BaseEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->selectedObject); })
+        .addFunction("use", &BaseEventData::use)
+        .endClass()
+        .deriveClass<AxisEventData, BaseEventData>("AxisEventData")
+        .addProperty("moveDir", &AxisEventData::moveDir)
+        .addProperty("moveVector", &AxisEventData::moveVector)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

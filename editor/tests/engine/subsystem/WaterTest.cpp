@@ -76,7 +76,7 @@ TEST(Water, SurfacesReadTheMaterial) {
     ASSERT_EQ(surfaces.size(), 2u);
     const WaterSurface& flat = surfaces[0];
     EXPECT_FLOAT_EQ(flat.level, 1.5f);
-    EXPECT_FALSE(flat.waves);
+    EXPECT_FALSE(flat.waves.waves);
     EXPECT_TRUE(flat.buoyancy) << "the manifest default";
     EXPECT_FLOAT_EQ(flat.buoyancyDepth, 0.0f);
     EXPECT_TRUE(flat.covers(4.9f, -4.9f));
@@ -89,9 +89,10 @@ TEST(Water, SurfacesReadTheMaterial) {
 
     const WaterSurface& waves = surfaces[1];
     EXPECT_EQ(waves.entity, wavy);
-    EXPECT_TRUE(waves.waves);
-    EXPECT_FLOAT_EQ(waves.waveHeight, 0.25f);
-    EXPECT_FLOAT_EQ(waves.waveLength, 3.0f);
+    EXPECT_TRUE(waves.waves.waves);
+    EXPECT_FALSE(waves.waves.gerstner);
+    EXPECT_FLOAT_EQ(waves.waves.height, 0.25f);
+    EXPECT_FLOAT_EQ(waves.waves.length, 3.0f);
     EXPECT_FALSE(waves.buoyancy);
     EXPECT_FLOAT_EQ(waves.getBottom(), -4.0f);
     const float t = 7.5f;
@@ -265,4 +266,59 @@ TEST(Water, TextureDefaultRuleParsing) {
     };
     EXPECT_TRUE(reported("default[NOPE] names undeclared feature"));
     EXPECT_TRUE(reported("unknown @texture default 'sparkles'"));
+}
+
+// a fork with @role water is a water: the surfaces, the waves (its own manifest's defaults) and
+// the underwater switch's recognition follow the role, not the name (water-reflections 6.3)
+TEST(Water, ForkWithRoleIsWater) {
+    const std::string forkFrag =
+        "// @shader mesh\n"
+        "// @name \"My water\"\n"
+        "// @role water\n"
+        "// @property waveHeight float 0.4 \"Wave height\" feature=WAVES\n"
+        "// @property waveLength float 5 \"Wave length\" feature=WAVES\n"
+        "// @property buoyancy toggle 1 \"Floats\"\n"
+        "// @feature WAVES \"Waves\"\n"
+        "// @feature GERSTNER \"Gerstner\"\n"
+        "#version 450\nvoid main(){}\n";
+    const std::string plainFrag = "// @shader mesh\n// @name \"Not water\"\n#version 450\nvoid main(){}\n";
+    const std::string forkPass = "// @shader postprocess\n// @name \"My underwater\"\n// @role underwater\n#version 450\nvoid main(){}\n";
+    ShaderManifests::setForkReader([&](const std::string& path, std::string& content) {
+        if (path == "shaders/MyWater.frag") { content = forkFrag; return true; }
+        if (path == "shaders/Plain.frag") { content = plainFrag; return true; }
+        if (path == "shaders/MyUnderwater.frag") { content = forkPass; return true; }
+        if (path == "shaders/MyWater.vert" || path == "shaders/Plain.vert" || path == "shaders/MyUnderwater.vert") {
+            content = "#version 450\nvoid main(){}\n";
+            return true;
+        }
+        return false;
+    });
+
+    EXPECT_TRUE(Water::isWaterShader("library:water"));
+    EXPECT_TRUE(Water::isWaterShader("shaders/MyWater"));
+    EXPECT_TRUE(Water::isWaterShader("shaders/MyWater#WAVES"));
+    EXPECT_FALSE(Water::isWaterShader("shaders/Plain"));
+    EXPECT_FALSE(Water::isWaterShader("library:unlit"));
+    EXPECT_FALSE(Water::isWaterShader(""));
+    EXPECT_TRUE(Water::isUnderwaterShader("library:underwater"));
+    EXPECT_TRUE(Water::isUnderwaterShader("shaders/MyUnderwater"));
+    EXPECT_FALSE(Water::isUnderwaterShader("shaders/MyWater"));
+
+    Scene scene;
+    const Entity fork = makeWater(scene, Vector3(0.0f, 0.5f, 0.0f), 10.0f, {"WAVES", "GERSTNER"});
+    scene.getComponent<MeshComponent>(fork).submeshes[0].material.shader = "shaders/MyWater";
+    const Entity plain = makeWater(scene, Vector3(40.0f, 0.5f, 0.0f), 10.0f);
+    scene.getComponent<MeshComponent>(plain).submeshes[0].material.shader = "shaders/Plain";
+
+    const std::vector<WaterSurface> surfaces = Water::getSurfaces(&scene);
+    ASSERT_EQ(surfaces.size(), 1u) << "the fork is a water, the other shader is not";
+    EXPECT_EQ(surfaces[0].entity, fork);
+    EXPECT_TRUE(surfaces[0].waves.waves);
+    EXPECT_TRUE(surfaces[0].waves.gerstner);
+    EXPECT_FLOAT_EQ(surfaces[0].waves.height, 0.4f) << "the fork's own default";
+    EXPECT_FLOAT_EQ(surfaces[0].waves.length, 5.0f);
+    EXPECT_TRUE(Water::getHeight(&scene, 1.0f, 1.0f).has_value());
+    EXPECT_FALSE(Water::getHeight(&scene, 40.0f, 0.0f).has_value());
+
+    ShaderManifests::setForkReader(nullptr);
 }

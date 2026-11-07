@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "platform/ExternalTools.h"
+#include "object/Lattice.h"
+#include "window/CodeEditor.h"
+#include "window/EditorModal.h"
 #include "widget/ColorField.h"
 #include "util/FileUtils.h"
 #include "vcs/VcsService.h"
@@ -321,12 +325,13 @@ void EditorSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              prefsNoScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Preferences##EditorSettingsModal", &m_isOpen, flags);
+    bool popupOpen = EditorModal::begin("Preferences##EditorSettingsModal", &m_isOpen, flags);
 
     if (popupOpen) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
+            EditorModal::message("The editor's preferences; focus_window page opens a page, and the settings tools change them without this window.");
             drawSettings();
         }
         ImGui::EndPopup();
@@ -382,7 +387,7 @@ void EditorSettingsWindow::drawSettings() {
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -390,7 +395,7 @@ void EditorSettingsWindow::drawSettings() {
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
@@ -1330,6 +1335,15 @@ void EditorSettingsWindow::drawVersionControlSettings() {
                 m_versionControl.commitAndPush = defaults.commitAndPush;
             }
             ImGui::Checkbox("##CommitAndPush", &m_versionControl.commitAndPush);
+        }
+        sectionRow("Code Editor");
+        if (settingsui::beginRow("editor.vcs.code_editor_changes")) {
+            if (prefsBeginSettingsRow("Show Changes in Code Editor", "Marks in the gutter and on the scrollbar for the lines changed since "
+                                      "the last commit, with their diff on hover and Revert Change",
+                                      m_versionControl.codeEditorChanges != defaults.codeEditorChanges)) {
+                m_versionControl.codeEditorChanges = defaults.codeEditorChanges;
+            }
+            ImGui::Checkbox("##CodeEditorChanges", &m_versionControl.codeEditorChanges);
         }
         sectionRow("Merge");
         if (settingsui::beginRow("preferences.vcs.smart_merge")) {

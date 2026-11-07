@@ -5,6 +5,7 @@
 
 #include "Catalog.h"
 #include "Project.h"
+#include "animation/ClipRecordHooks.h"
 #include "command/type/PropertyCmd.h"
 
 using namespace jasperengine;
@@ -65,12 +66,16 @@ bool ReflectedValueCmd::execute() {
     if (!sceneProject || !desc) return false;
     Scene* scene = sceneProject->scene;
     bool changed = false;
+    // a preview of this GameObject puts the field back to its rest first, so this command records and
+    // edits the rest; afterwards the value written is the new rest (ClipRecordHooks, as PropertyCmd)
+    for (Entity entity : entities) ClipRecordHooks::beforeComponentWrite(sceneId, entity, type, path);
     for (Entity entity : entities) {
         EntityValue& entry = values[entity];
         entry.applied = false;
         entry.changed = false;
         void* comp = desc->find(scene, entity);
-        const reflect::FieldRef target = comp ? reflect::resolve(*desc, comp, path) : reflect::FieldRef();
+        // (a set writes: one past the last element appends it)
+        const reflect::FieldRef target = comp ? reflect::resolve(*desc, comp, path, nullptr, op == Op::Set) : reflect::FieldRef();
         if (!target) continue;
         const bool arrayOp = op != Op::Set;
         if (arrayOp && (target.element || target.field->kind != reflect::Kind::Array || !target.field->arrayOps)) continue;
@@ -107,6 +112,7 @@ bool ReflectedValueCmd::execute() {
         project->recordPrefabEdit(sceneId, entity, type, {path});
         changed = true;
     }
+    for (Entity entity : entities) ClipRecordHooks::afterComponentWrite(sceneId, entity, type, path);
     if (changed) sceneProject->isModified = true;
     if (onValueChanged) onValueChanged();
     return true;
@@ -117,6 +123,9 @@ void ReflectedValueCmd::undo() {
     const reflect::ComponentDesc* desc = reflect::find(type);
     if (!sceneProject || !desc) return;
     Scene* scene = sceneProject->scene;
+    for (const auto& [entity, entry] : values) {
+        if (entry.applied) ClipRecordHooks::beforeComponentWrite(sceneId, entity, type, path);
+    }
     for (auto& [entity, entry] : values) {
         if (!entry.applied) continue;
         void* comp = desc->find(scene, entity);
@@ -130,6 +139,9 @@ void ReflectedValueCmd::undo() {
         if (!entry.changed) continue;
         Catalog::markChanged(scene, entity, type);
         Catalog::updateEntity(scene, entity, Catalog::findProperty(scene, entity, type, path).updateFlags);
+    }
+    for (const auto& [entity, entry] : values) {
+        if (entry.applied) ClipRecordHooks::afterComponentWrite(sceneId, entity, type, path);
     }
     prefabUndo.restore(project, sceneId);
     sceneProject->isModified = wasModified;

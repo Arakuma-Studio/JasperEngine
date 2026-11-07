@@ -124,6 +124,53 @@ extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used,
 #endif
 }
 
+// Whether the draw being set up is still valid: a failed sg_apply_bindings (a destroyed buffer
+// or image) turns it off until the next sg_apply_pipeline, so a renderer that skips applying the
+// pipeline already applied (SokolDrawBatch, spec S55) applies it again after such a draw.
+extern "C" bool jasperengine_sg_next_draw_valid(void){
+    return _sg.valid && _sg.next_draw_valid;
+}
+
+// Vulkan: an upload into a STREAM buffer larger than the per-frame stream staging buffer, made
+// alone through the copy staging path (in chunks of the copy staging buffer, the queue waited for
+// first) instead of the stream staging buffer it could never fit (spec S55 R6). It counts as the
+// buffer's update of the frame. False on the other backends (sg_update_buffer writes the buffer).
+extern "C" bool jasperengine_sg_vk_update_buffer_alone(sg_buffer buf_id, const void* data, size_t size){
+#if defined(SOKOL_VULKAN)
+    if (!_sg.valid || !data || size == 0)
+        return false;
+    _sg_buffer_t* buf = _sg_lookup_buffer(buf_id.id);
+    if (!buf || buf->slot.state != SG_RESOURCESTATE_VALID || size > (size_t)buf->cmn.size)
+        return false;
+    const sg_range range = { data, size };
+    _sg_vk_staging_copy_buffer_data(buf, &range, 0, true);
+    buf->cmn.update_frame_index = _sg.frame_index;
+    buf->cmn.append_pos = 0;
+    buf->cmn.append_overflow = false;
+    return true;
+#else
+    (void)buf_id; (void)data; (void)size;
+    return false;
+#endif
+}
+
+// The same for a STREAM image: its mip levels through the copy staging path.
+extern "C" bool jasperengine_sg_vk_update_image_alone(sg_image img_id, const sg_image_data* data){
+#if defined(SOKOL_VULKAN)
+    if (!_sg.valid || !data)
+        return false;
+    _sg_image_t* img = _sg_lookup_image(img_id.id);
+    if (!img || img->slot.state != SG_RESOURCESTATE_VALID)
+        return false;
+    _sg_vk_staging_copy_image_data(img, data, true);
+    img->cmn.upd_frame_index = _sg.frame_index;
+    return true;
+#else
+    (void)img_id; (void)data;
+    return false;
+#endif
+}
+
 // Vulkan: the descriptor buffer bytes the next sg_apply_bindings and sg_draw take (their
 // textures', samplers' and storage buffers' descriptor set, and the uniform blocks' one when
 // uniforms were applied since the last draw, each rounded up to the buffer's alignment as sokol
@@ -163,5 +210,20 @@ extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_
 #else
     (void)limit;
     return true;
+#endif
+}
+
+// Returns once the GPU has finished every command buffer committed so far (Metal; nothing on the
+// other backends). Engine::systemUpdate calls it between frames: Metal frees what a frame released
+// SG_NUM_INFLIGHT_FRAMES + 1 commits later and only a frame with a pass waits for the GPU, so
+// frames without passes (a hidden window's) would free what the GPU still reads. Vulkan frees
+// behind its frame fences, D3D11 and GL through the driver.
+extern "C" void jasperengine_sg_wait_gpu_idle(void){
+#if defined(SOKOL_METAL)
+    if (!_sg.valid || _sg.mtl.cmd_queue == nil)
+        return;
+    id<MTLCommandBuffer> commandBuffer = [_sg.mtl.cmd_queue commandBuffer];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
 #endif
 }

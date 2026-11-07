@@ -252,6 +252,10 @@ int System::getSystemMemorySize(){
     return 0;
 }
 
+std::string System::getGpuRendererName(){
+    return "";
+}
+
 int System::getProcessorCount(){
     return std::max(1u, std::thread::hardware_concurrency());
 }
@@ -563,26 +567,6 @@ void System::setStringForKey(const char* key, const std::string& value){
 
 void System::removeKey(const char *key){
     if (key) UserSettingsStore::instance().remove(key);
-}
-
-void System::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
-    Log::error("Cannot initialize AdMob in this system");
-}
-
-void System::setMaxAdContentRating(AdMobRating rating){
-    Log::error("Cannot set AdMob rating in this system");
-}
-
-void System::loadInterstitialAd(const std::string& adUnitID){
-    Log::error("Cannot load InterstitialAd in this system");
-}
-
-bool System::isInterstitialAdLoaded(){
-    return false;
-}
-
-void System::showInterstitialAd(){
-    Log::error("Cannot show InterstitialAd in this system");
 }
 
 void System::initializeCrazyGamesSDK(){

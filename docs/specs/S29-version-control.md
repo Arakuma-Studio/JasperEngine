@@ -557,7 +557,8 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   - poll of a generated 10k-file repo ≤ 400 ms;
   - snapshot swap ≤ 1 ms at 20k entries;
   - 2,000-entity diff ≤ 150 ms;
-  - 0 process spawns on the main thread for a 60 s scripted session (spawn counter tagged by
+  - 0 process spawns on the main thread after a scripted edit, refresh, log, diff and commit
+    session completes (spawn counter tagged by
     thread).
 - **AC19** Manual (Linux and Windows, documented in `docs/editor/version-control.md`):
   - in a git project, edit a scene; the Hierarchy shows amber markers on the edited entity and
@@ -659,9 +660,8 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   fixtures upstream added later (html-ui, pose-animation, AllComponents' new GameObjects) were
   captured from the merged tree with R20's load path switched off (no key removal in the
   migration, no post-decode update), which is what the older build did on load.
-- **R26 encode budget** is reported by `VcsBench.EncodeOfTheCurrentSide`, not enforced: R26 makes
-  10 ms a switch (over it, the tracker diffs the saved file: "Showing saved changes"), and a
-  2,000-GameObject encode takes ~30 ms on the benchmark server.
+- **R26 encode budget** makes 10 ms a switch (over it, the tracker diffs the saved file:
+  "Showing saved changes"). A 2,000-GameObject encode took ~30 ms on the benchmark server.
 - **R20 format versions**: scene 3 -> 4 and prefab 5 -> 6 (`Prefab::FILE_VERSION` 6); prefab files
   are written again (needsUpgrade) the next time a scene using them is saved. The reflection
   table gains a `NotWritten` flag on the six transform fields: left out of documents (encodes

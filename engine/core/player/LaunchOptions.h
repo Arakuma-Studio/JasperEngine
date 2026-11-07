@@ -36,12 +36,16 @@ namespace jasperengine::player {
         double fixedFps = 0.0;
         double readyTimeout = 120.0;
         std::filesystem::path screenshot;
+        // where a development player writes its audio capture sessions
+        std::filesystem::path audioCapture;
         std::filesystem::path content;
         // 0: the game's window size
         int width = 0;
         int height = 0;
         std::string scene;
         std::string logLevel;
+        // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
+        std::string deviceTier;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;

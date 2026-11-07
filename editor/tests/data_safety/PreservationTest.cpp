@@ -5,6 +5,8 @@
 // AC13, AC14)
 
 #include "support/EditorTestSupport.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 
 #include "DocumentFile.h"
 #include "Stream.h"

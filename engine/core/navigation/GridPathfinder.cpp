@@ -46,45 +46,32 @@ void GridReservations::reset(int cellCount) {
 }
 
 void GridReservations::release(uint32_t agent) {
-    for (auto it = held.begin(); it != held.end(); ++it) {
-        if (it->first != agent)
-            continue;
-        for (int cell : it->second) {
-            if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
-                holders[(size_t)cell] = 0;
-                until[(size_t)cell] = 0;
-            }
-        }
-        held.erase(it);
+    auto it = held.find(agent);
+    if (it == held.end())
         return;
+    for (int cell : it->second) {
+        if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
+            holders[(size_t)cell] = 0;
+            until[(size_t)cell] = 0;
+        }
     }
+    held.erase(it);
 }
 
 void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, uint32_t untilTick) {
     if (agent == 0)
         return;
-    // the agent's entry is reused, its cell list keeping its capacity: a walking agent's tick
-    // allocates nothing (spec S74 R19)
-    std::vector<int>* taken = nullptr;
-    for (auto& entry : held) {
-        if (entry.first == agent) {
-            taken = &entry.second;
-            break;
+    std::vector<int>& taken = held[agent];
+    // Keep the agent's path storage while replacing its claims. A transferred cell belongs
+    // to its new holder even if it is still in this agent's previous path.
+    for (int cell : taken) {
+        if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
+            holders[(size_t)cell] = 0;
+            until[(size_t)cell] = 0;
         }
     }
-    if (taken) {
-        for (int cell : *taken) {
-            if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
-                holders[(size_t)cell] = 0;
-                until[(size_t)cell] = 0;
-            }
-        }
-        taken->clear();
-    } else {
-        held.emplace_back(agent, std::vector<int>());
-        taken = &held.back().second;
-    }
-    taken->reserve(cells.size());
+    taken.clear();
+    taken.reserve(cells.size());
     for (int cell : cells) {
         if (cell < 0 || (size_t)cell >= holders.size())
             continue;
