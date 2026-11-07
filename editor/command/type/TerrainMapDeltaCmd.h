@@ -26,8 +26,10 @@ namespace jasperengine::editor{
         // Cut from the overlay's tiles. alreadyApplied: the first execute finds the map as it should
         // be (a stroke, which showed itself as it went); otherwise it applies the XOR. verb names the
         // step when it is not a sculpt or a paint ("Apply Spline to Terrain").
+        // skipMaps: maps whose bytes another step of the same group carries (a map the edit made,
+        // whose structural step holds its final pixels, so its redo needs no map to exist first)
         TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const terrain::OverlayMapStore& overlay,
-                           bool alreadyApplied, std::string verb = {});
+                           bool alreadyApplied, std::string verb = {}, const std::vector<terrain::MapId>& skipMaps = {});
 
         // What the store created on write, or a registered op's non-map data, in the same step (R86, R89)
         void addUndoHook(std::shared_ptr<terrain::TerrainStoreUndoHook> hook);

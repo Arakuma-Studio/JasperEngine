@@ -170,7 +170,7 @@ async def test_refused_while_playing(ed: Editor):
     await ed.call("save_scene", scene=sid, path=path)
     await ed.call("play", action="start", scene=sid, auto_pause=True)
     try:
-        await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 1}], contains="applyOps")
+        await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 1}], contains="Stop Play")
     finally:
         await ed.call("play", action="stop")
 

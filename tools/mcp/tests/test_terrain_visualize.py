@@ -32,7 +32,9 @@ async def test_overlays_change_pixels(ed: Editor):
         ed.check(not r.is_error, r.text)
         _, _, pixels = pngdiff.decode(image_of(r))
         changed = sum(1 for a, b in zip(pixels[0::4], base[0::4]) if abs(a - b) > 8)
-        ed.check(changed > len(base) // 4 // 20, f"{overlay} changed {changed} pixels of the view")
+        # contours are lines: a smaller share of the view than the filled overlays
+        share = 100 if overlay == "contours" else 20
+        ed.check(changed > len(base) // 4 // share, f"{overlay} changed {changed} pixels of the view")
         ed.check(len(r.value["legend"]) > 0, f"{overlay} has a legend: {r.value}")
     await ed.call("visualize_terrain", scene=sid, entity=terrain, overlay="none", screenshot=False)
     message = await ed.check_error("visualize_terrain", scene=sid, entity=terrain, overlay="steepness")

@@ -27,13 +27,14 @@ namespace {
 }
 
 editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const OverlayMapStore& overlay,
-                                               bool alreadyApplied, std::string verb)
+                                               bool alreadyApplied, std::string verb, const std::vector<MapId>& skipMaps)
     : project(project), sceneId(sceneId), entity(entity), nameEntity(nameEntity), verb(std::move(verb)), applied(alreadyApplied) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
 
     std::vector<uint8_t> xored;
     overlay.visitTiles([&](MapId map, TexelRect rect, std::span<const uint8_t> before, std::span<const uint8_t> after) {
+        if (std::find(skipMaps.begin(), skipMaps.end(), map) != skipMaps.end()) return;
         xored.resize(before.size());
         bool changed = false;
         for (size_t i = 0; i < before.size(); i++) {

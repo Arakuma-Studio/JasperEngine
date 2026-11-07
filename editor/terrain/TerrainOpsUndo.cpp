@@ -23,30 +23,39 @@ using terrain::MapKind;
 
 namespace {
 
-    // A blend, density or hole map an op makes, as its own structural step before the ops run: its
-    // undo then removes the map, and the ops' delta has a map to apply to
-    Command* terrainCreateMapStep(Project* project, SceneProject* scene, Entity entity, MapId map, const terrain::MapFormat& format) {
-        const TerrainMapRef ref = TerrainMapUtils::refOfMap(map);
+    // A map an op makes: its slot as it was, and the blank map the ops run on (what the engine's
+    // createMap fills: 0, opaque, holes solid)
+    struct TerrainMadeMap {
+        MapId map;
+        TerrainMapRef ref;
+        TerrainMapSnapshot before;
+        TerrainMapSnapshot blank;
+    };
+
+    bool terrainMakeBlankMap(Project* project, SceneProject* scene, Entity entity, MapId map, const terrain::MapFormat& format, TerrainMadeMap& made) {
+        made.map = map;
+        made.ref = TerrainMapUtils::refOfMap(map);
         TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(entity);
-        TerrainMapUtils::ensureMapSlot(terrain, ref);
-        Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
-        if (!texture) return nullptr;
-        TerrainMapSnapshot before = TerrainMapUtils::captureSnapshot(project, *texture, true);
-        TerrainMapSnapshot after;
-        after.empty = false;
-        after.path = TerrainMapUtils::makeEditableTexturePath(project, scene->id, entity, ref);
-        after.id = after.path;
-        after.colorFormat = TerrainMapUtils::expectedFormat(ref.target);
-        after.channels = TerrainMapUtils::expectedChannels(ref.target);
-        after.width = format.bounds.w;
-        after.height = format.bounds.h;
-        // what the engine's createMap fills: 0, opaque, holes solid
-        const size_t texels = static_cast<size_t>(after.width) * after.height;
-        after.pixels.assign(texels * after.channels, map.kind == MapKind::Hole ? 255 : 0);
-        if (after.channels == 4) {
-            for (size_t i = 3; i < after.pixels.size(); i += 4) after.pixels[i] = 255;
+        TerrainMapUtils::ensureMapSlot(terrain, made.ref);
+        Texture* texture = TerrainMapUtils::findTexture(terrain, made.ref);
+        if (!texture) return false;
+        made.before = TerrainMapUtils::captureSnapshot(project, *texture, true);
+        TerrainMapSnapshot& blank = made.blank;
+        blank.empty = false;
+        blank.path = TerrainMapUtils::makeEditableTexturePath(project, scene->id, entity, made.ref);
+        blank.id = blank.path;
+        blank.colorFormat = TerrainMapUtils::expectedFormat(made.ref.target);
+        blank.channels = TerrainMapUtils::expectedChannels(made.ref.target);
+        blank.width = format.bounds.w;
+        blank.height = format.bounds.h;
+        const size_t texels = static_cast<size_t>(blank.width) * blank.height;
+        blank.pixels.assign(texels * blank.channels, map.kind == MapKind::Hole ? 255 : 0);
+        if (blank.channels == 4) {
+            for (size_t i = 3; i < blank.pixels.size(); i += 4) blank.pixels[i] = 255;
         }
-        return new TerrainTextureEditCmd(project, scene->id, entity, ref, std::move(before), std::move(after));
+        // made at once so the ops have a map to write; the step that keeps it comes after them
+        TerrainTextureEditCmd making(project, scene->id, entity, made.ref, made.before, made.blank);
+        return making.execute();
     }
 
 }
@@ -65,20 +74,18 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
     CommandHistory* history = CommandHandle::get(scene->id);
     Scene* engineScene = scene->scene;
 
+    std::vector<TerrainMadeMap> made;
+    std::vector<MapId> madeIds;
     for (const MapId& map : preview.createdMaps) {
         EditorTerrainStore store(project, scene->id, engineScene, entity, engineScene->getComponent<TerrainComponent>(entity));
         terrain::MapFormat format = store.format(MapId{MapKind::Height, 0});
         if (options.newMapResolution > 0) format.bounds = terrain::TexelRect{0, 0, options.newMapResolution, options.newMapResolution};
-        Command* command = terrainCreateMapStep(project, scene, entity, map, format);
-        if (!command) {
+        made.emplace_back();
+        if (!terrainMakeBlankMap(project, scene, entity, map, format, made.back())) {
             error = "The " + std::string(map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density") + " map could not be made.";
             return false;
         }
-        command->setNoMerge();
-        if (!history->addCommand(command)) {
-            error = "A new map could not be made.";
-            return false;
-        }
+        madeIds.push_back(map);
     }
 
     // the last fill keeps the hole map here; its removal is a structural step of its own
@@ -97,7 +104,23 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
     reported.dryRun = false;
     reported.undoHooks = result.undoHooks;
 
-    auto delta = std::make_unique<TerrainMapDeltaCmd>(project, scene->id, entity, entity, overlay, false, stepName);
+    // a made map's step holds its final pixels: its undo takes the map away, its redo brings it back
+    // whole, and the delta below carries only the maps that were there
+    for (TerrainMadeMap& map : made) {
+        TerrainMapSnapshot after = map.blank;
+        if (!overlay.readBytes(map.map, terrain::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
+            error = "A new map could not be read back.";
+            return false;
+        }
+        Command* command = new TerrainTextureEditCmd(project, scene->id, entity, map.ref, map.before, std::move(after), stepName);
+        command->setNoMerge();
+        if (!history->addCommand(command)) {
+            error = "A new map could not be made.";
+            return false;
+        }
+    }
+
+    auto delta = std::make_unique<TerrainMapDeltaCmd>(project, scene->id, entity, entity, overlay, false, stepName, madeIds);
     for (const auto& hook : result.undoHooks) delta->addUndoHook(hook);
     if (!delta->empty()) {
         Command* command = delta.release();

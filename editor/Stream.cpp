@@ -1928,17 +1928,18 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
     ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
     ts.paintRules.clear();
-    if (tn["paintRules"].IsSequence()) {
+    // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
+    if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {
         for (const YAML::Node& r : tn["paintRules"]) {
             if (!r.IsMap()) continue;
             TerrainPaintRule rule;
             if (r["layer"].IsDefined()) rule.layer = YamlNumbers::as<int>(r["layer"]);
-            if (r["slope"].IsSequence() && r["slope"].size() == 2) {
+            if (r["slope"].IsDefined() && r["slope"].IsSequence() && r["slope"].size() == 2) {
                 rule.useSlope = true;
                 rule.slopeMin = decodeFinite(r["slope"][0], rule.slopeMin);
                 rule.slopeMax = decodeFinite(r["slope"][1], rule.slopeMax);
             }
-            if (r["height"].IsSequence() && r["height"].size() == 2) {
+            if (r["height"].IsDefined() && r["height"].IsSequence() && r["height"].size() == 2) {
                 rule.useHeight = true;
                 rule.heightMin = decodeFinite(r["height"][0], rule.heightMin);
                 rule.heightMax = decodeFinite(r["height"][1], rule.heightMax);

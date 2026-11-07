@@ -456,10 +456,6 @@ namespace terrain_tools {
 void editTerrainTool(const CallPtr& call) {
     TerrainCallTarget target;
     if (!resolveTerrainTarget(call, target)) return;
-    if (target.scene->playState != ScenePlayState::STOPPED) {
-        call->fail("Scene " + std::to_string(target.scene->id) + " is playing; stop play mode before editing the terrain (a game edits it with Terrain:applyOps).");
-        return;
-    }
     const Json& args = call->args();
     Scene* scene = target.scene->scene;
     if (const std::string escape = McpRefs::writeEscape(target.project, target.project->getTerrainMapsDir()); !escape.empty()) {
