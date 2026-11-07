@@ -10,3 +10,10 @@ row is **unverified**. A mismatch is a kernel bug, never a new table.
 
 | Platform | Report | Who, when |
 |---|---|---|
+| Linux x86_64, GCC (the Linux build image) | `linux-x86_64 sse2 142 pass`, `scalar 142 pass`, table `80C376F5562F414C` | T2, 2026-11-07, this host |
+| Android x86_64, NDK clang 28.2, static bionic | `android-x86_64 sse2 142 pass`, `scalar 142 pass`, table `80C376F5562F414C` | T2, 2026-11-07, `tools/noise/cross_check.sh` in the Android image |
+| Android x86, NDK clang 28.2, static bionic | `android-x86 sse2 142 pass`, `scalar 142 pass`, table `80C376F5562F414C` | T2, 2026-11-07, `cross_check.sh` |
+| Android arm64-v8a, NDK clang 28.2, static bionic, **under qemu-aarch64-static (emulation, not ARM hardware)** | `android-arm64-v8a neon 142 pass`, `scalar 142 pass`, table `80C376F5562F414C` | T2, 2026-11-07, `cross_check.sh` |
+
+`cross_check.sh --red-contract` (x86_64 with `-ffp-contract=fast -mfma`) fails the table, as it must: 238
+mismatches over the two back ends, in kernel, fractal, math, node, erosion, preset and compat cases.
