@@ -998,6 +998,17 @@ void TitleDesignerWindow::show() {
         createLive();
         openFirstTime();
     }
+    // the project's resolver is made again when the project (or its paths) changes: a restored
+    // window starts before the project has loaded, so its previews' base is looked up each frame
+    const jasperengine::titleart::AssetResolver* base = TitleArtRenderHost::editor().resolver(project);
+    if (base != transient.base()) {
+        transient.setBase(base);
+        // what was laid out or found missing through the old resolver is stale
+        geometry.reset();
+        textLayout.reset();
+        pickCache.clear();
+        if (canvas) canvas->clear();
+    }
     loadWorkspace();
     if (focusRequested) {
         ImGui::SetNextWindowFocus();

@@ -142,7 +142,9 @@ async def test_parity(ed: Editor):
         await ed.call("run_command", id=command)
         history = await ed.call("get_undo_history", scope="project", limit=1)
         steps = history.get("steps") or history.get("entries") or []
-        ed.check(steps and steps[0].get("name") == name, f"{command}: one step '{name}': {steps[:1]}")
+        # run_command marks an agent's steps "mcp: <name>": the window's own name follows
+        top = steps[0].get("name", "") if steps else ""
+        ed.check(top.split(": ", 1)[-1] == name, f"{command}: one step '{name}': {steps[:1]}")
         await ed.call("edit_title", path=agent_doc, ops=ops)
         w = without_ids((ed.project / window_doc).read_text())
         a = without_ids((ed.project / agent_doc).read_text())
