@@ -1550,6 +1550,24 @@ CASES = [
         "max_turns": 6,
     },
     {
+        "id": "particle_trigger_action",
+        "kind": "guard",
+        "what_happened": "Triggers were Lua-only (S91 R9): an agent asked to fire an effect's named trigger had no tool and "
+                         "wrote a script or played the scene; control_particles now takes action trigger with the name.",
+        "text_at_issue": "control_particles' description: 'trigger name (the effect's triggers and Trigger sub-emitters)'",
+        "source": "audit (S91 R9); no failure on record",
+        "prompt": "The Particle System on GameObject 12 has a trigger called ignite in its effect. Fire it now in the editor.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"entity": 12, "action": "trigger", "name": "ignite"}, "result": ok(
+                "trigger: 0 particles at 0.000000 s (Edit mode: the Scene view's preview runs it).",
+                {"action": "trigger", "edit_mode": True, "stats": {"playing": True, "particle_count": 0}})},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "trigger", "name": "ignite"}}],
+                   "must_not_call": ["eval_lua", "play"]},
+        "max_turns": 6,
+    },
+    {
         "id": "guard_graph_new_ids",
         "kind": "guard",
         "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "

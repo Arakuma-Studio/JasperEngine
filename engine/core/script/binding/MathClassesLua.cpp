@@ -228,6 +228,7 @@ namespace {
             .addVariable("TwoConstants", particles::CurveMode::TwoConstants)
             .addVariable("Curve", particles::CurveMode::Curve)
             .addVariable("TwoCurves", particles::CurveMode::TwoCurves)
+            .addVariable("Ease", particles::CurveMode::Ease)
             .endNamespace();
 
         luabridge::getGlobalNamespace(L)
@@ -390,12 +391,23 @@ namespace {
                 value.mode = particles::CurveMode::TwoCurves;
                 value.curveMax = curveMax;
                 return value; })
+            // from `start` to `finish` along an EaseType preset (MinMaxCurveMode.Ease): a curve made
+            // from the preset, kept with its start (constant), end (constantMax) and preset (ease)
+            .addStaticFunction("ease", [](float start, float finish, EaseType type) -> particles::MinMaxCurve {
+                return particles::MinMaxCurve::fromEase(type, start, finish); })
             .addFunction("evaluate", [](const particles::MinMaxCurve& value, float time, std::optional<float> random) -> float {
                 return value.evaluate(time, random.value_or(0.0f)); })
             .addProperty("mode", &particles::MinMaxCurve::mode, &particles::MinMaxCurve::mode)
-            .addProperty("constant", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
-            .addProperty("constantMin", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
-            .addProperty("constantMax", &particles::MinMaxCurve::constantMax, &particles::MinMaxCurve::constantMax)
+            // an Ease's start and end: setting one makes its curve again
+            .addProperty("constant", [](const particles::MinMaxCurve* value) -> float { return value->constant; },
+                         [](particles::MinMaxCurve* value, float constant) { value->constant = constant; if (value->mode == particles::CurveMode::Ease) value->rebuildEase(); })
+            .addProperty("constantMin", [](const particles::MinMaxCurve* value) -> float { return value->constant; },
+                         [](particles::MinMaxCurve* value, float constant) { value->constant = constant; if (value->mode == particles::CurveMode::Ease) value->rebuildEase(); })
+            .addProperty("constantMax", [](const particles::MinMaxCurve* value) -> float { return value->constantMax; },
+                         [](particles::MinMaxCurve* value, float constant) { value->constantMax = constant; if (value->mode == particles::CurveMode::Ease) value->rebuildEase(); })
+            // the Ease preset (EaseType); setting it makes the curve again
+            .addProperty("ease", [](const particles::MinMaxCurve* value) -> EaseType { return value->ease; },
+                         [](particles::MinMaxCurve* value, EaseType type) { value->ease = type; if (value->mode == particles::CurveMode::Ease) value->rebuildEase(); })
             .addProperty("curve", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
             .addProperty("curveMin", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
             .addProperty("curveMax", &particles::MinMaxCurve::curveMax, &particles::MinMaxCurve::curveMax)

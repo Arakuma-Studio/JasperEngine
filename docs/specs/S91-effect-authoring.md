@@ -280,3 +280,42 @@ Effort in person-weeks, estimates at ±50%.
 - **M6 (about 1).** Budgets, docs, guide, final gate. AC16.
 
 ## Deviations
+
+### Runtime features (R6-R11, R13-R16, R32, R34, R35; branch feature/s91-runtime)
+
+- **R10's override table is a per-state copy of the compiled effect.** The compiler records, for an
+  exposed parameter bound to a curve or colour value, every CurveParam / GradientParam it compiled
+  from that value (tagged in the param's pad byte and found after the compile: the pool, the
+  program's own params, the bursts). The first value a script sets gives the system its own copy of
+  the effect; that value and the next ones are written into it in place (the LUTs rebaked where they
+  are), so the kernels read the new value from the program they already read, with no branch. An
+  effect without exposed parameters records nothing and never copies. Not written in place, so
+  still compiled (keeping the particles when the structure is the same): plain Float, Vector3 and
+  Color fields; a value whose change alters what the compiler decides (a mode, zero against non-zero,
+  a constant that becomes a range, a LUT size, out of the field's range); and the uses the compiler
+  reads as numbers rather than params (a burst's count, the noise's constant scroll speed, the
+  orbital offsets as constants, a Rotation over Lifetime curve's baked integral, Color over
+  Lifetime's colour in Replace mode). A test writes every curve and colour field of every module
+  and compares with a compile of the same value.
+- **R9: triggers act on the emitter that receives `sendTrigger`** (the system's root), not on its
+  sub-emitter children. A Trigger sub-emitter fired with no live particle fires once from the
+  emitter, inheriting nothing; a stopped system runs the tick that spawns it without its own
+  emission, as `emit()` does. Triggers are declared in a new top-level `triggers` list (name,
+  action, sound) rather than as actions on the sub-emitter entries, which already fire by name.
+- **R7's "warn in the checks"** is s91-preview's check row; this branch gives the defined result:
+  with no scene colour copy in a pass the engine uploads `colorParams.zw` as 0 and a DISTORTION
+  particle draws its ordinary colour. No test covers a camera without a copy (reflection probe
+  faces); that path is inferred from reading.
+- **R11: Follow Rotation of a billboard parent** turns the children about the simulation space's
+  Z axis by the parent's roll (the parent has no 3D rotation); a mesh or Ring parent turns them by
+  its quaternion. Follow Scale scales the children's offsets by the parent's size ratio.
+- **R13: sounds play through Audio.play's free voices** at the emitter (bursts, triggers) or where
+  the entry fired, at most 16 requests per emitter between two dispatches; seeks and the Edit-mode
+  preview play none.
+- **R8: a Ring draws both faces** (it is flat), and its mesh is made again when its settings change.
+  The same per-slot check fixes BF23's re-review M2 for Mesh mode (a changed mesh source kept the
+  old mesh).
+- **BF23 re-review N1:** its regression test passes on the code before the guard as well: with the
+  runtime unbound its particle count is 0, so the read returns before it touches the null effect
+  except through a reference binding (undefined behaviour that UBSan would report; not run). The
+  guard is kept.

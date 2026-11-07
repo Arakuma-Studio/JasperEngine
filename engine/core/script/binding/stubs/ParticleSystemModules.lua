@@ -400,6 +400,10 @@
 ---@field freezeInView boolean
 ---@field verticalLock string
 ---@field meshSelection string
+---@field ringOuterRadius number
+---@field ringInnerRadius number
+---@field ringArc number
+---@field ringSegments integer
 ---@field meshAlignment string
 ---@field pivot Vector3
 ---@field flip Vector3

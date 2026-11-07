@@ -5260,8 +5260,18 @@ void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindi
 }
 
 void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
-    if (bindings.slotFSSceneInputs != -1)
-        render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &passSceneBlock);
+    if (bindings.slotFSSceneInputs != -1){
+        if (bindings.slotSceneColor.first != -1 && !passSceneColor){
+            // no colour copy in this pass: its size reads 0 (scene.glsl), so a shader can draw
+            // without it rather than read black
+            scene_inputs_t block = passSceneBlock;
+            block.colorParams.z = 0.0f;
+            block.colorParams.w = 0.0f;
+            render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &block);
+        }else{
+            render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &passSceneBlock);
+        }
+    }
     // the decoded white is past the far plane (scene.glsl clamps it to it): no occluder
     if (bindings.slotSceneDepth.first != -1)
         render.addTexture(bindings.slotSceneDepth, ShaderStageType::FRAGMENT, passSceneDepth ? passSceneDepth : &emptyWhite);

@@ -20,7 +20,9 @@
 #include "registry/PhysicsLayers.h"
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
+#include "object/sound/Audio.h"
 #include "render/SystemRender.h"
+#include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -206,7 +208,13 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
         document = &particles.inlineEffect;
     }
     const bool sameEffect = !particles.needReload && state.effect && state.effectPath == path && state.effectVersion == version;
-    if (sameEffect && !subEmittersOutOfDate(particles))
+    // a script's exposed values: written into the running effect, else it compiles again
+    bool compileAgain = false;
+    if (sameEffect && particles.exposedChanged){
+        particles.exposedChanged = false;
+        compileAgain = !applyExposedValues(particles, state);
+    }
+    if (sameEffect && !compileAgain && !subEmittersOutOfDate(particles))
         return true;
 
     CompileEnvironment environment = compileEnvironment(entity);
@@ -216,12 +224,15 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
             return nullptr;
         CompileEnvironment childEnvironment = environment;
         childEnvironment.inheritsRotation = entry.inheritRotation;
+        childEnvironment.followsParent = entry.followParent;
+        childEnvironment.followsRotation = entry.followRotation;
+        childEnvironment.followsScale = entry.followScale;
         std::shared_ptr<CompiledEffect> child = ParticleCompiler::compile(*asset.document, childEnvironment);
         return child->valid ? child : nullptr;
     };
 
     bool bindAgain = false;
-    if (sameEffect){
+    if (sameEffect && !compileAgain){
         // the library moved on: only a change in this tree's files costs anything more
         state.subEmitterGeneration = ParticleEffectLibrary::generation();
         const uint64_t signature = subEmitterSignature(state.effect->document, 1);
@@ -245,6 +256,7 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
 
     std::shared_ptr<CompiledEffect> compiled = ParticleCompiler::compile(values, environment);
     particles.needReload = false;
+    particles.exposedChanged = false;
     state.effectPath = path;
     state.effectVersion = version;
     state.diagnostics = compiled->diagnostics;
@@ -261,6 +273,8 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
     // a parameter edit keeps the live particles; another structure starts over, and so does another
     // seed: the run the stats name is the one that runs
     const uint32_t pinnedSeed = particles.seed != 0 ? particles.seed : compiled->document.seed;
+    state.ownEffect.reset();
+    state.exposedApplied = particles.exposedValues;
     if (!bindAgain && state.effect && (pinnedSeed == 0 || pinnedSeed == state.seed) && state.runtime.rebind(compiled) &&
             (sameFiles || state.runtime.rebindSubEmitters(resolver))){
         state.effect = compiled;
@@ -277,6 +291,37 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
             state.runtime.play();
     }
     state.render.needReload = true;
+    return true;
+}
+
+bool ParticleSubsystem::applyExposedValues(ParticleSystemComponent& particles, ParticleSystemState& state){
+    // its own copy of the effect, made once: the first values copy the shared program
+    std::shared_ptr<CompiledEffect> own = state.ownEffect && state.ownEffect == state.effect ? state.ownEffect : nullptr;
+    const bool copied = !own;
+    if (copied){
+        if (state.effect->exposedBindings.empty())
+            return false;
+        own = std::make_shared<CompiledEffect>(*state.effect);
+    }
+    for (const ParticleExposedValue& value : particles.exposedValues){
+        bool same = false;
+        for (const ParticleExposedValue& applied : state.exposedApplied)
+            same = same || (applied.name == value.name && applied.value == value.value);
+        if (same)
+            continue;
+        size_t parameter = own->document.exposed.size();
+        for (size_t i = 0; i < own->document.exposed.size(); i++){
+            if (own->document.exposed[i].name == value.name)
+                parameter = i;
+        }
+        if (!ParticleCompiler::applyExposed(*own, parameter, value.value))
+            return false;
+    }
+    if (copied && !state.runtime.rebind(own))
+        return false;
+    state.ownEffect = own;
+    state.effect = own;
+    state.exposedApplied = particles.exposedValues;
     return true;
 }
 
@@ -852,6 +897,40 @@ float ParticleSubsystem::significanceOf(const ParticleSystemState& state, float&
     return std::clamp(2.0f * radius / std::max(view, 0.001f), 0.0f, 1.0f);
 }
 
+void ParticleSubsystem::playSounds(EmitterRuntime& runtime, const Vector3& emitterPosition){
+    // the tree's: a child's bursts are in its own document, its entries' in its parent's
+    for (size_t c = 0; c < runtime.childCount(); c++){
+        if (EmitterRuntime* child = runtime.child(c))
+            playSounds(*child, emitterPosition);
+    }
+    const CompiledEffect* effect = runtime.effect();
+    if (runtime.soundEvents().empty() || !effect)
+        return;
+    const ParticleEffectDocument& d = effect->document;
+    for (const ParticleSoundEvent& event : runtime.soundEvents()){
+        const std::string* path = nullptr;
+        const std::string* guid = nullptr;
+        switch (event.source){
+            case ParticleSoundEvent::Source::Burst:
+                if (event.index < d.emission.bursts.size()){ path = &d.emission.bursts[event.index].soundEvent; guid = &d.emission.bursts[event.index].soundEventGuid; }
+                break;
+            case ParticleSoundEvent::Source::SubEmitter:
+                if (event.index < d.subEmitters.size()){ path = &d.subEmitters[event.index].soundEvent; guid = &d.subEmitters[event.index].soundEventGuid; }
+                break;
+            case ParticleSoundEvent::Source::Trigger:
+                if (event.index < d.triggers.size()){ path = &d.triggers[event.index].soundEvent; guid = &d.triggers[event.index].soundEventGuid; }
+                break;
+        }
+        if (!path || path->empty())
+            continue;
+        PlayOptions options;
+        options.scene = scene;
+        options.position = event.atEmitter ? emitterPosition : Vector3(event.position[0], event.position[1], event.position[2]);
+        AudioSystem::playFree(guid->empty() ? *path : *guid, options, "particles");
+    }
+    runtime.takeSoundEvents();
+}
+
 void ParticleSubsystem::dispatchEvents(ParticleSystemComponent& particles){
     ParticleSystemState& state = *particles.state;
     if (particles.onCollision.hasSubscribers()){
@@ -910,7 +989,7 @@ void ParticleSubsystem::update(double dt){
     if (paused){
         for (size_t i = 0; i < systems->size(); i++){
             ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
-            if (particles.needReload || !particles.state || subEmittersOutOfDate(particles))
+            if (particles.needReload || particles.exposedChanged || !particles.state || subEmittersOutOfDate(particles))
                 ensureEffect(systems->getEntity(i), particles);
         }
         return;
@@ -1024,6 +1103,7 @@ void ParticleSubsystem::update(double dt){
         frameAlive += state.runtime.totalCount();
         updateBounds(state);
         dispatchEvents(particles);
+        playSounds(state.runtime, scene->getComponent<Transform>(entity).worldPosition);
     }
     checkStopActions();
 }

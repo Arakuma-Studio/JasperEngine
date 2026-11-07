@@ -5570,7 +5570,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
     //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
     //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
+    // v51: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
+    //      in u_fs_customParams).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
 }
 
 void editor::App::pushTabNotificationStyle(){

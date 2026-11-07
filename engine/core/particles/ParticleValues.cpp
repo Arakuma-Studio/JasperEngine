@@ -30,10 +30,37 @@ float particles::remapDriver(float value, float lo, float hi, CurveWrap wrap){
     }
 }
 
+Curve MinMaxCurve::easeCurve(EaseType type, float start, float end){
+    Curve curve = Curve::fromEase(type);
+    const float span = end - start;
+    for (CurveKey& key : curve.keys){
+        key.value = start + span * key.value;
+        // a step (an infinite tangent) stays one whatever the span's sign
+        if (std::isfinite(key.inTangent)) key.inTangent *= span;
+        if (std::isfinite(key.outTangent)) key.outTangent *= span;
+    }
+    return curve;
+}
+
+MinMaxCurve MinMaxCurve::fromEase(EaseType type, float start, float end){
+    MinMaxCurve value;
+    value.mode = CurveMode::Ease;
+    value.ease = type;
+    value.constant = start;
+    value.constantMax = end;
+    value.rebuildEase();
+    return value;
+}
+
+void MinMaxCurve::rebuildEase(){
+    curve = easeCurve(ease, constant, constantMax);
+}
+
 bool MinMaxCurve::isZero() const{
     switch (mode){
         case CurveMode::Constant: return constant == 0.0f;
         case CurveMode::TwoConstants: return constant == 0.0f && constantMax == 0.0f;
+        case CurveMode::Ease:
         case CurveMode::Curve: {
             if (multiplier == 0.0f || curve.empty()) return true;
             float lo, hi;
@@ -55,6 +82,7 @@ float MinMaxCurve::evaluate(float input, float random) const{
     switch (mode){
         case CurveMode::Constant: return constant;
         case CurveMode::TwoConstants: return constant + (constantMax - constant) * random;
+        case CurveMode::Ease:
         case CurveMode::Curve: return curve.evaluate(input) * multiplier;
         case CurveMode::TwoCurves: {
             const float a = curve.evaluate(input);
@@ -74,6 +102,7 @@ void MinMaxCurve::range(float& lo, float& hi) const{
             lo = std::min(constant, constantMax);
             hi = std::max(constant, constantMax);
             return;
+        case CurveMode::Ease:
         case CurveMode::Curve:
             curve.valueRange(lo, hi);
             break;
@@ -98,7 +127,8 @@ float MinMaxCurve::remap(float driverValue) const{
 bool MinMaxCurve::operator==(const MinMaxCurve& other) const{
     return mode == other.mode && constant == other.constant && constantMax == other.constantMax && curve == other.curve &&
            curveMax == other.curveMax && multiplier == other.multiplier && driver == other.driver &&
-           driverMin == other.driverMin && driverMax == other.driverMax && wrap == other.wrap;
+           driverMin == other.driverMin && driverMax == other.driverMax && wrap == other.wrap &&
+           (mode != CurveMode::Ease || ease == other.ease);
 }
 
 bool MinMaxGradient::isWhite() const{
