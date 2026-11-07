@@ -156,6 +156,21 @@ namespace jasperengine::titleart::geometry {
     // outlines, else max(grow, close), plus SVG stroke spikes, moved by the rim offset
     JASPERENGINE_API TitleRect elementBounds(const TitleElement& element);
 
+    // A mitred rim's join at a concave vertex of its outline points into the outline (the outside
+    // of the turn lies inside it), and within the limit Canvas2D and ThorVG draw it to its tip;
+    // when the notch is sharp and the stroke under it thinner than the mitre, the tip comes out
+    // on the far side as a thin spike. `length` is how far the worst tip reaches beyond the rim's
+    // band (its distance to the outline minus grow, layer units; 0 for none), `at` that tip
+    // (layer space, before the rim's offset). Round and bevel joins, pixel layers and faces: 0.
+    struct MitreSpike {
+        double length = 0.0;
+        TitleVec2 at;
+    };
+    JASPERENGINE_API MitreSpike mitreSpike(const TitleElement& element);
+    // check_title's rim_spikes warns when a spike is longer than this fraction of the rim's own
+    // band (its width: the stroke the spike sits on)
+    constexpr double MITRE_SPIKE_WARN_RATIO = 0.5;
+
     // ThorVG coverage of one element at `frame`: each outline's fill (its rule; fill_counters
     // rims fill only the outer contours, non-zero), plus for a rim a stroke of 2 x grow with its
     // join and miter limit, plus the SVG strokes; then for a fill_counters rim the flood of

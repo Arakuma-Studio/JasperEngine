@@ -9,6 +9,7 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRefs.h"
 #include "titleart/TitleArtSchema.h"
+#include "titleart/geometry/TitleGeometry.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "util/FontFace.h"
@@ -338,6 +339,61 @@ namespace {
         r.measured["details"] = list;
         r.message = missing.front().message;
         if (!ops.empty()) r.fix = TJson{{"ops", ops}};
+        out.push_back(std::move(r));
+    }
+
+    // mitred rims whose joins at sharp notches reach through the stroke as spikes (Canvas2D draws
+    // them too: geometry::mitreSpike); the fix rounds that rim's joins
+    void rimSpikes(TitleCheckContext& ctx, Out& out) {
+        if (!ctx.assets) {
+            out.push_back(result(TitleCheckStatus::Skip, "no asset resolver: not measured", "rim mitres against the outline"));
+            return;
+        }
+        titleart::geometry::TitleGeometry geometry(ctx.assets);
+        TJson found = TJson::array(), ops = TJson::array();
+        double worstRatio = 0.0;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            const titleart::LayerType type = titleart::layerTypeOf(layer);
+            if (type != titleart::LayerType::Text && type != titleart::LayerType::Shape && type != titleart::LayerType::Vector) return true;
+            const titleart::geometry::LayerElements elements = geometry.elements(layer, ctx.doc);
+            if (elements.fromAlpha) return true;
+            const TJson& rims = layer.value("style", TJson::object()).value("rims", TJson::array());
+            double inner = 0.0;
+            for (const titleart::geometry::TitleElement& e : elements.elements) {
+                if (e.kind != titleart::geometry::ElementKind::Rim) continue;
+                const double band = e.grow - inner;
+                inner = e.grow;
+                const titleart::geometry::MitreSpike spike = titleart::geometry::mitreSpike(e);
+                if (!(band > 0) || spike.length <= 0.0) continue;
+                const double ratio = spike.length / band;
+                worstRatio = std::max(worstRatio, ratio);
+                if (ratio <= titleart::geometry::MITRE_SPIKE_WARN_RATIO) continue;
+                int index = -1;
+                for (size_t i = 0; i < rims.size(); i++) {
+                    if (rims[i].is_object() && rims[i].value("id", std::string()) == e.rimId) index = (int)i;
+                }
+                if (index < 0) continue;
+                const std::string id = str(layer, "id");
+                found.push_back(TJson{{"layer", id}, {"rim", index}, {"spike", std::round(spike.length * 10.0) / 10.0},
+                                      {"band", std::round(band * 10.0) / 10.0}, {"at", TJson::array({spike.at.x, spike.at.y})}});
+                ops.push_back(TJson{{"op", "set"}, {"layer", layerRef(id)}, {"values", TJson{{"rim#" + std::to_string(index) + ".join", "round"}}}});
+            }
+            return true;
+        });
+        TitleCheckResult r = result(found.empty() ? TitleCheckStatus::Pass : TitleCheckStatus::Warn, "",
+                                    "each mitred rim's joins: how far a mitre at a concave vertex reaches beyond the rim's band, "
+                                    "against the rim's own width (layer units)");
+        r.measured = TJson{{"spike_to_band", std::round(worstRatio * 100.0) / 100.0}, {"rims", found}};
+        r.threshold = TJson{{"spike_to_band", titleart::geometry::MITRE_SPIKE_WARN_RATIO}};
+        if (found.empty()) {
+            r.message = "no rim mitre reaches past its band";
+        } else {
+            const TJson& first = found[0];
+            r.message = "layer " + layerName(ctx.doc, first["layer"].get<std::string>()) + ", rim " + std::to_string(first["rim"].get<int>()) +
+                        ": mitres at sharp notches stick out " + std::to_string((int)std::lround(first["spike"].get<double>())) +
+                        " units past the rim (as Canvas2D draws them; Pachislop's references keep mitres): round joins remove them";
+            r.fix = TJson{{"ops", ops}};
+        }
         out.push_back(std::move(r));
     }
 
@@ -966,6 +1022,7 @@ namespace {
         {"assets_present", TitleCheckKind::Document, "Every AssetRef resolves", assetsPresent},
         {"glyphs_present", TitleCheckKind::Document, "No missing glyphs after the fallback chain", glyphsPresent},
         {"exposed_targets", TitleCheckKind::Document, "Every exposed target resolves", exposedTargets},
+        {"rim_spikes", TitleCheckKind::Document, "No mitred rim join reaches past its band as a spike", rimSpikes},
         {"bake_fresh", TitleCheckKind::Document, "Every output fresh", bakeFresh},
         {"not_flat", TitleCheckKind::Pixels, "The render is not blank or one colour", notFlat},
         {"not_clipped", TitleCheckKind::Pixels, "No ink or light at the canvas edge; margins of 8 px", notClipped},

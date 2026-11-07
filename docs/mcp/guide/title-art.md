@@ -79,7 +79,8 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
    - `options` keys arrive with later specs; an unknown key fails listing them.
 4. `check_title {path}`: PASS / WARN / FAIL per check with `measured`, `threshold`, `at` crops,
    `method` and a `fix` ({ops} for `edit_title`, or the tool to run). Apply the fix, check again.
-   Checks: document_valid, assets_present, glyphs_present, exposed_targets, bake_fresh (no GPU);
+   Checks: document_valid, assets_present, glyphs_present, exposed_targets, rim_spikes (WARN: a
+   mitred rim's join at a sharp notch pokes through as a spike; fix: round joins), bake_fresh (no GPU);
    not_flat, not_clipped, alpha_bounds, legibility_contrast, counter_survival, noop_effects,
    clipped_highlights, halo, deterministic, fallback_parity, golden (`baseline`: a PNG or
    `rev:<n>`; `save_baseline` writes one). Passing is not aesthetic approval: show the render to
