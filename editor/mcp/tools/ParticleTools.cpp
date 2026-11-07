@@ -1203,8 +1203,8 @@ void registerParticleTools(McpRegistry& registry) {
         object({}), migrationReportTool, true);
 
     // S91: the deterministic preview with its checks, and the sprite-sheet bake on the same run
-    const Json run = {{"path", assetPath("A .particles asset.")}, {"entity", entityRef("A GameObject: every Particle System of its subtree.")},
-                      {"scene", sceneRef()}, {"seed", integer("Default: each system's own, else 1.", 0, 2147483647)},
+    const Json run = {{"path", assetPath("A .particles asset.")}, {"entity", entityRef("A GameObject and its subtree.")},
+                      {"scene", sceneRef()}, {"seed", integer("", 0, 2147483647)},
                       {"seconds", number("Default: one play.", 0, 60)}};
     auto withRun = [&](Json extra) {
         Json properties = run;
@@ -1216,19 +1216,19 @@ void registerParticleTools(McpRegistry& registry) {
         tool.name = "preview_particle_effect";
         tool.title = "Preview Particle Effect";
         tool.description =
-            "Run an effect (path, or entity: its whole subtree) deterministically in a private scene, changing nothing: a filmstrip "
-            "(frames, default 6; 0: none) framed once from the run's bounds, metrics and checks with fix hints. Same request, same "
-            "bytes. Cost is an estimate, never a device measurement. capture_particles shows it in its scene instead.";
+            "Run an effect (path, or entity: its subtree) deterministically in a private scene, changing nothing: a filmstrip "
+            "(frames, default 6; 0: none), metrics and checks with fix hints. Cost is an estimate, never measured on a device. "
+            "capture_particles shows it in its scene instead.";
         tool.inputSchema = object(withRun({
-            {"times", array(number(""), "Cell times (s) instead of frames.")},
+            {"times", array(number(""), "Seconds, instead of frames.")},
             {"frames", withDefault(integer("", 0, 24), 6)},
             {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top"}), "three_quarter")},
             {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
             {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
             {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},
-            {"fail_on", stringEnum("Error result at this verdict.", {"fail", "warn"})},
-            {"reference", string("An image shown as the last cell.")},
-            {"save_path", string("Also write the PNG (project-relative).")},
+            {"fail_on", stringEnum("", {"fail", "warn"})},
+            {"reference", string("Image shown as the last cell.")},
+            {"save_path", string("Also write the PNG.")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 1, 3600), 120)}}), std::vector<std::string>{});
         tool.annotations.readOnly = true;
@@ -1242,9 +1242,9 @@ void registerParticleTools(McpRegistry& registry) {
         tool.name = "bake_particle_sheet";
         tool.title = "Bake Sprite Sheet";
         tool.description =
-            "Bake an effect's run into a sprite sheet (columns x rows frames, straight alpha) and a .particles playing it with "
-            "Texture Sheet Animation. Without output nothing is written: the sheet image. With output both files, one undo step. "
-            "Check the effect with preview_particle_effect first.";
+            "Bake an effect's run into a sprite sheet PNG (columns x rows frames, straight alpha) and a .particles playing it as a "
+            "flipbook. Without output nothing is written: the sheet image. With output both files, one undo step. Check the "
+            "effect with preview_particle_effect first.";
         tool.inputSchema = object(withRun({
             {"columns", withDefault(integer("", 1, 16), 4)},
             {"rows", withDefault(integer("", 1, 16), 4)},
