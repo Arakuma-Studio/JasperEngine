@@ -36,8 +36,9 @@ namespace jasperengine::editor::NativePlugins {
         fs::path root;          // absolute
         bool exists = false;    // plugins/native is a folder
         // files below each platform folder, relative to it, generic separators, sorted;
-        // hidden files and folders (".x") and build/ folders are skipped. Folders that are
-        // bundles (.framework, .xcframework) are listed as one entry, not their content.
+        // hidden files and folders (".x", the atomic-write temporaries among them), build/
+        // folders and the editor's .meta sidecars are skipped. Folders that are bundles
+        // (.framework, .xcframework, .bundle) are listed as one entry, not their content.
         std::map<std::string, std::vector<std::string>> files;   // platform -> files
 
         bool has(const std::string& platform) const;
@@ -80,12 +81,38 @@ namespace jasperengine::editor::NativePlugins {
     // The path below plugins/native, as "android", "ios", ... ("" when `path` is not in it)
     std::string platformOf(const fs::path& projectPath, const fs::path& path);
 
+    // A file the editor keeps beside a project file and no build reads: an asset's .meta
+    bool isEditorSidecar(const fs::path& path);
+    // What the scan and the exports' copies of plugin folders and SDK bundles leave out: hidden
+    // names (".DS_Store", the atomic-write temporaries, ".git"), build/ folders and the editor's
+    // sidecars. A copied one would break a framework's or bundle's signature seal.
+    bool isSkippedEntry(const fs::path& path, bool directory);
+
+    // An SDK of plugins/native/apple or macos as the macOS Xcode target takes it
+    struct MacosSdk {
+        std::string path;        // below plugins/native: "macos/Ads.framework"
+        // what links, below plugins/native: the path, or an .xcframework's macOS library
+        // ("apple/Ads.xcframework/macos-arm64_x86_64/Ads.framework")
+        std::string library;
+        std::string headers;     // an .xcframework library's headers folder ("" when none)
+        bool embedded = false;   // a dynamic library: the app carries it in Frameworks/
+        bool resource = false;   // a resource .bundle: the app carries it as a resource
+    };
+    // The .framework, .xcframework (with a macOS library), .a and .bundle entries of apple/ and
+    // macos/, in the scan's order
+    std::vector<MacosSdk> macosSdks(const Scan& scan);
+
     // CMake lines compiling the Objective-C (and C/C++) sources of plugins/native/apple and
     // macos into `target` on macOS, with -fobjc-arc and the macos.frameworks linked ("" when
     // there are none). rootExpression: where plugins/native is ("${PROJECT_ROOT}/plugins/native");
     // includeDir: the folder of JasperNative.h. Swift is left out (Xcode builds only).
+    // The SDKs (macosSdks) are linked as the Xcode project links them; an executable `target`
+    // also gets the dynamic ones in Frameworks/ (its rpath; without headers and signed, as Xcode's
+    // CodeSignOnCopy and RemoveHeadersOnCopy do) and the resource bundles as resources: Contents/
+    // of a .app, or beside an unbundled executable, where its NSBundle.mainBundle looks. A
+    // library finds the dynamic ones where they are.
     std::string macosCMake(const Scan& scan, const std::string& target, const std::string& rootExpression,
-                           const std::vector<std::string>& frameworks, const std::string& includeDir);
+                           const std::vector<std::string>& frameworks, const std::string& includeDir, bool executable = true);
 
     // "" when `xml` is well-formed element content (several elements, comments and text are
     // fine; the android:, tools: and other prefixes need no declaration), else what is wrong
@@ -99,6 +126,10 @@ namespace jasperengine::editor::NativePlugins {
     fs::path frameworkBinary(const fs::path& framework);
     // The binary of an .xcframework's first library (its Info.plist AvailableLibraries[0])
     fs::path xcframeworkBinary(const fs::path& xcframework);
+    // An .xcframework's library for `platform` ("macos", "ios"; not a simulator or Mac Catalyst
+    // one), relative to it ("macos-arm64_x86_64/Ads.framework"), with its headers folder
+    // (relative too, "" when none); empty when it has none for the platform
+    fs::path xcframeworkLibrary(const fs::path& xcframework, const std::string& platform, fs::path* headers = nullptr);
 
     // ---- scaffolding (Create Plugin dialog, native_plugins create)
 
