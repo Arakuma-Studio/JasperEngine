@@ -6,7 +6,8 @@
     python3 tools/ci/check-notices.py --install-manifest   # licence files to install, for CMake
 
 Every directory under libs/, engine/libs/ and engine/libs/shadercompiler/libs/ is a vendored
-library and needs:
+library, and so is each NESTED_LIBRARIES directory (code inside a library's directory that ships
+under other conditions, such as HarfBuzz's editor-only subsetter); each needs:
   - a row in a NOTICE.md table that names its location in backticks (`engine/libs/sokol/`),
   - a licence file in the directory (LICENSE*, LICENCE*, COPYING*, UNLICENSE*).
 FIRST_PARTY lists the directories there that are our own code.
@@ -43,6 +44,10 @@ FIRST_PARTY = {
 }
 # vendored for the tests only (not linked into anything shipped, not installed)
 TESTS_ONLY = {"libs/googletest"}
+# libraries inside another library's directory, with their own engine/notices.json entry (their name)
+NESTED_LIBRARIES = {
+    "engine/libs/harfbuzz/subset": "harfbuzz-subset",
+}
 
 # (the extension may name the licence and its version, as FFmpeg's COPYING.LGPLv2.1 does)
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|unlicense)(-[\w-]+)?(\.(txt|md|rst|[al]?gplv\d(\.\d)?))?$", re.IGNORECASE)
@@ -61,7 +66,13 @@ def vendored_libraries(repo: Path) -> list[str]:
             relative = f"{root}/{child.name}"
             if child.is_dir() and relative not in FIRST_PARTY:
                 found.append(relative)
+    found += [nested for nested in sorted(NESTED_LIBRARIES) if (repo / nested).is_dir()]
     return found
+
+
+def library_name(library: str) -> str:
+    """A library's name (licenses/<name>-LICENSE, its engine/notices.json key): its directory's, or its nested name."""
+    return NESTED_LIBRARIES.get(library, library.rsplit("/", 1)[-1])
 
 
 def licence_files(directory: Path) -> list[Path]:
@@ -88,7 +99,7 @@ def install_manifest(repo: Path) -> list[tuple[Path, str]]:
     for library in vendored_libraries(repo):
         if library in TESTS_ONLY:
             continue
-        name = library.rsplit("/", 1)[1]
+        name = library_name(library)
         files = licence_files(repo / library)
         for index, path in enumerate(files):
             manifest.append((path, f"{name}-LICENSE" if index == 0 else f"{name}-{path.name}"))
@@ -128,7 +139,7 @@ def check_game_notices(repo: Path) -> list[str]:
                             " or a list of player features")
         if not (repo / directory).is_dir():
             problems.append(f"engine/notices.json: {name}: {directory} does not exist")
-        elif directory.rsplit("/", 1)[-1] != name:
+        elif library_name(directory) != name:
             problems.append(f"engine/notices.json: {name}: the name must be its directory's ({directory})")
     for library in vendored_libraries(repo):
         if library.startswith("engine/libs/") and library not in listed:
