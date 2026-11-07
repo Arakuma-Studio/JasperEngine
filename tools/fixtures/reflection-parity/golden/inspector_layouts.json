@@ -19,6 +19,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -96,6 +112,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -1440,6 +1472,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -4703,6 +4751,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -5443,6 +5507,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6143,6 +6223,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6196,6 +6292,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -6299,6 +6411,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6352,6 +6480,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -7211,6 +7355,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -7998,6 +8158,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
