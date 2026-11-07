@@ -156,7 +156,7 @@ void editor::InspectorWindow::openSpriteSlicer(ComponentType cpType, SceneProjec
     const sprite::TextureSheetInfo info = texture.empty() ? sprite::TextureSheetInfo() : sprite::textureSheetSettings(absolute);
     Texture preview(texture);
     const uint32_t sceneId = sceneProject->id;
-    textureSlicerToolDialog.openTextureSheet(preview, absolute.string(), info.settings,
+    textureSlicerToolDialog.openTextureSheet(preview, texture.empty() ? std::string() : absolute.string(), info.settings,
                                              [this, sceneId, entity, cpType, texture, absolute](const TextureSheetSettings& settings) {
         SceneProject* scene = project->getScene(sceneId);
         if (!scene || !scene->scene || !scene->scene->findComponent<SpriteComponent>(entity)) return;

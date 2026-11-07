@@ -97,7 +97,10 @@ void TextureSlicerToolDialog::openTextureSheet(const Texture& previewTexture, co
     open(previewTexture, 0, 0, nullptr, nullptr);
     m_mode = Mode::TEXTURE_SHEET;
     m_texturePath = textureAbsolute;
-    m_image = pixelart::PixelImage::loadPng(textureAbsolute, nullptr);
+    // a Sprite without a texture slices nothing (the dialog still opens, its Slice greyed out)
+    std::error_code ec;
+    m_image.reset();
+    if (!textureAbsolute.empty() && std::filesystem::is_regular_file(textureAbsolute, ec)) m_image = pixelart::PixelImage::loadPng(textureAbsolute, nullptr);
     if (m_image) {
         m_sheetWidth = m_image->width();
         m_sheetHeight = m_image->height();
@@ -418,7 +421,9 @@ void TextureSlicerToolDialog::show() {
         if (EditorModal::button("From JSON", "from_json")) {
             std::filesystem::path json = std::filesystem::path(m_texturePath);
             json.replace_extension(".json");
-            std::ifstream in(json, std::ios::binary);
+            std::error_code jsonEc;
+            std::ifstream in;
+            if (std::filesystem::is_regular_file(json, jsonEc)) in.open(json, std::ios::binary);
             const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
             pixelart::PixelProblem problem;
             std::vector<TextureSheetFrame> frames;
