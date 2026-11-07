@@ -471,6 +471,9 @@ TitleRectI TitlePlanner::contentRect(const DrawNode& node) {
         const TitleFrame whole = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
         return intersectRect(whole.toFrameRect(b), outRegion);
     }
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    if (layerTypeHasStyle(node.type) && is3D(node)) return title3DRect(node);
+#endif
     if (layerTypeHasStyle(node.type)) return title2DRect(node);
     return {};
 }
@@ -713,6 +716,10 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
         key = hashCombine(key, fnv1a64(svc.caps.pathName()));
         key = hashCombine(key, inkOnly ? 1 : 2);
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+        // a 3D layer's pixels depend on the tier and the 3D path's test flags too (S86)
+        if (is3D(node)) key = hashCombine(hashCombine(key, (uint64_t)(req.tier + 1)), (uint64_t)req.testFlags + 1);
+#endif
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};
@@ -815,8 +822,16 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
         withFx.push_back(anyEnabled(partEffects(layer, part)));
         anyFx = anyFx || withFx.back();
     }
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    const bool threeD = is3D(node);
+    auto content = [&](const std::vector<std::string>& run, const TitleRectI* fixed) {
+        return threeD ? title3D(node, run, fixed) : title2D(node, run, fixed);
+    };
+#else
+    auto content = [&](const std::vector<std::string>& run, const TitleRectI* fixed) { return title2D(node, run, fixed); };
+#endif
     if (!anyFx) {
-        out.px = title2D(node, {});
+        out.px = content({}, nullptr);
         out.mask = out.px;
         return out;
     }
@@ -831,7 +846,7 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
             while (j < parts.size() && !withFx[j]) j++;
         }
         const std::vector<std::string> run(parts.begin() + (long)i, parts.begin() + (long)j);
-        TitlePx rt = title2D(node, run, &rect);
+        TitlePx rt = content(run, &rect);
         if (mask.valid()) blendOnto(mask, rt, 1.0f, (int)TitleBlend::Normal, nullptr, node.layerId);
         Effects post{rt, {}};
         if (alone) post = applyEffects(node.layerId + "#" + parts[i], partEffects(layer, parts[i]), rt, false, {}, wantInk, &layer);

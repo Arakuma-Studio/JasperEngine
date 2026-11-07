@@ -147,6 +147,9 @@ namespace {
 }
 
 std::vector<std::string> TitlePlanner::titleParts(const Json& layer) {
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    if (layer.value("dimension", std::string("2d")) == "3d") return title3DParts(layer);
+#endif
     // back to front: the outermost rim first, the face last (Pachislop's layerParts)
     std::vector<std::string> parts;
     const Json& rims = obj(layer, "style").value("rims", Json::array());

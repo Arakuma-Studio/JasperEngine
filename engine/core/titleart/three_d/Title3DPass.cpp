@@ -1,0 +1,330 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Contract (docs/specs/S86-title-3d.md R1, R5, R29, R34, R40, R45)
+// - Purpose: the planner's side of a Dimension 3D layer (TitlePlanner::title3D*): at planning, its
+//   source outlines, mesh (the mesher's caches), materials and slot table, lighting, rigs, layer
+//   matrix, camera, region (the projected bounds of the mesh, clamped to the request's region)
+//   and k; then one step that renders the region into a node target the S80 compositor takes
+//   like any layer's (premultiplied, display referred).
+// - k is the largest of {the tier's k (Bake: the document's `supersample`), 2, 1} whose region
+//   px x k^2 fits the tier's cap and whose sides fit the device's largest texture.
+// - A document without 3D layers never reaches this file (R45).
+// - Thread-safety: main thread (the planner's).
+
+#include "titleart/render/TitlePlanner.h"
+
+#include "render/SystemRender.h"
+#include "titleart/TitleArtHash.h"
+#include "titleart/render/TitleFrame.h"
+#include "titleart/three_d/Title3DMath.h"
+#include "titleart/three_d/Title3DRenderer.h"
+#include "titleart/three_d/Title3DSource.h"
+#include "titleart/three_d/Title3DStyle.h"
+#include "titleart/three_d/TitleEnvironment.h"
+#include "titleart/three_d/TitleTierFeatures.h"
+#if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
+#include "titleart/three_d/mesher/TitleMesher.h"
+#endif
+
+#include <algorithm>
+#include <cmath>
+
+using namespace jasperengine;
+using namespace jasperengine::titleart;
+
+namespace {
+
+    TitleTier tierOf(int requestTier) {
+        switch (requestTier) {
+            case 1: return TitleTier::High;
+            case 2: return TitleTier::Medium;
+            case 3: return TitleTier::Low;
+            default: return TitleTier::Bake;
+        }
+    }
+
+    geometry::Affine inverseAffine(const geometry::Affine& a) {
+        const double det = a.a * a.d - a.b * a.c;
+        geometry::Affine r;
+        if (std::abs(det) < 1e-30) return r;
+        r.a = a.d / det;
+        r.b = -a.b / det;
+        r.c = -a.c / det;
+        r.d = a.a / det;
+        r.e = -(r.a * a.e + r.c * a.f);
+        r.f = -(r.b * a.e + r.d * a.f);
+        return r;
+    }
+
+#if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
+    // the process's mesher: its shape, mesh and inflate caches are CPU data any renderer shares
+    three_d::TitleMesher& mesher() {
+        static three_d::TitleMesher instance(32, 64);
+        return instance;
+    }
+#endif
+
+    const Json& memberOf(const Json& object, const char* key) {
+        static const Json none;
+        auto it = object.find(key);
+        return it != object.end() ? *it : none;
+    }
+
+}
+
+bool TitlePlanner::is3D(const DrawNode& node) const {
+    return node.layer && layerTypeHasStyle(node.type) && node.layer->value("dimension", std::string("2d")) == "3d";
+}
+
+std::vector<std::string> TitlePlanner::title3DParts(const Json& layer) {
+    std::vector<std::string> parts;
+    const Title3D style = decodeStyle3D(layer);
+    for (auto it = style.bands.rbegin(); it != style.bands.rend(); ++it) {
+        if (it->enabled) parts.push_back("band:" + it->id);
+    }
+    parts.push_back("side");
+    if (style.bevel.width > 0 && style.mode == Mode3D::Extrude) parts.push_back("bevel");
+    parts.push_back("face");
+    return parts;
+}
+
+namespace jasperengine::titleart {
+
+    // the plan of a layer (made once per planner)
+    static std::shared_ptr<Title3DPlan> makeTitle3DPlan(TitlePlanner& planner, const DrawNode& node, const geometry::Affine& parent,
+                                                        TitleRenderServices& svc, const RenderRequest& req) {
+        auto plan = std::make_shared<Title3DPlan>();
+        const Json& layer = *node.layer;
+        const TitleArtDoc& doc = planner.doc();
+        plan->layerId = node.layerId;
+        plan->style = decodeStyle3D(layer);
+        plan->tier = tierOf(req.tier);
+        plan->canvasWidth = doc.canvasWidth();
+        plan->canvasHeight = doc.canvasHeight();
+        plan->size = layerSourceSize(layer);
+        const Scene3D scene = decodeScene3D(doc.root);
+        plan->supersample = scene.supersample;
+        plan->lighting = resolveLighting(scene, plan->style);
+        plan->camera = plan->style.camera ? *plan->style.camera : scene.camera;
+        if (countNonAmbientLights(plan->lighting.lights) > TITLE_3D_MAX_LIGHTS) {
+            TitleProblem p;
+            p.code = "3d_light_limit";
+            p.layer = node.layerId;
+            p.path = "style_3d.lighting.lights";
+            p.message = "more than " + std::to_string(TITLE_3D_MAX_LIGHTS) + " directional or point lights: only the first " +
+                        std::to_string(TITLE_3D_MAX_LIGHTS) + " light the layer";
+            planner.problem(p);
+        }
+        plan->model = title3DLayerMatrix(memberOf(layer, "transform"), parent);
+
+        // the mesh
+#if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
+        if (!svc.content) return plan;
+        std::vector<TitleProblem> problems;
+        three_d::TitleMeshRequest meshRequest;
+        meshRequest.source = three_d::collectTitleSource(layer, doc, *svc.content, req.assets, &problems);
+        for (TitleProblem& p : problems) {
+            if (p.layer.empty()) p.layer = node.layerId;
+            planner.problem(p);
+        }
+        meshRequest.style = plan->style;
+        meshRequest.blocks = three_d::collectCharBlocks(layer, plan->style.bands.size());
+        meshRequest.tier = plan->tier;
+        meshRequest.outputScale = planner.pxScale() * planner.placementOf(layer).scale;
+        // the wrap stream only when a material projects its base texture `wrap`
+        auto wraps = [](const TitleMaterial3D& m) { return m.baseWrap && !m.baseTexture.empty(); };
+        meshRequest.wrap = wraps(plan->style.face) || (plan->style.bevelMaterial && wraps(*plan->style.bevelMaterial)) ||
+                           (plan->style.side && wraps(*plan->style.side));
+        for (const Band3D& b : plan->style.bands) meshRequest.wrap = meshRequest.wrap || wraps(b.material) || (b.side && wraps(*b.side));
+        if (meshRequest.source.glyphs.empty()) return plan;
+        plan->mesh = mesher().build(meshRequest);
+        if (plan->mesh->stats.fallbackUsed) {
+            TitleProblem p;
+            p.severity = TitleSeverity::Info;
+            p.code = "mesh_fallback";
+            p.layer = node.layerId;
+            p.message = "an outward bevel band was cut by the Clipper difference (touching contours)";
+            planner.problem(p);
+        }
+#else
+        TitleProblem p;
+        p.code = "mesher_unavailable";
+        p.layer = node.layerId;
+        p.message = "this build has no 3D mesher and the layer has no cooked mesh";
+        planner.problem(p);
+        return plan;
+#endif
+        const TitleMesh& mesh = *plan->mesh;
+
+        // the materials and the slot table
+        const three_d::TitleSlotMaterials materials = three_d::resolveSlotMaterials(layer, plan->style, mesh);
+        plan->materials = materials.materials;
+        const bool lights = countNonAmbientLights(plan->lighting.lights) > 0;
+        const Json& chars = memberOf(layer, "chars");
+        plan->slots.resize(mesh.slots.size());
+        for (size_t s = 0; s < mesh.slots.size(); s++) {
+            plan->slots[s].material = materials.slotMaterial[s];
+            uint32_t bits = titleTierFeatures(plan->materials[materials.slotMaterial[s]], plan->style, plan->tier).litBits;
+            if (lights) bits |= TitleLitBits::LIGHTS;
+            if (!mesh.rigs.empty()) bits |= TitleLitBits::RIGS;
+            if (plan->lighting.environment.preset == "matcap") bits |= TitleLitBits::MATCAP;
+            if (bits & TitleLitBits::WRAP_UV && mesh.wrap.empty()) bits &= ~TitleLitBits::WRAP_UV;
+            plan->slots[s].bits = bits;
+        }
+        // base textures per material
+        plan->baseTextures.resize(plan->materials.size());
+        for (size_t i = 0; i < plan->materials.size(); i++) {
+            if (plan->materials[i].baseTexture.empty()) continue;
+            plan->baseTextures[i] = planner.title3DAsset(encodeAssetRef(plan->materials[i].baseTexture), node.layerId, "style_3d.face.base_texture");
+        }
+
+        // per-part rigs: the rigged character's matrix, identity elsewhere
+        plan->partRigs.resize(mesh.parts.size());
+        for (size_t p = 0; p < mesh.parts.size(); p++) {
+            const uint16_t r = mesh.parts[p].rig;
+            if (!r || r > mesh.rigs.size()) continue;
+            const TitleMeshRig& rig = mesh.rigs[r - 1];
+            const Json& adjust = memberOf(chars, std::to_string(rig.charIndex).c_str());
+            plan->partRigs[p] = title3DRigMatrix(decodeCharRig(rig.charIndex, adjust), {rig.pivot[0], rig.pivot[1], rig.pivot[2]}, plan->size);
+        }
+
+        // the environment: a procedural preset's scene; a photo, softbox or custom HDRI not built
+        // into this renderer lights with the studio and reports it
+        const Environment3D& env = plan->lighting.environment;
+        if (env.preset == "matcap") {
+            plan->matcap = planner.title3DAsset(encodeAssetRef(env.matcap), node.layerId, "scene_3d.environment.matcap");
+        }
+        const TitleEnvScene* scene3d = titleEnvironmentPreset(env.preset);
+        if (scene3d && !scene3d->procedural) {
+            plan->hdri = loadTitleHdri(scene3d->hdri);
+            plan->hdriYaw = titleHdriYaw(env.preset);
+        }
+        if (!scene3d || (!scene3d->procedural && !plan->hdri)) {
+            if (env.preset != "matcap") {
+                TitleProblem p;
+                p.code = "environment_missing";
+                p.layer = node.layerId;
+                p.path = "scene_3d.environment.preset";
+                p.message = "the environment '" + env.preset + "' has no HDRI here: the studio lights the layer";
+                planner.problem(p);
+                plan->environmentMissing = true;
+            }
+            scene3d = titleEnvironmentPreset("studio");
+        }
+        plan->scene = scene3d;
+        plan->environmentFace = titleEnvironmentFace(env, planner.pxScale(), plan->tier);
+        if (plan->environmentMissing) plan->environmentFace = std::min(plan->environmentFace, 1024);
+        plan->environmentKey = hashCombine(hashCombine(fnv1a64(scene3d->id + (plan->hdri ? ":" + scene3d->hdri : std::string())),
+                                                       (uint64_t)plan->environmentFace),
+                                           TITLE_ENV_BUILDER_VERSION);
+        plan->valid = !mesh.vertices.empty();
+        return plan;
+    }
+
+}
+
+std::shared_ptr<TitleCacheEntry> TitlePlanner::title3DAsset(const Json& ref, const std::string& layerId, const std::string& path) {
+    return assetTexture(ref, TitleAssetKind::Image, TextureWrap::REPEAT, 0, layerId, path);
+}
+
+TitleRectI TitlePlanner::title3DRect(const DrawNode& node) {
+    std::shared_ptr<void>& slot = title3DPlans[node.layerId];
+    if (!slot) {
+        auto parentIt = parents.find(node.layerId);
+        const geometry::Affine parent = parentIt != parents.end() && parentIt->second ? placementOf(*parentIt->second).toDocument : geometry::Affine();
+        slot = makeTitle3DPlan(*this, node, parent, svc, req);
+    }
+    const Title3DPlan& plan = *static_cast<Title3DPlan*>(slot.get());
+    if (!plan.valid) return {};
+    const TitleMesh& mesh = *plan.mesh;
+    const TitleCamera3D camera = title3DCamera(plan.camera, plan.canvasWidth, plan.canvasHeight, scale, outRegion, false);
+    // the mesh box with the skew's reach and every rig's swing (a rigged letter may turn anywhere
+    // within its bounding sphere)
+    std::array<float, 3> lo = mesh.boundsMin, hi = mesh.boundsMax;
+    const float depth = std::max(0.0f, -lo[2]);
+    const float sx = (float)plan.style.skew.x * depth, sy = (float)plan.style.skew.y * depth;
+    lo[0] += std::min(0.0f, sx);
+    hi[0] += std::max(0.0f, sx);
+    lo[1] += std::min(0.0f, sy);
+    hi[1] += std::max(0.0f, sy);
+    if (!mesh.rigs.empty()) {
+        const float r = 0.5f * std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
+        const float u = (float)(plan.size / 100.0);
+        float reach = 0;
+        for (const TitleMeshRig& rig : mesh.rigs) {
+            const CharRig3D a = decodeCharRig(rig.charIndex, memberOf(memberOf(*node.layer, "chars"), std::to_string(rig.charIndex).c_str()));
+            reach = std::max(reach, (float)(std::abs(a.dz) + std::hypot(a.offset.x, a.offset.y)) * u);
+        }
+        for (int c = 0; c < 3; c++) {
+            lo[c] -= reach + r * 0.25f;
+            hi[c] += reach + r * 0.25f;
+        }
+    }
+    double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+    bool any = false;
+    for (int i = 0; i < 8; i++) {
+        const std::array<float, 3> corner = {(i & 1) ? hi[0] : lo[0], (i & 2) ? hi[1] : lo[1], (i & 4) ? hi[2] : lo[2]};
+        const std::array<float, 4> w = plan.model.apply({corner[0], corner[1], corner[2], 1});
+        std::array<double, 2> px;
+        if (!title3DProject(camera, {w[0], w[1], w[2]}, plan.canvasWidth, plan.canvasHeight, scale, px)) return outRegion;
+        minX = std::min(minX, px[0]);
+        minY = std::min(minY, px[1]);
+        maxX = std::max(maxX, px[0]);
+        maxY = std::max(maxY, px[1]);
+        any = true;
+    }
+    if (!any) return {};
+    // two output px of antialiasing margin
+    const int x0 = (int)std::floor(minX) - 2, y0 = (int)std::floor(minY) - 2;
+    return intersectRect({x0, y0, (int)std::ceil(maxX) + 2 - x0, (int)std::ceil(maxY) + 2 - y0}, outRegion);
+}
+
+TitlePx TitlePlanner::title3D(const DrawNode& node, const std::vector<std::string>& parts, const TitleRectI* fixedRect) {
+    const TitleRectI rect = fixedRect ? *fixedRect : nodeRect(node);
+    title3DRect(node);
+    std::shared_ptr<void> held = title3DPlans[node.layerId];
+    auto plan = std::static_pointer_cast<Title3DPlan>(held);
+    if (!plan || !plan->valid || rect.empty()) return {};
+    // k: the tier's (Bake: the document's supersample), else 2, else 1, within the render px cap
+    // and the device's texture size
+    const TitleTierLimits limits = titleTierLimits(plan->tier);
+    const int maxSide = std::max(1024, SystemRender::getFeatures().maxTextureSize2D);
+    const uint64_t regionPx = (uint64_t)rect.width * (uint64_t)rect.height;
+    const int first = plan->tier == TitleTier::Bake ? std::clamp(plan->supersample, 1, 3) : limits.k;
+    plan->k = 1;
+    for (int k : {first, 2, 1}) {
+        if (k > first) continue;
+        if (regionPx * (uint64_t)(k * k) <= limits.renderPxCap && rect.width * k <= maxSide && rect.height * k <= maxSide) {
+            plan->k = k;
+            break;
+        }
+    }
+    // the perspective depends on where the layer sits: its cached pixels are keyed by position
+    if (canvasReads) *canvasReads = true;
+    TitlePx out{newSlot(TitleBuffer::Accumulator, rect.width, rect.height), rect};
+    const double pxScale = scale;
+    const uint32_t testFlags = req.testFlags;
+    const int slot = out.slot;
+    const std::vector<std::string> coloured = parts;
+    // one GPU step that waits while a program of the plan compiles (the previous image stays)
+    TitleRenderStep step;
+    step.kind = StepKind::Gpu;
+    step.label = "3d " + node.layerId;
+    step.layerId = node.layerId;
+    step.scissor = {0, 0, rect.width, rect.height};
+    step.passes = Title3DRenderer::passCount(*plan);
+    step.costWeight = 40.0f * (float)(plan->k * plan->k) * (float)step.passes;
+    step.splittable = false;
+    TitleRenderServices* services = &svc;
+    step.ready = [services, plan, testFlags]() { return title3DRenderer(*services).ready(*plan, testFlags); };
+    std::shared_ptr<TitleJobState> state = st;
+    step.run = [state, plan, rect, pxScale, testFlags, slot, coloured](const TitleRectI&, std::string& error) {
+        if (!state->alive(error)) return false;
+        TitleTarget* target = state->target(slot, error);
+        if (!target) return false;
+        return title3DRenderer(state->services).render(*plan, rect, pxScale, coloured, state->services, target, testFlags, error);
+    };
+    steps.add(std::move(step));
+    return out;
+}

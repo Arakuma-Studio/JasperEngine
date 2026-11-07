@@ -553,6 +553,20 @@ void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs,
     if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
 }
 
+// the TL_* bits of TitleTierFeatures.h (titleart/title_lit.frag)
+void addTitleLitPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    static const char* const FLAGS[24] = {"TL_RAMP", "TL_CLEARCOAT", "TL_IRIDESCENCE", "TL_GEM", "TL_GEM_BEHIND", "TL_DISPERSION",
+                                          "TL_GLASS_DEPTH", "TL_FLAKES", "TL_PATTERN", nullptr, nullptr, "TL_ENV_LOCK",
+                                          "TL_BASE_TEXTURE", "TL_WRAP_UV", "TL_EMISSIVE", "TL_TRANSPARENT", "TL_RIGS", "TL_LIGHTS",
+                                          "TL_HDR_COMPRESS", nullptr, nullptr, "TL_MATCAP", "TL_SPECULAR_AA", "TL_SURFACE_LITE"};
+    for (int bit = 0; bit < 24; bit++) {
+        if (FLAGS[bit] && (prop & shaderPropertyBit(bit))) defs.push_back({FLAGS[bit], "1"});
+    }
+    const uint64_t surface = (prop >> 9) & 3u;
+    if (surface) defs.push_back({"TL_SURFACE_KIND", std::to_string(surface)});
+    defs.push_back({"TL_OUTPUT", std::to_string((prop >> 19) & 3u)});
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -675,6 +689,18 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "titleart.vert";
         args.frag_file = "titleart.frag";
         addTitleArtPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_LIT){
+        args.vert_file = "titleart/title_lit.vert";
+        args.frag_file = "titleart/title_lit.frag";
+        addTitleLitPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_3D_POST){
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart/title3d_post.frag";
+        args.defines.push_back({"TP_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_ENV){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "titleart/title_env.frag";
+        args.defines.push_back({"TE_PROGRAM", std::to_string(properties & 0xFu)});
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_depth.frag";
