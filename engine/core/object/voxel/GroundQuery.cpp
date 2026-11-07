@@ -49,11 +49,12 @@ voxel::GroundSample voxel::sampleGround(Scene* scene, float x, float z, float yH
             const RaycastHit hit = raycast(*store, origin, down, static_cast<double>(store->desc().dimensions.y) * store->desc().voxelSize * 2.0);
             if (!hit.hit) continue;
             const Vector3 world = voxels->localToWorld(owner, hit.point);
+            // volumes over one column: the first surface the ray meets is the highest
+            if (out.source == GroundSource::Voxel && world.y <= out.height) continue;
             const Vector3 pointOnNormal = voxels->localToWorld(owner, Vec3d{hit.point.x + hit.normal.x, hit.point.y + hit.normal.y, hit.point.z + hit.normal.z});
             out.height = world.y;
             out.normal = (pointOnNormal - world).normalized();
             out.source = GroundSource::Voxel;
-            return out;
         }
     }
 #else
