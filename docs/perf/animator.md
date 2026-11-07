@@ -100,45 +100,51 @@ after). **ARM is unmeasured (the owner's decision): no number here says anything
 
 ### Native, before and after the hot paths
 
-`je-bench-anim --workers 3 --count-allocs`, core-tests build (RelWithDebInfo, GCC 11, SSE2), five runs,
-medians with the range. Before: `23f235324` (the rows, the engine unchanged). After: `b8c32e34f`.
+`je-bench-anim --workers 3 --count-allocs`, core-tests build (RelWithDebInfo, GCC 11, SSE2), five runs of
+each binary interleaved, medians with the range. Both binaries are the same bench on the tree of `66322d571`
+(origin/main `f2fa788c7` and S74 step 1 merged); "before" has the engine sources step 2 changed put back to
+that base's.
 
 | Metric | Before | After | Change |
 |---|---|---|---|
-| One 65-bone clip sample (R43: at least 1.5 x) | 4.07 µs (3.96-4.22) | 2.28 µs (2.21-2.31) | **1.79 x** |
-| The same on 8 key groups | 4.17 µs | 2.21 µs | 1.89 x |
-| `sampleQuaternion`, keys 4 degrees apart | 54.3 ns | 24.3 ns | -55 % |
-| `sampleQuaternion`, keys 20 degrees apart | 54.5 ns | 33.3 ns | -39 % |
-| `sampleQuaternion`, keys 60 degrees apart (exact slerp) | 55.2 ns | 67.4 ns | **+22 %** |
-| Crowd200, 3 workers + main, p95 | 4.92 ms (4.57-5.15) | 4.47 ms (4.17-4.62) | -9 % |
-| Crowd200, serial, p50 | 11.63 ms (11.31-11.81) | 9.98 ms (9.62-11.70) | -14 % |
-| Crowd200, serial, p95 | 12.95 ms (12.74-13.72) | 12.30 ms (11.85-14.69) | -5 % (ranges overlap) |
+| One 65-bone clip sample (R43: at least 1.5 x) | 3.96 µs (3.94-3.99) | 2.13 µs (2.05-2.19) | **1.86 x** |
+| The same on 8 key groups | 4.11 µs | 2.14 µs | 1.92 x |
+| `sampleQuaternion`, keys 4 degrees apart | 53.8 ns | 23.6 ns | -56 % |
+| `sampleQuaternion`, keys 20 degrees apart | 53.7 ns | 31.6 ns | -41 % |
+| `sampleQuaternion`, keys 60 degrees apart (exact slerp) | 53.7 ns | 67.3 ns | **+25 %** |
+| Crowd200, 3 workers + main, p95 | 4.64 ms (4.51-4.88) | 4.11 ms (3.93-4.22) | -11 % |
+| Crowd200, serial, p50 | 10.96 ms (10.83-11.29) | 9.16 ms (8.52-9.50) | -16 % |
+| Crowd200, serial, p95 | 12.03 ms (11.87-12.81) | 11.06 ms (9.07-11.87) | -8 % |
+| Crowd200, main thread, p95 | 0.68 ms | 0.69 ms | none |
 | Crowd200, heap allocations, 600 frames | 0 | 0 | |
-| Runtime state of an Animator | 5,000 B | 5,144 B | +144 B (3 layers: the skipped state of R14) |
-| Web30, one thread, p95 (native) | 1.99 ms (1.64-2.27) | 1.52 ms (1.29-1.89) | -24 % |
-| Animation Player crowd of 200, p50 | 2.66 ms (2.48-2.89) | 2.09 ms (2.00-2.20) | -21 % |
+| Runtime state of an Animator | 5,048 B | 5,192 B | +144 B (3 layers: the skipped state of R14) |
+| Web30, one thread, p95 (native) | 1.53 ms (1.52-1.57) | 1.41 ms (1.27-1.63) | -8 % |
+| Web30, one thread, p50 (native) | 1.47 ms | 1.20 ms | -19 % |
+| Animation Player crowd of 200, p50 | 2.55 ms (2.46-2.59) | 1.93 ms (1.92-2.06) | -24 % |
 | The same, allocations of 200 frames | 44,836 | 4,836 | -89 % |
 | 200 idle Animation Players, allocations of 200 frames | 40,000 | 0 | |
-| Retargeted crowd of 50, serial, p50 | 0.560 ms | 0.568 ms | none |
+| Retargeted crowd of 50, serial, p50 | 0.571 ms | 0.567 ms | none |
 
 **Full clips gain far less than the 65-bone micro.** That micro's keys are 30 a second with small swings,
 so every segment takes the fastest tier and rotations are all it samples. A real clip also samples
 translations and scales, searches keys, and has wider segments:
 
-| Clip (sample, then sample + hierarchy) | Keys | Sample | Sample + hierarchy |
-|---|---|---|---|
-| `real_walk_1mm` (reduced) | 911 | 5.87 -> 4.92 µs, -16 % | 8.97 -> 8.01 µs, -11 % |
-| `real_atlas_1mm` (reduced) | 7,407 | 7.21 -> 6.09 µs, -16 % | 10.39 -> 9.19 µs, -11 % |
-| `real_pab_atlas` (dense) | 90,651 | 8.37 -> 7.69 µs, -8 % | 11.63 -> 11.02 µs, -5 % |
-| `real_q_Rig_Walk_Loop` (dense) | 6,519 | 6.60 -> 6.13 µs, -7 % | 8.99 -> 8.77 µs, -3 % |
-| `real_pab_walk` (dense) | 8,241 | 7.94 -> 7.84 µs, -1 % | 11.15 -> 10.71 µs, -4 % |
-| `clip_dense` (generated) | 8,241 | 8.91 -> 7.82 µs, -12 % | 11.71 -> 10.97 µs, -6 % |
-| `clip_reduced` (generated, wide segments) | 911 | 7.41 -> 7.45 µs, none | 9.37 -> 9.44 µs, none |
+| Clip (sample, then sample + hierarchy) | Keys | Memory | Sample | Sample + hierarchy |
+|---|---|---|---|---|
+| `real_walk_1mm` (reduced) | 911 | 66 KB | 5.82 -> 4.83 µs, -17 % | 8.89 -> 7.87 µs, -11 % |
+| `real_atlas_1mm` (reduced) | 7,407 | 195 KB | 7.00 -> 5.83 µs, -17 % | 10.14 -> 8.90 µs, -12 % |
+| `real_pab_atlas` (dense) | 90,651 | 1.29 MB | 8.25 -> 7.56 µs, -8 % | 11.32 -> 10.72 µs, -5 % |
+| `real_q_Rig_Walk_Loop` (dense) | 6,519 | 148 KB | 6.41 -> 6.06 µs, -6 % | 8.93 -> 8.57 µs, -4 % |
+| `real_pab_walk` (dense) | 8,241 | 185 KB | 7.85 -> 7.69 µs, -2 % | 10.96 -> 10.72 µs, -2 % |
+| `clip_dense` (generated) | 8,241 | 170 KB | 8.41 -> 7.78 µs, -8 % | 11.49 -> 10.85 µs, -6 % |
+| `clip_reduced` (generated, wide segments) | 911 | 54 KB | 7.26 -> 7.12 µs, -2 % | 9.33 -> 9.23 µs, -1 % |
+
+Memory is `AnimationClip::memoryBytes()`, after step 1's lossless storage.
 
 Single-run noise on these rows is several percent. A clip whose segments are mostly over 30 degrees pays
 the extra dot product (the 60 degree row above) and gains nothing; a clip of nothing else would get slower.
 The real clips are ozz samples, a Quaternius clip and an earlier Python reduction of them at 1 mm (not `ClipReduction`), kept out of the repository.
-Parse + build of a `.anim` costs about 50 ms per MB here (`real_pab_atlas`: 4.3 MB, 228 ms), unchanged by
+Parse + build of a `.anim` costs about 50 ms per MB here (`real_pab_atlas`: 4.3 MB, 219 ms), unchanged by
 S74; with async loading a file of 64 KB or more now does this on a worker where there are threads.
 
 ### WebAssembly
