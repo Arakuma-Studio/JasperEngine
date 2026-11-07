@@ -2693,7 +2693,7 @@ void addClipQualityFindings(const fs::path& root, const std::string& rel, const 
     }
 }
 
-// ---- --anim-quality (S74 R54): how clips move, measured on their models (no scene is loaded)
+// ---- --anim-quality (S74 R54): how clips move, measured on their models (the project loads, no scene)
 
 // the rows of a bone palette every GLES3 and WebGL2 device's textures hold (their smallest
 // MAX_TEXTURE_SIZE): a skin of more joints cannot load where the palette is a texture
@@ -3151,7 +3151,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
                    const std::vector<std::string>& textureFiles, bool texturesWanted,
-                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
+                   const std::vector<fs::path>& vatFiles, bool vatWanted, bool animQualityWanted) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -3202,7 +3202,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (shadersWanted || cppWanted || texturesWanted || vatWanted || animQualityWanted) {
         // checks only read the project: no lock, an open editor is fine, and no file is written
         // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
         // prefabs or clips)
@@ -3225,6 +3225,13 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // the .vat files (all of them, or the given ones): format, staleness, device limits
         run.vat = vat::checkVatAssets(&project, vatFiles);
         run.vatRan = true;
+    }
+
+    if (animQualityWanted) {
+        // the models' clips loaded and sampled as the editor loads them (its paths, the model parses)
+        const AnimQualityCheck quality = checkAnimQuality(root);
+        run.findings.insert(run.findings.end(), quality.findings.begin(), quality.findings.end());
+        run.checked.push_back({"anim_quality", quality.clips});
     }
 
     // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
@@ -3437,10 +3444,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    // a whole-project check that loads the models (the engine and the project, no scene)
+    const bool animQualityWanted = animQuality && !fileMode;
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted || animQualityWanted) {
         QuietOutput quiet;
         run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
-                        vatFiles, vatWanted);
+                        vatFiles, vatWanted, animQualityWanted);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -3462,12 +3471,6 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
-    }
-    if (animQuality && !fileMode) {
-        // the models' and clips' JSON, the clips sampled on their models' rigs: no engine
-        const AnimQualityCheck quality = checkAnimQuality(root);
-        run.findings.insert(run.findings.end(), quality.findings.begin(), quality.findings.end());
-        run.checked.push_back({"anim_quality", quality.clips});
     }
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());
