@@ -7,6 +7,7 @@
 // fit, cache, registry and planner logic are the pure CPU units of render/shadow/.
 
 #include "RenderSystem.h"
+#include "component/Transform.h"
 #include "RenderSystemShared.h"
 #include "render/SystemRender.h"
 #include "device/QualityResolver.h"
