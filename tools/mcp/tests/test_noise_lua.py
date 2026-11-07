@@ -55,10 +55,18 @@ async def test_noise_lua_in_play(ed: Editor):
     holder = (await ed.call("create_entity", scene=sid, name="Holder", type="empty"))["entity_id"]
     await ed.call("create_script", kind="lua", name="NoiseLua", content=SCRIPT, scene=sid, entity=holder)
     preview = await ed.call("preview_noise_graph", preset="plains", size=64, seed=7, images="none")
+    # A game's sampleGridAsync runs on Background, as it must on a web player's pump (R68). In the editor that lane
+    # is still full of its own start-up shader compiles on this host (one gate slot): wait them out, as no player
+    # has them, so the run measures the game's work.
+    for _ in range(600):
+        lanes = (await ed.call("get_job_system_stats"))["lanes"]["Background"]
+        if lanes["queued"] == 0 and lanes["running"] == 0:
+            break
+        await ed.call("wait", seconds=0.2)
     await ed.call("play", action="start", scene=sid)
     lines = {}
     try:
-        for _ in range(200):
+        for _ in range(600):
             await ed.call("wait", seconds=0.05)
             for entry in await ed.console_since("last"):
                 text = entry.get("message", "") if isinstance(entry, dict) else str(entry)

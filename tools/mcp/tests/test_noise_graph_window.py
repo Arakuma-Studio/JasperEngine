@@ -163,10 +163,11 @@ async def test_an_edit_undoes(ed: Editor):
     x, y = canvas[0] + 12, canvas[3] - 12
     await ui.click(ui.at([x, y, x, y]), button="3")
     await wait_probe(ed, ui, "noisegraph.search")
-    # the list is longer than the popup: the filter field has the focus, and a name brings the row into view
+    # R59: the filter field has the focus; a name narrows the list and Enter adds its first row
     await ui.type("simplex")
-    item = await wait_probe(ed, ui, "noisegraph.search.simplex")
-    await ui.click(mid(ui, item[1]))
+    await ui.frames(4)
+    await save_shot(ed, "noise-graph-search.png")
+    await ui.key("Return")
     await ui.frames(6)
     after = json.loads(target.read_text())
     ed.check(any(n["type"] == "simplex" for n in after["nodes"]), "the node was added")
@@ -202,7 +203,6 @@ async def test_closed_costs_nothing(ed: Editor):
     await open_in_project_window(ed, ui, Path(GRAPH).name)
     await wait_probe(ed, ui, "noisegraph.node.n1")
     await ui.frames(30)
-    opened = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
     tab = await ui.find(WINDOW)
     ed.check(tab is not None, "the window's tab")
     tab_rect = tab.get("rect", tab)
@@ -212,6 +212,9 @@ async def test_closed_costs_nothing(ed: Editor):
               if tab_rect["y"] <= b["y"] + b["height"] / 2 <= tab_rect["y"] + tab_rect["height"]
               and tab_rect["x"] <= b["x"] + b["width"] / 2 <= tab_rect["x"] + tab_rect["width"] + b["width"]]
     ed.check(on_tab, f"a close button on the {WINDOW} tab {tab_rect}: {buttons}")
+    # GPU texture bytes are one total for the whole editor: read them just around the close, so nothing else the
+    # editor loads in between is counted
+    opened = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
     await ui.click(ui.centre(on_tab[0]))
     closed_items = None
     for _ in range(60):
@@ -220,16 +223,16 @@ async def test_closed_costs_nothing(ed: Editor):
         if closed_items is None:
             break
     ed.check(closed_items is None, "the window closed")
-    await ui.frames(6)
-    # a file edit that would run a job with the window open
-    write_graph(ed, json.loads(json.dumps(SIMPLE).replace('"frequency": 3.0', '"frequency": 5.0')))
-    await ui.frames(10)
-    stats = await ed.call("get_job_system_stats")
-    background = stats["lanes"]["Background"]
-    ed.check_eq(background["queued"], 0, f"nothing queued: {background}")
-    ed.check_eq(background["running"], 0, f"nothing running: {background}")
+    await ui.frames(4)
     after = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
     before_bytes = sum(r["current"] for r in opened["records"])
     after_bytes = sum(r["current"] for r in after["records"])
     # at least the three thumbnails of 64 x 64 x 4 bytes went
     ed.check(after_bytes <= before_bytes - 3 * 64 * 64 * 4, f"the thumbnails' textures went: {before_bytes} -> {after_bytes}")
+    # a file edit that would run a preview with the window open; previews run on Normal (the spec's Deviations)
+    write_graph(ed, json.loads(json.dumps(SIMPLE).replace('"frequency": 3.0', '"frequency": 5.0')))
+    await ui.frames(10)
+    lanes = (await ed.call("get_job_system_stats"))["lanes"]
+    for lane in ("Normal", "Background"):
+        ed.check_eq(lanes[lane]["queued"], 0, f"nothing queued on {lane}: {lanes[lane]}")
+        ed.check_eq(lanes[lane]["running"], 0, f"nothing running on {lane}: {lanes[lane]}")
