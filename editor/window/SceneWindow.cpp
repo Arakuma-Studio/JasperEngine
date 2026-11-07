@@ -2851,9 +2851,9 @@ void editor::SceneWindow::show() {
                 if (!isCameraPreview) {
                     viewController->drawToolbar(sceneProject, rightX);
                     // T3 R42: the terrain's preview, for scenes with a terrain
-                    if (sceneProject->scene && sceneProject->scene->getComponentArray<TerrainComponent>()->size() > 0) {
+                    if (sceneProject.scene && sceneProject.scene->getComponentArray<TerrainComponent>()->size() > 0) {
                         ImGui::SameLine();
-                        drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject->id));
+                        drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject.id));
                     }
                 }
                 ImGui::SameLine();
