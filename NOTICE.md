@@ -312,3 +312,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Ideas re-implemented, no code copied
+
+[ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S74-clip-quality.md` D5. No ozz source ships here.

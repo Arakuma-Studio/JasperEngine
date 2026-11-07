@@ -19,7 +19,7 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
-| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below). Pure parsing, no engine start. |
+| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below), and four warnings on what a clip holds (`anim-*`, below). Pure parsing, no engine start. |
 | `--vat` | Vertex Animations (`.vat`): every `.vat` read as the engine reads it (an error with `line:col` for text that is not one, a warning with the JSON path of each editable field the lenient reader repairs), a source changed or missing since the bake (warnings), a `.vat.glb` that is missing or no longer matches the `.vat` (errors), and a payload texture over the device limit of the recipe's preset (an error; see below). Loads the project (no scenes). |
 | `--normals` | Sprite normal maps: generated ones (a PNG with a `jasper.spritenormals` recipe, written by `generate_sprite_normals`, the `generate-sprite-normals` CLI and Window > Sprite Normal Map) whose source changed or went missing, and normal maps on Sprites, Tilemaps and Polygons (not 3D meshes, whose Lit normal maps are sized independently) that don't match their colour texture (size, frames, filter), look like DirectX or aren't normal maps, or no Light 2D can show (height 0). Pure parsing, no engine start; cached (see below). |
 | `--all` | All eight. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--normals/--all`: `--lua --shaders --ui --textures --anims --vat --normals` (C++ only when asked, since it builds). |
@@ -254,6 +254,23 @@ Tool `vat`, at the `.vat`, `code` the kind and `suggestion` the fix:
 | `vat-format` | warning | an editable field (a clip's `wrap`, `speed`, an event...) the reader repaired, with its JSON path | fix the value |
 
 The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/vertex-animation.md`).
+
+## What the clip check warns of
+
+`--anims` (`code` the kind; all warnings, so exit codes keep their meaning):
+
+| Code | When | Fix |
+|---|---|---|
+| `anim-redundant-keys` | over 25 % of a clip's keys are what their neighbours give anyway (within 1e-5 a component) | `optimize_animation` measures what removing them costs |
+| `anim-constant-track` | a track of more than one key holds one value | `optimize_animation` leaves one key |
+| `anim-rotation-flip` | two consecutive keys have opposite signs in the file, or on a Hermite track, or are more than 160 degrees apart | add a key in the middle, or export it again |
+| `anim-optimize-stale` | a reduced clip's `optimize.source` has changed or is gone (`optimize.source_sha1`) | `optimize_animation` again with the same arguments |
+
+`check_animation` returns findings of this shape too, some of them errors, none of them `check`'s: `anim-compare-error` (over the
+limit), `anim-compare-unmeasured` (no bone moves on this rig: no number to trust), `anim-compare-other-tracks`,
+`anim-compare-events` (events or audio cues), `anim-compare-length`, `anim-compare-failed`, `anim-loop-seam` (a Loop clip's seam over 10 mm),
+`anim-root-drift` (a root under 0.25 m/s, or any with `limits.root_drift_mm`, ending over 20 mm or that limit from its start),
+`anim-no-rig`, `anim-unreadable`.
 
 ## What the normal map check runs
 

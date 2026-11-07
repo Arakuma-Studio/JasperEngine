@@ -3,6 +3,7 @@
 
 #include "SceneRender3D.h"
 #include "animation/AnimatorDebug.h"
+#include "animation/BoneOverlay.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -834,62 +835,53 @@ void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelCo
     const Vector4 boneColor(0.9f, 0.9f, 0.2f, alpha);
     const Vector4 tipColor(1.0f, 0.5f, 0.1f, alpha);
 
-    for (const auto& [boneId, boneEntity] : model.bonesIdMapping) {
-        Transform* boneTransform = scene->findComponent<Transform>(boneEntity);
-        if (!boneTransform || !boneTransform->visible) continue;
+    // a bone's position from the Animator's pose where its Transform is not written (Write Bones: Exposed)
+    for (const BoneOverlaySegment& segment : boneOverlaySegments(scene, model)) {
+        const Vector3& bonePos = segment.bone;
 
-        Vector3 bonePos = boneTransform->worldPosition;
+        if (segment.hasParent) {
+            const Vector3& parentPos = segment.parent;
+            Vector3 dir = bonePos - parentPos;
+            float length = dir.length();
 
-        Entity parentEntity = boneTransform->parent;
-        if (parentEntity != NULL_ENTITY) {
-            BoneComponent* parentBone = scene->findComponent<BoneComponent>(parentEntity);
-            if (parentBone) {
-                Transform* parentTransform = scene->findComponent<Transform>(parentEntity);
-                if (parentTransform) {
-                    Vector3 parentPos = parentTransform->worldPosition;
-                    Vector3 dir = bonePos - parentPos;
-                    float length = dir.length();
+            if (length < 1e-6f) continue;
 
-                    if (length < 1e-6f) continue;
+            dir = dir / length;
 
-                    dir = dir / length;
+            // Build perpendicular basis
+            Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
+            Vector3 right = dir.crossProduct(up).normalized();
+            up = right.crossProduct(dir).normalized();
 
-                    // Build perpendicular basis
-                    Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
-                    Vector3 right = dir.crossProduct(up).normalized();
-                    up = right.crossProduct(dir).normalized();
+            // Wireframe pyramid: base near parent, tip at child
+            float baseOffset = length * 0.15f;
+            float baseSize = length * 0.08f;
+            Vector3 baseCenter = parentPos + dir * baseOffset;
 
-                    // Wireframe pyramid: base near parent, tip at child
-                    float baseOffset = length * 0.15f;
-                    float baseSize = length * 0.08f;
-                    Vector3 baseCenter = parentPos + dir * baseOffset;
+            Vector3 b0 = baseCenter + (right + up) * baseSize;
+            Vector3 b1 = baseCenter + (right - up) * baseSize;
+            Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
+            Vector3 b3 = baseCenter + (up - right) * baseSize;
 
-                    Vector3 b0 = baseCenter + (right + up) * baseSize;
-                    Vector3 b1 = baseCenter + (right - up) * baseSize;
-                    Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
-                    Vector3 b3 = baseCenter + (up - right) * baseSize;
+            // Base square
+            boneLinesObj->addLine(b0, b1, boneColor);
+            boneLinesObj->addLine(b1, b2, boneColor);
+            boneLinesObj->addLine(b2, b3, boneColor);
+            boneLinesObj->addLine(b3, b0, boneColor);
 
-                    // Base square
-                    boneLinesObj->addLine(b0, b1, boneColor);
-                    boneLinesObj->addLine(b1, b2, boneColor);
-                    boneLinesObj->addLine(b2, b3, boneColor);
-                    boneLinesObj->addLine(b3, b0, boneColor);
+            // Lines from parent to base
+            boneLinesObj->addLine(parentPos, b0, tipColor);
+            boneLinesObj->addLine(parentPos, b1, tipColor);
+            boneLinesObj->addLine(parentPos, b2, tipColor);
+            boneLinesObj->addLine(parentPos, b3, tipColor);
 
-                    // Lines from parent to base
-                    boneLinesObj->addLine(parentPos, b0, tipColor);
-                    boneLinesObj->addLine(parentPos, b1, tipColor);
-                    boneLinesObj->addLine(parentPos, b2, tipColor);
-                    boneLinesObj->addLine(parentPos, b3, tipColor);
-
-                    // Lines from base to child tip
-                    boneLinesObj->addLine(b0, bonePos, boneColor);
-                    boneLinesObj->addLine(b1, bonePos, boneColor);
-                    boneLinesObj->addLine(b2, bonePos, boneColor);
-                    boneLinesObj->addLine(b3, bonePos, boneColor);
-                }
-            }
+            // Lines from base to child tip
+            boneLinesObj->addLine(b0, bonePos, boneColor);
+            boneLinesObj->addLine(b1, bonePos, boneColor);
+            boneLinesObj->addLine(b2, bonePos, boneColor);
+            boneLinesObj->addLine(b3, bonePos, boneColor);
         } else {
-            // Root bone: draw a small octahedron marker
+            // A root (its parent is no bone, or there is none): a small octahedron marker
             float markSize = 0.03f;
             boneLinesObj->addLine(bonePos + Vector3(0, markSize, 0), bonePos + Vector3(markSize, 0, 0), tipColor);
             boneLinesObj->addLine(bonePos + Vector3(markSize, 0, 0), bonePos + Vector3(0, -markSize, 0), tipColor);

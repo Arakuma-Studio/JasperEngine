@@ -73,6 +73,7 @@ namespace jasperengine::editor::mcp {
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
+    void registerAnimationQualityTools(McpRegistry& registry);   // S74: check_animation, optimize_animation
     void registerSpriteNormalsTools(McpRegistry& registry);
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a

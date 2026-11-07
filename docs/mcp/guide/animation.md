@@ -45,6 +45,55 @@ State machines, blend trees, layers, IK and humanoid retargeting over these clip
 `get_animation {entity: "Hero"}` lists the player's states (`players[0].states: [{name, clip,
 wrap}]`) and a binding report per state; use it after renames or when retargeting a clip.
 
+## Quality: numbers before pictures
+
+Screenshots cost tokens and cannot show a slide or a one-frame pop. Measure first. Both tools below
+are in the `animation` group (`tool_groups {enable: ["animation"]}`) and run as jobs.
+
+| Question | Call | Read |
+|---|---|---|
+| How big? | `get_animation {clip, max_keys: 1}` or `get_asset_info {path}` | `stats.runtime_bytes`, `keys` |
+| How many joints, before placing it? | `get_asset_info {path, skeleton: true}` | `model.skeleton_summary` |
+| Which bone hangs from which, once placed? | `get_model_info {entity}` | `bones[i].parent` (null: a root) |
+| What costs most in the project? | `check_animation {checks: ["stats"], top: 8}` | `clips` (largest first), `totals` |
+| A clean loop? Does the root drift? | `check_animation {clips: [clip]}` | `loop_seam`, `root_motion`, `findings`, `ok` |
+| Is this clip the same as that one? | `check_animation {clips: [a], compare_to: b, limits: {error_mm: 1}}` | `compare.max_error_mm`, `worst_joint`, `within_tolerance` |
+
+`ok: false` is a successful call that has findings (the `ProjectChecks` shape: `docs/mcp/checks.md`). Every
+mm is measured: both clips sampled with the runtime sampler at each key time and halfway between them, then
+each joint and six points `skin_distance_mm` from it are compared. A check that has no number to give says
+so (`anim-no-rig`, `anim-compare-unmeasured`, `not_available`); silence never means a pass.
+
+`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed` and the `foot_slide_mm` and `pop_mm`
+limits are in the schema and answer `not_available` until a build has them.
+
+**Reducing keys: preview, write, prove.** Usually a small gain: JasperArcade-Ported's 51 clips, already
+key-reduced by their FBX import, have a median of 1.1x fewer keys at 1 mm, and tracks that lose different keys
+stop sharing their key times, so Memory can stay as it was or grow. Read the numbers; keep the source when they
+do not pay (`warnings`: `no_gain`, `kept_all_keys`).
+
+1. `optimize_animation {clips: ["assets/anim/walk.anim"]}`: nothing is written. Read `bytes_before`,
+   `bytes_after`, `keys_before`, `keys_after`, `max_error_mm`, `worst_joint`.
+2. The same arguments + `output: true`: writes `walk.opt.anim` beside it, one undo step, its error measured
+   again from the file. A model's clip (`model#Clip`, or a model for all of them) writes a new `.anim`; a
+   model is never changed. `output: "<the source>", overwrite: true` replaces the source (one undo step).
+   `root: "Hero"` switches that GameObject's Animation Player to the new files (one scene undo step).
+3. `check_animation {clips: ["assets/anim/walk.opt.anim"], compare_to: "assets/anim/walk.anim"}`: the limit is
+   the tolerance its `optimize` record kept. Require `compare.within_tolerance`.
+
+`tolerance_mm` (default 1) bounds the measured error at `skin_distance_mm` (default 100, floor 10). It is capped
+at 0.1 % of the height of what the clip moves (`effective_tolerance_mm`). Feet and toes (the humanoid map, or
+names with foot, toe, ankle, `ball_`) get half of it, measured; `joints: [{path, tolerance_mm}]` overrides one joint
+(its path or name, a trailing `*` matches the rest). Tightening a joint tightens its ancestors, since they move it,
+but not its siblings or children. A clip must name its rig: a model's clip has one; for an `.anim` pass `on` (or
+`entity`) or give it a Preview Model, else `no_rig`.
+
+Tracks with tangents, eases or steps, morph, lattice, property and humanoid tracks, and paths not on the rig keep
+all their keys and are counted in `skipped_tracks`. A clip with humanoid tracks only has nothing to reduce.
+
+**Common mistakes.** Reading a whole clip on a dense rig (tens of thousands of tokens: pass `max_keys: 1`).
+Comparing a `.poseanim`'s numbers with a clip's. Calling a preview's keys a saving before reading `bytes_after`.
+
 ## The .anim file
 
 UTF-8 JSON, written canonically (fixed key order, 2-space indent, one keyframe per line, tracks
@@ -153,8 +202,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 ## What a clip costs
 
 `get_animation {clip, max_keys: 1}` and `get_asset_info {path}` (under `clip`) return `stats`:
-`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s` and
-`constant_tracks` (tracks of several keys that never move). Asking does not keep the clip loaded.
+`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s`,
+`constant_tracks` (tracks of several keys that never move) and `audio_cues`. Asking does not keep the clip loaded.
 Across the project: `get_memory_stats {prefix: "Animation.Clips"}` is what is loaded now, and
 `get_frame_times {monitors: ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms",
 "Anim Wave ms", "Anim Finalize ms", "Clip memory"]}` what the Animators cost per frame.

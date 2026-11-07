@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/ClipReport.h"
+#include "util/SHA1.h"
 #include "media/VideoFormats.h"
 #include "htmlui/compat/CompatApi.h"
 #include "component/PrefabComponent.h"
@@ -2143,7 +2145,8 @@ void printCheckUsage(const std::string& commandName) {
         << "                           and synthesized textures (PNGs with a jasper.synthesis recipe) whose\n"
         << "                           sources changed or went missing since (regenerate them).\n"
         << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
-        << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
+        << "                           JSON path of every dropped part, the clips scenes and prefabs reference, and\n"
+        << "                           warnings on redundant keys, constant tracks, rotation flips and stale reductions.\n"
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
@@ -2617,6 +2620,63 @@ struct VideoCheck {
     size_t players = 0;
 };
 
+// R25's warnings of one parsed clip. A share under this leaves a clip alone: a few collinear keys
+// are what every hand-keyed clip has
+constexpr double REDUNDANT_KEY_SHARE = 0.25;
+
+void addClipQualityFindings(const fs::path& root, const std::string& rel, const anim::ClipParseResult& parsed, ClipCheck& check,
+                            std::map<std::string, std::string>& sourceHashes) {
+    const ClipData& data = *parsed.data;
+    auto warn = [&](const char* code, const std::string& message, const std::string& suggestion) {
+        ProjectChecks::Finding finding;
+        finding.tool = "anim";
+        finding.path = rel;
+        finding.severity = "warning";
+        finding.code = code;
+        finding.message = message;
+        finding.suggestion = suggestion;
+        check.findings.push_back(std::move(finding));
+    };
+    anim::ClipReportRequest request;
+    request.clip = AnimationClip::build(parsed);
+    const anim::ClipReport report = anim::analyzeClip(request);
+    const size_t redundant = anim::countRedundantKeys(data);
+    if (report.keys > 0 && (double)redundant > REDUNDANT_KEY_SHARE * (double)report.keys) {
+        warn("anim-redundant-keys", std::to_string(redundant) + " of " + std::to_string(report.keys) + " keys only repeat what their neighbours give",
+             "optimize_animation measures what removing them costs");
+    }
+    if (report.constantTracks > 0) {
+        warn("anim-constant-track", std::to_string(report.constantTracks) + (report.constantTracks == 1 ? " track holds" : " tracks hold") +
+             " one value across all its keys", "optimize_animation leaves one key on each");
+    }
+    std::set<std::string> flipped;
+    for (const auto& [path, time] : parsed.rotationSignFlips) flipped.insert(path);
+    for (const anim::ClipRotationFlip& flip : anim::findRotationFlips(data)) flipped.insert(flip.path);
+    for (const std::string& path : flipped) {
+        warn("anim-rotation-flip", "the rotation of \"" + path + "\" flips between two keys (opposite signs, or almost opposite rotations), "
+             "so it may turn the other way round from what was keyed", "add a key in the middle, or export it again");
+    }
+    const anim::ClipOptimizeRecord record = anim::readClipOptimizeRecord(data);
+    if (record.present && !record.source.empty() && !record.sourceSha1.empty()) {
+        anim::SubClipReference parts;
+        const std::string file = anim::parseSubClipReference(record.source, parts) ? parts.model : record.source;
+        const auto known = sourceHashes.find(file);
+        std::string hash;
+        if (known != sourceHashes.end()) {
+            hash = known->second;
+        } else {
+            std::string bytes;
+            if (ProjectChecks::readFile(root / editor::FileUtils::pathFromUtf8(file), bytes)) hash = editor::SHA1::hash(bytes);
+            sourceHashes.emplace(file, hash);
+        }
+        if (hash != record.sourceSha1) {
+            warn("anim-optimize-stale", hash.empty() ? "it was reduced from \"" + record.source + "\", which is gone"
+                                                     : "it was reduced from \"" + record.source + "\", which has changed since",
+                 "optimize_animation again with the same arguments");
+        }
+    }
+}
+
 // Every VideoPlayerComponent node under a scene or prefab file's YAML
 void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, int depth = 0) {
     if (depth > 64 || !node) return;
@@ -2867,6 +2927,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     checkAnimAssetFiles(root, masks, controllers, check, assetGuids, projectGuids);
     const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
+    std::map<std::string, std::string> sourceHashes;    // a reduced clip's source -> its hash, each file once
     for (const fs::path& file : clips) {
         std::string text;
         const std::string rel = ProjectChecks::projectRelative(root, file);
@@ -2881,6 +2942,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
         for (const ClipWarning& warning : parsed.warnings) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
+        addClipQualityFindings(root, rel, parsed, check, sourceHashes);
     }
     if (!all) return check;
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
