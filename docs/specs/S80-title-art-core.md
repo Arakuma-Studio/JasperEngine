@@ -1579,6 +1579,7 @@ passing them does not mean the title looks good. Show the render to a person."}`
 | `assets_present` | document | Every AssetRef resolves | all | the asset's nearest match by name |
 | `glyphs_present` | document | No missing glyphs after the fallback chain | 0 | `set font` / add to `fallback_fonts` a project font that has them |
 | `exposed_targets` | document | Every exposed target resolves | all | `unexpose` |
+| `rim_spikes` | document | How far a mitred rim's join at a concave vertex reaches beyond the rim's band (its distance to the outline minus the grow), against the rim's own width; Canvas2D draws these spikes too (Deviation 53) | ≤ 0.5 (WARN above) | `set rim#n.join: round` |
 | `bake_fresh` | document | Every output fresh | all | `export_title` |
 | `not_flat` | pixels | The render is not blank or one colour | not flat | the layer that contributes nothing |
 | `not_clipped` | pixels | Alpha > 2/255 within 1 px of the canvas edge; per side; attributed to layers by isolated renders | margin ≥ 8 px | `set canvas.width/height` or the layer's `size` |
@@ -2072,14 +2073,20 @@ rest of S82 lands in 6B.
     masks, the front part its face alone; the cell's image is front over back.
 39. **Implementation: element seeds add the document's as seed + (document seed - 1)**, so the
     default document seed 1 renders Pachislop's patterns, textures and dry brush.
-40. **Measured: R42's colour budget holds for the title, not its layer effects.** On the
-    classic-style fixture of `TitleArtRendererGpu.CacheCascade` (four rims, a gold face, a glow
-    and a drop shadow standing in for Outer Glow and Drop Shadow) a full render is 57 passes, a
-    face colour change 23, a whole-pixel move 2 and an outer rim width change 20 (35 %). The title
-    itself re-runs only its stack, placement, compose and output (8 passes); the two layer effects
-    re-run because an effect's output is a function of its input pixels and a definition cannot
-    say it reads only their alpha. A later `FxInputs` member (alpha only) would let the runner key
-    such effects by the field hash and hold the colour change at 8.
+40. **Implementation: R42's colour budget through alpha-keyed results.** A colour change keeps
+    what does not read colour. The rims draw into a target of their own that the cache keeps
+    (keyed by the rims' materials, shapes, frame, light, turn and seeds), and the stack starts as
+    a copy of it; a fresh render runs the same passes, so a cached face edit gives the same
+    bytes. The bevel height is keyed by the bevel without its colours. `LayerHashes::alpha` (the
+    stack hash without Color members: colours shade colour only, alpha being coverage x fill
+    alpha x opacity) keys what a layer's content alpha is; the planner passes it to the first
+    effect (`EffectContext::inputAlphaKey`) and on through effects whose `EffectDef::alphaFromAlpha`
+    says their output alpha is a function of their input alpha (Outer Glow, Drop Shadow), and the
+    effect library keeps the results it computes from that alpha alone across renders
+    (`fx::blurAlpha`, `distanceField`, `layerBounds`, through `TitlePassRunner::recall`/`keep`).
+    On the classic fixture with Outer Glow and Drop Shadow (`TitleArtRendererGpu.CacheCascade`)
+    a face colour change is 7 passes: the rims copy, the face, placement, the two effects'
+    composites, the canvas compose and the output (it was 23 with every effect pass re-run).
 41. **Implementation: one shader type, two fragment files.** The renderer's programs are
     `ShaderType::TITLE_ART` numbers 18-41 (`render/TitlePrograms.h`, `titleart/render/programs.glsl`)
     after the effects' 1-17 (`render/TitlePasses.h`); the variant compiler sends 18 and up to
@@ -2157,3 +2164,49 @@ rest of S82 lands in 6B.
     with an `EffectContext`, then the renderer's ADJUST_MIX; the renderer's own copy
     (`render/Adjustments.*`, `titleart/render/adjust.glsl` and its program) is gone, so the
     renderer's programs after Blend moved down one number (Deviation 41).
+52. **Tests: AC12's scene parity.** The scenes run as `TitleArtScenesParityGpu.Scenes`
+    (`render/TitleArtScenesParityGpuTest.cpp`), not `TitleArtParityGpu.<case>`: gtest needs one
+    fixture class per suite, and `TitleArtParityGpu` belongs to the effect test (its EffectRig).
+    The framing and the metric moved to `support/TitleParity.h`, shared by both. Nine of AC11's
+    scenes are compared; `mask-from-layer-luminance` is not, because its matte is Pachislop's
+    `sunburst` generator, which S83 registers (S83 §6.7.15); AC11's own golden of that scene
+    stays the gate until then. The red control is in the test: the metric fails the adjustment
+    outside its group against the in-group reference, and hidden groups drawn against
+    `nested-hidden-groups`.
+53. **Finding (no change): the rim "spikes" at acute notches are Canvas2D's.** A rim is the face
+    filled and stroked at 2 x grow with mitre joins and limit 4, as Pachislop draws it. At a
+    concave vertex of the outline the outside of the turn lies inside the glyph, so the join's
+    mitre points into the glyph; when the notch is sharp (Roboto's N 33 deg, V 38 deg: 3.5 and
+    3.1 x the half width, within the limit) and the stroke under it is thinner than that, the tip
+    comes out the far side. ThorVG's stroker and the HTML canvas rules agree pixel for pixel
+    (`MaskRasterTest.MitresFollowCanvas2DAtConcaveVertices`, a reference built from the canvas
+    rules); Pachislop shows none on its standard title because Dela Gothic One's strokes are
+    thicker than the mitres there. A bevel there would be a different look than the reference
+    renderer's, so the masks are unchanged; instead check_title's `rim_spikes` (§6.12) measures
+    each mitred rim (`geometry::mitreSpike`: how far the worst concave mitre's tip lies beyond the
+    rim's band) and WARNs above half the rim's own width, with a fix that rounds that rim's joins.
+54. **Open: AC30 (R45) is not met on the software GL host, and has no test.** Measured with the
+    queue's own counters (each frame it worked in: TitlePreviewStats::lastFrameMs) while 20
+    unbaked documents' Project window thumbnails were requested on llvmpipe: 28 working frames,
+    22 of them over 4 ms, the worst 169 ms, while at most 5 thumbnails were queued at a time. A
+    frame runs many render steps at once (TitleRenderJob::step trusts each step's
+    nextStepCostUs, and on llvmpipe the "GPU" passes and the readback run on the main thread,
+    far above those estimates), so the budget arbiter does not hold the 4 ms. A profiler monitor
+    of the per-frame time also proved unreliable as a test probe (a monitor keeps one value per
+    profiler frame). What is needed: measured step costs fed back into nextStepCostUs (or a
+    wall-clock stop inside TitleRenderJob::step) and a probe that reports the queue's per-frame
+    times; until then `test_title_art.py::test_preview_budget` is not written.
+55. **Tests: AC32's `titleart-off` selection runs in the Linux build image.** It configures the
+    engine with `-DJASPERENGINE_TITLE_ART=OFF` when `--titleart-off-build` holds no library (the
+    other selections run in the no-compiler runtime image), so it is not in `--only`'s default
+    list: `tools/build.sh exec linux python3 tools/ci/test_player_cli.py --only titleart-off`.
+56. **Evidence: AC39's screenshots come from an MCP-driven isolated editor.** A new project in
+    the harness's Xvfb, its Project window revealed on the documents (a bookmark), the
+    document's tile clicked with real input (xdotool at the rect `editor_status` reports), and
+    Project Settings opened by `run_command edit.projectSettings`; `screenshot {view: editor}`
+    takes `titleart-project.png`, `titleart-inspector.png` and `titleart-settings.png`. The script
+    is kept with the evidence, outside the repository; `tools/editor-shot.sh` clicks fixed
+    coordinates, which a layout change moves.
+57. **Open: AC40's red control was not run.** The `make_title_logo` eval case exists and
+    `tool_budget.py --check` passes with the guide's entry; running the case with and without the
+    entry needs lent Claude accounts (`tools/mcp/eval/README.md`), which the program did not have.
