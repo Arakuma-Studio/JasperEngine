@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "Engine.h"
+#include "device/QualityResolver.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
@@ -242,7 +243,8 @@ AtmosphereQuality AtmosphereRenderer::viewQuality() const{
         return Engine::getAtmosphereQuality();
     if (rs->rv().atmosphereQuality >= 0)
         return (AtmosphereQuality)rs->rv().atmosphereQuality;
-    return Engine::getAtmosphereQualityDefault();
+    // the device tier may turn the volumetrics off (QualityResolver)
+    return QualityResolver::volumetrics(Engine::getAtmosphereQualityDefault());
 }
 
 void AtmosphereRenderer::clearHeightFog(height_fog_t& block){
@@ -612,7 +614,9 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1)
     const fs_shadow_data_t& shadowData = rs->ps().fs_shadow_data;
     const bool shafts = fog->lightShafts && rs->hasShadows && shadowData.header.x >= -0.5f;
-    block.depthInfo = Vector4(camera.farClip, camera.nearClip, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
+    // the depth is linearised with the near and far the projection was built with
+    const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);
+    block.depthInfo = Vector4(nearFar.y, nearFar.x, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
 
     // the volumes: in view, within the volumetric distance, the nearest first, capped by the tier
     std::vector<int> selected;
@@ -724,15 +728,23 @@ float AtmosphereRenderer::cameraAltitudeFade(const Transform& cameraTransform) c
 }
 
 TextureRender* AtmosphereRenderer::weatherTexture(){
-    // the component's map once loaded (it tiles), else the built-in one
-    if (!clouds->weatherMap.empty()){
-        clouds->weatherMap.setWrapU(TextureWrap::REPEAT);
-        clouds->weatherMap.setWrapV(TextureWrap::REPEAT);
-        TextureRender* render = clouds->weatherMap.getRender(nullptr);
-        if (render && render->isCreated())
-            return render;
+    // the component's map once loaded, else the built-in one
+    if (clouds->weatherMap.empty())
+        return &noiseWeather;
+    Texture* map = &clouds->weatherMap;
+    // It always tiles. Its wrap is authored data, saved with the component, so another wrap's
+    // map draws through a copy with the repeat sampler
+    if (map->getWrapU() != TextureWrap::REPEAT || map->getWrapV() != TextureWrap::REPEAT){
+        if (tiledWeatherSource != *map){
+            tiledWeatherSource = *map;
+            tiledWeatherMap = *map;
+            tiledWeatherMap.setWrapU(TextureWrap::REPEAT);
+            tiledWeatherMap.setWrapV(TextureWrap::REPEAT);
+        }
+        map = &tiledWeatherMap;
     }
-    return &noiseWeather;
+    TextureRender* render = map->getRender(nullptr);
+    return render && render->isCreated() ? render : &noiseWeather;
 }
 
 void AtmosphereRenderer::fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
@@ -765,7 +777,7 @@ void AtmosphereRenderer::fillClouds(clouds_t& block, const CameraComponent& came
     block.sunDir_steps = Vector4(sunDirection, (float)std::clamp(tier.cloudSteps, 1, ATMOSPHERE_MAX_CLOUD_STEPS));
     block.sunColor_lightSteps = Vector4(sunColor, (float)std::clamp(tier.cloudLightSteps, 1, ATMOSPHERE_MAX_CLOUD_LIGHT_STEPS));
     const Vector3 ambient = Vector3(frame.ambient.x, frame.ambient.y, frame.ambient.z) * std::max(clouds->ambientLightDimmer, 0.0f);
-    block.ambientBottom_near = Vector4(ambient * 0.5f, camera.nearClip);
+    block.ambientBottom_near = Vector4(ambient * 0.5f, RenderSystem::getCameraNearFar(camera).x);
     block.ambientTop_fade = Vector4(ambient, cloudsFade() * altitudeFade);
     block.target = Vector4(0.0f, 0.0f, skyMap ? 1.0f : 0.0f, useFloatTargets() ? 0.0f : 1.0f);
     // aerial perspective by the height fog (the editor's Fog toggle leaves passFog clear)
@@ -1130,6 +1142,8 @@ void AtmosphereRenderer::endFrame(){
 }
 
 void AtmosphereRenderer::destroy(){
+    tiledWeatherSource = Texture();
+    tiledWeatherMap = Texture();
     for (int kind = 0; kind < PROGRAM_COUNT; kind++){
         Program& program = programs[kind];
         if (program.loaded)

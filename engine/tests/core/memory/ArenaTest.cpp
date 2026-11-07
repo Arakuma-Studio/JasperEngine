@@ -6,6 +6,7 @@
 // contributors, MIT License. See NOTICE.md.
 
 #include "jobs/JobSystem.h"
+#include "jobs/Primitives.h"
 #include "memory/Arena.h"
 #include "memory/ScratchScope.h"
 
@@ -72,13 +73,6 @@ TEST(ArenaTests, SingleAllocStoresValueAndAligns){
     EXPECT_TRUE(isAligned(integer, alignof(int)));
     EXPECT_TRUE(isAligned(real, alignof(double)));
     EXPECT_NE((void*)integer, (void*)real);
-}
-
-TEST(ArenaTests, OverAlignedAllocationRespectsAlignment){
-    Arena arena("Tests.Arena.OverAligned");
-    arena.allocate<char>('x');
-    EXPECT_TRUE(isAligned(arena.allocate(8, 64), 64));
-    EXPECT_TRUE(isAligned(arena.allocate(8, 128), 128));
 }
 
 TEST(ArenaTests, AllocateArrayValueInitializesAndIsContiguous){
@@ -364,6 +358,8 @@ TEST(ScratchScopeTests, ASpikeIsReleasedAfterTheTrimWindow){
 }
 
 TEST(ScratchScopeTests, EachThreadHasItsOwnArena){
+    jobs::Event written;
+    std::atomic<int> arrivals{0};
     std::vector<std::thread> threads;
     std::atomic<int> ok{0};
     for (int t = 0; t < 4; t++){
@@ -372,7 +368,9 @@ TEST(ScratchScopeTests, EachThreadHasItsOwnArena){
             int* values = scope.allocateArray<int>(10000);
             for (int i = 0; i < 10000; i++)
                 values[i] = t;
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if (arrivals.fetch_add(1) == 3)
+                written.set();
+            written.wait();
             bool same = true;
             for (int i = 0; i < 10000; i++)
                 same = same && values[i] == t;

@@ -266,6 +266,23 @@ namespace jasperengine::anim{
         std::string clip;                   // the state's clip reference (missing-handler warning)
     };
 
+    // an audio cue a state crossed this update (S40 R4): fired after the advance
+    struct JASPERENGINE_API PendingPlayerCue{
+        size_t state = 0;                   // index into AnimationPlayerRuntime::states
+        size_t cue = 0;                     // into the state's clip getAudioCues()
+        double position = 0.0;              // on the state's unwrapped time line
+        float when = 0.0f;                  // seconds into the update it was crossed
+    };
+
+    // the voice of a state_exit cue (S40 R7), stopped when the state that fired it stops, is left
+    // or finishes its crossfade out
+    struct JASPERENGINE_API PlayerCueVoice{
+        std::string state;
+        uint32_t id = 0;                    // a sound cue's free voice
+        uint32_t generation = 0;
+        Entity source = NULL_ENTITY;        // a source cue's AudioSource
+    };
+
     // The runtime of one layer (anim layers spec 7.2)
     struct JASPERENGINE_API LayerRuntime{
         std::string name;
@@ -385,6 +402,8 @@ namespace jasperengine::anim{
         // the loadedFilename of each model bound under the root: a change rebinds
         std::unordered_map<Entity, std::string> modelFiles;
         std::vector<PendingPlayerCallback> pending;
+        std::vector<PendingPlayerCue> pendingCues;
+        std::vector<PlayerCueVoice> cueVoices;
         // state names a call named that the clip list does not have (warned once each)
         std::vector<std::string> warnedStates;
         // the clip list's duplicate state names as aliased (spec 3.2, R40: "'Walk' (clip 3) plays

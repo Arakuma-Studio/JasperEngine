@@ -1203,17 +1203,35 @@ void anim::AnimatorInstance::collectLayer(size_t layer, const AnimatorComponent&
 
 void anim::AnimatorInstance::fireEvents(int slot, ClipWrapMode wrap, double from, double to, bool includeStart, int state, int layer){
     const AnimatorClipSlot& clipSlot = clips[(size_t)slot];
-    if (!clipSlot.clip || clipSlot.clip->getEvents().empty() || from == to) return;
-    crossed.clear();
-    collectCrossedEvents(*clipSlot.clip, wrap, (float)from, (float)to, includeStart, crossed);
-    for (const CrossedEvent& event : crossed){
-        AnimatorPendingEvent pending;
-        pending.clip = slot;
-        pending.index = (int)event.index;
-        pending.state = state;
-        pending.layer = layer;
-        pending.position = event.position;
-        output.events.push_back(pending);
+    if (!clipSlot.clip || from == to) return;
+    if (!clipSlot.clip->getEvents().empty()){
+        crossed.clear();
+        collectCrossedEvents(*clipSlot.clip, wrap, (float)from, (float)to, includeStart, crossed);
+        for (const CrossedEvent& event : crossed){
+            AnimatorPendingEvent pending;
+            pending.clip = slot;
+            pending.index = (int)event.index;
+            pending.state = state;
+            pending.layer = layer;
+            pending.position = event.position;
+            output.events.push_back(pending);
+        }
+    }
+    // audio cues by the same crossing (S40 R4), placed by where in the step they were crossed
+    if (!clipSlot.clip->getAudioCues().empty()){
+        crossed.clear();
+        collectCrossedCues(*clipSlot.clip, wrap, (float)from, (float)to, includeStart, crossed);
+        for (const CrossedEvent& cue : crossed){
+            AnimatorPendingCue pending;
+            pending.clip = slot;
+            pending.index = (int)cue.index;
+            pending.state = state;
+            pending.layer = layer;
+            pending.position = cue.position;
+            pending.fraction = (float)std::min(1.0, std::max(0.0, (cue.position - from) / (to - from)));
+            pending.speed = state >= 0 ? stateSpeed(state) : 1.0f;
+            output.cues.push_back(pending);
+        }
     }
 }
 
@@ -1375,6 +1393,23 @@ void anim::AnimatorInstance::advanceMontages(float dt, const AnimatorComponent& 
         const bool rootMotion = component.applyRootMotion && slot->rootBone >= 0;
         auto segment = [&](float a, float b, bool start){
             // events of the clip and of the montage crossed between a and b (forward or backward)
+            if ((a != b || start) && !slot->clip->getAudioCues().empty()){
+                // its audio cues (S40 R4), placed by the step travelled before the crossing
+                const float travelled = std::fabs(step - remaining);
+                crossed.clear();
+                collectCrossedCues(*slot->clip, ClipWrapMode::Once, a, b, start, crossed);
+                for (const CrossedEvent& cue : crossed){
+                    AnimatorPendingCue pending;
+                    pending.clip = run.clip;
+                    pending.index = (int)cue.index;
+                    pending.montage = (int)m;
+                    pending.layer = run.layer;
+                    pending.position = cue.position;
+                    pending.fraction = step != 0.0f ? std::min(1.0f, (travelled + (float)std::fabs(cue.position - a)) / std::fabs(step)) : 0.0f;
+                    pending.speed = run.rate;
+                    output.cues.push_back(pending);
+                }
+            }
             if (a != b || start){
                 crossed.clear();
                 collectCrossedEvents(*slot->clip, ClipWrapMode::Once, a, b, start, crossed);
@@ -1636,8 +1671,9 @@ void anim::AnimatorInstance::evaluateLayer(size_t layer, const AnimatorComponent
 
 void anim::AnimatorInstance::update(const AnimatorComponent& component, const AnimatorUpdateContext& context){
     // state and montage notes made by calls since the last update stay until AnimatorSystem
-    // dispatches them; events are this update's
+    // dispatches them; events and cues are this update's
     output.events.clear();
+    output.cues.clear();
     output.hasRootMotion = false;
     output.rootDeltaPosition = Vector3(0, 0, 0);
     output.rootDeltaYaw = 0.0f;

@@ -290,9 +290,18 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 
 ## Deviations
 
+- **R7, `Clip memory`:** read from `AnimationClipPool::loadedBytes()`, the R5 count, not from `AnimatorSystem::Stats`.
+  Stats are per scene and the pool is process-wide, so a sum over scenes would multiply it, and a scene with only Animation
+  Players has no Animator run to fill it. The other six are read from `Stats`, through `takeFrameStats()`: a frame's fixed
+  steps and its update, which `getStats()` (the last run only) cannot give.
+- **R3, the last key's ease:** a key's `ease` belongs to the segment it starts, so the last key's starts none, but a file can
+  hold one and `.anim` must stay byte-stable through `toData()`. `Track::trailingEase` keeps it. R3's rule itself holds: a
+  track with only that ease has `easings == nullptr`.
+- **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
+
 Step 2 (stream `hot`):
 
-- **R10, clip heap bytes.** `*_heap_bytes` rows are the `mallinfo` delta across `AnimationClip::build`, not `memoryBytes()` (R4), which another stream owns and had not landed on this branch's base. They read the same heap, with the allocator's chunk overhead, and are benchmark rows, not a number any panel or tool shows. Once R4 lands, the rows should read `memoryBytes()`.
+- **R10, clip heap bytes.** The `*_heap_bytes` rows read `AnimationClip::memoryBytes()` (R4), the one producer of that number.
 - **R10, real clips.** Real clips cannot be committed, so `--clip <file.anim>` adds them as `real_*` rows on the machine that has them; the always-present dense and reduced rows are R42's generated shapes. The reduced real clips are an earlier Python port's 1 mm output, not `ClipReduction` (step 3).
 - **R11, wasm.** Measured under node (V8) in the web image, one thread, not in a browser (the web gate's Chrome was not used). There is no run of the old sampler on wasm, so R43 is a native result. `-msimd128` covers the pose kernels only, as in shipped web builds; the sampler is scalar wasm in both variants.
 - **R14.** A layer of weight 0 is still sampled while a transition or montage runs on it: an interruption can freeze that pose at any time. One known difference from sampling always: an interruption with no output (two transitions started before an evaluation, weight 0, no transition before them) samples the last skipped state with the parameters of the next evaluation, so a blend tree whose parameters changed in that one frame starts from slightly different leaf weights. It shows only if the weight also comes up during that blend.

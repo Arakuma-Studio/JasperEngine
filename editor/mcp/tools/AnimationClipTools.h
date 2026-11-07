@@ -16,6 +16,9 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    struct ClipAudioCue;
+}
 namespace jasperengine::editor {
     class Project;
     struct SceneProject;
@@ -45,9 +48,13 @@ namespace jasperengine::editor::mcp::clip_tools {
     bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity);
 
     // get_asset_info of an .anim: {version, guid, length, wrap, frame_rate, tracks, events,
-    // warnings, users}; `text` gets the summary appended. False (with data.error) when it is not
-    // a readable clip.
+    // warnings, users, stats}; `text` gets the summary appended. False (with data.error) when it
+    // is not a readable clip.
     bool clipAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+
+    // get_asset_info of a model: each item of `animations` (by its "name") gains keys and
+    // runtime_bytes, of what a player of that clip loads; both null when the clip cannot be built
+    void addModelClipStats(const std::filesystem::path& model, Json& animations);
 
     // get_asset_info's `avatar` of a model (anim-retarget 10): {animation_type, humanoid, mapped,
     // missing, extra_mapped, twist, human_scale, notes}; null for a model without bones
@@ -56,5 +63,11 @@ namespace jasperengine::editor::mcp::clip_tools {
     // write_file of an .anim: false + error when the text can't be read as a clip (not JSON,
     // another format or version, Unity YAML); `warnings` the lenient reader's ("path: message")
     bool checkClipText(const std::string& text, std::vector<std::string>& warnings, std::string& error);
+    // One item of edit_animation's `audio` (S40 R12, R25), validated: a clip's audio cue, or with
+    // entityMode an entity Animation's audio or snapshot action (no source, stop or follow_speed;
+    // duration and lane allowed, read by the caller). The error names the fix.
+    bool readAudioCue(Project* project, const Json& item, const std::string& where, bool entityMode, ClipAudioCue& cue, std::string& error);
+    // an asset-relative path as the tools show it (project-relative)
+    std::string toolPath(Project* project, const std::string& assetRelative);
 
 }

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "asset/SubAssetKeys.h"
 #include "io/AtomicFile.h"
 
 #include "io/watch/FileWatchService.h"
@@ -51,14 +52,14 @@ public:
         fs::path executablePath;
 
 #ifdef _WIN32
-        std::vector<char> buffer(MAX_PATH);
+        std::vector<wchar_t> buffer(MAX_PATH);
         while (true) {
-            const DWORD size = GetModuleFileNameA(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+            const DWORD size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
             if (size == 0) {
                 return {};
             }
             if (size < buffer.size()) {
-                executablePath = std::string(buffer.data(), size);
+                executablePath = std::wstring(buffer.data(), size);
                 break;
             }
             buffer.resize(buffer.size() * 2);
@@ -128,6 +129,27 @@ public:
         }
 #endif
         return exeDir / "engine";
+    }
+
+    // The starter library (editor/resources/sound-library/library), staged next to the editor binary
+    // (macOS: Contents/Resources/sound-library); JASPERENGINE_SOUND_LIBRARY_DIR overrides. Nothing
+    // stores this path: imports copy bytes and ids are the references.
+    static std::filesystem::path getSoundLibraryDir() {
+        namespace fs = std::filesystem;
+
+        const char* overridden = std::getenv("JASPERENGINE_SOUND_LIBRARY_DIR");
+        if (overridden && *overridden) {
+            return fs::path(overridden);
+        }
+        const fs::path exeDir = getExecutableDir();
+#if defined(__APPLE__)
+        std::error_code ec;
+        const fs::path bundled = exeDir.parent_path() / "Resources" / "sound-library";
+        if (fs::exists(bundled, ec)) {
+            return bundled;
+        }
+#endif
+        return exeDir / "sound-library";
     }
 
     // An AppImage mounts at a fresh path every launch, so anything written into
@@ -432,6 +454,19 @@ public:
     static std::string pathToGenericUtf8(const std::filesystem::path& path) {
         const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
+    }
+
+    // A project-relative path as project files store it: '/' between names on every platform,
+    // a backslash read as a separator (Unity's rule). A sub-asset's key, as in
+    // models/hero.glb#mesh:Body\Skin, is a name, not a path: only the container's part changes.
+    static std::string portablePath(std::string path) {
+        std::string container, key;
+        if (splitSubAssetPath(path, container, key)) {
+            std::replace(container.begin(), container.end(), '\\', '/');
+            return container + "#" + key;
+        }
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
     }
 };
 

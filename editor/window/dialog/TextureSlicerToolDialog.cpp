@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureSlicerToolDialog.h"
+#include "window/EditorModal.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "window/Widgets.h"
@@ -158,13 +159,14 @@ void TextureSlicerToolDialog::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    if (!ImGui::BeginPopupModal(popupTitle, &m_isOpen, flags)) {
+    if (!EditorModal::begin(popupTitle, &m_isOpen, flags)) {
         if (m_isOpen) {
             m_isOpen = false;
             if (m_onCancel) m_onCancel();
         }
         return;
     }
+    EditorModal::message(std::string("Slice the texture into ") + rectLabel + " (the preview shows them)");
 
     auto beginInputTable = [](const char* id, float firstColumnWidth = 130.0f) {
         if (ImGui::BeginTable(id, 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
@@ -234,6 +236,13 @@ void TextureSlicerToolDialog::show() {
     // --- Slice Mode ---
     if (beginInputTable("SlicerSliceModeTable")) {
         beginInputRow("Type", 14.0f * ImGui::GetFontSize());
+        {
+            int mode = m_sliceMode == SliceMode::GRID ? 0 : 1;
+            if (EditorModal::enumField("type", mode, {"Grid By Cell Count", "Grid By Cell Size"})) {
+                m_sliceMode = mode == 0 ? SliceMode::GRID : SliceMode::CELL_SIZE;
+                m_previewDirty = true;
+            }
+        }
         if (ImGui::RadioButton("Grid By Cell Count##SliceModeGrid", m_sliceMode == SliceMode::GRID)) {
             m_sliceMode = SliceMode::GRID;
             m_previewDirty = true;
@@ -253,11 +262,11 @@ void TextureSlicerToolDialog::show() {
         ImGui::SeparatorText("Grid");
         if (beginInputTable("SlicerGridTable")) {
             beginInputRow("Columns", 6.0f * ImGui::GetFontSize());
-            if (ImGui::DragInt("##Columns", &m_columns, 0.1f, 1, 64)) {
+            if (EditorModal::dragInt("##Columns", "columns", &m_columns, 0.1f, 1, 64)) {
                 m_previewDirty = true;
             }
             beginInputRow("Rows", 6.0f * ImGui::GetFontSize());
-            if (ImGui::DragInt("##Rows", &m_rows, 0.1f, 1, 64)) {
+            if (EditorModal::dragInt("##Rows", "rows", &m_rows, 0.1f, 1, 64)) {
                 m_previewDirty = true;
             }
             ImGui::EndTable();
@@ -266,11 +275,11 @@ void TextureSlicerToolDialog::show() {
         ImGui::SeparatorText("Cell Size");
         if (beginInputTable("SlicerCellSizeTable")) {
             beginInputRow("Cell Width", 6.0f * ImGui::GetFontSize());
-            if (ImGui::DragInt("##CellWidth", &m_cellWidth, 1.0f, 1, m_sheetWidth > 0 ? m_sheetWidth : 4096)) {
+            if (EditorModal::dragInt("##CellWidth", "cell_width", &m_cellWidth, 1.0f, 1, m_sheetWidth > 0 ? m_sheetWidth : 4096)) {
                 m_previewDirty = true;
             }
             beginInputRow("Cell Height", 6.0f * ImGui::GetFontSize());
-            if (ImGui::DragInt("##CellHeight", &m_cellHeight, 1.0f, 1, m_sheetHeight > 0 ? m_sheetHeight : 4096)) {
+            if (EditorModal::dragInt("##CellHeight", "cell_height", &m_cellHeight, 1.0f, 1, m_sheetHeight > 0 ? m_sheetHeight : 4096)) {
                 m_previewDirty = true;
             }
             ImGui::EndTable();
@@ -281,19 +290,19 @@ void TextureSlicerToolDialog::show() {
     ImGui::SeparatorText("Offset & Padding");
     if (beginInputTable("SlicerOffsetPaddingTable")) {
         beginInputRow("Offset X", 6.0f * ImGui::GetFontSize());
-        if (ImGui::DragInt("##OffsetX", &m_offsetX, 1.0f, 0, INT_MAX)) {
+        if (EditorModal::dragInt("##OffsetX", "offset_x", &m_offsetX, 1.0f, 0, INT_MAX)) {
             m_previewDirty = true;
         }
         beginInputRow("Offset Y", 6.0f * ImGui::GetFontSize());
-        if (ImGui::DragInt("##OffsetY", &m_offsetY, 1.0f, 0, INT_MAX)) {
+        if (EditorModal::dragInt("##OffsetY", "offset_y", &m_offsetY, 1.0f, 0, INT_MAX)) {
             m_previewDirty = true;
         }
         beginInputRow("Padding X", 6.0f * ImGui::GetFontSize());
-        if (ImGui::DragInt("##PaddingX", &m_paddingX, 1.0f, 0, INT_MAX)) {
+        if (EditorModal::dragInt("##PaddingX", "padding_x", &m_paddingX, 1.0f, 0, INT_MAX)) {
             m_previewDirty = true;
         }
         beginInputRow("Padding Y", 6.0f * ImGui::GetFontSize());
-        if (ImGui::DragInt("##PaddingY", &m_paddingY, 1.0f, 0, INT_MAX)) {
+        if (EditorModal::dragInt("##PaddingY", "padding_y", &m_paddingY, 1.0f, 0, INT_MAX)) {
             m_previewDirty = true;
         }
         ImGui::EndTable();
@@ -408,7 +417,7 @@ void TextureSlicerToolDialog::show() {
     ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
     ImGui::BeginDisabled(m_previewRects.empty());
-    if (ImGui::Button("Slice", ImVec2(120, 0))) {
+    if (EditorModal::button("Slice", "yes", ImVec2(120, 0))) {
         if (m_onApply) {
             m_onApply({m_previewRects, m_selectedSubmesh});
         }
@@ -418,7 +427,7 @@ void TextureSlicerToolDialog::show() {
     ImGui::EndDisabled();
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(120, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         if (m_onCancel) m_onCancel();

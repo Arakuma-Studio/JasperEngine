@@ -4,19 +4,17 @@
 #pragma once
 
 #include "yaml-cpp/yaml.h"
+#include "render/SceneDisplaySettings.h"
 #include "Scene.h"
+#include "ecs/ComponentFwd.h"
 #include "ecs/Entity.h"
 #include "Project.h"
 #include "action/Ease.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
-#include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
-#include "component/TextEffectComponent.h"
-#include "component/TrailRendererComponent.h"
 #include "math/Curve.h"
-#include "component/VideoPlayerComponent.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -24,17 +22,53 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include "buffer/ExternalBuffer.h"
+#include "buffer/IndexBuffer.h"
+#include "buffer/InterleavedBuffer.h"
+#include "render/LineRibbonBuilder.h"
+#include "util/SpriteFrameData.h"
+#include "util/TextEffects.h"
+
+namespace jasperengine{
+    enum class AlphaTweenTarget;
+    enum class AnchorPreset;
+    enum class AudioSourceAttenuation;
+    enum class AudioSourceState;
+    enum class CanvasGroupRenderMode;
+    enum class FluidOutput;
+    enum class FogType;
+    enum class Joint2DType;
+    enum class Joint3DType;
+    enum class JointAnchorSpace;
+    enum class JointBreakAction;
+    enum class JointMotion;
+    enum class LatticeInterpolation;
+    enum class LatticeJiggleAnchor;
+    enum class LatticeMaskChannel;
+    enum class LatticeOutside;
+    enum class LatticeStage;
+    enum class LayoutGroupType;
+    enum class LightShading;
+    enum class LightType;
+    enum class LineRendererMode : int;
+    enum class ProgressbarType;
+    enum class RigidbodyInterpolation;
+    enum class ScrollbarType;
+    enum class UIDocumentRenderMode;
+    struct Submesh;
+    struct TerrainFoliageLayer;
+    struct TerrainSurfaceLayer;
+    struct TileData;
+    struct TileRectData;
+}
 
 namespace jasperengine::editor {
     class Workspace;
     class StreamTestAccess;
-    class LegacyCodecs;
 
     class Stream {
-        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream),
-        // and keeps the codecs reflection replaced as the parity oracle (editor/tests/reflect/legacy)
+        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream)
         friend class StreamTestAccess;
-        friend class LegacyCodecs;
 
     private:
 
@@ -77,7 +111,6 @@ namespace jasperengine::editor {
         static std::string uiDocumentRenderModeToString(UIDocumentRenderMode mode);
         static UIDocumentRenderMode stringToUIDocumentRenderMode(const std::string& str);
 
-        static std::string fluidOutputToString(FluidOutput output);
         static FluidOutput stringToFluidOutput(const std::string& str);
         // lattice enums: the lowercase enumerator names (spec §2.0)
         static std::string latticeInterpolationToString(LatticeInterpolation interpolation);
@@ -141,8 +174,6 @@ namespace jasperengine::editor {
         static LayoutGroupType stringToLayoutGroupType(const std::string& str);
         static std::string canvasGroupRenderModeToString(CanvasGroupRenderMode mode);
         static CanvasGroupRenderMode stringToCanvasGroupRenderMode(const std::string& str);
-        static std::string alphaTweenTargetToString(AlphaTweenTarget target);
-        static AlphaTweenTarget stringToAlphaTweenTarget(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);
@@ -171,11 +202,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeExternalBuffer(const ExternalBuffer& buffer);
         static void decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node);
 
-        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true);
+        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
-
-        static YAML::Node encodeAABB(const AABB& aabb);
-        static AABB decodeAABB(const YAML::Node& node);
 
         static YAML::Node encodeSpriteFrameData(const SpriteFrameData& frameData);
         static SpriteFrameData decodeSpriteFrameData(const YAML::Node& node);
@@ -346,6 +374,10 @@ namespace jasperengine::editor {
         // property bit stays out of the file
         static YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys);
         static std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node);
+        // A path as project files store it: '/' between names, on every platform, and a '\' read
+        // as a separator (Unity's rule), so a file written on Windows opens everywhere
+        static std::string portablePath(std::string path);
+        static std::string portablePath(const std::filesystem::path& path);
         // Asset references (S04 §6.5): a scalar path keeps its key and gains a sibling
         // "<key>Guid"; a shader reference's sibling holds "<vertGuid>|<fragGuid>"
         static void encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref);
@@ -388,6 +420,9 @@ namespace jasperengine::editor {
         // True when a mesh's geometry is rebuilt on load from its sprite, tilemap, mesh
         // polygon or terrain component, so its buffers and bones must not be serialized.
         static bool isGeneratedMesh(const EntityRegistry* registry, Signature signature);
+        // the submeshes a save writes and the code generates: what the mesh's generator leaves
+        // it with, whether or not it ran yet
+        static unsigned int savedSubmeshCount(const MeshComponent& mesh, const EntityRegistry* registry, Signature signature);
 
         // True when a UIComponent's geometry is rebuilt on load from its image, text or
         // polygon component, so its buffers must not be serialized.
@@ -441,6 +476,9 @@ namespace jasperengine::editor {
         // of the scene (SavedEntitiesCheck): a save, an autosave, a Play snapshot never lose one in
         // silence (docs/data-safety.md)
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
+        // The document Stop restores: with what a frame computes that a file leaves out (the world
+        // bounds Stop puts back on the Meshes it keeps instead of decoding them, keepSameMeshes)
+        static YAML::Node encodePlaySnapshot(const Project* project, const SceneProject* sceneProject);
 
         // What encodeSceneProject and a prefab stage's encode throw for a GameObject they would
         // leave out (a save refused, S03: the document stays modified)
@@ -497,7 +535,11 @@ namespace jasperengine::editor {
             const Project* project, const SceneProject* sceneProject, bool ignoreContainingPrefab);
         // removeMissingComponents also removes the components the node does not hold, so a
         // live entity is restored exactly. Only for nodes with a full component encode.
-        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
+        // keepSameMeshes: decodeComponents' (a Play snapshot put back on Stop)
+        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr, bool keepSameMeshes = false);
+
+        static YAML::Node encodeAABB(const AABB& aabb);
+        static AABB decodeAABB(const YAML::Node& node);
 
         static YAML::Node encodeMaterial(const Material& material, bool embedTextureData = true);
         static Material decodeMaterial(const YAML::Node& node, const Material* oldMaterial = nullptr);
@@ -507,14 +549,20 @@ namespace jasperengine::editor {
         static YAML::Node encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature);
         // The live values only
         static YAML::Node encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature);
-        static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode);
+        // keepSameMeshes: a live Mesh that encodes as the node has it, but for the worldAABB the
+        // RenderSystem derives from the Transform, is not decoded: it gets the node's worldAABB,
+        // all the decode would change in it, without the update flags that reload it
+        static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode, bool keepSameMeshes = false);
 
         // a Transform by its reflection table (editor/reflect): the components' codecs are their
         // tables (reflect::encode / reflect::decode), these keep the Transform's short form
         static YAML::Node encodeTransform(const Transform& transform);
         static Transform decodeTransform(const YAML::Node& node, const Transform* oldTransform = nullptr);
 
-        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
+        // numSubmeshes: at least so many are written (savedSubmeshCount); encodeGeneratedValues: off for
+        // a mesh whose generator sets its vertex counts and bounds (isGeneratedMesh)
+        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true,
+                                              unsigned int numSubmeshes = 0, bool encodeGeneratedValues = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
         // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the

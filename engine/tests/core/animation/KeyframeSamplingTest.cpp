@@ -77,11 +77,10 @@ namespace {
         return t;
     }
 
-    anim::TrackSample sampleOne(const ClipTrackData& data, float time){
+    anim::TrackSample sampleOne(const ClipTrackData& data, float time, anim::TrackSample sample = {}){
         ClipData clip;
         clip.tracks = {data};
         std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
-        anim::TrackSample sample;
         EXPECT_TRUE(anim::sampleTrack(built->getTracks()[0], time, sample));
         return sample;
     }
@@ -351,7 +350,9 @@ TEST(KeyframeSampling, RotationSlerpHermiteAndZeroNormGuard){
 
 TEST(KeyframeSampling, MorphAndLatticeRows){
     ClipTrackData morph = track(ClipChannel::Morph, {key(0, {0, 0.5f}), key(1, {1, 0}, EaseType::LINEAR)});
-    anim::TrackSample weights = sampleOne(morph, 0.25f);
+    anim::TrackSample previous;
+    previous.offsets = {Vector3(9, 9, 9)};
+    anim::TrackSample weights = sampleOne(morph, 0.25f, previous);
     ASSERT_EQ(weights.weights.size(), 2u);
     EXPECT_NEAR(weights.weights[0], 0.25f, 1e-6f);
     EXPECT_NEAR(weights.weights[1], 0.375f, 1e-6f);
@@ -371,7 +372,7 @@ TEST(KeyframeSampling, MorphAndLatticeRows){
         key(0, {0, 0, 0, 1, 1, 1}),
         key(2, {0, 2, 0, 3, 1, 1}, EaseType::STEP)});
     lattice.points = {13, 40};
-    anim::TrackSample offsets = sampleOne(lattice, 1.0f);
+    anim::TrackSample offsets = sampleOne(lattice, 1.0f, weights);
     ASSERT_EQ(offsets.offsets.size(), 2u);
     expectVector(offsets.offsets[0], 0, 1, 0);
     expectVector(offsets.offsets[1], 2, 1, 1);

@@ -13,6 +13,7 @@
 #include "reflect/Reflect.h"
 #include "reflect/TypeOps.h"
 
+#include <algorithm>
 #include <mutex>
 #include <unordered_map>
 
@@ -87,6 +88,166 @@ namespace {
         }
     }
 
+    // Whether a property's value differs between two components (a Custom one always does: too
+    // complex to compare). Not const: some of these types compare through non-const operators
+    bool propertyValueChanged(PropertyType type, void* oldRef, void* newRef) {
+        switch (type) {
+            case PropertyType::Bool:
+                return *static_cast<bool*>(oldRef) != *static_cast<bool*>(newRef);
+            case PropertyType::Float:
+                return *static_cast<float*>(oldRef) != *static_cast<float*>(newRef);
+            case PropertyType::Double:
+                return *static_cast<double*>(oldRef) != *static_cast<double*>(newRef);
+            case PropertyType::Int:
+                return *static_cast<int*>(oldRef) != *static_cast<int*>(newRef);
+            case PropertyType::UInt:
+                return *static_cast<unsigned int*>(oldRef) != *static_cast<unsigned int*>(newRef);
+            case PropertyType::String:
+                return *static_cast<std::string*>(oldRef) != *static_cast<std::string*>(newRef);
+            case PropertyType::Asset:
+                return *static_cast<AssetRef*>(oldRef) != *static_cast<AssetRef*>(newRef);
+            case PropertyType::Shader:
+                return *static_cast<ShaderRef*>(oldRef) != *static_cast<ShaderRef*>(newRef);
+            case PropertyType::Curve:
+                return *static_cast<Curve*>(oldRef) != *static_cast<Curve*>(newRef);
+            case PropertyType::Font:
+                return *static_cast<FontArray*>(oldRef) != *static_cast<FontArray*>(newRef);
+            case PropertyType::Vector2:
+                return *static_cast<Vector2*>(oldRef) != *static_cast<Vector2*>(newRef);
+            case PropertyType::Vector3:
+                return *static_cast<Vector3*>(oldRef) != *static_cast<Vector3*>(newRef);
+            case PropertyType::Vector4:
+                return *static_cast<Vector4*>(oldRef) != *static_cast<Vector4*>(newRef);
+            case PropertyType::Quat:
+                return *static_cast<Quaternion*>(oldRef) != *static_cast<Quaternion*>(newRef);
+            case PropertyType::Enum:
+                return *static_cast<int*>(oldRef) != *static_cast<int*>(newRef);
+            case PropertyType::Ease:
+                return *static_cast<Ease*>(oldRef) != *static_cast<Ease*>(newRef);
+            case PropertyType::Texture:
+                return *static_cast<Texture*>(oldRef) != *static_cast<Texture*>(newRef);
+            case PropertyType::Material:
+                return *static_cast<Material*>(oldRef) != *static_cast<Material*>(newRef);
+            case PropertyType::Entity:
+                return *static_cast<Entity*>(oldRef) != *static_cast<Entity*>(newRef);
+            case PropertyType::EntityReference:
+                return static_cast<EntityReference*>(oldRef)->entity != static_cast<EntityReference*>(newRef)->entity ||
+                       static_cast<EntityReference*>(oldRef)->sceneId != static_cast<EntityReference*>(newRef)->sceneId;
+            case PropertyType::Gradient:
+                return *static_cast<Gradient*>(oldRef) != *static_cast<Gradient*>(newRef);
+            case PropertyType::Custom:
+                return true;
+        }
+        return false;
+    }
+
+    // What listStruct would list of a struct, reduced to what can add an update flag, so a
+    // comparison skips the rest: a Mesh lists 1752 properties (16 submesh slots), and building
+    // their two maps cost about 1 ms per Mesh decoded over a live one
+    struct FlagStruct;
+
+    struct FlagField {
+        const FieldDesc* field = nullptr;
+        // the field listed itself, by value: its type (no flags to add otherwise)
+        bool whole = false;
+        PropertyType wholeType = PropertyType::Custom;
+        // an array's elements in use, each listed: their type (an array of structs: ListEachElement)
+        bool elements = false;
+        PropertyType elementType = PropertyType::Custom;
+        bool array = false;
+        // the members of the struct, or of each element of an array of structs
+        const FlagStruct* members = nullptr;
+        // every flag this field can add
+        uint64_t reach = 0;
+    };
+
+    struct FlagStruct {
+        // a Custom property always counts as changed: they are set first, and nothing whose
+        // flags they cover is compared (a submesh's whole material, for one)
+        uint64_t always = 0;
+        uint64_t reach = 0;
+        std::vector<FlagField> fields;
+    };
+
+    const FlagStruct* buildFlagStruct(const StructDesc& desc, std::unordered_map<const StructDesc*, FlagStruct>& built) {
+        const auto found = built.find(&desc);
+        if (found != built.end()) return &found->second;
+        FlagStruct flagStruct;
+        for (const FieldDesc& field : desc.fields) {
+            if (field.flags & (NotListed | Derived)) continue;
+            FlagField flagField;
+            flagField.field = &field;
+            const bool isStruct = field.kind == Kind::Struct && field.structDesc;
+            const bool isArray = !isStruct && field.kind == Kind::Array && field.arrayOps;
+            const bool listedWhole = (isStruct || isArray) ? (field.flags & ListWhole) != 0 : true;
+            if (listedWhole && field.updateFlags) {
+                if (field.ops->propertyType == PropertyType::Custom) {
+                    flagStruct.always |= field.updateFlags;
+                } else {
+                    flagField.whole = true;
+                    flagField.wholeType = field.ops->propertyType;
+                }
+            }
+            if (isStruct) {
+                flagField.members = buildFlagStruct(*field.structDesc, built);
+                // always there, so its Custom ones are this struct's
+                flagStruct.always |= flagField.members->always;
+            } else if (isArray) {
+                const bool structs = field.structDesc != nullptr;
+                if (structs) flagField.members = buildFlagStruct(*field.structDesc, built);
+                flagField.elements = field.updateFlags && (structs ? (field.flags & ListEachElement) != 0 : (field.flags & ListElements) != 0);
+                if (flagField.elements) flagField.elementType = field.elementOps->propertyType;
+                flagField.array = structs || flagField.elements;
+            }
+            if (flagField.whole || flagField.elements) flagField.reach |= field.updateFlags;
+            if (flagField.members) flagField.reach |= flagField.members->reach;
+            if (flagField.reach) flagStruct.fields.push_back(flagField);
+        }
+        flagStruct.reach = flagStruct.always;
+        for (const FlagField& field : flagStruct.fields) flagStruct.reach |= field.reach;
+        return &built.emplace(&desc, std::move(flagStruct)).first->second;
+    }
+
+    const FlagStruct& flagStructOf(const StructDesc& desc) {
+        static std::mutex mutex;
+        static auto* built = new std::unordered_map<const StructDesc*, FlagStruct>();
+        std::lock_guard<std::mutex> lock(mutex);
+        return *buildFlagStruct(desc, *built);
+    }
+
+    void* readField(const FieldDesc& field, void* owner) {
+        return field.peek ? const_cast<void*>(field.peek(owner)) : field.ref(owner);
+    }
+
+    void addChangedFlags(const FlagStruct& desc, void* oldOwner, void* newOwner, uint64_t& flags) {
+        flags |= desc.always;
+        for (const FlagField& flagField : desc.fields) {
+            if ((flagField.reach & ~flags) == 0) continue;
+            const FieldDesc& field = *flagField.field;
+            void* oldRef = readField(field, oldOwner);
+            void* newRef = readField(field, newOwner);
+            // two unset out-of-line values read the same defaults
+            if (oldRef == newRef) continue;
+            if (flagField.whole && (field.updateFlags & ~flags) && propertyValueChanged(flagField.wholeType, oldRef, newRef)) {
+                flags |= field.updateFlags;
+            }
+            if (!flagField.array) {
+                if (flagField.members && (flagField.members->reach & ~flags)) addChangedFlags(*flagField.members, oldRef, newRef, flags);
+                continue;
+            }
+            // the maps' common keys: the elements both have
+            const size_t shared = std::min(elementCount(field, oldOwner, oldRef), elementCount(field, newOwner, newRef));
+            for (size_t i = 0; i < shared && (flagField.reach & ~flags); i++) {
+                void* oldElement = field.arrayOps->at(oldRef, i);
+                void* newElement = field.arrayOps->at(newRef, i);
+                if (flagField.elements && (field.updateFlags & ~flags) && propertyValueChanged(flagField.elementType, oldElement, newElement)) {
+                    flags |= field.updateFlags;
+                }
+                if (flagField.members) addChangedFlags(*flagField.members, oldElement, newElement, flags);
+            }
+        }
+    }
+
     bool parseIndex(std::string_view path, size_t& pos, size_t& value) {
         if (pos >= path.size() || path[pos] < '0' || path[pos] > '9') return false;
         // one spelling per index ("00" would alias "0" under another override name), and no
@@ -104,7 +265,7 @@ namespace {
     }
 
     // the table's property, or no ref when the table names nothing at that path
-    PropertyData tableProperty(const ComponentDesc& desc, void* comp, std::string_view path) {
+    PropertyData tableProperty(const ComponentDesc& desc, void* comp, std::string_view path, bool append) {
         const StructDesc* current = &desc.body;
         void* owner = comp;
         const void* defaults = desc.body.defaults ? desc.body.defaults() : nullptr;
@@ -124,7 +285,12 @@ namespace {
                 size_t index = 0;
                 if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return PropertyData();
                 pos++;
-                if (field->kind != Kind::Array || !field->arrayOps || index >= field->arrayOps->size(ref)) return PropertyData();
+                if (field->kind != Kind::Array || !field->arrayOps) return PropertyData();
+                // one past the last element appends to an array that grows by index, for a write
+                // (as reflect::resolve)
+                const size_t count = field->arrayOps->size(ref);
+                const bool appends = append && field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+                if (index >= count && !appends) return PropertyData();
                 def = elementDefault(*field, def);
                 ref = field->arrayOps->at(ref, index);
                 ops = field->elementOps;
@@ -150,9 +316,9 @@ size_t reflect::elementCount(const FieldDesc& field, const void* owner, const vo
     return count < size ? count : size;
 }
 
-PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::string_view path) {
+PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::string_view path, bool append) {
     if (!comp || path.empty()) return PropertyData();
-    PropertyData data = tableProperty(desc, comp, path);
+    PropertyData data = tableProperty(desc, comp, path, append);
     if (data.ref) return data;
     if (desc.extraProperty) return desc.extraProperty(comp, std::string(path));
     return PropertyData();
@@ -161,6 +327,26 @@ PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::strin
 void reflect::listProperties(const ComponentDesc& desc, void* comp, std::map<std::string, PropertyData>& out) {
     listStruct(desc.body, comp, desc.body.defaults ? desc.body.defaults() : nullptr, std::string(), out);
     if (desc.extraProperties) desc.extraProperties(comp, out);
+}
+
+uint64_t reflect::changedUpdateFlags(const ComponentDesc& desc, void* oldComp, void* newComp) {
+    uint64_t flags = 0;
+    addChangedFlags(flagStructOf(desc.body), oldComp, newComp, flags);
+    if (!desc.extraProperties || (desc.extraUpdateFlags & ~flags) == 0) return flags;
+
+    std::map<std::string, PropertyData> oldExtras;
+    std::map<std::string, PropertyData> newExtras;
+    desc.extraProperties(oldComp, oldExtras);
+    desc.extraProperties(newComp, newExtras);
+    for (const auto& [name, newProp] : newExtras) {
+        const auto it = oldExtras.find(name);
+        if (it == oldExtras.end() || !it->second.ref || !newProp.ref) continue;
+        // A script property can change type between the two, its value would read as the wrong type
+        if (it->second.type != newProp.type || propertyValueChanged(newProp.type, it->second.ref, newProp.ref)) {
+            flags |= newProp.updateFlags;
+        }
+    }
+    return flags;
 }
 
 Mixed reflect::mixedValues(const ComponentDesc& desc, const std::vector<void*>& comps, std::string_view path) {

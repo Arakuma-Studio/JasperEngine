@@ -10,8 +10,10 @@
 #include <set>
 
 #include <emscripten/emscripten.h>
+#include <emscripten/heap.h>
 
 #include "Engine.h"
+#include "device/Device.h"
 #include "Input.h"
 #include "Screen.h"
 #include "System.h"
@@ -700,6 +702,57 @@ void JasperEngineWeb::syncFileSystemNow(){
     );
 }
 
+EM_JS_DEPS(jasper_device, "$stringToNewUTF8,$GL");
+
+// The GPU behind WebGL: WEBGL_debug_renderer_info's unmasked renderer where the browser gives it
+// ("ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 ...)", "Adreno (TM) 650"),
+// else RENDERER (Firefox's sanitized name, Safari's "Apple GPU")
+EM_JS(char*, jasper_gpu_renderer, (), {
+    var gl = (typeof GLctx !== 'undefined') ? GLctx : null;
+    if (!gl) return 0;
+    var name = '';
+    try {
+        var ext = gl.getExtension('WEBGL_debug_renderer_info');
+        name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    } catch (e) {
+        name = '';
+    }
+    return name ? stringToNewUTF8(String(name)) : 0;
+});
+
+// performance.memory (Chromium): the JS heap's share of its limit, 0 where the browser has none
+EM_JS(double, jasper_js_heap_use, (), {
+    var memory = (typeof performance !== 'undefined') ? performance.memory : null;
+    return (memory && memory.jsHeapSizeLimit > 0) ? memory.usedJSHeapSize / memory.jsHeapSizeLimit : 0;
+});
+
+std::string JasperEngineWeb::getGpuRendererName(){
+    char* name = jasper_gpu_renderer();
+    if (!name) return "";
+    std::string out = name;
+    free(name);
+    return out;
+}
+
+void JasperEngineWeb::pollMemoryPressure(){
+    // every 5 s; a warning when the use crosses 90 %, again only once it fell under 80 %
+    static double lastPoll = 0.0;
+    static bool pressed = false;
+    const double now = emscripten_get_now();
+    if (now - lastPoll < 5000.0) return;
+    lastPoll = now;
+    const double heapMax = (double)emscripten_get_heap_max();
+    const double wasmUse = heapMax > 0.0 ? (double)emscripten_get_heap_size() / heapMax : 0.0;
+    const double use = std::max(wasmUse, jasper_js_heap_use());
+    if (!pressed && use >= 0.9) {
+        pressed = true;
+        jasperengine::Log::warn("Memory: %.0f%% of the page's heap in use, a low-memory warning", use * 100.0);
+        jasperengine::Device::reportLowMemory();
+    } else if (pressed && use < 0.8) {
+        pressed = false;
+    }
+}
+
 void JasperEngineWeb::pollGamepads(){
     if (emscripten_sample_gamepad_data() != EMSCRIPTEN_RESULT_SUCCESS)
         return;
@@ -830,6 +883,7 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
     }
 
     pollGamepads();
+    pollMemoryPressure();
 
     // CSS size is the input coordinate space as well as the visible surface.
     // Update the framebuffer before drawing; Engine applies the project's
@@ -984,7 +1038,7 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
         if (jasper_ime_is_focused())
             return 0;
 
-        wchar_t cp = toCodepoint(std::string(e->key));
+        char32_t cp = toCodepoint(std::string(e->key));
         if (cp == 0) cp = e->which;
         if (cp == 0) cp = e->keyCode;
 

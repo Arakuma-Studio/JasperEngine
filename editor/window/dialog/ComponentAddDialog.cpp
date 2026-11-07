@@ -68,6 +68,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
+            {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
@@ -116,6 +117,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
+            {ComponentType::AudioSnapshotComponent, "On an Animation's action: moves the mixer to a snapshot while the action plays"},
         }},
         {"Video", ICON_FA_FILM, {
             {ComponentType::VideoPlayerComponent, "Plays a video (MP4, WebM) or a URL into a texture, a material or a camera plane"},

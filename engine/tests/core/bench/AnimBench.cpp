@@ -22,7 +22,8 @@
 // same characters, one thread), an Animation Player crowd, a retargeted crowd, rig space and skin
 // matrices alone, key groups with different times, sampleQuaternion against Quaternion::slerp per
 // tier, and for the dense and reduced clip shapes (generated here) and each --clip file (real
-// clips, kept out of the repository) the sample, sample + hierarchy, parse + build and heap bytes.
+// clips, kept out of the repository) the sample, sample + hierarchy, parse + build and
+// AnimationClip::memoryBytes().
 // On WebAssembly (tools/perf/bench-anim-wasm.sh) the same program, under another bench name.
 
 #include "BenchUtil.h"
@@ -66,11 +67,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#if defined(__linux__) || defined(__EMSCRIPTEN__)
-    #include <malloc.h>
-    #define JE_BENCH_HEAP_BYTES 1
-#endif
 
 using namespace jasperengine;
 using namespace jasperengine::anim;
@@ -515,17 +511,6 @@ namespace {
 
     // ---- S74 R10: clips, as bytes and as sampling cost
 
-    // the heap in use (this thread's arena: what a build here leaves shows), -1 where it cannot be read
-    long long heapInUse(){
-#if !defined(JE_BENCH_HEAP_BYTES)
-        return -1;
-#elif defined(__GLIBC__) && (__GLIBC__ > 2 || __GLIBC_MINOR__ >= 33)
-        return (long long)mallinfo2().uordblks;
-#else
-        return (long long)mallinfo().uordblks;
-#endif
-    }
-
     // A rig made from a clip's own paths ("A/B/C" under a root), the clip bound to it
     struct ClipRig{
         std::unique_ptr<Scene> scene = std::make_unique<Scene>();
@@ -593,14 +578,12 @@ namespace {
             }
         }
         anim::ClipParseResult parsed = anim::parseClip(text);
-        const long long before = heapInUse();
         std::shared_ptr<const AnimationClip> clip = AnimationClip::build(parsed);
-        const long long after = heapInUse();
         results.add(name + "_tracks", (double)clip->getTracks().size(), "tracks");
         results.add(name + "_keys", (double)keyCount(*clip), "keys");
         results.add(name + "_parse_build_ms", bench::percentile(parseBuild, 0.5), "ms");
         results.add(name + "_text_bytes", (double)text.size(), "B");
-        if (before >= 0) results.add(name + "_heap_bytes", (double)(after - before), "B");
+        results.add(name + "_heap_bytes", (double)clip->memoryBytes(), "B");
         ClipRig bound(clip);
         const float length = std::max(clip->getLength(), 1e-3f);
         const int iterations = std::max(50, std::min(4000, 2000000 / std::max(1, (int)bound.binding.targets.size() * 8)));
@@ -990,20 +973,15 @@ int main(int argc, char** argv){
     }
     // what the character's clips hold (R44's clip memory: a game's whole clip set stays under it)
     {
-        long long total = 0;
-        bool known = true;
+        size_t total = 0;
         for (const char* name : {"idle", "fwd", "back", "left", "right", "wave", "breath"}){
             std::ifstream file(assetDir / (std::string(name) + ".anim"), std::ios::binary);
             std::stringstream text;
             text << file.rdbuf();
             anim::ClipParseResult parsed = anim::parseClip(text.str());
-            const long long before = heapInUse();
-            std::shared_ptr<const AnimationClip> clip = AnimationClip::build(parsed);
-            const long long after = heapInUse();
-            known = known && before >= 0;
-            total += after - before;
+            total += AnimationClip::build(parsed)->memoryBytes();
         }
-        if (known) results.add("web30_clip_heap_bytes", (double)total, "B");
+        results.add("web30_clip_heap_bytes", (double)total, "B");
     }
 
     // ---- S74 R10: key groups with different times (one key search per group), then each tier of

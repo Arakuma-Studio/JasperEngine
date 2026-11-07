@@ -50,6 +50,17 @@ namespace jasperengine{
             size_t sampled = 0;         // evaluated and written
             size_t culled = 0;
             size_t footRaycasts = 0;    // Foot IK's ground rays
+
+            Stats& operator+=(const Stats& other){
+                prepareMs += other.prepareMs;
+                waveMs += other.waveMs;
+                finalizeMs += other.finalizeMs;
+                animators += other.animators;
+                sampled += other.sampled;
+                culled += other.culled;
+                footRaycasts += other.footRaycasts;
+                return *this;
+            }
         };
 
         AnimatorSystem(Scene* scene);
@@ -78,7 +89,11 @@ namespace jasperengine{
 
         // 0 workers or not: the wave's jobs (ParallelEqualsSerial, benchmarks)
         void setParallel(bool parallel);
+        // the last run (the update or a fixed step)
         const Stats& getStats() const { return stats; }
+        // what ran since the last call, both phases: time adds up, and the counts are one frame's,
+        // however many fixed steps it took (the profiler's monitors take them once per frame)
+        Stats takeFrameStats();
 
     private:
         struct Job{
@@ -90,6 +105,8 @@ namespace jasperengine{
 
         std::vector<Job> jobs;
         Stats stats;
+        Stats updateStats;
+        Stats fixedStats;
         bool parallel = true;
         uint64_t clipRevision = 0;
         uint64_t assetRevision = 0;
@@ -113,6 +130,9 @@ namespace jasperengine{
         void ikInputs(AnimatorComponent& component, anim::AnimatorInstance& instance, const anim::AnimatorUpdateContext& context);
         void writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance);
         void finalize(Job& job, float dt);
+        // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
+        void fireCues(Entity entity, anim::AnimatorInstance& instance);
+        bool warnedNoSoundLayer = false;
         void release(Entity entity, anim::AnimatorInstance& instance);
         void setSkinsDriven(anim::AnimatorInstance& instance, bool driven);
         std::string modelPathOf(Entity entity) const;

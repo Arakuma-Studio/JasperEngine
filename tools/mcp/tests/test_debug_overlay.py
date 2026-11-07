@@ -17,6 +17,8 @@ from harness import Editor, skip
 from htmlui_pixels import count_near, image_difference
 
 EDITOR = {"create": True, "name": "Debug Overlay"}
+CI_EXCLUDED = ("long-running (about 75 minutes on a loaded server: test_release_export builds and runs a real Desktop player); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 
 PROBE = """---@class LogProbe : ScriptInstance

@@ -769,8 +769,9 @@ TEST_F(Light2DNormalMapTest, MissingNormalFallsBackFlat){
         sun.setIntensity(2.0f);
         ASSERT_TRUE(s.settle());
         ASSERT_TRUE((missingMap ? missing : none).read());
-        if (missingMap)
+        if (missingMap){
             EXPECT_NE(submesh.shaderProperties & (1u << 7), 0u) << "the variant samples a normal map ('Nmp')";
+        }
     }
     EXPECT_TRUE(sameImage(missing, none, 2)) << "a missing normal map vs none";
 }

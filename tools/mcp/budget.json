@@ -39,6 +39,11 @@
             "tools": 7,
             "spec": "S15 (its 7 tools within 7,000 characters)"
         },
+        "device": {
+            "chars": 1500,
+            "tools": 2,
+            "spec": "S56 (get_device_info and set_device_simulation within 1,500 characters; the tier table goes through set_project_settings)"
+        },
         "splines": {
             "chars": 6000,
             "tools": 12,
@@ -97,8 +102,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1923,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030)"
+            "limit": 1980,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units)"
         },
         "create_particles": {
             "limit": 1888,

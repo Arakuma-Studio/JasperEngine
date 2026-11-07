@@ -8,6 +8,7 @@
 // values come in two textures gets one map packed from them on a job (TexturePack).
 
 #include "MeshSystem.h"
+#include "component/ModelComponent.h"
 #include "pool/ModelPool.h"
 
 #include "Log.h"
@@ -26,15 +27,6 @@
 using namespace jasperengine;
 
 namespace {
-
-    // the extensions the loader reads (core glTF needs none)
-    const char* const supportedExtensions[] = {
-        "KHR_materials_clearcoat", "KHR_materials_sheen", "KHR_materials_anisotropy", "KHR_materials_iridescence",
-        "KHR_materials_transmission", "KHR_materials_volume", "KHR_materials_specular", "KHR_materials_ior",
-        "KHR_materials_emissive_strength", "KHR_materials_unlit",
-        // metadata only: nothing to draw differently
-        "KHR_xmp", "KHR_xmp_json_ld",
-    };
 
     // one report per model and message (a model loads again on every scene that has it)
     bool reportOnce(const std::string& filename, const std::string& message){
@@ -129,21 +121,6 @@ namespace {
         return modelKey + "|gltf-image|" + std::to_string(gltf.textures[textureIndex].source);
     }
 
-}
-
-void MeshSystem::reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename){
-    auto supported = [](const std::string& name){
-        return std::find(std::begin(supportedExtensions), std::end(supportedExtensions), name) != std::end(supportedExtensions);
-    };
-    for (const std::string& name : gltf.extensionsRequired){
-        if (!supported(name) && reportOnce(filename, "required " + name))
-            Log::error("glTF %s requires %s, which the engine does not read; it is loaded without it", filename.c_str(), name.c_str());
-    }
-    for (const std::string& name : gltf.extensionsUsed){
-        const bool required = std::find(gltf.extensionsRequired.begin(), gltf.extensionsRequired.end(), name) != gltf.extensionsRequired.end();
-        if (!supported(name) && !required && reportOnce(filename, "used " + name))
-            Log::warn("glTF %s uses %s, which the engine does not read; it is ignored", filename.c_str(), name.c_str());
-    }
 }
 
 bool MeshSystem::loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord){

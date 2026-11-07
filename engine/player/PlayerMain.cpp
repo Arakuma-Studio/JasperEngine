@@ -310,6 +310,7 @@ JASPERENGINE_INIT void init() {
     Engine::setScalingMode(game.scaling);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
+    Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
@@ -317,8 +318,11 @@ JASPERENGINE_INIT void init() {
     UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
+    if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
+    // the Device Tier the GPU gets applies from here on (spec S56)
+    Device::configure(game.device);
     if (!game.tags.empty()) TagManager::setTags(game.tags);
     for (size_t layer = 0; layer < game.layerNames.size(); layer++)
         if (!game.layerNames[layer].empty()) TagManager::setLayerName(static_cast<int>(layer), game.layerNames[layer]);
