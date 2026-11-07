@@ -242,7 +242,7 @@ async def test_wake_holds_while_paused(ed: Editor):
     await setup(ed)
     drifter = entity_id(await ed.call("create_entity", type="cube", name="Drifter", position=[-7, 0, -8], scale=[1, 0.6, 3]))
     await ed.call("add_component", entity=drifter, component="WaterWake")
-    await ed.call("create_script", kind="lua", name="Run", content=RUN, entity=drifter)
+    await ed.call("create_script", kind="lua", name="Drift", content=RUN.replace("Run", "Drift"), entity=drifter)
     await ed.call("play", action="start", fixed_fps=60)
     try:
         await ed.call("wait", game_seconds=1.5)
