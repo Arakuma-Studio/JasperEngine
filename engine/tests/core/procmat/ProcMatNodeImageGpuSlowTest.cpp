@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S90 R20: a node ships when every output of every variant draws the same image on the device as on
-// SpirvInterpreter, within AC8. Each variant is planned and evaluated for real, so a Buffer feeds the
+// S90 R20 and AC8: a node ships when every output of every variant draws the same image on the device as
+// on the CPU tier (ProceduralCpuEvaluator), within AC8. Each variant is planned and evaluated for real, so a Buffer feeds the
 // pass reading it, an Iterate Buffer iterates and an RGBA16F target meets the interpreter's half rounding,
 // which M0's sweep, with one probe image for every texture, could not show.
 //
@@ -12,7 +12,8 @@
 #include "../../../../editor/procmat/NodeLibrary.h"
 #include "../../../../editor/procmat/PassPlanner.h"
 #include "../../../../editor/procmat/ProceduralGpuEvaluator.h"
-#include "../../../../editor/tests/procmat/PlanInterpreter.h"
+#include "../../../../editor/procmat/ProceduralCpuEvaluator.h"
+#include "../../../../editor/tests/procmat/ProcMatImageDifference.h"
 #include "../../../../editor/tests/procmat/ProcMatLibraryVariants.h"
 
 #include "render/SystemRender.h"
@@ -27,6 +28,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <set>
 #include <sstream>
 
@@ -109,16 +111,16 @@ namespace {
                 rows.push_back(base);
                 continue;
             }
-            std::vector<OutputImage> reference;
-            if (!runPlanOnInterpreter(plan, 4, reference, error)) {
-                base.failure = "interpreter: " + error;
+            EvaluationResult reference;
+            if (!evaluateOnCpu(plan, reference)) {
+                base.failure = "interpreter: " + reference.error;
                 rows.push_back(base);
                 continue;
             }
-            for (size_t i = 0; i < reference.size(); i++) {
+            for (size_t i = 0; i < reference.outputs.size(); i++) {
                 OutputRow row = base;
-                row.output = reference[i].name;
-                row.difference = differenceOf(device.outputs[i].rgba, reference[i].rgba);
+                row.output = reference.outputs[i].name;
+                row.difference = differenceOf(device.outputs[i].rgba, reference.outputs[i].rgba);
                 rows.push_back(std::move(row));
             }
         }
@@ -180,4 +182,48 @@ TEST(ProcMatNodeImageGpuSlow, EveryLeftOutNodeStillFails) {
         ASSERT_NE(descriptor, nullptr) << node.id << " is not in the library any more";
         EXPECT_TRUE(rowsFail(compareNode(library, node.id, *descriptor))) << node.id << " passes now: " << node.reason;
     }
+}
+
+TEST(ProcMatNodeImageGpuSlow, TheOldFloatHashIsOverTheLimit) {
+    JASPER_REQUIRE_GPU();
+    // AC8's red control: Material Maker's own rand, a float hash, put back into the library. Its pattern
+    // differs between tiers, which the limit must see, or the passing test above proves nothing (R10)
+    std::vector<std::pair<std::string, std::string>> files;
+    for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::path(JASPER_TEST_REPO_DIR) / "editor/procmat/nodes")) {
+        if (entry.path().extension() != ".json" || entry.path().filename() == "_manifest.json") continue;
+        std::ifstream in(entry.path(), std::ios::binary);
+        files.emplace_back(entry.path().filename().string(), std::string(std::istreambuf_iterator<char>(in), {}));
+    }
+    const std::vector<std::pair<const char*, std::vector<std::string>>> floatRand = {
+        {"rand", {"float rand(vec2 x) {", " return fract(cos(mod(dot(x, vec2(13.9898, 8.141)), 3.14)) * 43758.5);", "}"}},
+        {"rand2", {"vec2 rand2(vec2 x) {", " return fract(cos(mod(vec2(dot(x, vec2(13.9898, 8.141)),dot(x, vec2(3.4562, 17.398))), vec2(3.14, 3.14))) * 43758.5);", "}"}},
+        {"rand3", {"vec3 rand3(vec2 x) {", " return fract(cos(mod(vec3(dot(x, vec2(13.9898, 8.141)),dot(x, vec2(3.4562, 17.398)),dot(x, vec2(13.254, 5.867))), vec3(3.14, 3.14, 3.14))) * 43758.5);", "}"}},
+    };
+    bool replaced = false;
+    for (auto& [name, text] : files) {
+        if (name != "_functions.json") continue;
+        Json functions = Json::parse(text);
+        for (const auto& [id, code] : floatRand) {
+            ASSERT_TRUE(functions["functions"].contains(id)) << id;
+            functions["functions"][id]["code"] = code;
+            functions["functions"][id]["deps"] = Json::array();
+        }
+        text = functions.dump();
+        replaced = true;
+    }
+    ASSERT_TRUE(replaced);
+    std::string error;
+    const auto library = NodeLibrary::fromFiles(files, error);
+    ASSERT_TRUE(library) << error;
+    int over = 0;
+    for (const char* id : {"perlin", "noise_white"}) {
+        const Json* descriptor = library->descriptor(id);
+        ASSERT_NE(descriptor, nullptr) << id;
+        for (const OutputRow& row : compareNode(library, id, *descriptor)) {
+            ASSERT_TRUE(row.failure.empty()) << row.node << ": " << row.failure;
+            if (!row.difference.withinAc8()) over++;
+            std::printf("[gpu] float hash: %s %s %s %.3f mean, %d at p99\n", row.node.c_str(), row.variant.c_str(), row.output.c_str(), row.difference.mean, row.difference.p99);
+        }
+    }
+    EXPECT_GT(over, 0) << "the float hash drew within AC8 on both tiers: the comparison cannot see a different pattern";
 }

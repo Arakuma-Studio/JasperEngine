@@ -13,10 +13,17 @@
 
 namespace jasperengine::editor::procmat {
 
+    // The nearest half-precision value, as an RGBA16F target stores a float (S90 R12): 11 significant
+    // bits, subnormals down to 2^-24, and what rounds past 65504 is infinity. NaN stays NaN.
+    float roundedToHalf(float value);
+
     // An RGBA32F image with its box-filtered mip chain, what a shader samples on the CPU tier.
     class SpirvImage {
     public:
         SpirvImage(int width, int height, std::vector<float> rgba);
+        // As a GPU tier's Buffer holds it: a mip chain only when the Buffer has one (one level samples
+        // level 0 at any level of detail), and with halfPrecision every level stored as RGBA16F stores it
+        SpirvImage(int width, int height, std::vector<float> rgba, bool mipChain, bool halfPrecision);
 
         int mipCount() const { return (int)mips.size(); }
 

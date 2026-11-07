@@ -10,7 +10,8 @@
 #include "../../../../editor/procmat/ProceduralGpuEvaluator.h"
 #include "../../../../editor/procmat/ProceduralMaterialKind.h"
 #include "../../../../editor/procmat/ProceduralSession.h"
-#include "../../../../editor/tests/procmat/PlanInterpreter.h"
+#include "../../../../editor/procmat/ProceduralCpuEvaluator.h"
+#include "../../../../editor/tests/procmat/ProcMatImageDifference.h"
 
 #include "render/SystemRender.h"
 #include "render/TextureRender.h"
@@ -413,9 +414,9 @@ TEST(ProceduralEvaluatorGpu, APassMatchesTheInterpreter) {
     EvaluationResult result;
     ASSERT_TRUE(evaluate(evaluator, result));
     ASSERT_TRUE(result.ok) << result.error << "\n" << result.log;
-    std::vector<OutputImage> reference;
-    ASSERT_TRUE(runPlanOnInterpreter(plan, 2, reference, error)) << error;
-    const ImageDifference difference = differenceOf(result.outputs[0].rgba, reference[0].rgba);
+    EvaluationResult reference;
+    ASSERT_TRUE(evaluateOnCpu(plan, reference)) << reference.error;
+    const ImageDifference difference = differenceOf(result.outputs[0].rgba, reference.outputs[0].rgba);
     std::printf("[gpu] perlin on %s against the interpreter: %.3f mean, %d at p99\n", jasperengine::test::HeadlessContext::getRendererName(), difference.mean, difference.p99);
     EXPECT_TRUE(difference.withinAc8()) << difference.mean << " mean, " << difference.p99 << " at p99";
 }

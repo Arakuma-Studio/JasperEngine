@@ -2513,14 +2513,34 @@ SpirvMachine::Result SpirvMachine::execute(){
     }
 }
 
-SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba){
+float jasperengine::editor::procmat::roundedToHalf(float value){
+    if (!std::isfinite(value) || value == 0.0f)
+        return value;
+    const float magnitude = std::fabs(value);
+    // past the largest half, what rounds up to 65536 is infinity
+    if (magnitude >= 65520.0f)
+        return std::copysign(HUGE_VALF, value);
+    int exponent = 0;
+    std::frexp(magnitude, &exponent);
+    // 11 significant bits, and subnormals stop at 2^-24
+    const float step = std::ldexp(1.0f, std::max(exponent - 11, -24));
+    return std::copysign(std::nearbyint(magnitude / step) * step, value);
+}
+
+SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba) : SpirvImage(width, height, std::move(rgba), true, false) {}
+
+SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba, bool mipChain, bool halfPrecision){
     // an image that is not what it says becomes one transparent texel, not a read out of bounds
     if (width <= 0 || height <= 0 || rgba.size() < (size_t)width * height * 4){
         width = height = 1;
         rgba.assign(4, 0.0f);
     }
+    if (halfPrecision){
+        for (float& value : rgba)
+            value = roundedToHalf(value);
+    }
     mips.push_back({width, height, std::move(rgba)});
-    while (mips.back().width > 1 || mips.back().height > 1){
+    while (mipChain && (mips.back().width > 1 || mips.back().height > 1)){
         const Mip& previous = mips.back();
         Mip next;
         next.width = std::max(1, previous.width / 2);
@@ -2540,7 +2560,7 @@ SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba){
                 }
                 float* out = &next.rgba[((size_t)y * next.width + x) * 4];
                 for (int k = 0; k < 4; k++)
-                    out[k] = sum[k] * 0.25f;
+                    out[k] = halfPrecision ? roundedToHalf(sum[k] * 0.25f) : sum[k] * 0.25f;
             }
         }
         mips.push_back(std::move(next));
