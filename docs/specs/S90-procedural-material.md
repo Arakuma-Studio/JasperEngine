@@ -553,15 +553,36 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   it is `boolean` now (`import_mm_nodes.py`, regenerated: 8 descriptors).
 - **R20, the per-node image test.** `ProcMatNodeImageGpuSlow` plans and evaluates every variant of every node
   for real (Buffers feed passes, Iterate Buffers iterate, half rounding on both sides), at 128² with Buffers
-  capped at 64, on the device and on `SpirvInterpreter`. 250 nodes, 1,179 outputs. Of M0's six shaders over
-  AC8, `fill_to_uv2` and `classic_kuwahara` now pass. Four nodes fail and are left out of the catalog
-  (`NodeLibrary::leftOutNodes`, and `EveryLeftOutNodeStillFails` says when one passes again):
-  - `auto_tones`: its loop pass, wired, 4.3 mean, 47 at p99. Cause not traced.
-  - `bricks`: `pattern=1`, output Direction, 27 mean, 128 at p99: `sign()` of a near tie. `bricks3` replaces it.
-  - `height_to_angle`: unconnected, `atan(0, 0)`, 191 apart.
-  - `morphology3`: three variants at 2.4 mean, 12 at p99 once its Buffers feed each other; M0's sweep, with one
-    probe image for every texture, could not show it. Cause not traced.
-
-  A library graph that holds one of them inside (`graph_pattern_fibers`) still ships: its own image passed.
+  capped at 64, on the device and on `SpirvInterpreter`. All 250 nodes ship: 1,179 outputs, worst 1.0 mean,
+  4 at p99. Its first run put 6 outputs of 4 nodes over AC8; each was traced to a formula whose result is not
+  defined, and fixed in the importer (`TEXT_FIXES`, `GLOBAL_TEXT_FIXES` in `import_mm_nodes.py`, which fail when
+  Material Maker's text changes). These are deviations from Material Maker, whose GPU draws the same ties its own
+  way:
+  - `bricks`, output Direction: `sign(width - height)`, zero up to rounding on Running Bond 2's square bricks.
+    A difference under 1e-4 is now 0.5.
+  - `height_to_angle`: `atan(0, 0)` on a flat input. No slope (`dot(dh, dh) < 1e-12`) is now angle 0.
+  - `auto_tones`: its loop keeps an iteration count in a half-float channel as steps of 0.01, so
+    `pow(2.0, iter * 100.0)` was no power of two and texel edges fell where each device rounds. The exponent is
+    now `floor(iter * 100.0 + 0.5)` through `exp2`.
+  - `morphology3`: its dilation keeps the largest neighbour with `>`, and neighbours equal up to rounding (any
+    gradient has them) were picked by each device's rounding. A neighbour now wins only when larger by 1/1024,
+    under what 8-bit output shows. Its float-stepped loops are integer loops, and `pack_2x32_to_4x16` (shared
+    with `fill2` and `slope`) quantizes its low half to 1/2048, which a half holds exactly; neither changed the
+    measured difference alone, but both remove a rounding the result depended on.
+- **Nearest-texel sampling** (a Buffer with `filter: false`) moves texel edges by 1/64 texel: another grid's
+  coordinates and the GPU's interpolated ones landed exactly on an edge, which each device rounds its own way.
+  Both expanders do it, and the reference was regenerated.
+- **A Buffer's size per step.** Each pass knows where the sizes of the Buffers it reads are in its block
+  (`PlannedPass::sizes`), and the evaluator sets the size the Buffer has at that step: a shrinking Iterate
+  Buffer halves, which Material Maker's constant `<buffer>_tex_size` ignores.
+- **R28.** The kind sets `strictParams` (BF23): a misspelled parameter, an unknown node type and an out-of-range
+  value are errors, so `edit_graph` refuses them. A wrongly named enum value is S23's `param-range` error with its
+  did-you-mean, not also the kind's `param-type`.
+- **R3, bounds.** Images are 1 to 64 pixels a side with exactly the words their size needs and no pixel past the
+  palette; shapes hold at most 64 points; a lattice is 1 to 8 cells a side with (x + 1)(y + 1) points.
+- **R21.** Not as written: two compiler entry points were added to the engine (`ShaderVariantCompiler::
+  compileSources`, `compileFragmentToSpirv`), because the engine links `shadercompiler` privately and the editor
+  has no other way to it. They compile only with `JASPERENGINE_RUNTIME_SHADERS`, use no new dependency, and nothing
+  in a game calls them; a player's size was not measured (AC18's check is M6's).
 - **Not run.** Vulkan (lavapipe) and any hardware GPU: the GPU tests ran on glcore only. Tier selection,
   the CPU tier's evaluator, MCP tools and the window are later milestones.
