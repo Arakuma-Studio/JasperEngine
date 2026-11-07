@@ -329,7 +329,7 @@ TEST_F(NavAgentTest, PathFailedFires){
     step();
     NavMeshAgent handle(scene.get(), walker);
     int failed = 0;
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     handle.setDestination(Vector3(8.0f, 0.0f, 0.0f));
     steps(60);
     EXPECT_EQ(failed, 1);
@@ -361,7 +361,7 @@ TEST_F(NavAgentTest, PathStatusWithoutSearch){
     for (size_t i = 0; i < agents.size(); i++) {
         NavMeshAgent handle(scene.get(), agents[i]);
         handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { reached++; });
-        handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+        handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
         ASSERT_TRUE(handle.setDestination(destinations[i]));
     }
     steps(90);
@@ -387,7 +387,7 @@ TEST_F(NavAgentTest, PartialPathNoArrival){
     step();
     NavMeshAgent handle(scene.get(), walker);
     int failed = 0, reached = 0;
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { reached++; });
     handle.setDestination(Vector3(8.0f, 0.0f, 0.0f));
     steps(900);
@@ -412,7 +412,7 @@ TEST_F(NavAgentTest, ExtensionKeepsPathWithoutAutoRepath){
     NavMeshAgent handle(scene.get(), runner);
     int reached = 0, failed = 0;
     handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { reached++; });
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     ASSERT_TRUE(handle.setDestination(destination));
     for (int tick = 0; tick < 60 * 60 && reached == 0 && failed == 0; tick++)
         step();

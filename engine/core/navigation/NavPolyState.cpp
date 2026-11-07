@@ -359,6 +359,29 @@ bool NavPolyState::onTilesChanged() {
     return any;
 }
 
+void NavPolyState::withBakedState(const std::function<void()>& search) {
+    if (!mesh || snapshots.empty()) {
+        search();
+        return;
+    }
+    std::vector<std::vector<unsigned char>> current(snapshots.size());
+    std::vector<dtMeshTile*> tiles(snapshots.size(), nullptr);
+    for (size_t i = 0; i < snapshots.size(); i++) {
+        dtMeshTile* tile = const_cast<dtMeshTile*>(mesh->getTileByRef(snapshots[i].ref));
+        if (!tile)
+            continue;
+        tiles[i] = tile;
+        current[i].resize((size_t)mesh->getTileStateSize(tile));
+        mesh->storeTileState(tile, current[i].data(), (int)current[i].size());
+        mesh->restoreTileState(tile, snapshots[i].state.data(), (int)snapshots[i].state.size());
+    }
+    search();
+    for (size_t i = 0; i < snapshots.size(); i++) {
+        if (tiles[i])
+            mesh->restoreTileState(tiles[i], current[i].data(), (int)current[i].size());
+    }
+}
+
 void NavPolyState::restoreTile(const dtMeshTile* tile) {
     if (!mesh || snapshots.empty())
         return;

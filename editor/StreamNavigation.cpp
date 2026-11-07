@@ -87,6 +87,10 @@ YAML::Node editor::Stream::encodeNavMeshAgentComponent(const NavMeshAgentCompone
     node["updateRotation"] = agent.updateRotation;
     node["driver"] = StreamSchema::navAgentDriver().toString(agent.driver);
     node["surface"] = agent.surface;
+    node["stuckDetection"] = agent.stuckDetection;
+    node["stuckSpeedRatio"] = agent.stuckSpeedRatio;
+    node["stuckTimeout"] = agent.stuckTimeout;
+    node["repathWhenStuck"] = agent.repathWhenStuck;
     return node;
 }
 
@@ -113,6 +117,10 @@ NavMeshAgentComponent editor::Stream::decodeNavMeshAgentComponent(const YAML::No
     if (node["updateRotation"]) agent.updateRotation = YamlNumbers::as<bool>(node["updateRotation"]);
     if (node["driver"]) agent.driver = decodeEnum(node, "driver", StreamSchema::navAgentDriver());
     if (node["surface"]) agent.surface = YamlNumbers::as<Entity>(node["surface"]);
+    if (node["stuckDetection"]) agent.stuckDetection = YamlNumbers::as<bool>(node["stuckDetection"]);
+    if (node["stuckSpeedRatio"]) agent.stuckSpeedRatio = YamlNumbers::as<float>(node["stuckSpeedRatio"]);
+    if (node["stuckTimeout"]) agent.stuckTimeout = YamlNumbers::as<float>(node["stuckTimeout"]);
+    if (node["repathWhenStuck"]) agent.repathWhenStuck = YamlNumbers::as<bool>(node["repathWhenStuck"]);
     return agent;
 }
 

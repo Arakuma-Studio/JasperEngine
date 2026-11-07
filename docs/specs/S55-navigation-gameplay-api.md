@@ -758,6 +758,37 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   calls with 50 agents, no overrides): S19's tick itself allocates (its sorted agent list), which
   `NavSystemTest.GameplayZeroCost` (P3) measures.
 
+- S55 P3: `agent.path` (`getAgentCorridorPath`) starts at the agent's position, as `calculatePath`'s
+  paths and Unity's `NavMeshAgent.path` do, so AC21 compares its corners after the first with
+  `getPathCorners()` (the corners ahead).
+- S55 P3: `setPath` checks every polygon it puts in the corridor against the agent's filter
+  (`isValidPolyRef`, O(1) each, at most 256) whatever `meshRevision` says, instead of only after a
+  revision change: the same answer, and no stale-revision corner case.
+- S55 P3: an agent following a path from `setPath` steers without dtCrowd's corridor shortcuts
+  (`DT_CROWD_OPTIMIZE_VIS`, `DT_CROWD_OPTIMIZE_TOPO`) until its next request or a crowd replan;
+  with them the crowd re-optimises the given route with its own costs and leaves it (AC19).
+- S55 P3: without a path, `velocity = v` moves the agent at `v` only as far as its acceleration lets
+  the crowd's velocity follow in one tick (Detour's velocity request integrates within
+  `maxAcceleration`); AC22's no-path case runs with an acceleration that reaches `v` in a tick.
+- S55 P3: AC18's zero allocations per tick also needed the dispatched events' buffer kept between
+  ticks and sorted without `stable_sort`'s temporary buffer (S53 R19 keeps the agent order and the
+  crowd slot owners); the event order is unchanged (entity, then queue order).
+- S55 P3: the one search that classifies a failure (R27) is left out of S53's
+  `getPathQueryCount()`, which counts the searches scripts and tools run (S53 R6: a crowd agent's
+  path state never searches; a failure's reason does, once per failure).
+- S55 P3: P2's R15 drop of a path without Auto Repath fires `onPathFailed` through the same
+  classification (`failPath`), so its reason is the `BlockedByArea` AC25 expects.
+- S55 P3: AC21's stale path comes from an area closed to the agent's mask far along its corridor,
+  not from a carving obstacle: S53 R6 replans every corridor that holds a gone polygon in the tick
+  its tile changes, so a carved corridor is never stale between ticks. `isPathStale` reports the
+  mask case until dtCrowd's look-ahead replans it.
+- S55 P3: S54's classification answered `Disconnected` for a path blocked only by a runtime Not
+  Walkable volume or a deactivated link (flags 0 pass no mask, so its all-areas search fails too).
+  When the mesh has runtime overrides, `NavMesh::findPath` now runs that search over the baked flags
+  (`NavPolyState::withBakedState`, no revision, no changed polygon) and answers `BlockedByArea` when
+  it gets through (R27's "it reports BlockedByArea for R11-R16 blocks"). Files of S54 P1 and S55 P2,
+  touched minimally.
+
 ## Progress (implementation notes, keep updated)
 
 - S55 P1: interfaces (§6 P1 block) and the queries, filters, crowd filter slots, Lua and
@@ -779,3 +810,15 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   `activated` / `occupied`, `visualize_navigation` `show.area_overrides`, `get_runtime_entity` link,
   modifier and obstacle fields; tests in `NavAreaOverrideTest.cpp`, `NavigationEditorTest.cpp`,
   `test_navigation_gameplay.py` (door and bridge, handles, overlay screenshot).
+- S55 P3: `NavCrowd` corridor and velocity access (`setCorridor`, `getCorridor`, `isCorridorValid`,
+  `overrideVelocity`, `requestMoveVelocity`, with `getSteeringTarget`, `getCorridorPath`,
+  `getNextOffMeshLink`), the `NavigationSystem` agent section (R19-R24), failure reasons through
+  `failPath` / `classifyFailure` at every `onPathFailed` (R27), the stuck watchdog (R25, R26),
+  `Event::detail` and `Stuck` (R29), the component's stuck fields, `stuckTime`, `lastPathFailure`,
+  `onStuck` and the two-argument `onPathFailed`, the `NavMeshAgent` handle and its Lua members (the
+  reason a string, R28), `EntityCloner`, reflection / codec / factory / Inspector rows (Stuck
+  Detection foldout, runtime lines), `get_navigation_info` `last_failure` / `stuck_seconds`,
+  `get_runtime_entity` agent fields; tests in `NavAgentApiTest.cpp`, `NavCrowdTest.cpp`
+  (`GameplayZeroCost`, `GameplayReplay`), `NavigationEditorTest.cpp` (agent rows of AC29),
+  `test_navigation_gameplay.py` (`test_path_failed_callbacks`, the Guard of the doors test); NavBench
+  `stuck_100_extra_ms`.

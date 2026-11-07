@@ -195,7 +195,8 @@ the same inputs give the same positions. Events (`onDestinationReached`, `onPath
 any navigation function.
 
 An agent spawned off the navmesh reports `isOnNavMesh == false` and logs one warning; `warp(p)`
-puts it on. In play, its Inspector shows Path Status, Remaining Distance and Is On NavMesh.
+puts it on. In play, its Inspector shows Path Status, Remaining Distance, Is On NavMesh, Last Path
+Failure, Path Stale, its own area costs, and Stuck Time with Detect Stuck on.
 
 **Paths and arrival.** Paths come from the crowd's own search (Detour's path queue, time-sliced
 across agents); no extra search runs when one arrives or is planned again.
@@ -229,6 +230,84 @@ With Auto Update Positions off, a moved link stays where it was baked, as in Uni
 
 Agents of one surface and agent type form a crowd (Detour's dtCrowd) of up to
 *Crowd Max Agents* (128); a full crowd grows, with a warning.
+
+### Scripted paths and root motion
+
+`agent:calculatePath(target)` plans at once from where the agent stands, on its surface, with its
+area mask and costs; the target snaps as `setDestination`'s does. It does not change the agent's
+path. `agent:setPath(path)` hands it a path of `calculatePath` (the agent's or the system's): the
+path must have been planned on the agent's surface, its polygons must still be open to the agent,
+and the agent must stand on one of its first 16 polygons. The agent then follows it as given (the
+crowd takes no shortcut through it) to its last corner; `pathPending` is false at once. A path of
+more than 256 polygons is followed for its first 256, and the crowd plans the rest near their end.
+A refused path returns `false` and leaves the agent without a path (Unity), as does a path table a
+script built (it has no `corridor`; one warning).
+
+```lua
+local agent = NavMeshAgent(self.scene, self.entity)
+local filter = NavMeshQueryFilter{areaMask = NavAreas.All} ; filter:setAreaCost(NavAreas.getAreaFromName("Mud"), 1)
+local path = self.scene:getNavigationSystem():calculatePath(agent.nextPosition, target, filter)
+if not agent:setPath(path) then print("refused") end
+local corridor = agent.path            -- the corridor from where it stands (corners[1] is its position)
+local next = agent.steeringTarget      -- the corner it steers to
+if agent.isPathStale then agent:setDestination(agent.destination) end
+```
+
+`agent.path` is computed when read: its first corner is the agent's position, the rest are
+`getPathCorners()` (which stop at a link) and the corridor after them. `isPathStale` is true when
+its corridor holds a polygon that is gone (a carving obstacle rebuilt the tile) or closed to its
+filter; false while the path is pending. The crowd replans by itself once the change is close.
+
+Root motion: with `updatePosition = false` (or the None driver) the Transform is the script's.
+`agent.nextPosition = p` moves the agent's simulation position along the surface towards `p`
+(walls stop it) and keeps its path; `agent.velocity = v` sets its velocity for the next fixed tick
+only. With a path it moves `v * dt` along the surface and reports `v`, then follows its path again;
+without one the crowd steers it at `v` for that tick (avoidance applies, within its acceleration).
+Neither writes the Transform.
+
+```lua
+agent.updatePosition = false
+function MyScript:fixedUpdate(dt)
+    agent.nextPosition = self.animatedRoot     -- or: agent.velocity = rootVelocity
+end
+```
+
+The agent also answers the queries from where it stands with its own filter:
+`agent:raycast(target)` (blocked, hit), `agent:findClosestEdge()` (found, hit) and
+`agent:samplePathPosition(areaMask, maxDistance)`, which walks its path and returns `true` with
+the point where the path first enters an area outside `areaMask`, else `false` with the point
+`maxDistance` along it (or its end); the hit carries `area`, `mask` and `distance`.
+`agent.nextOffMeshLinkData` is the next link along its path (within 64 corners), the shape of
+`currentOffMeshLinkData`.
+
+### Stuck agents
+
+With **Detect Stuck** (`stuckDetection`) on, an agent walking its path (placed, not pending, not
+stopped, not on a link, farther than its stopping distance plus radius from the end) keeps an
+anchor. Once it is farther than *Stuck Speed Ratio* (0.1) x speed x *Stuck After* (2 s) from the
+anchor, the anchor moves there; otherwise `stuckTime` grows. Back-and-forth jitter in place counts
+as stuck. When `stuckTime` reaches *Stuck After*, `onStuck(agent)` fires, the agent asks for its
+destination again with *Repath When Stuck* (on), and `stuckTime` starts over. `stuckTime` is 0
+while the agent is not walking. Off, the watchdog costs one flag test per agent and tick.
+
+```lua
+agent.stuckDetection = true
+agent.onStuck = function(a) print("stuck for", a.stuckTime, "at", a.nextPosition) end
+```
+
+Why a path failed: `onPathFailed(agent, reason)` passes the reason, and `agent.lastPathFailure`
+keeps it (`"none"` after a later successful path or `resetPath`). The reasons are the
+`pathFailureName`s of path queries: `"no_surface"` (no surface of its agent type),
+`"not_baked"`, `"end_off_mesh"` (the crowd refused the destination), and for a target the crowd
+could not reach or a path dropped by a replan without Auto Repath, the reason a query from the
+agent to its destination gives at that moment (`"disconnected"`, `"blocked_by_area"`, ...). A
+one-argument callback still works. C++ subscribers take `(NavMeshAgent, nav::PathFailure)`.
+
+```lua
+agent.onPathFailed = function(a, reason)
+    if reason == "blocked_by_area" then print("the door is closed") end
+end
+```
 
 ### Script names
 

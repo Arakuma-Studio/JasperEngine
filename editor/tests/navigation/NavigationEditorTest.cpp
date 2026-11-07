@@ -6,8 +6,8 @@
 // what differs from the defaults and reads back sanitized, the generated main.cpp sets the
 // settings, and the nav-grid brush's stamps, lines, fills and strokes. (The overlay's settings:
 // NavigationOverlayTest.cpp.)
-// S55 (docs/specs/S55-navigation-gameplay-api.md R40, R41, R47): the Link and Modifier fields of
-// old scenes, their Inspector rows' undo, and the overlay's area override boxes.
+// S55 (docs/specs/S55-navigation-gameplay-api.md R40, R41, R47): the Link, Modifier and Agent fields
+// of old scenes, their Inspector rows' undo, and the overlay's area override boxes.
 // S53 (docs/specs/S53-navigation-fixes.md R17, R22, R27): Max Carving Obstacles and Carve Tiles Per
 // Tick default when missing, and the overlay's reservation tint.
 
@@ -16,6 +16,7 @@
 #include "command/CommandHandle.h"
 #include "command/UndoFakeCommand.h"
 #include "command/type/PropertyCmd.h"
+#include "component/NavMeshAgentComponent.h"
 #include "navigation/NavGridBrush.h"
 #include "navigation/NavigationOverlay.h"
 #include "navigation/NavigationProjectSettings.h"
@@ -304,10 +305,31 @@ TEST_F(NavigationEditorTest, OldSceneLoadsDefaults){
     NavMeshModifierComponent runtime;
     runtime.applyAtRuntime = true;
     EXPECT_TRUE(Stream::decodeNavMeshModifierComponent(YAML::Load(YAML::Dump(Stream::encodeNavMeshModifierComponent(runtime)))).applyAtRuntime);
+
+    // S55 P3: an S19 agent has the stuck watchdog's defaults, and saves them
+    const YAML::Node agent = YAML::Load("enabled: true\nagentType: 0\nspeed: 3.5\nautoRepath: true\nareaMask: 65535\n");
+    const NavMeshAgentComponent decodedAgent = Stream::decodeNavMeshAgentComponent(agent);
+    EXPECT_FALSE(decodedAgent.stuckDetection);
+    EXPECT_FLOAT_EQ(decodedAgent.stuckSpeedRatio, 0.1f);
+    EXPECT_FLOAT_EQ(decodedAgent.stuckTimeout, 2.0f);
+    EXPECT_TRUE(decodedAgent.repathWhenStuck);
+    const YAML::Node agentAgain = Stream::encodeNavMeshAgentComponent(decodedAgent);
+    for (const char* key : {"stuckDetection", "stuckSpeedRatio", "stuckTimeout", "repathWhenStuck"})
+        EXPECT_TRUE(agentAgain[key]) << key;
+    NavMeshAgentComponent watched;
+    watched.stuckDetection = true;
+    watched.stuckSpeedRatio = 0.25f;
+    watched.stuckTimeout = 3.0f;
+    watched.repathWhenStuck = false;
+    const NavMeshAgentComponent watchedAgain = Stream::decodeNavMeshAgentComponent(YAML::Load(YAML::Dump(Stream::encodeNavMeshAgentComponent(watched))));
+    EXPECT_TRUE(watchedAgain.stuckDetection);
+    EXPECT_FLOAT_EQ(watchedAgain.stuckSpeedRatio, 0.25f);
+    EXPECT_FLOAT_EQ(watchedAgain.stuckTimeout, 3.0f);
+    EXPECT_FALSE(watchedAgain.repathWhenStuck);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC29 (R40): Activated and Apply At Runtime are Inspector rows (PropertyCmd, undoable)
+// AC29 (R40): Activated, Apply At Runtime and Detect Stuck are Inspector rows (PropertyCmd, undoable)
 TEST_F(NavigationEditorTest, GameplayRowsUndo){
     Scene* s = scene->scene;
     const Entity bridge = addObject("Bridge");
@@ -326,6 +348,18 @@ TEST_F(NavigationEditorTest, GameplayRowsUndo){
     EXPECT_FALSE(s->getComponent<NavMeshModifierComponent>(door).applyAtRuntime);
     ASSERT_TRUE(history()->undo());
     EXPECT_TRUE(s->getComponent<NavMeshLinkComponent>(bridge).activated);
+
+    // S55 P3: Detect Stuck and Stuck After (s)
+    const Entity walker = addObject("Walker");
+    s->addComponent<NavMeshAgentComponent>(walker, {});
+    ASSERT_TRUE(history()->addCommand(new PropertyCmd<bool>(project.get(), sceneId, walker, ComponentType::NavMeshAgentComponent, "stuckDetection", true)));
+    ASSERT_TRUE(history()->addCommand(new PropertyCmd<float>(project.get(), sceneId, walker, ComponentType::NavMeshAgentComponent, "stuckTimeout", 4.0f)));
+    EXPECT_TRUE(s->getComponent<NavMeshAgentComponent>(walker).stuckDetection);
+    EXPECT_FLOAT_EQ(s->getComponent<NavMeshAgentComponent>(walker).stuckTimeout, 4.0f);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FLOAT_EQ(s->getComponent<NavMeshAgentComponent>(walker).stuckTimeout, 2.0f);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FALSE(s->getComponent<NavMeshAgentComponent>(walker).stuckDetection);
 }
 
 // AC30 (R41): a runtime modifier volume is drawn whether selected or not, its 12 box lines in its

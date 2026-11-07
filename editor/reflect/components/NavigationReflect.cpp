@@ -164,13 +164,19 @@ namespace {
         JE_FIELD(NavMeshAgentComponent, updateRotation),
         JE_FIELD(NavMeshAgentComponent, driver, .enumDesc = &enums::kNavAgentDriver, .tooltip = "What moves it: its Transform, its Rigidbody's velocity, its Character Controller, or nothing (scripts)."),
         JE_FIELD(NavMeshAgentComponent, surface, .ops = &ops::Entity, .tooltip = "The NavMesh Surface or Nav Grid it walks; none: the surface of its type under it, else a grid holding it."),
+        // ---- S55 agents: the stuck watchdog (R25)
+        JE_FIELD(NavMeshAgentComponent, stuckDetection, .label = "Detect Stuck", .tooltip = "Fire onStuck when it makes no progress along its path for Stuck After seconds."),
+        JE_FIELD(NavMeshAgentComponent, stuckSpeedRatio, .tooltip = "Progress counts once it moved this fraction of Speed x Stuck After from where it was."),
+        JE_FIELD(NavMeshAgentComponent, stuckTimeout, .unit = Unit::Seconds, .label = "Stuck After", .tooltip = "Seconds without progress before onStuck fires."),
+        JE_FIELD(NavMeshAgentComponent, repathWhenStuck, .tooltip = "Ask for the destination again when stuck."),
     };
 
     const ComponentCodec kNavMeshAgentCodec = JE_STREAM_CODEC(NavMeshAgentComponent, encodeNavMeshAgentComponent, decodeNavMeshAgentComponent);
 
     constexpr const char* kNavMeshAgentKnownKeys[] = {"acceleration", "agentType", "angularSpeed", "areaMask", "autoBraking", "autoRepath",
-        "autoTraverseOffMeshLink", "avoidancePriority", "baseOffset", "driver", "enabled", "height", "obstacleAvoidance", "radius", "speed",
-        "stoppingDistance", "surface", "updatePosition", "updateRotation"};
+        "autoTraverseOffMeshLink", "avoidancePriority", "baseOffset", "driver", "enabled", "height", "obstacleAvoidance", "radius",
+        "repathWhenStuck", "speed", "stoppingDistance", "stuckDetection", "stuckSpeedRatio", "stuckTimeout", "surface", "updatePosition",
+        "updateRotation"};
 
     // ---------------------------------------------------------------- NavMesh Obstacle
 

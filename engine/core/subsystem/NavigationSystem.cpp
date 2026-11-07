@@ -81,12 +81,18 @@ namespace {
         PathFailed,
         LinkStart,
         LinkEnd,
-        BakeCompleted
+        BakeCompleted,
+        // ---- S55 agents
+        Stuck
     };
 
     struct Event {
         Entity entity;
         EventType type;
+        // ---- S55 agents: PathFailed's nav::PathFailure
+        uint8_t detail = 0;
+        // its place in the queue (dispatch keeps it within an entity)
+        uint32_t sequence = 0;
     };
 
     void warnOnce(std::set<std::string>& warned, const std::string& key, const std::string& message) {
@@ -193,6 +199,13 @@ struct NavigationSystem::Runtime {
         GridCell gridGoal;
         // ---- S55 queries: its own area costs (0: the project's), runtime only
         float areaCosts[AREA_COUNT] = {};
+
+        // ---- S55 agents: the stuck watchdog's anchor (R25) and a script's velocity for the next
+        // fixed tick (world, R22)
+        Vector3 stuckAnchor;
+        bool stuckAnchored = false;
+        bool velocityOverride = false;
+        Vector3 overrideVelocity;
     };
 
     // what an obstacle's cut was made from (spec S53 R13): a re-cut once it moved past the
@@ -270,6 +283,10 @@ struct NavigationSystem::Runtime {
     std::vector<int> lookahead;
     std::vector<NavLinkInput> connections;
     std::vector<float> linkCosts;
+    // ---- S55 agents: crowd agents steered by a velocity request this tick (no path), and the
+    // events being dispatched (the two buffers swap, R18)
+    std::vector<int> velocityRequests;
+    std::vector<Event> dispatching;
 
     // the fixed tick's steps (spec D2)
     void syncSurfaces(NavigationSystem& system, Scene* scene);
@@ -285,6 +302,21 @@ struct NavigationSystem::Runtime {
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
     void dispatch(Scene* scene);
     const std::vector<Entity>& sortedAgents(Scene* scene);
+    // S55 step 1b: the agents whose path an area change touches ask again (R15)
+    void replanAreaChanges(NavigationSystem& system, Scene* scene);
+    std::vector<int> replanned;
+    // ---- S55 queries: an agent whose area mask and costs found no free crowd filter
+    void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
+    // ---- S55 agents
+    // why the agent's destination has no Complete path now: one search on its surface (S54's
+    // classification), else over the surfaces of its agent type
+    PathFailure classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent);
+    // queues onPathFailed with its reason, which lastPathFailure keeps
+    void failPath(Entity entity, NavMeshAgentComponent& component, PathFailure reason);
+    // the stuck watchdog (R25), after the agent's state of this tick is known; scale: the surface's
+    // units per metre
+    void watchStuck(NavigationSystem& system, Entity entity, Agent& agent, NavMeshAgentComponent& component, float dt, float scale);
+    static void stopWatchingStuck(Agent& agent, NavMeshAgentComponent& component);
     const std::vector<Entity>& sortedObstacles(Scene* scene);
 
     // a new mesh (or none) for the surface: its crowd goes, its agents are placed again
@@ -292,11 +324,6 @@ struct NavigationSystem::Runtime {
     // Puts `next` in service for the surface: it takes the obstacles of the mesh it replaces,
     // and, outside a frame budget (a load, an editor bake), cuts them at once
     void replaceMesh(Entity entity, Surface& surface, std::unique_ptr<NavMesh> next, bool landAtOnce);
-    // S55 step 1b: the agents whose path an area change touches ask again (R15)
-    void replanAreaChanges(NavigationSystem& system, Scene* scene);
-    std::vector<int> replanned;
-    // ---- S55 queries: an agent whose area mask and costs found no free crowd filter
-    void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
 };
 
 NavigationSystem::NavigationSystem(Scene* scene): SubSystem(scene) {
@@ -2389,6 +2416,24 @@ namespace {
 
 }
 
+namespace {
+
+    // ---- S55 agents: a destination snapped to the mesh within twice the agent's height (S19 R12;
+    // setDestination and calculatePath)
+    Vector3 snapDestination(NavigationSystem& system, Scene* scene, Entity surface, bool onGrid, const NavMeshAgentComponent& agent,
+                            const Vector3& target) {
+        if (onGrid)
+            return target;
+        NavHit hit;
+        const float reach = 2.0f * std::max(agent.height, 1e-3f) * (surface != NULL_ENTITY ? unitScaleOfSurface(scene, surface) : 1.0f);
+        const uint16_t mask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        const bool found = surface != NULL_ENTITY ? system.samplePositionOn(surface, target, reach, hit, mask)
+                                                  : system.samplePosition(target, reach, hit, QueryFilter{agent.agentType, mask});
+        return found ? hit.position : target;
+    }
+
+}
+
 Entity NavigationSystem::getAgentSurface(Entity agent) {
     if (!runtime)
         return NULL_ENTITY;
@@ -2451,17 +2496,7 @@ bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
         return false;
     Runtime::Agent& state = rt().agents[entity];
     state.entity = entity;
-    // the destination snaps to the mesh within twice the agent's height (spec R12)
-    Vector3 snapped = target;
-    if (!state.onGrid) {
-        NavHit hit;
-        const float reach = 2.0f * std::max(agent->height, 1e-3f) * (state.surface != NULL_ENTITY ? unitScaleOfSurface(scene, state.surface) : 1.0f);
-        const uint16_t mask = (uint16_t)(agent->areaMask & ALL_AREAS);
-        const bool found = state.surface != NULL_ENTITY ? samplePositionOn(state.surface, target, reach, hit, mask)
-                                                         : samplePosition(target, reach, hit, QueryFilter{agent->agentType, mask});
-        if (found)
-            snapped = hit.position;
-    }
+    const Vector3 snapped = snapDestination(*this, scene, state.surface, state.onGrid, *agent, target);
     agent->destination = snapped;
     agent->hasPath = true;
     agent->pathPending = true;
@@ -2472,6 +2507,8 @@ bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
     state.wasPending = true;
     state.gridPending = false;
     state.gridCells.clear();
+    state.stuckAnchored = false;
+    agent->stuckTime = 0.0f;
     if (state.placed && !state.onGrid && state.crowdIndex >= 0) {
         auto surface = runtime->surfaces.find(state.surface);
         if (surface != runtime->surfaces.end() && surface->second.crowd) {
@@ -2480,7 +2517,7 @@ bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
                 agent->pathPending = false;
                 agent->pathStatus = PathStatus::Invalid;
                 state.failed = true;
-                runtime->events.push_back(Event{entity, EventType::PathFailed});
+                runtime->failPath(entity, *agent, PathFailure::EndOffMesh);
                 return false;
             }
         }
@@ -2502,6 +2539,9 @@ void NavigationSystem::resetPath(Entity entity) {
     agent->hasPath = false;
     agent->pathPending = false;
     agent->remainingDistance = 0.0f;
+    agent->lastPathFailure = PathFailure::None;
+    agent->stuckTime = 0.0f;
+    state.stuckAnchored = false;
     if (state.placed && state.crowdIndex >= 0) {
         auto surface = runtime->surfaces.find(state.surface);
         if (surface != runtime->surfaces.end() && surface->second.crowd)
@@ -2629,6 +2669,305 @@ bool NavigationSystem::getAgentPath(Entity entity, std::vector<Vector3>& corners
     return true;
 }
 
+// ---- S55 agents (R19-R24)
+
+namespace {
+
+    // a path's world corners and lengths from nav space (calculatePathOn's conversion)
+    void agentPathToWorld(NavPath& path, const NavFrame& frame, float planeZ) {
+        path.length = 0.0f;
+        for (size_t i = 0; i < path.corners.size(); i++) {
+            path.corners[i] = frame.toWorld(path.corners[i], planeZ);
+            if (i > 0)
+                path.length += path.corners[i - 1].distance(path.corners[i]);
+        }
+        if (!path.corners.empty()) {
+            path.start = path.corners.front();
+            path.end = path.closestPoint = path.corners.back();
+        }
+    }
+
+}
+
+NavPath NavigationSystem::calculateAgentPath(Entity entity, const Vector3& target) {
+    NavPath path;
+    path.start = path.end = path.closestPoint = target;
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return path;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.surface == NULL_ENTITY)
+        return path;
+    const Runtime::Agent& state = found->second;
+    const Vector3 snapped = snapDestination(*this, scene, state.surface, state.onGrid, *component, target);
+    if (state.onGrid) {
+        // a grid answers with its cells' centres (no corridor: setPath refuses it)
+        NavGridMap* map = getGridMap(state.surface);
+        if (!map)
+            return path;
+        GridQuery query;
+        query.areaMask = (uint16_t)(component->areaMask & ALL_AREAS);
+        query.allowPartial = true;
+        const GridPath grid = findGridPath(state.surface, gridWorldToCell(state.surface, state.currentPosition),
+                                           gridWorldToCell(state.surface, snapped), query);
+        path.status = grid.status;
+        path.failure = grid.failure;
+        path.surface = state.surface;
+        path.corners = gridPathToWorld(state.surface, grid);
+        for (size_t i = 1; i < path.corners.size(); i++)
+            path.length += path.corners[i - 1].distance(path.corners[i]);
+        if (!path.corners.empty()) {
+            path.start = path.corners.front();
+            path.closestPoint = path.corners.back();
+        }
+        path.end = snapped;
+        path.gap = path.closestPoint.distance(snapped);
+        return path;
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return path;
+    const Vector3 from = surface->second.frame.toWorld(surface->second.crowd->getPosition(state.crowdIndex), state.planeZ);
+    return calculatePathOn(state.surface, from, snapped, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::setAgentPath(Entity entity, const NavPath& path) {
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component)
+        return false;
+    bool accepted = false;
+    Runtime::Agent* state = nullptr;
+    if (runtime) {
+        auto found = runtime->agents.find(entity);
+        state = found != runtime->agents.end() ? &found->second : nullptr;
+    }
+    if (state && state->placed && !state->onGrid && !state->onLink && state->crowdIndex >= 0 && path.status != PathStatus::Invalid &&
+        path.surface == state->surface && !path.polys.empty() && !path.corners.empty()) {
+        auto surface = runtime->surfaces.find(state->surface);
+        if (surface != runtime->surfaces.end() && surface->second.crowd)
+            accepted = surface->second.crowd->setCorridor(state->crowdIndex, path.polys, surface->second.frame.toNav(path.corners.back()));
+    }
+    // refused: the agent has no path (Unity)
+    if (!accepted) {
+        resetPath(entity);
+        return false;
+    }
+    state->destination = component->destination = path.corners.back();
+    state->requested = true;
+    state->arrived = false;
+    state->failed = path.status != PathStatus::Complete;
+    state->wasPending = false;
+    state->stuckAnchored = false;
+    component->hasPath = true;
+    component->pathPending = false;
+    component->pathStatus = path.status;
+    component->stuckTime = 0.0f;
+    component->lastPathFailure = path.status == PathStatus::Complete ? PathFailure::None : path.failure;
+    return true;
+}
+
+NavPath NavigationSystem::getAgentCorridorPath(Entity entity) {
+    NavPath path;
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return path;
+    path.failure = component->lastPathFailure;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || !component->hasPath || component->pathPending)
+        return path;
+    const Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        getAgentPath(entity, path.corners);
+        path.corners.insert(path.corners.begin(), state.currentPosition);
+        for (size_t i = 1; i < path.corners.size(); i++)
+            path.length += path.corners[i - 1].distance(path.corners[i]);
+    } else {
+        auto surface = runtime->surfaces.find(state.surface);
+        if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+            return path;
+        surface->second.crowd->getCorridorPath(state.crowdIndex, path);
+        agentPathToWorld(path, surface->second.frame, state.planeZ);
+    }
+    if (path.corners.empty())
+        return path;
+    path.status = component->pathStatus;
+    path.failure = component->pathStatus == PathStatus::Complete ? PathFailure::None : component->lastPathFailure;
+    path.surface = state.surface;
+    path.start = path.corners.front();
+    path.closestPoint = path.corners.back();
+    path.end = component->destination;
+    path.gap = path.status == PathStatus::Complete ? 0.0f : path.closestPoint.distance(path.end);
+    return path;
+}
+
+Vector3 NavigationSystem::getSteeringTarget(Entity entity) {
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return component ? component->nextPosition : Vector3();
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed)
+        return component->nextPosition;
+    const Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        std::vector<Vector3> corners;
+        getAgentPath(entity, corners);
+        return corners.empty() ? state.currentPosition : corners.front();
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return component->nextPosition;
+    return surface->second.frame.toWorld(surface->second.crowd->getSteeringTarget(state.crowdIndex), state.planeZ);
+}
+
+bool NavigationSystem::isAgentPathStale(Entity entity) {
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime || !component->hasPath || component->pathPending)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    auto surface = runtime->surfaces.find(found->second.surface);
+    return surface != runtime->surfaces.end() && surface->second.crowd && !surface->second.crowd->isCorridorValid(found->second.crowdIndex);
+}
+
+void NavigationSystem::setAgentNextPosition(Entity entity, const Vector3& position) {
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onLink)
+        return;
+    Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        state.currentPosition = component->nextPosition = position;
+        return;
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return;
+    const NavFrame& frame = surface->second.frame;
+    const Vector3 offset = frame.up() * (component->baseOffset * unitScaleOfSurface(scene, state.surface));
+    NavCrowd& crowd = *surface->second.crowd;
+    crowd.movePosition(state.crowdIndex, frame.toNav(position - offset));
+    component->nextPosition = frame.toWorld(crowd.getPosition(state.crowdIndex), state.planeZ) + offset;
+}
+
+void NavigationSystem::setAgentVelocity(Entity entity, const Vector3& velocity) {
+    if (!scene->findComponent<NavMeshAgentComponent>(entity) || !runtime)
+        return;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed)
+        return;
+    found->second.velocityOverride = true;
+    found->second.overrideVelocity = velocity;
+}
+
+namespace {
+
+    // where a placed navmesh agent stands on its surface (world), false when it is on none
+    bool agentQueryStart(Scene* scene, const NavMeshAgentComponent* component, Entity surface, bool onGrid, const Vector3& nextPosition,
+                         Vector3& out) {
+        if (!component || surface == NULL_ENTITY || onGrid)
+            return false;
+        const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
+        out = nextPosition - frame.up() * (component->baseOffset * unitScaleOfSurface(scene, surface));
+        return true;
+    }
+
+}
+
+bool NavigationSystem::agentRaycast(Entity entity, const Vector3& target, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    Vector3 from;
+    if (found == runtime->agents.end() || !found->second.placed ||
+        !agentQueryStart(scene, component, found->second.surface, found->second.onGrid, component->nextPosition, from))
+        return false;
+    return raycastOn(found->second.surface, from, target, out, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::agentFindClosestEdge(Entity entity, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    Vector3 from;
+    if (found == runtime->agents.end() || !found->second.placed ||
+        !agentQueryStart(scene, component, found->second.surface, found->second.onGrid, component->nextPosition, from))
+        return false;
+    return findClosestEdgeOn(found->second.surface, from, out, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::samplePathPosition(Entity entity, uint16_t areaMask, float maxDistance, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime || !component->hasPath || component->pathPending)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    const Runtime::Agent& state = found->second;
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd)
+        return false;
+    // the corridor with a corner at each area change: each stretch is in one area
+    NavPath path;
+    surface->second.crowd->getCorridorPath(state.crowdIndex, path, true);
+    if (path.corners.empty())
+        return false;
+    const NavFrame& frame = surface->second.frame;
+    const float limit = std::max(0.0f, maxDistance);
+    float travelled = 0.0f;
+    for (size_t i = 0; i + 1 < path.corners.size(); i++) {
+        const uint8_t area = path.cornerAreas[i];
+        if (!(areaMask & (1u << area))) {
+            out.position = frame.toWorld(path.corners[i], state.planeZ);
+            out.area = area;
+            out.distance = travelled;
+            out.hit = true;
+            return true;
+        }
+        const float length = path.corners[i].distance(path.corners[i + 1]);
+        if (travelled + length >= limit) {
+            const float t = length > 0.0f ? (limit - travelled) / length : 0.0f;
+            out.position = frame.toWorld(path.corners[i].lerp(path.corners[i + 1], t), state.planeZ);
+            out.area = area;
+            out.distance = limit;
+            return false;
+        }
+        travelled += length;
+    }
+    out.position = frame.toWorld(path.corners.back(), state.planeZ);
+    out.area = path.cornerAreas.back();
+    out.distance = travelled;
+    return false;
+}
+
+bool NavigationSystem::getNextOffMeshLink(Entity entity, Vector3& start, Vector3& end, Entity& link) {
+    link = NULL_ENTITY;
+    if (!runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    const Runtime::Agent& state = found->second;
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd)
+        return false;
+    Vector3 a, b;
+    uint32_t userId = 0;
+    if (!surface->second.crowd->getNextOffMeshLink(state.crowdIndex, a, b, userId))
+        return false;
+    start = surface->second.frame.toWorld(a, state.planeZ);
+    end = surface->second.frame.toWorld(b, state.planeZ);
+    link = (Entity)userId;
+    return true;
+}
+
 int NavigationSystem::getCrowdCount() const {
     if (!runtime)
         return 0;
@@ -2693,6 +3032,71 @@ const std::vector<Entity>& NavigationSystem::Runtime::sortedAgents(Scene* scene)
 const std::vector<Entity>& NavigationSystem::Runtime::sortedObstacles(Scene* scene) {
     sortedAgents(scene);
     return obstacleOrder;
+}
+
+// ---- S55 agents: failure reasons (R27) and the stuck watchdog (R25)
+
+PathFailure NavigationSystem::Runtime::classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent) {
+    Vector3 from = agent.currentPosition;
+    if (!agent.placed) {
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        from = transform ? transform->worldPosition : from;
+    }
+    auto surface = surfaces.find(agent.surface);
+    if (agent.placed && surface != surfaces.end() && surface->second.crowd && agent.crowdIndex >= 0)
+        from = surface->second.frame.toWorld(surface->second.crowd->getPosition(agent.crowdIndex), agent.planeZ);
+    const QueryFilter filter = system.getAgentQueryFilter(entity);
+    // a failure's one search is not a script's: getPathQueryCount (S53 R6) leaves it out
+    const uint64_t queries = system.pathQueryCount;
+    PathFailure failure = PathFailure::None;
+    if (agent.surface != NULL_ENTITY && scene->findComponent<NavMeshSurfaceComponent>(agent.surface))
+        failure = system.calculatePathOn(agent.surface, from, agent.destination, filter).failure;
+    else
+        failure = system.calculatePath(from, agent.destination, filter).failure;
+    system.pathQueryCount = queries;
+    return failure;
+}
+
+void NavigationSystem::Runtime::failPath(Entity entity, NavMeshAgentComponent& component, PathFailure reason) {
+    component.lastPathFailure = reason;
+    Event event{entity, EventType::PathFailed};
+    event.detail = (uint8_t)reason;
+    events.push_back(event);
+}
+
+void NavigationSystem::Runtime::stopWatchingStuck(Agent& agent, NavMeshAgentComponent& component) {
+    component.stuckTime = 0.0f;
+    agent.stuckAnchored = false;
+}
+
+void NavigationSystem::Runtime::watchStuck(NavigationSystem& system, Entity entity, Agent& agent, NavMeshAgentComponent& component, float dt,
+                                           float scale) {
+    // walking a path it has: placed, not waiting for it, not held, not on a link, not arriving
+    const bool walking = agent.placed && agent.requested && !agent.arrived && component.hasPath && !component.pathPending &&
+                         !component.isStopped && !agent.onLink && component.isOnNavMesh &&
+                         component.remainingDistance > (component.stoppingDistance + component.radius) * scale;
+    if (!walking) {
+        stopWatchingStuck(agent, component);
+        return;
+    }
+    const Vector3 position = component.nextPosition;
+    const float timeout = std::max(component.stuckTimeout, 1e-3f);
+    const float reach = std::max(component.stuckSpeedRatio, 0.0f) * std::max(component.speed, 0.0f) * timeout * scale;
+    // progress moves the anchor; back-and-forth jitter within reach counts as stuck
+    if (!agent.stuckAnchored || position.distance(agent.stuckAnchor) > reach) {
+        agent.stuckAnchor = position;
+        agent.stuckAnchored = true;
+        component.stuckTime = 0.0f;
+        return;
+    }
+    component.stuckTime += dt;
+    if (component.stuckTime < timeout)
+        return;
+    events.push_back(Event{entity, EventType::Stuck});
+    component.stuckTime = 0.0f;
+    agent.stuckAnchor = position;
+    if (component.repathWhenStuck)
+        system.setDestination(entity, agent.destination);
 }
 
 void NavigationSystem::Runtime::syncSurfaces(NavigationSystem& system, Scene* scene) {
@@ -2855,6 +3259,13 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
                 agent.warnedOffMesh = true;
                 Log::warn("NavMeshAgent '%s' is not on a navmesh or a NavGrid: it does not move", scene->getEntityName(entity).c_str());
             }
+            // ---- S55 agents: its destination fails, with why (no surface, not baked, off the mesh)
+            if (agent.requested && !agent.failed) {
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, classifyFailure(system, scene, entity, agent));
+            }
             continue;
         }
 
@@ -2913,6 +3324,13 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
         Surface& surface = surfaceIt->second;
         if (!ensureCrowd(scene, surface)) {
             component.isOnNavMesh = false;
+            // ---- S55 agents: its surface has no navmesh
+            if (agent.requested && !agent.failed) {
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, classifyFailure(system, scene, entity, agent));
+            }
             continue;
         }
         const NavFrame& frame = surface.frame;
@@ -2944,8 +3362,14 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
                 Log::warn("NavMeshAgent '%s' is not on the navmesh: it does not move (move it onto the surface, or warp it)",
                           scene->getEntityName(entity).c_str());
             }
-            if (agent.requested && !agent.arrived && component.isOnNavMesh)
-                surface.crowd->requestMoveTarget(index, frame.toNav(agent.destination));
+            if (agent.requested && !agent.arrived && component.isOnNavMesh &&
+                !surface.crowd->requestMoveTarget(index, frame.toNav(agent.destination)) && !agent.failed) {
+                // ---- S55 agents: the crowd refused the destination (R27)
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, PathFailure::EndOffMesh);
+            }
             continue;
         }
         if (!sameParams(params, agent.params)) {
@@ -3279,13 +3703,15 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
             agent.gridCells.clear();
             if (!agent.failed) {
                 agent.failed = true;
-                events.push_back(Event{now[i].agent, EventType::PathFailed});
+                failPath(now[i].agent, *component, path.failure);
             }
             continue;
         }
         if (path.status == PathStatus::Partial && !agent.failed) {
             agent.failed = true;
-            events.push_back(Event{now[i].agent, EventType::PathFailed});
+            failPath(now[i].agent, *component, path.failure);
+        } else if (path.status == PathStatus::Complete) {
+            component->lastPathFailure = PathFailure::None;
         }
         agent.gridCells = std::move(path.cells);
         agent.gridNext = agent.gridCells.size() > 1 ? 1 : 0;
@@ -3395,6 +3821,19 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             }
             if (params.maxSpeed != crowd.getParams(agent.crowdIndex).maxSpeed)
                 crowd.setParams(agent.crowdIndex, params);
+            // ---- S55 agents: a script's velocity for this tick (root motion, R22): along its path
+            // after the step, else steered by the crowd for the tick
+            if (agent.velocityOverride) {
+                agent.velocityOverride = false;
+                const Vector3 velocity = surface.frame.directionToNav(agent.overrideVelocity);
+                const NavCrowdTarget target = crowd.getTargetState(agent.crowdIndex);
+                if (agent.requested && !agent.arrived && (target == NavCrowdTarget::Valid || target == NavCrowdTarget::Pending)) {
+                    crowd.overrideVelocity(agent.crowdIndex, velocity, dt);
+                } else if (!agent.onLink) {
+                    crowd.requestMoveVelocity(agent.crowdIndex, velocity);
+                    velocityRequests.push_back(agent.crowdIndex);
+                }
+            }
         }
 
         // links reached take the agents off the crowd's steering (their own traversal)
@@ -3428,6 +3867,10 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             JE_PROFILE_SCOPE("Nav.Crowd");
             crowd.update(dt);
         }
+        // ---- S55 agents: a velocity request lasts one tick
+        for (int index : velocityRequests)
+            crowd.resetMoveTarget(index);
+        velocityRequests.clear();
 
         detourLinks.clear();
         crowd.takeDetourTraversals(detourLinks);
@@ -3495,12 +3938,18 @@ void NavigationSystem::Runtime::moveGridAgent(NavigationSystem& system, Scene* s
                 desired = toGoal * (std::min(maxSpeed, distance / std::max(dt, 1e-6f)) / distance);
         }
     }
-    // the velocity follows the desired one within the acceleration
-    Vector3 change = desired - agent.gridVelocity;
-    const float maxChange = accel * dt;
-    if (change.length() > maxChange)
-        change = change * (maxChange / change.length());
-    agent.gridVelocity += change;
+    // the velocity follows the desired one within the acceleration; a script's velocity (S55 R22)
+    // is this tick's as given
+    if (agent.velocityOverride) {
+        agent.velocityOverride = false;
+        agent.gridVelocity = agent.overrideVelocity;
+    } else {
+        Vector3 change = desired - agent.gridVelocity;
+        const float maxChange = accel * dt;
+        if (change.length() > maxChange)
+            change = change * (maxChange / change.length());
+        agent.gridVelocity += change;
+    }
     position += agent.gridVelocity * dt;
 
     if (!agent.gridCells.empty() && agent.gridNext < agent.gridCells.size()) {
@@ -3562,6 +4011,11 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             forwardAxis = frame.plane == NavPlane::XY ? Vector3(1.0f, 0.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
             moveGridAgent(system, scene, agent, component, dt, tick);
             worldVelocity = component.velocity;
+            // ---- S55 agents
+            if (component.stuckDetection)
+                watchStuck(system, entity, agent, component, dt, 1.0f);
+            else if (agent.stuckAnchored)
+                stopWatchingStuck(agent, component);
         } else {
             auto surfaceIt = surfaces.find(agent.surface);
             if (surfaceIt == surfaces.end() || !surfaceIt->second.crowd)
@@ -3617,10 +4071,10 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     if (!agent.wasPending && !component.autoRepath && !extension) {
                         // a repath without autoRepath: the path is dropped
                         crowd.resetMoveTarget(index);
-                        agent.requested = false;
                         component.hasPath = false;
                         component.pathStatus = PathStatus::Invalid;
-                        events.push_back(Event{entity, EventType::PathFailed});
+                        failPath(entity, component, classifyFailure(system, scene, entity, agent));
+                        agent.requested = false;
                     }
                     component.pathPending = agent.requested;
                     agent.wasPending = agent.requested;
@@ -3639,7 +4093,9 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                         component.pathStatus = agent.crowdPath == NavCrowdPath::Partial ? PathStatus::Partial : PathStatus::Complete;
                         if (component.pathStatus != PathStatus::Complete && !agent.failed) {
                             agent.failed = true;
-                            events.push_back(Event{entity, EventType::PathFailed});
+                            failPath(entity, component, classifyFailure(system, scene, entity, agent));
+                        } else if (component.pathStatus == PathStatus::Complete) {
+                            component.lastPathFailure = PathFailure::None;
                         }
                     }
                 } else if (target == NavCrowdTarget::Failed) {
@@ -3648,7 +4104,7 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     agent.wasPending = false;
                     if (!agent.failed) {
                         agent.failed = true;
-                        events.push_back(Event{entity, EventType::PathFailed});
+                        failPath(entity, component, classifyFailure(system, scene, entity, agent));
                     }
                 }
             }
@@ -3680,6 +4136,11 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             component.nextPosition = frame.toWorld(navPosition, agent.planeZ) + up * (component.baseOffset * scale);
             agent.previousPosition = agent.currentPosition;
             agent.currentPosition = component.nextPosition;
+            // ---- S55 agents: the watchdog; turned off, it lets go of its anchor once
+            if (component.stuckDetection)
+                watchStuck(system, entity, agent, component, dt, scale);
+            else if (agent.stuckAnchored)
+                stopWatchingStuck(agent, component);
         }
 
         // the driver moves the GameObject (spec R11)
@@ -3741,9 +4202,15 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
         return;
     // after the step, in entity order (stable within an entity): a callback may call any
     // navigation API, and the events it causes fire in the next dispatch
-    std::vector<Event> batch;
+    // (the two buffers swap, so a tick allocates nothing)
+    std::vector<Event>& batch = dispatching;
+    batch.clear();
     batch.swap(events);
-    std::stable_sort(batch.begin(), batch.end(), [](const Event& a, const Event& b) { return a.entity < b.entity; });
+    for (size_t i = 0; i < batch.size(); i++)
+        batch[i].sequence = (uint32_t)i;
+    std::sort(batch.begin(), batch.end(), [](const Event& a, const Event& b) {
+        return a.entity != b.entity ? a.entity < b.entity : a.sequence < b.sequence;
+    });
     for (const Event& event : batch) {
         if (event.type == EventType::BakeCompleted) {
             if (NavMeshSurfaceComponent* surface = scene->findComponent<NavMeshSurfaceComponent>(event.entity))
@@ -3755,10 +4222,11 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
             continue;
         switch (event.type) {
             case EventType::DestinationReached: agent->onDestinationReached.call(NavMeshAgent(scene, event.entity)); break;
-            case EventType::PathFailed: agent->onPathFailed.call(NavMeshAgent(scene, event.entity)); break;
+            case EventType::PathFailed: agent->onPathFailed.call(NavMeshAgent(scene, event.entity), (PathFailure)event.detail); break;
             case EventType::LinkStart: agent->onOffMeshLinkStart.call(NavMeshAgent(scene, event.entity)); break;
             case EventType::LinkEnd: agent->onOffMeshLinkEnd.call(NavMeshAgent(scene, event.entity)); break;
             case EventType::BakeCompleted: break;
+            case EventType::Stuck: agent->onStuck.call(NavMeshAgent(scene, event.entity)); break;
         }
     }
 }
@@ -3861,7 +4329,7 @@ void NavigationSystem::Runtime::replanAreaChanges(NavigationSystem& system, Scen
                     component->hasPath = false;
                     component->pathPending = false;
                     component->pathStatus = PathStatus::Invalid;
-                    events.push_back(Event{agentEntry.first, EventType::PathFailed});
+                    failPath(agentEntry.first, *component, classifyFailure(system, scene, agentEntry.first, agent));
                     continue;
                 }
                 // its new path's status is taken when it lands, and a failure fires again

@@ -215,6 +215,39 @@ namespace jasperengine{
         // the link it is on (when isOnOffMeshLink)
         bool getCurrentOffMeshLink(Entity agent, Vector3& start, Vector3& end, Entity& link);
 
+        // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R19-R27), world positions
+        // A path from where the agent stands (its simulation position) to `target` snapped as
+        // setDestination snaps it, on its surface with its area mask and costs, at once. Its own
+        // path is unchanged. Invalid when the agent is not placed on a surface or grid.
+        nav::NavPath calculateAgentPath(Entity agent, const Vector3& target);
+        // Hands the agent a path of calculatePath (Unity's SetPath): planned on its surface, its
+        // polygons still passable, and the agent's polygon among the first 16. It follows it to its
+        // last corner (more than 256 polygons: the crowd plans the rest near their end). Refused:
+        // false, and the agent's path is cleared.
+        bool setAgentPath(Entity agent, const nav::NavPath& path);
+        // its corridor as a path (Unity's NavMeshAgent.path): from its position to the end of its
+        // corridor, through its links; empty without a path
+        nav::NavPath getAgentCorridorPath(Entity agent);
+        // the corner it steers to (its position without a path)
+        Vector3 getSteeringTarget(Entity agent);
+        // its corridor holds a polygon that no longer exists or passes its filter (false while
+        // the path is pending)
+        bool isAgentPathStale(Entity agent);
+        // Root motion: moves its simulation position along the surface to `position` (the path is
+        // kept). The Transform is not written.
+        void setAgentNextPosition(Entity agent, const Vector3& position);
+        // Its velocity for the next fixed tick only: with a path it moves velocity x dt along the
+        // surface and reports it; without one the crowd steers it at that velocity (avoidance).
+        void setAgentVelocity(Entity agent, const Vector3& velocity);
+        // from its position with its area mask and costs (true: blocked before `target`)
+        bool agentRaycast(Entity agent, const Vector3& target, nav::NavHit& out);
+        bool agentFindClosestEdge(Entity agent, nav::NavHit& out);
+        // Walks its path up to maxDistance: true with the point where it first enters an area
+        // outside areaMask, else false with the point at maxDistance (or the path's end)
+        bool samplePathPosition(Entity agent, uint16_t areaMask, float maxDistance, nav::NavHit& out);
+        // the next link along its path within 64 corners
+        bool getNextOffMeshLink(Entity agent, Vector3& start, Vector3& end, Entity& link);
+
         // ---- grids (spec R15-R20)
         // the grid's cells (loading its asset, or sized empty), null when the entity has no NavGrid
         nav::NavGridMap* getGridMap(Entity grid);

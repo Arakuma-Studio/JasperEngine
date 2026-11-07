@@ -1791,6 +1791,8 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
 _STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
               'char16_t', 'char32_t',
+              # onPathFailed's reason: its snake_case name (luabridge::Stack<nav::PathFailure>, S55)
+              'PathFailure', 'nav::PathFailure', 'jasperengine::nav::PathFailure',
               # asset path fields: plain path strings in Lua (luabridge::Stack<AssetRef>, LuaBridgeAddon.h)
               'AssetRef', 'ShaderRef', 'jasperengine::AssetRef', 'jasperengine::ShaderRef'}
 _SEQ = re.compile(r'^(?:std::)?(?:vector|list|deque|set|unordered_set|multiset)<(.+)>$')
@@ -2983,6 +2985,30 @@ OVERRIDES[('NavigationSystem', 'moveAlongSurface')] = {
             '`from` is off the mesh.'],
     'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
+
+# S55 agents: the NavMeshAgent's paths, queries and link data (docs/specs/S55-navigation-gameplay-api.md
+# R19-R27)
+OVERRIDES[('NavMeshAgent', 'calculatePath')] = {
+    'doc': ['A path from where the agent stands to `target` (snapped as setDestination snaps it), planned now',
+            'on its surface with its area mask and costs (Unity\'s CalculatePath). Its own path is unchanged.'],
+    'overloads': [([('target', 'Vector3')], 'NavMeshPath')]}
+OVERRIDES[('NavMeshAgent', 'setPath')] = {
+    'doc': ['Follows a path of calculatePath (Unity\'s SetPath): planned on its surface, still open to it, and',
+            'starting where it stands. False when refused (a script-built table has no corridor); the agent',
+            'then has no path.'],
+    'overloads': [([('path', 'NavMeshPath')], 'boolean')]}
+OVERRIDES[('NavMeshAgent', 'raycast')] = {
+    'doc': ['NavigationSystem:raycast from where the agent stands with its filter: blocked, then the hit.'],
+    'overloads': [([('target', 'Vector3')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavMeshAgent', 'findClosestEdge')] = {
+    'doc': ['The wall nearest the agent with its filter: found, then the hit.'],
+    'overloads': [([], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavMeshAgent', 'samplePathPosition')] = {
+    'doc': ['Walks its path up to maxDistance: true, with the point where the path first enters an area',
+            'outside areaMask, else false with the point maxDistance along it (or its end).'],
+    'overloads': [([('areaMask', 'integer'), ('maxDistance', 'number')], 'boolean, NavMeshHit')]}
+PROPERTY_OVERRIDES[('NavMeshAgent', 'path')] = ('NavMeshPath', False)
+PROPERTY_OVERRIDES[('NavMeshAgent', 'nextOffMeshLinkData')] = ('OffMeshLinkData', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {

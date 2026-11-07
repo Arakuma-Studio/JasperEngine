@@ -3006,6 +3006,10 @@ local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
 | `randomSeed` | rw: restarts the stream (a scene starts at 0x5EED) |
 | NavMeshQueryFilter `agentType`, `areaMask`, `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | costs >= 1; the areas it does not set cost the project's |
 | NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
+| NavMeshAgent `calculatePath(target)`, `setPath(path)`, `path`, `steeringTarget`, `isPathStale` | `setPath` takes a path of `calculatePath` (false, and no path, when refused); `path` starts at the agent |
+| NavMeshAgent `nextPosition`, `velocity` (rw) | root motion: `nextPosition = p` moves it along the surface, `velocity = v` holds for the next fixed tick; neither writes the Transform |
+| NavMeshAgent `raycast(target)`, `findClosestEdge()`, `samplePathPosition(areaMask, maxDistance)`, `nextOffMeshLinkData` | from where it stands with its filter; two values like the system's queries |
+| NavMeshAgent `stuckDetection`, `stuckSpeedRatio`, `stuckTimeout`, `repathWhenStuck` (rw), `stuckTime`, `lastPathFailure` (read), `onStuck(agent)`, `onPathFailed(agent, reason)` | reasons are strings: `"none"`, `"no_surface"`, `"not_baked"`, `"end_off_mesh"`, `"disconnected"`, `"blocked_by_area"`, ... |
 | `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
 
 ### 4.22 Navigation: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride

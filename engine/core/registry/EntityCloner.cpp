@@ -1048,10 +1048,13 @@ void prepare<NavMeshAgentComponent>(NavMeshAgentComponent& agent, Entity, CloneC
     agent.nextPosition = defaults.nextPosition;
     agent.isOnNavMesh = false;
     agent.isOnOffMeshLink = false;
+    agent.stuckTime = 0.0f;
+    agent.lastPathFailure = defaults.lastPathFailure;
     agent.onDestinationReached.clear();
     agent.onPathFailed.clear();
     agent.onOffMeshLinkStart.clear();
     agent.onOffMeshLinkEnd.clear();
+    agent.onStuck.clear();
 }
 
 template<>

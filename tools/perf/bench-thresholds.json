@@ -74,6 +74,7 @@
     "query_raycast_p95_ms": {"max": 0.022, "spec": "R26 raycast p95 <= 0.02 ms"},
     "crowd_100_tick_ms": {"max": 0.66, "spec": "R27 dtCrowd update + sync, 100 agents (Good) <= 0.6 ms"},
     "crowd_500_tick_ms": {"max": 3.3, "spec": "R27 500 agents <= 3 ms"},
+    "stuck_100_extra_ms": {"max": 0.011, "spec": "S55 R38 stuck detection on 100 walking agents adds <= 0.01 ms per tick (median of paired ticks)"},
     "carve_tick_max_ms": {"max": 1.1, "spec": "R28 carving: <= 1 ms tile-cache work per tick; S53 R19: at Carve Tiles Per Tick Auto (4 on desktop), the wall-clock ceiling off"},
     "carve_ticks_to_land": {"max": 2, "spec": "R28 an obstacle move lands within 2 fixed ticks (S53 R19: at Carve Tiles Per Tick Auto)"},
     "grid_256_worst_ms": {"max": 2.2, "spec": "R29 A* on 256^2, worst reachable <= 2 ms"},

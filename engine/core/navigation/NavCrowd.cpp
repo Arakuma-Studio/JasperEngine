@@ -94,6 +94,27 @@ struct NavCrowd::Impl {
     std::vector<uint8_t> agentFallback;
     int fallbackCount = 0;
     std::vector<dtCrowdAgent*> active;
+    // ---- S55 agents: corridors a script set (followed without the crowd's shortcuts until a
+    // request or replan) and this update's velocity overrides (spec S55 R20, R22)
+    std::vector<uint8_t> scripted;
+    int scriptedCount = 0;
+    struct VelocityOverride {
+        int agent = -1;
+        float velocity[3] = {0.0f, 0.0f, 0.0f};
+        float dt = 0.0f;
+        float start[3] = {0.0f, 0.0f, 0.0f};
+    };
+    std::vector<VelocityOverride> overrides;
+
+    // the crowd's own path again: its corridor shortcuts come back
+    void unscript(int index) {
+        if (index < 0 || index >= capacity || !scripted[(size_t)index])
+            return;
+        scripted[(size_t)index] = 0;
+        scriptedCount--;
+        if (!params[(size_t)index].obstacle)
+            crowd->getEditableAgent(index)->params.updateFlags |= DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO;
+    }
     // the mesh revision the corridors were last checked against
     uint64_t meshRevision = 0;
 
@@ -274,6 +295,10 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
     impl->agentFallback.assign((size_t)impl->capacity, 0);
     impl->fallbackCount = 0;
     impl->active.resize((size_t)impl->capacity);
+    impl->scripted.assign((size_t)impl->capacity, 0);
+    impl->scriptedCount = 0;
+    impl->overrides.clear();
+    impl->overrides.reserve((size_t)impl->capacity);
     setAvoidancePresets(impl->crowd);
     return true;
 }
@@ -324,6 +349,7 @@ int NavCrowd::addAgent(const Vector3& position, const NavCrowdAgentParams& param
 void NavCrowd::removeAgent(int agent) {
     if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->agent(agent)->active)
         return;
+    impl->unscript(agent);
     impl->crowd->removeAgent(agent);
     impl->onLink[(size_t)agent] = 0;
     impl->detourLink[(size_t)agent] = 0;
@@ -357,6 +383,7 @@ const NavCrowdAgentParams& NavCrowd::getParams(int agent) const {
 bool NavCrowd::requestMoveTarget(int agent, const Vector3& target) {
     if (!impl->crowd)
         return false;
+    impl->unscript(agent);
     const dtCrowdAgent* ag = impl->agent(agent);
     const float p[3] = {target.x, target.y, target.z};
     dtPolyRef ref = 0;
@@ -367,8 +394,10 @@ bool NavCrowd::requestMoveTarget(int agent, const Vector3& target) {
 }
 
 void NavCrowd::resetMoveTarget(int agent) {
-    if (impl->crowd)
-        impl->crowd->resetMoveTarget(agent);
+    if (!impl->crowd)
+        return;
+    impl->unscript(agent);
+    impl->crowd->resetMoveTarget(agent);
 }
 
 NavCrowdTarget NavCrowd::getTargetState(int agent) const {
@@ -433,7 +462,41 @@ void NavCrowd::update(float dt) {
             impl->crowd->requestMoveTarget(index, ag->targetRef, target);
         }
     }
+    // ---- S55 agents: a script's corridor is followed as given, until a request for a new path
+    // (a replan since the last update included); velocity overrides start here
+    if (impl->scriptedCount > 0) {
+        for (int i = 0; i < impl->capacity; i++) {
+            if (!impl->scripted[(size_t)i])
+                continue;
+            if (impl->agent(i)->targetState != DT_CROWDAGENT_TARGET_VALID)
+                impl->unscript(i);
+            else
+                impl->editable(i)->params.updateFlags &= (unsigned char)~(DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO);
+        }
+    }
+    for (Impl::VelocityOverride& entry : impl->overrides)
+        dtVcopy(entry.start, impl->agent(entry.agent)->npos);
+
     impl->crowd->update(dt, nullptr);
+
+    if (impl->scriptedCount > 0) {
+        // a replan (an invalid corridor, the far end of a long path) plans the crowd's own way
+        for (int i = 0; i < impl->capacity; i++) {
+            if (impl->scripted[(size_t)i] && impl->agent(i)->targetState != DT_CROWDAGENT_TARGET_VALID)
+                impl->unscript(i);
+        }
+    }
+    for (const Impl::VelocityOverride& entry : impl->overrides) {
+        dtCrowdAgent* ag = impl->editable(entry.agent);
+        if (!ag->active || ag->state != DT_CROWDAGENT_STATE_WALKING)
+            continue;
+        float target[3];
+        dtVmad(target, entry.start, entry.velocity, entry.dt);
+        ag->corridor.movePosition(target, impl->editableQuery(), impl->filterOf(ag));
+        dtVcopy(ag->npos, ag->corridor.getPos());
+        dtVcopy(ag->vel, entry.velocity);
+    }
+    impl->overrides.clear();
 
     // obstacles stand where their transforms put them
     const int count = impl->crowd->getActiveAgents(impl->active.data(), impl->capacity);
@@ -540,6 +603,7 @@ bool NavCrowd::teleport(int agent, const Vector3& position) {
     dtPolyRef ref = 0;
     float nearest[3] = {p[0], p[1], p[2]};
     impl->query()->findNearestPoly(p, impl->crowd->getQueryHalfExtents(), impl->filterOf(ag), &ref, nearest);
+    impl->unscript(agent);
     impl->onLink[(size_t)agent] = 0;
     impl->detourLink[(size_t)agent] = 0;
     if (!ref) {
@@ -812,6 +876,223 @@ void NavCrowd::replanCrossing(const std::vector<uint32_t>& changedPolys, std::ve
     }
 }
 
+// ---- S55 agents
+
+namespace {
+
+    // dtCrowd's corridor capacity (DetourCrowd.cpp: m_maxPathResult)
+    constexpr int CROWD_CORRIDOR_POLYS = 256;
+    // setPath: the agent's polygon among the path's first ones (spec S55 R20)
+    constexpr int CORRIDOR_START_SEARCH = 16;
+
+    // the area a polygon reports: the index of its flag bit (links report their area; flags 0,
+    // a runtime Not Walkable, reports Not Walkable)
+    uint8_t crowdPolyArea(const dtNavMesh* mesh, dtPolyRef ref) {
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        if (!ref || dtStatusFailed(mesh->getTileAndPolyByRef(ref, &tile, &poly)) || poly->flags == 0)
+            return AREA_NOT_WALKABLE;
+        uint8_t area = 0;
+        while (area < AREA_COUNT - 1 && !(poly->flags & (1u << area)))
+            area++;
+        return area;
+    }
+
+}
+
+bool NavCrowd::setCorridor(int agent, const std::vector<uint32_t>& polys, const Vector3& target) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || polys.empty())
+        return false;
+    dtCrowdAgent* ag = impl->editable(agent);
+    if (!ag->active || ag->state != DT_CROWDAGENT_STATE_WALKING || impl->params[(size_t)agent].obstacle)
+        return false;
+    const dtPolyRef current = ag->corridor.getFirstPoly();
+    size_t first = polys.size();
+    for (size_t i = 0; i < polys.size() && i < (size_t)CORRIDOR_START_SEARCH; i++) {
+        if (polys[i] == current) {
+            first = i;
+            break;
+        }
+    }
+    if (first == polys.size())
+        return false;
+    const int count = (int)std::min(polys.size() - first, (size_t)CROWD_CORRIDOR_POLYS);
+    const dtQueryFilter* filter = impl->filterOf(ag);
+    dtPolyRef refs[CROWD_CORRIDOR_POLYS];
+    for (int i = 0; i < count; i++) {
+        refs[i] = (dtPolyRef)polys[first + (size_t)i];
+        if (!impl->query()->isValidPolyRef(refs[i], filter))
+            return false;
+    }
+    const float end[3] = {target.x, target.y, target.z};
+    const dtPolyRef last = refs[count - 1];
+    const dtPolyRef endRef = (dtPolyRef)polys.back();
+    // a longer path keeps its real end as the target: the corridor ends at the point of its last
+    // polygon nearest it, and dtCrowd plans on from there when fewer than 10 polygons remain
+    float corridorEnd[3];
+    dtVcopy(corridorEnd, end);
+    if (last != endRef && dtStatusFailed(impl->query()->closestPointOnPoly(last, end, corridorEnd, nullptr)))
+        return false;
+    ag->corridor.setCorridor(corridorEnd, refs, count);
+    ag->boundary.reset();
+    ag->partial = false;
+    ag->ncorners = 0;
+    ag->targetRef = endRef;
+    dtVcopy(ag->targetPos, end);
+    ag->targetPathqRef = DT_PATHQ_INVALID;
+    ag->targetReplan = false;
+    ag->targetReplanTime = 0.0f;
+    ag->targetState = DT_CROWDAGENT_TARGET_VALID;
+    if (!impl->scripted[(size_t)agent]) {
+        impl->scripted[(size_t)agent] = 1;
+        impl->scriptedCount++;
+    }
+    return true;
+}
+
+void NavCrowd::getCorridor(int agent, std::vector<uint32_t>& polys) const {
+    polys.clear();
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active)
+        return;
+    const dtPolyRef* path = ag->corridor.getPath();
+    polys.assign(path, path + ag->corridor.getPathCount());
+}
+
+bool NavCrowd::isCorridorValid(int agent) const {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return false;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active)
+        return false;
+    dtPathCorridor& corridor = const_cast<dtPathCorridor&>(ag->corridor);
+    return corridor.isValid(corridor.getPathCount(), impl->editableQuery(), impl->filterOf(ag));
+}
+
+void NavCrowd::overrideVelocity(int agent, const Vector3& velocity, float dt) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->agent(agent)->active)
+        return;
+    for (Impl::VelocityOverride& entry : impl->overrides) {
+        if (entry.agent == agent) {
+            entry.velocity[0] = velocity.x;
+            entry.velocity[1] = velocity.y;
+            entry.velocity[2] = velocity.z;
+            entry.dt = dt;
+            return;
+        }
+    }
+    Impl::VelocityOverride entry;
+    entry.agent = agent;
+    entry.velocity[0] = velocity.x;
+    entry.velocity[1] = velocity.y;
+    entry.velocity[2] = velocity.z;
+    entry.dt = dt;
+    impl->overrides.push_back(entry);
+}
+
+void NavCrowd::requestMoveVelocity(int agent, const Vector3& velocity) {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    impl->unscript(agent);
+    const float v[3] = {velocity.x, velocity.y, velocity.z};
+    impl->crowd->requestMoveVelocity(agent, v);
+}
+
+Vector3 NavCrowd::getSteeringTarget(int agent) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active || ag->ncorners == 0)
+        return vec(ag->npos);
+    return vec(ag->cornerVerts);
+}
+
+void NavCrowd::getCorridorPath(int agent, NavPath& out, bool areaCrossings) const {
+    out = NavPath();
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity)
+        return;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    const int count = ag->corridor.getPathCount();
+    if (!ag->active || count == 0)
+        return;
+    const dtPolyRef* path = ag->corridor.getPath();
+    out.polys.assign(path, path + count);
+    out.meshRevision = impl->mesh->getRevision();
+    const dtNavMesh* mesh = static_cast<const dtNavMesh*>(impl->mesh->detourNavMesh());
+    const dtQueryFilter* filter = impl->filterOf(ag);
+    // a corner per polygon crossing at most, and the two ends
+    const int capacity = count * 2 + 2;
+    std::vector<float> verts((size_t)capacity * 3);
+    std::vector<unsigned char> flags((size_t)capacity);
+    std::vector<dtPolyRef> refs((size_t)capacity);
+    int corners = 0;
+    if (dtStatusFailed(impl->query()->findStraightPath(ag->npos, ag->corridor.getTarget(), path, count, verts.data(), flags.data(), refs.data(),
+                                                       &corners, capacity, areaCrossings ? DT_STRAIGHTPATH_AREA_CROSSINGS : 0)) ||
+        corners == 0) {
+        out.polys.clear();
+        return;
+    }
+    out.status = PathStatus::Complete;
+    out.failure = PathFailure::None;
+    out.corners.reserve((size_t)corners);
+    for (int i = 0; i < corners; i++) {
+        out.corners.push_back(vec(&verts[(size_t)i * 3]));
+        out.cornerFlags.push_back(flags[(size_t)i]);
+        // a stretch has the area of the polygon it starts in; the last corner the area at the end
+        out.cornerAreas.push_back(crowdPolyArea(mesh, i + 1 < corners ? refs[(size_t)i] : path[count - 1]));
+        if (i > 0) {
+            const float length = dtVdist(&verts[(size_t)(i - 1) * 3], &verts[(size_t)i * 3]);
+            out.length += length;
+            const dtMeshTile* tile = nullptr;
+            const dtPoly* poly = nullptr;
+            const dtPolyRef from = refs[(size_t)i - 1];
+            const float cost = from && dtStatusSucceed(mesh->getTileAndPolyByRef(from, &tile, &poly)) ? filter->getAreaCost(poly->getArea()) : 1.0f;
+            out.cost += length * cost;
+            out.areaLengths[out.cornerAreas[(size_t)i - 1]] += length;
+        }
+    }
+    out.start = out.corners.front();
+    out.end = out.closestPoint = out.corners.back();
+}
+
+bool NavCrowd::getNextOffMeshLink(int agent, Vector3& start, Vector3& end, uint32_t& userId, int maxCorners) const {
+    if (!impl->crowd || agent < 0 || agent >= impl->capacity || !impl->mesh->hasOffMeshConnections())
+        return false;
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (!ag->active || ag->corridor.getPathCount() == 0)
+        return false;
+    const int capacity = std::max(1, maxCorners);
+    std::vector<float> verts((size_t)capacity * 3);
+    std::vector<unsigned char> flags((size_t)capacity);
+    std::vector<dtPolyRef> polys((size_t)capacity);
+    dtPathCorridor& corridor = const_cast<dtPathCorridor&>(ag->corridor);
+    // the corners stop at the first link (its start carries the flag)
+    const int count = corridor.findCorners(verts.data(), flags.data(), polys.data(), capacity, impl->editableQuery(), impl->filterOf(ag));
+    if (count == 0 || !(flags[(size_t)count - 1] & DT_STRAIGHTPATH_OFFMESH_CONNECTION))
+        return false;
+    const dtPolyRef link = polys[(size_t)count - 1];
+    const dtNavMesh* mesh = static_cast<const dtNavMesh*>(impl->mesh->detourNavMesh());
+    const dtOffMeshConnection* connection = mesh->getOffMeshConnectionByRef(link);
+    if (!connection)
+        return false;
+    // the link's polygon follows the one before it in the corridor: that fixes its direction
+    const dtPolyRef* path = ag->corridor.getPath();
+    dtPolyRef previous = 0;
+    for (int i = 1; i < ag->corridor.getPathCount(); i++) {
+        if (path[i] == link) {
+            previous = path[i - 1];
+            break;
+        }
+    }
+    float a[3], b[3];
+    if (dtStatusFailed(mesh->getOffMeshConnectionPolyEndPoints(previous, link, a, b)))
+        return false;
+    start = vec(a);
+    end = vec(b);
+    userId = connection->userId;
+    return true;
+}
+
 #else // JASPERENGINE_NAVIGATION
 
 namespace {
@@ -869,5 +1150,14 @@ int NavCrowd::getFilterOverflowCount() const { return 0; }
 bool NavCrowd::isFilterFallback(int) const { return false; }
 size_t NavCrowd::getMemoryBytes() const { return 0; }
 void NavCrowd::replanCrossing(const std::vector<uint32_t>&, std::vector<int>& replanned) { replanned.clear(); }
+
+bool NavCrowd::setCorridor(int, const std::vector<uint32_t>&, const Vector3&) { return false; }
+void NavCrowd::getCorridor(int, std::vector<uint32_t>& polys) const { polys.clear(); }
+bool NavCrowd::isCorridorValid(int) const { return false; }
+void NavCrowd::overrideVelocity(int, const Vector3&, float) {}
+void NavCrowd::requestMoveVelocity(int, const Vector3&) {}
+Vector3 NavCrowd::getSteeringTarget(int) const { return Vector3(); }
+void NavCrowd::getCorridorPath(int, NavPath& out, bool) const { out = NavPath(); }
+bool NavCrowd::getNextOffMeshLink(int, Vector3&, Vector3&, uint32_t&, int) const { return false; }
 
 #endif // JASPERENGINE_NAVIGATION

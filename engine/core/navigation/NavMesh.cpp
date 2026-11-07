@@ -1553,6 +1553,24 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
     // R3 steps 4-6
     if (outOfNodes(status)) {
         path.failure = PathFailure::OutOfNodes;
+    } else if (impl->polyState && !impl->polyState->idle()) {
+        // S55 R27: a runtime volume (Not Walkable: flags 0, which no mask passes) or a deactivated
+        // link may be what blocks it. Every area over the baked flags: a path there means an area
+        // stops it, the mask's or a runtime override's
+        dtQueryFilter all = f;
+        all.setIncludeFlags(ALL_AREAS);
+        int allCount = 0;
+        dtStatus allStatus = DT_FAILURE;
+        impl->searches++;
+        impl->polyState->withBakedState([&]() {
+            allStatus = impl->query->findPath(startRef, endRef, startPoint, endPoint, &all, polys.data(), &allCount, MAX_PATH_POLYS);
+        });
+        if (dtStatusSucceed(allStatus) && allCount > 0 && polys[(size_t)allCount - 1] == endRef && !dtStatusDetail(allStatus, DT_PARTIAL_RESULT))
+            path.failure = PathFailure::BlockedByArea;
+        else if (dtStatusSucceed(allStatus) && outOfNodes(allStatus))
+            path.failure = PathFailure::OutOfNodes;
+        else
+            path.failure = PathFailure::Disconnected;
     } else if (filter.areaMask == ALL_AREAS) {
         path.failure = PathFailure::Disconnected;
     } else if (path.startIsland >= 0 && path.endIsland >= 0 && path.startIsland != path.endIsland) {

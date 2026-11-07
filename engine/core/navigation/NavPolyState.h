@@ -17,6 +17,7 @@
 #include "navigation/NavBakeInput.h"
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 class dtNavMesh;
@@ -54,6 +55,10 @@ namespace jasperengine::nav::detail {
 
         // the polygon references whose flags or area changed since the last call
         void takeChanged(std::vector<uint32_t>& out);
+        // Runs `search` with every touched tile in its baked state, then puts the overrides and
+        // link states back as they were: no revision, no changed polygon (S55 R27: why a path a
+        // runtime volume or a deactivated link blocks fails)
+        void withBakedState(const std::function<void()>& search);
         // no override, no deactivated link, no snapshot
         bool idle() const { return overrides.empty() && inactiveLinks.empty() && snapshots.empty(); }
         size_t snapshotCount() const { return snapshots.size(); }

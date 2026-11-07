@@ -170,6 +170,32 @@ namespace jasperengine::nav {
         // indices, ascending. Agents on a link finish it.
         void replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned);
 
+        // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R20-R24, D7)
+        // Hands the agent a planned corridor (setPath): its current polygon must be among the first
+        // 16 (those before it are dropped) and each polygon kept must still pass its filter. At most
+        // 256 are kept, with `target` (the path's end) as the target: the crowd plans the rest near
+        // their end. The crowd follows it as given (no shortcuts) until its next move request or
+        // replan. False (nothing changed) when refused.
+        bool setCorridor(int agent, const std::vector<uint32_t>& polys, const Vector3& target);
+        // its corridor, the polygon it stands on first
+        void getCorridor(int agent, std::vector<uint32_t>& polys) const;
+        // every polygon of its corridor still exists and passes its filter
+        bool isCorridorValid(int agent) const;
+        // Its velocity during the next update: it moves velocity x dt along the surface from where
+        // it stood (after the crowd's step, which keeps its corridor) and reports velocity. For an
+        // agent with a move target; without one, requestMoveVelocity.
+        void overrideVelocity(int agent, const Vector3& velocity, float dt);
+        // Detour's velocity request (steered with avoidance, no path) until resetMoveTarget
+        void requestMoveVelocity(int agent, const Vector3& velocity);
+        // the corner it steered to in the last update (its position when it has none)
+        Vector3 getSteeringTarget(int agent) const;
+        // Its corridor as a path from its position to the corridor's end, through its links:
+        // corners with their flags and areas, length, cost and length per area (its filter), the
+        // polygons. areaCrossings adds a corner wherever the area changes.
+        void getCorridorPath(int agent, NavPath& out, bool areaCrossings = false) const;
+        // the first link ahead of it within maxCorners corners: its ends and user id
+        bool getNextOffMeshLink(int agent, Vector3& start, Vector3& end, uint32_t& userId, int maxCorners = 64) const;
+
     private:
         struct Impl;
         std::unique_ptr<Impl> impl;

@@ -115,10 +115,11 @@
 ---@field areaMask? integer
 ---@field cornerCutting? boolean
 
----NavMeshAgent.currentOffMeshLinkData (Unity's OffMeshLinkData)
+---NavMeshAgent.currentOffMeshLinkData and nextOffMeshLinkData (Unity's OffMeshLinkData)
 ---@class OffMeshLinkData
 ---@field valid boolean
 ---@field activated boolean
+---@field occupied boolean # an agent is crossing it (nextOffMeshLinkData)
 ---@field startPos Vector3
 ---@field endPos Vector3
 ---@field link integer # the NavMeshLink's entity

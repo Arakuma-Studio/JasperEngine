@@ -13,6 +13,7 @@
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
 
+#include "Log.h"
 #include "Scene.h"
 #include "navigation/NavTypes.h"
 #include "object/navigation/NavGrid.h"
@@ -47,6 +48,31 @@ namespace luabridge
     template<> struct Stack<NavAgentDriver> : EnumWrapper<NavAgentDriver>{};
     template<> struct Stack<NavCollectObjects> : EnumWrapper<NavCollectObjects>{};
     template<> struct Stack<NavUseGeometry> : EnumWrapper<NavUseGeometry>{};
+
+    // ---- S55 agents: onPathFailed's reason is S54's snake_case name in Lua ("blocked_by_area")
+    template<> struct Stack<nav::PathFailure>
+    {
+        [[nodiscard]] static Result push(lua_State* L, nav::PathFailure failure)
+        {
+            return Stack<std::string>::push(L, nav::pathFailureName(failure));
+        }
+
+        [[nodiscard]] static TypeResult<nav::PathFailure> get(lua_State* L, int index)
+        {
+            auto name = Stack<std::string>::get(L, index);
+            if (!name)
+                return name.error();
+            nav::PathFailure failure = nav::PathFailure::None;
+            if (!nav::pathFailureFromName(*name, failure))
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            return failure;
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return Stack<std::string>::isInstance(L, index);
+        }
+    };
 }
 
 namespace {
@@ -165,7 +191,7 @@ namespace {
 
     // The path a table holds, for NavMeshAgent:setPath: false when it has no corridor (it was not
     // made by calculatePath). Corners and status come back as the table has them.
-    [[maybe_unused]] bool pathFromTable(lua_State* L, int index, nav::NavPath& out) {
+    bool pathFromTable(lua_State* L, int index, nav::NavPath& out) {
         out = nav::NavPath();
         if (!lua_istable(L, index))
             return false;
@@ -359,18 +385,62 @@ namespace {
         return query;
     }
 
-    // currentOffMeshLinkData: {valid, startPos, endPos, link}
-    luabridge::LuaRef linkData(const NavMeshAgent& agent, lua_State* L) {
+    // ---- S55 agents
+
+    NavMeshAgent* agentSelf(lua_State* L) {
+        auto self = luabridge::get<NavMeshAgent*>(L, 1);
+        if (!self || !*self)
+            luaL_argerror(L, 1, "a NavMeshAgent (call it with ':')");
+        return *self;
+    }
+
+    // agent:setPath(path): a path table of calculatePath (its corridor); another table is refused
+    // with one warning. Refused, the agent has no path (Unity).
+    int setAgentPath(lua_State* L) {
+        NavMeshAgent* self = agentSelf(L);
+        nav::NavPath path;
+        if (!pathFromTable(L, 2, path)) {
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                Log::warn("NavMeshAgent:setPath: the path has no corridor (only a path from calculatePath carries one): refused");
+            }
+            self->setPath(nav::NavPath());
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        lua_pushboolean(L, self->setPath(path) ? 1 : 0);
+        return 1;
+    }
+
+    // OffMeshLinkData {valid, activated, occupied, startPos, endPos, link}: activated and occupied
+    // are the link's state now (S55 R16, R17, R24)
+    luabridge::LuaRef linkTable(const NavMeshAgent& agent, lua_State* L, bool valid, const Vector3& start, const Vector3& end, Entity link) {
         luabridge::LuaRef table = luabridge::newTable(L);
-        Vector3 start, end;
-        Entity link = NULL_ENTITY;
-        const bool valid = agent.getCurrentOffMeshLink(start, end, link);
+        NavigationSystem* system = valid ? agent.getScene()->getSystem<NavigationSystem>().get() : nullptr;
         table["valid"] = valid;
-        table["activated"] = valid;
+        table["activated"] = system && system->isLinkActive(link);
+        table["occupied"] = system && system->isLinkOccupied(link);
         table["startPos"] = start;
         table["endPos"] = end;
         table["link"] = link;
         return table;
+    }
+
+    // nextOffMeshLinkData: the next link along its path
+    luabridge::LuaRef nextLinkData(const NavMeshAgent& agent, lua_State* L) {
+        Vector3 start, end;
+        Entity link = NULL_ENTITY;
+        const bool valid = agent.getNextOffMeshLink(start, end, link);
+        return linkTable(agent, L, valid, start, end, link);
+    }
+
+    // currentOffMeshLinkData: the link it is on
+    luabridge::LuaRef linkData(const NavMeshAgent& agent, lua_State* L) {
+        Vector3 start, end;
+        Entity link = NULL_ENTITY;
+        const bool valid = agent.getCurrentOffMeshLink(start, end, link);
+        return linkTable(agent, L, valid, start, end, link);
     }
 
 }
@@ -480,6 +550,15 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("call", &FunctionSubscribe<void(NavMeshAgent)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(NavMeshAgent)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(NavMeshAgent)>::add)
         .addFunction("remove", &FunctionSubscribe<void(NavMeshAgent)>::remove)
+        .endClass();
+
+    // ---- S55 agents: onPathFailed(agent, reason)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>>("FunctionSubscribe_V_NavMeshAgent_PathFailure")
+        .addFunction("__call", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::call)
+        .addFunction("call", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::remove)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -620,15 +699,50 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         // from the crowd's corridor: Complete when the path reaches the destination (also while
         // the crowd extends a long one), Partial when none does
         .addProperty("pathStatus", &NavMeshAgent::getPathStatus)
-        .addProperty("velocity", &NavMeshAgent::getVelocity)
+        .addProperty("velocity", &NavMeshAgent::getVelocity, &NavMeshAgent::setVelocity)
         .addProperty("desiredVelocity", &NavMeshAgent::getDesiredVelocity)
-        .addProperty("nextPosition", &NavMeshAgent::getNextPosition)
+        .addProperty("nextPosition", &NavMeshAgent::getNextPosition, &NavMeshAgent::setNextPosition)
         .addProperty("isOnNavMesh", &NavMeshAgent::isOnNavMesh)
         .addProperty("isOnOffMeshLink", &NavMeshAgent::isOnOffMeshLink)
         .addProperty("currentOffMeshLinkData", +[](const NavMeshAgent* self, lua_State* L) { return linkData(*self, L); })
         .addFunction("setAreaCost", &NavMeshAgent::setAreaCost)
         .addFunction("getAreaCost", &NavMeshAgent::getAreaCost)
         .addFunction("resetAreaCost", &NavMeshAgent::resetAreaCost)
+
+        // ---- S55 agents
+        .addFunction("calculatePath", +[](const NavMeshAgent* self, const Vector3& target, lua_State* L) {
+            return pathTable(L, self->calculatePath(target));
+        })
+        .addFunction("setPath", +[](lua_State* L) -> int { return setAgentPath(L); })
+        .addProperty("path", +[](const NavMeshAgent* self, lua_State* L) { return pathTable(L, self->getPath()); })
+        .addProperty("steeringTarget", &NavMeshAgent::getSteeringTarget)
+        .addProperty("isPathStale", &NavMeshAgent::isPathStale)
+        // (blocked, hit) / (found, hit): two results, pushed by hand
+        .addFunction("raycast", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool blocked = agentSelf(L)->raycast(vectorArg(L, 2), hit);
+            return pushHit(L, blocked, hit);
+        })
+        .addFunction("findClosestEdge", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool found = agentSelf(L)->findClosestEdge(hit);
+            return pushHit(L, found, hit);
+        })
+        .addFunction("samplePathPosition", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool blocked = agentSelf(L)->samplePathPosition((int)luaL_checkinteger(L, 2), (float)luaL_checknumber(L, 3), hit);
+            return pushHit(L, blocked, hit);
+        })
+        .addProperty("nextOffMeshLinkData", +[](const NavMeshAgent* self, lua_State* L) { return nextLinkData(*self, L); })
+        .addProperty("stuckDetection", &NavMeshAgent::isStuckDetection, &NavMeshAgent::setStuckDetection)
+        .addProperty("stuckSpeedRatio", &NavMeshAgent::getStuckSpeedRatio, &NavMeshAgent::setStuckSpeedRatio)
+        .addProperty("stuckTimeout", &NavMeshAgent::getStuckTimeout, &NavMeshAgent::setStuckTimeout)
+        .addProperty("repathWhenStuck", &NavMeshAgent::isRepathWhenStuck, &NavMeshAgent::setRepathWhenStuck)
+        .addProperty("stuckTime", &NavMeshAgent::getStuckTime)
+        .addProperty("lastPathFailure", +[](const NavMeshAgent* self) { return std::string(nav::pathFailureName(self->getLastPathFailure())); })
+        .addProperty("onStuck",
+            [](NavMeshAgent* self, lua_State*) { return &self->getOnStuck(); },
+            [](NavMeshAgent* self, lua_State* L) { self->getOnStuck() = L; })
         // once per destination, within stoppingDistance of it; never at the end of a Partial path
         .addProperty("onDestinationReached",
             [](NavMeshAgent* self, lua_State*) { return &self->getOnDestinationReached(); },

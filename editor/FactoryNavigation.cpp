@@ -80,6 +80,10 @@ std::string editor::Factory::createNavMeshAgentComponent(int indentSpaces, Entit
     code << ind << "navAgent.updateRotation = " << formatBool(agent.updateRotation) << ";\n";
     code << ind << "navAgent.driver = " << enumCode(editor::reflect::enums::kNavAgentDriver, agent.driver) << ";\n";
     code << ind << "navAgent.surface = " << formatEntity(agent.surface, entityVarNames) << ";\n";
+    code << ind << "navAgent.stuckDetection = " << formatBool(agent.stuckDetection) << ";\n";
+    code << ind << "navAgent.stuckSpeedRatio = " << formatFloat(agent.stuckSpeedRatio) << ";\n";
+    code << ind << "navAgent.stuckTimeout = " << formatFloat(agent.stuckTimeout) << ";\n";
+    code << ind << "navAgent.repathWhenStuck = " << formatBool(agent.repathWhenStuck) << ";\n";
     if (!agent.enabled) code << ind << "navAgent.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshAgentComponent", "navAgent", assignExisting);
     return code.str();

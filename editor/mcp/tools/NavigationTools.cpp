@@ -513,6 +513,9 @@ void getNavigationInfoTool(const CallPtr& call) {
             item["velocity"] = vec3Json(agent.velocity);
             item["is_on_navmesh"] = agent.isOnNavMesh;
             item["is_on_off_mesh_link"] = agent.isOnOffMeshLink;
+            // ---- S55 agents (R43): why its last path failed, and the watchdog's count
+            item["last_failure"] = nav::pathFailureName(agent.lastPathFailure);
+            if (agent.stuckDetection) item["stuck_seconds"] = rounded(agent.stuckTime);
         }
         agents.push_back(item);
     }
@@ -768,14 +771,6 @@ Json navPathJson(SceneProject* scene, const nav::NavPath& path, bool full) {
     return data;
 }
 
-// A grid answer's reason (S54 R30): outside or a Not Walkable cell is *_off_mesh, a cell the
-// mask leaves out *_filtered, no way through disconnected
-nav::PathFailure gridEndFailure(const nav::NavGridMap& map, const nav::GridCell& cell, uint16_t areaMask, bool start) {
-    if (!map.contains(cell) || !map.isWalkable(map.index(cell))) return start ? nav::PathFailure::StartOffMesh : nav::PathFailure::EndOffMesh;
-    if (!(areaMask & (1u << map.getArea(cell)))) return start ? nav::PathFailure::StartFiltered : nav::PathFailure::EndFiltered;
-    return nav::PathFailure::None;
-}
-
 // ---- S55 queries: a path's cost, per-corner areas and flags, and its length per area name
 void addPathCosts(Json& data, const nav::NavPath& path) {
     data["cost"] = rounded(path.cost);
@@ -790,6 +785,14 @@ void addPathCosts(Json& data, const nav::NavPath& path) {
             lengths[nav::getSettings().areas[(size_t)area].name] = rounded(path.areaLengths[(size_t)area]);
     }
     data["area_lengths"] = lengths;
+}
+
+// A grid answer's reason (S54 R30): outside or a Not Walkable cell is *_off_mesh, a cell the
+// mask leaves out *_filtered, no way through disconnected
+nav::PathFailure gridEndFailure(const nav::NavGridMap& map, const nav::GridCell& cell, uint16_t areaMask, bool start) {
+    if (!map.contains(cell) || !map.isWalkable(map.index(cell))) return start ? nav::PathFailure::StartOffMesh : nav::PathFailure::EndOffMesh;
+    if (!(areaMask & (1u << map.getArea(cell)))) return start ? nav::PathFailure::StartFiltered : nav::PathFailure::EndFiltered;
+    return nav::PathFailure::None;
 }
 
 void queryGrid(const CallPtr& call, SceneProject* scene, NavigationSystem* system, Entity grid, const std::string& op) {

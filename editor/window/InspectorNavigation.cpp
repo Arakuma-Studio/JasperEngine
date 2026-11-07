@@ -486,6 +486,24 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::Bool, cpType, "updateRotation", "Update Rotation", sceneProject, entities, settingsFlag);
     endTable();
 
+    // ---- S55 agents: the stuck watchdog (R40)
+    if (beginFoldout("Stuck Detection##navagent")) {
+        RowSettings settingsDetect;
+        settingsDetect.help = "Fire onStuck when it makes no progress along its path for Stuck After seconds";
+        RowSettings settingsRatio = settings;
+        settingsRatio.help = "Progress counts once it moved this fraction of Speed x Stuck After from where it was";
+        RowSettings settingsTimeout = settings;
+        settingsTimeout.help = "Seconds without progress before onStuck fires";
+        RowSettings settingsRepath;
+        settingsRepath.help = "Ask for the destination again when stuck";
+        beginTable(cpType, getLabelSize("Repath When Stuck"), "stuck");
+        propertyRow(RowPropertyType::Bool, cpType, "stuckDetection", "Detect Stuck", sceneProject, entities, settingsDetect);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "stuckSpeedRatio", "Stuck Speed Ratio", sceneProject, entities, settingsRatio);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "stuckTimeout", "Stuck After (s)", sceneProject, entities, settingsTimeout);
+        propertyRow(RowPropertyType::Bool, cpType, "repathWhenStuck", "Repath When Stuck", sceneProject, entities, settingsRepath);
+        endTable();
+    }
+
     // what the crowd says, while the scene plays (R32)
     if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1) {
         const NavMeshAgentComponent& agent = scene->getComponent<NavMeshAgentComponent>(entities[0]);
@@ -495,6 +513,19 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
         ImGui::TextDisabled("Is On NavMesh: %s", agent.isOnNavMesh ? "yes" : "no");
         ImGui::TextDisabled("Velocity: %.2f, %.2f, %.2f", agent.velocity.x, agent.velocity.y, agent.velocity.z);
         ImGui::TextDisabled("Destination: %.2f, %.2f, %.2f", agent.destination.x, agent.destination.y, agent.destination.z);
+        // ---- S55 agents (R26, R27, R21, R9)
+        if (agent.stuckDetection)
+            ImGui::TextDisabled("Stuck Time: %.2f s", agent.stuckTime);
+        ImGui::TextDisabled("Last Path Failure: %s", nav::pathFailureName(agent.lastPathFailure));
+        if (NavigationSystem* system = scene->getSystem<NavigationSystem>().get()) {
+            ImGui::TextDisabled("Path Stale: %s", system->isAgentPathStale(entities[0]) ? "yes" : "no");
+            const nav::NavigationSettings& navSettings = nav::getSettings();
+            for (int area = 0; area < nav::AREA_COUNT; area++) {
+                const float cost = system->getAgentAreaCost(entities[0], area);
+                if (cost != navSettings.areas[(size_t)area].cost)
+                    ImGui::TextDisabled("Area Cost: %s %.2f", navSettings.areas[(size_t)area].name.c_str(), cost);
+            }
+        }
     }
 }
 

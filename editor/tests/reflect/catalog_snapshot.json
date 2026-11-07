@@ -33614,8 +33614,12 @@
     "height",
     "obstacleAvoidance",
     "radius",
+    "repathWhenStuck",
     "speed",
     "stoppingDistance",
+    "stuckDetection",
+    "stuckSpeedRatio",
+    "stuckTimeout",
     "surface",
     "updatePosition",
     "updateRotation"
@@ -33692,12 +33696,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -33789,12 +33813,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -43773,12 +43817,32 @@
     0,
     true
    ],
+   "repathWhenStuck": [
+    0,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
     true
    ],
    "stoppingDistance": [
+    2,
+    0,
+    true
+   ],
+   "stuckDetection": [
+    0,
+    0,
+    true
+   ],
+   "stuckSpeedRatio": [
+    2,
+    0,
+    true
+   ],
+   "stuckTimeout": [
     2,
     0,
     true

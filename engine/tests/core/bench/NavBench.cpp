@@ -32,6 +32,7 @@
 #include "object/navigation/NavMeshAgent.h"
 #include "subsystem/NavigationSystem.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -393,6 +394,59 @@ int main(int argc, char** argv) {
         }
         results.add("crowd_" + std::to_string(count) + "_tick_ms", bench::percentile(ticks, 0.5), "ms");
         results.add("crowd_" + std::to_string(count) + "_tick_p95_ms", bench::percentile(ticks, 0.95), "ms");
+    }
+
+    // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R38): what the stuck watchdog adds
+    // to 100 walking agents. Two copies of the crowd (the same agents and destinations) step in
+    // turns, only the second watched; the median of the paired tick differences
+    {
+        nav::NavigationSettings settings = nav::NavigationSettings::defaults();
+        settings.crowdMaxAgents = 512;
+        nav::setSettings(settings);
+        auto makeCrowd = [&](bool watched) {
+            auto crowdScene = std::make_unique<Scene>();
+            test::disableSubSystems(*crowdScene);
+            crowdScene->getScheduler().setEnabled("NavigationSystem", true);
+            City crowdCity = city(*crowdScene);
+            NavigationSystem* system = crowdScene->getSystem<NavigationSystem>().get();
+            system->setNavMeshData(crowdCity.surface, nav::NavMeshData(data), error);
+            std::mt19937 random(9);
+            std::uniform_real_distribution<float> coordinate(-110.0f, 110.0f);
+            std::vector<Entity> agents;
+            while ((int)agents.size() < 100) {
+                nav::NavHit hit;
+                if (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit))
+                    continue;
+                const Entity entity = agent(*crowdScene, hit.position);
+                NavMeshAgentComponent& component = crowdScene->getComponent<NavMeshAgentComponent>(entity);
+                component.obstacleAvoidance = nav::AvoidanceQuality::Good;
+                component.stuckDetection = watched;
+                agents.push_back(entity);
+            }
+            resolveTransforms(*crowdScene);
+            crowdScene->fixedUpdate(kTick);
+            for (Entity entity : agents) {
+                nav::NavHit hit;
+                while (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit)) {
+                }
+                NavMeshAgent(crowdScene.get(), entity).setDestination(hit.position);
+            }
+            for (int warm = 0; warm < 60; warm++)
+                crowdScene->fixedUpdate(kTick);
+            return crowdScene;
+        };
+        std::unique_ptr<Scene> plain = makeCrowd(false);
+        std::unique_ptr<Scene> watched = makeCrowd(true);
+        std::vector<double> extra;
+        for (int tick = 0; tick < 600; tick++) {
+            auto t = bench::Clock::now();
+            plain->fixedUpdate(kTick);
+            const double without = msSince(t);
+            t = bench::Clock::now();
+            watched->fixedUpdate(kTick);
+            extra.push_back(msSince(t) - without);
+        }
+        results.add("stuck_100_extra_ms", std::max(0.0, bench::percentile(extra, 0.5)), "ms");
     }
     nav::setSettings(nav::NavigationSettings::defaults());
 

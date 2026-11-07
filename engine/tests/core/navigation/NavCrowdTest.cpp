@@ -396,7 +396,7 @@ TEST_F(NavCrowdTest, CorridorAtCapacity){
     ASSERT_TRUE(handle.isOnNavMesh());
     int reached = 0, failed = 0;
     handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { reached++; });
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     ASSERT_TRUE(handle.setDestination(destination));
     bool truncated = false;
     std::vector<Vector3> corners;
@@ -840,4 +840,114 @@ TEST_F(NavSystemTest, SteadyStateNoAllocations){
         EXPECT_GT(position(entity).x, 4.0f);
         EXPECT_LT(position(entity).x, 50.0f);
     }
+}
+
+// ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R18, R35, R38)
+
+// AC18: 50 agents walking, stuck detection off and no overrides: a fixed tick allocates nothing
+TEST_F(NavSystemTest, GameplayZeroCost){
+    const Entity surface = planeSurface(40.0f, 40.0f);
+    bake(surface);
+    std::vector<Entity> agents;
+    for (int i = 0; i < 50; i++)
+        agents.push_back(agent(*scene, Vector3(-15.0f + 0.6f * (float)(i % 10), 0.0f, -15.0f + 1.2f * (float)(i / 10))));
+    step();
+    for (size_t i = 0; i < agents.size(); i++)
+        NavMeshAgent(scene.get(), agents[i]).setDestination(Vector3(15.0f - 0.6f * (float)(i % 10), 0.0f, 15.0f - 1.2f * (float)(i / 10)));
+    // the paths land and every buffer of the tick reaches its size
+    steps(10);
+    // (only Linux counts allocations: AllocationCounter.h)
+    uint64_t worst = 0;
+    for (int tick = 0; tick < 600; tick++) {
+        testsupport::ThreadAllocationCount allocations;
+        nav->fixedUpdate(DT);
+        worst = std::max<uint64_t>(worst, (uint64_t)allocations.count());
+    }
+    if (testsupport::countsAllocations()) {
+        EXPECT_EQ(worst, 0u);
+    }
+    // they walked (crossing each other in the middle)
+    EXPECT_GT(position(agents[0]).x, -10.0f);
+}
+
+// AC31: 2 runs x 600 ticks x 50 agents with destinations from the system's random stream, a door
+// closed at tick 200 and opened at 400, own area costs on 10 agents, stuck detection on and paths
+// handed to 5: bit-identical positions and the same events (type, entity, reason)
+TEST_F(NavDeterminismTest, GameplayReplay){
+    struct Logged {
+        int tick;
+        int type;
+        Entity entity;
+        int reason;
+        bool operator==(const Logged& other) const {
+            return tick == other.tick && type == other.type && entity == other.entity && reason == other.reason;
+        }
+    };
+    auto run = [&](std::vector<Logged>& log) {
+        scene = std::make_unique<Scene>();
+        test::disableSubSystems(*scene);
+        scene->getScheduler().setEnabled("NavigationSystem", true);
+        nav = scene->getSystem<NavigationSystem>().get();
+        nav::NavigationSettings settings = nav::NavigationSettings::defaults();
+        settings.areas[3].name = "Mud";
+        settings.areas[3].cost = 2.0f;
+        nav::setSettings(settings);
+        const Entity surface = planeSurface(40.0f, 40.0f);
+        box(*scene, Vector3(0.0f, 1.0f, 0.0f), Vector3(6.0f, 2.0f, 6.0f));
+        areaVolume(Vector3(-9.0f, 0.0f, 0.0f), Vector3(2.0f, 4.0f, 44.0f), 3);
+        bake(surface);
+        int tick = 0;
+        std::vector<Entity> agents;
+        for (int i = 0; i < 50; i++) {
+            const Entity entity = agent(*scene, Vector3(-15.0f + 0.6f * (float)(i % 10), 0.0f, -15.0f + 1.2f * (float)(i / 10)));
+            NavMeshAgentComponent& component = scene->getComponent<NavMeshAgentComponent>(entity);
+            component.stuckDetection = true;
+            component.stuckTimeout = 1.0f;
+            NavMeshAgent handle(scene.get(), entity);
+            handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent a) {
+                log.push_back({tick, 0, a.getEntity(), 0});
+            });
+            handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent a, nav::PathFailure reason) {
+                log.push_back({tick, 1, a.getEntity(), (int)reason});
+            });
+            handle.getOnStuck() = std::function<void(NavMeshAgent)>([&](NavMeshAgent a) { log.push_back({tick, 2, a.getEntity(), 0}); });
+            if (i % 5 == 0)
+                handle.setAreaCost(3, 4.0f + (float)i);
+            agents.push_back(entity);
+        }
+        step();
+        nav->setRandomSeed(1234);
+        for (size_t i = 0; i < agents.size(); i++) {
+            nav::NavHit hit;
+            EXPECT_TRUE(nav->randomPoint(hit));
+            NavMeshAgent handle(scene.get(), agents[i]);
+            if (i % 10 == 3) {
+                EXPECT_TRUE(handle.setPath(handle.calculatePath(hit.position)));
+            } else {
+                handle.setDestination(hit.position);
+            }
+        }
+        uint32_t door = 0;
+        for (tick = 1; tick <= 600; tick++) {
+            if (tick == 200)
+                door = nav->setAreaInVolume(Vector3(8.0f, 0.0f, -10.0f), Vector3(1.0f, 4.0f, 20.0f), Quaternion(), nav::AREA_NOT_WALKABLE);
+            if (tick == 400)
+                nav->removeAreaOverride(door);
+            step();
+        }
+        EXPECT_NE(door, 0u);
+        std::vector<float> positions;
+        for (Entity entity : agents) {
+            const Vector3 p = position(entity);
+            positions.insert(positions.end(), {p.x, p.y, p.z});
+        }
+        return positions;
+    };
+    std::vector<Logged> firstLog, secondLog;
+    const std::vector<float> first = run(firstLog);
+    const std::vector<float> second = run(secondLog);
+    ASSERT_EQ(first.size(), second.size());
+    EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0);
+    EXPECT_FALSE(firstLog.empty());
+    EXPECT_TRUE(firstLog == secondLog);
 }
