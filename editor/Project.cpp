@@ -13,6 +13,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
+#include "util/ProjectChecks.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
@@ -400,7 +401,7 @@ void editor::Project::installUndoHooks(){
     CommandHistory::beforeMutation = [this](std::string& whyNot) {
         for (const SceneProject& sceneProject : scenes){
             switch (sceneProject.playState){
-                case ScenePlayState::SAVING: whyNot = "saving before Play"; return false;
+                case ScenePlayState::SAVING: whyNot = "a scene is being saved"; return false;
                 case ScenePlayState::LOADING: whyNot = "Play mode is starting"; return false;
                 case ScenePlayState::CANCELLING: whyNot = "Play mode is stopping"; return false;
                 default: break;
@@ -3393,6 +3394,11 @@ const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings()
     return terrainEditorSettings;
 }
 
+void editor::Project::setTerrainEditorSettings(const TerrainEditorSettings& settings){
+    terrainEditorSettings = settings;
+    terrainEditorSettingsGeneration++;
+}
+
 const editor::TextureProjectSettings& editor::Project::getTextureSettings() const{
     return textureSettings;
 }
@@ -5847,7 +5853,7 @@ void editor::Project::resetConfigs() {
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
     debugSettings = {};
-    terrainEditorSettings = {};
+    setTerrainEditorSettings({});
     physicsPlacementSettings = {};
     setNavigationSettings(NavigationProjectSettings());
     spriteNormalsSettings = {};
@@ -7683,6 +7689,12 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     saveOptions.name = "scene-save";
     sceneSaveTask = jobs::system().ioWriteChannel().submit([this, sceneId, savePath, policy, writeRoot, writeStrict, callback = std::move(callback)]() mutable {
         safewrite::Scope scope(writeRoot, writeStrict);
+        // the MCP tests of calls that arrive during a save (a large scene's) hold the save open
+        static const int testDelayMs = []() {
+            const char* value = std::getenv("JASPER_TEST_SCENE_SAVE_DELAY_MS");
+            return value ? std::max(0, std::atoi(value)) : 0;
+        }();
+        if (testDelayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(testDelayMs));
         bool success = false;
         try {
             success = writeSceneToPath(sceneId, savePath, false, policy);
@@ -9844,14 +9856,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         const bool hasCppScripts = ready.hasCppScripts;
 
         if (hasCppScripts) {
-            // Default needs a discoverable compatible kit; explicit kits may
-            // live outside PATH and are ABI-checked by the generated CMake.
-            const bool useDefaultKit = buildSettings.cCompiler.empty() && buildSettings.cxxCompiler.empty() && buildSettings.generator.empty();
             CMakeKit playKit;
-            playKit.cCompiler = buildSettings.cCompiler;
-            playKit.cxxCompiler = buildSettings.cxxCompiler;
-            playKit.generator = buildSettings.generator;
-            std::string missingTools = Generator::checkBuildTools(useDefaultKit, &playKit);
+            std::string missingTools = ProjectChecks::checkCppToolchain(buildSettings, playKit);
             if (!missingTools.empty()) {
                 failPlayStartup(session, sceneId, "Cannot build C++ scripts: missing build tools", "Missing Build Tools",
                     "C++ scripts require build tools that were not found on your system:\n\n" + missingTools +

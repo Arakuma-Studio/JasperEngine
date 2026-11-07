@@ -13,6 +13,7 @@
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
 #include "McpTools.h"
 #include "util/SourceLocation.h"
+#include "util/ProjectChecks.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -32,6 +33,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "command/type/ShaderOverridesCmd.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
@@ -268,6 +270,60 @@ bool parseShaderKeys(const Json& value, std::vector<ShaderKey>& out) {
 std::string shaderName(ShaderKey key) {
     return Exporter::getShaderDisplayName(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key),
                                           ShaderPool::getCustomIdFromKey(key));
+}
+
+// Build Settings > Shaders edits: clear (or reset), remove (from both lists), add, exclude, in that
+// order onto `next`; a key ends in at most one list
+bool editShaderOverrides(const Json& shaders, ShaderOverrides& next, std::string& error) {
+    if ((shaders.contains("clear") && shaders["clear"].is_boolean() && shaders["clear"].get<bool>()) ||
+        (shaders.contains("reset") && shaders["reset"].is_boolean() && shaders["reset"].get<bool>())) {
+        next.additions.clear();
+        next.exclusions.clear();
+    }
+    for (const char* field : {"remove", "add", "exclude"}) {
+        if (!shaders.contains(field)) continue;
+        if (!shaders[field].is_array()) {
+            error = std::string("shaders.") + field + " must be a list of shader keys (from get_build_info include_shaders).";
+            return false;
+        }
+        for (const Json& item : shaders[field]) {
+            std::vector<ShaderKey> parsed;
+            if (!parseShaderKeys(item, parsed)) {
+                error = "Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
+                        "(\"uieffect/<name>[:Flt]\").";
+                return false;
+            }
+            for (ShaderKey key : parsed) {
+                key = ShaderPool::normalizeKey(key);
+                next.additions.erase(key);
+                next.exclusions.erase(key);
+                if (std::string(field) == "add") next.additions.insert(key);
+                else if (std::string(field) == "exclude") next.exclusions.insert(key);
+            }
+        }
+    }
+    return true;
+}
+
+// One project undo step (ShaderOverridesCmd) when the overrides change; saves project.yaml
+bool commitShaderOverrides(Project* project, const ShaderOverrides& next, std::string& error) {
+    const ShaderOverrides& current = project->getShaderOverrides();
+    if (next.additions == current.additions && next.exclusions == current.exclusions) return true;
+    auto* command = new ShaderOverridesCmd(project, current, next);
+    command->setNoMerge();
+    if (!project->getProjectCommandHistory()->addCommand(command)) {
+        error = "The shader overrides could not be changed (see the console).";
+        return false;
+    }
+    return true;
+}
+
+Json shaderOverridesJson(const ShaderOverrides& overrides) {
+    Json additions = Json::array();
+    Json exclusions = Json::array();
+    for (ShaderKey key : overrides.additions) additions.push_back({{"key", shaderKeyText(key)}, {"name", shaderName(key)}});
+    for (ShaderKey key : overrides.exclusions) exclusions.push_back({{"key", shaderKeyText(key)}, {"name", shaderName(key)}});
+    return Json{{"added", additions}, {"excluded", exclusions}};
 }
 
 std::string appName(Project* project) {
@@ -1085,48 +1141,16 @@ void buildProjectTool(const CallPtr& call) {
         }
     }
 
-    // ---- shaders (persisted like the Build Settings window does)
-    ShaderOverrides& overrides = project->getShaderOverrides();
+    // ---- shaders: Build Settings > Shaders, one project undo step (ShaderOverridesCmd, saves project.yaml)
     if (args.contains("shaders") && args["shaders"].is_object()) {
-        const Json& shaders = args["shaders"];
-        std::set<ShaderKey> additions = overrides.additions;
-        std::set<ShaderKey> exclusions = overrides.exclusions;
-        for (const char* field : {"add", "exclude", "reset"}) {
-            if (!shaders.contains(field)) continue;
-            if (std::string(field) == "reset") {
-                if (shaders["reset"].is_boolean() && shaders["reset"].get<bool>()) {
-                    additions.clear();
-                    exclusions.clear();
-                }
-                continue;
-            }
-            if (!shaders[field].is_array()) {
-                call->fail(std::string("shaders.") + field + " must be a list of shader keys (from get_build_info shaders).");
-                return;
-            }
-            for (const Json& item : shaders[field]) {
-                std::vector<ShaderKey> parsed;
-                if (!parseShaderKeys(item, parsed)) {
-                    call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
-                               "(\"uieffect/<name>[:Flt]\").");
-                    return;
-                }
-                for (ShaderKey key : parsed) {
-                    key = ShaderPool::normalizeKey(key);
-                    if (std::string(field) == "add") {
-                        exclusions.erase(key);
-                        additions.insert(key);
-                    } else {
-                        additions.erase(key);
-                        exclusions.insert(key);
-                    }
-                }
-            }
+        ShaderOverrides next = project->getShaderOverrides();
+        std::string shaderError;
+        if (!editShaderOverrides(args["shaders"], next, shaderError) || !commitShaderOverrides(project, next, shaderError)) {
+            call->fail(shaderError);
+            return;
         }
-        projectDirty = projectDirty || additions != overrides.additions || exclusions != overrides.exclusions;
-        overrides.additions = additions;
-        overrides.exclusions = exclusions;
     }
+    const ShaderOverrides& overrides = project->getShaderOverrides();
     config.shaderAdditions = overrides.additions;
     config.shaderExclusions = overrides.exclusions;
 
@@ -1389,6 +1413,14 @@ void getBuildInfoTool(const CallPtr& call) {
                  {"build_jobs", kit.buildJobs}, {"automatic_jobs", Generator::getAutomaticParallelBuildJobs()}}},
         {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Desktop))}
     };
+    // Play's own check (on Windows a kit compatible with this editor), not the export's
+    {
+        CMakeKit scriptKit;
+        const std::string scriptMissing = ProjectChecks::checkCppToolchain(kit, scriptKit);
+        data["cpp_scripts"] = {{"can_build", scriptMissing.empty()}, {"missing_tools", scriptMissing},
+                               {"kit", {{"c_compiler", scriptKit.cCompiler}, {"cxx_compiler", scriptKit.cxxCompiler},
+                                        {"generator", scriptKit.generator}}}};
+    }
     const EmsdkInfo emsdk = Exporter::detectEmsdk(AppSettings::getEmsdkPath());
     data["web"] = {
         {"available", emsdk.found},
@@ -1513,6 +1545,32 @@ void getBuildInfoTool(const CallPtr& call) {
                 data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
     }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
+    call->ok(text, data);
+}
+
+// ------------------------------------------------------------------ edit_build_shaders
+
+void editBuildShadersTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    ShaderOverrides next = project->getShaderOverrides();
+    std::string error;
+    const bool editing = args.contains("add") || args.contains("exclude") || args.contains("remove") || args.contains("clear");
+    if (editing && !editShaderOverrides(args, next, error)) {
+        call->fail(error);
+        return;
+    }
+    const ShaderOverrides& current = project->getShaderOverrides();
+    const bool changed = editing && (next.additions != current.additions || next.exclusions != current.exclusions);
+    if (changed && !commitShaderOverrides(project, next, error)) {
+        call->fail(error);
+        return;
+    }
+    Json data = shaderOverridesJson(project->getShaderOverrides());
+    const std::string text = std::string(changed ? "Shader overrides set (one project undo step, project.yaml saved): "
+                                         : editing ? "Shader overrides unchanged (no undo step): " : "Shader overrides: ") +
+                             std::to_string(data["added"].size()) + " added, " + std::to_string(data["excluded"].size()) +
+                             " excluded besides the scenes' own shaders.";
     call->ok(text, data);
 }
 
@@ -2387,8 +2445,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Get Build Info";
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
-            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for build_project "
-            "shaders), running job, last result. Call before build_project.";
+            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
+            "running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)}
         });
@@ -2436,6 +2494,26 @@ void registerBuildTools(McpRegistry& registry) {
         tool.annotations.openWorld = true;
         tool.allowedWhilePlaying = false;
         tool.handler = buildProjectTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_build_shaders";
+        tool.title = "Edit Build Shaders";
+        tool.description =
+            "Build Settings > Shaders without building: add or exclude shader keys besides the ones the scenes need "
+            "(keys from get_build_info include_shaders), remove a key's override, clear all. One project undo step; "
+            "no arguments lists them. build_project uses them.";
+        tool.inputSchema = object({
+            {"add", array(stringItem, "")},
+            {"exclude", array(stringItem, "")},
+            {"remove", array(stringItem, "")},
+            {"clear", boolean("")}
+        });
+        tool.group = "shipping";
+        tool.allowedWhilePlaying = false;
+        tool.handler = editBuildShadersTool;
         registry.addTool(std::move(tool));
     }
 

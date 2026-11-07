@@ -204,6 +204,8 @@ namespace jasperengine::editor {
         const char* localExportMode() const;
         void refreshShaderSelection();
         void includeShader(ShaderKey key);
+        void applyShaderOverrides(const std::set<ShaderKey>& additions, const std::set<ShaderKey>& exclusions);
+        void syncShaderOverrides(bool force);
         void populateBackendList();
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);

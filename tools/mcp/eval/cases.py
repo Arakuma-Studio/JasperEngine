@@ -2025,4 +2025,199 @@ CASES = [
         "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
         "max_turns": 6,
     },
+
+    # -- agent-authoring: building scenes, the guide past the client cut, terrain, shaders ------------
+    {
+        "id": "bad_repeat_without_prefab",
+        "kind": "bad",
+        "what_happened": "Agents placed repeated objects (coins, enemies) as independent copies, so a later change had to be "
+                         "repeated on each; Doriax a48d1ce3a added 'build once, place instances' to its guidance.",
+        "text_at_issue": "Guide 'Building scenes': 'What repeats is one Prefab (create_prefab)'; duplicate_entities' next",
+        "source": "Doriax a48d1ce3a (editor AI authoring rules), agent-authoring spec",
+        "prompt": "Add a Coin (a small yellow sphere) to the Main scene and four more coins 3 units apart along x.",
+        "mocks": [
+            {"tool": "create_entity", "result": ok("Created Sphere \"Coin\" [30] at Coin (one undo step).",
+                                                   {"entity_id": 30, "entity": {"id": 30, "name": "Coin", "path": "Coin"},
+                                                    "undo": {"id": 4, "name": "eval: Create GameObject (Coin)"}})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 30 \"Coin\".", {"entity": {"id": 30}})},
+            {"tool": "create_prefab", "result": ok("Created prefab assets/prefabs/Coin.prefab from \"Coin\"; it is now an instance.",
+                                                   {"path": "assets/prefabs/Coin.prefab", "instance": {"id": 30, "path": "Coin"}})},
+            {"tool": "instantiate_prefab", "result": ok("Placed an instance of assets/prefabs/Coin.prefab: \"Coin (1)\" [31].",
+                                                        {"entity": {"id": 31, "path": "Coin (1)"}})},
+            {"tool": "duplicate_entities", "result": ok(
+                "Duplicated 1 GameObject(s) (one undo step); the copies are selected. The copies are independent GameObjects: for "
+                "an object placed more than once, make it a Prefab (create_prefab) and place instances (instantiate_prefab), so "
+                "one edit changes every copy.",
+                {"scene_id": 1, "created": [{"id": 31, "path": "Coin (1)"}],
+                 "next": "The copies are independent GameObjects: for an object placed more than once, make it a Prefab "
+                         "(create_prefab) and place instances (instantiate_prefab), so one edit changes every copy."})},
+            {"tool": "set_transform", "result": ok("Moved 1 GameObject.", {"entities": [{"id": 31}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": ["create_prefab"], "max_calls": {"create_entity": 2}},
+        "max_turns": 24,
+    },
+    {
+        "id": "bad_bob_in_script",
+        "kind": "bad",
+        "what_happened": "Asked for a bobbing pickup, agents wrote an onUpdate script that moves the transform every frame, "
+                         "which does not preview in the editor or show in the Animation window.",
+        "text_at_issue": "Guide 'Building scenes': 'motion is edit_animation, not per-frame code'",
+        "source": "Doriax a48d1ce3a (animate natively), agent-authoring spec",
+        "files": GAME_FILES,
+        "prompt": "Make the Crate bob up and down by half a unit, forever.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "Created Animation \"Crate Bob\" [40] targeting Crate (1 tween, loop, autoplay; one undo step).",
+                {"animation": {"id": 40, "path": "Crate Bob"}, "undo": {"id": 5, "name": "eval: Edit Animation"}})},
+            {"tool": "preview_animation", "result": ok("Previewing \"Crate Bob\" at 0.5 s.", {"time": 0.5})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": ["edit_animation"], "must_not_call": ["create_script", "attach_script"],
+                   "edits_must_not": [r"\.lua$", r"\.cpp$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_hud_widgets_in_3d",
+        "kind": "bad",
+        "what_happened": "A score label was built with create_ui inside the 3D level, where it sits in the world and moves with "
+                         "the camera; the result now says where a HUD goes.",
+        "text_at_issue": "create_ui result next: 'In a 3D scene UI widgets sit in its world ... set_child_scene, or ... "
+                         "create_ui_document'",
+        "source": "Doriax a48d1ce3a (HUD in its own UI scene); agent-authoring spec",
+        "prompt": "Show the player's score in the top-left corner of the screen while the game runs (\"Score: 0\" for now).",
+        "mocks": [
+            {"tool": "create_ui", "args": {"scene": "re:^(1|Main|scenes/Main.scene)$"}, "result": ok(
+                "Created 1 UI element(s) under \"Score\" (one undo step). In a 3D scene UI widgets sit in its world and move "
+                "with its camera: build a HUD or menu in a UI scene attached with set_child_scene, or as an HTML UI document "
+                "(create_ui_document).",
+                {"root": {"id": 50, "name": "Score"}, "count": 1,
+                 "next": "In a 3D scene UI widgets sit in its world and move with its camera: build a HUD or menu in a UI scene "
+                         "attached with set_child_scene, or as an HTML UI document (create_ui_document)."})},
+            {"tool": "create_ui", "result": ok("Created 1 UI element(s) under \"Score\" (one undo step).",
+                                               {"root": {"id": 3, "name": "Score"}, "count": 1})},
+            {"tool": "create_scene", "result": ok("Created scene 2 \"Hud\" (UI) at scenes/Hud.scene.",
+                                                  {"scene": {"id": 2, "name": "Hud", "path": "scenes/Hud.scene"}})},
+            {"tool": "set_child_scene", "result": ok("Attached \"Hud\" as a child scene of \"Main\".",
+                                                     {"scene": {"id": 1}, "child": {"id": 2}})},
+            {"tool": "create_ui_document", "result": ok(
+                "Created UI Document \"Hud\" [51] with assets/ui/hud.html, hud.css and hud.lua.",
+                {"entity": {"id": 51, "path": "Hud"}, "files": ["assets/ui/hud.html", "assets/ui/hud.css", "assets/ui/hud.lua"]})},
+            {"tool": "save_scene", "result": ok("Saved scene.", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": ["create_ui_document"]}, {"calls": ["set_child_scene"]}]},
+        "max_turns": 24,
+    },
+    {
+        "id": "guard_rotation_not_euler",
+        "kind": "guard",
+        "what_happened": "Euler degrees sent as a quaternion ([90, 0, 0, 1]) were stored as given and scaled the object; the "
+                         "server now refuses them and names the Euler form.",
+        "text_at_issue": "McpValues::parseQuaternion: '[90, 0, 0, 1] looks like Euler degrees: use {\"euler\": [90, 0, 0]}.'",
+        "source": "Doriax 720e314e7; agent-authoring spec",
+        "prompt": "Rotate the Crate 90 degrees around the X axis.",
+        "mocks": [
+            {"tool": "set_transform", "args": {"rotation": {"euler": "*"}}, "result": ok("Set the transform of 1 GameObject.",
+                                                                                     {"entities": [{"id": 15}]})},
+            {"tool": "set_transform", "result": err(
+                "rotation: [90, 0, 0, 1] looks like Euler degrees: use {\"euler\": [90, 0, 0]}.")},
+            {"tool": "set_properties", "args": {"values": {"transform": {"rotation": {"euler": "*"}}}},
+             "result": ok("Set 1 property of GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "set_properties", "result": err(
+                "transform.rotation on GameObject 15 \"Crate\": Property rotation is quat: [90, 0, 0, 1] looks like Euler "
+                "degrees: use {\"euler\": [90, 0, 0]}.")},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_transform", "args": {"rotation": {"euler": "*"}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"transform": {"rotation": {"euler": "*"}}}}}]}],
+                   "max_errors": {"*": 1}},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_guide_past_the_cut",
+        "kind": "guard",
+        "what_happened": "Claude Code keeps the first 4096 characters of the server instructions; the physics, prefab, shader "
+                         "and HTML UI digests came after the cut. The intro now says to read the rest.",
+        "text_at_issue": "Guide intro: 'Text cut before \"## Other areas\"? read_file jasper://guide.'",
+        "source": "Claude Code 2.1.318 capMcpInstructions (4096 characters); agent-authoring spec",
+        "prompt": "Before you change anything: what does this editor's agent guide say about moving physics bodies? Quote it.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:^jasper://guide"}, "result": ok(
+                "jasper://guide lines 1-120 of 120:\n...\n## Physics\nAdd a body and its collider in one step: edit_colliders "
+                "with body_type + add (a Rigidbody without a collider does not collide). Collider sizes are local: never "
+                "pre-scale or guess them; omit them to fit the mesh. Forces go in onFixedUpdate, not times deltatime; move a "
+                "body through the body, not its transform (jasper://docs/physics).\n...",
+                {"path": "jasper://guide", "total_lines": 120, "start_line": 1, "lines": 120})},
+            {"tool": "read_file", "args": {"path": "re:^jasper://docs/physics"}, "result": ok(
+                "jasper://docs/physics lines 1-40 of 400:\n# Physics\n...\nMove a body through body.position / "
+                "body.linearVelocity, never its transform.", {"path": "jasper://docs/physics", "total_lines": 400})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "read_file", "args": {"path": "re:^jasper://guide"}}]},
+                              {"calls": [{"tool": "read_file", "args": {"path": "re:^jasper://docs/physics"}}]}],
+                   "reply_must": [r"(?i)transform"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_terrain_grass",
+        "kind": "bad",
+        "what_happened": "Asked for grass on a terrain, agents set foliageLayers through set_properties with scene-file keys "
+                         "and no density map, so nothing drew; edit_terrain_details validates and makes the map.",
+        "text_at_issue": "edit_terrain_details: 'A layer draws nothing without a density map: density_map {fill: 0-1}'",
+        "source": "Doriax b2375ea0c (set_terrain_foliage_layer); agent-authoring spec",
+        "prompt": "Cover the terrain Ground with grass using assets/models/grass.glb. It's only decoration, keep it cheap.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_details", "args": {"add": "*"}, "result": ok(
+                "Set the detail layers of Ground (one undo step): 1 layer(s).",
+                {"terrain": {"id": 11, "path": "Ground"}, "added": [0], "layers": [{"index": 0, "mesh": "assets/models/grass.glb",
+                 "density_map": "assets/terrain/terrain_1_11_density.png", "density": 2, "cast_shadows": False}]})},
+            {"tool": "edit_terrain_details", "result": ok("Ground has 0 detail layer(s).", {"terrain": {"id": 11}, "layers": []})},
+            {"tool": "sample_terrain", "result": ok("Terrain Ground: 32 x 32, max height 4; 1 detail layer (8400 drawn).",
+                                                    {"info": {"details": [{"index": 0, "drawn": 8400}]}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_details", "args": {"add": [{"density_map": "*"}]}}],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"terrain": {"foliageLayers": "*"}}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_shader_override_by_building",
+        "kind": "bad",
+        "what_happened": "Shader overrides could only change through build_project, so agents started a build to exclude one "
+                         "shader variant; edit_build_shaders edits them without building.",
+        "text_at_issue": "edit_build_shaders: 'Build Settings > Shaders without building'",
+        "source": "Doriax b2323b44b (set_export_shaders); agent-authoring spec",
+        "prompt": "Exclude the shader variant 0x0000000a00000001 from the game's builds. Don't build anything now.",
+        "mocks": [
+            {"tool": "edit_build_shaders", "result": ok(
+                "Shader overrides set (one project undo step, project.yaml saved): 0 added, 1 excluded besides the scenes' own shaders.",
+                {"added": [], "excluded": [{"key": "0x0000000a00000001", "name": "Mesh (Ult)"}]})},
+            {"tool": "get_build_info", "result": ok("Host linux. 1 scene(s) in the build, 12 shader(s).",
+                                                    {"shader_count": 12, "cpp_scripts": {"can_build": True, "missing_tools": ""}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_build_shaders", "args": {"exclude": ["0x0000000a00000001"]}}],
+                   "must_not_call": ["build_project"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_cpp_without_toolchain",
+        "kind": "bad",
+        "what_happened": "On Windows get_build_info said the desktop toolchain was there while Play refused C++ scripts (it "
+                         "checks for a compiler compatible with the editor); agents wrote C++ that never built.",
+        "text_at_issue": "get_build_info's result: cpp_scripts {can_build, missing_tools} (Play's own check); cpp-scripting.md 'Choosing Lua or C++'",
+        "source": "Doriax 3fc70298e (check_cpp_build_tools, language guidance); agent-authoring spec",
+        "prompt": "Make the Crate spin around Y with a C++ script attached to it. Check first that C++ can build on this machine.",
+        "mocks": [
+            {"tool": "get_build_info", "result": ok(
+                "Host windows. Desktop player: available; Web: no emsdk; source export: available. 1 scene(s) in the build, 9 shader(s).",
+                {"host_platform": "windows", "desktop": {"available": True, "missing_tools": ""},
+                 "cpp_scripts": {"can_build": False, "missing_tools": "- C++ toolchain compatible with this editor: not found. "
+                                 "Select an available compiler in Preferences > External Tools.\n",
+                                 "kit": {"c_compiler": "", "cxx_compiler": "", "generator": ""}}})},
+            {"tool": "compile_scripts", "result": err("C++ build tools are missing:\n- C++ toolchain compatible with this editor: "
+                                                      "not found. Select an available compiler in Preferences > External Tools.")},
+            {"tool": "create_script", "result": ok("Created scripts/Spinner.lua and attached it to Crate.",
+                                                   {"path": "scripts/Spinner.lua", "attached": {"id": 15}})},
+        ],
+        "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
+        "max_turns": 16,
+    },
 ]

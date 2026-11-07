@@ -643,10 +643,7 @@ namespace {
         EditorScripts::writeCppProject(project, sources, dir, libName);
         const LocalBuildSettings settings = AppSettings::getBuildSettings(project->getProjectPath() / "project.yaml");
         CMakeKit kit;
-        kit.cCompiler = settings.cCompiler;
-        kit.cxxCompiler = settings.cxxCompiler;
-        kit.generator = settings.generator;
-        const std::string missing = Generator::checkBuildTools(kit.cCompiler.empty() && kit.cxxCompiler.empty() && kit.generator.empty(), &kit);
+        const std::string missing = ProjectChecks::checkCppToolchain(settings, kit);
         if (!missing.empty()) {
             std::vector<std::function<void(bool, std::string)>> waiting;
             waiting.swap(library.waiting);

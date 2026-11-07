@@ -14296,15 +14296,17 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     }
 
     if (camera.useTarget){
+        // aimed straight up or down the stored up is parallel to the view: lookAt needs another
+        const Vector3 up = cameraUpFor(camera.target - transform.position, camera.up);
         camera.direction = (transform.position - camera.target).normalize();
-        camera.right = (camera.up.crossProduct(camera.direction)).normalize();
+        camera.right = (up.crossProduct(camera.direction)).normalize();
 
         if (transform.parent != NULL_ENTITY){
             camera.worldTarget = transform.modelMatrix * (camera.target - transform.position);
-            camera.worldUp = ((transform.modelMatrix * camera.up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
+            camera.worldUp = ((transform.modelMatrix * up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
         }else{
             camera.worldTarget = camera.target;
-            camera.worldUp = camera.up;
+            camera.worldUp = up;
         }
 
         //Update ViewMatrix

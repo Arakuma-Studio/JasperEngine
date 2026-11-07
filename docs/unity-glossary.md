@@ -378,6 +378,18 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
+## Terrain
+
+Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
+
+| Unity term | JasperEngine name |
+|---|---|
+| Terrain | the Terrain component (`TerrainComponent`), Window > Terrain |
+| Terrain Layer (Paint Texture) | an entry of `surfaceLayers` (up to 9); MCP `set_terrain_maps layers` |
+| Splat map / control texture (`TerrainData.alphamapTextures`) | `blendMaps` (up to 3; slot i weights layers 3i..3i+2); MCP `set_terrain_maps blendmap {index}` |
+| Details (Paint Details), Detail Mesh (`TerrainData.detailPrototypes`) | detail layers: `foliageLayers`, the Terrain window's "Detail layer"; MCP `edit_terrain_details` |
+| detail density (`SetDetailLayer`) | a detail layer's density map, painted with Paint Density (`sculpt_terrain paint_density`) |
+
 ## Layers and physics
 
 Each physics backend has its Layer Collision Matrix (Project Settings > Physics for

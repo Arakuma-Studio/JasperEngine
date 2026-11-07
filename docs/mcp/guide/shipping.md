@@ -44,6 +44,13 @@ build-tools, platform, JDK; the bundletool jar is downloaded by the first `aab` 
 pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops before signing with
 `W-IOS-NO-TEAM`; a wrong Android keystore password or alias fails before any packaging and says which.
 
+**Shader overrides** (Build Settings > Shaders): a build compiles the shader variants the scenes
+need, plus the ones added by hand and minus the ones excluded. `get_build_info include_shaders`
+lists every key; `edit_build_shaders` (group `shipping`) adds, excludes, removes or clears
+overrides without building, one project undo step, saved to project.yaml at once (the Build
+Settings window shows it while open). `build_project shaders` does the same before a build. Exclude
+a variant only when nothing draws with it: an excluded shader the game needs draws nothing.
+
 Before exporting: the scenes saved, the Console clean in play, the start scene right
 (`edit_build_scenes`).
 
