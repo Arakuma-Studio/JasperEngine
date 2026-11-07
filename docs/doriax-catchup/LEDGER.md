@@ -78,7 +78,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
-| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
+| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | merged |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | merged |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
@@ -230,3 +230,10 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   gen_tool_docs and budget with the guide's client cut, unit filters of both plus RuntimeFields/CookedScene and
   scripting's parts tests, MCP 122 passed across both features plus scripting's overlap, lints and test_grade).
   Conflicts at landing: eval cases (union, graded), the shipping guide (both paragraphs).
+- 2026-11-07 03:xx: **mobile-shipping merged** (landing train 2 = train 1 + branch) after an independent review (SDK
+  resource bundles copied and their manifests merged, guide anchor, iOS red controls incl. the old-runtime fallback,
+  privacy warnings in the build result, OK disabled on an invalid manifest, one undo step per agent call). Conflicts
+  at landing with export-pipeline in Exporter/ExporterPrebuilt (manifests and the Xcode project written only when
+  changed, a failed write names the file; every web export keeps its favicon and carries native web scripts),
+  StreamSchema keys, check-changed rules. Box: WERROR editor, budget, unit 294, MCP 57, web compile, lints, Apple
+  privacy check. No Apple code compiled here.
