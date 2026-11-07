@@ -2089,6 +2089,21 @@ std::vector<Setting> mcpSettingsTable() {
             add(std::move(s));
         }
 
+        // ---- particles (S20 R15; Project Settings > Graphics)
+        {
+            Setting s;
+            s.key = "particles.world_budget";
+            s.type = "int";
+            s.description = "Particles alive at once in a scene, sub-emitter children included (0: the platform's default); over it, lower priorities emit less. Applies at once.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getParticleWorldBudget()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxParticleWorldBudget, v, error)) return false;
+                if (apply) ctx.project()->setParticleWorldBudget(static_cast<uint32_t>(v));
+                return true;
+            };
+            add(s);
+        }
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
@@ -3279,6 +3294,7 @@ const Placement placements[] = {
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
+    {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
     {"graphics.shadow_tier.windows", "Graphics", "Shadows", "Windows Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.linux", "Graphics", "Shadows", "Linux Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.macos", "Graphics", "Shadows", "macOS Shadow Tier", "shadow quality"},

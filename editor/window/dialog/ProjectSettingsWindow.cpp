@@ -990,6 +990,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
+    m_particleWorldBudget = (int)project->getParticleWorldBudget();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
     m_lightModeIndex = static_cast<int>(project->getLightMode());
@@ -1905,6 +1906,12 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "and one data texture)\n"
                 "- Per Object caps each object's lights at Max Lights Per Object (the rest fold into its ambient)\n"
                 "- Automatic is Tiled on Medium tiers and above, Per Object on Low");
+        }
+
+        if (settingsui::beginRow("particles.world_budget")) {
+            drawIntSetting("World Particle Budget", "##ParticleWorldBudget", m_particleWorldBudget, 0, 0,
+                "The most particles alive at once in a scene, sub-emitter children included: past it, effects of lower priority "
+                "and smaller on screen emit less. 0 keeps the platform's default (262,144 on desktop, 131,072 on the web, 65,536 on mobile).");
         }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
@@ -4945,6 +4952,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
+    m_project->setParticleWorldBudget((uint32_t)std::clamp(m_particleWorldBudget, 0, (int)Project::maxParticleWorldBudget));
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
     m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));

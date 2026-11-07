@@ -281,4 +281,20 @@ TEST(ParticleEffectCodec, MergePatchTakesTheOtherGradientForm){
     EXPECT_FALSE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
         {"gradient": {"colors": [[0, "#ff0000"], [1, "#0000ff"]], "alphsa": [[0, 1]]}}}}})"), diagnostics));
     EXPECT_EQ(ParticleEffectCodec::write(doc), before);
+
+TEST(ParticleEffectCodec, GenerateLightingDataLoadsButIsNotShown){
+    // BF23 F4: nothing reads it, so the Inspector does not offer it (InspectorParticles shows no
+    // hidden field); a file that has it still loads clean and keeps it
+    const ModuleDesc* trails = ParticleModules::find("trails");
+    ASSERT_NE(trails, nullptr);
+    const FieldDesc* field = trails->fields.find("generateLightingData");
+    ASSERT_NE(field, nullptr) << "unknown keys are not read: the key stays for old files";
+    EXPECT_TRUE(field->flags & FieldFlag_Hidden);
+
+    ParticleEffectDocument document;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::read(R"({"version": 1, "modules": [{"type": "trails", "generateLightingData": true}]})", document, diagnostics));
+    EXPECT_TRUE(diagnostics.empty()) << ParticleEffectCodec::format(diagnostics);
+    EXPECT_TRUE(document.trails.generateLightingData);
+    EXPECT_NE(ParticleEffectCodec::write(document).find("generateLightingData"), std::string::npos);
 }

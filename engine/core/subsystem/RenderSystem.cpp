@@ -10833,6 +10833,25 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
     sceneInputUsage = usage;
 }
 
+// The scene inputs an emitter and its children will read, for the ones not loaded yet
+static uint32_t predictedParticleInputs(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData* render){
+    // (no effect: a view reload unbound it, and it binds again on its next update)
+    if (!emitter.effect())
+        return 0;
+    uint32_t inputs = 0;
+    if (!render || !render->loaded){
+        const particles::RendererModule& renderer = emitter.effect()->document.renderer;
+        if (std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader))
+            inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+    }
+    for (size_t c = 0; c < emitter.childCount(); c++){
+        const particles::EmitterRuntime* child = emitter.child(c);
+        if (child && child->effect())
+            inputs |= predictedParticleInputs(*child, render && c < render->children.size() ? render->children[c].get() : nullptr);
+    }
+    return inputs;
+}
+
 void RenderSystem::predictSceneInputUsers(){
     // Registered at load only, the first reader of the scene depth would load after the other
     // meshes, which then lack a depth program for its pre-pass: one frame without them, and
@@ -10876,19 +10895,16 @@ void RenderSystem::predictSceneInputUsers(){
             setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
         }
     }
-    // the particle systems about to load (their effect bound, the render not yet)
+    // the particle systems about to load (their effect bound, the render not yet), and their
+    // children (a child read after the root loaded): with what the loaded part of the tree reads
     auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < particleArray->size(); i++){
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
-        if (!particles.state || !particles.state->effect || particles.state->render.loaded)
+        if (!particles.state || !particles.state->effect)
             continue;
-        const particles::RendererModule& renderer = particles.state->effect->document.renderer;
-        std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader);
-        if (!manifest)
-            continue;
-        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+        const uint32_t inputs = predictedParticleInputs(particles.state->runtime, &particles.state->render);
         if (inputs)
-            setParticleSceneInputUser(particleArray->getEntity(i), inputs);
+            setParticleSceneInputUser(particleArray->getEntity(i), inputs | particleSceneInputs(particles.state->render));
     }
 }
 
@@ -11028,7 +11044,7 @@ bool RenderSystem::drawsSceneColorReader(Entity entity, Signature signature, Tra
     if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
         if (!particles.enabled || !particles.state || !particles.state->render.loaded ||
-                !(particles.state->render.sceneInputs & ShaderRequire_SceneColor) || !transform.visible)
+                !(particleSceneInputs(particles.state->render) & ShaderRequire_SceneColor) || !transform.visible)
             return false;
         return isParticleRenderActive(entity, camera.cullingMask) && particleBoundsVisible(*particles.state, camera);
     }
@@ -14850,7 +14866,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
+            visit(isParticleTreeLoaded(particles.state->runtime, particles.state->render), particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents
@@ -18126,14 +18142,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
                     drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
             }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
-                const particles::ParticleSystemState& state = *particles.state;
-                const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
-                                                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
-                                                       : transform.worldPosition;
-                TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
-                                           (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
-                data.particles = &particles;
-                transparentRenders.push_back(data);
+                particles::ParticleSystemState& state = *particles.state;
+                if (state.runtime.childCount() > 0){
+                    queueParticleTree(entity, particles, state.runtime, state.render, transform, cameraTransform, true, transparentOrder);
+                }else{
+                    const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                                                     (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
+                                                           : transform.worldPosition;
+                    TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                               (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
+                    data.particles = &particles;
+                    transparentRenders.push_back(data);
+                }
             }
         }
 
@@ -18173,7 +18193,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::PARTICLES){
-            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
+            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip, renderData.emitter, renderData.emitterRender);
         }else if (renderData.type == TransparentRenderType::LINES){
             drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::TRAIL){

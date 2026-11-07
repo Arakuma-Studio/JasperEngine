@@ -583,7 +583,8 @@ namespace {
         f.push_back(field("sizeAffectsWidth", "Size affects Width", FieldType::Bool, JE_ACC(TrailsModule, sizeAffectsWidth)));
         f.push_back(shownIf(field("sizeAffectsLifetime", "Size affects Lifetime", FieldType::Bool, JE_ACC(TrailsModule, sizeAffectsLifetime)), JE_IF(TrailsModule, m.mode == TrailMode::PerParticle)));
         f.push_back(enumField("textureMode", "Texture Mode", JE_ACC(TrailsModule, textureMode), kTrailTextureModes));
-        f.push_back(field("generateLightingData", "Generate Lighting Data", FieldType::Bool, JE_ACC(TrailsModule, generateLightingData)));
+        // nothing reads it (lit trails are not built): old files keep loading, the Inspector does not offer it
+        f.push_back(field("generateLightingData", "Generate Lighting Data", FieldType::Bool, JE_ACC(TrailsModule, generateLightingData), FieldFlag_Hidden));
         return d;
     }
 

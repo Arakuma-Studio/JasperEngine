@@ -366,7 +366,6 @@
 ---@field sizeAffectsWidth boolean
 ---@field sizeAffectsLifetime boolean
 ---@field textureMode string
----@field generateLightingData boolean
 
 ---The customData module of a Particle System (ps.customData): a live view of its effect (an inline one;
 ---an asset is copied inline first), its fields read and write it now with Unity's names (angles in

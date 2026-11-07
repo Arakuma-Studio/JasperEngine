@@ -134,6 +134,9 @@ namespace jasperengine { namespace particles {
         // levels): `resolve` compiles an entry's effect (null when it cannot be read)
         using SubEmitterResolver = std::function<std::shared_ptr<const CompiledEffect>(const SubEmitterEntry& entry)>;
         void bindSubEmitters(const SubEmitterResolver& resolve, int depth = 1);
+        // gives the bound children their effects again, keeping their particles; false when one
+        // changed structure and they need bindSubEmitters (a child's file was edited)
+        bool rebindSubEmitters(const SubEmitterResolver& resolve, int depth = 1);
         EmitterRuntime* child(size_t index) const { return index < children.size() ? children[index].get() : nullptr; }
         size_t childCount() const { return children.size(); }
         const CompiledEffect* effect() const { return compiled.get(); }
@@ -200,6 +203,14 @@ namespace jasperengine { namespace particles {
         // ---- results
         uint32_t count() const { return channels.count; }
         uint32_t capacity() const { return channels.capacity(); }
+        // the same with its sub-emitter children's, down the tree: what stats and the budget count
+        uint32_t totalCount() const;
+        uint32_t totalCapacity() const;
+        // the most the tree may hold: each emitter is held to its own Max Particles
+        uint32_t totalMaxParticles() const;
+        // what the tree wants alive at its peak: its own capacity hint, and for each child what
+        // that many parents ask for (a child's own Emission is ignored), up to its Max Particles
+        uint32_t treeCapacityHint() const;
         float interpolation() const { return alpha; }
         // the length of the last tick (the time between the previous and the current channels)
         float lastTickSeconds() const { return lastTick; }
@@ -269,6 +280,9 @@ namespace jasperengine { namespace particles {
                         const SpawnRequest* request, const EmitOverrides* overrides);
         void trailStage();
         void childrenStage(const EmitterInput& input);
+        // the children render between the same two ticks as their parent
+        void shareInterpolation();
+        uint64_t childrenCapacityHint(uint64_t parents) const;
         void raiseSubEmitters(SubEmitterTrigger trigger, uint32_t index, const float* normal);
         void raiseEntry(uint32_t entry, SubEmitterTrigger trigger, uint32_t index, const float* normal);
         void continueSeekTicks(const EmitterInput& input, SeekState& seek, double budgetMs);

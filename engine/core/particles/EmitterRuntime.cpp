@@ -198,6 +198,18 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
 bool EmitterRuntime::rebind(std::shared_ptr<const CompiledEffect> effect){
     if (!prog || !effect || !effect->valid || !prog->sameStructure(effect->program))
         return false;
+    // the children are bound per entry: what an entry names is structure, its other fields are
+    // read when it fires
+    const std::vector<SubEmitterEntry>& before = compiled->document.subEmitters;
+    const std::vector<SubEmitterEntry>& after = effect->document.subEmitters;
+    if (prog->subEmitters){
+        if (before.size() != after.size())
+            return false;
+        for (size_t e = 0; e < before.size(); e++){
+            if (before[e].effect != after[e].effect || before[e].inheritRotation != after[e].inheritRotation)
+                return false;
+        }
+    }
     compiled = std::move(effect);
     prog = &compiled->program;
     return true;
@@ -231,6 +243,23 @@ void EmitterRuntime::bindSubEmitters(const SubEmitterResolver& resolve, int dept
         }
     }
     setChildren(std::move(list));
+}
+
+bool EmitterRuntime::rebindSubEmitters(const SubEmitterResolver& resolve, int depth){
+    if (!prog || !prog->subEmitters || depth >= kMaxSubEmitterDepth)
+        return children.empty();
+    const std::vector<SubEmitterEntry>& entries = compiled->document.subEmitters;
+    if (entries.size() != children.size())
+        return false;
+    for (size_t e = 0; e < entries.size(); e++){
+        std::shared_ptr<const CompiledEffect> effect = resolve(entries[e]);
+        const bool readable = effect && effect->valid;
+        if (readable != (children[e] != nullptr))
+            return false;
+        if (readable && (!children[e]->rebind(std::move(effect)) || !children[e]->rebindSubEmitters(resolve, depth + 1)))
+            return false;
+    }
+    return true;
 }
 
 void EmitterRuntime::unbind(){
@@ -373,6 +402,55 @@ bool EmitterRuntime::isEmitting() const{
     return playState != PlayState::Stopped && emitting;
 }
 
+uint32_t EmitterRuntime::totalCount() const{
+    uint32_t total = channels.count;
+    for (const auto& c : children){
+        if (c) total += c->totalCount();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalCapacity() const{
+    uint32_t total = channels.capacity();
+    for (const auto& c : children){
+        if (c) total += c->totalCapacity();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalMaxParticles() const{
+    uint32_t total = prog ? prog->maxParticles : 0u;
+    for (const auto& c : children){
+        if (c) total += c->totalMaxParticles();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::treeCapacityHint() const{
+    if (!prog)
+        return 0u;
+    const uint32_t own = prog->capacityHint();
+    if (children.empty())
+        return own;
+    // the children from the parents' peak itself: the storage hint's padding would multiply
+    const uint64_t parents = (uint64_t)std::ceil(prog->peakEstimate());
+    return (uint32_t)std::min<uint64_t>((uint64_t)own + childrenCapacityHint(parents), UINT32_MAX);
+}
+
+uint64_t EmitterRuntime::childrenCapacityHint(uint64_t parents) const{
+    const std::vector<SubEmitterEntry>& entries = compiled->document.subEmitters;
+    uint64_t total = 0;
+    for (size_t e = 0; e < children.size() && e < entries.size(); e++){
+        const EmitterRuntime* child = children[e].get();
+        if (!child || !child->prog || entries[e].emitCount <= 0)
+            continue;
+        const double asked = (double)parents * (double)entries[e].emitCount * (double)std::clamp(entries[e].probability, 0.0f, 1.0f);
+        const uint64_t held = (uint64_t)std::min(std::ceil(asked), (double)child->prog->maxParticles);
+        total += held + child->childrenCapacityHint(held);
+    }
+    return total;
+}
+
 bool EmitterRuntime::isAlive() const{
     if (channels.count > 0 || trailStore.usedRings() > 0)
         return true;
@@ -414,7 +492,13 @@ bool EmitterRuntime::queueSpawn(const SpawnRequest& request){
 // ---------------------------------------------------------------- frames and ticks
 
 uint32_t EmitterRuntime::limit(const EmitterInput& input) const{
-    return std::min({prog->maxParticles, input.budget, kMaxParticlesPerEmitter});
+    // what its children hold comes out of the budget it shares with them
+    uint32_t held = 0;
+    for (const auto& c : children){
+        if (c) held += c->totalCount();
+    }
+    const uint32_t budget = input.budget > held ? input.budget - held : 0u;
+    return std::min({prog->maxParticles, budget, kMaxParticlesPerEmitter});
 }
 
 uint32_t EmitterRuntime::planFrame(const EmitterInput& input, double dt, uint32_t maxTicks){
@@ -478,6 +562,16 @@ void EmitterRuntime::endFrame(){
         alpha = (float)std::clamp(accumulator / frameTick, 0.0, 1.0);
     else
         alpha = 1.0f;
+    shareInterpolation();
+}
+
+void EmitterRuntime::shareInterpolation(){
+    for (auto& c : children){
+        if (!c || !c->prog)
+            continue;
+        c->alpha = c->prog->interpolate ? alpha : 1.0f;
+        c->shareInterpolation();
+    }
 }
 
 void EmitterRuntime::setFrameTransforms(const EmitterInput& input, double fraction){
@@ -1432,6 +1526,8 @@ void EmitterRuntime::appearance(uint32_t i, float color[4], float& size, float& 
 }
 
 void EmitterRuntime::childrenStage(const EmitterInput& input){
+    // the tree shares its budget: what the parent and the other entries hold, a child has not
+    uint32_t held = totalCount();
     for (size_t c = 0; c < children.size(); c++){
         EmitterRuntime* child = children[c].get();
         if (!child || !child->prog)
@@ -1440,7 +1536,9 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
         EmitterInput childInput = input;
         childInput.transform = tickTransform;
         childInput.seed = child->seed;
-        childInput.budget = input.budget > channels.count ? input.budget - channels.count : 0u;
+        const uint32_t childBefore = child->totalCount();
+        const uint32_t others = held - childBefore;
+        childInput.budget = input.budget > others ? input.budget - others : 0u;
         child->playState = PlayState::Playing;
         std::memcpy(child->prevFrame, tickTransform, sizeof(tickTransform));
         std::memcpy(child->curFrame, tickTransform, sizeof(tickTransform));
@@ -1462,7 +1560,7 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
             jobsOf(input).parallelFor(chunks, [child](size_t k){ child->updateChunk((uint32_t)k); });
         }
         child->finishTick(childInput);
-        child->alpha = alpha;
+        held = others + child->totalCount();
     }
 }
 
@@ -1508,6 +1606,7 @@ void EmitterRuntime::step(const EmitterInput& input){
     std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
     accumulator = 0.0;
     alpha = 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::beginSeek(const EmitterInput& input, double time, SeekState& s){
@@ -1560,6 +1659,7 @@ void EmitterRuntime::continueSeekTicks(const EmitterInput& input, SeekState& s, 
         // the remainder of the target drives the interpolation
         accumulator = std::max(0.0, s.target - s.total * s.tick);
         alpha = prog->interpolate ? (float)std::clamp(accumulator / s.tick, 0.0, 1.0) : 1.0f;
+        shareInterpolation();
     }
 }
 
@@ -1594,6 +1694,7 @@ void EmitterRuntime::seekStep(const EmitterInput& input, double tick){
 void EmitterRuntime::settleSeek(double remainder, double tick){
     accumulator = std::max(0.0, remainder);
     alpha = (prog && prog->interpolate && tick > 0.0) ? (float)std::clamp(accumulator / tick, 0.0, 1.0) : 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::seek(const EmitterInput& input, double time){

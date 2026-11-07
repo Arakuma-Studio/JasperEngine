@@ -2938,6 +2938,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+        // only when set: an old project.yaml stays as it was
+        if (project->getParticleWorldBudget() != 0) root["particleWorldBudget"] = project->getParticleWorldBudget();
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
@@ -3727,6 +3729,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+        // missing: 0, the platform's default
+        project->setParticleWorldBudget(node["particleWorldBudget"] ? std::min(YamlNumbers::as<unsigned int>(node["particleWorldBudget"]), Project::maxParticleWorldBudget) : 0u);
     }
 
     {

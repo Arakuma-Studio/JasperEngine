@@ -296,3 +296,37 @@ result changes S91's first milestone.
   of a texture that never loads is really a load slower than 600 frames, or a variant that never builds.
   The MCP test holds that state with `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK`, and its red run was that
   seam with the give-up branch disabled.
+Section A (F1 to F4), 2026-11-04.
+
+- **F1 reproduced.** On the base of this spec, `ParticlesGpu.DeathSubEmitterChildrenDraw` found the
+  children alive in the simulation and 0 of their pixels on screen, so S91 §3 stands as written.
+- **F1, wider than `drawParticles`.** Drawing the children needed four more things they had never
+  needed: the system's bounds cover them (culling and draw order read those bounds), their
+  interpolation factor follows the parent's in the same frame (it was a frame late), scene-input
+  readers among them register (a soft child), and `ShaderVariantCollector` ships their variants
+  (an export without them could not draw a child with another Renderer).
+- **F1, the HTML UI `<particle-system>` element** draws the children too, each with its own
+  Renderer's texture and blend, after the root in the effect's order (review round 1).
+- **F1, edits reach live parents** (review round 1). An edit of a parent's sub-emitter list (an
+  entry's effect, or entries added or removed) binds the children again; an entry's other fields
+  are read when it fires and keep the particles. An edit of a child's or grandchild's file reaches
+  every live parent: a parameter keeps the particles, a structure starts the parent over.
+- **F1, draw order** (review round 1). In the transparent queue each child is its own item, with
+  its own Sort Priority and distance; a UI particle system still draws its tree in the effect's order.
+- **F2, wider than the two lines named.** `getParticleCount` (Lua's `particleCount`, and what an
+  Action's controller waits for) counts children too, since a controller stopped while children
+  were alive. In the budget share, three things were wrong and are fixed: children were not in what
+  a system wants; a child was capped by its parent's Max Particles (each emitter is now held to its
+  own); and sibling entries each saw the whole remainder, so they could overspend it.
+  Review round 1 added two: what a system wants counts what its children will need before they
+  exist (its parents times each entry's Emit Count, up to the child's Max Particles), and a root is
+  held to what its children leave of the tree's budget.
+- **F3.** The key is `particles.world_budget`, on the Graphics page, 0 for the platform's default. It
+  reaches compiled games through the generated `main.cpp` and prebuilt players through
+  `PlayerConfig`. A running world follows it at once; `ParticleWorld::setBudget` still overrides it
+  for one world. No Lua API: it is a project setting, read at startup, like `physics.max_bodies`.
+  (`physics.max_bodies` and its two siblings do not reach prebuilt players: seen, not changed here.)
+- **F4.** The field keeps loading and saving, is hidden in the Inspector, and leaves the Lua stubs
+  (`tools/gen_particle_stubs.py`), the only place the docs listed it. `ps.trails.generateLightingData`
+  still answers, because the Lua view reads the same field table. `TrailParams::lightingData` had no
+  reader and is gone.

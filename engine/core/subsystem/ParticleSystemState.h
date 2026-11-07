@@ -93,6 +93,10 @@ namespace jasperengine{
             RenderState state;
             uint32_t sceneInputs = 0;
             int sortPriority = 0;
+
+            // the sub-emitter children's, one per EmitterRuntime child (null where it has none):
+            // empty, with nothing made, for a system without sub-emitters
+            std::vector<std::unique_ptr<ParticleRenderData>> children;
         };
 
         struct ParticleSystemState {
@@ -101,6 +105,10 @@ namespace jasperengine{
             std::shared_ptr<const CompiledEffect> effect;
             std::string effectPath;          // the asset it was read from (empty: inline)
             uint64_t effectVersion = 0;      // the asset's version it was compiled from
+            // the sub-emitter files it was bound from (their paths and versions, down the tree),
+            // and the library's generation when that was last checked
+            uint64_t subEmitterSignature = 0;
+            uint64_t subEmitterGeneration = 0;
             std::vector<Diagnostic> diagnostics;
             bool started = false;            // Play On Awake ran (or a script played it)
             // it was playing (or paused) after the last frame: its stop action runs when it is not

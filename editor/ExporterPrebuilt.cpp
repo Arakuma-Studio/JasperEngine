@@ -592,6 +592,7 @@ bool editor::Exporter::writeGameConfig() {
     game.loadingDelay = loading.delay;
     game.loadingTimeout = loading.timeout;
     game.asyncLoading = loading.asyncLoading;
+    game.particleWorldBudget = project->getParticleWorldBudget();
     const ThreadingProjectSettings& threading = project->getThreadingSettings();
     game.threading.workers = threading.workers;
     game.threading.reservedFrameWorkers = threading.reservedFrameWorkers;

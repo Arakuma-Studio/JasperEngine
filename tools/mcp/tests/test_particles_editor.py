@@ -267,3 +267,19 @@ async def test_state_hash_tells_empty_runs_apart(ed: Editor):
     ed.check_eq(other["particle_count"], first["particle_count"], "both as empty")
     ed.check(other["state_hash"] != first["state_hash"], f"another seed, another run: {first} {other}")
     await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})
+
+async def test_world_budget_setting(ed: Editor):
+    """BF23 F3: the project setting reaches the running world's stats, and 0 gives the default back."""
+    s = await setup(ed)
+    got = await ed.call("get_project_settings", keys=["particles.world_budget"])
+    ed.check("particles.world_budget" in str(got), f"the row: {got}")
+    await ed.check_error("set_project_settings", values={"particles.world_budget": -1}, contains="between")
+    await ed.call("set_project_settings", values={"particles.world_budget": 1000})
+    try:
+        await ed.call("play", action="start", scene=s["scene"], fixed_fps=60)
+        await ed.call("wait", frames=10)
+        world = (await ed.call("get_particle_stats"))["world"]
+        ed.check_eq(world["budget"], 1000, f"{world}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)
+        await ed.call("set_project_settings", values={"particles.world_budget": 0})

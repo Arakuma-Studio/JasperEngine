@@ -446,7 +446,6 @@ namespace jasperengine { namespace particles {
         bool sizeAffectsWidth = true;
         bool sizeAffectsLifetime = false;
         TrailTextureMode textureMode = TrailTextureMode::Stretch;
-        bool lightingData = false;
     };
 
     // ---------------------------------------------------------------- the program
@@ -521,6 +520,8 @@ namespace jasperengine { namespace particles {
         // the number of particles the effect can reach (OpenEngine's ContinuousEmissionPeak):
         // rate x longest lifetime plus the bursts, at most maxParticles
         uint32_t capacityHint() const;
+        // that peak itself, unrounded and without the storage's spare room
+        double peakEstimate() const;
         // bytes of channel storage per particle
         size_t bytesPerParticle() const;
     };

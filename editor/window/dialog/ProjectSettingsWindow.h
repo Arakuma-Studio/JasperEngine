@@ -96,6 +96,7 @@ namespace jasperengine::editor {
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
         Physics3DWorldSettings m_physics3DWorld;
+        int m_particleWorldBudget = 0;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         int m_lightModeIndex = 0;

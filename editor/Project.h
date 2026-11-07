@@ -952,6 +952,7 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
+        uint32_t particleWorldBudget = 0;
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
@@ -1921,6 +1922,11 @@ namespace jasperengine::editor{
         void setStartSceneId(uint32_t sceneId);
 
         LoadingSettings& getLoadingSettings();
+        // Project Settings > Graphics > World Particle Budget (0: the platform's default)
+        static constexpr unsigned int maxParticleWorldBudget = 1u << 24;
+        uint32_t getParticleWorldBudget() const;
+        void setParticleWorldBudget(uint32_t budget);
+
         const ThreadingProjectSettings& getThreadingSettings() const;
         // Stores them and applies what applies live (the reserve, the web pump budget) to
         // the editor's job system; the worker and reader counts apply on the next launch

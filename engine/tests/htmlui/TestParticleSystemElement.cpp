@@ -28,6 +28,8 @@
 #include "object/ui/UIElementInternal.h"
 #include "object/ui/UIEvent.h"
 #include "htmlui/compat/Diagnostics.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
 
 #include <RmlUi/Core/Element.h>
@@ -50,6 +52,7 @@ namespace {
     constexpr uint32_t STREAM_PREFAB_ID = 9102;
     constexpr uint32_t SHORT_PREFAB_ID = 9103;
     constexpr uint32_t LEGACY_PREFAB_ID = 9104;
+    constexpr uint32_t PARENT_PREFAB_ID = 9105;
 
     // one particle of 20 units at the emitter, alive for a long time, drawn as a square (the old
     // points' look the golden has): an effect that does not loop
@@ -129,6 +132,16 @@ namespace {
             });
             PrefabManager::registerPrefab(LEGACY_PREFAB_ID, "fx/legacy.prefab", [](Scene* scene, Entity root){
                 return makeLegacySparkle(scene, root);
+            });
+            // a parent that draws nothing and spawns one sparkle at birth, from the child's own Renderer
+            PrefabManager::registerPrefab(PARENT_PREFAB_ID, "fx/parent.prefab", [](Scene* scene, Entity root){
+                return makeSystem(scene, root, R"({"version": 1, "duration": 1, "looping": false, "maxParticles": 1,
+                    "subEmitters": [{"trigger": "birth", "effect": "fx/ui-child.particles", "emitCount": 1}],
+                    "modules": [
+                        {"type": "main", "startLifetime": 1000, "startSpeed": 0, "startSize": 20},
+                        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+                        {"type": "subEmitters"},
+                        {"type": "renderer", "renderMode": "none"}]})");
             });
         }
 
@@ -477,4 +490,30 @@ TEST_F(ParticleSystemElementTest, LegacyLayoutPrefabPlays){
     GpuEnvironment::drawFrames(1);
     ASSERT_TRUE(screen.read());
     EXPECT_GT(screen.countColor({0, 0, 640, 360}, 0, 255, 0, 40), 0u);
+}
+
+// BF23: a sub-emitter's particles are drawn through the element too, with the child's Renderer
+TEST_F(ParticleSystemElementTest, DrawsTheChildrenOfItsSubEmitters){
+    particles::ParticleEffectDocument child;
+    std::vector<particles::Diagnostic> diagnostics;
+    ASSERT_TRUE(particles::ParticleEffectCodec::read(R"({"version": 1, "duration": 1, "looping": false, "maxParticles": 4, "modules": [
+        {"type": "main", "startLifetime": 1000, "startSpeed": 0, "startSize": 20, "startColor": [1, 0, 0, 1]},
+        {"type": "emission", "rateOverTime": 0},
+        {"type": "shape", "enabled": false},
+        {"type": "renderer", "untexturedShape": "square"}]})", child, diagnostics));
+    particles::ParticleEffectLibrary::set("fx/ui-child.particles", child);
+    page("p", panelCss,
+         "<div id=\"panel\">"
+         "<particle-system id=\"inside\" src=\"fx/parent.prefab\" autoplay style=\"left: 60px; top: 60px\"></particle-system>"
+         "</div>");
+    SceneFixture fixture;
+    fixture.addDocument("ui/p.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    GpuEnvironment::drawFrames(6);
+    Screen screen;
+    GpuEnvironment::drawFrames(1);
+    ASSERT_TRUE(screen.read());
+    // 20 x 20 red around (160, 160), on the panel's blue
+    EXPECT_NEAR((double)screen.countColor({150, 150, 170, 170}, 255, 0, 0, 40), 400.0, 60.0);
+    particles::ParticleEffectLibrary::clear();
 }

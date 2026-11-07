@@ -76,6 +76,7 @@ namespace jasperengine::player {
         bool asyncLoading = false;
 
         ThreadingSettings threading;
+        uint32_t particleWorldBudget = 0;   // 0: the platform's default
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
         float inputDeadzone = 0.15f;
         std::string inputActions;
