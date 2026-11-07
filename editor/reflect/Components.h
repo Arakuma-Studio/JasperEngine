@@ -133,6 +133,8 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kVideoPlayerDesc;
     extern const ComponentDesc kSafeAreaDesc;
     extern const ComponentDesc kAudioSnapshotDesc;
+    // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
+    extern const ComponentDesc kTitleArtRendererDesc;
 
 }
 

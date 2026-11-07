@@ -153,7 +153,7 @@ const std::vector<PlayerVariant>& PlayerRuntimes::variants() {
         }
         std::stable_partition(out.begin(), out.end(), [](const PlayerVariant& v) { return v.suffix.empty(); });
         if (out.empty() || !out.front().suffix.empty())
-            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer"}});
+            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "titleart"}});
         return out;
     }();
     return list;

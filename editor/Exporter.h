@@ -335,6 +335,8 @@ namespace jasperengine::editor {
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         // S80 R35: Title Art outputs stale or missing before the textures cook
         bool prepareTitleArt();
+        // S81: what the build's Realtime and Glyph Atlas titles need at runtime (after copyAssets)
+        bool writeTitleArtRuntime();
         bool cookTextures();
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file

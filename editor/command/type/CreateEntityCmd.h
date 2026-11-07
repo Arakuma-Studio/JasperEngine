@@ -118,7 +118,11 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // GameObject > UI > Title Art and 2D Object > Title Art (S81 R6): an Image or a Sprite with a
+        // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
+        TITLE_ART_UI,
+        TITLE_ART_SPRITE
     };
 
     class CreateEntityCmd: public Command{
@@ -143,6 +147,9 @@ namespace jasperengine::editor{
         bool wasMainCamera;
         // WATER: the library:underwater pass it added to the scene's post-processing (-1: none)
         int addedUnderwaterPass = -1;
+        // TITLE_ART_*: the .titleart it shows (project-relative), and the step's name when set
+        std::string titleArtPath;
+        std::string description;
 
         // Component type -> property name -> property setter function
         std::unordered_map<ComponentType, std::unordered_map<std::string, std::function<void(Entity)>>> propertySetters;
@@ -156,8 +163,8 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
-        // "Create Cube": the name it got
-        std::string describe() const override { return "Create " + entityName; }
+        // "Create Cube": the name it got (or the name set with setDescription)
+        std::string describe() const override { return description.empty() ? "Create " + entityName : description; }
         const char* typeName() const override { return "CreateEntityCmd"; }
         // The GameObject as it is now, pasted back with its id
         void collectKeepCommands(KeepContext& context) const override { context.addCreated(entity); }
@@ -172,6 +179,9 @@ namespace jasperengine::editor{
 
         // Skips the selection change, scene focus and log line, for brush-rate creation
         void setQuiet(bool quiet);
+        // TITLE_ART_*: the title it shows; the step is "Create Title Art (<stem>)" (S81 R6)
+        void setTitleArt(const std::string& projectRelativePath);
+        void setDescription(const std::string& text) { description = text; }
 
         template<typename T>
         void addProperty(ComponentType componentType, const std::string& propertyName, T value) {

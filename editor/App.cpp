@@ -130,6 +130,8 @@
 #include "shader/ShaderBuilder.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/TitleArtSystem.h"
+#include "titleart/runtime/TitleArtRuntimeEditor.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -2440,6 +2442,10 @@ void editor::App::setup() {
         for (const std::filesystem::path& path : paths) {
             TitleArtAutoBake::get().documentChanged(&project, path);
             if (projectWindow) projectWindow->notifyResourceFileChanged(path);
+            // S81 R23: its Realtime and Glyph Atlas instances (Edit and Play) render again
+            std::error_code relativeError;
+            const std::filesystem::path relative = std::filesystem::relative(path, project.getProjectPath(), relativeError);
+            if (!relativeError) TitleArtSystem::notifyTitleChanged(relative.generic_string());
         }
         requestRedraw();
     });
@@ -4211,7 +4217,10 @@ void editor::App::engineRender(){
     // Title Art: every preview of the editor within one budget (S80 R45), then Auto Bake's slice
     TitlePreviewQueue::editor().runFrame(4.0);
     if (!project.getProjectPath().empty()) TitleArtAutoBake::get().tick(&project);
-    if (TitlePreviewQueue::editor().stats().queued > 0 || !TitleArtAutoBake::get().idle()) {
+    // S81: the scenes' Realtime and Glyph Atlas titles render with the project's assets and
+    // settings; Edit mode keeps drawing until they are ready (R24)
+    const bool titlesRendering = syncTitleArtRuntime(&project);
+    if (TitlePreviewQueue::editor().stats().queued > 0 || !TitleArtAutoBake::get().idle() || titlesRendering) {
         requestRedraw();
     }
 

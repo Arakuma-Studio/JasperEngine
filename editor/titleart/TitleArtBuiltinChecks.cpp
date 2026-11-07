@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtBuiltinChecks.h"
+#include "titleart/runtime/TitleArtRuntimeChecks.h"
 
 #include "TitleArtBake.h"
 #include "TitleArtRenderHost.h"
@@ -1005,6 +1006,8 @@ void editor::registerBuiltinTitleChecks() {
         def.run = [run](TitleCheckContext& context, std::vector<TitleCheckResult>& out) { run(context, out); };
         TitleArtChecks::registerCheck(std::move(def));
     }
+    // the later specs' checks (S81: glyph_atlas)
+    registerTitleArtRuntimeChecks();
 }
 
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {

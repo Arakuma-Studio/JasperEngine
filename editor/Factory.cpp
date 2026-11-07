@@ -43,6 +43,7 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextEffectComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/TrailRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "reflect/Reflect.h"
@@ -1184,6 +1185,8 @@ std::string editor::Factory::createTransform(int indentSpaces, EntityRegistry* s
 
 std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<MeshComponent>(entity)) return "";
+    // a Title Art Renderer's Live Effects drive the shader: the game starts from the Sprite's own (S81 R2)
+    TitleArtCompanionScope companion(scene, entity);
     MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -1465,6 +1468,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
 std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<UIComponent>(entity)) return "";
+    // a Title Art Renderer's Live Effects drive the shader: the game starts from the Image's own (S81 R2)
+    TitleArtCompanionScope companion(scene, entity);
     UIComponent& ui = scene->getComponent<UIComponent>(entity);
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);

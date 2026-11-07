@@ -3,6 +3,10 @@
 
 #include "ModuleUsage.h"
 
+#include "component/TitleArtRendererComponent.h"
+#include "io/Data.h"
+#include "titleart/TitleArtIO.h"
+
 #include "ShaderNeutralApi.h"
 #include "Project.h"
 #include "DocumentFile.h"
@@ -303,6 +307,9 @@ namespace {
 
         void add(const std::string& module, const std::string& where, const std::string& what) {
             usage.modules.insert(module);
+            // titleart for a reason other than a title it can read (Strip Engine Code off, a C++
+            // script, content not loaded): its sub-options come with it
+            if (module == "titleart" && what.rfind("Title Art Renderer", 0) != 0) usage.titleArt3D = usage.titleArtMesher = true;
             size_t count = 0;
             for (const ModuleEvidence& evidence : usage.evidence)
                 if (evidence.module == module) count++;
@@ -314,6 +321,28 @@ namespace {
         void addVideoPlayer(const std::string& where, const std::string& what) {
             add("htmlui", where, what + " (video comes with the HTML UI)");
             add("video", where, what);
+        }
+
+        // S81 R51: what a shipped Realtime title needs of titleart's sub-options (Glyph Atlas
+        // refuses 3D text, R30: its titles fall back to Realtime and count the same)
+        void scanTitleArt3D(const std::string& path, TitleArtRenderMode) {
+            Data data;
+            if (path.empty() || data.open(path.c_str()) != FILEDATA_OK) return;
+            const titleart::TitleArtParseResult parsed =
+                titleart::parseTitleArt(std::string(reinterpret_cast<const char*>(data.getMemPtr()), data.length()));
+            if (!parsed.ok) return;
+            std::set<std::string> dynamicText;
+            for (const titleart::Json& exposed : parsed.doc.root.value("exposed", titleart::Json::array())) {
+                for (const titleart::Json& target : exposed.value("targets", titleart::Json::array())) {
+                    if (target.value("field", std::string()) == "text") dynamicText.insert(target.value("layer", std::string()));
+                }
+            }
+            titleart::forEachLayer(parsed.doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
+                if (layer.value("dimension", std::string()) != "3d") return true;
+                usage.titleArt3D = true;
+                if (dynamicText.count(layer.value("id", std::string()))) usage.titleArtMesher = true;
+                return true;
+            });
         }
 
         void addVideo(const std::string& where, const std::string& what) {
@@ -340,6 +369,14 @@ namespace {
                 if (registry->findComponent<AudioSnapshotComponent>(entity) && registry->findComponent<ActionComponent>(entity))
                     add("soundlayer", content.label, "Mixer Snapshot action " + object);
                 if (has(registry->findComponent<UIDocumentComponent>(entity))) add("htmlui", content.label, "UI Document on " + object);
+                // S81 R52: an enabled Realtime or Glyph Atlas title (Lua cannot make one, R67)
+                if (const TitleArtRendererComponent* title = registry->findComponent<TitleArtRendererComponent>(entity)) {
+                    if (title->enabled && title->renderMode != TitleArtRenderMode::BAKED) {
+                        add("titleart", content.label, std::string("Title Art Renderer (") +
+                            (title->renderMode == TitleArtRenderMode::REALTIME ? "Realtime" : "Glyph Atlas") + ") on " + object);
+                        scanTitleArt3D(title->title.path, title->renderMode);
+                    }
+                }
                 if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);

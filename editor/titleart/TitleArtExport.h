@@ -25,6 +25,8 @@ namespace jasperengine::editor {
 
         // the document (assets-relative) is read at runtime by a shipped Realtime or Glyph Atlas title
         bool isNeeded(Project* project, const std::string& assetsRelativePath);
+        // S81: the export's plan names those documents (project-relative) before the assets copy
+        void setRuntimeTitles(Project* project, const std::vector<std::string>& projectRelativePaths);
 
         struct Prepared {
             bool ok = true;

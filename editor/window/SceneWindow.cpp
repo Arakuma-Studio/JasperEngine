@@ -3,6 +3,8 @@
 
 #include "SceneWindow.h"
 #include "audio/SoundDrop.h"
+#include "component/RectTransformComponent.h"
+#include "titleart/runtime/TitleArtCreate.h"
 #include "component/TextComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -629,6 +631,22 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 }
                                 focusSceneWindow(*sceneProject);
                             }
+                        }
+                    }
+                } else if (Util::isTitleArtFile(droppedRelativePath)) {
+                    // a Title Art: an Image (in a UI scene or under a UI element) or a Sprite showing
+                    // it at its native size, one step (S81 R6)
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else if (payload->IsDelivery()) {
+                                const bool uiParent = selEntity != NULL_ENTITY && sceneProject->scene->findComponent<RectTransformComponent>(selEntity);
+                                std::string error;
+                                if (createTitleArtObject(project, sceneProject->id, receivedStrings[0], uiParent ? selEntity : NULL_ENTITY, &error) == NULL_ENTITY)
+                                    Out::error("%s", error.c_str());
+                            }
+                            if (payload->IsDelivery()) focusSceneWindow(*sceneProject);
                         }
                     }
                 } else if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {

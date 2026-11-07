@@ -8,6 +8,7 @@
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "titleart/TitleArtExport.h"
+#include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
@@ -1137,6 +1138,7 @@ void editor::Exporter::runExport() {
     if (!cookModels()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeTitleArtRuntime()) return;
     if (!writeAudioImports()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
@@ -1304,7 +1306,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video and the sound layer have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "titleart"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2740,6 +2742,9 @@ bool editor::Exporter::prepareTitleArt() {
     auto doneFuture = done.get_future();
     editor::getEditorHost().enqueueMainThreadTask([this, &prepared, &done]() {
         prepared = TitleArtExport::prepare(project, project->getTitleArtSettings().staleBakesOnExport);
+        // S81 R52: the documents a shipped Realtime or Glyph Atlas title reads ship
+        const TitleArtExportPlan plan = planTitleArtExport(project);
+        TitleArtExport::setRuntimeTitles(project, std::vector<std::string>(plan.runtimeTitles.begin(), plan.runtimeTitles.end()));
         done.set_value();
     });
     doneFuture.get();
@@ -2747,6 +2752,28 @@ bool editor::Exporter::prepareTitleArt() {
     for (const std::string& line : prepared.warnings) Out::warning("%s", line.c_str());
     if (!prepared.ok) {
         setError(prepared.error);
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeTitleArtRuntime() {
+    // S81 R11, R32, R54-R57: the prebaked initial states of the shipped Realtime titles, rendered
+    // in the editor into the build's assets (the fonts' subsets and credits come with them)
+    TitleArtPrebakeResult prebaked;
+    std::promise<void> done;
+    auto doneFuture = done.get_future();
+    const fs::path assetsDst = getExportProjectRoot() / "assets";
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &done, assetsDst]() {
+        const TitleArtExportPlan plan = planTitleArtExport(project);
+        prebaked = writeTitleArtPrebakes(project, plan, assetsDst);
+        done.set_value();
+    });
+    doneFuture.get();
+    for (const std::string& file : prebaked.written) Out::info("Prebaked Title Art %s", file.c_str());
+    for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
+    if (!prebaked.ok) {
+        setError(prebaked.error);
         return false;
     }
     return true;
@@ -3915,6 +3942,15 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
         moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
+        moduleSwitch("JASPERENGINE_TITLE_ART", "titleart");
+        // S81 R51: the sub-options, off when no shipped Realtime title needs them (ModuleUsage)
+        {
+            const bool titleArt = std::find(modules.begin(), modules.end(), "titleart") != modules.end();
+            const bool title3D = titleArt && (!moduleUsageKnown || moduleUsage.titleArt3D);
+            const bool mesher = title3D && (!moduleUsageKnown || moduleUsage.titleArtMesher);
+            projectSettings += indent + "set(JASPERENGINE_TITLE_ART_3D " + std::string(title3D ? "ON" : "OFF") + ")";
+            projectSettings += indent + "set(JASPERENGINE_TITLE_ART_MESHER " + std::string(mesher ? "ON" : "OFF") + ")";
+        }
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";

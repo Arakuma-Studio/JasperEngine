@@ -3,6 +3,8 @@
 
 #include "TitleArtBaker.h"
 
+#include "subsystem/TitleArtSystem.h"
+
 #include "EditorVersion.h"
 #include "Out.h"
 #include "Project.h"
@@ -527,6 +529,10 @@ bool TitleArtBakeJob::write() {
             AssetDatabase::AssetInfo assetInfo;
             if (project->getAssetDatabase().getInfo(fs::path(file.path), assetInfo)) file.guid = assetInfo.guid.str();
         }
+        // S81 R23: the Title Art Renderers of this document read the new sidecar and PNGs
+        std::error_code relativeError;
+        const fs::path relative = fs::relative(documentPath, project->getProjectPath(), relativeError);
+        if (!relativeError) TitleArtSystem::notifyTitleChanged(relative.generic_string());
     }
     outcome.ok = true;
     finished = true;
