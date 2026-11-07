@@ -74,6 +74,9 @@ TEST(TerrainQuality, NoLayersDrawTheBaseAlone) {
         environment.terrainForcedTier = tier;
         inputs.layerCount = 0;
         EXPECT_EQ(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true), 0u) << terrainQualityName(tier);
+        environment.terrainDebugView = static_cast<int>(TerrainDebugView::HOLES);
+        EXPECT_EQ(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true), 0u) << terrainQualityName(tier) << ", a Terrain view";
+        environment.terrainDebugView = 0;
         inputs.layerCount = 1;
         EXPECT_NE(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true), 0u) << terrainQualityName(tier) << ", one layer";
     }

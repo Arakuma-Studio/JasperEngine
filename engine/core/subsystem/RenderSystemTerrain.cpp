@@ -123,10 +123,11 @@ terrain::TerrainQualityResolved RenderSystem::resolveTerrainTier(const MeshShade
 // T3 D2: the one rule of the defines a terrain's variant takes. Medium and Low never define the hex or
 // stochastic paths; a feature a tier does not draw has no define there.
 uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals){
-    // A terrain with no layer has nothing for a tier, the cap or a feature to act on but Macro Variation's
-    // tint of the base colour, so it draws the base material alone: llvmpipe's GL path (Mesa 23.2.1) dies
-    // in its fragment JIT on every tier and feature variant of a terrain without layers (spec Deviations)
-    if (inputs.layerCount == 0 && environment.terrainDebugView == 0){
+    // A terrain with no layer has nothing for a tier, the cap, a feature or a Terrain view to act on but Macro
+    // Variation's tint of the base colour, so it draws the base material alone (its holes still cut):
+    // llvmpipe's GL path (Mesa 23.2.1) dies in its fragment JIT on every tier, feature and view variant of a
+    // terrain without layers (spec Deviations)
+    if (inputs.layerCount == 0){
         return 0;
     }
     const terrain::TerrainQuality tier = resolveTerrainTier(environment, inputs).quality;

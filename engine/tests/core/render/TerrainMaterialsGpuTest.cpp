@@ -7,6 +7,7 @@
 // were written at the commit before any render change, so nothing may move them.
 
 #include "TerrainGpuFixture.h"
+#include "TestPaths.h"
 
 #include "SceneSettings.h"
 #include "LogCapture.h"
@@ -751,6 +752,11 @@ TEST_P(TerrainVariantGpu, Draws){
     }
     EXPECT_GT(ground, pixels / 4) << "drew no terrain";
     EXPECT_LT(black, pixels / 2) << "black (NaN or no light)";
+    if (HasFailure()){
+        std::string name = ::testing::UnitTest::GetInstance()->current_test_info()->name();
+        std::replace(name.begin(), name.end(), '/', '_');
+        writePng(jasperengine::test::testPaths().outputDir + "/variant_" + name + ".png", frame, frameWidth, frameHeight);
+    }
     EXPECT_NO_ENGINE_ERRORS();
 }
 

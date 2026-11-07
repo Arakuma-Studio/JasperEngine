@@ -748,10 +748,10 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
   `LP_NATIVE_VECTOR_WIDTH=128`. `TerrainQuality.LayerLimitOnlyWhenItCuts` pins the rule,
   `TerrainMaterialsGpu.LimitThatCutsNothingDrawsTheSame` the image, and `EveryVariant/TerrainVariantGpu.Draws/*`
   draws the capped variant with nine layers on glcore at both vector widths and on lavapipe.
-- **A terrain with no layer draws its base material alone:** no tier, cap or feature define, and the narrow
-  path (`hasTerrainSurfaceLayers` is false without a layer); the Terrain debug views keep theirs. The tiers,
-  the cap and the features act on layers, so the image is the same, but for Macro Variation, which waits for
-  a layer: the Inspector, `sample_terrain`'s issue `macro_without_layers` and `docs/terrain.md` say so. It
+- **A terrain with no layer draws its base material alone:** no tier, cap, feature or Terrain view define, and
+  the narrow path (`hasTerrainSurfaceLayers` is false without a layer); its holes still cut. The tiers, the
+  cap, the features and the views act on layers, so the image is the same, but for Macro Variation, which
+  waits for a layer, and the Holes view, which shows such a terrain's holes as gaps rather than hatched: the Inspector, `sample_terrain`'s issue `macro_without_layers` and `docs/terrain.md` say so. It
   is the cheapest path, and a workaround for llvmpipe's GL path (Mesa 23.2.1, LLVM 15), which faults in its
   fragment JIT (SIGILL, and SIGSEGV with holes) on every tier and feature variant of a terrain without layers,
   e.g. `NoLayers_medium_LitStandard` and `NoLayers_high_LitStandard_Limited_MacroNoise` of

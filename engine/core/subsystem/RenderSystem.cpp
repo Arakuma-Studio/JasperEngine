@@ -3930,7 +3930,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     }
     // painted layer surfaces are Lit's (a shader with a manifest draws a terrain with its
     // own surface, its uv1 the terrain's tiled UV)
-    const bool p_terrainDebug = inputs.terrain && !inputs.manifest && environment.terrainDebugView != 0;
+    // (a terrain with no layer draws its base material alone, views included: getTerrainDefineBits)
+    const bool p_terrainDebug = inputs.terrain && !inputs.manifest && environment.terrainDebugView != 0 && inputs.terrainVariant.layerCount > 0;
     const bool p_terrainSurface = inputs.terrain && (inputs.terrainSurface || p_terrainDebug) && !inputs.manifest;
     const terrain::TerrainQuality p_terrainTier = inputs.terrain ? resolveTerrainTier(environment, inputs.terrainVariant).quality : terrain::TerrainQuality::HIGH;
     // T3 R14: the macro normal takes the base material's normal map's place, and its slot
@@ -16905,7 +16906,7 @@ void RenderSystem::update(double dt){
                 if (terrain && !mesh.submeshes[s].manifest){
                     const MeshShaderEnvironment terrainEnvironment = getMeshShaderEnvironment();
                     const bool shaderTerrainSurface = (mesh.submeshes[s].shaderProperties & (1u << 27)) != 0;
-                    const bool wantsSurface = hasTerrainSurfaceLayers(*terrain) || terrainEnvironment.terrainDebugView != 0;
+                    const bool wantsSurface = hasTerrainSurfaceLayers(*terrain) || (terrainEnvironment.terrainDebugView != 0 && !terrain->surfaceLayers.empty());
                     if (shaderTerrainSurface != wantsSurface){
                         mesh.needReload = true;
                     }else if (mesh.loaded && !mesh.needReload){
