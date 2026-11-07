@@ -123,7 +123,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T2 implementation | done, waiting to land | `terrain/t2-noise` at 63454eb9e, T1 merged. Core 133/133, editor 64/64 and 11/11, all T2 and T1 MCP files pass; red controls for the idle hand-back, throwing job, seeding race, grouped undo, cross-check. Noise identical on x86/x86_64 (native), arm64 (qemu emulation), armv7 (Ubuntu cross compiler only; NDK armv7 unverified). Left: the preview supersede red control. Lands after T5 and T3 |
 | T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
+| T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
 | T6 implementation | in progress, nearly complete | `terrain/t6-voxels` at b9fd20144, integration merged. Core 163/164, editor 198/200 (2 are T2's), test_voxels.py 12/12, soak and fuzz pass. Open: AC35 cave-mouth step (decision: no step over 2 cm at the rim), AC23 tunnelling (496/1000 lost, root cause unknown), fan-out (TerrainSurfaceLayer moves to its own header on T1's branch) |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
@@ -184,6 +184,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T5 landed (caf5a42a0); merged code identical to T5's tested tree. It absorbs Doriax's foliage work and builds on T1's
+  `edit_terrain`, `visualize_terrain` and delta undo. Next: T1's fan-out branch, then T3, then T2 and T6.
 - T1 checkpoint landed in integration (e695a1bf3); the merged code is byte-identical to the tree T1 tested. T2, T3, T5 and
   T6 each merge integration once now. Landing order from here: T5, then T3, then T2 and T6 as they finish; each later lander
   merges integration again just before landing. T4 starts once T3 has landed.
