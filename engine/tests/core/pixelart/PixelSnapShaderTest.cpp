@@ -115,7 +115,7 @@ TEST(PixelSnapShaderTest, VertexCost){
 }
 
 // S41's variant bits stay where saved shader keys and caches put them: MESH 45 'Pxs' (42-43 are
-// the water interaction's, 44 draw-perf's), DEPTH 19, UI 5, PARTICLES 11, and BLIT 18 'Psb'
+// the water interaction's, 44 draw-perf's 'Dlo'), DEPTH 19, UI 5, PARTICLES 11, and BLIT 18 'Psb'
 // (Stretch Fill); each type's count covers it, so a later spec takes the next free bit
 TEST(PixelSnapShaderTest, VariantBitsArePinned){
     EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::MESH), shaderPropertyBit(45));

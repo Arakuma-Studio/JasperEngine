@@ -189,6 +189,13 @@ editable `includes/` folder beside the fork.
   `latticeDeform(1, pos.xyz, normal, tangent, stretch);` after the instance matrix and before
   the model matrix (`latticeDeform(0, ...)` before skinning for bind-pose lattices), as
   `mesh.vert` does (`read_engine_source`), in the depth fork too.
+- In a scene whose Light components are all Directional (a disabled point or spot light
+  counts), the built-in Lit compiles with `DIRECTIONAL_LIGHTS_ONLY` (variant bit `Dlo`): no
+  point or spot path, spot mask atlas or point shadow data. `get_material_variant` reports
+  `directional_only`. The first point or spot light switches the scene to the general variant
+  until it loads again; meshes still on `Dlo` meanwhile take that light in their ambient. Builds
+  ship each `Dlo` variant with its general twin and, unless Light Mode is Per Object, its tiled
+  (`Til`) form. Forks and library shaders never get it.
 - A mesh played by a Vertex Animator compiles with `HAS_VAT` (variant bits `Vat`, Bones mode
   `Vab` with `HAS_VAT_BONES`), without skinning or morph targets: `mesh.vert` and `depth.vert`
   call `vatEvaluate()` first and read the rest attributes through `vatPosition(a_position)`,

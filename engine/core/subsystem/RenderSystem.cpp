@@ -941,6 +941,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     lightListEpoch = 1;
     lightListCap = 0;
     lightCapacityTier = 8;
+    directionalLightsOnly = false;
+    loadedDirectionalLightsOnly = false;
     loadedLitQuality = LitQuality::STANDARD;
     loadedPbrTier = PbrTier::FULL;
 }
@@ -964,6 +966,9 @@ void RenderSystem::load(){
     activeSky = NULL_ENTITY;
     lastBatchSort = true;
     lastMeshLodEnabled = false;
+    objectLightsCleared = false;
+    directionalLightsOnlyKnown = false;
+    nonDirectionalLightSeen = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -1415,7 +1420,11 @@ int RenderSystem::checkLightsAndShadow(){
         if (light.shadows){
             hasShadows = true;
         }
+        if (light.type != LightType::DIRECTIONAL){
+            nonDirectionalLightSeen = true;
+        }
     }
+    directionalLightsOnly = hasLights && !nonDirectionalLightSeen;
 
     // 2D lights are gated only by their own component count, NOT by
     // scene->getLightState(): the editor forces LightState::OFF in 2D scenes
@@ -1967,6 +1976,17 @@ void RenderSystem::updateSceneLights(){
     }
 }
 
+namespace {
+    // a submesh of the mesh draws the directional-only Lit ('Dlo')
+    bool drawsDirectionalOnly(const MeshComponent& mesh){
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (mesh.submeshes[s].shaderProperties & ShaderPool::getDirectionalOnlyProperty())
+                return true;
+        }
+        return false;
+    }
+}
+
 void RenderSystem::updateObjectLights(){
     // a directional light that only changed direction (a turning sun)
     auto onlyTurned = [this](int index){
@@ -1999,6 +2019,17 @@ void RenderSystem::updateObjectLights(){
     };
 
     auto meshes = scene->getComponentArray<MeshComponent>();
+    // without lights every mesh picks nothing: cleared once, then nothing to do each frame (lights
+    // coming back change the light list, so every mesh picks again)
+    if (!hasLights){
+        if (!objectLightsCleared){
+            for (int i = 0; i < meshes->size(); i++)
+                meshes->getComponentFromIndex(i).lights.epoch = 0;
+            objectLightsCleared = true;
+        }
+        return;
+    }
+    objectLightsCleared = false;
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
         const Entity entity = meshes->getEntity(i);
@@ -2013,7 +2044,9 @@ void RenderSystem::updateObjectLights(){
         }
 
         const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
-        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB;
+        // (a mesh that left the 'Dlo' variant picks again: its point and spot lights were in the SH)
+        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB ||
+                      picked.directionalOnly != drawsDirectionalOnly(mesh);
 
         if (!repick && !changedLights.empty()){
             // a light that reached it changed, or a changed light reaches it now
@@ -2059,6 +2092,10 @@ void RenderSystem::updateObjectLights(){
 // center, so a light never just vanishes.
 void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform){
     MeshLights& picked = mesh.lights;
+    // a mesh still on the 'Dlo' variant when a point or spot light arrives (its general variant
+    // builds meanwhile) takes that light in its SH: drawn, never shaded as a sun nor dropped
+    const bool directionalOnly = drawsDirectionalOnly(mesh);
+    picked.directionalOnly = directionalOnly;
     const LightBounds bounds(mesh.worldAABB, transform.worldPosition);
     const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
     const int cap = std::min(lightListCap, MAX_LIGHTS_PER_OBJECT);
@@ -2120,6 +2157,10 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
         // so turning it towards the mesh picks again)
         if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
             continue;
+        if (directionalOnly && !candidate.directional){
+            fold(i);
+            continue;
+        }
 
         // ranked without the spot cone: a spot may light part of the mesh away from its center
         Vector3 towardsLight;
@@ -2170,6 +2211,9 @@ void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t propert
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const bool pixel = (properties & (1u << 3)) != 0;
     const bool vertex = (properties & (1u << 28)) != 0;
+    // a 'Dlo' variant shades every light as directional: one that is not is in its SH
+    // (selectMeshLights), never in the list it would draw as a sun
+    const bool directionalOnly = (properties & ShaderPool::getDirectionalOnlyProperty()) != 0;
     const MeshLights& picked = mesh.lights;
 
     pixelCount = 0;
@@ -2180,6 +2224,8 @@ void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t propert
         for (unsigned int k = 0; k < picked.count; k++){
             const int index = picked.lights[k];
             if (index >= (int)sceneLights.size())
+                continue;
+            if (directionalOnly && sceneLights[index].position_type.w != 0.0f)
                 continue;
             const bool perPixel = pixel && (!vertex || sceneLights[index].shading != LightShading::VERTEX);
             if (pass == 0 && perPixel && pixelCount < capacity){
@@ -3038,14 +3084,14 @@ void RenderSystem::renderReflectionProbeCapture(){
     }
     // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S55 R5)
     const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, true);
-    std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
-    if (SystemRender::isDrawBatching()){
-        // GPU Instancing: culled once, drawn in batches (spec S55)
+    {
+        // culled once, then sorted by distance band and state; with GPU Instancing drawn in
+        // batches (spec S55)
         VisibleFrustum frustum;
         frustum.planes = captureCamera.frustumPlanes;
         frustum.farClip = captureCamera.farClip;
         frustum.eye = capturePosition;
-        buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false);
+        buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false, true);
     }
     SystemRender::beginDrawBatch();
     for (const OpaqueRenderData& opaque : opaqueRenders){
@@ -3235,9 +3281,14 @@ bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights, bool
     return checkPBRTextures(getMeshShaderEnvironment(), inputs);
 }
 
+bool RenderSystem::isBuiltinLit(const std::string& shader){
+    // its S11 lobe/quality variants ("builtin:lit#...") too
+    return shader.empty() || ShaderReference::getBase(shader) == ShaderReference::BUILTIN_LIT;
+}
+
 bool RenderSystem::supportsStochasticTiling(const std::string& shader){
     // the built-in Lit, its S11 lobe/quality variants ("builtin:lit#...") too
-    if (shader.empty() || ShaderReference::getBase(shader) == ShaderReference::BUILTIN_LIT)
+    if (isBuiltinLit(shader))
         return true;
     if (ShaderReference::isLibrary(shader))
         return false;
@@ -3266,6 +3317,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     MeshShaderEnvironment environment;
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
+    environment.directionalLightsOnly = directionalLightsOnly;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -3359,6 +3411,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     SubmeshShaderInputs inputs = submeshInputs;
     inputs.manifest = findManifest(pass.shader);
     inputs.stochasticShader = supportsStochasticTiling(pass.shader);
+    inputs.builtinLit = isBuiltinLit(pass.shader) && !inputs.manifest;
     inputs.features = inputs.manifest ? ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures) : std::vector<std::string>();
     // the pass has no lighting field: its shader's default mode
     inputs.lighting = MaterialLighting::AUTO;
@@ -3797,6 +3850,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     const std::string& shader = getSubmeshShader(mesh, submesh, sceneMeshShader);
     inputs.manifest = findManifest(shader);
     inputs.stochasticShader = supportsStochasticTiling(shader);
+    inputs.builtinLit = isBuiltinLit(shader) && !inputs.manifest;
     inputs.depthProgram = ShaderReference::isLibrary(shader) && inputs.manifest && inputs.manifest->depth;
     if (inputs.manifest){
         inputs.features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
@@ -4108,6 +4162,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS);
     if (p_contactShadows)
         variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS);
+    // 'Dlo': the engine's Lit in a scene of directional lights only (not with Tiled lights,
+    // whose tiles list the scene's lights as they come)
+    if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
+        variant.properties |= ShaderPool::getDirectionalOnlyProperty();
     // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
     if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
         variant.properties |= ShaderPool::getWaterExclusionProperty();
@@ -6173,18 +6231,15 @@ bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& 
 }
 
 void RenderSystem::updateAllTerrainRenderTextures(){
-    auto meshes = scene->getComponentArray<MeshComponent>();
-    for (int i = 0; i < meshes->size(); i++){
-        MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload){
+    // the terrains' meshes (a scene without terrains walks nothing)
+    auto terrains = scene->getComponentArray<TerrainComponent>();
+    for (int i = 0; i < terrains->size(); i++){
+        const Entity entity = terrains->getEntity(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || !mesh->loaded || mesh->needReload){
             continue;
         }
-
-        Entity entity = meshes->getEntity(i);
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-        if (terrain){
-            updateTerrainRenderTextures(entity, *terrain, mesh);
-        }
+        updateTerrainRenderTextures(entity, terrains->getComponentFromIndex(i), *mesh);
     }
 }
 
@@ -8764,7 +8819,15 @@ namespace {
     }
 }
 
-void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines){
+uint8_t RenderSystem::distanceBand(float squaredDistance){
+    // ilogb is a domain error for zero, NaN and infinity: those never reach it
+    if (!(squaredDistance > 1.0f))
+        return 0;
+    return (uint8_t)std::min(std::ilogb(std::min(squaredDistance, FLT_MAX)) / 2, 63);
+}
+
+void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines,
+                                     bool sortByState){
     const size_t count = queue.size();
     visibleCandidates.resize(count);
     visibleResults.resize(count);
@@ -8852,6 +8915,18 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
             whole.preCulled = candidate.cullBounds;
             visibleEntries.push_back(whole);
         }
+    }
+    if (sortByState){
+        // culled first, then sorted: band, then the state of the entry's first draw
+        for (OpaqueRenderData& entry : visibleEntries){
+            entry.band = distanceBand(entry.distanceToCamera);
+            if (!entry.mesh->loaded || entry.submeshMask == 0)
+                continue;
+            Submesh& submesh = entry.mesh->submeshes[(unsigned int)std::countr_zero(entry.submeshMask)];
+            entry.stateKey = ((uint64_t)submesh.render.getPipelineId(pipType) << 32) |
+                             VisibleList::mixKey(materialKey(submesh), meshKey(submesh.render));
+        }
+        std::sort(visibleEntries.begin(), visibleEntries.end(), OpaqueRenderComparison());
     }
     // the batches form from consecutive draws: equal keys together within each priority
     const size_t kept = visibleEntries.size();
@@ -15992,75 +16067,6 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
         instmesh.needUpdateBuffer = true;
 }
 
-// The sweep of a convex slice toward the light is bounded by the slice's faces the light leaves
-// it through and by the planes along the light through its silhouette edges.
-int RenderSystem::getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
-                                          unsigned int slotResolution, float normalBias, const Vector3& lightTravel, Plane* planes){
-    const Matrix4& viewProjection = receiverViewProjection;
-    const Matrix4 inverse = viewProjection.inverse();
-    // a texel of the slot along its coarser axis (the normal offset is given in the finer one's)
-    const float projScale = std::min(std::abs(lightProjection[0][0]), std::abs(lightProjection[1][1]));
-    const float texel = 2.0f / ((float)std::max(1u, slotResolution) * projScale);
-    // the normal offset moves the lookup, the 7x7 PCF and its bilinear taps reach 4 texels out
-    const float margin = (std::abs(normalBias) + 8.0f) * texel;
-    if (!inverse.isValid() || !std::isfinite(margin) || lightTravel.squaredLength() < 0.000001f)
-        return 0;
-    const Vector3 lightDirection = lightTravel.normalized();
-
-    Vector3 corners[8];
-    Vector3 center = Vector3::ZERO;
-    const Vector4 clipCorners[8] = {
-        Vector4(-1, 1,-1, 1), Vector4( 1, 1,-1, 1), Vector4( 1,-1,-1, 1), Vector4(-1,-1,-1, 1),
-        Vector4(-1, 1, 1, 1), Vector4( 1, 1, 1, 1), Vector4( 1,-1, 1, 1), Vector4(-1,-1, 1, 1)
-    };
-    for (int c = 0; c < 8; c++){
-        const Vector4 corner = inverse * clipCorners[c];
-        if (std::abs(corner.w) < 0.000001f)
-            return 0;
-        corners[c] = Vector3(corner.x, corner.y, corner.z) / corner.w;
-        center += corners[c] / 8.0f;
-    }
-
-    int count = 0;
-
-    // the slice's faces the light leaves it through: sweeping the slice toward the light
-    // keeps them (the others are swept away)
-    Plane frustum[6];
-    updateCameraFrustumPlanes(viewProjection, frustum);
-    for (int f = 0; f < 6; f++){
-        if (frustum[f].normal.dotProduct(lightDirection) < -0.00001f){
-            planes[count] = frustum[f];
-            planes[count].d += margin;
-            count++;
-        }
-    }
-
-    // and the planes along the light through its silhouette edges
-    static const int edges[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
-    for (const auto& edge : edges){
-        Vector3 normal = (corners[edge[1]] - corners[edge[0]]).crossProduct(lightDirection);
-        if (normal.normalizeL() < 0.000001f)
-            continue;
-        if (normal.dotProduct(center - corners[edge[0]]) < 0.0f)
-            normal = -normal;
-
-        Plane plane(normal, corners[edge[0]]);
-        bool silhouette = true;
-        for (const Vector3& corner : corners){
-            if (plane.getDistance(corner) < -0.001f){
-                silhouette = false;
-                break;
-            }
-        }
-        if (silhouette){
-            plane.d += margin + 0.001f;
-            planes[count++] = plane;
-        }
-    }
-
-    return count;
-}
-
 void RenderSystem::changeLoaded(void* data){
     if (!Engine::isViewLoaded())
         return;
@@ -16517,8 +16523,9 @@ const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
 
 bool RenderSystem::isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix){
     // the transform mirrors the mesh (its triangles turn over on screen) unless its winding
-    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import)
-    return (modelMatrix.determinant() < 0.0f) != mesh.mirroredWinding;
+    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import). Model
+    // matrices are affine: the 3x3 determinant has the full one's sign (9 products, not 96)
+    return (modelMatrix.determinant3x3() < 0.0f) != mesh.mirroredWinding;
 }
 
 const Matrix4& RenderSystem::objectModel(Transform& transform) const{
@@ -17246,6 +17253,16 @@ void RenderSystem::update(double dt){
         lightCapacityTier = lightCapacity;
         needReloadMeshVariants();
     }
+    // so is whether every light is directional ('Dlo': the loaded variant draws until the other is
+    // built); the first update takes the scene's as it is (no mesh loaded before it: they load
+    // below with it), so a scene does not load its meshes twice
+    if (!directionalLightsOnlyKnown){
+        directionalLightsOnlyKnown = true;
+        loadedDirectionalLightsOnly = directionalLightsOnly;
+    }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
+        loadedDirectionalLightsOnly = directionalLightsOnly;
+        needReloadMeshVariants();
+    }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
     const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
     const LitQuality litQuality = QualityResolver::litQuality(scene->getLitQuality());
@@ -17608,8 +17625,11 @@ void RenderSystem::update(double dt){
                 mesh.needReload = false;
             }
             if (!mesh.loadCalled){
+#if JASPERENGINE_PROFILER
+                // (a diagnostic of the builds with the profiler: a release game reads no clock here)
                 static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
                 const auto l0 = std::chrono::steady_clock::now();
+#endif
                 const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
                 if (!loadMesh(entity, mesh, pipelines, instmesh, terrain) &&
                         SystemRender::getResourcePoolExhaustions() != poolFullBefore){
@@ -17618,9 +17638,11 @@ void RenderSystem::update(double dt){
                     mesh.loadFailed = true;
                     mesh.loadCalled = true;
                 }
+#if JASPERENGINE_PROFILER
                 const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - l0).count();
                 if (timing && ms > 5.0)
                     Log::print("[shader-timing] loadMesh %s: %.1f ms", scene->getEntityName(entity).c_str(), ms);
+#endif
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
                 // Bones cancel out this mesh's model matrix, so the shader draws at
@@ -17629,7 +17651,12 @@ void RenderSystem::update(double dt){
                 // too, but unions body-sized boxes over the skeleton. Local space so the editor
                 // draws the same box.
                 mesh.skinnedAABB.setNull();
-                if (!instmesh){
+                // only a skinned mesh draws through its bones (loadMesh set hasSkinning above, in
+                // this iteration): a rigid one's palette, if it holds one, moves nothing
+                bool skinned = false;
+                for (unsigned int s = 0; s < mesh.numSubmeshes && !skinned; s++)
+                    skinned = mesh.submeshes[s].hasSkinning;
+                if (!instmesh && skinned){
                     const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.stored());
                     for (size_t b = 0; b < boneBounds; b++){
                         if (!mesh.bonesAABB[b].isNull()){
@@ -18887,7 +18914,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                     opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size(),
                                              true, LodFadePass::FADE});
             }
-            if (mesh.isTransparent() && distanceSort){
+            // (culled before the sort: drawMesh does not test it again)
+            if (mesh.isTransparent() && distanceSort && isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)){
                 // a Particle System's sorting fudge moves it in the queue (lower: on top)
                 const bool particles = instmesh && instmesh->particle.alignment != InstanceAlignment::None;
                 const float fudge = particles ? instmesh->particle.sortingFudge : 0.0f;
@@ -18897,18 +18925,15 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         if (distanceSort){
-            // sortPriority first (lower draws first, so stencil writers go before their
-            // readers), then nearest first; ties keep the transform order (no allocation,
-            // unlike std::stable_sort)
-            std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
-        }
-        if (distanceSort && SystemRender::isDrawBatching()){
-            // GPU Instancing: culled once (on jobs), split by submesh, batches grouped (spec S55)
+            // culled once (on jobs), then sorted: sortPriority first (lower draws first, so
+            // stencil writers go before their readers), the distance band, the render state,
+            // then nearest first (OpaqueRenderComparison); with GPU Instancing split by submesh
+            // and the batches grouped (spec S55)
             VisibleFrustum frustum;
             frustum.planes = camera.frustumPlanes;
             frustum.farClip = camera.farClip;
             frustum.eye = cameraTransform.worldPosition;
-            buildVisibleQueue(opaqueRenders, frustum, colorPip, false);
+            buildVisibleQueue(opaqueRenders, frustum, colorPip, false, true);
         }
     }
 
@@ -19347,7 +19372,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (renderData.type == TransparentRenderType::MESH){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
             passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
+            passPreCulled = true;
             submitMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            passPreCulled = false;
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);

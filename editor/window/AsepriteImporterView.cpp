@@ -15,6 +15,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "util/FileUtils.h"
 #include "util/UIProbe.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -753,23 +754,28 @@ void AsepriteImporterView::drawButtons(){
         ImGui::OpenPopup("Extract Clips##aseprite_extract");
         openExtract = false;
     }
-    if (ImGui::BeginPopupModal("Extract Clips##aseprite_extract", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (EditorModal::begin("Extract Clips##aseprite_extract", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
         ImGui::Text("Writes %zu .anim file(s) next to the selected file(s), one undo step:", clips);
+        std::string listed;
         for (const File& file : files){
             const std::shared_ptr<const ase::ImportRecord> record = ase::AsepriteImporter::get().record(file.assetPath);
             if (!record) continue;
             const std::string stem = FileUtils::pathToUtf8(file.absolute.stem());
-            for (const ase::ImportRecord::Clip& clip : record->clips)
+            for (const ase::ImportRecord::Clip& clip : record->clips){
                 ImGui::BulletText("%s %s.anim", stem.c_str(), clip.name.c_str());
+                listed += (listed.empty() ? "" : ", ") + stem + " " + clip.name + ".anim";
+            }
         }
         ImGui::TextDisabled("A file that exists already is updated and keeps its GUID.");
+        EditorModal::message("Writes " + std::to_string(clips) + " .anim file(s) next to the selected file(s), one undo step: " + listed +
+                             ". A file that exists already is updated and keeps its GUID.");
         ImGui::Separator();
-        if (ImGui::Button("Extract", ImVec2(Theme::dpi(100.0f), 0))){
+        if (EditorModal::button("Extract", "ok", ImVec2(Theme::dpi(100.0f), 0))){
             extractClips();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)))
+        if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(100.0f), 0)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }

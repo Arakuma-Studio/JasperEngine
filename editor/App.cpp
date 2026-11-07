@@ -5705,10 +5705,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
     // v52: water-boats: MESH 'Wex' and 'Wwk' (42, 43), includes/water_interaction.glsl and the
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
+    // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
+    //      includes/lights.glsl and punctual.glsl)
     // v54: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
     //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
-    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18. (v53 and
-    //      MESH 44 are draw-perf's.)
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 

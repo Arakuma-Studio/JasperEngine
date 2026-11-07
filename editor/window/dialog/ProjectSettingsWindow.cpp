@@ -3084,6 +3084,24 @@ void ProjectSettingsWindow::drawNavigationSettings() {
                 }
                 endSettingsRow("NavGrid path requests solved per fixed tick (in parallel); the rest wait for the next tick.");
             }
+            if (settingsui::beginRow("navigation.carve_tiles_per_tick")) {
+                if (projectBeginSettingsRow("Carve Tiles Per Tick", settings.carveTilesPerTick != defaults.carveTilesPerTick)) {
+                    settings.carveTilesPerTick = defaults.carveTilesPerTick;
+                }
+                // 0 is Auto: the platform's count (4 on desktop, 2 on Android, iOS and web)
+                bool automatic = settings.carveTilesPerTick == 0;
+                if (ImGui::Checkbox("Auto##NavCarveAuto", &automatic)) {
+                    settings.carveTilesPerTick = automatic ? 0 : settings.effectiveCarveTilesPerTick();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(automatic);
+                int tiles = settings.effectiveCarveTilesPerTick();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavCarveTiles", &tiles) && !automatic) settings.carveTilesPerTick = std::clamp(tiles, 1, 64);
+                ImGui::EndDisabled();
+                endSettingsRow("Carved tiles each NavMesh Surface rebuilds per fixed tick, the same on every machine. Auto: 4 on "
+                    "desktop, 2 on Android, iOS and web.");
+            }
             if (settingsui::beginRow("navigation.web_bake_budget_ms")) {
                 if (projectBeginSettingsRow("Web Bake Budget", settings.webBakeBudgetMs != defaults.webBakeBudgetMs)) {
                     settings.webBakeBudgetMs = defaults.webBakeBudgetMs;

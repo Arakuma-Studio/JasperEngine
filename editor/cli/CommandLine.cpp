@@ -8,7 +8,7 @@
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -3065,11 +3065,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.vatRan = true;
     }
 
-    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
+    // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;
-        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
-            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        for (const ProjectNavFinding& item : collectProjectFindings(&project, &surfaces)) {
+            run.findings.push_back({"navigation", item.scenePath, 0, 0, nav::findingSeverityName(item.finding.severity),
+                                    item.finding.message, item.finding.code, ""});
+        }
         run.checked.push_back({"navigation", surfaces});
     }
 

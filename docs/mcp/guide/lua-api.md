@@ -3261,6 +3261,59 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `play()`, `pause()`, `restart()`, `playing`, `completed`, `normalizedTime`, `distance` (rw: moves the follower) | constant world speed along the curve; a 2D spline turns the follower about Z |
 | `onComplete` (`FunctionSubscribe`), `setOnComplete(fn)` | Once: called at the end |
 
+### 4.21 Navigation: NavigationSystem, NavMeshQueryFilter, NavMeshAgent
+
+Navmesh queries take and return world positions (`jasper://docs/navigation`). Queries returning
+a hit return two values, `found, hit`; paths are plain tables (`NavMeshPath`).
+
+```lua
+local nav = self.scene:getNavigationSystem()
+local filter = NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All}
+filter:setAreaCost(3, 5)                      -- area 3 costs 5 per metre for this filter
+local path = nav:calculatePath(Vector3(0, 0, 0), Vector3(10, 0, 4), filter, {areaCrossings = true})
+local found, point = nav:randomPoint(filter, {center = Vector3(0, 0, 0), radius = 8})
+local moved, step = nav:moveAlongSurface(Vector3(0, 0, 0), Vector3(1, 0, 0))
+local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
+```
+
+| Member | Notes |
+|---|---|
+| `calculatePath(from, to[, filter[, options]])` | `status`, `corners`, `length`, `cost`, `cornerAreas`, `cornerFlags` (`NavCornerFlags`), `areaLengths[area]`, `corridor`; options `{areaCrossings = true}` |
+| `samplePosition(p, maxDistance[, filter])`, `raycast(a, b[, filter])`, `findClosestEdge(p[, filter[, maxDistance]])`, `isReachable(a, b[, filter])` | hit: `position`, `normal`, `distance`, `area`, `mask`, `hit`, `cost` (raycast) |
+| `randomPoint([filter[, options]])` | options `center` + `radius` (reachable within it, not uniform), `sameIslandAs`, `seed`; none: anywhere, uniform by area |
+| `moveAlongSurface(from, to[, filter])` | one step along the surface: hit `position`, `hit` (a wall stopped it), `distance`, `area` |
+| `randomSeed` | rw: restarts the stream (a scene starts at 0x5EED) |
+| NavMeshQueryFilter `agentType`, `areaMask`, `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | costs >= 1; the areas it does not set cost the project's |
+| NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
+| NavMeshAgent `calculatePath(target)`, `setPath(path)`, `path`, `steeringTarget`, `isPathStale` | `setPath` takes a path of `calculatePath` (false, and no path, when refused); `path` starts at the agent |
+| NavMeshAgent `nextPosition`, `velocity` (rw) | root motion: `nextPosition = p` moves it along the surface, `velocity = v` holds for the next fixed tick; neither writes the Transform |
+| NavMeshAgent `raycast(target)`, `findClosestEdge()`, `samplePathPosition(areaMask, maxDistance)`, `nextOffMeshLinkData` | from where it stands with its filter; two values like the system's queries |
+| NavMeshAgent `stuckDetection`, `stuckSpeedRatio`, `stuckTimeout`, `repathWhenStuck` (rw), `stuckTime`, `lastPathFailure` (read), `onStuck(agent)`, `onPathFailed(agent, reason)` | reasons are strings: `"none"`, `"no_surface"`, `"not_baked"`, `"end_off_mesh"`, `"disconnected"`, `"blocked_by_area"`, ... |
+| `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
+
+### 4.22 Navigation: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride
+
+Unity's scripting names over the components (`jasper://docs/navigation`, "Script names"). A door
+is a NavMesh Modifier with Volume and Apply At Runtime; a script volume does the same from code.
+
+```lua
+local door = NavMeshModifier(self.scene, self.entity)
+door.enabled = false                                  -- the runtime volume stops applying: the door opens
+local bridge = NavMeshLink(self.scene, self.entity)
+bridge.activated = false                              -- paths and agents ignore it
+local nav = self.scene:getNavigationSystem()
+local gate = nav:setAreaInVolume(Vector3(0, 1, 0), Vector3(2, 3, 1), 1, {rotation = Quaternion()})
+gate.area = 0 ; gate:remove()
+```
+
+| Member | Notes |
+|---|---|
+| NavMeshObstacle `enabled`, `shape` (`NavMeshObstacleShape.CAPSULE` / `BOX`), `center`, `size`, `radius`, `height`, `carving`, `carveOnlyStationary`, `carvingMoveThreshold`, `carvingTimeToStationary` | rw; `velocity` read (from its transform each fixed tick) |
+| NavMeshLink `enabled`, `agentTypeID`, `startPoint`, `endPoint`, `width`, `costModifier`, `bidirectional`, `area`, `autoUpdate`, `activated` | rw; `occupied` read (an agent is crossing it); `updateLink()` moves its baked connections to its fields |
+| NavMeshModifier `enabled`, `area`, `center`, `size` | rw: a runtime volume applies again at once; `useVolume`, `applyAtRuntime`, `overrideArea`, `applyToChildren` read (bake inputs); `appliedPolygons` read |
+| NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
+| NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |

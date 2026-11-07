@@ -34,6 +34,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
+#include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
@@ -324,6 +325,10 @@ void editor::App::registerCommands(){
     }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    // the Path Tester (S75 R25): in the selected scene's view, edit or play
+    bind("navigation.pathTester", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
+    }, sceneShown, noDrag);
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
     // under the pointer it must not take Delete from a panel that claims it

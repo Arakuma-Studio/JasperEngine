@@ -1183,6 +1183,7 @@
 		434F4D50150191D288E00CDA /* GridPathfinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */; };
 		511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4827A87A2E001CE3AF /* MeshSystem.h */; };
+		434F4D502DD2B190656F4392 /* NavRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D507D42600285C43AB1 /* NavRandom.h */; };
 		434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50290007DFE40AC9CB /* MeshTriangles.h */; };
 		434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50918B791D9DA25DA7 /* NavigationSystem.h */; };
 		434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503F0117111AE20581 /* NavTypes.h */; };
@@ -6479,6 +6480,7 @@
 		434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/GridPathfinder.cpp; sourceTree = "<group>"; };
 		511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemGltfPbr.cpp; sourceTree = "<group>"; };
 		71ABBD4827A87A2E001CE3AF /* MeshSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshSystem.h; sourceTree = "<group>"; };
+		434F4D507D42600285C43AB1 /* NavRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavRandom.h; sourceTree = "<group>"; };
 		434F4D50290007DFE40AC9CB /* MeshTriangles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../util/MeshTriangles.h; sourceTree = "<group>"; };
 		434F4D50918B791D9DA25DA7 /* NavigationSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationSystem.h; sourceTree = "<group>"; };
 		434F4D503F0117111AE20581 /* NavTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavTypes.h; sourceTree = "<group>"; };
@@ -11254,6 +11256,7 @@
 				434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */,
 				511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */,
 				71ABBD4827A87A2E001CE3AF /* MeshSystem.h */,
+				434F4D507D42600285C43AB1 /* NavRandom.h */,
 				434F4D50290007DFE40AC9CB /* MeshTriangles.h */,
 				434F4D50918B791D9DA25DA7 /* NavigationSystem.h */,
 				434F4D503F0117111AE20581 /* NavTypes.h */,
@@ -15092,6 +15095,7 @@
 				71E54514284D5BE000C68FAB /* ScaleTracksComponent.h in Headers */,
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
+				434F4D502DD2B190656F4392 /* NavRandom.h in Headers */,
 				434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */,
 				434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */,
 				434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */,

@@ -133,6 +133,11 @@ namespace jasperengine::editor {
         void drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin);
         // the right-click menu of the selected lattice (LatticeSceneTools draws its items)
         void drawLatticeContextMenu(SceneProject& sceneProject);
+        // the Path Tester's press, drag and release in the view (engine canvas x, y): true when it
+        // took the left button
+        bool pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered);
+        // the AI Navigation overlay's tile labels and the Path Tester's panel over the canvas
+        void drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize);
         // the camera moves to show bounds whole (focusOnEntities' framing)
         void focusOnBounds(SceneProject* sceneProject, const AABB& bounds);
         std::string getWindowTitle(const SceneProject& sceneProject) const;
@@ -182,6 +187,9 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Frames world bounds in the Scene view of sceneId, as Frame Selected frames (eased by
+        // Camera Easing; an agent's caller finishes the tween): visualize_navigation's frame
+        void frameBounds(uint32_t sceneId, const AABB& worldBounds);
         // Frame All (Alt+F, Home): what the view shows and can pick, in any scene type (S26 R18)
         void frameAll(uint32_t sceneId);
         // The numpad views (3D): the camera looks along direction (Front: +Z)

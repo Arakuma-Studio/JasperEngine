@@ -466,6 +466,9 @@ namespace jasperengine{
 		bool capsuleShadows = false;
 		bool contactShadows = false;
 		bool oit = false;
+		// every Light component of the scene is Directional (enabled or not, so a flashlight
+		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
+		bool directionalLightsOnly = false;
 		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
 		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
 		bool waterExclusion = false;
@@ -579,6 +582,9 @@ namespace jasperengine{
 		// the built-in Lit, a fork of it defining LIT_STOCHASTIC_PARAMS); a fork made before it
 		// samples plainly, so its depth and G-buffer passes must too
 		bool stochasticShader = true;
+		// the shader is the engine's Lit (empty, or a builtin:lit reference; not a fork or a
+		// library shader): the one 'Dlo' applies to
+		bool builtinLit = true;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;
@@ -717,6 +723,8 @@ namespace jasperengine{
 			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
 		};
 
+	public:
+		// (public: their order is tested, RenderQueueOrderTest)
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -742,6 +750,11 @@ namespace jasperengine{
 			uint64_t batchKey = 0;
 			// its bounds were culled by the visible list (drawMesh does not test them again)
 			bool preCulled = false;
+			// a colour pass's visible list sorted by state (buildVisibleQueue): its distance band
+			// (distanceBand) and its render state (pipeline, material and mesh of its first draw),
+			// so draws of one state run together inside a band and skip applying it again
+			uint8_t band = 0;
+			uint64_t stateKey = 0;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -771,19 +784,26 @@ namespace jasperengine{
 		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the meshes
 		// that do not fade (the discard of fading ones turns off early depth and hidden surface
 		// removal for their draws only, so they come after: Apple, PowerVR and Arm's order), then
-		// the nearest, then the submission order
+		// the nearest distance band (one per doubling of the distance: early depth keeps most of
+		// its use), then the render state (equal states in a run apply once), then the nearest,
+		// then the submission order (a total order, so std::sort is deterministic)
 		struct OpaqueRenderComparison{
 			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
 				if (lhs.fading != rhs.fading)
 					return !lhs.fading;
+				if (lhs.band != rhs.band)
+					return lhs.band < rhs.band;
+				if (lhs.stateKey != rhs.stateKey)
+					return lhs.stateKey < rhs.stateKey;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
 					return lhs.distanceToCamera < rhs.distanceToCamera;
 				return lhs.order < rhs.order;
 			}
 		};
 
+	private:
 		// the queues of the camera pass being drawn (renderCameraPass, the reflection probe
 		// face), kept between passes so a pass allocates nothing once they have grown
 		std::vector<OpaqueRenderData> opaqueQueue;
@@ -927,6 +947,8 @@ namespace jasperengine{
 		bool lastBatchSort = true;
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
+		// updateObjectLights zeroed every mesh's pick while the scene has no lights
+		bool objectLightsCleared = false;
 		// pipelines the objects were loaded with, to catch a destination change
 		uint16_t loadedPipelines = 0;
 
@@ -1806,6 +1828,13 @@ namespace jasperengine{
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
+		// every Light component is Directional (checkLightsAndShadow), and as the meshes loaded
+		bool directionalLightsOnly = false;
+		bool loadedDirectionalLightsOnly = false;
+		bool directionalLightsOnlyKnown = false;
+		// a point or spot Light was in the scene since load(): the general Lit stays until the
+		// next load, so lights that come and go never reload every mesh again
+		bool nonDirectionalLightSeen = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
@@ -2623,8 +2652,11 @@ namespace jasperengine{
 		// The opaque queue of a pass with GPU Instancing (spec S55 R2, R4), in the order it has: the
 		// entries culled at once (on jobs) against the pass's frustum, mesh then submesh, those of
 		// a mesh that can batch split one per submesh, the draws of one batch key brought together
-		// within their priority (VisibleList::groupBatches); the culled ones counted
-		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines);
+		// within their priority (VisibleList::groupBatches); the culled ones counted. sortByState
+		// (a colour pass's opaque queue): the visible entries are then sorted by
+		// OpaqueRenderComparison with their band and state, before the batches are grouped
+		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines,
+		                       bool sortByState = false);
 		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
 		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
 		                                   InstancedMeshComponent* instmesh);
@@ -3368,15 +3400,9 @@ namespace jasperengine{
 		// the bounds culling and the world AABB take for a mesh's vertices: a Vertex Animator's
 		// animatedBounds when set, else verticesAABB
 		static const AABB& getMeshLocalBounds(const MeshComponent& mesh);
-
-		// Planes around the casters that can shadow the surfaces reading a directional cascade:
-		// its receiver slice (the camera's projection cut to the cascade's depths) extruded toward the light
-		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
-		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
-		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing. (Upstream's
-		// receiver culling of the old cascades: S10's shadow passes do not call it yet.)
-		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
-		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
+		// the distance band of an opaque draw (its squared distance): 0 up to 1, then one per
+		// doubling of the distance (NaN 0, infinity 63); the opaque queues sort by it before the state
+		static uint8_t distanceBand(float squaredDistance);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).
@@ -3417,6 +3443,8 @@ namespace jasperengine{
 		// its own STOCHASTIC feature). Read from the fork's entry point at runtime and by the
 		// editor alike, so a build ships the variants the game asks for.
 		static bool supportsStochasticTiling(const std::string& shader);
+		// the shader reference is the engine's Lit: empty, or builtin:lit with its variant features
+		static bool isBuiltinLit(const std::string& shader);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
