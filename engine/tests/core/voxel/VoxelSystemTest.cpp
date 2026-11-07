@@ -209,12 +209,14 @@ TEST_F(VoxelSystemFixture, FailedLoadSurfacesTheErrorAndGoesOn) {
 }
 
 TEST_F(VoxelSystemFixture, GroundQueryTakesTheHighestVolume) {
-    // R45: two volumes over one column, the lower one first in the scene; the ray from above meets
-    // the higher surface
+    // R45: three volumes over one column, the highest between two lower ones, so neither end of the
+    // scene's order is it; the ray from above meets the highest surface
     volume(desc(32, 64, 32), "mem://ground-low");
     asset->store->setBase(makeSolidGroundBase(10.0, 1.0, 0));
     volume(desc(32, 64, 32), "mem://ground-high");
     asset->store->setBase(makeSolidGroundBase(20.0, 1.0, 0));
+    volume(desc(32, 64, 32), "mem://ground-lower");
+    asset->store->setBase(makeSolidGroundBase(5.0, 1.0, 0));
     scene->update(1.0 / 60.0);
     system->finishPendingWork();
     const voxel::GroundSample ground = voxel::sampleGround(scene.get(), 16.0f, 16.0f, 60.0f);
