@@ -79,9 +79,12 @@ async def test_kind_with_existing_tools(ed: Editor):
     got = await ed.call("get_graph", path=path)
     ed.check_eq(got["graph"]["future"], {"a": 1}, "the file's unknown key")
     ed.check_eq(got["graph"]["nodes"][0]["note"], "kept", "the node's unknown key")
-    await ed.call("undo")
-    ed.check_eq((ed.project / path).read_text().strip() == before.strip() or json.loads((ed.project / path).read_text()) == json.loads(before), True,
-                "one undo restores the file")
+    # Graph files are project history: undo's default scene scope says where the step is, and the timeline,
+    # what Ctrl+Z runs, takes it
+    scene_only = await ed.call_raw("undo", {})
+    ed.check(scene_only.is_error and "scope timeline" in scene_only.text, f"the empty scene history names the fix: {scene_only.text}")
+    await ed.call("undo", scope="timeline")
+    ed.check_eq((ed.project / path).read_text(), before, "one undo restores the file byte for byte")
 
 
 async def test_preview(ed: Editor):

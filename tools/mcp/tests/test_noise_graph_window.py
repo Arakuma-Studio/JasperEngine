@@ -68,24 +68,22 @@ async def wait_probe(ed: Editor, ui: Ui, name: str, frames: int = 120, prefix: b
     ed.fail(f"the UI probe never named {name}: {sorted(ed.ui_items())[:40]}")
 
 
+async def reveal_in_project_window(ed: Editor, ref: str) -> None:
+    """the Project window at ref (a folder, or a file's folder with it pinged), through a bookmark's navigate,
+    which needs no scrolling or folder clicks"""
+    await ed.call("sync_files")
+    added = await ed.call("edit_bookmarks", action="add", ref=ref)
+    listed = added.get("bookmarks") or (await ed.call("edit_bookmarks", action="list"))["bookmarks"]
+    index = next(b["index"] for b in listed if str(b.get("path", "")).rstrip("/").endswith(ref.rstrip("/")))
+    await ed.call("focus_window", window="project")
+    await ed.call("edit_bookmarks", action="navigate", index=index)
+
+
 async def open_in_project_window(ed: Editor, ui: Ui, name: str):
     """double-clicks a file of the Project window, by its probe rect"""
-    await ed.call("focus_window", window="project")
-    await ed.call("run_command", id="assets.refresh")
-    for i in range(20):
-        await ui.frames(4)
-        if i % 5 == 4:
-            await ed.call("focus_window", window="project")
-        items = ed.ui_items()
-        rect = items.get("project.file." + name)
-        if rect:
-            await ui.double_click(ui.centre(rect))
-            return
-        for folder in ("aaa_graphs", "assets"):
-            if "project.file." + folder in items:
-                await ui.double_click(ui.centre(items["project.file." + folder]))
-                break
-    ed.fail(f"no {name} in the Project window: {sorted(k for k in ed.ui_items() if k.startswith('project.file.'))}")
+    await reveal_in_project_window(ed, "assets/" + str(Path(GRAPH).parent / name))
+    _, rect = await wait_probe(ed, ui, "project.file." + name)
+    await ui.double_click(ui.centre(rect))
 
 
 async def test_opens_from_the_catalog(ed: Editor):
@@ -101,14 +99,9 @@ async def test_opens_from_the_catalog(ed: Editor):
 async def test_create_from_the_project_window_has_a_guid(ed: Editor):
     """AC43, R62: Create > Noise Graph > Blank and a preset, each a file with a GUID and one undo step."""
     ui = Ui(ed)
-    await ed.call("focus_window", window="project")
     # into the assets folder: the created files land where the Project window is
-    _, rect = await wait_probe(ed, ui, "project.file.assets")
-    await ui.double_click(ui.centre(rect))
-    for _ in range(60):
-        await ui.frames(2)
-        if "project.file.assets" not in ed.ui_items():
-            break
+    await reveal_in_project_window(ed, "assets")
+    await ui.frames(10)
 
     await ed.call("run_command", id="assets.createNoiseGraph")
     await ui.frames(6)

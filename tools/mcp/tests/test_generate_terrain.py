@@ -54,7 +54,7 @@ async def test_create(ed: Editor):
     ed.check_eq(made["applied"], 1, "ops apply to the new file")
     ed.check((ed.project / path).exists(), "the file exists")
     await ed.check_error("edit_graph", {"path": path, "create": {"kind": "noise"}, "ops": []}, contains="already exists")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")   # graph files are project history (GraphEditCmd)
     ed.check(not (ed.project / path).exists(), "undo removes the file")
 
     copied = "graphs/Alpine.noisegraph"
@@ -153,18 +153,18 @@ async def test_region_and_feather(ed: Editor):
     await seed_height(ed, sid, terrain)
     whole = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, dry_run=True)
     ed.check_eq(whole["rect"], [0, 0, 65, 65], "whole terrain")
-    outside_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["points"][0]["height"]
+    outside_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["samples"][0]["height"]
     part = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, region={"min": [-20, -20], "max": [20, 20]})
     rect = part["rect"]
     ed.check(rect[2] < 65 and rect[3] < 65, f"snapped: {rect}")
     changed = next(c for c in part["changed"] if c["map"] == "height")["rect"]
     ed.check(changed[0] >= rect[0] and changed[1] >= rect[1], f"inside the rectangle: {changed} in {rect}")
-    outside_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["points"][0]["height"]
+    outside_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["samples"][0]["height"]
     ed.check_eq(outside_after, outside_before, "outside stays")
     await ed.call("undo", scene=sid)
     feathered = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, region={"min": [-20, -20], "max": [20, 20]}, feather=10)
-    border = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[rect_centre(rect, 65), -19.5]]))["points"][0]["height"]
-    centre = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]]))["points"][0]["height"]
+    border = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[rect_centre(rect, 65), -19.5]]))["samples"][0]["height"]
+    centre = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]]))["samples"][0]["height"]
     ed.check(abs(border - 25.0) < abs(centre - 25.0) or abs(centre - 25.0) < 1e-3, f"feather keeps the border near the old height: {border} {centre} ({feathered['rect']})")
     refused = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": "plains", "resolution": 33, "region": {"min": [-20, -20], "max": [20, 20]}})
     ed.check(refused.is_error and "resolution" in refused.text, refused.text)
@@ -222,6 +222,8 @@ async def test_every_preset_dry_runs(ed: Editor):
     """AC26."""
     sid, terrain = await scene_with_terrain(ed, "Presets")
     await seed_height(ed, sid, terrain)
+    # paint_by_slope paints layer 1, which it does not mark optional: the terrain needs it (R30)
+    await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {"surfaceLayers": [{}, {}]}})
     for preset in ("rolling_hills", "mountains", "alpine", "canyons", "islands", "dunes", "plateaus", "plains", "erode_existing", "paint_by_slope"):
         result = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": preset, "dry_run": True, "seed": 1, "max_width": 64})
         ed.check(not result.is_error, f"{preset}: {result.text}")

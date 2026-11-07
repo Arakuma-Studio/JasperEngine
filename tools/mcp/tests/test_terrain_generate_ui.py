@@ -57,17 +57,25 @@ async def scene_with_terrain(ed: Editor, name: str, resolution: int = 65):
 
 
 async def open_section(ed: Editor, ui: Ui) -> None:
-    """the Generate header open: its Preview button named by the probe"""
-    for _ in range(4):
-        await ui.frames(4)
-        items = ed.ui_items()
-        if "terrain.generate.preview" in items:
-            return
-        rect = items.get("terrain.generate")
-        if rect:
-            await ui.click(ui.centre(rect))
+    """the Generate header open and its Preview button in view: the header is clicked once per attempt, then
+    its inside is waited for (a second click before the first draws would close it again)"""
+    for _ in range(3):
+        for _ in range(30):
+            await ui.frames(2)
+            items = ed.ui_items()
+            if "terrain.generate.preview" in items:
+                return
+            if "terrain.generate.seed" in items:
+                # open, with the buttons below the window's edge
+                await ui.reveal("Preview", WINDOW)
+                continue
+            if "terrain.generate" in items:
+                break
+        else:
             continue
-        await ui.wheel(ui.centre((await ui.find(WINDOW))["rect"]), 60)
+        if "terrain.generate.seed" not in ed.ui_items():
+            await ed.call("focus_window", window="terrain")
+            await ui.click(ui.centre(ed.ui_items()["terrain.generate"]))
     ed.check("terrain.generate.preview" in ed.ui_items(), f"the section opens: {sorted(k for k in ed.ui_items() if 'terrain' in k)}")
 
 

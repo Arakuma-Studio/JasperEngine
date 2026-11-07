@@ -13,7 +13,9 @@
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Project.h"
+#include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/UndoTimeline.h"
 #include "io/AtomicFile.h"
 #include "noise/NoiseGraphDocument.h"
 #include "noise/NoiseGraphRuntime.h"
@@ -513,4 +515,23 @@ TEST(NoiseGraphDocument, PreviewsAreSkippedWhenClosed) {
     // reopening previews again
     d.update(true);
     EXPECT_EQ(d.previewService().jobsSubmitted(), 2u);
+}
+
+// T2 R57, S24 R17: what Ctrl+Z, Edit > Undo and the History panel run is the one timeline, which holds the
+// project history a graph edit lands in. The Noise Graph window claims no Undo of its own (AppCommands.cpp),
+// so the last graph edit is what Ctrl+Z takes back, whatever scene is selected.
+TEST(NoiseGraphDocument, CtrlZUndoesTheLastGraphEdit) {
+    NoiseDocumentFixture f;
+    ASSERT_TRUE(f.opened) << f.document->loadError();
+    constexpr uint32_t sceneId = 9301;
+    CommandHandle::get(sceneId);
+    const std::string original = f.readFile();
+    ASSERT_FALSE(f.document->addNode("simplex", graph::Vec2{0.0, 400.0}).empty()) << f.document->status();
+    EXPECT_EQ(UndoTimeline::undoLabel(sceneId).find("Add Simplex") != std::string::npos, true) << UndoTimeline::undoLabel(sceneId);
+    std::string why;
+    EXPECT_TRUE(UndoTimeline::undo(sceneId, &why)) << why;
+    EXPECT_EQ(f.readFile(), original);
+    EXPECT_TRUE(UndoTimeline::redo(sceneId, &why)) << why;
+    EXPECT_NE(f.readFile(), original);
+    CommandHandle::remove(sceneId);
 }

@@ -45,15 +45,15 @@ return self
 
 async def test_noise_lua_in_play(ed: Editor):
     root = Path(ed.project)
-    (root / "graphs").mkdir(exist_ok=True)
+    graphs = root / "assets" / "graphs"   # what a game reads "graphs/..." from
+    graphs.mkdir(parents=True, exist_ok=True)
     repo = Path(__file__).resolve().parents[3] / "editor" / "resources" / "noisegraphs"
     for name, preset in (("Plains", "plains"), ("Alpine", "alpine"), ("Mountains", "mountains")):
-        (root / "graphs" / f"{name}.noisegraph").write_text((repo / f"{preset}.noisegraph").read_text())
-    (root / "NoiseLua.lua").write_text(SCRIPT)
+        (graphs / f"{name}.noisegraph").write_text((repo / f"{preset}.noisegraph").read_text())
     made = await ed.call("create_scene", name="NoiseLua", type="3D", path="scenes/NoiseLua")
     sid = made["scene"] if "scene" in made else made["scene_id"]
     holder = (await ed.call("create_entity", scene=sid, name="Holder", type="empty"))["entity_id"]
-    await ed.call("add_component", scene=sid, entity=holder, component="script", values={"script": {"scripts": [{"type": "lua", "path": "NoiseLua.lua", "enabled": True}]}})
+    await ed.call("create_script", kind="lua", name="NoiseLua", content=SCRIPT, scene=sid, entity=holder)
     preview = await ed.call("preview_noise_graph", preset="plains", size=64, seed=7, images="none")
     await ed.call("play", action="start", scene=sid)
     lines = {}

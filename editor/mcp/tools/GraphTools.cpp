@@ -173,7 +173,7 @@ bool startCreatedGraph(const CallPtr& call, fs::path& file, Graph& out) {
     }
     std::string error;
     const std::string path = args.value("path", std::string());
-    if (!McpRefs::resolveProjectPath(call->ctx().project(), path, file, error, true)) {
+    if (!McpRefs::resolveProjectPath(call->ctx().project(), path, file, error, false)) {
         call->fail(error.empty() ? "path is required." : error);
         return false;
     }

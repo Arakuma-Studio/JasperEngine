@@ -1756,4 +1756,24 @@ CASES = [
         "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
         "max_turns": 10,
     },
+    {
+        "id": "noise_graph_undo_timeline",
+        "kind": "guard",
+        "what_happened": "After an edit_graph, 'undo that' with undo's default scene scope found nothing: graph files are project history. The error names the timeline scope.",
+        "text_at_issue": "CoreTools.cpp undo: the empty scene history's error",
+        "source": "docs/specs/T2-noise-graphs.md R57",
+        "history": [
+            {"user": "Set the fbm frequency in graphs/Hills.noisegraph to 9."},
+            {"assistant": "Done.", "calls": [{"tool": "edit_graph", "args": {"path": "graphs/Hills.noisegraph",
+                "ops": [{"op": "setParam", "node": "n1", "name": "frequency", "value": 9}]},
+                "result": json.dumps({"applied": 1, "issues": [], "undo_name": "Set frequency"})}]},
+        ],
+        "prompt": "Actually, undo that.",
+        "mocks": [
+            {"tool": "undo", "args": {"scope": "timeline"}, "result": ok("Undid Set frequency.", {"undone": [{"id": 12, "name": "Set frequency"}]})},
+            {"tool": "undo", "args": {}, "result": err("Nothing to undo in the scene history. The last step is an asset edit: undo scope timeline takes it, as Ctrl+Z does.")},
+        ],
+        "checks": {"calls": [{"tool": "undo", "args": {"scope": "timeline"}}], "must_not_call": ["edit_graph"]},
+        "max_turns": 8,
+    },
 ]
