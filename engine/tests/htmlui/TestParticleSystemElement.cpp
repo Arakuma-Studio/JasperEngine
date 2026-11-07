@@ -28,6 +28,7 @@
 #include "object/ui/UIElementInternal.h"
 #include "object/ui/UIEvent.h"
 #include "htmlui/compat/Diagnostics.h"
+#include "htmlui/UIParticleSystemElement.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
