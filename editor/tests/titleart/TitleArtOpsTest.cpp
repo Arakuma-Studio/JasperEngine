@@ -363,6 +363,8 @@ TEST_F(TitleArtOpsTest, LinkedMaterialsStayEqual) {
 
 TEST_F(TitleArtOpsTest, ReservedOpsNameTheirOwner) {
     for (const ReservedTitleOp& reserved : TitleArtOps::reservedOps()) {
+        // an op its owner registered in this build (S86's, once registerTitle3DEditor ran) is no longer pending
+        if (TitleArtOps::pendingOwner(reserved.name).empty()) continue;
         const TitleOpsResult r = apply(Json{{"op", reserved.name}});
         ASSERT_TRUE(failure(r)) << reserved.name;
         EXPECT_EQ(failure(r)->code, "not_available") << reserved.name;
