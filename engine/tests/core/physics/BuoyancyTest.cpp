@@ -273,7 +273,8 @@ TEST_F(BuoyancyTest, OwnExcluderStillFloats){
     water();
     // a boat with its hold as its own excluder (a child of the body): it floats as without it
     const Entity boat = box(500.0f, -0.4f, 0.0f);
-    excluder(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 1.0f, 1.0f), boat);
+    // (larger than the box, so its columns' bottoms are inside: it would sink if it dried its owner)
+    excluder(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.4f, 1.4f, 1.4f), boat);
     const Entity plain = box(500.0f, -0.4f, 10.0f);
     steps(600);
     EXPECT_NEAR(bottom(boat), bottom(plain), 0.02f);
