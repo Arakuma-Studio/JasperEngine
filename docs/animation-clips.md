@@ -505,9 +505,10 @@ Every animation in a glTF/GLB or FBX model is a read-only clip named `<model>#<a
 share a name, the later one is `"Wave 2"`, `"Wave 3"`. Its paths are relative to the model's
 GameObject and include the glTF scene's root nodes, as the Hierarchy shows them: bones and mesh
 nodes by their glTF names, for example `Hero/mixamorig:Hips/mixamorig:Spine` (the hero's glTF root
-node is named Hero too). It plays at 30 samples, wrap once (set the entry's Wrap to Loop to
-loop it). Model clips can be referenced like files: pick a model in a clip field, or drop the model
-on **+ Add Clip** and choose the animation.
+node is named Hero too). It plays at 30 samples and wraps once, unless its Wrap Mode is set (see
+[Model clip settings](#model-clip-settings-modelclips)) or the entry's Wrap says Loop. Model clips can
+be referenced like files: pick a model in a clip field, or drop the model on **+ Add Clip** and
+choose the animation.
 
 - **Extract to .anim** (the Model section's row button, the clip field's menu, the clip asset view,
   or the window's Read-Only banner) writes an editable copy. The default name is `<animation>.anim`
@@ -529,6 +530,41 @@ projects start with, places a model of 5 or more clips with no entity animations
 Animation Player, without the player): play its clips with an Animation Player or an Animator. A
 model of fewer clips, and a model already in a scene, are not affected. A project without the
 setting in its `project.yaml` (`mesh: {animationEntities: auto}`) is Always.
+
+### Model clip settings (`<model>.clips`)
+
+Selecting a model in the Project window and opening the Inspector's **Animation** tab lists its clips
+as Unity's model importer does: **Clip**, **Length**, **Wrap Mode**, **Root Motion**, **Memory**,
+**Keys** and **Loop Match**. Click a row to select it; Ctrl adds or removes a row and Shift selects a
+range. Below the table, the selected clips' settings:
+
+- **Wrap Mode**: Once (the model's own: glTF has no loop flag), Loop, Ping Pong or Clamp Forever.
+- **Root Motion Node** (empty: Auto, the Animator's Root Motion bone, the hips, then the shallowest
+  bone the clip moves), **Root Transform Rotation**, **Root Transform Position (Y)** and **Root
+  Transform Position (XZ)**, each with **Bake Into Pose**: what stays in the pose instead of moving
+  the GameObject. These are the `.anim` file's `root_motion` block.
+
+A field whose value differs between the selected clips shows a dash. Edits stay in the Inspector
+until **Apply**, which writes them all as one undo step; **Revert** drops them, and leaving the model,
+closing the editor or pressing Play with edits not applied asks which. They are saved next to the
+model as `hero.gltf.clips` (JSON, like the `.humanoid` file): moving or renaming the model in the
+Project window takes it along, an edit of the file on disk is picked up at once, also in Play, and an
+export ships it, so the game plays what Play showed. A model with no `.clips` file, or a clip with no
+entry in it, plays exactly as before.
+
+**Loop Match** is how far the pose at the end is from the pose at the start, in millimetres, with the
+root's travel and turn taken out (so a walk that moves forward can still match). A clip with no
+setting whose name says it cycles (loop, idle, walk, run or cycle) and whose Loop Match is under
+10 mm shows **Suggestion: looks like a loop** with a **Use** button. Mixamo names every clip
+`mixamo.com`, so in a file like `hero@Running.fbx` the part after `@` names its longest clip. Nothing changes until you click
+it, and Use only sets Wrap Mode to Loop in the edits: Apply still writes it.
+
+**Memory** and **Keys** are the numbers `get_animation` and `get_asset_info` report for the clip.
+
+Two buttons act on the selected clips: **Extract to .anim...** asks for one folder and writes a
+`.anim` per clip there (a new name when one exists), one undo step; **Add to Animator...** lists the
+project's Animator Controllers (or **New Animator Controller...**) and adds a state per clip to the
+first layer, one undo step. Each state plays the model clip, with its Wrap Mode.
 
 Duplicate glTF names: the Model section labels the second entity animation row "Wave 2", matching
 the model clip name. The entity animations themselves are both named "Wave", but without a player
@@ -980,6 +1016,6 @@ animating layer weights from clips (use Lua). Property tracks do not animate str
 fonts or meshes (only sprite frames swap), C++ script fields, properties that rebuild GPU state when
 they change (shader, blend mode, cast shadows, font size, shadow map size), physics body values
 other than Enabled, or the Animation Player's own Enabled. Also: importing Unity curves, tangent
-editing of rotations by handle (they take a tangent mode), importer clip ranges and per-model-clip
-events, a preview pane in the clip asset Inspector, event object parameters, and re-syncing an
+editing of rotations by handle (they take a tangent mode), importer clip ranges, Loop Pose and
+per-model-clip events, a preview pane in the clip asset Inspector, event object parameters, and re-syncing an
 extracted clip from its model.

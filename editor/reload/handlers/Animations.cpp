@@ -4,7 +4,8 @@
 // Pose animations, humanoid maps, animation clips and Vertex Animations (S05 R11, with upstream's
 // animation clips spec 4.1, pose animation phase 2 and vertex animation spec 2.1): the open
 // PoseAnimationDocuments of changed .poseanim / .humanoid files, the open AnimationClipDocuments
-// of changed .anim files and the VatDocuments of changed .vat files reload (a file that fails to
+// of changed .anim files (and of a model whose .clips sidecar changed, S74 R29) and the
+// VatDocuments of changed .vat files reload (a file that fails to
 // load leaves the document at its last valid content), AnimationClipPool drops the clips so the
 // Animation Players using them reload, and VertexAnimationPool the Vertex Animations so their
 // Vertex Animators reload, in edit mode and during Play. A changed model drops its sub-clips,
@@ -20,6 +21,7 @@
 #include "animation/AnimatorAssetDocument.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimatorRetarget.h"
+#include "animation/ModelClipSettings.h"
 #include "pool/AnimatorAssetPool.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseAnimationIO.h"
@@ -59,22 +61,33 @@ namespace {
 
 }
 
-// What fails to load in a changed .anim, .poseanim, Animator asset, .vat or .shake, then its warnings: the same
-// reading the documents and the players do
+// What fails to load in a changed .anim, .poseanim, Animator asset, .vat, .shake or a model's .clips, then its
+// warnings: the same reading the documents and the players do
 void reload::addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
     const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
     const bool animatorAsset = Util::isAnimatorAssetFile(pathText);
     const bool shake = Util::isShakePresetFile(pathText);
-    if (!clip && !vertexAnimation && !animatorAsset && !shake && !Util::isPoseAnimationFile(pathText)) return;
+    const bool clipSettings = path.extension() == ".clips";
+    if (!clip && !vertexAnimation && !animatorAsset && !shake && !clipSettings && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string relative = reload::rel(project, path);
 
     std::vector<std::string> warnings;
-    if (shake) {
+    if (clipSettings) {
+        // a model's clip settings (S74 R27): its clips play with the importer's until it reads again
+        anim::ModelClipSettings settings;
+        std::string error;
+        if (!anim::parseModelClipSettings(text, settings, warnings, &error)) {
+            Json problem = {{"path", relative}, {"message", "Not valid model clip settings: " + error + " (its clips play with the importer's settings)."}};
+            if (const int line = jsonErrorLine(text)) problem["line"] = line;
+            problems.push_back(problem);
+            return;
+        }
+    } else if (shake) {
         // a .shake (camera shake spec 6): a shake naming it plays nothing until it reads again
         const camera::ShakeParseResult parsed = camera::parseShakePreset(text);
         if (!parsed.ok()) {
