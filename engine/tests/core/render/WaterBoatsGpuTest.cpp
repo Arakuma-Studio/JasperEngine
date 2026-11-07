@@ -22,6 +22,7 @@
 #include "object/Light.h"
 #include "object/Primitive.h"
 #include "pool/ShaderPool.h"
+#include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include "texture/Material.h"
@@ -35,6 +36,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -228,5 +230,52 @@ TEST_F(WaterBoatsGpu, WakeUploadsOncePerFrame){
     }
     EXPECT_TRUE(system->isWakeActive());
     EXPECT_GT(system->getWakeUploadCount(), 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// Opaque water tiles in a scene without Water Excluders and Wakes keep GPU Instancing: their
+// variant has neither bit, so they draw as one instanced batch with the shader keys they had
+// before (the scene's first excluder makes them draw alone, each choosing its excluders)
+TEST_F(WaterBoatsGpu, OpaqueTilesStayInstanced){
+    JASPER_REQUIRE_GPU();
+    const bool instancing = Engine::isGpuInstancingEnabled();
+    Engine::setGpuInstancingEnabled(true);
+    camera.setPosition(0.0f, 14.0f, 10.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+
+    Material opaque = waterMaterial();
+    opaque.blendMode = MaterialBlendMode::NONE;
+    std::vector<std::unique_ptr<Primitive>> tiles;
+    for (int i = 0; i < 9; i++){
+        auto tile = std::make_unique<Primitive>(&scene);
+        tile->createPlane(4.0f, 4.0f);
+        tile->setPosition(-4.0f + 4.0f * (float)(i % 3), 0.0f, -4.0f + 4.0f * (float)(i / 3));
+        tile->setMaterial(opaque);
+        tiles.push_back(std::move(tile));
+    }
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    GpuEnvironment::drawFrames(1);
+    const Submesh& first = scene.getComponent<MeshComponent>(tiles[0]->getEntity()).submeshes[0];
+    const uint64_t waterBits = ShaderPool::getWaterExclusionProperty() | ShaderPool::getWaterWakeProperty();
+    EXPECT_EQ(first.shaderProperties & waterBits, 0u);
+    EXPECT_NE(first.batchShaderProperties & ShaderPool::getAutoInstancingProperty(ShaderType::MESH), 0u);
+    EXPECT_EQ(first.batchShaderProperties & waterBits, 0u);
+    const DrawBatchStats tiled = SystemRender::getDrawBatchStats();
+    std::printf("[gpu] opaque water tiles: %u instanced draws for %u draws\n", tiled.instancedDraws, tiled.batchedInstances);
+    EXPECT_EQ(tiled.instancedDraws, 1u);
+    EXPECT_EQ(tiled.batchedInstances, 9u);
+
+    excluder(WaterExcluderShape::BOX, Vector3(100.0f, 0.0f, 100.0f), Vector3(1.0f, 1.0f, 1.0f));
+    Scene* current = &scene;
+    const Entity tile = tiles[0]->getEntity();
+    ASSERT_TRUE(GpuEnvironment::runFrames([current, tile](){
+        return current->getSystem<RenderSystem>()->isAllLoaded() &&
+               (current->getComponent<MeshComponent>(tile).submeshes[0].shaderProperties & ShaderPool::getWaterExclusionProperty()) != 0;
+    })) << "the excluder's variants never finished loading";
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+
+    Engine::setGpuInstancingEnabled(instancing);
     EXPECT_NO_ENGINE_ERRORS();
 }

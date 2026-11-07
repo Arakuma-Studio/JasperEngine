@@ -111,6 +111,14 @@ namespace water_interaction_system_test {
             system->sampleWake(x, z, water, foam, crest);
             return foam + crest;
         }
+
+        // the foam alone (the crests are stamped again from the history; the foam is not)
+        float foamOnlyAt(float x, float z, Entity water){
+            float foam = 0.0f;
+            float crest = 0.0f;
+            system->sampleWake(x, z, water, foam, crest);
+            return foam;
+        }
     };
 
 }
@@ -264,32 +272,95 @@ TEST_F(WaterInteractionTest, WakeMapReachesAheadOfTheCamera){
     EXPECT_GT(foamAt(0.0f, -3.5f, water), 0.1f);
 }
 
+// a look around (the camera turned back and forth) keeps the wake near it; looking straight down
+// the map is around the eye
+TEST_F(WaterInteractionTest, WakeSurvivesALookAround){
+    const Entity water = lake();
+    const Entity camera = place(Vector3(0.0f, 9.0f, -24.0f));
+    scene->addComponent<CameraComponent>(camera, CameraComponent{});
+    scene->setCamera(camera);
+    auto look = [&](const Vector3& backward){
+        scene->getComponent<CameraComponent>(camera).worldDirection = backward;
+    };
+    look(Vector3(0.0f, 0.47f, -0.88f));
+    const Entity boat = hull(Vector3(0.0f, 0.0f, -12.0f));
+    Engine::setScene(scene.get());
+    int i = 0;
+    for (; i < 72; i++){
+        move(boat, Vector3(0.0f, 0.0f, -12.0f + 5.0f * STEP * (float)i));
+        frame();
+    }
+    ASSERT_GT(foamOnlyAt(0.0f, -6.0f, water), 0.1f);
+    // turned to look back the other way for a moment, then ahead again
+    look(Vector3(0.0f, 0.47f, 0.88f));
+    for (int k = 0; k < 3; k++, i++){
+        move(boat, Vector3(0.0f, 0.0f, -12.0f + 5.0f * STEP * (float)i));
+        frame();
+    }
+    look(Vector3(0.0f, 0.47f, -0.88f));
+    move(boat, Vector3(0.0f, 0.0f, -12.0f + 5.0f * STEP * (float)i));
+    frame();
+    EXPECT_GT(foamOnlyAt(0.0f, -6.0f, water), 0.1f);
+
+    // straight down, a little ahead along +Z: the map stays around the eye
+    look(Vector3(0.0f, 0.999f, -0.045f));
+    frame();
+    const WaterInteractionSystem::WakeMapInfo map = system->getWakeMapInfo();
+    EXPECT_NEAR(map.corner.x + 0.5f * map.area, 0.0f, 1.0f);
+    EXPECT_NEAR(map.corner.y + 0.5f * map.area, -24.0f, 1.0f);
+}
+
 TEST_F(WaterInteractionTest, WakesStayOnTheirWater){
-    // two ponds 1 m apart at one level: a hull along the first one's edge leaves no wake on the second
+    // two ponds 1 m apart at one level, a hull crossing from the first to the second: the wake it
+    // made on the first stays the first's (none of it joined to the second's and stamped as it)
     const Entity first = lake(-40.0f, 0.0f);
     const Entity second = lake(1.0f, 40.0f);
-    const Entity boat = hull(Vector3(-2.0f, 0.0f, -20.0f));
+    const Entity boat = hull(Vector3(-16.0f, 0.0f, 0.0f));
     scene->getComponent<WaterWakeComponent>(boat).width = 1.0f;
     scene->getComponent<WaterWakeComponent>(boat).length = 3.0f;
     Engine::setScene(scene.get());
-    for (int i = 0; i < 90; i++){
-        move(boat, Vector3(-2.0f, 0.0f, -20.0f + 6.0f * STEP * (float)i));
+    for (int i = 0; i < 120; i++){
+        move(boat, Vector3(-16.0f + 6.0f * STEP * (float)i, 0.0f, 0.0f));
         frame();
     }
     ASSERT_TRUE(system->isWakeActive());
     EXPECT_NE(system->getBodyTag(first), system->getBodyTag(second));
+    EXPECT_EQ(system->getEmitterInfo(boat).water, second);
     float on = 0.0f;
     float across = 0.0f;
-    for (float z = -20.0f; z < -5.0f; z += 0.5f){
-        for (float x = -6.0f; x < 6.0f; x += 0.25f){
-            if (x < 0.0f)
+    float own = 0.0f;
+    for (float x = -14.0f; x < 8.0f; x += 0.25f){
+        for (float z = -6.0f; z < 6.0f; z += 0.25f){
+            if (x < -3.0f){
                 on += foamAt(x, z, first);
-            else if (x > 1.0f)
                 across += foamAt(x, z, second);
+            }else if (x > 4.0f){
+                own += foamAt(x, z, second);
+                across += foamAt(x, z, first);
+            }
         }
     }
     EXPECT_GT(on, 1.0f);
+    EXPECT_GT(own, 1.0f);
     EXPECT_EQ(across, 0.0f);
+}
+
+// a hull on the water but off the map (far from the camera): nothing to fade, encode or upload
+TEST_F(WaterInteractionTest, HullOffTheMapCostsNoUpload){
+    lake();
+    const Entity boat = hull(Vector3(39.5f, 0.0f, -20.0f));
+    Engine::setScene(scene.get());
+    for (int i = 0; i < 30; i++){
+        move(boat, Vector3(39.5f, 0.0f, -20.0f + 5.0f * STEP * (float)i));
+        frame();
+        system->markWakeUploaded();
+    }
+    EXPECT_TRUE(system->getEmitterInfo(boat).emitting);
+    const WaterInteractionSystem::WakeMapInfo map = system->getWakeMapInfo();
+    ASSERT_LT(map.corner.x + map.area, 37.0f) << "the hull is on the map";
+    move(boat, Vector3(39.5f, 0.0f, -20.0f + 5.0f * STEP * 30.0f));
+    frame();
+    EXPECT_FALSE(system->isWakeDirty());
 }
 
 TEST_F(WaterInteractionTest, HiddenHullLeavesNoTrail){

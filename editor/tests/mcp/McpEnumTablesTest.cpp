@@ -11,6 +11,7 @@
 
 #include "mcp/McpValues.h"
 #include "component/RigidbodyComponent.h"
+#include "SceneSettings.h"
 
 #include <string>
 
@@ -31,9 +32,18 @@ TEST(McpEnumTables, EveryNamedTableExists) {
                              "material_cull_mode", "material_depth_test", "material_depth_write", "material_lighting",
                              "material_pass_order", "material_stencil_compare", "material_stencil_op", "scene_color_scale",
                              "shadow_debug_view", "shadow_quality", "rigidbody_interpolation", "joint_motion", "swing_type",
-                             "body_type", "collider3d_type"}) {
+                             "body_type", "collider3d_type", "water_wake_resolution"}) {
         const McpValues::EnumOptions* table = McpValues::enumTable(name);
         ASSERT_NE(table, nullptr) << name;
         EXPECT_FALSE(table->empty()) << name;
     }
+}
+
+// set_scene_settings' Water Wakes resolution (SceneTools.cpp, SettingKind::WaterWakeResolution)
+TEST(McpEnumTables, WaterWakeResolutionNames) {
+    const McpValues::EnumOptions* table = McpValues::enumTable("water_wake_resolution");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(McpValues::enumToJson((int)WaterWakeResolution::AUTO, *table), jasperengine::editor::mcp::Json("auto"));
+    EXPECT_EQ(McpValues::enumToJson((int)WaterWakeResolution::HIGH, *table), jasperengine::editor::mcp::Json("high"));
+    EXPECT_EQ(table->size(), 4u);
 }

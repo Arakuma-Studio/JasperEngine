@@ -156,6 +156,7 @@ void WaterWakeMap::stamp(std::vector<float>& values, Vector2 a, Vector2 b, float
             if (value > values[index]){
                 values[index] = value;
                 tags[index] = tag;
+                written = true;
             }
         }
     }

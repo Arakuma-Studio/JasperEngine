@@ -271,23 +271,77 @@ AABB WaterInteractionSystem::getMeshSourceLocalBounds(Scene* scene, Entity entit
 Entity WaterInteractionSystem::findExcluder(const Vector3& point, Entity floatingBody){
     if (scene->getComponentArray<WaterExcluderComponent>()->size() == 0)
         return NULL_ENTITY;
-    for (const Excluder& excluder : getExcluders()){
+    if (!excludersGathered)
+        gatherExcluders();
+    for (Excluder& excluder : frameExcluders){
         const Transform* transform = scene->findComponent<Transform>(excluder.entity);
         if (!transform)
             continue;
-        const Matrix4 model = waterPoseMatrix(*transform);
-        const AABB bounds = model * excluder.localBox;
-        if (!bounds.contains(point))
+        // the inverse and bounds of its pose, made again only once it moves (buoyancy asks per
+        // column of every body each physics step)
+        if (!excluder.poseMade || excluder.posePosition != transform->worldPosition || excluder.poseRotation != transform->worldRotation ||
+                excluder.poseScale != transform->worldScale){
+            const Matrix4 model = waterPoseMatrix(*transform);
+            excluder.posePosition = transform->worldPosition;
+            excluder.poseRotation = transform->worldRotation;
+            excluder.poseScale = transform->worldScale;
+            excluder.poseMade = true;
+            excluder.poseValid = !excluder.localBox.isNull() && std::fabs(MeshTriangles::linearDeterminant(model)) >= 1.0e-12f;
+            if (excluder.poseValid){
+                excluder.poseInverse = model.inverse();
+                excluder.poseBounds = model * excluder.localBox;
+            }
+        }
+        if (!excluder.poseValid || !excluder.poseBounds.contains(point))
             continue;
         const auto found = hulls.find(excluder.entity);
         const WaterHull* hull = (found != hulls.end() && excluder.shape == WaterExcluderShape::CONVEX_HULL) ? &found->second.hull : nullptr;
-        if (!isInsideWaterExcluder(excluder.shape, excluder.localBox, hull, model, point))
+        if (!isInsideWaterExcluderLocal(excluder.shape, excluder.localBox, hull, excluder.poseInverse * point))
             continue;
         if (floatingBody != NULL_ENTITY && getExcluderOwner(scene, excluder.entity) == floatingBody)
             continue;
         return excluder.entity;
     }
     return NULL_ENTITY;
+}
+
+WaterInteractionSystem::WakeFootprint WaterInteractionSystem::getWakeFootprint(Entity entity, const WaterWakeComponent& wake,
+                                                                             const Transform& transform) const{
+    WakeFootprint result;
+    WaterWakeFootprint& footprint = result.footprint;
+    const Vector3 axisX = transform.worldRotation * Vector3(1.0f, 0.0f, 0.0f);
+    const Vector3 axisZ = transform.worldRotation * Vector3(0.0f, 0.0f, 1.0f);
+    footprint.axisX = Vector2(axisX.x, axisX.z).squaredLength() > 1.0e-6f ? Vector2(axisX.x, axisX.z).normalized() : Vector2(1.0f, 0.0f);
+    footprint.axisZ = Vector2(axisZ.x, axisZ.z).squaredLength() > 1.0e-6f ? Vector2(axisZ.x, axisZ.z).normalized() : Vector2(0.0f, 1.0f);
+    result.center = transform.worldPosition;
+    result.bottom = result.center.y - 0.5f;
+    result.top = result.center.y + 0.5f;
+    AABB localBox;
+    if (const WaterExcluderComponent* excluder = scene->findComponent<WaterExcluderComponent>(entity)){
+        const auto hull = hulls.find(entity);
+        localBox = getWaterExcluderLocalBox(excluder->shape, excluder->center, excluder->size,
+                                            hull != hulls.end() ? &hull->second.hull : nullptr);
+    }
+    if (localBox.isNull())
+        localBox = getMeshSourceLocalBounds(scene, entity);
+    float radiusX = 0.5f;
+    float radiusZ = 0.5f;
+    if (!localBox.isNull()){
+        const Vector3 size = localBox.getSize();
+        radiusX = 0.5f * size.x * std::fabs(transform.worldScale.x);
+        radiusZ = 0.5f * size.z * std::fabs(transform.worldScale.z);
+        const AABB world = transform.modelMatrix * localBox;
+        result.center = world.getCenter();
+        result.bottom = world.getMinimum().y;
+        result.top = world.getMaximum().y;
+    }
+    if (wake.width > 0.0f)
+        radiusX = 0.5f * wake.width;
+    if (wake.length > 0.0f || wake.width > 0.0f)
+        radiusZ = 0.5f * (wake.length > 0.0f ? wake.length : wake.width);
+    footprint.radiusX = std::max(radiusX, 0.05f);
+    footprint.radiusZ = std::max(radiusZ, 0.05f);
+    return result;
 }
 
 bool WaterInteractionSystem::contains(Entity excluder, const Vector3& point){
@@ -393,6 +447,7 @@ void WaterInteractionSystem::releaseWakes(){
     wakeMap = WaterWakeMap();
     wakeActive = false;
     wakeDirty = false;
+    wakeHeld = false;
     bodyTags.clear();
     meshBodies.clear();
 }
@@ -404,54 +459,66 @@ void WaterInteractionSystem::stepWakes(float dt){
     wakeFade = scene->getWaterWakeFade();
 
     // the drawn waters and their bodies: library:water meshes at one level whose areas touch, and
-    // the chunks of a spline's river or lake (its GameObject)
+    // the chunks of a spline's river or lake (its GameObject); grouped only once a wake is on a
+    // water (an emitter over one, or the map holding a wake whose water the draws tag)
     std::vector<WaterSurface> surfaces = Water::getSurfaces(scene);
-    std::vector<Entity> surfaceKeys(surfaces.size(), NULL_ENTITY);
+    std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
+    std::vector<Entity> surfaceKeys;
     meshBodies.clear();
-    for (size_t i = 0; i < surfaces.size(); i++){
-        if (surfaceKeys[i] != NULL_ENTITY)
-            continue;
-        // the group of i: every surface reachable through touching areas at its level
-        std::vector<size_t> group{i};
-        surfaceKeys[i] = surfaces[i].entity;
-        for (size_t g = 0; g < group.size(); g++){
-            const WaterSurface& a = surfaces[group[g]];
-            for (size_t j = 0; j < surfaces.size(); j++){
-                if (surfaceKeys[j] != NULL_ENTITY)
-                    continue;
-                const WaterSurface& b = surfaces[j];
-                const float gap = 0.01f;
-                if (std::fabs(a.level - b.level) > gap || b.minXZ.x > a.maxXZ.x + gap || a.minXZ.x > b.maxXZ.x + gap ||
-                        b.minXZ.y > a.maxXZ.y + gap || a.minXZ.y > b.maxXZ.y + gap)
-                    continue;
-                surfaceKeys[j] = surfaces[i].entity;
-                group.push_back(j);
+    bool grouped = false;
+    auto groupBodies = [&](){
+        if (grouped)
+            return;
+        grouped = true;
+        surfaceKeys.assign(surfaces.size(), NULL_ENTITY);
+        for (size_t i = 0; i < surfaces.size(); i++){
+            if (surfaceKeys[i] != NULL_ENTITY)
+                continue;
+            // the group of i: every surface reachable through touching areas at its level
+            std::vector<size_t> group{i};
+            surfaceKeys[i] = surfaces[i].entity;
+            for (size_t g = 0; g < group.size(); g++){
+                const WaterSurface& a = surfaces[group[g]];
+                for (size_t j = 0; j < surfaces.size(); j++){
+                    if (surfaceKeys[j] != NULL_ENTITY)
+                        continue;
+                    const WaterSurface& b = surfaces[j];
+                    const float gap = 0.01f;
+                    if (std::fabs(a.level - b.level) > gap || b.minXZ.x > a.maxXZ.x + gap || a.minXZ.x > b.maxXZ.x + gap ||
+                            b.minXZ.y > a.maxXZ.y + gap || a.minXZ.y > b.maxXZ.y + gap)
+                        continue;
+                    surfaceKeys[j] = surfaces[i].entity;
+                    group.push_back(j);
+                }
+            }
+            Entity key = surfaces[group[0]].entity;
+            for (size_t member : group)
+                key = std::min(key, surfaces[member].entity);
+            for (size_t member : group)
+                surfaceKeys[member] = key;
+        }
+        for (size_t i = 0; i < surfaces.size(); i++)
+            meshBodies[surfaces[i].entity] = surfaceKeys[i];
+        if (splines && splines->hasWaterSurfaces()){
+            auto meshes = scene->getComponentArray<MeshComponent>();
+            for (size_t i = 0; i < meshes->size(); i++){
+                const Entity entity = meshes->getEntity(i);
+                if (splines->isGenerated(entity))
+                    meshBodies[entity] = splines->getGeneratedOwner(entity);
             }
         }
-        Entity key = surfaces[group[0]].entity;
-        for (size_t member : group)
-            key = std::min(key, surfaces[member].entity);
-        for (size_t member : group)
-            surfaceKeys[member] = key;
-    }
-    for (size_t i = 0; i < surfaces.size(); i++)
-        meshBodies[surfaces[i].entity] = surfaceKeys[i];
-    std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
-    if (splines && splines->hasWaterSurfaces()){
-        auto meshes = scene->getComponentArray<MeshComponent>();
-        for (size_t i = 0; i < meshes->size(); i++){
-            const Entity entity = meshes->getEntity(i);
-            if (splines->isGenerated(entity))
-                meshBodies[entity] = splines->getGeneratedOwner(entity);
-        }
-    }
+    };
+    if (wakeHeld)
+        groupBodies();
 
     // the body over a world XZ whose surface lies within [bottom, top]
     auto findBody = [&](float x, float z, float bottom, float top) -> Entity {
         if (splines && splines->hasWaterSurfaces()){
             const SplineWaterSample water = splines->sampleWaterSurface(x, z);
-            if (water.hit && water.height >= bottom && water.height <= top)
+            if (water.hit && water.height >= bottom && water.height <= top){
+                groupBodies();
                 return water.owner;
+            }
         }
         Entity found = NULL_ENTITY;
         float foundLevel = -std::numeric_limits<float>::infinity();
@@ -462,8 +529,12 @@ void WaterInteractionSystem::stepWakes(float dt){
             const float height = surface.getHeight(x, z, time);
             if (height < bottom || height > top)
                 continue;
-            found = surfaceKeys[i];
+            found = surface.entity;
             foundLevel = surface.level;
+        }
+        if (found != NULL_ENTITY){
+            groupBodies();
+            found = meshBodies[found];
         }
         return found;
     };
@@ -490,40 +561,11 @@ void WaterInteractionSystem::stepWakes(float dt){
             continue;
         }
 
-        // its footprint: Width and Length, else its Water Excluder's box, else its meshes' bounds
-        WaterWakeFootprint footprint;
-        const Vector3 axisX = transform->worldRotation * Vector3(1.0f, 0.0f, 0.0f);
-        const Vector3 axisZ = transform->worldRotation * Vector3(0.0f, 0.0f, 1.0f);
-        footprint.axisX = Vector2(axisX.x, axisX.z).squaredLength() > 1.0e-6f ? Vector2(axisX.x, axisX.z).normalized() : Vector2(1.0f, 0.0f);
-        footprint.axisZ = Vector2(axisZ.x, axisZ.z).squaredLength() > 1.0e-6f ? Vector2(axisZ.x, axisZ.z).normalized() : Vector2(0.0f, 1.0f);
-        Vector3 center = transform->worldPosition;
-        float bottom = center.y - 0.5f;
-        float top = center.y + 0.5f;
-        AABB localBox;
-        if (const WaterExcluderComponent* excluder = scene->findComponent<WaterExcluderComponent>(entity)){
-            const auto hull = hulls.find(entity);
-            localBox = getWaterExcluderLocalBox(excluder->shape, excluder->center, excluder->size,
-                                                hull != hulls.end() ? &hull->second.hull : nullptr);
-        }
-        if (localBox.isNull())
-            localBox = getMeshSourceLocalBounds(scene, entity);
-        float radiusX = 0.5f;
-        float radiusZ = 0.5f;
-        if (!localBox.isNull()){
-            const Vector3 size = localBox.getSize();
-            radiusX = 0.5f * size.x * std::fabs(transform->worldScale.x);
-            radiusZ = 0.5f * size.z * std::fabs(transform->worldScale.z);
-            const AABB world = transform->modelMatrix * localBox;
-            center = world.getCenter();
-            bottom = world.getMinimum().y;
-            top = world.getMaximum().y;
-        }
-        if (wake.width > 0.0f)
-            radiusX = 0.5f * wake.width;
-        if (wake.length > 0.0f || wake.width > 0.0f)
-            radiusZ = 0.5f * (wake.length > 0.0f ? wake.length : wake.width);
-        footprint.radiusX = std::max(radiusX, 0.05f);
-        footprint.radiusZ = std::max(radiusZ, 0.05f);
+        const WakeFootprint shape = getWakeFootprint(entity, wake, *transform);
+        const WaterWakeFootprint& footprint = shape.footprint;
+        const Vector3 center = shape.center;
+        const float bottom = shape.bottom;
+        const float top = shape.top;
 
         if (!track.tracked){
             track.lastPosition = center;
@@ -587,6 +629,7 @@ void WaterInteractionSystem::stepWakes(float dt){
     if (wakeMap.getSize() != size || wakeMap.getTexel() != texel){
         wakeMap.reset(size, texel);
         wakeMap.moveTo(0, 0);
+        wakeHeld = false;
     }
     Vector3 eye;
     Vector2 forward;
@@ -596,8 +639,12 @@ void WaterInteractionSystem::stepWakes(float dt){
         if (const CameraComponent* component = scene->findComponent<CameraComponent>(scene->getCamera()))
             forward = Vector2(-component->worldDirection.x, -component->worldDirection.z);
     }
-    const float reach = 0.25f * (float)size * texel;
-    forward = forward.squaredLength() > 1.0e-6f ? forward.normalized() * reach : Vector2(0.0f, 0.0f);
+    // An eighth of the map ahead, by how level the view is: looking straight down the map is
+    // around the eye, and a look around moves it a quarter of its size at most, so the wake near
+    // the camera stays on it (the texels a move uncovers are cleared, their foam gone)
+    const float reach = 0.125f * (float)size * texel;
+    const float level = std::min(forward.length(), 1.0f);
+    forward = level > 1.0e-3f ? forward * (reach / forward.length() * level) : Vector2(0.0f, 0.0f);
     const int originX = (int)std::floor((eye.x + forward.x) / texel) - size / 2;
     const int originZ = (int)std::floor((eye.z + forward.y) / texel) - size / 2;
     wakeMap.moveTo(originX, originZ);
@@ -609,14 +656,22 @@ void WaterInteractionSystem::stepWakes(float dt){
     const bool withCrests = crestTimer <= 0.0f;
     if (withCrests)
         crestTimer = std::clamp(texel * 0.25f, WAKE_CREST_PERIOD_MIN, WAKE_CREST_PERIOD_MAX);
-    wakeMap.fade(std::exp(-2.0f * dt / wakeFade), withCrests);
+    if (wakeHeld)
+        wakeMap.fade(std::exp(-2.0f * dt / wakeFade), withCrests);
+    wakeMap.takeWritten();
     for (Stamping& stamping : stampings)
         wakeMap.stampTrack(*stamping.track, stamping.footprint, stamping.foam, stamping.waves, wakeFade, dt, withCrests);
-
-    float strongest = 0.0f;
-    wakeMap.encode(strongest);
-    wakeActive = strongest > 0.004f || crossing;
-    wakeDirty = true;
+    if (wakeHeld || wakeMap.takeWritten()){
+        float strongest = 0.0f;
+        wakeMap.encode(strongest);
+        wakeHeld = strongest > 0.0f;
+        wakeActive = strongest > 0.004f || crossing;
+        wakeDirty = true;
+    }else{
+        // an empty map nothing was stamped on (the hulls off it): no fade, encode or upload,
+        // the texture already holds no wake
+        wakeActive = crossing;
+    }
     if (!wakeActive){
         // faded out: the next wake starts on fresh tags
         bodyTags.clear();

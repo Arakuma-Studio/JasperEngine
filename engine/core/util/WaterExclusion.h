@@ -76,6 +76,9 @@ namespace jasperengine{
     // box, a NO_PHYSICS stand-in). False for a null box or a matrix without an inverse.
     JASPERENGINE_API bool isInsideWaterExcluder(WaterExcluderShape shape, const AABB& localBox, const WaterHull* hull,
                                                 const Matrix4& modelMatrix, const Vector3& point);
+    // the same for a point already in the excluder's local space
+    JASPERENGINE_API bool isInsideWaterExcluderLocal(WaterExcluderShape shape, const AABB& localBox, const WaterHull* hull,
+                                                     const Vector3& local);
 
 }
 

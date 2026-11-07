@@ -26,6 +26,7 @@
 
 #include "support/EditorTestSupport.h"
 
+#include <cstdio>
 #include <set>
 #include <string>
 
@@ -146,13 +147,16 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
     MeshShaderEnvironment shadows;
     shadows.lights = true;
     shadows.shadows = true;
+    // the most lights a pass may give (the fragment's lighting block at its largest)
+    MeshShaderEnvironment wide = shadows;
+    wide.lightCapacity = 16;
     MeshShaderEnvironment fog;
     fog.fog = true;
     fog.postColor = true;
     const std::string reference = ShaderReference::withFeatures("library:water", inputs.features);
     const uint16_t customId = ShaderPool::registerCustomShader(reference);
     const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
-    for (MeshShaderEnvironment environment : {shadows, fog}){
+    for (MeshShaderEnvironment environment : {shadows, fog, wide}){
         const SubmeshShaderVariant plain = RenderSystem::getSubmeshShaderVariant(environment, inputs);
         environment.waterExclusion = true;
         environment.waterWake = true;
@@ -171,6 +175,19 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
             // the bits add two textures and no uniform block
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), ShaderVariantCompiler::checkResourceBudget(plainData)) << name;
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
+            // GLES3 / WebGL2 guarantee 224 fragment uniform vectors, and sokol's GL backends
+            // flatten the blocks into them
+            size_t vectors = 0;
+            for (const ShaderStage& stage : data.stages){
+                if (stage.type == ShaderStageType::FRAGMENT){
+                    for (const ShaderUniformBlock& block : stage.uniformblocks)
+                        vectors += (block.sizeBytes + 15) / 16;
+                }
+            }
+            if (backend == ShaderBackend::GLES3){
+                std::printf("[water] %s: %zu fragment uniform vectors (limit 224)\n", name.c_str(), vectors);
+                EXPECT_LE(vectors, 224u) << name;
+            }
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1) << name;
             EXPECT_NE(data.getTextureIndexByName("u_waterWakeTexture").first, -1) << name;
             CustomUniformBlock custom;

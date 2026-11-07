@@ -850,9 +850,10 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
 3. **The wake's automatic footprint and Fit to Mesh** use the meshes a hull is built from (the
    GameObject's mesh, or its model's mesh nodes: `WaterInteractionSystem::getMeshSourceLocalBounds`),
    so the Inspector's "Auto" line, Fit to Mesh and the wake agree.
-4. **Opaque water is never automatically instanced** while its shader can read the excluders or
-   the wake map (`getSubmeshBatchVariant`): both are chosen per mesh. Transparent water was never
-   batched.
+4. **Opaque water reading the excluders or the wake map is not automatically instanced**
+   (`getSubmeshBatchVariant`): both are chosen per mesh. Only a variant with 'Wex' or 'Wwk' (a
+   scene with the component) draws alone; without them opaque water tiles batch as before.
+   Transparent water was never batched.
 5. **Prebuilt players.** A Convex Hull excluder makes the scene need the `physics3d` module
    (`editor/players/ModuleUsage.cpp`): the hull is built by Jolt.
 6. **Tests renamed and regrouped.** `WaterInteractionTest.*` (scene-level: excluders, owner rule,
@@ -882,9 +883,7 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    already at its strength, and the falloffs are polynomial in the squared distance (a crest
    `(1 - d^2)^2`, close to Doriax's `0.5 + 0.5 cos(pi d)`; foam solid to d = 0.45 as Doriax's), with
    no root or cosine per texel; the RGBA texels are packed in a loop that vectorizes.
-10. **Opaque water's 'Aui' key is gone from exports** (deviation 4): the `shader-library-export/Blend`
-    reflection golden loses the auto-instanced key of its `BLEND_NONE` water.
-11. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
+10. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
     running) `Step128x4` measured 140 us (budget 200) and `Step256x4` 570 us (budget 300). The
     budgets are enforced only with `JASPER_TEST_PERF_SLACK` on a quiet machine
     (`docs/testing.md`), and that run has not been made.

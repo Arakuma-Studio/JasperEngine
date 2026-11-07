@@ -8,7 +8,9 @@
 #include "ecs/SubSystem.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
+#include "math/Quaternion.h"
 #include "math/Vector2.h"
+#include "math/Vector3.h"
 #include "util/WaterExclusion.h"
 #include "util/WaterWakeMap.h"
 
@@ -39,6 +41,15 @@ namespace jasperengine{
             Matrix4 worldToUnit;
             AABB worldBounds;
             int hullLayer = -1;         // in the hull map array, -1 without one
+            // findExcluder's pose of it (the physics moves it between gathers): its world
+            // position, rotation and scale, and the inverse and bounds made from them
+            Vector3 posePosition;
+            Quaternion poseRotation;
+            Vector3 poseScale;
+            Matrix4 poseInverse;
+            AABB poseBounds;
+            bool poseValid = false;     // made, and invertible
+            bool poseMade = false;
         };
 
         struct HullInfo{
@@ -52,6 +63,15 @@ namespace jasperengine{
             bool emitting = false;      // on a water and moving this step
             float speed = 0.0f;         // smoothed, m/s over world XZ
             Entity water = NULL_ENTITY; // the water body it is on (its key entity)
+        };
+
+        // a Water Wake's waterline footprint at its current pose, and the height range of its
+        // box (which water it crosses), the box's centre the place it moves with
+        struct WakeFootprint{
+            WaterWakeFootprint footprint;
+            Vector3 center;
+            float bottom = 0.0f;
+            float top = 0.0f;
         };
 
         struct WakeMapInfo{
@@ -89,6 +109,7 @@ namespace jasperengine{
         WaterWakeMap wakeMap;
         bool wakeActive = false;
         bool wakeDirty = false;
+        bool wakeHeld = false;          // the map held a wake at its last encode
         float crestTimer = 0.0f;
         float wakeFade = 8.0f;
         // A wake's water body tag (1..255) by the body's key, stable while the map holds texels of
@@ -124,6 +145,9 @@ namespace jasperengine{
         // the local bounds of the meshes a hull is built from (the GameObject's mesh, or its model's
         // mesh nodes): Fit to Mesh and a Water Wake's automatic footprint; null without
         static AABB getMeshSourceLocalBounds(Scene* scene, Entity entity);
+        // Width and Length, else its Water Excluder's box, else its meshes' bounds (the Scene
+        // view draws it for the selected Water Wake)
+        WakeFootprint getWakeFootprint(Entity entity, const WaterWakeComponent& wake, const Transform& transform) const;
         // whether an excluder holds a world point (inactive ones too: Lua WaterExcluder:contains)
         bool contains(Entity excluder, const Vector3& point);
 

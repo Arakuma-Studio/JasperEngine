@@ -201,8 +201,12 @@ bool jasperengine::isInsideWaterExcluder(WaterExcluderShape shape, const AABB& l
                                          const Matrix4& modelMatrix, const Vector3& point){
     if (localBox.isNull() || std::fabs(MeshTriangles::linearDeterminant(modelMatrix)) < 1.0e-12f)
         return false;
-    const Vector3 local = modelMatrix.inverse() * point;
-    if (!localBox.contains(local))
+    return isInsideWaterExcluderLocal(shape, localBox, hull, modelMatrix.inverse() * point);
+}
+
+bool jasperengine::isInsideWaterExcluderLocal(WaterExcluderShape shape, const AABB& localBox, const WaterHull* hull,
+                                              const Vector3& local){
+    if (localBox.isNull() || !localBox.contains(local))
         return false;
 
     if (shape == WaterExcluderShape::CONVEX_HULL){

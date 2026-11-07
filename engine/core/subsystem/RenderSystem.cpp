@@ -8214,8 +8214,9 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     resolveSubmeshRenderState(mesh, submesh, inputs.manifest.get(), blended, transparentQueue);
     if (transparentQueue)
         return batch;
-    // the Water Excluders and the wake tag are chosen per mesh (applyWaterInteraction)
-    if (inputs.manifest && (inputs.manifest->getPossibleRequire() & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)))
+    // the Water Excluders and the wake tag are chosen per mesh (applyWaterInteraction): a variant
+    // reading them ('Wex', 'Wwk': only while the scene has the component) draws alone
+    if (variant.properties & (ShaderPool::getWaterExclusionProperty() | ShaderPool::getWaterWakeProperty()))
         return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader

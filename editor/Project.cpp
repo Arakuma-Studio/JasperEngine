@@ -100,6 +100,7 @@
 #include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -5768,6 +5769,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     }
     // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
+    // the wakes hold with the game (a hull dragged in edit mode leaves none)
+    if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {

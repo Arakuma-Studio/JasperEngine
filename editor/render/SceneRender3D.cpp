@@ -30,6 +30,7 @@
 #include "util/WaterEditorUtils.h"
 #include "util/WaterExclusion.h"
 #include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
@@ -138,6 +139,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : waterExcluderLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterWakeLines) {
         delete pair.second;
     }
 
@@ -574,6 +579,28 @@ void editor::SceneRender3D::createOrUpdateWaterExcluderLines(Entity entity, cons
     };
     const int edges[12][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}};
     for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], color);
+}
+
+// A selected Water Wake's waterline footprint: the ellipse its wake starts from (cyan), with its
+// length axis
+void editor::SceneRender3D::createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible){
+    LineRenderer* lines = waterWakeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+    if (!transform.visible || !visible || !system) return;
+
+    const WaterInteractionSystem::WakeFootprint shape = system->getWakeFootprint(entity, wake, transform);
+    const WaterWakeFootprint& footprint = shape.footprint;
+    const Vector4 color = wake.enabled ? Vector4(0.3f, 0.85f, 1.0f, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 1.0f);
+    auto point = [&](float a){
+        const Vector2 p = footprint.axisX * (std::cos(a) * footprint.radiusX) + footprint.axisZ * (std::sin(a) * footprint.radiusZ);
+        return Vector3(shape.center.x + p.x, shape.center.y, shape.center.z + p.y);
+    };
+    const int segments = 48;
+    for (int i = 0; i < segments; i++)
+        lines->addLine(point(6.28318530718f * (float)i / (float)segments), point(6.28318530718f * (float)(i + 1) / (float)segments), color);
+    lines->addLine(point(-1.57079632679f), point(1.57079632679f), color);
 }
 
 // A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
@@ -1409,6 +1436,9 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : waterExcluderLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : waterWakeLines) {
+        pair.second->setVisible(false);
+    }
     for (auto& pair : buoyancyLines) {
         pair.second->setVisible(false);
     }
@@ -1557,6 +1587,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentControllers;
     std::set<Entity> currentWaterVolumes;
     std::set<Entity> currentWaterExcluders;
+    std::set<Entity> currentWaterWakes;
     std::set<Entity> currentBuoyancies;
     std::set<Entity> currentParticleSystems;
     std::set<Entity> currentForceFields;
@@ -1705,6 +1736,14 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ensureOverlayLines(waterExcluderLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateWaterExcluderLines(entity, transform, excluder, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<WaterWakeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterWakeComponent& wake = scene->getComponent<WaterWakeComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterWakes.insert(entity);
+            ensureOverlayLines(waterWakeLines, entity);
+            createOrUpdateWaterWakeLines(entity, transform, wake, isDescendantSelected(entity));
         }
 
         if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -1884,6 +1923,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     }
 
     for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&waterExcluderLines, &currentWaterExcluders),
+                             std::make_pair(&waterWakeLines, &currentWaterWakes),
                              std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
         for (auto it = pair.first->begin(); it != pair.first->end();) {
             if (pair.second->find(it->first) == pair.second->end()) {

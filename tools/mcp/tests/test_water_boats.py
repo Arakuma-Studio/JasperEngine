@@ -4,7 +4,7 @@ undo, sample_water's excluded_by (enabled, hidden and inactive excluders), its r
 which waters take the excluder and wake variants), the hole in the Game view (sample_view_color),
 cargo kept dry while the boat itself floats, no underwater fade inside a dry room, a wake behind
 a moving hull (none ahead of it; staying on its water is WaterInteractionTest.WakesStayOnTheirWater),
-and the scene's wake settings with undo."""
+held by the editor's Pause and none in edit mode, and the scene's wake settings with undo."""
 
 from __future__ import annotations
 
@@ -232,6 +232,31 @@ async def test_wake_behind_moving_hull(ed: Editor):
         ed.check(ahead["wake"] is not None and ahead["wake"]["foam"] == 0 and ahead["wake"]["height"] == 0, f"none ahead: {ahead}")
         live = await lua(ed, "local w = object('Skiff'):getWaterWake(); return w.emitting, w.speed > 4")
         ed.check_eq(live, [True, True], "Lua WaterWake.emitting and speed")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)
+
+
+async def test_wake_holds_while_paused(ed: Editor):
+    """The editor's Pause holds the wakes with the game (Project::pauseEngineScene), and a hull
+    moved in edit mode leaves none."""
+    await setup(ed)
+    drifter = entity_id(await ed.call("create_entity", type="cube", name="Drifter", position=[-7, 0, -8], scale=[1, 0.6, 3]))
+    await ed.call("add_component", entity=drifter, component="WaterWake")
+    for z in (-7.5, -7, -6.5, -6):
+        await ed.call("set_properties", entity=drifter, values={"transform": {"position": [-7, 0, z]}})
+        await frame(ed)
+    ed.check_eq((await sample(ed, report=True))["wake_map"]["active"], False, "no wake from a hull moved in edit mode")
+
+    await ed.call("create_script", kind="lua", name="Run", content=RUN, entity=drifter)
+    await ed.call("play", action="start", fixed_fps=60)
+    try:
+        await ed.call("wait", game_seconds=1.5)
+        await ed.call("play", action="pause")
+        before = (await sample(ed, (-7, 0, -4)))["samples"][0]["wake"]
+        ed.check(before and before["foam"] > 0.05, f"foam behind the drifter: {before}")
+        await ed.call("wait", seconds=1.5)
+        after = (await sample(ed, (-7, 0, -4)))["samples"][0]["wake"]
+        ed.check_eq(after, before, "the paused wake holds")
     finally:
         await ed.call("play", action="stop", fixed_fps=0)
 

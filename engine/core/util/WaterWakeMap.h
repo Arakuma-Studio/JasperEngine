@@ -82,6 +82,7 @@ namespace jasperengine{
             float phase = 0.0f;         // of the transverse waves, 1 on a crest
         };
         std::vector<Crest> crestScratch;  // a track's samples' crests, kept to reuse its memory
+        bool written = false;             // a stamp raised a texel since takeWritten
 
         // keeps the larger value along a capsule from a to b (its strength lerped along it); a crest
         // falls off as a cosine, foam keeps a solid core; a raised texel takes the tag
@@ -105,6 +106,9 @@ namespace jasperengine{
         // withCrests false stamps the foam only (the crests kept from the last step that stamped them).
         void stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& footprint, float foamStrength, float waveStrength,
                         float fade, float step, bool withCrests = true);
+
+        // whether a stamp raised a texel since the last call
+        bool takeWritten(){ const bool was = written; written = false; return was; }
 
         // the RGBA8 texels (R foam, G crest, B the body tag, A 255) and the largest value
         void encode(float& strongest);
