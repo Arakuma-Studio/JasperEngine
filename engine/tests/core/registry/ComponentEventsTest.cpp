@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "Engine.h"
+#include "Log.h"
 #include "Scene.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -30,9 +31,13 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "device/Device.h"
 #include "object/VideoPlayer.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "object/navigation/NavMeshSurface.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "object/sound/Audio.h"
+#endif
 #include "subsystem/PhysicsSystem.h"
 
 #include <string>
@@ -166,6 +171,32 @@ TEST(ComponentEventsTest, RemoveByTagReachesEveryEvent) {
     scene.removeSubscriptionsByTag("ScriptX_");
     EXPECT_TRUE(stillSubscribed(scene, entity, named).empty())
         << "left after the removal by tag: " << joined(stillSubscribed(scene, entity, named));
+}
+
+// the static events of classes other than Engine go with Engine's clears too: the editor's Stop
+// calls clearAllSubscriptions before the C++ script library is unloaded, MusicPlayer::reset after
+TEST(EngineEventsTest, ClearsReachOtherClassesStaticEvents) {
+    for (bool byTag : {false, true}) {
+        subscribe(Log::onMessageReceived);
+        subscribe(Device::onThermalStateChanged);
+        subscribe(Device::onLowMemory);
+#if JASPERENGINE_SOUND_LAYER
+        subscribe(Audio::onMusicBeat);
+        subscribe(Audio::onMusicSection);
+#endif
+        if (byTag) Engine::removeSubscriptionsByTag("ScriptX_");
+        else Engine::clearAllSubscriptions(false);
+        const char* how = byTag ? "removal by tag" : "clear at Stop";
+        EXPECT_EQ(Log::onMessageReceived.size(), 0u) << how;
+        EXPECT_EQ(Device::onThermalStateChanged.size(), 0u) << how;
+        EXPECT_EQ(Device::onLowMemory.size(), 0u) << how;
+#if JASPERENGINE_SOUND_LAYER
+        EXPECT_EQ(Audio::onMusicBeat.size(), 0u) << how << ": a C++ script's callback would outlive its library";
+        EXPECT_EQ(Audio::onMusicSection.size(), 0u) << how << ": a C++ script's callback would outlive its library";
+        Audio::onMusicBeat.clear();
+        Audio::onMusicSection.clear();
+#endif
+    }
 }
 
 #ifdef JASPERENGINE_PHYSICS_3D

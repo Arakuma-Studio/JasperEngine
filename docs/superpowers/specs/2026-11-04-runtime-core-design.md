@@ -772,3 +772,28 @@ Recorded during implementation (branch `dc/runtime-core`).
     put it at 99,028. A fixed Start Offset goes through `set_properties {action: {startOffset}}` on the
     Animation or a nested action; `get_animation` still reports `start_offset` and `random_start`.
     `edit_animation` stays within its old 3,606 limit.
+
+## Follow-ups (2026-11-07)
+
+1. **The event-clear lint covers every engine event** (`tools/check_event_clears.py`): every
+   `FunctionSubscribe` member of every struct or class in the engine's sources (not `engine/libs`,
+   `engine/tests`, `engine/workspaces`), with comments and literals stripped and only declarations directly
+   in a class body counted (no locals, parameters, references or getters). A holder's instance events are
+   in its `forEachEvent`; a component holder is in `ComponentsWithEvents`; any other holder is in the
+   lint's `WALKS` table with the clears that call its visitor (PhysicsSystem's two, InputAction's
+   `InputActions::unload` and `resetSession`), each checked to call `forEachEvent`; a static event is in
+   `Engine::clearAllSubscriptions` and `Engine::removeSubscriptionsByTag` (Engine's own unqualified and
+   not satisfied by another class's same-named event, others as `Class::member`). Types derived from
+   FunctionSubscribe (`Ease`) are values and are not checked.
+2. **Real hits fixed.** `Audio::onMusicBeat` and `Audio::onMusicSection` were cleared only in
+   `MusicPlayer::reset`, which the editor's Stop runs in `finalizeStop`, after `conector.disconnect()`:
+   a C++ script's callback there was destroyed after its library was unloaded, and a tag removal never
+   reached them. Both are now in Engine's two clears (test `EngineEventsTest.ClearsReachOtherClassesStaticEvents`,
+   red before the fix). `InputAction`'s three events were cleared by two hand lists (complete): they now
+   go through `InputAction::forEachEvent` (test `InputActionsTest.UnloadAndANewSessionClearEveryActionEvent`
+   pins it; no red run, nothing was missed).
+3. **check-changed** runs the lint for any changed engine source outside the skipped directories (it
+   used to take component headers, PhysicsSystem.h and Engine.h/.cpp only).
+4. Open (not an event, outside the lint): a C++ script's custom `Ease` on a `TweenComponent` is a
+   `std::function` destroyed with the runtime scene, after the library is unloaded (inferred from the
+   Stop order; not run).
