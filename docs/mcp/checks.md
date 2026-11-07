@@ -80,7 +80,8 @@ when there is a fix, `suggestion`; so do the shader findings of a UI effect (`co
 `synthesis-source-missing`, `synthesis-recipe-invalid`), the vertex animation findings (`code` the kind:
 `vat-source-changed`, `vat-source-missing`, `vat-mesh-mismatch`, `vat-layout-mismatch`, `vat-device-limit`, `vat-invalid`,
 `vat-format`, below), the normal map findings (`normals-*`, below) and the Stochastic Tiling warnings
-(`stochastic-tilted-normal-map`, `stochastic-no-effect`, below); the other findings have exactly the six keys above.
+(`stochastic-tilted-normal-map`, `stochastic-no-effect`, below) and the water warnings (`water-fork-without-role`,
+`planar-reflection-not-flat`, below); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
 sources were checked), clips (`anims`: the `.anim` files read), Vertex Animations (`vat`: the `.vat` files read), normal maps (`normals`: the PNGs with a recipe plus the normal maps in use checked).
@@ -101,6 +102,8 @@ too. Warnings (tool `shader`, at the scene or prefab file, with a `code` and a `
 | Code | When |
 |---|---|
 | `stochastic-tilted-normal-map` | Rotation (`stochasticRotation`) is above 0 and the normal map the cells turn has an average normal 3 degrees or more off +Z: each rotated cell then leans its own way. Built-in Lit materials (`normalTexture`), terrain layers with a PBR surface (`surfaceLayers[N].normalTexture`) and library shader materials with the `STOCHASTIC` feature (`u_normalTexture`). The mean is of the decoded texel normals (sampled on a 512 x 512 grid at most), measured once per version of the file (its modification time and size). Fix: Rotation 0, or a normal map whose average normal is +Z. |
+| `water-fork-without-role` | A material or post-process pass draws with a fork that has library:water's parameters (`buoyancy`, `waveHeight`, `shallowColor`) or library:underwater's (`waterLevel`, `followWater`) but no `@role` line: the engine does not float bodies in it, answer `Water` queries over it or switch the underwater pass. Add `// @role water` (or `underwater`) to its manifest, or fork with `fork_shader source`. |
+| `planar-reflection-not-flat` | A mesh reads a planar reflection (`PLANAR_REFLECTION`) but its world bounds are taller than 1% of their larger horizontal extent plus 0.05: the reflection mirrors about one level (the top of its bounds). Use `REFLECTION` alone on sloped water (a river), or flatten the mesh. |
 | `stochastic-no-effect` | A material has `stochasticTiling` on but the built-in Lit's Stochastic Tiling does not apply: it has no texture, it draws through a texture rect (a sprite's atlas frame, a tilemap), it is a terrain's base material (layers have their own), its shader has a manifest (a library shader: use its `STOCHASTIC` feature), or its shader is a fork of Lit that predates Stochastic Tiling (its `.frag` does not define `LIT_STOCHASTIC_PARAMS`: update the fork as the shader guide's Forking section shows, or turn the feature off). |
 
 ```

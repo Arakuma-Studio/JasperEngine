@@ -13,6 +13,7 @@
 #include "command/CommandHandle.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/ReflectedValueCmd.h"
+#include "animation/ActionPreviewSnapshot.h"
 #include "reflect/TypeOps.h"
 #include "component/Joint3DComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -181,6 +182,27 @@ namespace reflected_value_cmd_test {
         EXPECT_EQ(two.describe(), "Set Light Intensity (2 objects)");
         ReflectedValueCmd one(project.get(), sceneId, {GAME}, ComponentType::LightComponent, "intensity", number(2.0f));
         EXPECT_EQ(one.describe(), "Set Light Intensity");
+    }
+
+    // runtime-core 6.6: an array row's insert during an action preview is an edit the preview keeps:
+    // ReflectedValueCmd tells the preview's snapshot about its writes (ClipRecordHooks), so the seek's
+    // restore does not take the element away, and its undo still removes it
+    TEST_F(ReflectedValueCmdTest, ArrayInsertDuringAPreviewSurvivesItsSeek) {
+        add(GAME, ComponentType::Joint3DComponent);
+        ActionPreviewSnapshot preview;
+        preview.add(sceneId, scene->scene, GAME);
+
+        ASSERT_TRUE(history()->addCommand(ReflectedValueCmd::insert(project.get(), sceneId, {GAME}, ComponentType::Joint3DComponent, "pathPoints",
+                                                                    0, vector3(Vector3(1, 2, 3)))));
+        EXPECT_TRUE(preview.takeChanged()) << "the preview heard the write";
+        preview.restore(scene->scene);   // what a seek of the preview does
+        ASSERT_EQ(path(GAME).size(), 1u) << "the element added during the preview survives its seek";
+        EXPECT_EQ(path(GAME)[0], Vector3(1, 2, 3));
+
+        preview.restore(scene->scene);
+        preview.clear();                 // the preview stops
+        ASSERT_TRUE(history()->undo());
+        EXPECT_TRUE(path(GAME).empty()) << "its undo goes back to the authored value";
     }
 
 }

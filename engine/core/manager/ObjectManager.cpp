@@ -198,6 +198,12 @@ Entity instantiatePrefab(const PrefabAsset& prefab, Scene* scene, std::vector<En
     return root;
 }
 
+// The copy's init / onEnable may have destroyed it at once (destroyImmediate): the caller then
+// gets no GameObject (Unity's fake null), not the id of a dead one
+Entity liveRoot(Scene* scene, Entity root) {
+    return scene->isEntityCreated(root) ? root : NULL_ENTITY;
+}
+
 Entity cloneObject(Scene* scene, Entity original, Scene* target, std::vector<Entity>& created) {
     if (!scene || original == NULL_ENTITY || !scene->isEntityCreated(original)) {
         Log::error("Instantiate: the GameObject to copy does not exist");
@@ -255,7 +261,7 @@ Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, Entit
     if (AudioMarkers::isEnabled()) AudioMarkers::spawn(scene, root, prefab.getPath(), prefab.getGuid());
 #endif
     initializeScripts(scene, created);
-    return root;
+    return liveRoot(scene, root);
 }
 
 Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, const Vector3& position, const Quaternion& rotation, Entity parent) {
@@ -271,7 +277,7 @@ Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, const
     if (AudioMarkers::isEnabled()) AudioMarkers::spawn(scene, root, prefab.getPath(), prefab.getGuid());
 #endif
     initializeScripts(scene, created);
-    return root;
+    return liveRoot(scene, root);
 }
 
 Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetScene, Entity parent, bool worldSpace) {
@@ -295,7 +301,7 @@ Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetSc
     if (AudioMarkers::isEnabled()) AudioMarkers::spawn(target, root, "", "");
 #endif
     initializeScripts(target, created);
-    return root;
+    return liveRoot(target, root);
 }
 
 Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetScene, const Vector3& position, const Quaternion& rotation, Entity parent) {
@@ -311,7 +317,7 @@ Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetSc
     if (AudioMarkers::isEnabled()) AudioMarkers::spawn(target, root, "", "");
 #endif
     initializeScripts(target, created);
-    return root;
+    return liveRoot(target, root);
 }
 
 Scene* ObjectManager::getActiveScene() {

@@ -36,6 +36,12 @@ namespace{
         bool removed = false;
     };
 
+    struct ComponentEntry{
+        ClipRecordHooks::Id id = 0;
+        ComponentWriteListener listener;
+        bool removed = false;
+    };
+
     struct PreviewEntry{
         ClipRecordHooks::Id id = 0;
         ClipRecordHooks::PreviewQuery query;
@@ -50,6 +56,8 @@ namespace{
         std::vector<std::shared_ptr<ChannelEntry>> after;
         std::vector<std::shared_ptr<PropertyEntry>> beforeProperty;
         std::vector<std::shared_ptr<PropertyEntry>> afterProperty;
+        std::vector<std::shared_ptr<ComponentEntry>> beforeComponent;
+        std::vector<std::shared_ptr<ComponentEntry>> afterComponent;
         uint64_t dragSerial = 0;
         std::string dragKey;
         // T3c: the open gesture of each RecordSource
@@ -253,6 +261,7 @@ void ClipRecordHooks::removeChannelWriteListener(Id id){
     if (id == 0) return;
     Registry& reg = registry();
     if (removeFrom(reg.before, id) || removeFrom(reg.after, id) || removeFrom(reg.beforeProperty, id) || removeFrom(reg.afterProperty, id)) return;
+    if (removeFrom(reg.beforeComponent, id) || removeFrom(reg.afterComponent, id)) return;
     removeFrom(reg.previews, id);
 }
 
@@ -351,7 +360,36 @@ std::vector<ClipChannel> ClipRecordHooks::channelsOf(ComponentType type, const s
     return {};
 }
 
+namespace{
+    void notifyComponent(const std::vector<std::shared_ptr<ComponentEntry>>& list, uint32_t sceneId, Entity entity,
+                         ComponentType type, const std::string& property){
+        if (list.empty()) return;
+        const std::vector<std::shared_ptr<ComponentEntry>> copy = list;
+        for (const std::shared_ptr<ComponentEntry>& entry : copy){
+            if (!entry->removed && entry->listener) entry->listener(sceneId, entity, type, property);
+        }
+    }
+
+    ClipRecordHooks::Id addComponentEntry(std::vector<std::shared_ptr<ComponentEntry>>& list, ComponentWriteListener listener){
+        Registry& reg = registry();
+        auto entry = std::make_shared<ComponentEntry>();
+        entry->id = reg.nextId++;
+        entry->listener = std::move(listener);
+        list.push_back(entry);
+        return entry->id;
+    }
+}
+
+ClipRecordHooks::Id ClipRecordHooks::addBeforeComponentWrite(ComponentWriteListener listener){
+    return addComponentEntry(registry().beforeComponent, std::move(listener));
+}
+
+ClipRecordHooks::Id ClipRecordHooks::addAfterComponentWrite(ComponentWriteListener listener){
+    return addComponentEntry(registry().afterComponent, std::move(listener));
+}
+
 void ClipRecordHooks::beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property){
+    notifyComponent(registry().beforeComponent, sceneId, entity, type, property);
     for (ClipChannel channel : channelsOf(type, property)){
         if (channel != ClipChannel::Property){
             beforeChannelWrite(sceneId, entity, channel);
@@ -371,6 +409,7 @@ void ClipRecordHooks::afterComponentWrite(uint32_t sceneId, Entity entity, Compo
         ClipPropertyKey key;
         if (componentWriteKey(type, property, key)) afterPropertyWrite(sceneId, entity, key);
     }
+    notifyComponent(registry().afterComponent, sceneId, entity, type, property);
 }
 
 // ---- record source helpers (T3c) ----

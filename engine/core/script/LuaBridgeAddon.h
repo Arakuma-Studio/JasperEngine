@@ -34,6 +34,7 @@
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/UISelectable.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
@@ -162,7 +163,6 @@ namespace luabridge
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
-    template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
@@ -235,6 +235,7 @@ namespace luabridge
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
+    template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
     template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
     template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
@@ -266,6 +267,11 @@ namespace luabridge
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
+    // ui-components: the Button's Selectable enums
+    template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
+    template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
+    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
     template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};

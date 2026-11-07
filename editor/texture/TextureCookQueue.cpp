@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureCookQueue.h"
+#include "export/ExportFiles.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -88,8 +89,13 @@ TextureProjectSettings editor::textureProjectSettingsOf(const Project& project){
 std::vector<std::string> editor::projectTextureSources(const Project& project, bool cookableOnly){
     std::vector<std::string> paths;
     const fs::path assets = project.getAssetsPath().lexically_normal();
+    // an earlier export left in the project ships nothing, its cooks neither (Exporter: W-EXPORT-FOLDER-SKIPPED)
+    exportfiles::ExportFolderFinder exports(project.getProjectPath(), project.getName().empty() ? "jasperengine-project"
+                                                                                                 : project.getLibName());
     project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info){
         if (info.type != AssetType::Texture)
+            return;
+        if (exports.contains(project.getProjectPath() / info.path))
             return;
         // an .exr has an identity, but no export ever cooked one, and a file nothing loads must
         // not start costing an old project cook time, or stop its export when it cannot be read
