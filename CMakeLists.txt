@@ -1452,6 +1452,9 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 
+# the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
 set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES

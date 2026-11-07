@@ -765,6 +765,39 @@ CASES = [
                    "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_aseprite_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
+                         "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
+                         "animation frame by frame; the editor imports .aseprite files itself (S44).",
+        "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
+                         "description: 'sheet (.aseprite or texture, with its tag clips)'",
+        "source": "S44 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
+        "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
+                "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
+                "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
+                {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
+                 "tags": ["idle", "walk"], "outputs": {"clips": [
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
+            {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
+                "lists 2 tag clip(s), Default Clip idle.",
+                {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
+                 "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
+                                     {"tool": "set_sprite_animation"}],
+                   "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
+        "max_turns": 10,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {

@@ -146,6 +146,10 @@
 #include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
+#include "command/CommandHistory.h"
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -9127,6 +9131,86 @@ void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProj
     endTable();
 }
 
+void editor::InspectorWindow::drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+    namespace ase = pixelart::aseprite;
+    const SpriteComponent& sprite = sceneProject->scene->getComponent<SpriteComponent>(entity);
+    std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+    const bool isAseprite = SpriteSheetPool::isAsepritePath(sprite.sheet.path);
+    separatorText("Sprite Sheet");
+    if (!sheet || sheet->frames.empty()) {
+        const bool importing = isAseprite && ase::AsepriteImporter::get().isPending(sprite.sheet.path);
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", importing ? "Importing..." : "The sheet has no frames (see the Console).");
+        return;
+    }
+    const int count = sheet->frameCount();
+    const int current = std::clamp(sprite.frame, 0, count - 1);
+    beginTable(cpType, getLabelSize("Frame"), "sheet_sprite");
+    propertyHeader("Frame");
+    const std::string label = std::to_string(current) + ": " + sheet->frames[(size_t)current].name;
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo("##sheet_frame", label.c_str())) {
+        for (int i = 0; i < count; i++) {
+            const std::string item = std::to_string(i) + ": " + sheet->frames[(size_t)i].name;
+            if (ImGui::Selectable(item.c_str(), i == current) && i != current) {
+                std::vector<Command*> commands;
+                commands.push_back(new PropertyCmd<int>(project, sceneProject->id, entity, cpType, "frame", i));
+                commands.push_back(new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "frameName", sheet->frames[(size_t)i].name));
+                ase::runAsOneStep(sceneProject->id, std::move(commands));
+            }
+        }
+        ImGui::EndCombo();
+    }
+    endTable();
+    ImGui::TextDisabled("%d frames, %d tags, %d slices", count, (int)sheet->tags.size(), (int)sheet->slices.size());
+
+    const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    if (isAseprite) {
+        if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Aseprite", ImVec2(half, 0))) {
+            ase::openInAsepriteOrFallback(project, {sprite.sheet.path}, true);
+        }
+        ImGui::SameLine();
+    }
+    ImGui::BeginDisabled(sheet->slices.empty());
+    if (ImGui::Button(ICON_FA_VECTOR_SQUARE " Create Colliders from Slices", ImVec2(isAseprite ? -FLT_MIN : half, 0))) {
+        std::vector<Command*> commands;
+        std::vector<std::string> names;
+        pixelart::PixelProblem problem;
+        if (!ase::sliceColliderCommands(project, sceneProject->id, entity, commands, names, problem)) {
+            Out::warning("Create Colliders from Slices: %s", problem.message.c_str());
+        } else if (ase::runAsOneStep(sceneProject->id, std::move(commands))) {
+            Out::info("Created %d slice collider(s) on \"%s\"", (int)names.size(), sceneProject->scene->getEntityName(entity).c_str());
+        }
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("A Rigidbody 2D collider per slice, following the slice's box on every frame (Is Trigger when its user data says sensor: true)");
+    }
+    const nlohmann::json& ud = sheet->userData;
+    const bool hasProperties = ud.is_object() && ud.contains("properties") && ud["properties"].is_object() && !ud["properties"].empty();
+    if (hasProperties) {
+        if (ImGui::Button(ICON_FA_LIST_CHECK " Apply Sprite Properties", ImVec2(-FLT_MIN, 0))) {
+            CommandHistory* history = CommandHandle::get(sceneProject->id);
+            const size_t mark = history->mark();
+            std::vector<std::string> applied;
+            std::vector<pixelart::PixelProblem> problems;
+            const bool ok = ase::applySpriteProperties(project, sceneProject->id, entity, *sheet, [history](Command* command) {
+                command->setNoMerge();
+                return history->addCommand(command);
+            }, applied, problems);
+            if (ok) {
+                history->groupSince(mark);
+            } else {
+                while (history->position() > mark && history->canUndo() && history->undo()) {}
+            }
+            for (const pixelart::PixelProblem& p : problems) Out::warning("Apply Sprite Properties: %s: %s", p.field.c_str(), p.message.c_str());
+            if (ok) Out::info("Applied %d sprite propert%s", (int)applied.size(), applied.size() == 1 ? "y" : "ies");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Sets the Aseprite file's user properties named <component>.<property> (light2d.intensity...) on this GameObject");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
@@ -9139,7 +9223,11 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     RowSettings settingsPivot;
     settingsPivot.enumEntries = &entriesPivotPreset;
 
+    RowSettings settingsSheet;
+    settingsSheet.help = "An .aseprite file or a texture: the Sprite's frames come from its import (0 width and height: the frame's size)";
+
     beginTable(cpType, getLabelSize("Texture Scale"));
+    propertyRow(RowPropertyType::Asset, cpType, "sheet", "Sprite Sheet", sceneProject, entities, settingsSheet);
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
@@ -9147,6 +9235,12 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
 
     endTable();
+
+    // a sheet sprite (S44): its frame by name, and what its .aseprite file brings
+    if (entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty()) {
+        drawSheetSpriteSection(cpType, sceneProject, entities[0]);
+        return;
+    }
 
     // --- Frames Rect Section ---
     if (entities.size() == 1) {
@@ -13228,7 +13322,12 @@ void editor::InspectorWindow::show(){
         if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
         }
-        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        // .aseprite files: the Aseprite Importer (S44 R30)
+        if (!drewAssets) {
+            if (!asepriteImporter) asepriteImporter = std::make_unique<AsepriteImporterView>(project);
+            drewAssets = asepriteImporter->draw(project->getInspectedAssets());
+        }
         if (assetsLocked) ImGui::EndDisabled();
         if (drewAssets) {
             ImGui::End();

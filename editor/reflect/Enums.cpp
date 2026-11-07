@@ -616,6 +616,7 @@ namespace {
         {v(PivotPreset::BOTTOM_LEFT), "bottom_left", "Bottom Left", "PivotPreset::BOTTOM_LEFT"},
         {v(PivotPreset::TOP_RIGHT), "top_right", "Top Right", "PivotPreset::TOP_RIGHT"},
         {v(PivotPreset::BOTTOM_RIGHT), "bottom_right", "Bottom Right", "PivotPreset::BOTTOM_RIGHT"},
+        {v(PivotPreset::FRAME), "frame", "From Frame", "PivotPreset::FRAME"},
     };
 
     constexpr EnumItem kPrimitiveTypeItems[] = {
