@@ -33,6 +33,23 @@ using namespace jasperengine::voxel;
 
 namespace {
 
+    class BandedSphere final : public BaseSource {
+    public:
+        void evaluate(const Int3& origin, int spacing, int16_t* sdf, uint16_t* material) const override {
+            for (int z = 0; z < BLOCK_SIZE; z++) {
+                for (int y = 0; y < BLOCK_SIZE; y++) {
+                    for (int x = 0; x < BLOCK_SIZE; x++) {
+                        const int px = origin.x + x * spacing, py = origin.y + y * spacing, pz = origin.z + z * spacing;
+                        const double dx = px - 32.0, dy = py - 32.0, dz = pz - 32.0;
+                        const int index = sampleIndex(x, y, z);
+                        sdf[index] = encodeSdf(std::sqrt(dx * dx + dy * dy + dz * dz) - 22.0);
+                        material[index] = packMaterial((px / 4) % 4, (pz / 4 + 2) % 4, 110);
+                    }
+                }
+            }
+        }
+    };
+
     CompareOptions backendOptions() {
         CompareOptions options;
         if (std::strcmp(HeadlessContext::getBackendName(), "glcore") != 0) {
@@ -68,9 +85,10 @@ namespace {
             Engine::setPinnedShaderTime(-1.0);
         }
 
-        // Four slots of four textures, in stripes a few voxels wide on the side the camera sees: cells with
-        // 3 and 4 slots are on screen, which is what the tiers treat differently (R51), and the maps go
-        // through the array and the projections rather than a white fallback
+        // Four slots of four textures over a sphere, the first slot in bands along x and the second along
+        // z, so the corners of a cell where the bands cross hold all four: what the tiers treat
+        // differently (High reads 4, Medium 3, Low 2: R51). The maps go through the array and the
+        // projections rather than a white fallback.
         Entity paintedSphere(VoxelQuality quality, const std::string& name) {
             GeneratorDesc generator;
             asset = VoxelAssets::create(name, []{
@@ -79,24 +97,7 @@ namespace {
                 desc.levels = 1;
                 return desc;
             }(), generator, 4);
-            std::vector<EditOp> ops;
-            EditOp sphere;
-            sphere.kind = EditKind::Add;
-            sphere.shape.center = Vec3d{32.0, 32.0, 32.0};
-            sphere.shape.radius = 22.0;
-            sphere.material = 0;
-            ops.push_back(sphere);
-            for (int i = 0; i < 12; i++) {
-                EditOp stripe;
-                stripe.kind = EditKind::Paint;
-                stripe.shape.kind = ShapeKind::Box;
-                stripe.shape.center = Vec3d{12.0 + i * 3.5, 32.0, 50.0};
-                stripe.shape.halfExtents = Vec3d{1.5, 26.0, 14.0};
-                stripe.material = 1 + i % 3;
-                stripe.weight = 0.6;
-                ops.push_back(stripe);
-            }
-            EXPECT_TRUE(applyEdit(*asset->store, ops).ok);
+            asset->store->setBase(std::make_shared<BandedSphere>());
             const Entity entity = scene.createEntity();
             scene.addComponent<Transform>(entity, {});
             VoxelVolumeComponent component;
