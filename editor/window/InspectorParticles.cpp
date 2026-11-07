@@ -127,12 +127,13 @@ namespace {
         ImGui::TableNextColumn();
         if (indent > 0) ImGui::Indent(indentWidth() * indent);
         const bool marked = ui.nonDefault.count(path) > 0;
+        // the bar inside the cell (the table clips what is left of it), the label after it
+        const float bar = editor::Theme::dpi(2.0f);
         if (marked) {
             const ImVec2 at = ImGui::GetCursorScreenPos();
-            const float bar = editor::Theme::dpi(2.0f);
-            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(at.x - bar * 2.5f, at.y), ImVec2(at.x - bar * 1.5f, at.y + ImGui::GetFrameHeight()),
-                                                      ImGui::GetColorU32(ImGuiCol_CheckMark));
+            ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + bar, at.y + ImGui::GetFrameHeight()), ImGui::GetColorU32(ImGuiCol_CheckMark));
         }
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + bar * 3.0f);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(f.label);
         if (ImGui::IsItemHovered()) {

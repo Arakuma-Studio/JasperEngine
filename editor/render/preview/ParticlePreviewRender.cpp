@@ -7,7 +7,6 @@
 #include "Engine.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/SkyboxComponent.h"
-#include "component/Transform.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
 

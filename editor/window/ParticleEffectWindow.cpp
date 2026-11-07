@@ -11,7 +11,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "component/ParticleSystemComponent.h"
-#include "component/Transform.h"
+#include "object/GameObject.h"
 #include "external/IconsFontAwesome6.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -28,6 +28,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <optional>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -221,10 +222,8 @@ bool ParticleEffectWindow::collectNodes() {
                 const ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity);
                 if (!particles) continue;
                 bool inside = false;
-                for (Entity e = entity; e != NULL_ENTITY && !inside;) {
-                    inside = e == subtreeRoot;
-                    const Transform* transform = scene->findComponent<Transform>(e);
-                    e = transform ? transform->parent : NULL_ENTITY;
+                for (std::optional<GameObject> object = GameObject(scene, entity); object && !inside; object = object->getParent()) {
+                    inside = object->getEntity() == subtreeRoot;
                 }
                 if (!inside) continue;
                 const ParticleEffectDocument* document = &particles->inlineEffect;
@@ -286,13 +285,13 @@ uint64_t ParticleEffectWindow::sourceSignature() const {
         }
         // a subtree system's place under the root
         if (n.entity != NULL_ENTITY) {
-            if (SceneProject* sceneProject = project->getScene(n.sceneId)) {
-                if (const Transform* transform = sceneProject->scene->findComponent<Transform>(n.entity)) {
-                    const float values[] = {transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z,
-                                            transform->worldRotation.w, transform->worldRotation.x, transform->worldRotation.y,
-                                            transform->worldRotation.z, transform->worldScale.x, transform->worldScale.y, transform->worldScale.z};
-                    for (float v : values) h = mixHash(h, std::hash<float>()(v));
-                }
+            SceneProject* sceneProject = project->getScene(n.sceneId);
+            if (sceneProject && sceneProject->scene && sceneProject->scene->isEntityCreated(n.entity)) {
+                const GameObject object(sceneProject->scene, n.entity);
+                const Vector3 position = object.getWorldPosition(), scale = object.getWorldScale();
+                const Quaternion rotation = object.getWorldRotation();
+                const float values[] = {position.x, position.y, position.z, rotation.w, rotation.x, rotation.y, rotation.z, scale.x, scale.y, scale.z};
+                for (float v : values) h = mixHash(h, std::hash<float>()(v));
             }
         }
     }
@@ -319,29 +318,24 @@ void ParticleEffectWindow::restage() {
     }
 
     std::vector<ParticlePreviewRender::StageSystem> list;
-    const Transform* rootTransform = nullptr;
-    if (subtreeRoot != NULL_ENTITY) {
-        if (SceneProject* sceneProject = project->getScene(subtreeScene)) rootTransform = sceneProject->scene->findComponent<Transform>(subtreeRoot);
-    }
+    SceneProject* subtreeProject = subtreeRoot != NULL_ENTITY ? project->getScene(subtreeScene) : nullptr;
+    Scene* subtreeScenePtr = subtreeProject ? subtreeProject->scene : nullptr;
     for (size_t i = 0; i < nodes.size(); i++) {
         if (nodes[i].depth != 0) continue;
         ParticlePreviewRender::StageSystem system;
         system.name = nodes[i].name;
         system.effect = stageKey((int)i);
-        const Transform* transform = nullptr;
-        if (nodes[i].entity != NULL_ENTITY) {
-            if (SceneProject* sceneProject = project->getScene(nodes[i].sceneId)) transform = sceneProject->scene->findComponent<Transform>(nodes[i].entity);
-        }
-        if (transform && rootTransform) {
+        if (subtreeScenePtr && nodes[i].entity != NULL_ENTITY && subtreeScenePtr->isEntityCreated(nodes[i].entity) &&
+            subtreeScenePtr->isEntityCreated(subtreeRoot)) {
             // the place under the subtree's root (the root itself at the stage's centre)
-            const Quaternion inverse = rootTransform->worldRotation.inverse();
-            const Vector3 offset = inverse * (transform->worldPosition - rootTransform->worldPosition);
-            const Vector3 rootScale = rootTransform->worldScale;
+            const GameObject root(subtreeScenePtr, subtreeRoot), object(subtreeScenePtr, nodes[i].entity);
+            const Quaternion inverse = root.getWorldRotation().inverse();
+            const Vector3 offset = inverse * (object.getWorldPosition() - root.getWorldPosition());
+            const Vector3 rootScale = root.getWorldScale(), scale = object.getWorldScale();
             auto divide = [](float a, float b) { return std::fabs(b) > 1e-6f ? a / b : a; };
             system.position = Vector3(divide(offset.x, rootScale.x), divide(offset.y, rootScale.y), divide(offset.z, rootScale.z));
-            system.rotation = inverse * transform->worldRotation;
-            system.scale = Vector3(divide(transform->worldScale.x, rootScale.x), divide(transform->worldScale.y, rootScale.y),
-                                   divide(transform->worldScale.z, rootScale.z));
+            system.rotation = inverse * object.getWorldRotation();
+            system.scale = Vector3(divide(scale.x, rootScale.x), divide(scale.y, rootScale.y), divide(scale.z, rootScale.z));
         }
         list.push_back(system);
     }
