@@ -1463,8 +1463,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         scene->setEntityName(1043, "SpriteComponent");
 
         // Entity components initialization
-        sprite.pixelsPerUnit = 6.600000f;
-        sprite.pixelRotation = PixelRotation::ON_GRID;
         SpriteComponent sprite;
         sprite.width = 0;
         sprite.height = 0;
@@ -1472,6 +1470,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         sprite.flipY = true;
         sprite.pivotPreset = PivotPreset::BOTTOM_RIGHT;
         sprite.textureScaleFactor = 8.600000f;
+        sprite.pixelsPerUnit = 6.600000f;
+        sprite.pixelRotation = PixelRotation::ON_GRID;
         sprite.enabled = false;
         scene->addComponent<SpriteComponent>(1043, sprite);
 
@@ -1566,7 +1566,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         scene->setEntityName(1046, "TilemapComponent");
 
         // Entity components initialization
-        tilemap.pixelsPerUnit = 5.600000f;
         auto tilemapStorage = std::make_unique<TilemapComponent>();
         TilemapComponent& tilemap = *tilemapStorage;
         tilemap.width = 0;
@@ -1574,6 +1573,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         tilemap.automaticFlipY = false;
         tilemap.flipY = true;
         tilemap.textureScaleFactor = 4.200000f;
+        tilemap.pixelsPerUnit = 5.600000f;
         tilemap.reserveTiles = 10;
         tilemap.enabled = false;
         scene->addComponent<TilemapComponent>(1046, std::move(*tilemapStorage));
@@ -3151,6 +3151,13 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 
         WaterWakeComponent waterWake;
         waterWake.enabled = false;
+        waterWake.foam = 1.500000f;
+        waterWake.waves = 0.500000f;
+        waterWake.width = 2.500000f;
+        waterWake.length = 6.500000f;
+        scene->addComponent<WaterWakeComponent>(1094, waterWake);
+    }
+
     {
         // Entity 1095 (PixelPerfectCameraComponent)
         scene->setEntityName(1095, "PixelPerfectCameraComponent");
@@ -3179,13 +3186,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         pixelPerfectCamera.letterboxColor = Vector4(0.633333f, 0.433333f, 0.555556f, 1.000000f);
         pixelPerfectCamera.enabled = false;
         scene->addComponent<PixelPerfectCameraComponent>(1095, pixelPerfectCamera);
-    }
-
-        waterWake.foam = 1.500000f;
-        waterWake.waves = 0.500000f;
-        waterWake.width = 2.500000f;
-        waterWake.length = 6.500000f;
-        scene->addComponent<WaterWakeComponent>(1094, waterWake);
     }
 
     // Default Camera 1
