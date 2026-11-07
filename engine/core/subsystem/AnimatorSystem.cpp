@@ -197,7 +197,7 @@ bool AnimatorSystem::loadController(Entity entity, AnimatorComponent& component,
     return true;
 }
 
-void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind){
+void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loadingAny){
     for (size_t i = 0; i < instance.clips.size(); i++){
         anim::AnimatorClipSlot& slot = instance.clips[i];
         if (slot.path.empty()) continue;
@@ -207,7 +207,8 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
         if (!fetch) continue;
         bool loading = false;
         std::string error;
-        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error);
+        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error, animInCall);
+        loadingAny = loadingAny || loading;
         if (clip){
             const bool changed = clip != slot.clip;
             slot.clip = clip;
@@ -242,7 +243,7 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
     }
 }
 
-bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance){
+bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall){
     if (!instance.controller) return false;
     // a failed bind (another Animator owned an entity) is tried again once a second
     bool rebind = !instance.bound && (!instance.bindFailed || instance.clock >= instance.rebindRetry);
@@ -256,7 +257,11 @@ bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, an
         if (model->needUpdateModel) return false;
         if (model->loadedFilename != entry.second) rebind = true;
     }
-    pollClips(entity, component, instance, rebind);
+    bool clipsLoading = false;
+    pollClips(entity, component, instance, animInCall, rebind, clipsLoading);
+    // a first bind waits for the clips on the thread pool: the states' time starts with all of
+    // them, as when they load here (a bound Animator plays on, its new clips bind when they come)
+    if (!instance.bound && clipsLoading) return false;
     if (instance.bound && scene->hierarchyRevision() != instance.hierarchyRevision){
         if (!instance.rig.stillValid(scene)){
             rebind = true;
@@ -363,10 +368,12 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
         if (c.type == AnimatorIKType::FootIK){
             run.hit = false;
 #ifdef JASPERENGINE_PHYSICS_3D
-            if (run.hasFoot && c.enabled){
+            // culled (Cull Update Transforms): no pose, so no IK reads the ground
+            if (run.hasFoot && c.enabled && context.sample){
                 const Vector3 up = context.rootWorldRotation * Vector3(0, 1, 0);
                 const Vector3 origin = run.footWorld + up * c.rayStart;
                 RayReturn hit = Physics::raycast(scene, origin, up * -1.0f, c.rayStart + c.rayLength, c.layerMask);
+                stats.footRaycasts++;
                 if (hit.hit){
                     run.hit = true;
                     run.hitPoint = context.rootWorldInverse * hit.point;
@@ -381,7 +388,10 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
 }
 
 bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float dt, Job& job){
-    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)) return false;
+    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)){
+        if (component.runtime) component.runtime->clearIKResults();
+        return false;
+    }
     if (!component.runtime) component.runtime = std::make_shared<anim::AnimatorInstance>();
     anim::AnimatorInstance& instance = *component.runtime;
     if (component.needsLoad || component.controller.path != instance.controllerPath || (revisionChanged && instance.controller &&
@@ -410,6 +420,7 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     job.context.dt = dt;
     job.context.sample = true;
     if (component.cullingMode != AnimatorCullingMode::AlwaysAnimate && !visible(instance)){
+        instance.clearIKResults();
         if (component.cullingMode == AnimatorCullingMode::CullCompletely){
             stats.culled++;
             return false;
@@ -903,7 +914,8 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
         return false;
     }
     revisionChanged = AnimationClipPool::revision() != clipRevision || AnimatorAssetPool::revision() != assetRevision;
-    if (!ensureBound(entity, *component, instance)){
+    // the caller reads the pose when this returns
+    if (!ensureBound(entity, *component, instance, true)){
         if (error) *error = instance.bindFailed ? "another Animator animates its bones" : "loading (models or clips)";
         return false;
     }

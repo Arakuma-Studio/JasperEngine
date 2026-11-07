@@ -145,6 +145,39 @@ the pelvis drops, the ankle meets the ground and turns to its slope) and **Foot 
 foot stays put). Bones are paths or humanoid slots (`left_hand`); targets are GameObjects, or set
 from scripts (`setIKTarget`). Each constraint has a weight and an optional weight parameter.
 
+- **Soften** (Two Bone, Foot IK, Foot Lock; 0 to 1, default 0): the part of the reach over which the
+  end eases toward full extension. At 0 the leg has a hard limit at 0.999 of its reach: just before
+  it the knee turns 2 to 3 degrees per mm of target, then it stops dead. Softened, the knee keeps
+  moving, and the end stops short of the target from that part of the reach on. Try 0.03. It is off
+  by default because it changes where feet land.
+- **Hinge Axis** (the same; default zero, auto): the middle bone's local axis it only bends about.
+  A positive turn straightens the joint, so the sign picks the side. A straight limb has no bend
+  plane of its own, and the axis gives it one; the bone's twist survives. Auto bends toward the
+  pole, else the current bend. An axis along a bone counts as auto. Under non-uniform scale on the
+  chain only the side is kept, and like auto the solve can stop short of the target (it is then
+  not reached).
+- **Twist** (the same; degrees): turns the chain about the line from its first bone to the target.
+- **Aim Offset** (Look At; default none): the eyes or the muzzle, from the last bone in its local
+  space: their forward ray is what ends on the target.
+
+**Look At** walks its bones from the first: each measures the turn again from where the ones before
+it left the head and takes its share of it (its weight over what the remaining bones weigh), and
+the last with a weight takes the rest. With the clamp out of the way and weight 1 the aim ends
+within 0.1 degree of the target, also on a chain that leans. The clamp applies to the last bone's
+turn from the animated pose.
+
+**Foot IK** puts the centre of the sole on the ground: on a slope the ankle stands higher than **Foot
+Height** (Foot Height / cos(slope)) because the foot turns to the slope, up to **Max Foot Angle**;
+on a steeper slope the foot stops turning and the centre of the sole stays on the plane. The foot
+keeps its animated rotation turned to the ground, whatever the knee's bend does to the shin. The
+height stops growing past the steeper of 60 degrees and Max Foot Angle. **Foot Lock** holds the
+ankle the same way: the foot keeps the rotation it came with, the animation's or Foot IK's.
+
+A script reads the outcome of the last solve with `isIKReached(name)`: the end within 1 mm of its
+target (a Look At: its aim within 0.1 degree, a Foot IK: on ground it found), measured on the final
+pose in world space, so a partial weight, a soft limit, a clamp or a target out of reach is not
+reached. It is false while a constraint does not solve: weight 0, disabled, culled.
+
 ## Humanoids and retargeting
 
 A model whose bones map to the 22 humanoid slots is a humanoid (the Animator's Avatar section
@@ -172,10 +205,20 @@ The Animator evaluates its characters in parallel (the job system), keeps poses 
 arrays and writes skin matrices directly. Lua-field and active tracks run on the main thread
 ([Order of a frame](#order-of-a-frame)): a clip that keys them on many characters costs main-thread
 time, a plain component value does not. **Culling Mode** Cull Update Transforms skips writing
-the pose of characters no camera sees (time, states, events and root motion go on); Cull
-Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
-attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
-per frame (see `docs/perf/animator.md`).
+the pose of characters no camera sees (time, states, events and root motion go on) and casts no
+Foot IK rays for them; Cull Completely stops them. A layer of weight 0 is not sampled: its states'
+time and events go on, and raising the weight shows the right pose in that frame (a running
+transition or montage on the layer is still sampled, so interrupting it blends from the right
+pose). **Write Bones: Exposed** writes only the bones listed (and bones with attachments) to their
+GameObjects: the skins still follow every bone. With `Engine.asyncLoading` on, `.anim` files of 64 KB
+and up parse on the thread pool where the platform has threads (smaller ones, and every one on the web
+without threads, in the call); an Animator's first bind waits for all its clips, so its time starts as
+it does without async loading, some frames later for a large clip. The
+budget: 200 humanoids per frame (see `docs/perf/animator.md`).
+
+Under Exposed, the Scene view's skeleton overlay draws the evaluated pose, so bones follow the mesh even though
+their Transforms stay at rest; the Inspector says `Not written to this GameObject (Write Bones: Exposed)` on such a
+bone. A bone whose parent is no bone draws as a root marker.
 
 What it costs right now: Window > Analysis > Profiler shows the Animator under the **Animation**
 band of CPU Usage, and its monitors `Animators`, `Animators sampled`, `Animators culled`,

@@ -3949,6 +3949,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector3&, float>(&Animator::setIKTarget))
         .addFunction("clearIKTarget", &Animator::clearIKTarget)
         .addFunction("setIKWeight", &Animator::setIKWeight)
+        .addFunction("isIKReached", &Animator::isIKReached)
+        .addFunction("setIKSoften", &Animator::setIKSoften)
+        .addFunction("setIKHingeAxis", &Animator::setIKHingeAxis)
+        .addFunction("setIKTwist", &Animator::setIKTwist)
+        .addFunction("setIKAimOffset", &Animator::setIKAimOffset)
         .addFunction("setLookAt",
             luabridge::overload<const Vector3&>(&Animator::setLookAt),
             luabridge::overload<const Vector3&, float>(&Animator::setLookAt))

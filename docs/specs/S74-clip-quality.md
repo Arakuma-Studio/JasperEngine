@@ -300,6 +300,82 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 - **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
 - **R8, where the rows drain.** R8 says "during the Animator's finalize". The waiting rows drain in the Finalize step but before any Animator's own finalize, in two passes over all Animators (values, then the rows that run callbacks). Inside each Animator's finalize, an event handler of the first Animator would read last frame's Lua fields of the second, which `main` did not do on one thread. Order documented in `docs/animator.md`, "Order of a frame".
 - **R8, which rows stay in the wave.** Decided per row, from an allow-list (`AnimatableProperty::workerSafe`, off by default), not only by "two Animators on one row": `sprite.frame` (may `Texture::load`), `rigidbody2d.enabled` (the Box2D world) and shader parameters and uniforms (the manifest cache and its lock) always wait for the main thread. A workerSafe row waits too when another Animator writes its entity in any way (bone, channel, skin, property row, its Animator component), the whole entity rather than only the same row, because dirty flags and `Transform::needUpdate` are shared within one.
+
+Step 2 (stream `hot`):
+
+- **R10, clip heap bytes.** The `*_heap_bytes` rows read `AnimationClip::memoryBytes()` (R4), the one producer of that number.
+- **R10, real clips.** Real clips cannot be committed, so `--clip <file.anim>` adds them as `real_*` rows on the machine that has them; the always-present dense and reduced rows are R42's generated shapes. The reduced real clips are an earlier Python port's 1 mm output, not `ClipReduction` (step 3).
+- **R11, wasm.** Measured under node (V8) in the web image, one thread, not in a browser (the web gate's Chrome was not used). There is no run of the old sampler on wasm, so R43 is a native result. `-msimd128` covers the pose kernels only, as in shipped web builds; the sampler is scalar wasm in both variants.
+- **R14.** A layer of weight 0 is still sampled while a transition or montage runs on it: an interruption can freeze that pose at any time. One known difference from sampling always: an interruption with no output (two transitions started before an evaluation, weight 0, no transition before them) samples the last skipped state with the parameters of the next evaluation, so a blend tree whose parameters changed in that one frame starts from slightly different leaf weights. It shows only if the weight also comes up during that blend.
+- **R14, root motion.** A layer of weight 0 no longer samples its root, so with no other layer giving root motion `output.hasRootMotion` is false where it was true with a zero delta. Nothing moves differently.
+- **R16, small files.** A `.anim` under 64 KB parses in the call even where threads exist. A job starts a clip at least one frame late, a varying number of frames under load, and `test_upgrade_from_main.py` (R60) failed on exactly that with a 526 B clip: its beacon's timeline moved one frame against the rest of the transcript. Under 64 KB the parse is a few milliseconds (about 50 ms per MB). A larger clip's first play can still start frames later than on main, its own timeline intact: that is R16's trade, and the upgrade fixture has no such clip.
+- **R16.** The worker path applies in async loading (`Engine::isAsyncLoading`, on in the editor and exported games), as for sub-clips. Without it, `.anim` still loads in the call. `AnimatorSystem::preview` and `AnimationPlayer::sample` load a `.anim` in the call in every mode, through `pollOrLoad(..., animInCall)`, because their callers read the pose when they return. An Animator's first bind now waits for all its clips, for sub-clips too, so time starts as on the synchronous path; this also changes async sub-clip loads, which used to start the states' time at the first bind. AC5's limit on test edits is about the tiered slerp and is unaffected: only `ValueSamplersMatchTheFormerActionSystemExpressions`'s reference changed for that.
+- **R43 and full clips.** R43 holds on its micro (1.86 x on the merged tree). Full clips gain -2 % to -17 % in sampling and a segment over 30 degrees costs about 25 % more per call: `docs/perf/animator.md` has both.
+
+Step 5 solvers (stream `solvers`):
+
+- **R33, method.** The parents do not use ozz's sphere construction: on an upright chain its shortest arc
+  has a tilted axis, which rolls the spine and breaks the shares of R33's "keep the engine's weights". Each
+  parent takes its share of the arc the head needs now; only the last weighted bone uses the construction,
+  and that is what makes the aim exact.
+- **R34, foot rotation.** The sole cannot stay on the plane if the foot inherits the shin's turn from a
+  bent knee, which `rotateBoneInRigSpace` on the solved pose did: 38 degrees off the slope in the red run at 30
+  degrees. The foot now takes its animated rig rotation turned to the ground, through the two-bone's
+  `endRotation`. An R35 change; the release notes state it.
+- **R34, Foot Lock.** R34 names Foot IK only. A lock on the same leg runs after it and turned the foot with the
+  shin again: 1.65 degrees off the slope in `SoleStaysOnTheSlopeUnderFootLock`, and 3.97 degrees on flat ground in
+  `FootLockKeepsTheAnimatedFootRotation`, both red with Foot IK already fixed. The centre of the sole stayed within
+  1 mm there, so R34's number held and the orientation did not. It is the same defect, so it gets the same
+  fix, and it extends R35's no opt-in to Foot Lock's foot rotation, on flat ground too; the release notes state it.
+- **R32, hinge under non-uniform scale.** The closed form is exact on the first pass, and uniform scale ends
+  there. Repeating it under non-uniform scale oscillated (1.08 m off in the first green run), so the later passes
+  use the auto step from the side it chose, and only the side is kept. The auto step itself can stop short
+  under strong non-uniform scale; a planar model of it, not a run, puts that at up to 1.9 m at scale 2 to 3 on
+  a parent. That predates S74 and is not changed here; `reached` reports the miss.
+- **R34, range.** The centre of the sole stays on the plane past the clamp too (`h cos(slope - clamp) / cos(slope)`),
+  not only up to it. The height stops growing past the steeper of 60 degrees and the clamp, so a wall hit
+  cannot throw a leg.
+- **R32, scope.** `soften`, `hingeAxis` and `twist` also apply to Foot IK and Foot Lock legs, since both are
+  two-bone solves and the near-straight knee is theirs too. All default to off.
+- **R32-R33, Inspector rows.** The fields carry `visibleIf` (Soften, Hinge Axis, Twist on legs; Aim Offset on Look At),
+  but the default Inspector draws every member of a list element (`drawDefaultArray`), so each constraint shows all of
+  them, as it already showed Bone Weights on a Two Bone. `test_animator_ik.py` checks the labels, not the per-type
+  hiding. Out-of-range values through `set_properties` are stored as given (a `Clamped` field is not refused); the
+  solver and Lua's setters clamp `soften` to 0..1.
+- **R57 and the brief's MCP path.** A controller holds no constraints, so `edit_animator_controller` has no
+  field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
+  fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so
+  the fields are `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`.
+
+- **D3, the field table:** `kClipReportFields` holds what `clipReportJson` and `clipOptimizeJson` print, each row with the
+  section it lives in, and more keys than D3's list (`reference`, `within_tolerance`, `joints`, ...), since the gtest holds the table and the
+  JSON equal. Reach Error, Pelvis Offset, Lock Drift and Slide are `makeSnapshot`'s (R36), not a clip's: they join with that stream.
+- **R24, `optimize`:** the block also has `source` (`"assets/anim/walk.anim"`, `"<model>#<clip>"`), what `source_sha1` is the hash of:
+  `anim-optimize-stale` cannot find it otherwise for an `.anim` source. An in-place reduction keeps the block it had, or names none:
+  the file it replaced is gone.
+- **R25, `anim-rotation-flip`:** `normalize` flips signs on slerp tracks, so a parsed clip can never hold D's negative dot. It fires on the signs
+  the parser saw (`ClipParseResult::rotationSignFlips`), on Hermite tracks, and on keys more than 160 degrees apart, where the short way round
+  is a coin toss.
+- **R22, measured limit:** every joint answers to its own limit (`clipJointLimits`), a foot's half included, not only the clip's max. An
+  override above `tolerance_mm` can therefore put the clip's max over it, on purpose; `optimize_animation`'s re-read bound applies without `joints`.
+- **D6, `compare_to`:** a clip only, as D6 says; the plan's `"source"` needs step 6's cook. Without `limits.error_mm` the limit is the clip's own record,
+  and with neither `within_tolerance` is null and nothing fails.
+- **D6, `root`:** switches that GameObject's Animation Player entries of the source to the new file in one scene undo step, the plan's meaning.
+- **`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed`, `limits.foot_slide_mm`, `limits.pop_mm`:** in the schema now, answering
+  `not_available` until stream `debug` flips their row in `kChecks`. Nothing about the schema changes then.
+- **Calibration (risks table), JasperArcade-Ported through the real importer, 69 clips of 25 models:** at 1 mm the median
+  key ratio is 1.19x and the median `runtime_bytes` ratio 1.03x (0.96x to 1.90x); 7 clips grow, since tracks that lose
+  different keys stop sharing key times. Every measured max is within 1 mm (worst 0.99). R50's gate is not met. Loop Match's
+  median is 6.6 mm (p90 well over 10 mm, all on Once clips, which get no finding); `anim-loop-seam` stays at 10 mm, on Loop
+  clips only. No clip drifts: the in-place root speed is under 0.02 m/s at p90, so the 0.25 m/s in-place threshold holds.
+- **R53, core budget:** `get_asset_info`'s `skeleton` has no description and its text lists no result fields, so the always-listed
+  group stays within 99,000; `get_model_info`'s `bones[i].parent` is in the guide, not its description. `focus_window` gets no
+  `animation_statistics` for the same reason: the window opens from Window > Analysis.
+- **R46, the dialog:** Reduce Keys... is an `EditorModal` (S69): `editor_status.dialog` carries its numbers, `respond_dialog` sets
+  `tolerance_mm`, `skin_distance_mm`, `output`, `replace`, `overwrite` and answers `ok` (Reduce) or `cancel`.
+
+Step 4 (stream `clips`):
+
 - **R53, `root_motion` on an `.anim` too:** `edit_animation`'s `root_motion` argument, added for model clips, also sets an
   `.anim`'s `root_motion` block (one project undo step). One argument means the same on both clip kinds; refusing it on an
   `.anim` would have named no fix an agent could take.

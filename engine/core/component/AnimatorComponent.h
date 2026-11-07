@@ -62,10 +62,15 @@ namespace jasperengine{
         Entity pole = NULL_ENTITY;
         Vector3 polePosition = Vector3(0, 0, 0);
         bool usePole = false;
+        // TwoBone, FootIK, FootLock: the leg's solve (anim::TwoBoneOptions)
+        float soften = 0.0f;                // 0..1, the part of the reach that eases; 0: a hard limit
+        Vector3 hingeAxis = Vector3(0, 0, 0); // the mid bone's local axis; zero: auto (pole or current bend)
+        float twist = 0.0f;                 // degrees about the line from the upper bone to the target
         int iterations = 10;                // Fabrik
         float tolerance = 0.001f;           // Fabrik, metres
         Vector3 forwardAxis = Vector3(0, 0, 1); // LookAt: the last bone's local forward
         float clampAngle = 60.0f;           // LookAt, degrees
+        Vector3 aimOffset = Vector3(0, 0, 0); // LookAt: the eyes, from the last bone (its local space)
         // FootIK
         std::string pelvis;
         float footHeight = 0.08f;           // the ankle above the sole
@@ -84,6 +89,7 @@ namespace jasperengine{
                    weightParameter == other.weightParameter && bones == other.bones && boneWeights == other.boneWeights &&
                    target == other.target && targetPosition == other.targetPosition && useTargetRotation == other.useTargetRotation &&
                    pole == other.pole && polePosition == other.polePosition && usePole == other.usePole &&
+                   soften == other.soften && hingeAxis == other.hingeAxis && twist == other.twist && aimOffset == other.aimOffset &&
                    iterations == other.iterations && tolerance == other.tolerance && forwardAxis == other.forwardAxis &&
                    clampAngle == other.clampAngle && pelvis == other.pelvis && footHeight == other.footHeight &&
                    rayStart == other.rayStart && rayLength == other.rayLength && layerMask == other.layerMask &&

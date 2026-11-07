@@ -344,6 +344,8 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         run.output.copyFrom(rig.rest);
         run.snapshotPose.resize(boneCount, channelCount);
         run.hasOutput = false;
+        run.outputSkipped = false;
+        run.snapshotPending = false;
         const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
         // a layer whose mask does not load contributes nothing (safer than the whole body; the
         // error is logged once by AnimatorSystem)
@@ -603,8 +605,7 @@ bool anim::AnimatorInstance::crossFade(const std::string& stateName, float durat
     if (run.current.state < 0 || seconds <= 0.0f) return play(stateName, (int)l, std::max(0.0f, offset));
     if (run.transition != -1){
         // an interruption: blend from the frozen pose
-        if (run.hasOutput) run.snapshotPose.copyFrom(run.output);
-        else run.snapshotPose.copyFrom(rig.rest);
+        freezeLayerOutput(run);
         if (!run.snapshot && run.current.state >= 0) output.states.push_back({false, (int)l, run.current.state});
         if (run.next.state >= 0) output.states.push_back({false, (int)l, run.next.state});
         run.current = run.next;
@@ -951,6 +952,16 @@ bool anim::AnimatorInstance::tryTransitions(size_t layer, uint32_t begin, uint32
     return false;
 }
 
+void anim::AnimatorInstance::freezeLayerOutput(AnimatorLayerRun& run){
+    if (run.outputSkipped){
+        run.snapshotPending = true;
+    }else if (run.hasOutput){
+        run.snapshotPose.copyFrom(run.output);
+    }else{
+        run.snapshotPose.copyFrom(rig.rest);
+    }
+}
+
 void anim::AnimatorInstance::startTransition(size_t layer, int index){
     AnimatorLayerRun& run = layers[layer];
     const CompiledTransition& t = controller->transitions[(size_t)index];
@@ -978,8 +989,7 @@ void anim::AnimatorInstance::startTransition(size_t layer, int index){
     }
     if (interrupting){
         // freeze what the layer showed: the new transition blends from it
-        if (run.hasOutput) run.snapshotPose.copyFrom(run.output);
-        else run.snapshotPose.copyFrom(rig.rest);
+        freezeLayerOutput(run);
         if (!run.snapshot && run.current.state >= 0) output.states.push_back({false, (int)layer, run.current.state});
         if (run.next.state >= 0) output.states.push_back({false, (int)layer, run.next.state});
         run.current = run.next;
@@ -1178,7 +1188,8 @@ void anim::AnimatorInstance::collectLayer(size_t layer, const AnimatorComponent&
             // its start went out (a step that did not move keeps it for the next one)
             if (leaf.to != leaf.from) (leaf.next ? run.next : run.current).startPending = false;
         }
-        if (component.applyRootMotion && !additive){
+        // a layer of weight 0 moves nothing: its root is not sampled
+        if (component.applyRootMotion && !additive && (layer == 0 || run.weight > 0.0f)){
             const AnimatorClipSlot& slot = clips[(size_t)leaf.slot];
             if (slot.rootBone >= 0){
                 Vector3 delta;
@@ -1622,8 +1633,26 @@ void anim::AnimatorInstance::evaluateMotion(size_t layer, const AnimatorStateRun
     }
 }
 
+// A layer of weight 0 adds nothing to the final pose (S74 R14), but a transition or a snapshot may be
+// interrupted, and a montage's pose is frozen with the layer's: those keep `output` current. The
+// weight is final here (fades moved it at the start of this update); a change after this update
+// reaches the next one, which evaluates the layer before it uses it.
+bool anim::AnimatorInstance::layerNeedsPose(size_t layer) const{
+    const AnimatorLayerRun& run = layers[layer];
+    if (layer == 0 || run.weight > 0.0f || run.transition != -1 || run.snapshot) return true;
+    for (const AnimatorMontageRun& montage : montages){
+        if (montage.layer == (int)layer && montage.weight > 0.0f && montage.phase != AnimatorMontageRun::Phase::Ended) return true;
+    }
+    return false;
+}
+
 void anim::AnimatorInstance::evaluateLayer(size_t layer, const AnimatorComponent& component){
     AnimatorLayerRun& run = layers[layer];
+    if (run.snapshotPending){
+        run.snapshotPending = false;
+        if (run.snapshot) evaluateMotion(layer, run.skippedState, run.snapshotPose, component);
+    }
+    run.outputSkipped = false;
     if (run.transition != -1){
         const Pose* from = &run.snapshotPose;
         if (!run.snapshot){
@@ -1685,7 +1714,14 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
     for (size_t l = 0; l < layers.size(); l++) collectLayer(l, component);
 
     if (context.sample){
-        for (size_t l = 0; l < layers.size(); l++) evaluateLayer(l, component);
+        for (size_t l = 0; l < layers.size(); l++){
+            if (layerNeedsPose(l)){
+                evaluateLayer(l, component);
+            }else{
+                layers[l].outputSkipped = true;
+                layers[l].skippedState = layers[l].current;
+            }
+        }
         // layers combined (D3)
         AnimatorLayerRun& base = layers[0];
         if (base.masked) poseBlend(finalPose, rig.rest, base.output, 1.0f, base.mask.data(), base.channelMask.data());
@@ -1742,12 +1778,26 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
 void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const AnimatorUpdateContext& context){
     RigSpace space{spaceWorld.data(), spacePosition.data(), spaceRotation.data(), spaceScale.data()};
     poseToRigSpace(finalPose, rig.parents.data(), space);
+    clearIKResults();
     if (component.ik.empty() || ik.size() != component.ik.size()) return;
-    IKContext ctx{&finalPose, rig.parents.data(), space};
+    IKContext ctx{&finalPose, rig.parents.data(), space, &context.rootWorld};
     const float dt = std::fabs(context.dt * component.speed);
     const Quaternion rootRotationInverse = context.rootWorldRotation.inverse();
     auto toRig = [&](const Vector3& world){ return context.rootWorldInverse * world; };
     auto toWorld = [&](const Vector3& rigPosition){ return context.rootWorld * rigPosition; };
+    auto record = [](AnimatorIKRun& run, const IKResult& result, float weight, const Vector3& targetWorld){
+        run.reached = result.reached;
+        run.reachError = result.error;
+        run.solvedWeight = weight;
+        run.solvedTargetWorld = targetWorld;
+    };
+    auto legOptions = [](const AnimatorIKConstraint& c){
+        TwoBoneOptions options;
+        options.soften = c.soften;
+        options.hingeAxis = c.hingeAxis;
+        options.twist = c.twist;
+        return options;
+    };
     auto weightOf = [&](size_t i){
         const AnimatorIKConstraint& c = component.ik[i];
         float w = c.enabled ? c.weight : 0.0f;
@@ -1772,17 +1822,19 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                 const Vector3 pole = toRig(run.poleWorld);
                 Quaternion endRotation;
                 if (c.useTargetRotation && run.hasTargetRotation) endRotation = rootRotationInverse * run.targetRotationWorld;
-                solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(targetWorld), run.hasPole ? &pole : nullptr,
-                             c.useTargetRotation && run.hasTargetRotation ? &endRotation : nullptr, weight);
+                record(run, solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(targetWorld), run.hasPole ? &pole : nullptr,
+                                         c.useTargetRotation && run.hasTargetRotation ? &endRotation : nullptr, weight, legOptions(c)),
+                       weight, targetWorld);
                 break;
             }
             case AnimatorIKType::Fabrik:
                 if (!hasTarget || run.boneCount < 2) break;
-                solveFabrik(ctx, run.bones, run.boneCount, toRig(targetWorld), c.iterations, c.tolerance, weight);
+                record(run, solveFabrik(ctx, run.bones, run.boneCount, toRig(targetWorld), c.iterations, c.tolerance, weight), weight, targetWorld);
                 break;
             case AnimatorIKType::LookAt:
                 if (!hasTarget || run.boneCount < 1) break;
-                solveLookAt(ctx, run.bones, run.boneWeights, std::min(run.boneCount, 4), c.forwardAxis, toRig(targetWorld), c.clampAngle, weight);
+                record(run, solveLookAt(ctx, run.bones, run.boneWeights, std::min(run.boneCount, 4), c.forwardAxis, toRig(targetWorld),
+                                        c.clampAngle, weight, c.aimOffset), weight, targetWorld);
                 break;
             case AnimatorIKType::FootIK: {
                 if (footDone) break;
@@ -1800,7 +1852,7 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     float desired = 0.0f;
                     if (foot.hit){
                         const float lift = std::max(0.0f, footPosition.y - f.footHeight);
-                        desired = foot.hitPoint.y + f.footHeight + lift - footPosition.y;
+                        desired = foot.hitPoint.y + footAnkleHeight(f.footHeight, foot.hitNormal, f.maxFootAngle) + lift - footPosition.y;
                     }
                     foot.offset = springDamp(foot.offset, desired, foot.offsetVelocity, f.smoothing, dt);
                     const float w = weightOf(j);
@@ -1817,15 +1869,18 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     const Vector3 animated = context.rootWorldInverse * foot.footWorld;
                     const Vector3 now = spacePosition[(size_t)foot.bones[2]];
                     const Vector3 target(now.x, animated.y + foot.offset, now.z);
-                    solveTwoBone(ctx, foot.bones[0], foot.bones[1], foot.bones[2], target, nullptr, nullptr, w);
+                    // the foot keeps its animated rotation, turned to the ground: not what bending
+                    // the knee would make of it through the shin
+                    Quaternion footRotation = spaceRotation[(size_t)foot.bones[2]];
                     if (foot.hit){
                         const Quaternion align = shortestArc(Vector3(0, 1, 0), foot.hitNormal);
                         const float angle = 2.0f * std::acos(std::min(1.0f, std::fabs(align.w)));
                         const float maxAngle = f.maxFootAngle * 0.017453292519943295f;
-                        Quaternion clamped = angle > maxAngle && angle > 1e-6f ? Quaternion::slerp(maxAngle / angle, Quaternion(), align) : align;
-                        clamped = Quaternion::nlerp(w, Quaternion(), clamped, true);
-                        rotateBoneInRigSpace(ctx, foot.bones[2], clamped);
+                        footRotation = (angle > maxAngle && angle > 1e-6f ? Quaternion::slerp(maxAngle / angle, Quaternion(), align) : align) * footRotation;
                     }
+                    IKResult result = solveTwoBone(ctx, foot.bones[0], foot.bones[1], foot.bones[2], target, nullptr, &footRotation, w, legOptions(f));
+                    result.reached = result.reached && foot.hit;    // no ground: nothing to reach
+                    record(foot, result, w, toWorld(target));
                 }
                 break;
             }
@@ -1853,11 +1908,23 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     run.lockWeight = c.releaseTime > 0.0f ? std::max(0.0f, run.lockWeight - dt / c.releaseTime) : 0.0f;
                 }
                 if (run.lockWeight > 0.0f){
-                    solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(run.lockWorld), nullptr, nullptr, weight * run.lockWeight);
+                    // the foot keeps the rotation it came with (the animation's, or Foot IK's turn to
+                    // the ground): holding the ankle bends the knee, which must not turn it
+                    const Quaternion footRotation = spaceRotation[(size_t)run.bones[2]];
+                    record(run, solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(run.lockWorld), nullptr, &footRotation,
+                                             weight * run.lockWeight, legOptions(c)), weight * run.lockWeight, run.lockWorld);
                 }
                 break;
             }
         }
+    }
+}
+
+void anim::AnimatorInstance::clearIKResults(){
+    for (AnimatorIKRun& run : ik){
+        run.reached = false;
+        run.reachError = 0.0f;
+        run.solvedWeight = 0.0f;
     }
 }
 

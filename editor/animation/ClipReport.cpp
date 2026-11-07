@@ -167,6 +167,98 @@ namespace{
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+    // Every time a difference can peak at: the key times of both clips (a looping track's over the
+    // whole length), and halfway between them, where two slerps part most
+    std::vector<float> measureTimes(const AnimationClip& a, const AnimationClip& b){
+        std::vector<float> keyTimes = {0.0f};
+        const float length = std::max(a.getLength(), b.getLength());
+        keyTimes.push_back(length);
+        for (const AnimationClip* clip : {&a, &b}){
+            for (const AnimationClip::Track& track : clip->getTracks()){
+                if (!track.times || track.keyCount == 0) continue;
+                keyTimes.insert(keyTimes.end(), track.times, track.times + track.keyCount);
+                if (!track.loop || track.duration <= 0.0f) continue;
+                for (int lap = 1; (float)lap * track.duration < length; lap++){
+                    for (size_t k = 0; k < track.keyCount; k++) keyTimes.push_back((float)lap * track.duration + track.times[k]);
+                }
+            }
+        }
+        std::sort(keyTimes.begin(), keyTimes.end());
+        keyTimes.erase(std::unique(keyTimes.begin(), keyTimes.end()), keyTimes.end());
+        std::vector<float> times;
+        times.reserve(keyTimes.size() * 2);
+        for (size_t i = 0; i < keyTimes.size(); i++){
+            if (i > 0) times.push_back(keyTimes[i - 1] + (keyTimes[i] - keyTimes[i - 1]) * 0.5f);
+            times.push_back(keyTimes[i]);
+        }
+        return times;
+    }
+
+    bool sameRows(const float* a, const float* b, size_t count){
+        return count == 0 || (a && b && std::memcmp(a, b, count * sizeof(float)) == 0);
+    }
+
+    // bit for bit: the same keys, values and tangents
+    bool sameTrackData(const AnimationClip::Track& a, const AnimationClip::Track& b){
+        if (a.keyCount != b.keyCount || a.width != b.width || a.relative != b.relative || a.loop != b.loop) return false;
+        if (!sameRows(a.times, b.times, a.keyCount)) return false;
+        for (size_t k = 0; k < a.keyCount; k++){
+            const EaseType easeA = a.easings ? a.easings[k] : EaseType::LINEAR;
+            const EaseType easeB = b.easings ? b.easings[k] : EaseType::LINEAR;
+            if (k + 1 < a.keyCount && easeA != easeB) return false;
+        }
+        const size_t values = a.keyCount * a.width;
+        auto floats = [](const auto* row){ return reinterpret_cast<const float*>(row); };
+        if ((a.vectors != nullptr) != (b.vectors != nullptr) || (a.rotations != nullptr) != (b.rotations != nullptr) || (a.weights != nullptr) != (b.weights != nullptr)) return false;
+        if (a.hasTangents() != b.hasTangents()) return false;
+        if (a.vectors && !(sameRows(floats(a.vectors), floats(b.vectors), values * 3))) return false;
+        if (a.rotations && !(sameRows(floats(a.rotations), floats(b.rotations), values * 4))) return false;
+        if (a.weights && !sameRows(a.weights, b.weights, values)) return false;
+        if (a.inVectors && !(sameRows(floats(a.inVectors), floats(b.inVectors), values * 3) && sameRows(floats(a.outVectors), floats(b.outVectors), values * 3))) return false;
+        if (a.inRotations && !(sameRows(floats(a.inRotations), floats(b.inRotations), values * 4) && sameRows(floats(a.outRotations), floats(b.outRotations), values * 4))) return false;
+        if (a.inWeights && !(sameRows(a.inWeights, b.inWeights, values) && sameRows(a.outWeights, b.outWeights, values))) return false;
+        return true;
+    }
+
+    bool sameTrackIdentity(const AnimationClip::Track& a, const AnimationClip::Track& b){
+        return a.path == b.path && a.channel == b.channel && a.humanBone == b.humanBone && a.component == b.component && a.property == b.property;
+    }
+
+    bool isBoneChannel(ClipChannel channel){
+        return channel == ClipChannel::Position || channel == ClipChannel::Rotation || channel == ClipChannel::Scale;
+    }
+
+    // tracks a rig cannot put a number on: they are the same, or they count
+    size_t countUnmeasuredDifferences(const AnimationClip& a, const AnimationClip& b, const anim::ClipRig& rig){
+        auto measured = [&](const AnimationClip::Track& track){ return isBoneChannel(track.channel) && rig.findBone(track.path) >= 0; };
+        size_t differences = 0;
+        for (const AnimationClip::Track& track : a.getTracks()){
+            if (measured(track)) continue;
+            const auto& others = b.getTracks();
+            const auto other = std::find_if(others.begin(), others.end(), [&](const AnimationClip::Track& t){ return sameTrackIdentity(track, t); });
+            if (other == others.end() || !sameTrackData(track, *other)) differences++;
+        }
+        for (const AnimationClip::Track& track : b.getTracks()){
+            if (measured(track)) continue;
+            const auto& others = a.getTracks();
+            if (std::none_of(others.begin(), others.end(), [&](const AnimationClip::Track& t){ return sameTrackIdentity(track, t); })) differences++;
+        }
+        return differences;
+    }
+
+    bool sameEvents(const AnimationClip& a, const AnimationClip& b){
+        const std::vector<ClipEventData>& x = a.getEvents();
+        const std::vector<ClipEventData>& y = b.getEvents();
+        if (x.size() != y.size()) return false;
+        for (size_t i = 0; i < x.size(); i++){
+            if (x[i].time != y[i].time || x[i].function != y[i].function || x[i].args.size() != y[i].args.size()) return false;
+            for (size_t k = 0; k < x[i].args.size(); k++){
+                if (!(x[i].args[k] == y[i].args[k])) return false;
+            }
+        }
+        return true;
+    }
+
     // the runtime's order (AnimatorInstance::bindClip): the clip's bone, the hips, then the
     // shallowest bone the clip has a position track on; -1 when it has none
     int rootMotionBone(const AnimationClip& clip, const anim::ClipRig& rig){
@@ -191,6 +283,11 @@ namespace{
         return best;
     }
 
+    double yawRadians(const Quaternion& rotation){
+        const Vector3 forward = rotation * Vector3(0, 0, 1);
+        return std::atan2((double)forward.x, (double)forward.z);
+    }
+
     double wrapRadians(double angle){
         return std::remainder(angle, 2.0 * 3.14159265358979323846);
     }
@@ -201,6 +298,35 @@ namespace{
         if (std::hypot((double)forward.x, (double)forward.z) < 0.2) return false;
         heading = std::atan2((double)forward.x, (double)forward.z);
         return true;
+    }
+
+    anim::ClipRootMotionFacts measureRootMotion(const AnimationClip& clip, const anim::ClipRig& rig){
+        anim::ClipRootMotionFacts facts;
+        const int bone = rootMotionBone(clip, rig);
+        const double length = clip.getLength();
+        if (bone < 0 || !(length > 0.0)) return facts;
+        facts.bone = rig.paths[(size_t)bone];
+        RigPoser poser(clip, rig);
+        poser.pose(0.0f);
+        const Vector3 start = poser.matrix((size_t)bone).translation();
+        // unwrapped at about 30 Hz, so a clip that turns twice says 720 degrees
+        const int steps = std::clamp((int)std::ceil(length * 30.0), 1, 4000);
+        double previous = yawRadians(poser.rotation((size_t)bone));
+        double turned = 0.0;
+        for (int step = 1; step <= steps; step++){
+            poser.pose(step == steps ? clip.getLength() : (float)(length * step / steps));
+            const double yaw = yawRadians(poser.rotation((size_t)bone));
+            turned += wrapRadians(yaw - previous);
+            previous = yaw;
+        }
+        const Vector3 end = poser.matrix((size_t)bone).translation();
+        facts.netTranslationMetres = end - start;
+        facts.netYawDegrees = turned * 180.0 / 3.14159265358979323846;
+        const double horizontal = std::hypot((double)facts.netTranslationMetres.x, (double)facts.netTranslationMetres.z);
+        facts.averageSpeedMps = horizontal / length;
+        facts.averageYawDegS = facts.netYawDegrees / length;
+        facts.loopGapMm = std::fabs((double)facts.netTranslationMetres.y) * 1000.0;
+        return facts;
     }
 
     anim::ClipLoopSeam measureLoopSeam(const AnimationClip& clip, const anim::ClipRig& rig, double skinDistanceMm){
@@ -340,6 +466,87 @@ bool anim::clipRigFromModel(const std::string& modelPath, ClipRig& out, std::str
     return true;
 }
 
+bool anim::clipTrackIsReducible(const AnimationClip::Track& track, const ClipRig& rig, ClipSkippedTracks* skipped){
+    ClipSkippedTracks ignored;
+    ClipSkippedTracks& count = skipped ? *skipped : ignored;
+    switch (track.channel){
+        case ClipChannel::Morph: count.morph++; return false;
+        case ClipChannel::Lattice: count.lattice++; return false;
+        case ClipChannel::Property: count.property++; return false;
+        case ClipChannel::Humanoid:
+        case ClipChannel::HumanoidPosition: count.humanoid++; return false;
+        default: break;
+    }
+    if (rig.findBone(track.path) < 0){
+        count.unbound++;
+        return false;
+    }
+    if (track.hasTangents()){
+        count.tangents++;
+        return false;
+    }
+    if (track.easings && track.keyCount > 1){
+        bool anyEase = false, allStep = true;
+        for (size_t k = 0; k + 1 < track.keyCount; k++){
+            if (track.easings[k] != EaseType::LINEAR) anyEase = true;
+            if (track.easings[k] != EaseType::STEP) allStep = false;
+        }
+        if (allStep){
+            count.step++;
+            return false;
+        }
+        if (anyEase){
+            count.eases++;
+            return false;
+        }
+    }
+    return track.keyCount > 1;
+}
+
+anim::ClipErrorReport anim::measureClipError(const AnimationClip& reference, const AnimationClip& other, const ClipRig& rig,
+                                             double skinDistanceMm, const std::atomic<bool>* cancel){
+    ClipErrorReport report;
+    report.skinDistanceMm = skinDistanceMm;
+    report.jointMaxMm.assign(rig.size(), 0.0);
+    RigPoser a(reference, rig);
+    RigPoser b(other, rig);
+    std::vector<uint8_t> moved(rig.size(), 0);
+    a.markMoved(moved);
+    b.markMoved(moved);
+    if (std::find(moved.begin(), moved.end(), (uint8_t)1) == moved.end()) return report;
+    spreadToDescendants(rig, moved);
+    const double distance = skinDistanceMm / 1000.0;
+    const std::vector<float> times = measureTimes(reference, other);
+    double sum = 0.0;
+    size_t count = 0;
+    for (float time : times){
+        if (cancel && cancel->load(std::memory_order_relaxed)) return report;
+        a.pose(time);
+        b.pose(time);
+        for (size_t bone = 0; bone < rig.size(); bone++){
+            if (!moved[bone]) continue;
+            Point pa[7], pb[7];
+            jointPoints(a.matrix(bone), a.matrix(bone), distance, pa);
+            jointPoints(b.matrix(bone), a.matrix(bone), distance, pb);
+            double worst = 0.0;
+            for (int i = 0; i < 7; i++) worst = std::max(worst, distanceBetween(pa[i], pb[i]));
+            const double millimetres = worst * 1000.0;
+            sum += millimetres;
+            count++;
+            report.jointMaxMm[bone] = std::max(report.jointMaxMm[bone], millimetres);
+            if (millimetres > report.maxErrorMm){
+                report.maxErrorMm = millimetres;
+                report.worstJoint = rig.names[bone];
+                report.worstTimeSeconds = time;
+            }
+        }
+    }
+    report.samples = times.size();
+    report.meanErrorMm = count ? sum / (double)count : 0.0;
+    report.measured = true;
+    return report;
+}
+
 anim::ClipReport anim::analyzeClip(const ClipReportRequest& request){
     ClipReport report;
     std::shared_ptr<const AnimationClip> clip = request.clip;
@@ -362,12 +569,32 @@ anim::ClipReport anim::analyzeClip(const ClipReportRequest& request){
     report.fileBytes = fileSizeOf(request.reference);
     report.tracks = clip->getTracks().size();
     report.lengthSeconds = clip->getLength();
+    report.frameRate = clip->getFrameRate();
+    report.wrap = clip->getWrap();
+    report.audioCues = clip->getAudioCues().size();
     for (const AnimationClip::Track& track : clip->getTracks()){
         report.keys += track.keyCount;
         if (isConstant(track)) report.constantTracks++;
     }
     if (request.rig){
+        ClipSkippedTracks skipped;
+        for (const AnimationClip::Track& track : clip->getTracks()) clipTrackIsReducible(track, *request.rig, &skipped);
+        report.skippedTracks = skipped;
+        if (request.rootMotion) report.rootMotion = measureRootMotion(*clip, *request.rig);
         if (request.loopSeam) report.loopSeam = measureLoopSeam(*clip, *request.rig, request.skinDistanceMm);
+        if (request.compareTo){
+            ClipCompareFacts compare;
+            compare.reference = request.compareToName;
+            compare.toleranceMm = request.toleranceMm;
+            compare.error = measureClipError(*request.compareTo, *clip, *request.rig, request.skinDistanceMm, request.cancel);
+            compare.worstJoints = clipWorstJointsJson(compare.error, *request.rig, 8);
+            compare.unmeasuredDifferences = countUnmeasuredDifferences(*request.compareTo, *clip, *request.rig);
+            compare.eventsMatch = sameEvents(*request.compareTo, *clip);
+            compare.audioCuesMatch = request.compareTo->getAudioCues() == clip->getAudioCues();
+            compare.lengthMatches = request.compareTo->getLength() == clip->getLength();
+            if (request.toleranceMm && compare.error.measured) compare.withinTolerance = compare.error.maxErrorMm <= *request.toleranceMm;
+            report.compare = std::move(compare);
+        }
     }
 
     if (loaded){
@@ -403,6 +630,20 @@ std::string anim::formatClipField(const ClipReportField& field, double value){
         case ClipFieldFormat::Millimetres:
             std::snprintf(text, sizeof(text), "%.2f mm", value);
             return text;
+        case ClipFieldFormat::MetresPerSecond:
+            std::snprintf(text, sizeof(text), "%.2f m/s", value);
+            return text;
+        case ClipFieldFormat::DegreesPerSecond:
+            std::snprintf(text, sizeof(text), "%.1f deg/s", value);
+            return text;
+        case ClipFieldFormat::Degrees:
+            std::snprintf(text, sizeof(text), "%.1f deg", value);
+            return text;
+        case ClipFieldFormat::Metres:
+            std::snprintf(text, sizeof(text), "%.3f m", value);
+            return text;
+        case ClipFieldFormat::Flag:
+            return value != 0.0 ? "yes" : "no";
         case ClipFieldFormat::Text:
             break;
     }
@@ -414,6 +655,22 @@ std::string anim::formatClipField(std::string_view key, double value){
     return field ? formatClipField(*field, value) : std::string();
 }
 
+std::string anim::clipInfoLine(const ClipReport& report){
+    const std::string dot = " \xC2\xB7 ";
+    auto counted = [](size_t count, const char* one){ return withThousands(count) + " " + one + (count == 1 ? "" : "s"); };
+    char rate[32];
+    std::snprintf(rate, sizeof(rate), "%g Hz", (double)report.frameRate);
+    std::string line = formatClipField("length_s", report.lengthSeconds) + dot + rate + dot + counted(report.tracks, "track") + dot +
+                       counted(report.keys, "key") + dot + "Memory " + formatClipField("runtime_bytes", (double)report.runtimeBytes);
+    if (report.fileBytes) line += dot + "File " + formatClipField("file_bytes", (double)*report.fileBytes);
+    if (report.constantTracks > 0) line += dot + withThousands(report.constantTracks) + (report.constantTracks == 1 ? " constant track" : " constant tracks");
+    return line;
+}
+
+std::string anim::clipErrorLine(const ClipErrorReport& error){
+    return "Error: max " + formatClipField("max_error_mm", error.maxErrorMm) + ", mean " + formatClipField("mean_error_mm", error.meanErrorMm);
+}
+
 nlohmann::json anim::clipReportJson(const ClipReport& report){
     nlohmann::json out = nlohmann::json::object();
     out["runtime_bytes"] = report.runtimeBytes;
@@ -423,8 +680,153 @@ nlohmann::json anim::clipReportJson(const ClipReport& report){
     // the float's own digits, not its expansion as a double (1.33, not 1.3300000429)
     out["length_s"] = std::round((double)report.lengthSeconds * 1000000.0) / 1000000.0;
     out["constant_tracks"] = report.constantTracks;
+    out["audio_cues"] = report.audioCues;
+    if (report.skippedTracks) out["skipped_tracks"] = clipSkippedTracksJson(*report.skippedTracks);
+    if (report.compare){
+        nlohmann::json compare = clipErrorJson(report.compare->error);
+        compare["reference"] = report.compare->reference;
+        compare["joints"] = report.compare->worstJoints;
+        compare["tolerance_mm"] = report.compare->toleranceMm ? nlohmann::json(*report.compare->toleranceMm) : nlohmann::json(nullptr);
+        compare["within_tolerance"] = report.compare->withinTolerance ? nlohmann::json(*report.compare->withinTolerance) : nlohmann::json(nullptr);
+        compare["unmeasured_differences"] = report.compare->unmeasuredDifferences;
+        compare["events_match"] = report.compare->eventsMatch;
+        compare["audio_cues_match"] = report.compare->audioCuesMatch;
+        compare["length_matches"] = report.compare->lengthMatches;
+        out["compare"] = compare;
+    }
     if (report.loopSeam){
         out["loop_seam"] = {{"max_error_mm", rounded(report.loopSeam->maxErrorMm)}, {"worst_joint", report.loopSeam->worstJoint}};
     }
+    if (report.rootMotion){
+        const ClipRootMotionFacts& facts = *report.rootMotion;
+        out["root_motion"] = {{"bone", facts.bone},
+                              {"net_translation_m", {rounded(facts.netTranslationMetres.x, 1e6), rounded(facts.netTranslationMetres.y, 1e6), rounded(facts.netTranslationMetres.z, 1e6)}},
+                              {"net_yaw_deg", rounded(facts.netYawDegrees)},
+                              {"average_speed_mps", rounded(facts.averageSpeedMps)},
+                              {"average_yaw_deg_s", rounded(facts.averageYawDegS)},
+                              {"loop_gap_mm", rounded(facts.loopGapMm)}};
+    }
     return out;
+}
+
+nlohmann::json anim::clipSkippedTracksJson(const ClipSkippedTracks& skipped){
+    nlohmann::json out = nlohmann::json::object();
+    auto add = [&](const char* key, size_t count){ if (count > 0) out[key] = count; };
+    add("tangents", skipped.tangents);
+    add("eases", skipped.eases);
+    add("step", skipped.step);
+    add("morph", skipped.morph);
+    add("lattice", skipped.lattice);
+    add("property", skipped.property);
+    add("humanoid", skipped.humanoid);
+    add("unbound", skipped.unbound);
+    return out;
+}
+
+nlohmann::json anim::clipErrorJson(const ClipErrorReport& error){
+    return {{"skin_distance_mm", error.skinDistanceMm},
+            {"max_error_mm", error.measured ? nlohmann::json(rounded(error.maxErrorMm)) : nlohmann::json(nullptr)},
+            {"mean_error_mm", error.measured ? nlohmann::json(rounded(error.meanErrorMm)) : nlohmann::json(nullptr)},
+            {"worst_joint", error.worstJoint},
+            {"worst_time_s", rounded(error.worstTimeSeconds, 1e6)}};
+}
+
+nlohmann::json anim::clipWorstJointsJson(const ClipErrorReport& error, const ClipRig& rig, size_t top){
+    std::vector<size_t> order;
+    for (size_t bone = 0; bone < error.jointMaxMm.size() && bone < rig.size(); bone++){
+        if (error.jointMaxMm[bone] > 0.0) order.push_back(bone);
+    }
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b){
+        return error.jointMaxMm[a] != error.jointMaxMm[b] ? error.jointMaxMm[a] > error.jointMaxMm[b] : a < b;
+    });
+    if (order.size() > top) order.resize(top);
+    nlohmann::json out = nlohmann::json::array();
+    for (size_t bone : order) out.push_back({{"bone", rig.names[bone]}, {"max_mm", rounded(error.jointMaxMm[bone])}});
+    return out;
+}
+
+size_t anim::countRedundantKeys(const ClipData& data){
+    size_t redundant = 0;
+    for (const ClipTrackData& track : data.tracks){
+        if (!isBoneChannel(track.channel) || track.keys.size() < 3) continue;
+        const bool linear = std::all_of(track.keys.begin(), track.keys.end(), [](const ClipKey& key){ return !key.hasTangents() && key.ease == EaseType::LINEAR; });
+        if (!linear) continue;
+        // against the last key kept, as a run of removable keys all go at once
+        size_t kept = 0;
+        for (size_t k = 1; k + 1 < track.keys.size(); k++){
+            const ClipKey& a = track.keys[kept];
+            const ClipKey& at = track.keys[k];
+            const ClipKey& b = track.keys[k + 1];
+            const float times[2] = {a.time, b.time};
+            const KeyLocation location = locateKey(times, 2, nullptr, 0, at.time);
+            bool same = true;
+            if (track.channel == ClipChannel::Rotation){
+                const Quaternion ends[2] = {quaternionFromXYZW(a.value.data()), quaternionFromXYZW(b.value.data())};
+                float value[4];
+                quaternionToXYZW(sampleQuaternion(location, ends, nullptr, nullptr), value);
+                // either sign is the same rotation
+                const float sign = value[0] * at.value[0] + value[1] * at.value[1] + value[2] * at.value[2] + value[3] * at.value[3] < 0.0f ? -1.0f : 1.0f;
+                for (int i = 0; i < 4; i++) same = same && std::fabs(value[i] * sign - at.value[(size_t)i]) <= 1e-5f;
+            }else{
+                const Vector3 ends[2] = {Vector3(a.value[0], a.value[1], a.value[2]), Vector3(b.value[0], b.value[1], b.value[2])};
+                const Vector3 value = sampleVector3(location, ends, nullptr, nullptr);
+                same = std::fabs(value.x - at.value[0]) <= 1e-5f && std::fabs(value.y - at.value[1]) <= 1e-5f && std::fabs(value.z - at.value[2]) <= 1e-5f;
+            }
+            if (same) redundant++;
+            else kept = k;
+        }
+    }
+    return redundant;
+}
+
+std::vector<anim::ClipRotationFlip> anim::findRotationFlips(const ClipData& data){
+    // cos(160 / 2 degrees): keys this far apart have a short way round only just shorter than the long one
+    constexpr float kAlmostOpposite = 0.17365f;
+    std::vector<ClipRotationFlip> flips;
+    for (const ClipTrackData& track : data.tracks){
+        if (track.channel != ClipChannel::Rotation) continue;
+        for (size_t k = 1; k < track.keys.size(); k++){
+            const std::vector<float>& a = track.keys[k - 1].value;
+            const std::vector<float>& b = track.keys[k].value;
+            if (track.keys[k - 1].ease == EaseType::STEP) continue;
+            const float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+            const bool hermite = track.keys[k - 1].hasTangents() && track.keys[k].hasTangents();
+            if (std::fabs(dot) < kAlmostOpposite || (hermite && dot < 0.0f)){
+                flips.push_back({track.path, track.keys[k].time});
+                break;
+            }
+        }
+    }
+    return flips;
+}
+
+anim::ClipOptimizeRecord anim::readClipOptimizeRecord(const ClipData& data){
+    ClipOptimizeRecord record;
+    for (const auto& [key, text] : data.unknownKeys){
+        if (key != "optimize") continue;
+        const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+        if (!json.is_object()) return record;
+        record.present = true;
+        record.toleranceMm = json.value("tolerance_mm", 0.0);
+        record.skinDistanceMm = json.value("skin_distance_mm", 0.0);
+        record.maxErrorMm = json.value("max_error_mm", 0.0);
+        record.sourceSha1 = json.value("source_sha1", std::string());
+        record.source = json.value("source", std::string());
+        return record;
+    }
+    return record;
+}
+
+void anim::writeClipOptimizeRecord(ClipData& data, const ClipOptimizeRecord& record){
+    nlohmann::json json = {{"tolerance_mm", record.toleranceMm}, {"skin_distance_mm", record.skinDistanceMm},
+                           {"source_sha1", record.sourceSha1}, {"max_error_mm", record.maxErrorMm}};
+    if (!record.source.empty()) json["source"] = record.source;
+    const std::string text = json.dump();
+    for (auto& [key, value] : data.unknownKeys){
+        if (key == "optimize"){
+            value = text;
+            return;
+        }
+    }
+    data.unknownKeys.push_back({"optimize", text});
 }

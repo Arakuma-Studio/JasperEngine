@@ -826,6 +826,8 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
+    ${EDITOR_DIR}/window/AnimationStatisticsWindow.cpp
+    ${EDITOR_DIR}/window/ReduceKeysDialog.cpp
     ${EDITOR_DIR}/window/profiler/FrameDebuggerWindow.cpp
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
@@ -896,6 +898,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimationQualityTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
 
@@ -1019,8 +1022,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/BoneOverlay.cpp
+    ${EDITOR_DIR}/animation/ClipOptimize.cpp
+    ${EDITOR_DIR}/animation/ClipReduction.cpp
     ${EDITOR_DIR}/animation/ClipReport.cpp
     ${EDITOR_DIR}/animation/ModelClipSettingsFile.cpp
+    ${EDITOR_DIR}/animation/ClipStatistics.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1513,6 +1520,8 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/tests/animation/AnimationWindowClipTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimatorEditorTest.cpp
         ${EDITOR_DIR}/tests/animation/ClipConvertersTest.cpp
+        ${EDITOR_DIR}/tests/animation/BoneOverlayTest.cpp
+        ${EDITOR_DIR}/tests/animation/ClipReductionTest.cpp
         ${EDITOR_DIR}/tests/animation/ClipReportTest.cpp
         ${EDITOR_DIR}/tests/animation/InspectorClipPrefabTest.cpp
         ${EDITOR_DIR}/tests/animation/PlayerModelLayoutTest.cpp
