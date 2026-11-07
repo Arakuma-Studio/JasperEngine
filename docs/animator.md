@@ -97,6 +97,35 @@ layer (**Event Mode** Leader Only, the default) or for every playing clip (All),
 They call the Animator's `onEvent` subscribers and, with **Send Events To Scripts**, the method of
 the same name on the GameObject's scripts. State changes call `onStateEnter` / `onStateExit`.
 
+## Order of a frame
+
+Each update does these steps, every list in the order of the scene's Animator components:
+
+1. **Prepare**, on the main thread: controllers and clips load and bind, culling is decided, IK reads
+   its targets.
+2. **The wave**, on worker threads: each Animator advances its states and evaluates its pose, then
+   writes its bones, morph weights, lattice points and skin matrices, and the
+   [property tracks](animation-clips.md#property-tracks) that can run there: a component value on a
+   GameObject no other Animator writes. No Lua runs, and no callback.
+3. **Property tracks that wait for the main thread**, with this frame's values:
+   1. the values of every Animator: Lua fields, and the component values that could not run in the
+      wave (a GameObject two Animators write, sprite frames, shader parameters and uniforms, a 2D
+      rigidbody's `enabled`);
+   2. then **GameObject Active** and a script's `enabled` of every Animator, where
+      `onEnable` / `onDisable` run.
+4. **Callbacks**, Animator by Animator, on the main thread: root motion (`onAnimatorMove`),
+   `onStateEnter` / `onStateExit`, `onMontageEnded`, events (`onEvent`, then the scripts' methods of
+   that name), the clips' audio cues, then the state callbacks of an Animation Player on the same
+   GameObject.
+
+So any callback reads this frame's value of any Animator's property, and an `onEnable` that a track
+caused never interrupts another Animator's values. A callback that removes an Animator stops what
+that Animator had left to do this frame.
+
+Two Animators may key a property of one GameObject: both play on the main thread, and the later
+Animator's value stays. (Bones are different: the later Animator reports a bind error and drives
+nothing.) The result never depends on the worker threads.
+
 ## Root motion
 
 With **Apply Root Motion** the clips' movement of their root bone (the clip's `root_motion.bone`,
@@ -138,7 +167,9 @@ feet on colliders after every layer.)
 ## Performance
 
 The Animator evaluates its characters in parallel (the job system), keeps poses in SIMD-friendly
-arrays and writes skin matrices directly. **Culling Mode** Cull Update Transforms skips writing
+arrays and writes skin matrices directly. Lua-field and active tracks run on the main thread
+([Order of a frame](#order-of-a-frame)): a clip that keys them on many characters costs main-thread
+time, a plain component value does not. **Culling Mode** Cull Update Transforms skips writing
 the pose of characters no camera sees (time, states, events and root motion go on); Cull
 Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
 attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
