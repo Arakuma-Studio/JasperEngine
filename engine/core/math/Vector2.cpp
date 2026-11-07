@@ -306,6 +306,22 @@ Vector2 Vector2::midPoint( const Vector2& vec ) const{
                    ( y + vec.y ) * 0.5f );
 }
 
+Vector2 Vector2::moveTowards( const Vector2& target, float maxDistanceDelta ) const{
+    Vector2 delta = target - *this;
+    float dist = delta.length();
+    if (dist <= maxDistanceDelta || dist < 1e-6f)
+        return target;
+    return *this + delta * (maxDistanceDelta / dist);
+}
+
+Vector2 Vector2::lerp( const Vector2& target, float t ) const{
+    return lerpUnclamped(target, std::clamp(t, 0.0f, 1.0f));
+}
+
+Vector2 Vector2::lerpUnclamped( const Vector2& target, float t ) const{
+    return *this + (target - *this) * t;
+}
+
 void Vector2::makeFloor( const Vector2& cmp ){
     if( cmp.x < x ) x = cmp.x;
     if( cmp.y < y ) y = cmp.y;

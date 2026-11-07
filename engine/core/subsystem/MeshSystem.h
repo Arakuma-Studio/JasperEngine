@@ -381,6 +381,11 @@ namespace jasperengine{
         // Normalized [0,1] height at a terrain-local position; 0 without pixels
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
 
+        // The part entities of a model whose geometry is on child entities (one per glTF mesh
+        // node, ModelComponent::meshNodesMapping) that exist and have a mesh, in node-index
+        // order; empty for any other entity (a model on its own mesh too)
+        std::vector<Entity> getModelParts(Entity model) const;
+
         bool hasPendingAsyncModelLoads() const;
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still
         // running when a test acts (0, the default: none)
