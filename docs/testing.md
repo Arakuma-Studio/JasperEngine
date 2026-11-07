@@ -130,7 +130,8 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there). `terrain-edit` runs the op sequences of
   `TerrainGolden.*` in WebAssembly and fails when their digest differs from the one the native
-  core suite pins (S53 AC5).
+  core suite pins (S53 AC5). `foliage` hashes T5's placement fixture the same way, then fills a new
+  ring after a camera jump with one thread, within 4 ms a frame at the p99 (T5 AC1, AC4).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 

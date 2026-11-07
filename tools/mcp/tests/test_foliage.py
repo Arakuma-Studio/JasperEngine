@@ -123,13 +123,15 @@ async def test_sculpt_resnaps_trees(ed: Editor):
     got = await ed.call("eval_lua", allow_edit_mode=True, code=(
         "local terrain = Terrain(scene, entity('Land')) "
         "local list = terrain:getFoliageInstancesInRadius(Vector3(0, 0, 0), 500) "
-        "local worst = 0 "
-        "for _, tree in ipairs(list) do "
-        "local height = terrain:getHeight(tree.position.x, tree.position.z) "
-        "worst = math.max(worst, math.abs(height - tree.position.y)) end "
-        "return #list, worst"))
+        "local out = {} "
+        "for _, tree in ipairs(list) do out[#out + 1] = tree.position.x; out[#out + 1] = tree.position.y; out[#out + 1] = tree.position.z end "
+        "return #list, table.concat(out, ',')"))
     ed.check_eq(got["values"][0], 3, f"{got}")
-    ed.check(got["values"][1] <= 1e-3, f"the trees follow the surface: {got}")
+    numbers = [float(value) for value in got["values"][1].split(",")]
+    trees = [numbers[i:i + 3] for i in range(0, len(numbers), 3)]
+    surface = await ed.call("sample_terrain", scene=sid, entity=terrain, space="world", points=[[tree[0], tree[2]] for tree in trees])
+    for tree, sample in zip(trees, surface["samples"]):
+        ed.check(abs(sample["height"] - tree[1]) <= 1e-3, f"the tree follows the surface: {tree} {sample}")
 
 
 async def test_mass_place_does_not_stall(ed: Editor):
