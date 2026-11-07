@@ -1900,6 +1900,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HALF", SceneColorScale::HALF)
         .endNamespace();
 
+    // the resolution of the water reflection passes (Scene.planarReflectionResolution)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlanarReflectionResolution")
+        .addVariable("OFF", PlanarReflectionResolution::OFF)
+        .addVariable("QUARTER", PlanarReflectionResolution::QUARTER)
+        .addVariable("HALF", PlanarReflectionResolution::HALF)
+        .addVariable("FULL", PlanarReflectionResolution::FULL)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TonemapMode")
         .addVariable("NONE", TonemapMode::NONE)
@@ -3299,6 +3308,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
+        .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
+        .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)
+        .addProperty("planarReflectionShadows", &Scene::getPlanarReflectionShadows, &Scene::setPlanarReflectionShadows)
+        .addProperty("planarReflectionFarClip", &Scene::getPlanarReflectionFarClip, &Scene::setPlanarReflectionFarClip)
+        .addProperty("planarReflectionClipOffset", &Scene::getPlanarReflectionClipOffset, &Scene::setPlanarReflectionClipOffset)
+        .addProperty("maxPlanarReflections", &Scene::getMaxPlanarReflections, &Scene::setMaxPlanarReflections)
         // a copy (edit it and assign it back, which applies it)
         .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)

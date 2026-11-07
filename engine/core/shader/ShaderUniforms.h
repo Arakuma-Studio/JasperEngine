@@ -47,7 +47,7 @@ namespace jasperengine{
 
     class JASPERENGINE_API ShaderUniforms{
     public:
-        // "time" and "resolution", written by the engine every frame
+        // "time", "resolution" and "sceneTime" (Scene::getSceneTime), written by the engine every frame
         static bool isReserved(const std::string& name);
         // float/int scalars and vectors; matrices and arrays take no value
         static bool isEditable(const ShaderUniform& uniform);
@@ -72,6 +72,7 @@ namespace jasperengine{
         std::vector<uint8_t> data; // rounded up to the vec4 stride
         int timeMember = -1;
         int resolutionMember = -1;
+        int sceneTimeMember = -1;
         bool mixedTypes = false; // int and float members together, which GL uploads wrong
 
         bool resolve(ShaderData& shaderData, const std::string& blockName);
@@ -87,6 +88,8 @@ namespace jasperengine{
         // every member from ShaderUniforms::resolve of the chain, reserved ones skipped
         void writeValues(const UniformChain& chain);
         void writeTime(float seconds);
+        // the scene clock (Scene::getSceneTime) of the scene drawing it
+        void writeSceneTime(float seconds);
         void writeResolution(float width, float height);
 
         static void writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value);
@@ -138,6 +141,9 @@ namespace jasperengine{
         // the reflection environment (includes/environment.glsl, @require environment)
         int slotFSEnvironment = -1;
         std::pair<int, int> slotEnvironment = {-1, -1};
+        // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
+        int slotFSPlanarReflection = -1;
+        std::pair<int, int> slotPlanarReflection = {-1, -1};
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
@@ -166,6 +172,8 @@ namespace jasperengine{
             slotSceneColor = {-1, -1};
             slotFSEnvironment = -1;
             slotEnvironment = {-1, -1};
+            slotFSPlanarReflection = -1;
+            slotPlanarReflection = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
             slotFSHeightFog = -1;

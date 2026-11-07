@@ -3099,6 +3099,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // water forks without @role, planar reflections on sloped meshes
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(&project);
+            run.findings.insert(run.findings.end(), water.begin(), water.end());
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());

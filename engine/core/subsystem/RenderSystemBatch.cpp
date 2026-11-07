@@ -696,6 +696,11 @@ void RenderSystem::endBatchPass(){
     batchPassActive = false;
 }
 
+void RenderSystem::flushHeldBatchDraws(){
+    if (batchPassActive)
+        SokolSystem::flushDeferred();
+}
+
 void RenderSystem::flushBatches(void* owner){
     static_cast<RenderSystem*>(owner)->batcher.flush();
 }

@@ -664,6 +664,8 @@ namespace jasperengine {
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
+        // the draw calls of the frame being drawn, so far
+        static uint32_t getFrameDrawCalls();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
 
@@ -701,6 +703,9 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+        // whether the shader clock is pinned, and at what (Scene::getSceneTime follows it)
+        static bool hasPinnedShaderTime();
+        static double getPinnedShaderTime();
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render

@@ -233,10 +233,14 @@ public:
     // project-relative directory and baseName the exact filename stem. Without includes
     // the entry points stay loose in it; with them the fork takes <targetDirRel>/<base>/,
     // so its copies override the engine library for no other shader.
+    // librarySource ("library:water"): a fork of that library shader instead, its entry files
+    // as the library has them (its .vert, else the generic one of its type), with their
+    // manifest lines, so the fork keeps its Inspector rows and engine role (@role)
     static ShaderForkPlan prepareShaderFork(Project* project, ShaderType shaderType,
                                             const std::filesystem::path& targetDirRel,
                                             const std::string& baseName,
-                                            bool forkIncludes = false);
+                                            bool forkIncludes = false,
+                                            const std::string& librarySource = std::string());
 
     // Writes all planned files. It refuses collisions and removes partial output when a
     // later write fails, so a failed command never truncates or strands source files.

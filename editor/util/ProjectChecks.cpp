@@ -25,12 +25,14 @@
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "pool/ShaderPool.h"
+#include "render/WaterLayering.h"
 #include "script/LuaBinding.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "component/TerrainComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
@@ -1919,6 +1921,90 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
     saveSynthesisCache(cache);
     sortFindings(check.findings);
     return check;
+}
+
+// ---- Water
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::waterFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+    const char* const roleCode = "water-fork-without-role";
+    const char* const flatCode = "planar-reflection-not-flat";
+
+    // a fork whose manifest has the parameters of a library water shader but no role
+    auto looksLike = [](const ShaderManifest& manifest, std::initializer_list<const char*> members) {
+        for (const char* member : members) {
+            if (!manifest.findProperty(member)) return false;
+        }
+        return true;
+    };
+    auto missingRole = [&](const std::string& shader, ShaderRole& wanted) {
+        if (shader.empty() || ShaderReference::isLibrary(shader) || ShaderReference::isBuiltin(shader)) return false;
+        const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        if (!manifest || !manifest->present || manifest->role != ShaderRole::NONE) return false;
+        if (manifest->type == ShaderType::MESH && looksLike(*manifest, {"buoyancy", "waveHeight", "shallowColor"})) {
+            wanted = ShaderRole::WATER;
+            return true;
+        }
+        if (manifest->type == ShaderType::POSTPROCESS && looksLike(*manifest, {"waterLevel", "followWater"})) {
+            wanted = ShaderRole::UNDERWATER;
+            return true;
+        }
+        return false;
+    };
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        auto warn = [&](const std::string& message, const char* code, const std::string& suggestion) {
+            findings.push_back({"shader", path, 0, 0, "warning", message, code, suggestion});
+        };
+        auto roleFix = [](ShaderRole role) {
+            return std::string("add the line // @role ") + (role == ShaderRole::WATER ? "water" : "underwater") +
+                   " to its manifest, so the engine floats bodies in it, answers Water queries and switches the underwater pass";
+        };
+
+        const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
+        for (size_t i = 0; i < passes.size(); i++) {
+            ShaderRole wanted = ShaderRole::NONE;
+            if (missingRole(passes[i].shader, wanted))
+                warn("Post-process pass " + std::to_string(i) + " draws with " + passes[i].shader +
+                     ", a copy of library:underwater without @role: the engine does not switch it under water", roleCode, roleFix(wanted));
+        }
+
+        for (Entity entity : sceneProject->entities) {
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh) continue;
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+            bool planar = false;
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                const Submesh& submesh = mesh->submeshes[s];
+                const std::string& shader = RenderSystem::getSubmeshShader(*mesh, submesh, sceneMeshShader);
+                ShaderRole wanted = ShaderRole::NONE;
+                if (missingRole(shader, wanted))
+                    warn(name + " submesh " + std::to_string(s) + " draws with " + shader +
+                         ", a copy of library:water without @role: nothing floats in it and Water queries do not see it", roleCode, roleFix(wanted));
+                const std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+                if (manifest && manifest->present &&
+                        (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, submesh.material.shaderFeatures)) & ShaderRequire_PlanarReflection))
+                    planar = true;
+            }
+            if (!planar) continue;
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            if (!transform || mesh->aabb.isNull()) continue;
+            const AABB bounds = transform->modelMatrix * mesh->aabb;
+            if (bounds.isNull() || !bounds.isFinite()) continue;
+            if (!isFlatWater(bounds)) {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%.2f", bounds.getSize().y);
+                warn(name + " reads a planar reflection but is " + text + " world units tall: the reflection mirrors it about one level "
+                     "(the top of its bounds)", flatCode, "use REFLECTION without PLANAR_REFLECTION on sloped water (a river), or flatten the mesh");
+            }
+        }
+    }
+    return findings;
 }
 
 // ---- Stochastic Tiling

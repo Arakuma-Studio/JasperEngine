@@ -1700,6 +1700,56 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_water_fork_role",
+        "kind": "bad",
+        "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
+                         "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to <directory>/<name>.vert/.frag'; the target enum's "
+                         "material",
+        "source": "water-reflections spec F10 (Doriax d62f09407)",
+        "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "
+                  "The boats must keep floating on it. Set up an editable copy of the shader for me.",
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, GERSTNER, REFLECTION]", {"id": 12})},
+            {"tool": "fork_shader", "args": {"source": "re:water"}, "result": ok(
+                "Forked library:water to shaders/Water (.vert/.frag, with its manifest) and pointed the material at it. "
+                "Read the files and change only the shading math; your edits are compiled before your next call (errors "
+                "in external_changes), or check them now with check_shader.",
+                {"custom_shader": "shaders/Water", "source": "library:water", "submeshes": [0],
+                 "vert_path": "shaders/Water.vert", "frag_path": "shaders/Water.frag"})},
+        ],
+        "checks": {"calls": [{"tool": "fork_shader", "args": {"source": "re:water"}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_water_planar_reflection",
+        "kind": "guard",
+        "what_happened": "A mirror-like lake is library:water's PLANAR_REFLECTION feature (one camera pass per water height), "
+                         "not a Mirror component or a forked shader.",
+        "text_at_issue": "library:water feature PLANAR_REFLECTION 'Planar reflection (with REFLECTION: the scene mirrored; a "
+                         "camera pass per water height)'",
+        "source": "water-reflections spec (Doriax 2247e891f)",
+        "prompt": "The Lake (library:water) should mirror the trees and hills around it, like a calm lake does.",
+        "mocks": [
+            {"tool": "list_shaders", "args": {"name": "re:water"}, "result": ok(
+                "library:water (mesh, Nature): Stylised water ... Features: WAVES, GERSTNER, BUILTIN_TEXTURES, REFLECTION, "
+                "PLANAR_REFLECTION (with REFLECTION: the scene mirrored; a camera pass per water height), UNDERSIDE, DEPTH_FOAM, "
+                "ABSORPTION, REFRACTION, CAUSTICS, FLOW, MESH_DEPTH",
+                {"shaders": [{"shader": "library:water", "role": "water", "features": [
+                    "WAVES", "GERSTNER", "BUILTIN_TEXTURES", "REFLECTION", "PLANAR_REFLECTION", "UNDERSIDE"]}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, REFLECTION]", {"id": 12})},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 12 \"Lake\".", {"entity": {"id": 12}})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties"}],
+                   "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
