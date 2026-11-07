@@ -311,3 +311,38 @@ Step 2 (stream `hot`):
 - **R16, small files.** A `.anim` under 64 KB parses in the call even where threads exist. A job starts a clip at least one frame late, a varying number of frames under load, and `test_upgrade_from_main.py` (R60) failed on exactly that with a 526 B clip: its beacon's timeline moved one frame against the rest of the transcript. Under 64 KB the parse is a few milliseconds (about 50 ms per MB). A larger clip's first play can still start frames later than on main, its own timeline intact: that is R16's trade, and the upgrade fixture has no such clip.
 - **R16.** The worker path applies in async loading (`Engine::isAsyncLoading`, on in the editor and exported games), as for sub-clips. Without it, `.anim` still loads in the call. `AnimatorSystem::preview` and `AnimationPlayer::sample` load a `.anim` in the call in every mode, through `pollOrLoad(..., animInCall)`, because their callers read the pose when they return. An Animator's first bind now waits for all its clips, for sub-clips too, so time starts as on the synchronous path; this also changes async sub-clip loads, which used to start the states' time at the first bind. AC5's limit on test edits is about the tiered slerp and is unaffected: only `ValueSamplersMatchTheFormerActionSystemExpressions`'s reference changed for that.
 - **R43 and full clips.** R43 holds on its micro (1.86 x on the merged tree). Full clips gain -2 % to -17 % in sampling and a segment over 30 degrees costs about 25 % more per call: `docs/perf/animator.md` has both.
+
+Step 5 solvers (stream `solvers`):
+
+- **R33, method.** The parents do not use ozz's sphere construction: on an upright chain its shortest arc
+  has a tilted axis, which rolls the spine and breaks the shares of R33's "keep the engine's weights". Each
+  parent takes its share of the arc the head needs now; only the last weighted bone uses the construction,
+  and that is what makes the aim exact.
+- **R34, foot rotation.** The sole cannot stay on the plane if the foot inherits the shin's turn from a
+  bent knee, which `rotateBoneInRigSpace` on the solved pose did: 38 degrees off the slope in the red run at 30
+  degrees. The foot now takes its animated rig rotation turned to the ground, through the two-bone's
+  `endRotation`. An R35 change; the release notes state it.
+- **R34, Foot Lock.** R34 names Foot IK only. A lock on the same leg runs after it and turned the foot with the
+  shin again: 1.65 degrees off the slope in `SoleStaysOnTheSlopeUnderFootLock`, and 3.97 degrees on flat ground in
+  `FootLockKeepsTheAnimatedFootRotation`, both red with Foot IK already fixed. The centre of the sole stayed within
+  1 mm there, so R34's number held and the orientation did not. It is the same defect, so it gets the same
+  fix, and it extends R35's no opt-in to Foot Lock's foot rotation, on flat ground too; the release notes state it.
+- **R32, hinge under non-uniform scale.** The closed form is exact on the first pass, and uniform scale ends
+  there. Repeating it under non-uniform scale oscillated (1.08 m off in the first green run), so the later passes
+  use the auto step from the side it chose, and only the side is kept. The auto step itself can stop short
+  under strong non-uniform scale; a planar model of it, not a run, puts that at up to 1.9 m at scale 2 to 3 on
+  a parent. That predates S74 and is not changed here; `reached` reports the miss.
+- **R34, range.** The centre of the sole stays on the plane past the clamp too (`h cos(slope - clamp) / cos(slope)`),
+  not only up to it. The height stops growing past the steeper of 60 degrees and the clamp, so a wall hit
+  cannot throw a leg.
+- **R32, scope.** `soften`, `hingeAxis` and `twist` also apply to Foot IK and Foot Lock legs, since both are
+  two-bone solves and the near-straight knee is theirs too. All default to off.
+- **R32-R33, Inspector rows.** The fields carry `visibleIf` (Soften, Hinge Axis, Twist on legs; Aim Offset on Look At),
+  but the default Inspector draws every member of a list element (`drawDefaultArray`), so each constraint shows all of
+  them, as it already showed Bone Weights on a Two Bone. `test_animator_ik.py` checks the labels, not the per-type
+  hiding. Out-of-range values through `set_properties` are stored as given (a `Clamped` field is not refused); the
+  solver and Lua's setters clamp `soften` to 0..1.
+- **R57 and the brief's MCP path.** A controller holds no constraints, so `edit_animator_controller` has no
+  field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
+  fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so
+  the fields are `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`.

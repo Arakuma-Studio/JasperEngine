@@ -1778,12 +1778,26 @@ void anim::AnimatorInstance::update(const AnimatorComponent& component, const An
 void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const AnimatorUpdateContext& context){
     RigSpace space{spaceWorld.data(), spacePosition.data(), spaceRotation.data(), spaceScale.data()};
     poseToRigSpace(finalPose, rig.parents.data(), space);
+    clearIKResults();
     if (component.ik.empty() || ik.size() != component.ik.size()) return;
-    IKContext ctx{&finalPose, rig.parents.data(), space};
+    IKContext ctx{&finalPose, rig.parents.data(), space, &context.rootWorld};
     const float dt = std::fabs(context.dt * component.speed);
     const Quaternion rootRotationInverse = context.rootWorldRotation.inverse();
     auto toRig = [&](const Vector3& world){ return context.rootWorldInverse * world; };
     auto toWorld = [&](const Vector3& rigPosition){ return context.rootWorld * rigPosition; };
+    auto record = [](AnimatorIKRun& run, const IKResult& result, float weight, const Vector3& targetWorld){
+        run.reached = result.reached;
+        run.reachError = result.error;
+        run.solvedWeight = weight;
+        run.solvedTargetWorld = targetWorld;
+    };
+    auto legOptions = [](const AnimatorIKConstraint& c){
+        TwoBoneOptions options;
+        options.soften = c.soften;
+        options.hingeAxis = c.hingeAxis;
+        options.twist = c.twist;
+        return options;
+    };
     auto weightOf = [&](size_t i){
         const AnimatorIKConstraint& c = component.ik[i];
         float w = c.enabled ? c.weight : 0.0f;
@@ -1808,17 +1822,19 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                 const Vector3 pole = toRig(run.poleWorld);
                 Quaternion endRotation;
                 if (c.useTargetRotation && run.hasTargetRotation) endRotation = rootRotationInverse * run.targetRotationWorld;
-                solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(targetWorld), run.hasPole ? &pole : nullptr,
-                             c.useTargetRotation && run.hasTargetRotation ? &endRotation : nullptr, weight);
+                record(run, solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(targetWorld), run.hasPole ? &pole : nullptr,
+                                         c.useTargetRotation && run.hasTargetRotation ? &endRotation : nullptr, weight, legOptions(c)),
+                       weight, targetWorld);
                 break;
             }
             case AnimatorIKType::Fabrik:
                 if (!hasTarget || run.boneCount < 2) break;
-                solveFabrik(ctx, run.bones, run.boneCount, toRig(targetWorld), c.iterations, c.tolerance, weight);
+                record(run, solveFabrik(ctx, run.bones, run.boneCount, toRig(targetWorld), c.iterations, c.tolerance, weight), weight, targetWorld);
                 break;
             case AnimatorIKType::LookAt:
                 if (!hasTarget || run.boneCount < 1) break;
-                solveLookAt(ctx, run.bones, run.boneWeights, std::min(run.boneCount, 4), c.forwardAxis, toRig(targetWorld), c.clampAngle, weight);
+                record(run, solveLookAt(ctx, run.bones, run.boneWeights, std::min(run.boneCount, 4), c.forwardAxis, toRig(targetWorld),
+                                        c.clampAngle, weight, c.aimOffset), weight, targetWorld);
                 break;
             case AnimatorIKType::FootIK: {
                 if (footDone) break;
@@ -1836,7 +1852,7 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     float desired = 0.0f;
                     if (foot.hit){
                         const float lift = std::max(0.0f, footPosition.y - f.footHeight);
-                        desired = foot.hitPoint.y + f.footHeight + lift - footPosition.y;
+                        desired = foot.hitPoint.y + footAnkleHeight(f.footHeight, foot.hitNormal, f.maxFootAngle) + lift - footPosition.y;
                     }
                     foot.offset = springDamp(foot.offset, desired, foot.offsetVelocity, f.smoothing, dt);
                     const float w = weightOf(j);
@@ -1853,15 +1869,18 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     const Vector3 animated = context.rootWorldInverse * foot.footWorld;
                     const Vector3 now = spacePosition[(size_t)foot.bones[2]];
                     const Vector3 target(now.x, animated.y + foot.offset, now.z);
-                    solveTwoBone(ctx, foot.bones[0], foot.bones[1], foot.bones[2], target, nullptr, nullptr, w);
+                    // the foot keeps its animated rotation, turned to the ground: not what bending
+                    // the knee would make of it through the shin
+                    Quaternion footRotation = spaceRotation[(size_t)foot.bones[2]];
                     if (foot.hit){
                         const Quaternion align = shortestArc(Vector3(0, 1, 0), foot.hitNormal);
                         const float angle = 2.0f * std::acos(std::min(1.0f, std::fabs(align.w)));
                         const float maxAngle = f.maxFootAngle * 0.017453292519943295f;
-                        Quaternion clamped = angle > maxAngle && angle > 1e-6f ? Quaternion::slerp(maxAngle / angle, Quaternion(), align) : align;
-                        clamped = Quaternion::nlerp(w, Quaternion(), clamped, true);
-                        rotateBoneInRigSpace(ctx, foot.bones[2], clamped);
+                        footRotation = (angle > maxAngle && angle > 1e-6f ? Quaternion::slerp(maxAngle / angle, Quaternion(), align) : align) * footRotation;
                     }
+                    IKResult result = solveTwoBone(ctx, foot.bones[0], foot.bones[1], foot.bones[2], target, nullptr, &footRotation, w, legOptions(f));
+                    result.reached = result.reached && foot.hit;    // no ground: nothing to reach
+                    record(foot, result, w, toWorld(target));
                 }
                 break;
             }
@@ -1889,11 +1908,23 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
                     run.lockWeight = c.releaseTime > 0.0f ? std::max(0.0f, run.lockWeight - dt / c.releaseTime) : 0.0f;
                 }
                 if (run.lockWeight > 0.0f){
-                    solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(run.lockWorld), nullptr, nullptr, weight * run.lockWeight);
+                    // the foot keeps the rotation it came with (the animation's, or Foot IK's turn to
+                    // the ground): holding the ankle bends the knee, which must not turn it
+                    const Quaternion footRotation = spaceRotation[(size_t)run.bones[2]];
+                    record(run, solveTwoBone(ctx, run.bones[0], run.bones[1], run.bones[2], toRig(run.lockWorld), nullptr, &footRotation,
+                                             weight * run.lockWeight, legOptions(c)), weight * run.lockWeight, run.lockWorld);
                 }
                 break;
             }
         }
+    }
+}
+
+void anim::AnimatorInstance::clearIKResults(){
+    for (AnimatorIKRun& run : ik){
+        run.reached = false;
+        run.reachError = 0.0f;
+        run.solvedWeight = 0.0f;
     }
 }
 

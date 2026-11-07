@@ -173,6 +173,12 @@ namespace jasperengine::anim{
         bool scriptTarget = false;
         Vector3 scriptTargetWorld = Vector3(0, 0, 0);
         float scriptWeight = -1.0f;         // < 0: none
+        // The outcome of the last solve, in world space, for scripts (isIKReached), get_animator
+        // and debug overlays. Cleared while nothing solves (weight 0, disabled, culled).
+        bool reached = false;
+        float reachError = 0.0f;            // metres (anim::IKResult)
+        float solvedWeight = 0.0f;          // the effective weight the solve ran with
+        Vector3 solvedTargetWorld = Vector3(0, 0, 0); // what it aimed at: FootIK's spring target, FootLock's lock too
         // FootIK: last update's foot position (world, for the ray), the hit, the spring
         bool hasFoot = false;
         Vector3 footWorld = Vector3(0, 0, 0);
@@ -392,6 +398,9 @@ namespace jasperengine::anim{
         StateInfo nextState(int layer) const;
         bool isInTransition(int layer) const;
         float transitionProgress(int layer) const;
+
+        // nothing solves this frame (disabled, culled): no constraint reports a stale outcome
+        void clearIKResults();
 
         // true the first time a message is given (the caller logs it): one warning per name
         bool warnOnce(const std::string& message);
