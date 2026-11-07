@@ -1613,6 +1613,7 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
     JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
     JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
+    JE_RF(SpriteComponent, drawMode, 0x68130ab3u, Enum),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };

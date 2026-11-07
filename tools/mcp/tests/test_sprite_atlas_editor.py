@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pngdiff
 import ui_input
-from harness import Editor, TestFailure
+from harness import REPO, Editor, TestFailure
 
 CI = True
 EDITOR = {"create": True, "name": "SpriteAtlasEditor", "xvfb": "harness", "ui_probe": True}
@@ -58,6 +58,10 @@ async def wait_item(ed: Editor, helper: ui_input.Ui, item: str, frames: int = 12
 async def shot(ed: Editor, name: str) -> None:
     png = await ed.screenshot("editor", path=ed.scratch.root / f"{name}.png", max_width=0)
     check(png and not pngdiff.flat(pngdiff.decode(png)), f"{name}: the editor window draws")
+    # also beside the build (not committed), for the review's evidence
+    evidence = REPO / "build" / "s45-evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / f"{name}.png").write_bytes(png)
 
 
 async def test_atlas_inspector(ed: Editor):
