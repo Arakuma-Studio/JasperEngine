@@ -12,6 +12,7 @@
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
 #include "window/dialog/CreateTerrainDialog.h"
+#include "window/TerrainEditWindow.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 
