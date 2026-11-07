@@ -9,6 +9,7 @@
 #include "SceneBackup.h"
 #include "command/CommandHandle.h"
 #include "command/type/VoxelEditCmd.h"
+#include "component/VoxelVolumeComponent.h"
 #include "io/AtomicFile.h"
 #include "io/FileData.h"
 #include "io/watch/FileWatchService.h"
