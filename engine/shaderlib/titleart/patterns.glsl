@@ -284,7 +284,7 @@ float pat_fbm(vec2 q) {
 
 // 木目: rings of noise-distorted distance from a vertical axis; color2 the fine grain streaks
 vec3 pat_wood(vec2 q) {
-  float u = abs(q.x) + 0.55 * pat_gnoise(q * vec2(0.35, 0.06)) + 0.12 * pat_gnoise(q * vec2(1.5, 0.3) + 4.0);
+  float u = abs(q.x + 0.9 * pat_gnoise(q * vec2(0.12, 0.05))) + 0.8 * pat_gnoise(q * vec2(0.45, 0.16)) + 0.15 * pat_gnoise(q * vec2(1.5, 0.3) + 4.0);
   float ring = abs(fract(u) - 0.5) - 0.17 - 0.06 * pat_gnoise(vec2(floor(u) * 3.7, q.y * 0.2));
   float streak = abs(fract(q.x * 7.0 + 0.6 * pat_gnoise(q * vec2(1.2, 0.08))) - 0.5) - 0.42;
   return vec3(ring, streak / 7.0, 0.12);
@@ -352,10 +352,10 @@ vec3 pat_carbonFiber(vec2 q) {
 
 // 錆: fbm patches; color2 the pitting along their edges
 vec3 pat_rust(vec2 q) {
-  float patch = pat_fbm(q * 0.5 + 1.3);
+  float spot = pat_fbm(q * 0.5 + 1.3);
   float pit = pat_gnoise(q * 5.7 - 4.0);
-  float edge = abs(patch - 0.05);
-  return vec3((0.05 - patch) * 0.5, max((edge - 0.12) * 0.3, (0.35 - pit) * 0.1), 0.1);
+  float edge = abs(spot - 0.05);
+  return vec3((0.05 - spot) * 0.5, max((edge - 0.12) * 0.3, (0.35 - pit) * 0.1), 0.1);
 }
 
 // 革: Worley cells raised, the creases between them the marks

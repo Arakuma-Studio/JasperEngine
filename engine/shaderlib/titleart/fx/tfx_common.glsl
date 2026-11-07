@@ -30,9 +30,10 @@ vec4 tfx_lightPremul(vec3 light) {
     return vec4(light, clamp(max(max(light.r, light.g), light.b), 0.0, 1.0));
 }
 
-// the signed distance (+ outside) at an integer texel, clamped to the field
+// the signed distance (+ outside) at an integer texel, clamped to the field (whose size may
+// differ from the pass's target: the drip origins and the stitch layout write smaller ones)
 float tfx_distanceAt(ivec2 q) {
-    return fx_readDistance(clamp(q, ivec2(0), ivec2(TA_SIZE) - 1));
+    return fx_readDistance(clamp(q, ivec2(0), textureSize(TA_RAW0, 0) - 1));
 }
 
 // the distance bilinearly between texel centres (a smooth field for marching and shading)

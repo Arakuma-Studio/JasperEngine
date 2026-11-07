@@ -59,11 +59,9 @@ precision highp int;
 #define TFX_PROGRAM_MATERIAL_SURFACE 41
 #define TFX_PROGRAM_MATERIAL_DETAIL 42
 
-// the compiler names the program TA_PROGRAM (the low property bits); titleart/effects.glsl
-// tests TA_PROGRAM against titleart.frag's numbers, none of which is meant here
+// the compiler names the program TA_PROGRAM (the low property bits); none of the includes below
+// tests it (titleart.frag's own TA_PROGRAM_* numbers are not defined here)
 #define TFX_PROGRAM TA_PROGRAM
-#undef TA_PROGRAM
-#define TA_PROGRAM 0
 
 out vec4 frag_color;
 

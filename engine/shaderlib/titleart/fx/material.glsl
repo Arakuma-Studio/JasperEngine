@@ -99,7 +99,7 @@ float tfx_textureHeight(int kind, vec2 q, vec2 c) {
 // p6 = (light (frame x, y down, z toward the viewer), gloss contour), p7 = (highlight colour
 // sRGB, opacity), p8 = (shadow colour sRGB, opacity), p9 = (finish on, finish amount, surface
 // texture kind (0 none), its amount), p10 = (texture feature px, texture direction (y down),
-// shape-burst depth px), p11.xy = the texture seed offset
+// shape-burst depth px), p11 = (the texture seed offset, reflection on, reflection amount)
 float tfx_heightAt(vec2 p, float size, int profile, float dirSign) {
     float d = tfx_distanceSmooth(p);
     float h = tfx_profile(clamp(-d / max(size, 0.5), 0.0, 1.0), profile);
@@ -170,6 +170,13 @@ vec4 tfx_materialSurface() {
             g += vec2(texDir.x * ts.x - texDir.y * ts.y, texDir.y * ts.x + texDir.x * ts.y) * texAmt;
         }
         n = normalize(vec3(-g, 1.0));
+    }
+    // reflection without its map (an effect pass binds no panorama): the classic chrome horizon,
+    // a bright sky over the surfaces that face up, a dark ground under the ones that face down
+    if (ta.p[11].z > 0.5) {
+        float v = clamp(-n.y * 2.2 + 0.08, -1.0, 1.0);
+        float env = v > 0.0 ? mix(0.62, 1.0, v) : mix(0.42, 0.06, -v) * (1.0 - 0.25 * (1.0 - n.z));
+        c = mix(c, vec3(env), ta.p[11].w);
     }
     if (lit) {
         float sl = dot(n, Ld) - Ld.z;

@@ -210,8 +210,9 @@ vec4 tfx_distress() {
 // one of its gravity-facing edges, weighted toward the edges whose normal points with gravity.
 // One output texel per drip, written as a jump-flood seed (x, y, valid). TA_TEX1 the content,
 // TA_RAW0 its distance, TA_RAW1 its bounds. p2 = (gravity (y down), edge bias 0..1, seed),
-// p3.x = the march step px
+// p3 = (the march step px, the content's size)
 vec4 tfx_dripOrigins() {
+    vec2 size = ta.p[3].yz;
     float i = floor(gl_FragCoord.x);
     vec2 g = ta.p[2].xy;
     vec2 u = vec2(-g.y, g.x);
@@ -240,7 +241,7 @@ vec4 tfx_dripOrigins() {
             for (int s = 0; s <= 512; s++) {
                 if (s > steps) break;
                 vec2 q = u * uc + g * (g0 - 1.0 + float(s) * stepPx);
-                float a = textureLod(TA_TEX1, q / TA_SIZE, 0.0).a;
+                float a = textureLod(TA_TEX1, q / size, 0.0).a;
                 if (s > 0 && prev >= 0.5 && a < 0.5) {
                     // the edge between the two samples, refined linearly
                     float t = (prev - 0.5) / max(prev - a, 1e-4);
