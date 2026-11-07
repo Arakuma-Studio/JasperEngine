@@ -26,6 +26,8 @@ namespace jasperengine::terrain {
 
     // Bytes out or false. The players have no compressor (only zstd_decompress): the editor hands one in
     using TreeCompressFn = bool (*)(const void* input, size_t inputBytes, std::vector<uint8_t>& output);
+    // Exactly outputBytes out or false. Handed in so this folder needs no library (T1 R1)
+    using TreeDecompressFn = bool (*)(const void* input, size_t inputBytes, void* output, size_t outputBytes);
 
     // What changed, records as they were and are: undo keeps these, not the file (T5 R52)
     struct TreeDelta {
@@ -70,7 +72,7 @@ namespace jasperengine::terrain {
         // kept only when smaller.
         void encode(std::vector<uint8_t>& out, TreeCompressFn compress = nullptr) const;
         // False with a message naming what is wrong: this store is left untouched
-        bool decode(std::span<const uint8_t> bytes, std::string* error);
+        bool decode(std::span<const uint8_t> bytes, std::string* error, TreeDecompressFn decompress = nullptr);
 
     private:
         std::vector<TreeRecord> treeRecords;    // sorted by id

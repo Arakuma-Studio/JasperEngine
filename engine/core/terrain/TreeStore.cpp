@@ -3,7 +3,6 @@
 
 #include "terrain/TreeStore.h"
 
-#include "zstd.h"
 
 #include <algorithm>
 #include <cstring>
@@ -238,7 +237,7 @@ void TreeStore::encode(std::vector<uint8_t>& out, TreeCompressFn compress) const
     }
 }
 
-bool TreeStore::decode(std::span<const uint8_t> bytes, std::string* error) {
+bool TreeStore::decode(std::span<const uint8_t> bytes, std::string* error, TreeDecompressFn decompress) {
     const auto fail = [&](const std::string& message) {
         if (error) *error = message;
         return false;
@@ -269,8 +268,10 @@ bool TreeStore::decode(std::span<const uint8_t> bytes, std::string* error) {
     std::vector<TreeRecord> records(count);
     const uint8_t* source = header + TREE_FILE_HEADER_BYTES;
     if (flags & TREE_FILE_FLAG_ZSTD) {
-        const size_t written = ZSTD_decompress(records.data(), recordBytes, source, payload);
-        if (ZSTD_isError(written) || written != recordBytes) {
+        if (!decompress) {
+            return fail("compressed, and this reader was given no decompressor");
+        }
+        if (!decompress(source, payload, records.data(), recordBytes)) {
             return fail("corrupt: the compressed records do not decompress to the stated count");
         }
     } else {

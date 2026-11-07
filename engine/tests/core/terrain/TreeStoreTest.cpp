@@ -48,6 +48,11 @@ namespace {
         return true;
     }
 
+    bool zstdDecompress(const void* input, size_t inputBytes, void* output, size_t outputBytes) {
+        const size_t written = ZSTD_decompress(output, outputBytes, input, inputBytes);
+        return !ZSTD_isError(written) && written == outputBytes;
+    }
+
 }
 
 TEST(TreeStore, RoundTripIsByteIdentical) {
@@ -79,7 +84,8 @@ TEST(TreeStore, LargeFilesCompressAndReturn) {
 
     TreeStore loaded;
     std::string error;
-    ASSERT_TRUE(loaded.decode(packed, &error)) << error;
+    EXPECT_FALSE(TreeStore().decode(packed, &error)) << "no decompressor, no records";
+    ASSERT_TRUE(loaded.decode(packed, &error, zstdDecompress)) << error;
     EXPECT_EQ(loaded.contentHash(), store.contentHash());
 
     // small files stay plain, compressor or not

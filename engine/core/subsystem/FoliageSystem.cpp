@@ -24,6 +24,8 @@
 #include "terrain/TerrainMapStore.h"
 #include "util/Fnv.h"
 
+#include "zstd.h"
+
 #include <algorithm>
 #include <chrono>
 #include <climits>
@@ -39,6 +41,12 @@ using namespace jasperengine::terrain;
 namespace {
 
     constexpr int FOLIAGE_NO_CELL = INT_MIN;
+
+    // A big .jetrees is zstd: every player links zstd_decompress (TreeStore names no library)
+    bool treeFileDecompress(const void* input, size_t inputBytes, void* output, size_t outputBytes) {
+        const size_t written = ZSTD_decompress(output, outputBytes, input, inputBytes);
+        return !ZSTD_isError(written) && written == outputBytes;
+    }
 
     double foliageNowMs() {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -801,7 +809,7 @@ struct FoliageSystem::Impl {
         const auto decode = [error](std::vector<uint8_t>&& bytes) -> std::shared_ptr<TreeStore> {
             auto store = std::make_shared<TreeStore>();
             std::string message;
-            if (!store->decode(bytes, &message)) {
+            if (!store->decode(bytes, &message, treeFileDecompress)) {
                 *error = message;
                 return nullptr;
             }
