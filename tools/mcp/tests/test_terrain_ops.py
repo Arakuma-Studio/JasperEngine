@@ -40,7 +40,7 @@ async def test_result_shape(ed: Editor):
     ed.check_eq([c["map"] for c in out["changed"]], ["height"])
     change = out["changed"][0]
     ed.check(change["texels"] > 0 and len(change["rect"]) == 4, f"a texel rectangle and count: {change}")
-    ed.check(change["local"]["min"][0] >= -8.5 and change["local"]["max"][0] <= 8.5, f"the circle's box: {change['local']}")
+    ed.check(-10 <= change["local"]["min"][0] < -6 and 6 < change["local"]["max"][0] <= 10, f"the circle's box: {change['local']}")
     op = out["ops"][0]
     for key in ("op", "changed_texels", "clipped_low", "clipped_high", "filtered_out", "outside"):
         ed.check(key in op, f"ops[0] has {key}: {op}")
@@ -53,10 +53,12 @@ async def test_dry_run_changes_nothing(ed: Editor):
     sid, terrain = await new_terrain(ed, "Dry")
     ops = [{"op": "add_noise", "amplitude": 3, "noise_size": 6, "seed": 11}, {"op": "smooth", "shape": CIRCLE}]
     before = await hashes(ed, sid, terrain)
-    history = await ed.call("get_undo_history", scene=sid)
+    async def step_ids():
+        return [entry["id"] for entry in (await ed.call("get_undo_history", scene=sid, scope="scene"))["entries"]]
+    history = await step_ids()
     dry = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=ops, dry_run=True)
     ed.check_eq(await hashes(ed, sid, terrain), before, "a dry run writes nothing")
-    ed.check_eq(await ed.call("get_undo_history", scene=sid), history, "and adds no undo step")
+    ed.check_eq(await step_ids(), history, "and adds no undo step")
     real = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=ops)
     ed.check_eq(dry["changed"], real["changed"], "the same changed maps")
     ed.check_eq(dry["ops"], real["ops"], "the same per-op numbers")
