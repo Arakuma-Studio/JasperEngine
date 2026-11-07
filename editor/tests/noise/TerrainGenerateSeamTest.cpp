@@ -157,15 +157,16 @@ TEST(TerrainGeneration, CreateDialogSeam) {
     LoopHost host;
     HostScope scope(host);
     bool called = false;
+    Entity entity = NULL_ENTITY;
     GenerationResult got;
-    const Entity entity = CreateTerrainDialog::createGenerated(project, sceneId, NULL_ENTITY, settings, [&](const GenerationResult& result) {
+    ASSERT_TRUE(CreateTerrainDialog::createGenerated(project, sceneId, NULL_ENTITY, settings, [&](Entity made, const GenerationResult& result) {
         called = true;
+        entity = made;
         got = result;
-    }, error);
-    ASSERT_NE(entity, NULL_ENTITY) << error;
-    EXPECT_TRUE(error.empty()) << error;
+    }, error)) << error;
     runFramesUntil(host, called, 120);
     ASSERT_TRUE(called);
+    ASSERT_NE(entity, NULL_ENTITY) << got.error;
     EXPECT_TRUE(got.ok) << got.error;
     EXPECT_NE(got.undoName.find(chosen.name), std::string::npos) << got.undoName;
     EXPECT_NE(got.undoName.find("seed 7"), std::string::npos) << got.undoName;

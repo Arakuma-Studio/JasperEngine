@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor {
 
@@ -49,13 +50,16 @@ namespace jasperengine::editor {
         bool opened() const { return isOpen; }
 
         // The undo step Create makes; the new GameObject, or NULL_ENTITY with error
-        static Entity create(Project* project, uint32_t sceneId, Entity parent, const Settings& settings, std::string& error);
-        // T2 R61: Create, then settings.noisePreset run over the whole terrain at its height map's resolution, as
-        // generate_terrain runs it with that preset and seed, folded into Create's undo step as "Create Terrain
-        // (Rolling Hills)" once it ends; done runs then, on the main thread, once. NULL_ENTITY with error when
-        // Create fails; a preset that cannot start leaves the flat terrain, with error and done not called.
-        static Entity createGenerated(Project* project, uint32_t sceneId, Entity parent, const Settings& settings,
-                                      std::function<void(const GenerationResult&)> done, std::string& error);
+        // heights: the height map's RED16 bytes (T2 R61's generated ones), else flat; stepName: else
+        // "Create Terrain (Name)"
+        static Entity create(Project* project, uint32_t sceneId, Entity parent, const Settings& settings, std::string& error,
+                             const std::vector<uint8_t>* heights = nullptr, const std::string& stepName = {});
+        // T2 R61: settings.noisePreset run over the new height map on a job, as generate_terrain runs it with that
+        // preset and seed, then Create with those heights: one undo step, "Create Terrain (Rolling Hills)". done
+        // runs on the main thread, once, with the new GameObject (NULL_ENTITY and the result's error on a failure).
+        // False with error, and done not called, when the preset cannot run.
+        static bool createGenerated(Project* project, uint32_t sceneId, Entity parent, const Settings& settings,
+                                    std::function<void(Entity, const GenerationResult&)> done, std::string& error);
         // What the maps take on the CPU and GPU, and the platforms' warnings
         static std::string memoryLine(const Settings& settings);
 
