@@ -1339,3 +1339,60 @@ rest of S82 lands in 6B.
    `engine/tests/core/golden/titleart/3d/`, Pachislop references beside S80's.
 7. **Reconciled: no product names.** The fixture look is "Gold 3D" (the structure of S84's `metal/gold-3d`) and the goal says "a lit
    solid" (third-party product names are S84's denied terms).
+8. **Implementation (wave 6B, `ta/s86-3d`): the sub-options are declared in S86's own CMake file.** S81 owns
+   `JASPERENGINE_TITLE_ART_3D` / `_MESHER` and their `ModuleUsage` wiring, but its stream is not in this tree:
+   `engine/core/titleart/three_d/Title3DSources.cmake` declares both (ON; `option()` keeps the first declaration, so S81's
+   later one merges without a conflict), globs `three_d/*.cpp` (3D) and `three_d/mesher/*.cpp` (mesher, with earcut) and
+   adds the two compile definitions. The core tests of `titleart/three_d/` build only with both ON.
+9. **Implementation: the document's 3D members are nullable.** `style_3d` and `scene_3d` default to `null` (not to their
+   objects), so a 2D document writes `null` for them and re-saves byte-identically (R45); a 3D layer whose `style_3d` is null
+   renders R2's derivation (R64), and `set_dimension 3d` writes it. A layer's `lighting` and a material's `environment` are
+   S80 sparse kinds (only the values set are written). Light positions are a `Json` member checked as `[x, y, z]` (the schema
+   has no Vec3). S80's normalize keeps `null` entries of a nullable ObjectArray (for `bands_3d`).
+10. **Implementation: interface additions to S80.** `TitleCurve::derivative(x, fromLeft)` (custom bevel normals, inflate
+    slopes); `GlyphOutline::charIndex` and `pivot` (the CharAdjust key and em-cell centre of each glyph);
+    `TitleContentProvider::outlines` (a virtual with a default, the module's provider implements it);
+    `TitleRenderServices::title3D` (the 3D renderer, made by the first 3D layer planned, dropped on device loss);
+    `TitlePlanner::is3D / title3D / title3DRect / title3DParts / title3DAsset` (one dispatch line each in `contentRect`,
+    `unitContent` and `titleParts`); `TitleOpContext::undoName` (a registered op names its own undo step).
+11. **Implementation: the vertex ids.** `a_ids.w` holds the material **slot** (12 bits) and its role (4 bits) instead of a
+    material index: the slot table (a uniform) maps slots to the layer's ≤ 16 materials, so a material edit, a preset or a
+    link never touches a vertex buffer (R14). The vertex stage reads each part's rig matrix, shear flag and z range from a
+    per-part uniform array (≤ 64 parts) instead of the span table, so it binds no texture.
+12. **Implementation: the mesh is built at planning, on the planner's thread.** The 3D layer's region is the projected bounds of
+    its mesh, which the planner needs before any step; the mesher (shapes, meshes and inflate fields cached, process-wide)
+    runs there. S81's scheduler units (R14's per-island jobs, the single-thread web budget) and the double-buffered previous
+    mesh are S81's to wire when its scheduler lands; the mesher itself is pure and thread-safe for that.
+13. **Implementation: environments are built in the engine's renderer**, not by an editor-only builder: `Title3DRenderer`
+    evaluates a procedural preset per cube texel (`title_env.frag`, every level box-filtered on its own 4 × 4 grid), or maps
+    a Poly Haven panorama onto the top level and box-reduces it level by level (the softbox preset adds its key softbox), then
+    GGX-prefilters into levels down to 8 px. HDRIs come through `setTitleHdriLoader`: the editor reads its bundled files
+    (`editor/resources/titleart/hdri/`, fetched by `tools/titleart/fetch_hdris.py`, staged beside the editor). The preset
+    scenes were transcribed by hand from `environment.ts` into a C++ table (`TitleEnvironment.cpp`, also the CPU twin of
+    the scene evaluation); there is no `port_environments.py` and no per-preset JSON. Poly Haven titles the third photo
+    "Derelict Highway Midday" (no parentheses). Not in this branch: custom `.hdr`/`.exr` project assets (they render the
+    studio with `environment_missing`), the cook to KTX2 cubes (R26, AC14) and the runtime loading of cooked cubes.
+14. **Implementation: the roughness-to-level map below r = 1/6.** `level = 6 r + log2(face / 512)` holds from r = 1/6 up;
+    below it the level runs linearly from 0 (the face's own top level) so the extra top levels of 1024 and 2048 faces sharpen
+    near-mirrors as the text says (the formula alone would never read level 0).
+15. **Implementation: no culling, no `mirrored`.** The main pass depth-tests closed solids without face culling and turns each
+    normal toward the viewer, which gives the same image for flipped (negative-determinant) layers and the GL Y flip without
+    reversed winding; `PipelineState::mirrored` (R44) is therefore not added.
+16. **Implementation: what this branch does not implement** (each is listed in the final report): SAO (R31), glints (R32: S83's
+    `Glint3D`, S86's sprite glints), the gem behind pass (R21: gems refract the environment), the cap position rebuild and
+    patterns on 3D faces (R22), picture projection (R1a), per-part environments in one draw, `debug_view` other than `none`,
+    the 3D Designer rows, pickers and gizmo target (R50-R58: S82's hooks are not in this tree), Lua (R63: S81's component is not
+    in this tree), the cooked `.titlemesh` export and its player load (the format, writer and reader are implemented), the
+    parity goldens (AC21) and the device runs (AC23).
+17. **Implementation: `fit_to_tier` applies the tier's reductions** (curve segments, bevel segments, bands past the tier's solid
+    count) without measuring the mesh; `3d_tier_budget` measures it per Realtime tier and offers `fit_to_tier` as the fix.
+18. **Implementation: inflate slopes are analytic.** The smooth inflate normals take the profile curve's derivative instead of
+    a 1e-3 finite difference (R11 "exactly" otherwise holds).
+19. **Implementation: caps are wound as one surface.** Each cap's earcut triangulation takes one winding from its total
+    signed area instead of rewinding triangle by triangle, so a sliver a clamped ring folds keeps its neighbours' orientation
+    and the solid stays a closed, consistently oriented 2-manifold. AC3's red control (caps on the outline) therefore shows
+    as triangles facing away from their normals rather than as open edges.
+20. **Measured: vertices per triangle.** AC8's "vertices ≤ 0.65 × triangles" does not hold with faceted bevel and band
+    profiles: each facet has its own profile normal, so its rings' vertices are split per facet (BIG BONUS, Gold 3D with a
+    chamfer ring, a step ring and a plate: 21,216 triangles, 26,381 vertices, 1.24 per triangle against a triangle soup's 3).
+    The test asserts ≤ 1.5; sharing would need averaged normals across facets, which would soften the bevels' highlights.
