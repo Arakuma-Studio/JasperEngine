@@ -1205,7 +1205,7 @@ bool startGeneration(const CallPtr& call, Target& target, const VoxelGenerateReq
     McpContext* ctx = &call->ctx();
     auto task = std::make_shared<VoxelGenerationTask>();
     std::string error;
-    if (!task->start(ctx->project(), target.sp->id, target.entity, request, error)) {
+    if (!task->start(ctx->project(), target.sp->id, target.entity, request, true, error)) {
         failCode(call, "generate_refused", error);
         return false;
     }

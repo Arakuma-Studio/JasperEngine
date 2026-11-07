@@ -35,7 +35,7 @@
 #include "terrain/TerrainErosion.h"
 #include "terrain/TerrainSurface.h"
 #include "util/NormalMapTilt.h"
-#include "terrain/TerrainNoise.h"
+#include "noise/NoiseCompat.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -1815,7 +1815,7 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
                 next = (mode == TerrainBrushMode::Smooth) ? current + (blurred - current) * weight
                                                           : current + (current - blurred) * weight;
             }else if (mode == TerrainBrushMode::Noise){
-                next = current + terrain::TerrainNoise::fractal(static_cast<float>(x) * noiseFrequency, static_cast<float>(y) * noiseFrequency,
+                next = current + noise::compat::fractal(static_cast<float>(x) * noiseFrequency, static_cast<float>(y) * noiseFrequency,
                                                        NOISE_SEED, NOISE_OCTAVES) * weight;
             }else if (mode == TerrainBrushMode::Terrace){
                 next = current + (std::round(current * terraceIntervals) / terraceIntervals - current) * weight;
