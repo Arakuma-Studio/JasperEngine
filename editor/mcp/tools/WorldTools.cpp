@@ -15,6 +15,9 @@
 #include "AnimationKeys.h"
 
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteMigration.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "command/type/SetAssetMetaCmd.h"
 #include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -3260,6 +3263,124 @@ void setSheetSpriteFrames(const CallPtr& call, Target& target, UndoStep& step, b
     call->ok(summary + ".", data);
 }
 
+// S45 R21 through set_sprite_frames {convert: true}
+void convertSpriteFrames(const CallPtr& call, Target& target, bool allUsers) {
+    sprite::LegacySprite legacy;
+    pixelart::PixelProblem problem;
+    sprite::ConvertPlan plan;
+    if (!sprite::legacySpriteOf(*target.project, target.sceneId(), target.entity, legacy, problem) ||
+        !sprite::planConversion(*target.project, legacy, allUsers, plan, problem)) {
+        const Json typed = {{"kind", problem.kind}, {"field", problem.field}, {"message", problem.message}, {"fix", problem.fix}};
+        call->fail(problem.kind + ": " + problem.message + (problem.fix.empty() ? "" : ". Fix: " + problem.fix), Json{{"error", typed}, {"errors", Json::array({typed})}});
+        return;
+    }
+    auto report = std::make_shared<sprite::ConvertReport>();
+    Command* command = new sprite::ConvertInlineFramesCmd(target.project, plan, report);
+    command->setNoMerge();
+    if (!target.project->getProjectCommandHistory()->addCommand(command)) {
+        call->fail("The conversion failed: " + report->error + " (nothing was changed).");
+        return;
+    }
+    Json sprites = Json::array();
+    for (const sprite::LegacySprite& t : plan.targets) {
+        sprites.push_back({{"owner", t.owner}, {"game_object", t.entityPath}, {"frame", std::max(0, t.shown)}, {"open", t.open}});
+    }
+    Json data = {{"texture", McpValues::assetPathToJson(target.project, plan.texture)}, {"frames", plan.sheet.frames.size()},
+                 {"converted", sprites}, {"files_written", report->filesWritten},
+                 {"next", "One undo (scope project) restores the sprites, their files and the texture's meta."}};
+    call->ok("Converted " + std::to_string(plan.targets.size()) + " sprite(s) to frames of " + plan.texture + "'s Sprite Mode (" +
+             std::to_string(plan.sheet.frames.size()) + " frames, indices kept).", data);
+}
+
+// S45 R35: slice / frames into the texture's Sprite Mode, the sprite showing one of its frames
+void sliceIntoTextureSheet(const CallPtr& call, Target& target, UndoStep& step, bool created, const std::string& texture,
+                           const std::vector<SliceRect>& frames) {
+    const Json& args = call->args();
+    Scene* scene = target.engineScene();
+    if (texture.empty()) {
+        step.fail(call, "The sprite has no texture to hold the frames: pass texture.");
+        return;
+    }
+    std::vector<SpriteFrameData> rects;
+    for (const SliceRect& f : frames) rects.push_back({f.name, f.rect});
+    TextureSheetSettings sheet = sprite::sheetFromFrames(texture, rects);
+    int shown = intOr(args, "frame", 0);
+    if (has(args, "frame") && args["frame"].is_string()) {
+        shown = -1;
+        for (size_t i = 0; i < sheet.frames.size(); i++) {
+            if (sheet.frames[i].name == args["frame"].get<std::string>()) shown = static_cast<int>(i);
+        }
+    }
+    if (sheet.frames.empty() || shown < 0 || shown >= static_cast<int>(sheet.frames.size())) {
+        step.fail(call, sheet.frames.empty() ? std::string("The slice gave no frames.") : "frame is not one of the " + std::to_string(sheet.frames.size()) + " frames.");
+        return;
+    }
+    const fs::path absolute = target.project->getAssetsPath() / texture;
+    Command* meta = new SetAssetMetaCmd(target.project, target.project->normalizeToProjectRelative(absolute), sprite::kSpriteSheetKey,
+                                        sprite::sheetSettingsToYaml(sheet));
+    if (meta->isNoOp()) {
+        delete meta;
+    } else {
+        meta->setNoMerge();
+        if (!target.project->getProjectCommandHistory()->addCommand(meta)) {
+            step.fail(call, "Couldn't write the Sprite Mode of " + texture + " (is its .meta writable?).");
+            return;
+        }
+    }
+    sprite::SpriteSheetBuilder::get().invalidate(texture);
+    auto* multi = new MultiPropertyCmd();
+    const ComponentType cp = ComponentType::SpriteComponent;
+    const Guid guid = target.project->getAssetDatabase().getAssetGuid(target.project->normalizeToProjectRelative(absolute));
+    addProp<AssetRef>(*multi, target, target.entity, cp, "sheet", AssetRef(texture, guid));
+    addProp<int>(*multi, target, target.entity, cp, "frame", shown);
+    addProp<std::string>(*multi, target, target.entity, cp, "frameName", sheet.frames[static_cast<size_t>(shown)].name);
+    const SpriteComponent& sprite = scene->getComponent<SpriteComponent>(target.entity);
+    for (unsigned i = 0; i < sprite.numFramesRect; i++) {
+        addProp<std::string>(*multi, target, target.entity, cp, "framesRect[" + std::to_string(i) + "].name", std::string());
+        addProp<Vector4>(*multi, target, target.entity, cp, "framesRect[" + std::to_string(i) + "].rect", Vector4(0, 0, 0, 0));
+    }
+    if (sprite.numFramesRect > 0) addProp<unsigned int>(*multi, target, target.entity, cp, "numFramesRect", 0u);
+    std::string error;
+    if (has(args, "size")) {
+        Vector2 size;
+        if (!readVec2(args, "size", size, error) || size.x < 1.0f || size.y < 1.0f) {
+            delete multi;
+            step.fail(call, "size must be [width, height] pixels.");
+            return;
+        }
+        addProp<unsigned int>(*multi, target, target.entity, cp, "width", static_cast<unsigned int>(size.x));
+        addProp<unsigned int>(*multi, target, target.entity, cp, "height", static_cast<unsigned int>(size.y));
+    } else if (boolOr(args, "resize", true)) {
+        // a sheet sprite at 0 x 0 draws each frame at its own size
+        addProp<unsigned int>(*multi, target, target.entity, cp, "width", 0u);
+        addProp<unsigned int>(*multi, target, target.entity, cp, "height", 0u);
+    }
+    if (has(args, "pivot")) {
+        PivotPreset pivot;
+        if (!pickName(pivotPresets(), stringOr(args, "pivot", ""), pivot, "pivot", error)) {
+            delete multi;
+            step.fail(call, error);
+            return;
+        }
+        addProp<PivotPreset>(*multi, target, target.entity, cp, "pivotPreset", pivot);
+    }
+    if (!step.add(multi)) {
+        step.fail(call, "The editor rejected the sprite edit.");
+        return;
+    }
+    step.commit();
+    Json list = Json::array();
+    for (size_t i = 0; i < sheet.frames.size(); i++) {
+        Rect r = sheet.frames[i].rect;
+        list.push_back({{"index", i}, {"name", sheet.frames[i].name}, {"rect", rectJson(r)}});
+    }
+    call->ok("Wrote " + std::to_string(sheet.frames.size()) + " frame(s) to " + texture + "'s Sprite Mode; Sprite \"" + scene->getEntityName(target.entity) +
+             "\" shows frame " + std::to_string(shown) + ".",
+             Json{{"sprite", entityJson(target, target.entity)}, {"created", created}, {"frames", list},
+                  {"sheet", McpValues::assetPathToJson(target.project, texture)}, {"frame", shown},
+                  {"next", "The frames are the texture's now (every sprite of it can use them); inline: true keeps them in the sprite instead."}});
+}
+
 void setSpriteFramesTool(const CallPtr& call) {
     // an .aseprite sheet being imported: the call waits for it (the editor keeps running) and
     // then runs as if it had just come
@@ -3297,6 +3418,13 @@ void setSpriteFramesTool(const CallPtr& call) {
     SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target.entity);
     if (!sprite || !scene->findComponent<MeshComponent>(target.entity)) {
         failWith("\"" + scene->getEntityName(target.entity) + "\" is not a Sprite.");
+        return;
+    }
+    // S45 R21: the sprite's inline frames moved into its texture's Sprite Mode (all_users: every
+    // sprite of that texture with the same rects, open or closed), one project undo step
+    if (boolOr(args, "convert", false)) {
+        step.rollback();
+        convertSpriteFrames(call, target, boolOr(args, "all_users", false));
         return;
     }
     // a sheet sprite (S44): its frames come from the sheet, the inline frames are not used
@@ -3365,6 +3493,13 @@ void setSpriteFramesTool(const CallPtr& call) {
         framesGiven = true;
     }
     const ComponentType cp = ComponentType::SpriteComponent;
+    // S45 R35: slice and frames write the texture's Sprite Mode (as the Slicer does) and make the
+    // sprite show a frame of it; inline: true keeps the frames in the sprite
+    if (framesGiven && !boolOr(args, "inline", false)) {
+        delete multi;
+        sliceIntoTextureSheet(call, target, step, created, stored, frames);
+        return;
+    }
     if (framesGiven) {
         for (unsigned i = static_cast<unsigned>(frames.size()); i < sprite->numFramesRect; i++) {
             addProp<std::string>(*multi, target, target.entity, cp, "framesRect[" + std::to_string(i) + "].name", std::string());
@@ -6443,9 +6578,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
-        "Give a Sprite its frames: sheet (.aseprite or texture, with its tag clips), or texture with slice "
-        "(row-major cells) or frames (pixel rects); frame picks the shown one. Animate: set_sprite_animation "
-        "(jasper://docs/sprites).",
+        "Give a Sprite its frames: sheet (.aseprite, texture or .spriteatlas, with its tag clips), or texture with slice "
+        "(row-major cells) or frames (pixel rects), written to the texture's Sprite Mode; frame picks the shown one. Animate: "
+        "set_sprite_animation (jasper://docs/sprites).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -6463,7 +6598,10 @@ void registerWorldTools(McpRegistry& registry) {
             {"resize", withDefault(boolean(""), true)},
             {"size", vec2("")},
             {"pivot", stringEnum("", {"center", "top_center", "bottom_center", "left_center", "right_center",
-                                      "top_left", "bottom_left", "top_right", "bottom_right", "frame"})}
+                                      "top_left", "bottom_left", "top_right", "bottom_right", "frame"})},
+            {"inline", withDefault(boolean(""), false)},
+            {"convert", withDefault(boolean(""), false)},
+            {"all_users", withDefault(boolean(""), false)}
         }),
         setSpriteFramesTool, false, false);
 
