@@ -15,6 +15,7 @@
 #include "mcp/McpRefs.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "titleart/TitleArtBake.h"
+#include "titleart/fx/FxCost.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
 #include "titleart/TitleArtDocument.h"
@@ -381,7 +382,7 @@ namespace {
         const char* owner;
     };
     const OptionKey RENDER_OPTIONS[] = {
-        {"overrides", "S81"}, {"rerender", "S81"}, {"live_time", "S81"}, {"cost", "S83"}, {"animation", "S85"},
+        {"overrides", "S81"}, {"rerender", "S81"}, {"live_time", "S81"}, {"animation", "S85"},
         {"quality", "S86"}, {"debug_view", "S86"}, {"languages", "S87"},
     };
 
@@ -620,6 +621,14 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
+        // S83 §6.11: the static cost model per layer, effect and generator
+        if (it.key() == "cost") {
+            if (!it.value().is_string() || (it.value() != "desktop" && it.value() != "mobile")) {
+                error = "bad_option: `options.cost` is \"desktop\" or \"mobile\".";
+                return false;
+            }
+            continue;
+        }
         bool known = false;
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
@@ -630,7 +639,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         if (!known) {
             std::string list;
             for (const OptionKey& k : RENDER_OPTIONS) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
-            error = "bad_option: render_title has no option '" + it.key() + "'. This build has no option keys; later features add: " + list + ".";
+            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves `cost`; later features add: " + list + ".";
             return false;
         }
     }
@@ -808,7 +817,15 @@ void renderTitleTool(const CallPtr& call) {
     spec.doc = std::make_shared<titleart::TitleArtDoc>(document->doc());
     spec.rev = document->revision();
     spec.args = args;
-    startRender(call, std::move(spec), Json::object());
+    Json extra = Json::object();
+    std::string prefix;
+    const Json options = args.contains("options") && args["options"].is_object() ? args["options"] : Json::object();
+    if (options.contains("cost")) {
+        const titleart::Json cost = estimateTitleFxCost(*spec.doc, options["cost"] == "mobile" ? titleart::FxTier::Mobile : titleart::FxTier::Desktop);
+        extra["cost"] = fromOrdered(cost);
+        prefix = titleFxCostSummary(cost) + "\n";
+    }
+    startRender(call, std::move(spec), extra, prefix);
 }
 
 void checkTitleTool(const CallPtr& call) {
