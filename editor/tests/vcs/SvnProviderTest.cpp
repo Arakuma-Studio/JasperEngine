@@ -202,3 +202,45 @@ TEST(SvnProvider, EndToEnd) {
     EXPECT_EQ(branch.name, "^/");
     EXPECT_FALSE(branch.headOid.empty());
 }
+
+// A scheduled add has no BASE to compare with (the scene diff lists all of it as added, as for a
+// git add); a move's new path compares with its source, as a git rename does; a copy is new, as
+// in git (which tracks no copies)
+TEST(SvnProvider, AddedMovedAndCopiedFiles) {
+    VcsSandbox box;
+    ASSERT_FALSE(box.svn.empty()) << "svn is in the build image";
+    const fs::path repo = box.path("repo");
+    ASSERT_TRUE(box.run(box.svnadmin, box.dir.path(), {"create", repo.string()}).ok());
+    const fs::path wc = box.path("wc");
+    box.svnOk(box.dir.path(), {"checkout", "-q", "--username", "alice", fileUrl(repo), wc.string()});
+    writeFile(wc / "Level.scene", "base\n");
+    box.svnOk(wc, {"add", "-q", "Level.scene"});
+    box.svnOk(wc, {"commit", "-q", "--username", "alice", "-m", "one"});
+    SvnProvider alice(svnConfig(box, wc, "alice"));
+
+    writeFile(wc / "New.scene", "new\n");
+    box.svnOk(wc, {"add", "-q", "New.scene"});
+    box.svnOk(wc, {"move", "-q", "Level.scene", "Moved.scene"});
+    box.svnOk(wc, {"copy", "-q", "Moved.scene", "Copy.scene"});
+    const VcsSnapshot snapshot = statusOf(alice);
+
+    const VcsChange* added = snapshot.find("New.scene");
+    ASSERT_NE(added, nullptr);
+    EXPECT_EQ(added->worktree, FileState::Added);
+    EXPECT_TRUE(added->newFile());
+
+    const VcsChange* moved = snapshot.find("Moved.scene");
+    ASSERT_NE(moved, nullptr);
+    EXPECT_EQ(moved->oldPath, "Level.scene");
+    EXPECT_FALSE(moved->newFile());
+    std::string base;
+    ASSERT_TRUE(offMain([&]() { return alice.baseContent(moved->oldPath, "BASE", base); }).ok);
+    EXPECT_EQ(base, "base\n");
+    ASSERT_NE(snapshot.find("Level.scene"), nullptr);
+    EXPECT_TRUE(snapshot.find("Level.scene")->deleted());
+
+    const VcsChange* copy = snapshot.find("Copy.scene");
+    ASSERT_NE(copy, nullptr);
+    EXPECT_TRUE(copy->oldPath.empty());
+    EXPECT_TRUE(copy->newFile());
+}

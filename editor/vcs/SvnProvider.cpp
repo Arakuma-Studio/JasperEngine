@@ -279,6 +279,8 @@ void SvnProvider::parseStatusXml(const XmlElement& root, bool remote, VcsSnapsho
         change.conflict = item == "conflicted" || wc->attribute("tree-conflicted") == "true";
         if (change.conflict && change.worktree == FileState::Unmodified) change.worktree = FileState::Modified;
         change.baseOid = wc->attribute("revision");
+        // a move's new path: its BASE is the source's (a copy without a move counts as new, as in git)
+        if (const std::string& from = wc->attribute("moved-from"); change.worktree == FileState::Added && !from.empty()) change.oldPath = keyOf(from);
         const XmlElement* wcLock = wc->child("lock");
         const XmlElement* repos = entry->child("repos-status");
         if (remote && repos) {

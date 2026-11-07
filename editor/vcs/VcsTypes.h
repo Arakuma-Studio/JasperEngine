@@ -25,7 +25,7 @@ namespace jasperengine::editor::vcs {
 
     struct VcsChange {
         RepoPath path;
-        RepoPath oldPath;                   // Renamed: the path it was renamed from
+        RepoPath oldPath;                   // Renamed (git), moved (svn): the path it was renamed from
         FileState index = FileState::Unmodified;      // staged against HEAD (git); svn: Unmodified
         FileState worktree = FileState::Unmodified;   // the working copy against the index / BASE
         bool conflict = false;
@@ -40,7 +40,7 @@ namespace jasperengine::editor::vcs {
         bool changed() const;
         // Nothing to show: unchanged, no lock of anyone, nothing newer on the server
         bool clean() const;
-        // Untracked, or added and not in HEAD: nothing to revert to (R11)
+        // Untracked, or added (not by a move): nothing in the baseline to revert to (R11)
         bool newFile() const;
         bool deleted() const;
     };
