@@ -393,6 +393,11 @@ namespace {
                 Json out = Json::array();
                 for (size_t i = 0; i < v.size(); i++) {
                     Json item = std::move(v[i]);
+                    // a nullable list keeps its null entries (S86's per-character band materials)
+                    if (m.nullable && item.is_null()) {
+                        out.push_back(nullptr);
+                        continue;
+                    }
                     if (!item.is_object()) {
                         context.warn(jsonPathIndex(path, i), "not an object: dropped");
                         continue;

@@ -379,6 +379,27 @@ double TitleCurve::evaluate(double x) const {
     return (2 * t3 - 3 * t2 + 1) * a.y + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * b.y + (t3 - t2) * h * m1;
 }
 
+double TitleCurve::derivative(double x, bool fromLeft) const {
+    if (points.size() < 2) return points.empty() ? 1.0 : 0.0;
+    x = std::clamp(x, 0.0, 1.0);
+    const std::vector<double> m = curveTangents(points);
+    // the segment holding x; at a key, the one on the requested side
+    size_t i = 0;
+    while (i + 2 < points.size() && (fromLeft ? x > points[i + 1].x : x >= points[i + 1].x)) i++;
+    const TitleCurvePoint& a = points[i];
+    const TitleCurvePoint& b = points[i + 1];
+    const double h = b.x - a.x;
+    if (h <= 1e-12) return 0.0;
+    if (x < a.x || x > b.x) return 0.0;     // outside the keys the curve holds its end values
+    const double slope = (b.y - a.y) / h;
+    const double m0 = m[i];
+    const double m1 = b.corner ? slope : m[i + 1];
+    const double t = (x - a.x) / h;
+    const double t2 = t * t;
+    // d/dx of evaluate's Hermite basis (d/dt divided by h)
+    return ((6 * t2 - 6 * t) * a.y + (3 * t2 - 4 * t + 1) * h * m0 + (-6 * t2 + 6 * t) * b.y + (3 * t2 - 2 * t) * h * m1) / h;
+}
+
 std::vector<float> TitleCurve::sample(int count) const {
     std::vector<float> out((size_t)std::max(0, count));
     for (int i = 0; i < count; i++) {

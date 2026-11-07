@@ -154,6 +154,8 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
     const std::string seed = writeTitleArtJson(doc.root.value("seed", Json(1)));
     const std::string light = writeTitleArtJson(doc.root.value("global_light", Json::object()));
     const std::string canvas = writeTitleArtJson(doc.root.value("canvas", Json::object()));
+    // S86: the document's 3D scene (camera, environment, lights, tone map) is part of every 3D layer's stack
+    const std::string scene3d = writeTitleArtJson(doc.root.value("scene_3d", Json()));
 
     std::vector<Pending> pending;
     forEachLayer(doc.root, [&](const Json& layer, const Json*, int) {
@@ -165,7 +167,9 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
         h.geometry = hashText("seed=" + seed + ";" + t.at(HashScope::Geometry));
         h.mask = hashCombine(h.geometry, hashText(t.at(HashScope::Mask)));
         h.field = hashCombine(h.mask, hashText(t.at(HashScope::Field)));
-        h.stack = hashCombine(h.field, hashText("light=" + light + ";" + t.at(HashScope::Stack)));
+        const bool threeD = layer.value("dimension", std::string()) == "3d";
+        h.stack = hashCombine(h.field, hashText("light=" + light + ";" + (threeD ? "scene3d=" + scene3d + ";" : std::string()) +
+                                                t.at(HashScope::Stack)));
         h.effects = hashText(t.at(HashScope::Effects));
         h.masks = hashText(t.at(HashScope::Masks));
         h.placement = hashText(t.at(HashScope::Placement));
