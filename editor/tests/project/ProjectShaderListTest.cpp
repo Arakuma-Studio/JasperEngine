@@ -159,3 +159,23 @@ TEST_F(ProjectShaderList, EveryConsumerGetsTheSameList) {
     EXPECT_EQ(finished.count(added), 1u);
     EXPECT_EQ(finished.count(blit), 0u);
 }
+
+// A fork whose files are gone can't be built: its variants leave the list a build makes, whether a
+// scene's saved keys, Build Settings' additions or the warm-up list name them, and the fork is
+// named so the export can warn (export-pipeline 6.5, W-SHADER-FORK-MISSING). A live split
+// vert|frag fork staying is tools/mcp/tests/test_export_pipeline.py's.
+TEST_F(ProjectShaderList, ADeletedForkLeavesTheList) {
+    const ShaderKey gone = ShaderPool::getShaderKey(ShaderType::MESH, 0, ShaderPool::registerCustomShader("shaders/gone"));
+    const ShaderKey builtIn = ShaderPool::getShaderKey(ShaderType::MESH, 0, 0);
+    std::set<std::string> deadForks;
+    const std::set<ShaderKey> keys = project.finishBuildShaderKeys({builtIn}, {gone}, {}, &deadForks);
+    EXPECT_EQ(keys.count(ShaderPool::normalizeKey(gone)), 0u) << "the addition of a deleted fork is left out";
+    EXPECT_EQ(keys.count(ShaderPool::normalizeKey(builtIn)), 1u);
+    EXPECT_EQ(deadForks, (std::set<std::string>{"shaders/gone"}));
+
+    std::set<ShaderKey> saved = {gone, builtIn};
+    deadForks.clear();
+    project.dropDeadForkKeys(saved, &deadForks);
+    EXPECT_EQ(saved, (std::set<ShaderKey>{builtIn}));
+    EXPECT_EQ(deadForks, (std::set<std::string>{"shaders/gone"}));
+}

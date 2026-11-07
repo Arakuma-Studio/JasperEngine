@@ -121,6 +121,18 @@ static CGSize _screenSize;
     jasperengine::Engine::systemLowMemory();
 }
 
++ (void)updateGame {
+    jasperengine::Engine::systemUpdate();
+}
+
++ (void)visibilityChanged:(BOOL)visible {
+    jasperengine::Engine::systemVisibilityChanged(visible == YES);
+}
+
++ (double)hiddenUpdateFps {
+    return jasperengine::Engine::getHiddenUpdateFps();
+}
+
 + (void)thermalStateChanged {
     // NSProcessInfoThermalStateNominal, Fair, Serious, Critical: Device's order
     const NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];

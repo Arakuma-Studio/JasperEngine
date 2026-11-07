@@ -399,7 +399,12 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         Out::error("%s", msvcError.c_str());
         return false;
     }
-    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
+    // its errors (CMake Error at ...) repeated at the end of a failed Play build, as the compile's are
+    buildErrors.clear();
+    bool result = commandRunner.run(cmakeArgv, projectPath, [this](const std::string& line) {
+        Out::build("%s", line.c_str());
+        buildErrors.add(line);
+    }, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -445,8 +450,10 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     MsBuildProgress msbuild(buildPath, configType);
     const std::string row = statusRow;
     float lastFraction = -1.0f;
+    buildErrors.clear();
     return commandRunner.run(buildArgv, buildPath, [&](const std::string& line) {
         Out::build(line);
+        buildErrors.add(line);
         float fraction = -1.0f;
         if (msbuild.consumeLine(line, fraction) || parseBuildProgress(line, fraction)) {
             if (fraction - lastFraction >= 0.01f || fraction >= 1.0f) {
@@ -649,6 +656,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
@@ -2652,6 +2660,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
             mainContent += "#else\n" + desktop;
             mainContent += "#endif\n";
+            // a shipped game: a Lua mock standing in for one of them says so once
+            mainContent += "    NativeBridge::setMockWarnings(true);\n";
         }
     }
 
@@ -2664,6 +2674,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         snprintf(mask, sizeof(mask), "0x%02X", (unsigned int)playerSettings.allowedOrientations);
         mainContent += "    Engine::setVSyncCount(" + std::string(vsyncEnabled ? "1" : "0") + ");\n";
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
+        // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
+        if (!playerSettings.dynamicBatching)
+            mainContent += "    Engine::setDynamicBatchingDefault(false);\n";
         mainContent += "    Screen::initialize(ScreenOrientation::" + std::string(orientationNames[orientation]) + ", " + mask + ", " +
             (playerSettings.keepScreenOn ? "true" : "false") + ");\n";
         auto appInfo = [](const ApplicationInfo& info) {
@@ -3379,6 +3392,10 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build configuration cancelled.");
             } else {
+                if (!buildErrors.errors().empty()) {
+                    Out::info("CMake configuration failed with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("CMake configuration failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);
@@ -3389,6 +3406,12 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build cancelled.");
             } else {
+                // the errors again at the end of the output, where a long build leaves the reader
+                if (!buildErrors.errors().empty()) {
+                    // not errors again: the compiler's lines count once each in the Console
+                    Out::info("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("Build failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);

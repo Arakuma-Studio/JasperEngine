@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */; };
+		5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */; };
         5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
         5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
@@ -550,14 +552,6 @@
 		7AB1C0042F2A000000000001 /* PhysicsLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */; };
 		7AA5E0052F2A000000000001 /* TagManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AA5E0012F2A000000000001 /* TagManager.h */; };
 		7AB1C0052F2A000000000001 /* PhysicsLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AB1C0012F2A000000000001 /* PhysicsLayers.h */; };
-		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
-		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
-		711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */; };
-		711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */; };
-		711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */; };
-		711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070F2A0D86500052A9C3 /* nanopb.xcframework */; };
-		711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */; };
-		711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */; };
 		71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC1282981BE00CF79C1 /* Base64.h in Headers */ = {isa = PBXBuildFile; fileRef = 71165BBE282981BE00CF79C1 /* Base64.h */; };
@@ -712,6 +706,16 @@
 		715CB114288CD3F60049344B /* TerrainComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 715CB113288CD3F60049344B /* TerrainComponent.h */; };
 		715CB117288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
 		715CB118288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
+		5452524E8CAB9B9AC6199E83 /* TerrainOpsJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */; };
+		5452524E63A3CD932B6E8BD6 /* TerrainOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */; };
+		5452524E31CBAE8414211171 /* TerrainOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */; };
+		5452524E6930D70F1A897C58 /* TerrainClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */; };
+		5452524E6271AA8AFD368AF0 /* TerrainClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */; };
+		5452524E866BF03F461AA6AD /* JoltTerrainRefresh.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */; };
+		5452524E439BDDF518A724BF /* JoltTerrainRefresh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */; };
+		5452524E6E63E5739E49CDE9 /* JoltTerrainRefresh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */; };
+		5452524EE6301E4CC7F6349E /* MeshSystemTerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */; };
+		5452524E4FF6457D85F3935C /* MeshSystemTerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */; };
 		5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EE2E21CCF598630C1 /* TerrainEdit.h */; };
 		5452524E143AD6092E4F2738 /* TerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */; };
 		5452524E14FFF0F1D87ED435 /* TerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */; };
@@ -4406,6 +4410,7 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3C926279EC37FB5 /* WaterLayering.h */; };
 		4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
@@ -4506,7 +4511,24 @@
 		4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */; };
+		4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D9914C150209E5CB /* ComponentEvents.h */; };
+		4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D02364B83FAFB4BA /* HashRandom.h */; };
 		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
+		4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
+		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
+		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
+		4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
+		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -4919,6 +4941,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = ios/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = macos/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
         5E5280000000000000000012 /* HangStackCapture.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangStackCapture.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
@@ -5552,15 +5576,6 @@
 		7AA5E0022F2A000000000001 /* TagManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TagManager.cpp; sourceTree = "<group>"; };
 		7AB1C0012F2A000000000001 /* PhysicsLayers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PhysicsLayers.h; sourceTree = "<group>"; };
 		7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsLayers.cpp; sourceTree = "<group>"; };
-		711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdMobAdapter.m; sourceTree = "<group>"; };
-		711607092A0D1F360052A9C3 /* AdMobAdapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdMobAdapter.h; sourceTree = "<group>"; };
-		7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleMobileAds.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework"; sourceTree = "<group>"; };
-		7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurement.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework"; sourceTree = "<group>"; };
-		7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FBLPromises.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework"; sourceTree = "<group>"; };
-		7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleUtilities.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework"; sourceTree = "<group>"; };
-		7116070F2A0D86500052A9C3 /* nanopb.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = nanopb.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework"; sourceTree = "<group>"; };
-		711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurementIdentitySupport.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework"; sourceTree = "<group>"; };
-		711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = UserMessagingPlatform.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework"; sourceTree = "<group>"; };
 		71165BBD282981BE00CF79C1 /* Base64.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Base64.cpp; sourceTree = "<group>"; };
 		71165BBE282981BE00CF79C1 /* Base64.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Base64.h; sourceTree = "<group>"; };
 		711BFE392E6E5AE500677D11 /* ScriptComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptComponent.h; sourceTree = "<group>"; };
@@ -5680,6 +5695,12 @@
 		7158F43E259C2C82006E55D3 /* Renderer.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = Renderer.mm; sourceTree = "<group>"; };
 		715CB113288CD3F60049344B /* TerrainComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainComponent.h; sourceTree = "<group>"; };
 		715CB115288CD40E0049344B /* Terrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Terrain.cpp; sourceTree = "<group>"; };
+		5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainOpsJson.h; sourceTree = "<group>"; };
+		5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainOpsJson.cpp; sourceTree = "<group>"; };
+		5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainClassesLua.cpp; sourceTree = "<group>"; };
+		5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltTerrainRefresh.h; sourceTree = "<group>"; };
+		5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = JoltTerrainRefresh.cpp; sourceTree = "<group>"; };
+		5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemTerrainEdit.cpp; sourceTree = "<group>"; };
 		5452524EE2E21CCF598630C1 /* TerrainEdit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainEdit.h; sourceTree = "<group>"; };
 		5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainEdit.cpp; sourceTree = "<group>"; };
 		5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainSurface.h; sourceTree = "<group>"; };
@@ -8731,6 +8752,7 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47A3C926279EC37FB5 /* WaterLayering.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterLayering.h; sourceTree = "<group>"; };
 		4A534E47261DED0CDC733CE1 /* VisibleList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VisibleList.cpp; sourceTree = "<group>"; };
 		4A534E478899E2BB41CC207E /* VisibleList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VisibleList.h; sourceTree = "<group>"; };
 		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
@@ -8803,7 +8825,19 @@
 		4A534E47C4F45D33EE25F2E9 /* StableArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StableArray.h; sourceTree = "<group>"; };
 		4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SSRProbeSlots.cpp; sourceTree = "<group>"; };
 		4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SSRProbeSlots.h; sourceTree = "<group>"; };
+		4A534E47D9914C150209E5CB /* ComponentEvents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentEvents.h; sourceTree = "<group>"; };
+		4A534E47D02364B83FAFB4BA /* HashRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HashRandom.h; sourceTree = "<group>"; };
 		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
+		4A534E4706670F9B31416A92 /* FrustumCull.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrustumCull.cpp; sourceTree = "<group>"; };
+		4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DrawBatcher.cpp; sourceTree = "<group>"; };
+		4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemBatch.cpp; sourceTree = "<group>"; };
+		4A534E477812D37EDE027E54 /* ContentHash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentHash.cpp; sourceTree = "<group>"; };
+		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
+		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
+		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
+		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
+		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
+		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8888,13 +8922,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */,
-				711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */,
-				711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */,
-				711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */,
-				711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */,
-				711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */,
-				7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */,
 				713D82D7259D324700567F9F /* libjasperengine-ios.a in Frameworks */,
 				17995BFA3003C40000411B78 /* GameController.framework in Frameworks */,
 				4A534E47723A6ABA786CF3A1 /* AVFoundation.framework in Frameworks */,
@@ -9365,6 +9392,7 @@
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
+				5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10038,8 +10066,6 @@
 				713D8335259D407A00567F9F /* main.m */,
 				713D8337259D407A00567F9F /* ViewController.h */,
 				713D8334259D407A00567F9F /* ViewController.m */,
-				711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */,
-				711607092A0D1F360052A9C3 /* AdMobAdapter.h */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -10077,6 +10103,8 @@
 			children = (
 				710EE4A12A2E2A2000EB04EC /* macos */,
 				710EE49F2A2E291100EB04EC /* ios */,
+				5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */,
+				5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */,
 				710EE49C2A2E1E9200EB04EC /* Assets.xcassets */,
 				7162FEAA25993F810075B97D /* project */,
 				7162FE2D2597C7990075B97D /* platform */,
@@ -10216,6 +10244,8 @@
 				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
 				4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */,
 				4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */,
+				5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */,
+				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -10841,6 +10871,8 @@
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
+				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
+				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10917,6 +10949,7 @@
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 				4A534E4737234843A0260B98 /* UIDrawColor.h */,
+				4A534E47A3C926279EC37FB5 /* WaterLayering.h */,
 				4A534E47261DED0CDC733CE1 /* VisibleList.cpp */,
 				4A534E478899E2BB41CC207E /* VisibleList.h */,
 				4A534E474A83C09CDE4EC26D /* CapsuleShadows.cpp */,
@@ -10935,6 +10968,10 @@
 				4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */,
 				4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */,
 				4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */,
+				4A534E4706670F9B31416A92 /* FrustumCull.cpp */,
+				4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */,
+				4A534E475065F0D282851FFA /* DrawBatcher.h */,
+				4A534E47E7BE6C143B079A81 /* FrustumCull.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11034,6 +11071,8 @@
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
+				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
+				4A534E47B4E493A883DC863A /* UISelectable.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11074,6 +11113,7 @@
 				4A534E4707AEFC0DB5C2DC02 /* CurveJson.h */,
 				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 				4A534E472114016401F2D894 /* Noise.h */,
+				4A534E47D02364B83FAFB4BA /* HashRandom.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -11146,6 +11186,8 @@
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
 				5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */,
 				5452524EE2E21CCF598630C1 /* TerrainEdit.h */,
+				5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */,
+				5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11313,6 +11355,9 @@
 				4A534E479D83C26E146CE8A0 /* GltfNormalize.h */,
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
+				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
+				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
+				5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11435,15 +11480,8 @@
 			children = (
 				717AD972290B67B8007D7DB5 /* AudioToolbox.framework */,
 				717AD970290B67A5007D7DB5 /* AVFoundation.framework */,
-				7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */,
 				17995BF93003C40000411B78 /* GameController.framework */,
 				A5E05A7C0000000000000003 /* CoreServices.framework */,
-				7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */,
-				711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */,
-				7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */,
-				7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */,
-				7116070F2A0D86500052A9C3 /* nanopb.xcframework */,
-				711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */,
 				4A534E47982642CBDC327A37 /* CoreMedia.framework */,
 				4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */,
 			);
@@ -12453,6 +12491,7 @@
 				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
+				4A534E47F8386218660CC63D /* UIEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -15121,6 +15160,8 @@
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticleSystemComponent.h in Headers */,
 				715CB119288CD40E0049344B /* Terrain.h in Headers */,
+				5452524E8CAB9B9AC6199E83 /* TerrainOpsJson.h in Headers */,
+				5452524E866BF03F461AA6AD /* JoltTerrainRefresh.h in Headers */,
 				5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */,
 				5452524ED02A76CC88034BB8 /* TerrainSurface.h in Headers */,
 				5452524EC929859B34CA2448 /* TerrainStroke.h in Headers */,
@@ -15610,6 +15651,7 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */,
 				4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */,
 				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
 				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
@@ -15654,7 +15696,14 @@
 				4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */,
 				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
 				4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */,
+				4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */,
+				4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */,
 				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
+				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
+				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
+				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
+				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
+				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16998,6 +17047,7 @@
 				717D9B4E27338381002C0803 /* lua in Resources */,
 				7128CFAE25BA717500965B51 /* Main.storyboard in Resources */,
 				710EE49D2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17008,6 +17058,7 @@
 				7128CEE425BA705600965B51 /* Main.storyboard in Resources */,
 				717D9B4F27338382002C0803 /* lua in Resources */,
 				710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */,
 				71BE60E525B1D019006D6E02 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -17588,6 +17639,10 @@
 				71D74954296731F200348AB8 /* Tilemap.cpp in Sources */,
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E63A3CD932B6E8BD6 /* TerrainOpsJson.cpp in Sources */,
+				5452524E6930D70F1A897C58 /* TerrainClassesLua.cpp in Sources */,
+				5452524E439BDDF518A724BF /* JoltTerrainRefresh.cpp in Sources */,
+				5452524EE6301E4CC7F6349E /* MeshSystemTerrainEdit.cpp in Sources */,
 				5452524E143AD6092E4F2738 /* TerrainEdit.cpp in Sources */,
 				5452524EA26F89A24A56CFF7 /* TerrainSurface.cpp in Sources */,
 				5452524E405948BC2A382BD8 /* TerrainStroke.cpp in Sources */,
@@ -18190,6 +18245,11 @@
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
 				4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */,
+				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
+				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
+				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
+				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18211,7 +18271,6 @@
 				713D835B259D408C00567F9F /* AppDelegate.m in Sources */,
 				7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */,
 				713D82E4259D32FE00567F9F /* JasperEngineApple.mm in Sources */,
-				711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */,
 				7158F43F259C2C82006E55D3 /* Renderer.mm in Sources */,
 				7162FEAC25993F810075B97D /* main.cpp in Sources */,
 				17995BF73003C3A800411B78 /* JasperEngineGameController.mm in Sources */,
@@ -18434,6 +18493,10 @@
 				1721303D2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E31CBAE8414211171 /* TerrainOpsJson.cpp in Sources */,
+				5452524E6271AA8AFD368AF0 /* TerrainClassesLua.cpp in Sources */,
+				5452524E6E63E5739E49CDE9 /* JoltTerrainRefresh.cpp in Sources */,
+				5452524E4FF6457D85F3935C /* MeshSystemTerrainEdit.cpp in Sources */,
 				5452524E14FFF0F1D87ED435 /* TerrainEdit.cpp in Sources */,
 				5452524E67E57E3DEA16E999 /* TerrainSurface.cpp in Sources */,
 				5452524E9E783E907D5B6F30 /* TerrainStroke.cpp in Sources */,
@@ -19019,6 +19082,11 @@
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
 				4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */,
+				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
+				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
+				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
+				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -21672,7 +21740,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21738,7 +21805,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -23697,7 +23763,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23724,7 +23790,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23754,7 +23820,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -23781,7 +23847,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

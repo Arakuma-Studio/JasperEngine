@@ -4,8 +4,8 @@
 #ifndef TERRAIN_NOISE_H
 #define TERRAIN_NOISE_H
 
-// Moved from editor/util with its bytes unchanged (S53 R22). Whichever of S53 and S54 lands second
-// deletes this header for noise::compat (S54 R36, N13).
+// Moved from editor/util with its bytes unchanged (T1 R22). Whichever of T1 and T2 lands second
+// deletes this header for noise::compat (T2 R36, N13).
 
 #include "terrain/TerrainDeterministic.h"
 

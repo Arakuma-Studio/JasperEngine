@@ -510,14 +510,21 @@ static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfInde
     if (!methodName || !tag || !ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
         return;
     }
-    if (!luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+    if (luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+        auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
+        if (event && event.value()) {
+            ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
+        }
         return;
     }
-    auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
-    if (!event || !event.value()) {
-        return;
+    // ui-components: the selection callbacks share names with argument-less component events
+    // (an InputField's onSubmit, a Panel's onMove): such a subscription is the old pattern too
+    if (message >= ScriptMessage::Select && luabridge::isInstance<FunctionSubscribe<void()>>(L, eventIndex)) {
+        auto event = luabridge::get<FunctionSubscribe<void()>*>(L, eventIndex);
+        if (event && event.value()) {
+            ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
+        }
     }
-    ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
 }
 
 // Common implementation for event registration
@@ -930,6 +937,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerSplineClasses(L);
+    registerTerrainClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

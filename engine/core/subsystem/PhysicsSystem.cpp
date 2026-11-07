@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "physics/JoltTerrainRefresh.h"
 #include "component/Joint3DComponent.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
@@ -518,51 +519,11 @@ bool PhysicsSystem::isInterpolation() const{
 }
 
 void PhysicsSystem::clearSubscriptions(){
-#ifdef JASPERENGINE_PHYSICS_2D
-    beginContact2D.clear();
-    endContact2D.clear();
-    beginSensorContact2D.clear();
-    endSensorContact2D.clear();
-    hitContact2D.clear();
-    preSolve2D.clear();
-    shouldCollide2D.clear();
-    stayContact2D.clear();
-    staySensorContact2D.clear();
-#endif
-#ifdef JASPERENGINE_PHYSICS_3D
-    onBodyActivated3D.clear();
-    onRagdollBeforeAnimatedRestore3D.clear();
-    onBodyDeactivated3D.clear();
-    onContactAdded3D.clear();
-    onContactPersisted3D.clear();
-    onContactRemoved3D.clear();
-    shouldCollide3D.clear();
-    onContactModify3D.clear();
-#endif
+    forEachEvent([](auto& event) { event.clear(); });
 }
 
 void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
-#ifdef JASPERENGINE_PHYSICS_2D
-    beginContact2D.removeByTagSubstring(substring);
-    endContact2D.removeByTagSubstring(substring);
-    beginSensorContact2D.removeByTagSubstring(substring);
-    endSensorContact2D.removeByTagSubstring(substring);
-    hitContact2D.removeByTagSubstring(substring);
-    preSolve2D.removeByTagSubstring(substring);
-    shouldCollide2D.removeByTagSubstring(substring);
-    stayContact2D.removeByTagSubstring(substring);
-    staySensorContact2D.removeByTagSubstring(substring);
-#endif
-#ifdef JASPERENGINE_PHYSICS_3D
-    onBodyActivated3D.removeByTagSubstring(substring);
-    onRagdollBeforeAnimatedRestore3D.removeByTagSubstring(substring);
-    onBodyDeactivated3D.removeByTagSubstring(substring);
-    onContactAdded3D.removeByTagSubstring(substring);
-    onContactPersisted3D.removeByTagSubstring(substring);
-    onContactRemoved3D.removeByTagSubstring(substring);
-    shouldCollide3D.removeByTagSubstring(substring);
-    onContactModify3D.removeByTagSubstring(substring);
-#endif
+    forEachEvent([&substring](auto& event) { event.removeByTagSubstring(substring); });
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -955,7 +916,7 @@ void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyCompone
     // a body that never stepped has no pose before the step to draw from
     const RigidbodyInterpolation mode = interpolationOf(body.interpolation);
     if (mode == RigidbodyInterpolation::INTERPOLATE && alpha < 1.0f && !body.newBody){
-        position = body.previousPosition.lerp(position, alpha);
+        position = body.previousPosition.lerpUnclamped(position, alpha);
         if (body.previousRotation != rotation){
             rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
         }
@@ -4170,6 +4131,8 @@ void PhysicsSystem::fixedUpdate(double dt){
     syncMaterials3D();
     // the ragdolls switch their parts before the bodies sync
     updateRagdolls();
+    // terrain edits reach their heightfields; what must be built again is, in the sync below
+    JoltTerrainRefresh::apply(scene, *this);
 
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
     bool stepped3D = false;

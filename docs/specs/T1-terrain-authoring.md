@@ -1621,3 +1621,61 @@ the sketch's names, which all still exist unless a line below says otherwise.
 - **D-17 `import_heightmap` takes decoded heights.** The engine's op holds the normalized values, their size and
   nothing about files: finding and decoding a file is `TerrainRawIO` and the handler (R61, R68), which come with the
   rest of T1. A size other than the map's is refused here, naming the structural path the handler takes (R1, R61).
+- **D-18 `MeshTriangles::isGeometryLoading` keeps reading `needUpdateTerrain`.** R23 names it among the readers
+  of the revision, but it asks whether geometry is still being built, which a refit never makes true. Its callers
+  (physics shapes, placement worlds) build from the surface when they build. `SplineSystem` and foliage read the
+  revision.
+- **D-19 Foliage is flagged by the revision, not compared to it.** `flushTerrainEdit` raises `needUpdateFoliage` when
+  it advances `surfaceRevision`: same rate, and the existing refill path is the one consumer.
+- **D-20 `Shape` gains `squareEnds` and `nearestTexel`; a Polyline samples a mask when it has pixels.** R17 needs a
+  ramp under a square or masked brush, and today's fallback to the nearest texel on every brush shape, not only round
+  ones. `forEachSample`'s forced texel now takes what the shape gives at its centre, so a sub-texel masked brush
+  weighs by the mask's centre. Unset, nothing changes for any op.
+- **D-21 `TerrainMapRef` gains `HoleMap`,** so `EditorTerrainStore::createMap` can name a hole map's file by R32.
+  `TerrainTextureEditCmd` moved out of `TerrainEditWindow.cpp` to `editor/command/type/` with the map helpers it
+  needs moved to `TerrainMapUtils`: the store, the commands and AC62's test all need them without a window.
+- **D-22 The first stroke on a map the terrain does not own stays one structural step.** R32's copy to a
+  `terrain_edit_*` happens when the stroke opens, and that stroke undoes through `TerrainTextureEditCmd`, whose
+  snapshots compress (R28), as it did before. Later strokes are deltas. The spline bake still writes the map it finds
+  (R32's copy is the brush's), as it did: a bake has no first-edit step to join yet, and `edit_terrain` should decide
+  this for both when it lands.
+- **D-23 `erase_objects`' brush keeps its test on the window's side.** It is a containment test over entities with
+  nothing to compute a plan from; R21's plan is `place_objects`.
+- **D-24 Mouse placement stamps come from `StrokeResampler` with no time.** R21 asks for one attempt per spaced stamp,
+  and holding still adds no attempts (R35's held stamps are a deposit's, not a scatter's). Scripted placement keeps one
+  attempt per point: those points are its stamps, so `sculpt_terrain` counts stay what they were.
+- **D-25 The allocation counter reaches `jasperengine-editor-tests`,** with bytes and the largest allocation added.
+  AC15 and AC20 need it for code that lives in the editor.
+- **D-26 AC13's byte tolerance is one step per stroke.** R17's 1/255 holds for a stamp, and `test_terrain_baseline.py`'s blend and
+  density maps are written by two strokes, each rounding (R11) where the unmigrated editor truncated. The second stroke starts up to a
+  step away and can end two off, so that test allows two steps on at most 5 % of the values (measured: at most 3.4 %, on density), and it prints the share. The fixture was
+  not recorded again, and heights keep their 1/65535.
+
+- **D-27 The collider refresh tests are in the core suite.** AC34 names `editor/tests/engine/physics/`; `TerrainCollisionRefresh*`
+  needs a `PhysicsSystem` and no editor, so it is `engine/tests/core/physics/TerrainCollisionRefreshTest.cpp`.
+- **D-28 The paced upload makes the image again instead of streaming it.** DC9's pacing is implemented (`TerrainEditState::uploads`,
+  `MeshSystem::flushTerrainEdit`, `Terrain:setRuntimeUploadBudget`), but an upload re-creates the image (`Texture::invalidateRender`)
+  rather than updating a stream image: `createDynamicHeightTexture`, `adoptStreamRender`, R45's float shadow, R46's staging refusal and
+  the `runtime_edit_map_too_large` issue are not done, nor AC35 and AC65. AC36's rule is covered on the CPU by
+  `TerrainRuntimeEdit.UploadsArePacedAndTheLastGoes`.
+- **D-29 Runtime maps detach at the first write, not at load.** R78's private ids are made by `detachTerrainMapsForRuntime` before a
+  game's first write; nothing is written before it, so the authored maps are untouched either way. R77's cook rule (blend maps kept
+  CPU readable) is not done: a blend map cooked compressed refuses runtime paint.
+- **D-30 `edit_terrain` refuses `place_objects`, `erase_objects`, and `import_heightmap`'s `set_max_height` and `resolution`.** The first
+  two place GameObjects, which `sculpt_terrain` does; the error names it. An import of another size is the Terrain window's path
+  (Import Raw... makes the new map first).
+- **D-31 No jobs.** R69's job above 4M texels is not done: every `edit_terrain` call runs on the main thread (AC54's
+  `test_large_edit_is_a_job` and `test_job_conflict_fails` are not written).
+- **D-32 Window work not done:** R39's stroke log, R56's alternates and the Alt-grammar preference, R57's `TerrainBrush` shortcut context
+  and its keys, R63's Pick beyond Set Height's eyedropper (no Alt+click, `I` or Esc, no range ends), R55's fade and hide during camera moves (the colours and the texel warning are done), R59's Resize..., R61's
+  hillshade (the histogram and numbers are done), R67's Preview (Apply is done), R37's pen readers (pressure reaches the stamps from
+  `addSample`), and R47-R54's benches and size measurement.
+- **D-33 One Invert for the Slope Filter.** The engine's `Filter::invert` flips the whole filter, so R66's two inverts are one, stored as
+  `slopeFilterInvert`; there is no `heightFilterInvert`. `filterAllTools` is as R66 says.
+- **D-34 Create Terrain starts Flat or Flat at Middle.** The generated shapes, Seed and Import Raw... wait for T2; Base Layer is not done.
+- **D-35 `visualize_terrain` without T3's and T5's keys and with one sheet.** `quality` and `foliage_quality` are theirs to add. The sheet is
+  one mesh of at most 255 x 255 cells; DC8's second copy at 25 % in the tools layer is not done.
+- **D-36 The Lua terrain functions that take tables are raw functions** with their stubs in `tools/lua_api/parser.py`'s `OVERRIDES`;
+  `docs/scripting/*.md` joined the Lua doc test so `docs/scripting/terrain.md` is checked.
+- **D-37 `navmesh_stale` comes from the tool.** `TerrainIssues` sees one component, so `sample_terrain` adds the issue from
+  `NavigationSystem::countDirtyTiles` of the scene's NavMesh Surfaces.

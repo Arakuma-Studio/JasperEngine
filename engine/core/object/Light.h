@@ -48,6 +48,8 @@ namespace jasperengine{
         void setDirection(Vector3 direction);
         void setDirection(const float x, const float y, const float z);
         Vector3 getDirection() const;
+        // the direction in world space, as of the last transform update (Camera::getWorldDirection)
+        Vector3 getWorldDirection() const;
 
         void setColor(Vector3 color);
         void setColor(const float r, const float g, const float b);

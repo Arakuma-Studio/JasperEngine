@@ -58,7 +58,7 @@ async def test_agent_fields(ed):
     assert (await ed.call("sample_terrain", scene=scene, entity=entity, grid=0))["info"]["holes"] is None
 
     # stats of a rectangle
-    stats = await ed.call("sample_terrain", scene=scene, entity=entity, grid=0, stats=["coverage"], region=[-5, -5, 5, 5])
+    stats = await ed.call("sample_terrain", scene=scene, entity=entity, grid=0, stats=["coverage"], region={"min": [-5, -5], "max": [5, 5]})
     assert stats["stats"]["coverage"]["hole_fraction"] == 0
 
     # a tier per platform through the settings, validated

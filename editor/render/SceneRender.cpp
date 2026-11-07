@@ -53,6 +53,7 @@ extern unsigned int bulb_icon_png_len;
 #include "subsystem/ParticleSubsystem.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cfloat>
 
@@ -193,6 +194,7 @@ editor::SceneRender::~SceneRender(){
 
     destroyLatticeCages();
     navigationOverlay.reset();
+    terrainOverlay.reset();
     destroySplineOverlay();
     delete wireframeLines;
     for (auto& pair : particleShapeLines) {
@@ -605,6 +607,15 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
     return result;
 }
 
+void editor::SceneRender::hideEntityGizmos(Entity entity){
+    auto shape = particleShapeLines.find(entity);
+    if (shape != particleShapeLines.end()) shape->second->setVisible(false);
+}
+
+bool editor::SceneRender::gizmoActive(Entity entity) const{
+    return !scene->hasInactiveEntities() || scene->isEntityActiveInHierarchy(entity);
+}
+
 void editor::SceneRender::hideAllGizmos(){
     // (also the subclasses' gizmos: they hide theirs after calling this)
     dropGoneGizmos();
@@ -624,6 +635,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
     if (navigationOverlay) navigationOverlay->hide();
+    if (terrainOverlay) terrainOverlay->hide();
     hideSplineOverlay();
 }
 
@@ -718,7 +730,8 @@ void editor::SceneRender::addOverlayLayers(std::vector<Engine::ViewLayer>& layer
 void editor::SceneRender::drawOverlayTargets(){
 }
 
-void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers){
+void editor::SceneRender::drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+        Scene* replacingBase, Entity replacingCamera){
     if (width <= 0 || height <= 0){
         return;
     }
@@ -755,7 +768,10 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // the Scene view's own fog and face culling toggles hold while playing too, and in this
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
-    layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
+    // after a game load replaced this scene, the level it runs now, through the editor camera
+    const bool replaced = replacingBase && replacingCamera != NULL_ENTITY;
+    layers.push_back({replaced ? replacingBase : scene, replaced ? replacingCamera : viewCamera, full, !previewing, false,
+                      displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
 
@@ -764,7 +780,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
         // canvas aspect as the editor frames a child scene over the scene
         const Rect gameRect = getGameLayerRect(width, height);
         for (Scene* gameLayer : layerScenes){
-            if (gameLayer && gameLayer != scene){
+            if (gameLayer && gameLayer != scene && gameLayer != replacingBase){
                 layers.push_back({gameLayer, gameLayer->getCamera(), gameRect, false, false});
             }
         }
@@ -1330,6 +1346,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     updateWireframeOverlay();
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
+    updateTerrainOverlay();
 
     uilayer.setViewGizmoImageVisible(true);
 }
@@ -2916,10 +2933,10 @@ void editor::SceneRender::updateTerrainBrushCursor(){
 
     // Brush boundary plus the (dimmer) half-strength falloff contour, both draped
     // over the terrain surface by updateCursor.
-    addLoop(cursor.outerPoints, cursor.holeBrush ? Vector4(0.95f, 0.1f, 0.75f, 1.0f) : Vector4(1.0f, 0.78f, 0.22f, 1.0f));
-    addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
+    addLoop(cursor.outerPoints, cursor.color);
+    addLoop(cursor.innerPoints, Vector4(cursor.color.x * 0.75f, cursor.color.y * 0.75f, cursor.color.z * 0.75f, cursor.color.w));
     for (const std::vector<Vector3>& loop : cursor.texelLoops){
-        addLoop(loop, Vector4(0.95f, 0.1f, 0.75f, 0.6f));
+        addLoop(loop, Vector4(cursor.color.x, cursor.color.y, cursor.color.z, 0.6f));
     }
 
     terrainBrushLines->setVisible(true);
@@ -4210,6 +4227,22 @@ void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& sel
     if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
     const std::set<Entity> selected(selEntities.begin(), selEntities.end());
     navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
+}
+
+// T1 R65: the terrain overlay the view settings name (none: nothing is built)
+void editor::SceneRender::updateTerrainOverlay(){
+    if (displaySettings.terrainOverlay.source.empty()){
+        if (terrainOverlay) terrainOverlay->hide();
+        return;
+    }
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(getLatticeSceneId()) : nullptr;
+    if (!sceneProject || sceneProject->scene != scene){
+        return;
+    }
+    if (!terrainOverlay) terrainOverlay = std::make_unique<TerrainOverlay>(scene);
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    terrainOverlay->update(*sceneProject, displaySettings.terrainOverlay, now);
 }
 
 // The wires of Wireframe and Shaded Wireframe: the visible meshes' edges at the level the Scene

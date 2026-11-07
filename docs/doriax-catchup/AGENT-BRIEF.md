@@ -110,6 +110,10 @@ Work so that every minute of build time answers a question:
   whole round.
 - **Generated docs last:** `gen_tool_docs.py`, `tool_budget.py`, `docs/shaders/library.md` once, at the end.
 - **Never rerun green steps on unchanged code.** Use the box time to review your diff and write docs.
+- **New component fields reach cooked scenes:** after adding or renaming a serialized component field, regenerate
+  `engine/core/serialization/RuntimeFields.gen.inc` (`jasperengine-editor reflect --emit-runtime-fields ...`, in the
+  image under `dbus-run-session -- tools/with-xvfb.sh`) and run `RuntimeFields.*:CookedScene.*`; otherwise prebuilt
+  exports silently drop the field.
 - **Restored files must look new:** after a red control, restore the fixes with `git apply` (fresh timestamps), not
   by copying backups with their old times; otherwise the box's incremental build keeps the red objects. When in
   doubt, `touch` the restored files before the green build.

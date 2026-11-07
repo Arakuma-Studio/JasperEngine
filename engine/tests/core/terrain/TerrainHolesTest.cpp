@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Holes and layer addressing (S53 R12, R13, R92, DC3; AC8, AC9)
+// Holes and layer addressing (T1 R12, R13, R92, DC3; AC8, AC9)
 
 #include "TerrainTestSupport.h"
 
@@ -28,7 +28,7 @@ namespace {
         return circleOp(OpType::CutHoles, x, z, radius);
     }
 
-    // A store that keeps its maps: S55 R29's holeMapHolds, S56's per-tile maps
+    // A store that keeps its maps: T3 R29's holeMapHolds, T4's per-tile maps
     class KeepingStore final : public RawMapStore {
     public:
         using RawMapStore::RawMapStore;
@@ -267,7 +267,7 @@ TEST(TerrainLayers, ChannelMappingIsTheOnlyRoute) {
     EXPECT_EQ(terrainBlendMapCount(3), 1);
     EXPECT_EQ(terrainBlendMapCount(4), 2);
 
-    // Nothing else in the folder does this arithmetic (S55 R15 changes it for layers 10-12)
+    // Nothing else in the folder does this arithmetic (T3 R15 changes it for layers 10-12)
     const std::filesystem::path folder = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() /
                                          "engine" / "core" / "terrain";
     ASSERT_TRUE(std::filesystem::is_directory(folder)) << folder;

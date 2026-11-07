@@ -4,7 +4,7 @@
 #ifndef TERRAIN_OPS_H
 #define TERRAIN_OPS_H
 
-// The operation engine (S53 R1-R13, R40, R87-R89, programme D4): every write to a terrain means the
+// The operation engine (T1 R1-R13, R40, R87-R89, programme D4): every write to a terrain means the
 // same thing whoever asks for it, and can be tested without a GPU. Each op is one application with a
 // stated value, not a rate. Lists are all-or-nothing: validation names ops[i].field before anything
 // runs, the ops run on an overlay, and a failure leaves the store byte-identical (DC1). The same store
@@ -231,7 +231,7 @@ namespace jasperengine::terrain {
         virtual bool dryRun() const = 0;
         virtual bool parallel() const = 0;
         virtual void warn(const std::string& code, const std::string& message) = 0;
-        // Undo of data outside the store (S57's TreeStore), joined to the step
+        // Undo of data outside the store (T5's TreeStore), joined to the step
         virtual void addUndoHook(std::unique_ptr<TerrainStoreUndoHook> hook) = 0;
         // Stops the list; everything it did is discarded
         virtual void fail(const std::string& message) = 0;
@@ -242,7 +242,7 @@ namespace jasperengine::terrain {
     using OpApplyFn = void (*)(OpContext& context, const Op& op, OpEntry& entry);
 
     struct RegisteredOpTraits {
-        // It works over several frames (S57's bake_impostors renders a view per frame): the handler
+        // It works over several frames (T5's bake_impostors renders a view per frame): the handler
         // makes the call a job whatever its texel count
         bool spansFrames = false;
     };
@@ -263,7 +263,7 @@ namespace jasperengine::terrain {
     // Absolute write of a rectangle of terrain-local heights (import, Lua). Clamps count and warn (R7).
     JASPERENGINE_API TerrainOpResult setHeights(TerrainMapStore& store, TexelRect rect, std::span<const float> localHeights);
 
-    // R40: the C++ route for spline bakes and S54. Per texel, from the callback: new = current +
+    // R40: the C++ route for spline bakes and T2. Per texel, from the callback: new = current +
     // (target - current) * weight, with the same quantization, dirty tracking and overlay. Serial, in
     // row order. current and target hold floatChannels values.
     struct FieldSample {
@@ -276,12 +276,12 @@ namespace jasperengine::terrain {
     // The stored bytes, row by row (util/Fnv.h), whatever blocks a store keeps them in
     JASPERENGINE_API uint64_t mapHash(const TerrainMapStore& store, MapId map);
 
-    // R88's single encoder of layer weights (S54 R30): clamp 0..1, normalize a sum above 1, and layer
+    // R88's single encoder of layer weights (T2 R30): clamp 0..1, normalize a sum above 1, and layer
     // 0 takes the rest unless it has its own value. perLayer is indexed by layer, must reach every
     // listed layer and layer 0, and gets 0 for the unlisted ones.
     JASPERENGINE_API void encodeLayerWeights(std::span<const int> layers, std::span<const float> values, std::span<float> perLayer);
 
-    // R88: the absolute write route for generators (S54 N9). Everything lands in one transaction; the
+    // R88: the absolute write route for generators (T2 N9). Everything lands in one transaction; the
     // editor wraps the commit as one undo step with the caller's name. Without a commit, nothing changes.
     class JASPERENGINE_API Batch {
     public:

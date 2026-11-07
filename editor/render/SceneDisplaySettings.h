@@ -4,6 +4,7 @@
 #pragma once
 
 #include "navigation/NavigationOverlay.h"
+#include "terrain/TerrainOverlay.h"
 #include "render/ViewDrawMode.h"
 
 namespace jasperengine::editor{
@@ -25,6 +26,9 @@ namespace jasperengine::editor{
         bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
+        // a stopped scene's clock runs (Scene::getSceneTime: the water's waves and ripples, the
+        // shaders declaring sceneTime); off holds it. Play always runs it
+        bool animateWater        = true;
         bool showGrid2D          = false;
         float gridSpacing2D      = 50.0f;
         float gridSpacing3D      = 1.0f;
@@ -36,6 +40,8 @@ namespace jasperengine::editor{
         bool showAllLattices     = false;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
+        // the terrain overlay (T1 R65; terrain/TerrainOverlay.h)
+        TerrainOverlaySettings terrainOverlay;
         // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
         ViewDrawMode drawMode = ViewDrawMode::SHADED;
         bool showStats = false;

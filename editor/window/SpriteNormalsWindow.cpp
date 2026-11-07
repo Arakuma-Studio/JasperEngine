@@ -2576,7 +2576,7 @@ void SpriteNormalsWindow::drawSource() {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             if (payload->DataSize >= static_cast<int>(sizeof(EntityPayload))) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
-                const uint32_t sceneId = entityPayload->entitySceneId != 0 ? entityPayload->entitySceneId : project->getSelectedSceneId();
+                const uint32_t sceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
                 if (!setSourceEntity(sceneId, entityPayload->entity, error)) setStatus(error, true);
             }
         }

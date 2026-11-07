@@ -23,6 +23,8 @@
 #include "command/type/DebugSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
+#include "command/type/ApplePrivacySettingsCmd.h"
+#include "command/UndoOrigin.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -61,6 +63,24 @@ namespace {
 
 namespace fs = std::filesystem;
 using mcp::Json;
+
+// An asset-root change for set_project_settings (project-relative paths)
+mcp::Json assetRootChangeJson(Project* p, const AssetRootChange& change) {
+    auto rel = [p](const fs::path& path) { return FileUtils::pathToGenericUtf8(p->normalizeToProjectRelative(path)); };
+    auto list = [&](const std::vector<fs::path>& paths) {
+        mcp::Json out = mcp::Json::array();
+        for (const fs::path& path : paths) out.push_back(rel(path));
+        return out;
+    };
+    mcp::Json moved = mcp::Json::array();
+    for (const AssetRootChange::Move& move : change.moves) moved.push_back({{"from", rel(move.from)}, {"to", rel(move.to)}});
+    mcp::Json out = {{"moved", moved}, {"already_there", list(change.alreadyThere)}, {"kept_outside", list(change.keptOutside)},
+                     {"rewritten", list(change.rewritten)}, {"saved_scenes_with_edits", list(change.savedScenesWithEdits)},
+                     {"removed_folders", list(change.removedFolders)}, {"failed_saves", list(change.failedSaves)},
+                     {"text_references_broken", change.textReferencesBroken}};
+    if (!change.refusal().empty()) out["refused"] = change.refusal();
+    return out;
+}
 
 std::string lowerText(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -499,6 +519,156 @@ Setting xmlField(const std::string& key, const std::string& description, std::fu
         return true;
     };
     return s;
+}
+
+// Project Settings > Player > iOS / macOS > Privacy Manifest: one key of the project's additions,
+// validated whole and applied as one undoable step (undo scope project)
+bool applyApplePrivacy(SettingsContext& ctx, ApplePrivacy::Manifest privacy, bool apply, std::string& error) {
+    privacy = ApplePrivacy::normalized(privacy);
+    error = ApplePrivacy::validate(privacy);
+    if (!error.empty()) return false;
+    if (!apply || privacy == ctx.project()->getApplePrivacy()) return true;
+    ApplePrivacySettingsCmd* command = new ApplePrivacySettingsCmd(ctx.project(), privacy);
+    // the apple.privacy_* keys of one agent call are one undo step (the history merges a call's own commands)
+    if (UndoOriginScope::current().kind != UndoOriginKind::Agent) command->setNoMerge();
+    if (!ctx.project()->getProjectCommandHistory()->addCommand(command)) {
+        error = "the privacy manifest settings could not be applied";
+        return false;
+    }
+    return true;
+}
+
+bool readNameList(const Json& value, const char* what, std::vector<std::string>& out, std::string& error) {
+    if (!value.is_array()) {
+        error = std::string("must be a list of ") + what;
+        return false;
+    }
+    out.clear();
+    for (const Json& item : value) {
+        if (!item.is_string()) {
+            error = std::string("must be a list of ") + what;
+            return false;
+        }
+        out.push_back(item.get<std::string>());
+    }
+    return true;
+}
+
+void addApplePrivacySettings(const std::function<void(Setting)>& add) {
+    const std::string tail = " Added to the engine's own entries (always there); iOS and macOS. Undoable (undo scope project). "
+                             "Details: jasper://docs/shipping#privacy-manifest.";
+    {
+        Setting s;
+        s.key = "apple.privacy_tracking";
+        s.type = "bool";
+        s.description = "Privacy manifest NSPrivacyTracking: the app or its SDKs track users (an ads SDK)." + tail;
+        s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getApplePrivacy().tracking); };
+        s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            ApplePrivacy::Manifest privacy = ctx.project()->getApplePrivacy();
+            if (!readBool(value, privacy.tracking, error)) return false;
+            return applyApplePrivacy(ctx, privacy, apply, error);
+        };
+        add(s);
+    }
+    {
+        Setting s;
+        s.key = "apple.privacy_tracking_domains";
+        s.type = "list";
+        s.description = "Privacy manifest NSPrivacyTrackingDomains: host names that track (\"ads.example.com\")." + tail;
+        s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getApplePrivacy().trackingDomains); };
+        s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            ApplePrivacy::Manifest privacy = ctx.project()->getApplePrivacy();
+            if (!readNameList(value, "host names", privacy.trackingDomains, error)) return false;
+            if (privacy.trackingDomains.size() > 64) {
+                error = "holds at most 64 domains";
+                return false;
+            }
+            return applyApplePrivacy(ctx, privacy, apply, error);
+        };
+        add(s);
+    }
+    {
+        Setting s;
+        s.key = "apple.privacy_collected_data";
+        s.type = "list";
+        s.description = "Privacy manifest NSPrivacyCollectedDataTypes: [{type, linked?, tracking?, purposes}], Apple's names short "
+                        "(type \"DeviceID\", purposes [\"ThirdPartyAdvertising\"])." + tail;
+        s.get = [](SettingsContext& ctx) {
+            Json list = Json::array();
+            for (const ApplePrivacy::CollectedData& data : ctx.project()->getApplePrivacy().collectedData) {
+                list.push_back({{"type", data.type}, {"linked", data.linked}, {"tracking", data.tracking}, {"purposes", data.purposes}});
+            }
+            return list;
+        };
+        s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            ApplePrivacy::Manifest privacy = ctx.project()->getApplePrivacy();
+            if (!value.is_array()) {
+                error = "must be a list of {type, linked, tracking, purposes}";
+                return false;
+            }
+            privacy.collectedData.clear();
+            for (const Json& item : value) {
+                ApplePrivacy::CollectedData data;
+                if (!item.is_object() || !item.contains("type") || !item["type"].is_string()) {
+                    error = "each entry is {type, linked?, tracking?, purposes}";
+                    return false;
+                }
+                for (const auto& [key, field] : item.items()) {
+                    if (key != "type" && key != "linked" && key != "tracking" && key != "purposes") {
+                        error = "has an unknown key \"" + key + "\" (type, linked, tracking, purposes)";
+                        return false;
+                    }
+                }
+                data.type = item["type"].get<std::string>();
+                if (item.contains("linked") && !readBool(item["linked"], data.linked, error)) return false;
+                if (item.contains("tracking") && !readBool(item["tracking"], data.tracking, error)) return false;
+                if (item.contains("purposes") && !readNameList(item["purposes"], "purposes", data.purposes, error)) return false;
+                privacy.collectedData.push_back(data);
+            }
+            return applyApplePrivacy(ctx, privacy, apply, error);
+        };
+        add(s);
+    }
+    {
+        Setting s;
+        s.key = "apple.privacy_accessed_apis";
+        s.type = "list";
+        s.description = "Privacy manifest NSPrivacyAccessedAPITypes the game's own code adds: [{type, reasons}] (type FileTimestamp, "
+                        "SystemBootTime, DiskSpace, ActiveKeyboards or UserDefaults; reasons Apple's codes, \"E174.1\")." + tail;
+        s.get = [](SettingsContext& ctx) {
+            Json list = Json::array();
+            for (const ApplePrivacy::AccessedApi& api : ctx.project()->getApplePrivacy().accessedApis) {
+                list.push_back({{"type", api.type}, {"reasons", api.reasons}});
+            }
+            return list;
+        };
+        s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            ApplePrivacy::Manifest privacy = ctx.project()->getApplePrivacy();
+            if (!value.is_array()) {
+                error = "must be a list of {type, reasons}";
+                return false;
+            }
+            privacy.accessedApis.clear();
+            for (const Json& item : value) {
+                ApplePrivacy::AccessedApi api;
+                if (!item.is_object() || !item.contains("type") || !item["type"].is_string() || !item.contains("reasons")) {
+                    error = "each entry is {type, reasons}";
+                    return false;
+                }
+                for (const auto& [key, field] : item.items()) {
+                    if (key != "type" && key != "reasons") {
+                        error = "has an unknown key \"" + key + "\" (type, reasons)";
+                        return false;
+                    }
+                }
+                api.type = item["type"].get<std::string>();
+                if (!readNameList(item["reasons"], "reason codes", api.reasons, error)) return false;
+                privacy.accessedApis.push_back(api);
+            }
+            return applyApplePrivacy(ctx, privacy, apply, error);
+        };
+        add(s);
+    }
 }
 
 Json plistValueJson(const NativePlistValue& value) {
@@ -1279,13 +1449,8 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolField("ios.hide_status_bar", "Hide the iOS status bar.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideStatusBar; }));
         add(boolField("ios.hide_home_indicator", "Hide the iOS home indicator.", [](Project& p) -> bool& { return p.getIOSProjectSettings().hideHomeIndicator; }));
         add(boolField("ios.supports_high_refresh_rate", "Allow 120 Hz on ProMotion devices.", [](Project& p) -> bool& { return p.getIOSProjectSettings().supportsHighRefreshRate; }));
-        add(boolField("ios.admob_enabled", "Link Google Mobile Ads into the iOS export (System.initializeAdMob and the interstitial calls); needs ios.admob_app_id.",
-                      [](Project& p) -> bool& { return p.getIOSProjectSettings().admobEnabled; }));
-        add(stringSetting("ios.admob_app_id", "iOS AdMob App ID (GADApplicationIdentifier) from the AdMob console; without it the export leaves AdMob out.",
-                          [](Project& p) -> std::string& { return p.getIOSProjectSettings().admobAppId; },
-                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
         add(plistEntriesField("ios.plist_entries", "Native plugins: iOS Info.plist keys -> string, boolean, number or string list, replacing the export's "
-                              "(NSUserTrackingUsageDescription, GADApplicationIdentifier...).",
+                              "(NSUserTrackingUsageDescription, NSCameraUsageDescription...).",
                               [](Project& p) -> std::map<std::string, NativePlistValue>& { return p.getIOSProjectSettings().plistEntries; }));
         add(xmlField("ios.plist_xml", "Native plugins: raw <key>..</key><value> pairs appended to the iOS Info.plist top dict (SKAdNetworkItems...).",
                      [](Project& p) -> std::string& { return p.getIOSProjectSettings().plistXml; }));
@@ -1394,6 +1559,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(xmlField("ios.entitlements_xml", "Native plugins: the <key>..</key><value> pairs of ios/JasperEngine.entitlements (CODE_SIGN_ENTITLEMENTS).",
                      [](Project& p) -> std::string& { return p.getIOSProjectSettings().entitlementsXml; }));
+        addApplePrivacySettings(add);
         add(stringSetting("ios.deployment_target", "iOS deployment target of every target (IPHONEOS_DEPLOYMENT_TARGET), 15.0 or later.",
                           [](Project& p) -> std::string& { return p.getIOSProjectSettings().deploymentTarget; },
                           [](const std::string& v) { return std::regex_match(v, std::regex("^[0-9]+\\.[0-9]+$")) && std::stod(v) >= 15.0; },
@@ -1515,11 +1681,6 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
-        add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
-                      [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
-        add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
-                          [](Project& p) -> std::string& { return p.getAndroidProjectSettings().admobAppId; },
-                          isAdMobAppIdValid, "an AdMob app ID like ca-app-pub-0000000000000000~0000000000 (not an ad unit ID)"));
         add(stringListField("android.gradle_dependencies", "Native plugins: Gradle dependencies; \"group:name:version\" becomes api \"...\" in the "
                             "nativeplugins module, any other text is a dependencies line as is (implementation platform('...')).",
                             [](Project& p) -> std::vector<std::string>& { return p.getAndroidProjectSettings().gradleDependencies; },
@@ -2029,6 +2190,8 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        add(boolSetting("graphics.dynamic_batching", "Consecutive Sprites, small meshes and UI elements that share a material draw as one draw call (Unity's Dynamic Batching). The same image; off draws each one alone, for comparison.",
+                        [](Project& p) { return p.isDynamicBatching(); }, [](Project& p, bool v) { p.setDynamicBatching(v); }));
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         // GPU Instancing (S55): draws of one mesh, material and shader drawn as one
@@ -2700,11 +2863,31 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "cannot change asset roots during Play";
                     return false;
                 }
-                if (apply) {
-                    std::error_code ec;
-                    FileUtils::createDirectories(p->getProjectPath() / dir, ec);
-                    if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
-                    else p->changeAssetRoots(dir, p->getLuaDir());
+                const fs::path newAssets = lua ? p->getAssetsDir() : dir;
+                const fs::path newLua = lua ? dir : p->getLuaDir();
+                // the preflight while validating (nothing is changed when it refuses), the move when applying;
+                // an agent's unsaved Code Editor buffers of moving files refuse instead of being saved
+                const AssetRootChange change = apply ? p->changeAssetRoots(newAssets, newLua, true)
+                                                     : p->planAssetRootChange(newAssets, newLua, true);
+                if (ctx.report && (change.changed || !change.moves.empty() || !change.ok())) {
+                    // one call moving both roots reports both relocations, in one
+                    Json relocation = assetRootChangeJson(p, change);
+                    Json& reported = (*ctx.report)["relocation"];
+                    if (reported.is_object()) {
+                        for (auto it = relocation.begin(); it != relocation.end(); ++it) {
+                            if (it.value().is_array() && reported.contains(it.key()) && reported[it.key()].is_array()) {
+                                for (const Json& item : it.value()) reported[it.key()].push_back(item);
+                            } else if (!reported.contains(it.key())) {
+                                reported[it.key()] = it.value();
+                            }
+                        }
+                    } else {
+                        reported = std::move(relocation);
+                    }
+                }
+                if (!change.ok()) {
+                    error = "asset directories not changed: " + change.refusal();
+                    return false;
                 }
                 return true;
             };
@@ -2825,6 +3008,16 @@ std::vector<Setting> mcpSettingsTable() {
             s.get = [](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().commitAndPush); };
             vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
                 return readBool(value, settings.commitAndPush, error);
+            });
+        }
+        {
+            Setting s;
+            s.key = "editor.vcs.code_editor_changes";
+            s.type = "bool";
+            s.description = "Version control: the code editor marks the lines changed since the last commit.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().codeEditorChanges); };
+            vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.codeEditorChanges, error);
             });
         }
 
@@ -3319,8 +3512,6 @@ const Placement placements[] = {
     {"ios.hide_status_bar", "Player", "iOS", "Hide Status Bar", "ios"},
     {"ios.hide_home_indicator", "Player", "iOS", "Hide Home Indicator", "ios"},
     {"ios.supports_high_refresh_rate", "Player", "iOS", "High Refresh Rate", "ios promotion 120 hz"},
-    {"ios.admob_enabled", "Player", "iOS", "Google AdMob", "ios ads advertising mobile ads sdk"},
-    {"ios.admob_app_id", "Player", "iOS", "AdMob App ID", "ios ads advertising gadapplicationidentifier"},
     {"android.application_name", "Player", "Android", "App Name", "android label"},
     {"android.package_name", "Player", "Android", "Package Name", "android"},
     {"android.version_code", "Player", "Android", "Version Code", "android"},
@@ -3335,8 +3526,6 @@ const Placement placements[] = {
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
-    {"android.admob_enabled", "Player", "Android", "Google AdMob", "android ads advertising mobile ads sdk"},
-    {"android.admob_app_id", "Player", "Android", "AdMob App ID", "android ads advertising application id"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
@@ -3354,6 +3543,7 @@ const Placement placements[] = {
     {"graphics.shadow_tier.web", "Graphics", "Shadows", "Web Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.android", "Graphics", "Shadows", "Android Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
+    {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
@@ -3424,6 +3614,7 @@ const Placement placements[] = {
     {"editor.vcs.lock_poll_seconds", "Version Control", "Refresh", "Lock Poll (s)", "locks server refresh seconds"},
     {"editor.vcs.auto_fetch_minutes", "Version Control", "Refresh", "Auto Fetch (min)", "fetch remote minutes"},
     {"editor.vcs.commit_and_push", "Version Control", "Commit", "Commit and Push", "push remote"},
+    {"editor.vcs.code_editor_changes", "Version Control", "Code Editor", "Show Changes in Code Editor", "gutter markers diff lines"},
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
@@ -3436,6 +3627,10 @@ const Placement placements[] = {
     {"android.manifest_application_xml", "Native Plugins", "Android", "Application XML", "android manifest application xml meta-data activity provider"},
     {"ios.plist_entries", "Native Plugins", "iOS", "Info.plist Entries", "ios info.plist plist keys"},
     {"ios.plist_xml", "Native Plugins", "iOS", "Info.plist XML", "ios info.plist plist xml skadnetwork"},
+    {"apple.privacy_tracking", "Player", "iOS", "Privacy Tracking", "privacy manifest xcprivacy tracking att app store ios"},
+    {"apple.privacy_tracking_domains", "Player", "iOS", "Privacy Tracking Domains", "privacy manifest xcprivacy tracking domains ios"},
+    {"apple.privacy_collected_data", "Player", "iOS", "Privacy Collected Data", "privacy manifest xcprivacy collected data nutrition label ios"},
+    {"apple.privacy_accessed_apis", "Player", "iOS", "Privacy Required Reason APIs", "privacy manifest xcprivacy required reason api ios"},
     {"ios.frameworks", "Native Plugins", "iOS", "Frameworks", "ios frameworks link weak storekit"},
     {"ios.cocoapods", "Native Plugins", "iOS", "CocoaPods", "ios cocoapods pods podfile"},
     {"ios.swift_packages", "Native Plugins", "iOS", "Swift Packages", "ios swift packages spm"},
@@ -3712,6 +3907,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     }
 
     // ---- Project Settings rows MCP does not set
+    // the privacy manifest's section is on Player > macOS too (the same additions as iOS)
+    for (const char* key : {"apple.privacy_tracking", "apple.privacy_tracking_domains", "apple.privacy_collected_data", "apple.privacy_accessed_apis"}) {
+        const SettingRow* ios = registry.find(key);
+        if (!ios) continue;
+        SettingRow mac = uiRow("", "Player", "macOS", "", "", ios->get, "");
+        mac.key = "macos." + std::string(key).substr(std::string("apple.").size());
+        mac.label = ios->label;
+        mac.keywords = ios->keywords.substr(0, ios->keywords.rfind(" ios")) + " macos mac";
+        mac.tooltip = ios->tooltip;
+        addOrAbort(registry, std::move(mac));
+    }
     addOrAbort(registry, uiRow("shader_creation.warmup_entries", "Graphics", "Shader Warm-up", "Warm-up List",
         "shader warm-up warmup list entries clear recorded variants pipelines",
         [](SettingsContext& ctx) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelCookQueue.h"
+#include "export/ExportFiles.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -53,8 +54,13 @@ bool editor::isModelSource(const std::string& path){
 std::vector<std::string> editor::projectModelSources(const Project& project){
     std::vector<std::string> paths;
     const fs::path assets = project.getAssetsPath().lexically_normal();
+    // an earlier export left in the project ships nothing, its cooks neither (Exporter: W-EXPORT-FOLDER-SKIPPED)
+    exportfiles::ExportFolderFinder exports(project.getProjectPath(), project.getName().empty() ? "jasperengine-project"
+                                                                                                 : project.getLibName());
     project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info){
         if (info.type != AssetType::Model)
+            return;
+        if (exports.contains(project.getProjectPath() / info.path))
             return;
         const std::string relative = (project.getProjectPath() / info.path).lexically_normal().lexically_relative(assets).generic_string();
         if (relative.empty() || relative == "." || relative.rfind("..", 0) == 0)

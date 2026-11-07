@@ -1740,6 +1740,11 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : pointFaceLodView(light, lightIndex, cameraIndex);
         const LodView* lodView = &shadowLod;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
+        // Dynamic Batching: casters of one depth state draw as one (depth only: in any order)
+        beginBatchPass(BatchPass::SHADOW, BatchMode::GROUP, nullptr, nullptr, PIP_SHADOW_DEPTH, shadowCamera.lightViewProjectionMatrix,
+                       shadowCamera.nearFar.y, shadowCamera.frustumPlanes);
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
 
         auto drawCaster = [&](Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh,
                               TerrainComponent* terrain, TilemapComponent* tilemap){
@@ -1770,8 +1775,14 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             }
 
             passShadowTerrain = terrain ? &shadowTerrainCut(entity, *terrain, transform, mesh, shadowCamera) : nullptr;
-            drawMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
-                          instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            // (a billboard's shadow faces the light: its own view matrix, drawn alone)
+            if (transform.billboard && mesh.shadowsBillboard){
+                drawMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                              instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }else{
+                submitMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                                instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }
             passShadowTerrain = nullptr;
         };
 
@@ -1810,6 +1821,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             passSubmeshMask = 0xFFFFFFFFu;
             passPreCulled = false;
         }
+        endBatchPass();
     };
 
     // what one slot of an atlas does this frame

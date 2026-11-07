@@ -34,6 +34,7 @@
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
+#include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"
 #include "render/CameraRender.h"
@@ -50,6 +51,8 @@
 #include "util/PostColorLut.h"
 #include "lattice/LatticeRender.h"
 #include "render/DynamicResolutionController.h"
+#include "render/DrawBatcher.h"
+#include "render/FrustumCull.h"
 #include "render/SSRProbeSlots.h"
 #include "Engine.h"
 #include <map>
@@ -171,6 +174,12 @@ namespace jasperengine{
 		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
 		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
 	} fs_terrain_layers_t;
+
+	// u_fs_planarReflection (includes/planar_reflection.glsl)
+	typedef struct fs_planar_reflection_t {
+		Matrix4 viewProjection; // the reflection camera's, logical
+		Vector4 params;         // x the plane's height, y 1 with a reflection
+	} fs_planar_reflection_t;
 
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
@@ -661,6 +670,11 @@ namespace jasperengine{
 			ParticleSystemComponent* particles = nullptr;
 			LineRendererComponent* lines = nullptr;
 			TrailRendererComponent* trail = nullptr;
+			// its rank among the pass's waters (render/WaterLayering.h): what a water covers
+			// draws before it, what is in front of it after; and the distance it sorts at (its
+			// own, or its waters' group's: waterPlace)
+			int8_t waterRank = 0;
+			float waterSortDistance = 0.0f;
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -704,14 +718,19 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
-		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
-		// the submission order (a total order, so std::sort is deterministic)
+		// draw order of the transparent queue: the lowest sort priority, then around the waters
+		// (waterSortOrder: the farthest sort distance, the higher rank, the farthest), then the
+		// submission order (a total order, so std::sort is deterministic)
+		// (Sorting Layers and Order in Layer, pixel-art S52, go before sortPriority; the water
+		// order stays right after it)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
-				if (lhs.distanceToCamera != rhs.distanceToCamera)
-					return lhs.distanceToCamera > rhs.distanceToCamera;
+				const int water = waterSortOrder(lhs.waterSortDistance, lhs.waterRank, lhs.distanceToCamera,
+				                                 rhs.waterSortDistance, rhs.waterRank, rhs.distanceToCamera);
+				if (water != 0)
+					return water < 0;
 				return lhs.order < rhs.order;
 			}
 		};
@@ -1109,6 +1128,9 @@ namespace jasperengine{
 			bool isMain = false;
 			// draws into camera->framebuffer
 			bool renderToTexture = false;
+			// a water reflection pass (renderWaterReflections): no planar reflection reader,
+			// no scene input reader, the viewer's detail levels
+			bool reflection = false;
 			// terrain node cut the pass draws (TERRAIN_PASS_VIEW: the secondary pass's own)
 			int terrainView = 0;
 		};
@@ -1196,6 +1218,29 @@ namespace jasperengine{
 			bool upLevels = true;         // the way up exists (halation's chain has none)
 			void destroy();
 			bool isCreated() const{ return levels >= 0; }
+		};
+
+		// A water reflection pass of a view (renderWaterReflections): the view's camera mirrored
+		// about the plane of the waters at one height, drawn into its own target; reused from
+		// frame to frame, freed once unused for a while
+		struct WaterReflectionPass{
+			float level = 0.0f;
+			// drawn this frame for the view's camera, and the frame (drawCount) it last was
+			bool active = false;
+			uint64_t lastUsed = 0;
+			Framebuffer framebuffer;
+			CameraComponent camera;
+			Transform transform;
+			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
+			CameraShadows shadows;
+#ifdef JASPERENGINE_EDITOR
+			PassObjects objects;
+#endif
+
+			WaterReflectionPass();
+			~WaterReflectionPass();
+			WaterReflectionPass(const WaterReflectionPass&) = delete;
+			WaterReflectionPass& operator=(const WaterReflectionPass&) = delete;
 		};
 
 		// what one pass draws of a mesh
@@ -1319,6 +1364,15 @@ namespace jasperengine{
 			// the scene camera's colour pass when only the scene colour needs it offscreen
 			// (exported builds drawing to the swapchain): blitted to the swapchain after
 			Framebuffer sceneColorRedirect;
+			// the water reflection passes of the view's camera, and which one each reflecting mesh
+			// reads this frame (none: its fallback)
+			std::vector<std::unique_ptr<WaterReflectionPass>> waterReflections;
+			std::unordered_map<Entity, int> waterReflectionOf;
+			// the camera they were drawn for (its pass alone reads them), and the view whose
+			// passes waterReflectionOf indexes (null: this one; an editor view through the
+			// frame's own camera reads the frame's)
+			const CameraComponent* waterReflectionCamera = nullptr;
+			RenderView* waterReflectionSource = nullptr;
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
@@ -1530,6 +1584,12 @@ namespace jasperengine{
 		static constexpr size_t CASTER_CHANGE_LOG_MAX = 16384;
 		// update() clock of the shadow caches
 		uint64_t shadowFrame = 0;
+		// counts the updates (never 0 after the first), the clock of immutableChanges
+		uint32_t updateSerial = 0;
+		// the update a content-shared immutable buffer of the entity's mesh last took new bytes in
+		// (refreshImmutableBuffer); a second change within the window goes private
+		std::unordered_map<Entity, uint32_t> immutableChanges;
+		static constexpr uint32_t IMMUTABLE_CHANGE_WINDOW = 30;
 		// the update a dynamic shadow caster was last seen in (static layers are kept a while after)
 		uint64_t shadowDynamicSeen = 0;
 		// the quality tier this update (Scene Quality, else the project's tier of the platform)
@@ -1736,9 +1796,11 @@ namespace jasperengine{
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
 
-		// engine-written custom uniforms: seconds since startup, sampled once per draw(),
-		// and the size of the target being drawn (shadow slot, SSAO depth or camera color)
+		// engine-written custom uniforms: seconds since startup and the scene clock
+		// (Scene::getSceneTime), sampled once per draw(), and the size of the target being
+		// drawn (shadow slot, SSAO depth or camera color)
 		float frameTime;
+		float frameSceneTime = 0.0f;
 		Vector2 passResolution;
 
 		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
@@ -1956,6 +2018,11 @@ namespace jasperengine{
 		// pre-pass SSAO, SSR or a post pass already ran, else its own) and, for scenecolor, one
 		// copy of its colour target after the opaque queue and the sky.
 		std::unordered_map<Entity, uint32_t> sceneInputMeshes;
+		// the meshes drawn with a water (library:water, @role water) and those reading a planar
+		// reflection (@require planarreflection), as their last load resolved them: empty in a
+		// scene without, so the passes skip the water layering and the reflection passes at once
+		std::unordered_set<Entity> waterMeshes;
+		std::unordered_set<Entity> planarReflectionMeshes;
 		std::unordered_map<Entity, uint32_t> sceneInputPoints;
 		std::unordered_map<Entity, uint32_t> sceneInputParticles;
 		uint32_t sceneInputUsage = 0;          // the bits of both maps
@@ -2001,6 +2068,7 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // passes that reused the SSAO / SSR / post-process depth
 			uint32_t colorCopies = 0;
+			uint32_t colorRecopies = 0;    // copies taken again for readers over other readers
 			uint32_t targetsCreated = 0;   // since the scene started (reuse keeps it constant)
 		};
 		SceneInputStats sceneInputStats;
@@ -2657,9 +2725,215 @@ namespace jasperengine{
 		void forgetEntityInViews(Entity entity, ComponentId componentId);
 #endif
 
+	//-----Dynamic Batching (RenderSystemBatch.cpp, docs/rendering/batching.md)-----
+	public:
+		// the counters and breaks of the last frame of a view (SokolSystem view tag)
+		struct BatchFrame{
+			BatchStats stats;
+			std::vector<BatchBreakEvent> breaks;
+		};
+		const BatchFrame* getBatchFrame(uint32_t viewTag) const;
+		// the entity has a batch record (its baked vertices are kept between frames: tests, tools)
+		bool hasBatchRecord(Entity entity) const;
+		// the batch form of the entity's draws or why it has none
+		BatchBreak getBatchEligibility(Entity entity);
+		// Pixel-art S52 hook: per-vertex attributes beyond the ones the bake knows (position,
+		// normal, tangent, UV sets, colour) are copied as they are; a type set here is baked like
+		// a position (an object-space point: transformed to the batch's space) or a direction (a
+		// normal-like vector: transformed by the normal matrix, normalized). A per-object value
+		// that must not break batches lives in such an attribute, the same at every vertex.
+		enum class BatchAttributeRole : uint8_t { VALUE, POINT, DIRECTION };
+		static void setBatchAttributeRole(AttributeType type, BatchAttributeRole role);
+		static BatchAttributeRole getBatchAttributeRole(AttributeType type);
+
+	private:
+		// what a batch draws with in place of its first object's own (passBatchGeometry)
+		struct BatchGeometry{
+			BufferRender* vertexBuffer = nullptr;
+			size_t vertexOffset = 0;
+			BufferRender* indexBuffer = nullptr;
+			size_t indexOffset = 0;
+			uint32_t indexCount = 0;
+			// model (the cell's translation), normal (identity: normals are baked) and mvp
+			Matrix4 objectBlock[3];
+			bool mirrored = false;
+			// the colour factor is in the vertex colours: the draw's is white
+			bool neutralColor = false;
+		};
+		// the baked vertices of an object, kept while its inputs do not change (settled)
+		struct BatchRecord{
+			Entity entity = NULL_ENTITY;
+			bool ui = false;
+			unsigned int stride = 0;
+			uint32_t vertexCount = 0;
+			uint32_t indexCount = 0;
+			int positionOffset = -1;
+			int normalOffset = -1;
+			int tangentOffset = -1;
+			int uv1Offset = -1;
+			int uv2Offset = -1;
+			int colorOffset = -1;
+			// other attributes baked by role (setBatchAttributeRole)
+			std::vector<std::pair<int, BatchAttributeRole>> extraAttributes;
+			// object space, the texture rect and colour applied
+			std::vector<unsigned char> local;
+			// placed: positions relative to the origin cell, normals and tangents in world space
+			std::vector<unsigned char> placed;
+			std::vector<uint16_t> indices;
+			// what the bake read (a difference bakes again)
+			const unsigned char* source = nullptr;
+			size_t sourceSize = 0;
+			// the vertex and index buffers' write counts (Buffer::noteWrite)
+			uint64_t sourceWrites = 0;
+			uint64_t indexWrites = 0;
+			Rect rect;
+			bool hasRect = false;
+			Vector4 color;
+			bool bakesColor = false;
+			bool bakesNormals = false;
+			bool localValid = false;
+			// what the placement read
+			Matrix4 placedWith;
+			bool placedValid = false;
+			int32_t cell[3] = {0, 0, 0};
+			float lo[3] = {0.0f, 0.0f, 0.0f};
+			float hi[3] = {0.0f, 0.0f, 0.0f};
+			uint32_t cullSerial = 0;
+			bool inside = false;
+			// RenderSystem::update left its Transform's MVP as it was (ensureBatchMVP)
+			bool mvpStale = false;
+		};
+		struct BatchPassContext{
+			BatchPass pass = BatchPass::COLOR;
+			CameraComponent* camera = nullptr;
+			Transform* cameraTransform = nullptr;
+			PipelineType pipType = PIP_DEFAULT;
+			// the camera pre-pass: the colour pass's pipeline type (what decides the batch form)
+			PipelineType colorPipType = PIP_DEFAULT;
+			// what the pass's MVPs are made of (Y-flipped like updateMVP when the target is)
+			Matrix4 viewProjection;
+			float farClip = 0.0f;
+			const Plane* frustumPlanes = nullptr;
+			bool forSSAO = false;
+			bool culls = true;
+			int terrainView = 0;
+			int instanceView = -1;
+			const LodView* lodView = nullptr;
+			bool inCanvasLayer = false;
+			// (cell, mvp) of the last cell asked for in the pass
+			int32_t mvpCell[3] = {INT32_MIN, 0, 0};
+			Matrix4 cellMVP;
+		};
+		struct BatchChunk{
+			BufferRender buffer;
+			size_t capacity = 0;
+			size_t used = 0;
+		};
+
+		static constexpr float BATCH_CELL_SIZE = 4096.0f;
+		static constexpr uint32_t BATCH_MAX_MESH_VERTICES = 64;
+		static constexpr uint32_t BATCH_MAX_UI_VERTICES = 256;
+		static constexpr uint32_t BATCH_QUADS = 16384;
+		static constexpr uint32_t BATCH_SHRINK_FRAMES = 300;
+
+		DrawBatcher batcher;
+		BatchPassContext batchPass;
+		bool batchPassActive = false;
+		const BatchGeometry* passBatchGeometry = nullptr;
+		// the camera passes' planes (colour, pre-pass: their verdicts are kept between frames) and
+		// the other depth passes' (shadow slots, scene depth: tested each time)
+		FrustumCull batchCull;
+		FrustumCull batchDepthCull;
+		std::vector<BatchRecord> batchRecords;
+		// entity -> record index + 1 (0: none), in pages of BATCH_PAGE entities freed when empty:
+		// entity ids only grow
+		static constexpr Entity BATCH_PAGE = 1024;
+		struct BatchPage{
+			uint32_t index[BATCH_PAGE];
+			uint32_t count = 0;
+		};
+		std::vector<std::unique_ptr<BatchPage>> batchPages;
+		std::map<uint32_t, BatchFrame> batchFrames;
+		std::vector<BatchChunk> batchVertexChunks;
+		std::vector<BatchChunk> batchIndexChunks;
+		size_t batchVertexDemand = 0;
+		size_t batchIndexDemand = 0;
+		size_t batchVertexCursor = 0;
+		size_t batchIndexCursor = 0;
+		// frames the chunks were mostly unused, each kind its own
+		uint32_t batchSmallVertexFrames = 0;
+		uint32_t batchSmallIndexFrames = 0;
+		uint64_t batchChunkCommit = 0;
+		BufferRender batchQuadIndices;
+		bool batchLazyMVP = false;
+		// objects whose record went while their MVP was stale: made by their next draw alone
+		// (ensureBatchMVP), as a record's is
+		std::unordered_set<Entity> batchStaleMVPs;
+		bool batchingSeen = true;
+
+		BatchRecord* findBatchRecord(Entity entity);
+		BatchRecord& addBatchRecord(Entity entity);
+		void dropBatchRecord(Entity entity);
+		void dropBatchRecords();
+
+		// NONE when the mesh draws in batch form with pipType (its depth program's with depthPass),
+		// else why it is drawn alone
+		BatchBreak meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass);
+		BatchBreak uiBatchForm(UIComponent& ui, TextureRender* textureOverride);
+		bool bakeMeshRecord(BatchRecord& record, MeshComponent& mesh);
+		bool bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vector4& drawColor, bool bakesColor);
+		void placeBatchRecord(BatchRecord& record, const Matrix4& model, const Matrix4* normalMatrix);
+		const Matrix4& batchCellMVP(const int32_t cell[3]);
+		bool cullBatchRecord(BatchRecord& record);
+		void appendBatchItem(BatchRun& run, const BatchRecord& record);
+		void beginBatchPass(BatchPass pass, BatchMode mode, CameraComponent* camera, Transform* cameraTransform, PipelineType pipType,
+		                    const Matrix4& viewProjection, float farClip, const Plane* frustumPlanes);
+		void endBatchPass();
+		// draws what the batcher holds now (as the pass's end would), inside a batch pass
+		void flushHeldBatchDraws();
+		bool batchingActive() const { return batchPassActive; }
+		// colour pass: drawn alone (drawMesh) or held for a batch
+		bool submitMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+		                InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView);
+		bool submitUI(Entity entity, UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride);
+		// depth passes (pre-pass, scene depth, shadow casters): params are what drawMeshDepth takes alone
+		bool submitMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const vs_depth_t& params,
+		                     InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType,
+		                     int instanceView, const LodView* lodView);
+		bool fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh, const BatchRecord& record, bool mirrored);
+		void drawBatchRun(BatchRun& run);
+		static void flushBatches(void* owner);
+		static void drawBatchRunCallback(void* owner, BatchRun& run);
+		bool uploadBatch(const void* data, size_t size, bool index, BufferRender*& buffer, size_t& offset);
+		void prepareBatchChunks();
+		void destroyBatchChunks();
+		void drawBatchGeometry(ObjectRender& render, Buffer& vertices, const BatchGeometry& batch);
+		// the MVP update() left as it was for a batched mesh, made before a draw of it alone reads it
+		void ensureBatchMVP(Entity entity, Transform& transform);
+		void beginBatchFrame();
+		void endBatchFrame();
+
+		// the texture (re)binding drawMesh and the batcher do before a draw
+		void refreshSubmeshTextures(Submesh& submesh, bool receiveLights, bool pbrFramebufferOutdated);
+		void refreshDepthTextures(Submesh& submesh);
+		void refreshUITexture(UIComponent& ui);
+		void uploadUIBuffers(UIComponent& ui);
+		// the draw colour of a UI element: its colour (a Text Effect's alpha only), faded by its
+		// Canvas Groups
+		Vector4 uiElementColor(const UIComponent& ui, bool inCanvasLayer) const;
+		// the material's u_fs_pbrParams prefix (lit 12 floats with the emission intensity, unlit
+		// 4 or 8), its colour factor white when neutralColor
+		static void applyMaterialPrefix(ObjectRender& render, int slot, const Material& material, unsigned int size, bool lit, bool neutralColor);
+
 	protected:
 
-		void updateMeshBuffers(MeshComponent& mesh);
+		void updateMeshBuffers(Entity entity, MeshComponent& mesh);
+		// an immutable buffer shared by content (MeshBufferPool) whose bytes changed takes the
+		// shared buffer of its new bytes, or after a second change within
+		// IMMUTABLE_CHANGE_WINDOW updates a dynamic buffer of its own; every render of the mesh
+		// is retargeted to it
+		void refreshImmutableBuffer(Entity entity, MeshComponent& mesh, Buffer& buffer);
+		void retargetMeshBuffer(MeshComponent& mesh, uint32_t oldId, BufferRender* replacement, bool index);
 		void updateTerrainNodesBuffer(TerrainView& view);
 		// instanceView -1 draws every instance from the component buffer; lodView null is full detail
 		bool drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0, int instanceView = -1, const LodView* lodView = nullptr);
@@ -2692,6 +2966,55 @@ namespace jasperengine{
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
 		void setSceneInputUser(Entity entity, bool points, uint32_t inputs);
+		// waterMeshes and planarReflectionMeshes for a mesh as its load resolved it
+		void setWaterMesh(Entity entity, bool water, bool planarReflection);
+		// the pass's waters a transparent queue layers around (WaterLayering.h): the visible
+		// transparent meshes of waterMeshes in the queue, with their levels and wave bands
+		void gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const;
+		// The water reflection passes of a view's camera (spec water-reflections 6.4): the
+		// heights of the visible meshes reading a planar reflection, nearest first up to the
+		// scene's cap, each drawn mirrored about its plane before the camera's own pass;
+		// terrainView: the terrain cut the passes draw (the primary view's next free slot)
+		void renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView);
+		// whether the camera sees a mesh reading a planar reflection from above it, with the
+		// scene's resolution on (its water reflection passes draw this frame)
+		bool planarReflectionVisible(Entity cameraEntity);
+		// the view's reflection passes unused for a while freed (all of them: everything)
+		void releaseWaterReflections(RenderView& view, bool everything);
+		// what a reflection camera takes of the camera it mirrors (copied: making a camera entity
+		// may move the camera arrays)
+		struct ReflectionViewer{
+			Matrix4 viewMatrix;
+			Vector3 eye;
+			CameraType type = CameraType::CAMERA_PERSPECTIVE;
+			float yfov = 0.0f, aspect = 1.0f, nearClip = 0.1f, farClip = 1000.0f;
+			float leftClip = 0.0f, rightClip = 0.0f, bottomClip = 0.0f, topClip = 0.0f;
+			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
+			static ReflectionViewer of(const CameraComponent& camera);
+		};
+		// a reflection camera: the viewer mirrored about a plane (its normal, a point of it), its
+		// near plane moved onto the plane raised by clipOffset along the normal, so nothing
+		// behind it shows (mirrors and water reflections)
+		void driveReflectionCamera(CameraComponent& reflectionCamera, Transform& reflectionTransform, const ReflectionViewer& viewer,
+		                           const Vector3& normal, const Vector3& point, float clipOffset);
+		// target takes source's lighting and shadow maps (its own camera's viewport), without
+		// shadows at strength 0
+		void shareCameraShadows(CameraShadows& target, const CameraShadows& source, const CameraComponent& camera, bool shadows);
+		// the camera of the camera pass being drawn (renderCameraPass)
+		const CameraComponent* passCamera = nullptr;
+		// u_fs_planarReflection and its texture for a draw of a mesh reading one
+		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the world box a transparent draw covers (null when it has none to tell)
+		AABB transparentBounds(const TransparentRenderData& renderData) const;
+		// whether a draw of the transparent queue samples the scene colour (and is drawn)
+		bool readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView);
+		// the box's extent in normalized device coordinates (xmin, ymin, xmax, ymax): the whole
+		// screen when it is unknown or reaches behind the eye
+		static Vector4 screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection);
+		// the scene colour copies a camera pass may take (the first and the re-copies for readers
+		// drawn over other readers)
+		static constexpr unsigned int MAX_SCENE_COLOR_COPIES = 4;
 		// registers what the meshes and points about to load will read, before update() decides
 		// from the readers what every mesh loads with (depth programs, offscreen pipelines)
 		void predictSceneInputUsers();
@@ -3159,6 +3482,9 @@ namespace jasperengine{
 		static uint64_t getTextureVariantChecks();
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
+		// the scene's values for a default shader changed: the components drawing with it
+		// rewrite their custom blocks at their next draw (Scene::setDefaultShaderUniform)
+		void needUpdateDefaultShaderUniforms(ShaderType type);
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
 		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
@@ -3205,11 +3531,29 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // last frame: scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // last frame: passes that reused the SSAO / SSR / post depth
 			uint32_t colorCopies = 0;      // last frame: colour copies
+			uint32_t colorRecopies = 0;    // last frame: of them, taken again for readers over other readers
 			uint32_t targets = 0;          // depth and copy targets alive (the editor's views included)
 			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
 			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
 		};
+
+		// what the last frame's water reflection passes were (get_render_stats, the scene
+		// settings' In Use row)
+		struct PlanarReflectionStats{
+			uint32_t planes = 0;     // water heights seen by the views' cameras
+			uint32_t passes = 0;     // reflection passes drawn
+			uint32_t fallbacks = 0;  // heights over the cap (their waters show the environment)
+			uint32_t width = 0;      // the last pass's target
+			uint32_t height = 0;
+		};
+
 		SceneInputDetails getSceneInputDetails();
+		// what the last frame's water reflection passes were
+		PlanarReflectionStats getPlanarReflectionStats() const{ return lastPlanarReflectionStats; }
+	private:
+		PlanarReflectionStats planarReflectionStats;
+		PlanarReflectionStats lastPlanarReflectionStats;
+	public:
 		bool hasPendingMeshLods() const;
 
 		// the detail levels the main view (draw()) drew in its last frame

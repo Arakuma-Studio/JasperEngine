@@ -799,7 +799,7 @@ void Input::beginFrame(){
 void Input::beginFrame(double unscaledDeltaTime){
     InputSuppression suppression;
     suppression.keyboard = Engine::isTextInputFocused();
-    suppression.gamepadNavigation = Engine::wantsGamepadNavigation();
+    Engine::getUINavigationWants(suppression.gamepadNavigation, suppression.keyboardNavigation);
     beginFrame(unscaledDeltaTime, suppression);
 }
 

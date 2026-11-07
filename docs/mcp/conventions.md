@@ -206,6 +206,14 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
   physics, prefabs, shaders, HTML UI); every other area is one entry of the "Other areas" index
   (its key tool and `jasper://docs/<area>`). A guide line needs a case of `tools/mcp/eval` that
   fails without it (`tools/mcp/eval/README.md`).
+- **The client cut.** Clients may keep only the start of the instructions: Claude Code keeps the
+  first 4,096 characters and appends "… [truncated]" (`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`).
+  So the guide puts first what an agent needs before any call (the intro, Addressing, The loop,
+  Building scenes and the generated Tool groups line), and the intro tells an agent that cannot see
+  the last section ("## Other areas") to read the whole guide with `read_file jasper://guide`
+  (`read_file` reads any `jasper://` resource, for clients without MCP resources too). The
+  `client_cut` entry of the budget lists those sections; the gate fails when one ends after the
+  cut (counted in UTF-16 code units, as JavaScript counts) or the intro lacks the pointer.
 - An area's detail lives in `docs/mcp/guide/<area>.md`. A file there is embedded at build time
   and served as `jasper://docs/<area>` (`docs/mcp/guide/README.md` lists them); long ones split
   into `### ` section resources.

@@ -983,6 +983,7 @@ const FieldEntry kBody_TerrainComponent_fields[] = {
     JE_RF(TerrainComponent, enabled, 0x88b70f61u, Bool),
     JE_RF(TerrainComponent, heightMap, 0x77c648cbu, Texture),
     JE_RF(TerrainComponent, holeMap, 0xea937f84u, Texture),
+    JE_RF(TerrainComponent, allowRuntimeEdits, 0x3eb99a60u, Bool),
     JE_RF(TerrainComponent, autoSetRanges, 0x25f4d55bu, Bool),
     JE_RF(TerrainComponent, offset, 0xfe490703u, Vector2),
     JE_RF(TerrainComponent, terrainSize, 0x6f8249e0u, Float),
@@ -1099,6 +1100,8 @@ const StructTable kBody_RectTransformComponent{"recttransform", kBody_RectTransf
 const FieldEntry kBody_ActionComponent_fields[] = {
     JE_RF(ActionComponent, state, 0xca7b2e94u, Enum),
     JE_RF(ActionComponent, speed, 0x0492459eu, Float),
+    JE_RF(ActionComponent, startOffset, 0x7c51346eu, Float),
+    JE_RF(ActionComponent, randomStart, 0x43832d28u, Bool),
     JE_RF_ENTITY(ActionComponent, target, 0x55190b06u, Entity),
     JE_RF(ActionComponent, ownedTarget, 0x5420ae55u, Bool),
 };
@@ -1248,6 +1251,20 @@ const FieldEntry kBody_ButtonComponent_fields[] = {
     JE_RF(ButtonComponent, colorPressed, 0xc5a5fc56u, Vector4),
     JE_RF(ButtonComponent, colorDisabled, 0x04208fa8u, Vector4),
     JE_RF(ButtonComponent, disabled, 0x314a4b2du, Bool),
+    JE_RF(ButtonComponent, textureSelected, 0x5d4ca8f5u, Texture),
+    JE_RF(ButtonComponent, colorSelected, 0xba8f6da9u, Vector4),
+    JE_RF(ButtonComponent, transition, 0x8067a0fau, Enum),
+    JE_RF(ButtonComponent, fadeDuration, 0x8a75823fu, Float),
+    JE_RF(ButtonComponent, scaleHovered, 0xc324dcf8u, Float),
+    JE_RF(ButtonComponent, scalePressed, 0xcdab3f89u, Float),
+    JE_RF(ButtonComponent, scaleSelected, 0xf90a4298u, Float),
+    JE_RF(ButtonComponent, navigationMode, 0xe1276984u, Enum),
+    JE_RF(ButtonComponent, wrapAround, 0xfd8c6bd4u, Bool),
+    JE_RF_ENTITY(ButtonComponent, selectOnUp, 0x8a84c0ddu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnDown, 0xcd357e1cu, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnLeft, 0xee234711u, Entity),
+    JE_RF_ENTITY(ButtonComponent, selectOnRight, 0x04170632u, Entity),
+    JE_RF(ButtonComponent, selectOnEnable, 0xdb5cb9cfu, Bool),
 };
 const StructTable kBody_ButtonComponent{"button", kBody_ButtonComponent_fields, std::size(kBody_ButtonComponent_fields)};
 

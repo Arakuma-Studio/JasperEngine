@@ -83,7 +83,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
   rules (a failing eval case for new text, guide limits, budget ratchet).
 - D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
-  determinism can be checked here. Asset types: NoiseGraph 28, TreeData 29, TerrainWorld 30, VoxelVolume 31.
+  determinism can be checked here. Asset types: TreeData 29, TerrainWorld 30, VoxelVolume 31, NoiseGraph 32 (upstream's SoundEvent took 28,
+  so NoiseGraph moved; only T2 declares NoiseGraph, and the others take it from T2's branch).
 - D23. Owner rule: nothing runs a full suite until the very end of the whole programme. Streams run only filtered tests, and
   not `tools/check-changed`. Full gates, the MCP baseline, and web and Android builds run once on the merged tree, by the coordinator.
 
@@ -118,11 +119,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | in progress | `.worktrees/s41`. Every brush, bake and generator writes through the engine |
+| T1 implementation | checkpoint landed, rest in progress | Checkpoint 32b44659f merged into integration (e695a1bf3): core 162/162 and editor 129/129 with WERROR, MCP 41/41, collider red control. Remaining: UI items D-28 to D-37, the eval run |
 | T2 implementation | in progress | `.worktrees/t2`. Core: 67 filtered tests pass at `c7ded25f3`. Editor half uncommitted, its tests not yet run |
-| T3 implementation | in progress | `.worktrees/t3`. Holes committed at `a88e00f3d`, 41 filtered core tests pass; collider tests and Vulkan not run. Tiers and materials next |
+| T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | in progress | `.worktrees/t5`. Runtime, render hooks and editor panel committed; filtered tests running |
+| T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
 | T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
@@ -149,6 +150,28 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   build-toolchain landed, plus a header fan-out cut and a generated AssetRefSchema. Merged into integration (conflicts in the
   asset table, reflection, CreateEntityCmd includes and the Xcode project; holeMap now gets its reference row from reflection).
   Each stream merges integration once. Owner repeated: light, filtered suites only.
+- 2026-11-07 04:48: all five leads stopped on a revoked API login (not their work) and were revived. `origin/main` gained 338
+  commits, including Doriax agent-authoring (`edit_terrain_details`, `TerrainDetailRules`, the terrain guide), merged into
+  integration (one conflict in docs/testing.md). T1 and T5 merge it now because they overlap it; T2, T3 and T6 at landing.
+- Verified so far (filtered runs): integration's core filter 84/84 after the first upstream merge; T1's collider refresh
+  (29bb7a78b) 162/162 with WERROR; T6 voxel core 144/144 on its merged tree; T2 Lua API 12/12. T2 found and fixed a vacuous MCP
+  test and moved the graph-shipping rule into `Exporter::shipsForNoise` with unit tests; its player-level test runs at the end.
+- NoiseGraph is asset type 32 (upstream's SoundEvent took 28).
+- T1 has become the bottleneck: its unlanded work (101 files) conflicts with T2 (a duplicate `TerrainMapDeltaCmd`,
+  `TerrainNoise.h`, `TerrainMaps.cpp`) and T3 (holes across the operation engine). Decision: T1 lands a stable, tested checkpoint
+  in integration soon; T2, T3 and T6 then merge integration once and resolve against it. T1's delta command wins over T2's.
+  T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
+- Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
+  while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- T1 checkpoint landed in integration (e695a1bf3); the merged code is byte-identical to the tree T1 tested. T2, T3, T5 and
+  T6 each merge integration once now. Landing order from here: T5, then T3, then T2 and T6 as they finish; each later lander
+  merges integration again just before landing. T4 starts once T3 has landed.
+- T5 finished (ebac93db7). Red controls caught: trees never drawn when their shaders compiled at runtime; Paint Trees disarmed
+  in the Terrain window; a flat terrain placed no grass. Not run here: the prebuilt-player export test, the foliage web gate,
+  Metal/D3D11/devices, eval cases. Its moving-camera p99 was over budget on a loaded host. It lands after T1's checkpoint, then
+  merges integration once more to take T1's `editor::terraindetail` rename.
+- Landing risk: `tools/check_fanout.py` caps how many units one header rebuilds at 150. T3's worst is 149 and T5 noted it sits at
+  150 too, so merged streams may exceed it. Check it on every landing merge, and split includes if it fails.
 - Stream findings so far (filtered runs only, nothing is final):
   - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
     now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`

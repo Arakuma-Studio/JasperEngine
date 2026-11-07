@@ -24,6 +24,7 @@
 #include "command/type/SetAssetMetaCmd.h"
 #include "Stream.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "support/EditorTestSupport.h"
 
 #include "support/TestTempDir.h"
@@ -435,6 +436,39 @@ TEST_F(PlayChangeReviewTests, KeepValuesAfterPlay) {
 }
 
 // --- R22: asset metadata edits are steps of the project history
+
+// runtime-core spec 6.4: removing a Transform reparents its children, and the undo puts them
+// back; neither is a visibility change, so a descendant hidden on its own stays hidden
+TEST_F(UndoProjectTest, RemovingATransformAndItsUndoKeepGrandchildFlags) {
+    Scene* world = scene->scene;
+    auto make = [&](Entity parent) {
+        const Entity entity = world->createEntity();
+        world->addComponent<Transform>(entity, Transform());
+        if (parent != NULL_ENTITY) world->addEntityChild(parent, entity, false);
+        return entity;
+    };
+    auto settle = [&]() {
+        propagateTransforms(*world, [](Transform&, Entity) {});
+        auto transforms = world->getComponentArray<Transform>();
+        for (size_t i = 0; i < transforms->size(); i++) transforms->getComponentFromIndex(i).needUpdateChildVisibility = false;
+    };
+    const Entity parent = make(NULL_ENTITY);
+    const Entity child = make(parent);
+    const Entity grandchild = make(child);
+    const Entity hidden = make(grandchild);
+    world->getComponent<Transform>(hidden).visible = false;
+    settle();
+
+    ASSERT_TRUE(history()->addCommandNoMerge(new RemoveComponentCmd(project.get(), sceneId, child, ComponentType::Transform)));
+    settle();
+    EXPECT_EQ(world->getComponent<Transform>(grandchild).parent, parent);
+    EXPECT_FALSE(world->getComponent<Transform>(hidden).visible) << "the removal reparents, it shows nothing";
+
+    history()->undo();
+    settle();
+    EXPECT_EQ(world->getComponent<Transform>(grandchild).parent, child);
+    EXPECT_FALSE(world->getComponent<Transform>(hidden).visible) << "the undo reparents back, it shows nothing";
+}
 
 TEST_F(UndoProjectTest, SetAssetMetaCmdIsAProjectStep) {
     const fs::path asset = project->getProjectPath() / "prefabs/Enemy.prefab";

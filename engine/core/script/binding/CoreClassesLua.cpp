@@ -3,6 +3,7 @@
 
 #include "component/TerrainComponent.h"
 #include "terrain/TerrainQuality.h"
+#include "object/GameObject.h"
 #include "LuaBinding.h"
 #include <optional>
 #include "log/Logger.h"
@@ -1460,6 +1461,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
         .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
         .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        // ui-components: the scene's selection (Unity's EventSystem.currentSelectedGameObject):
+        // a GameObject or nil
+        .addStaticFunction("getSelected", +[](Scene* scene) -> std::optional<GameObject> {
+            if (!scene) return std::nullopt;
+            const Entity entity = scene->getSystem<UISystem>()->getSelected();
+            if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::nullopt;
+            return GameObject(scene, entity);
+        })
+        // Unity's SetSelectedGameObject: a Button (GameObject or entity), nil to deselect; false
+        // when it cannot be selected (not a Button, inactive, hidden, an on-screen control)
+        .addStaticFunction("setSelected", +[](Scene* scene, luabridge::LuaRef value) -> bool {
+            if (!scene) return false;
+            Entity entity = NULL_ENTITY;
+            if (value.isNumber()){
+                entity = (Entity)value.unsafe_cast<lua_Integer>();
+            }else if (!value.isNil()){
+                lua_State* Lv = value.state();
+                value.push(Lv);
+                auto handle = luabridge::get<EntityHandle*>(Lv, -1);
+                lua_pop(Lv, 1);
+                if (!handle || !handle.value()) return false;
+                entity = handle.value()->getEntity();
+            }
+            return scene->getSystem<UISystem>()->setSelected(entity);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1802,14 +1828,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AdMobRating")
-        .addVariable("General", AdMobRating::General)
-        .addVariable("ParentalGuidance", AdMobRating::ParentalGuidance)
-        .addVariable("Teen", AdMobRating::Teen)
-        .addVariable("MatureAudience", AdMobRating::MatureAudience)
-        .endNamespace();
-
-    luabridge::getGlobalNamespace(L)
         .beginNamespace("CursorType")
         .addVariable("ARROW", CursorType::ARROW)
         .addVariable("IBEAM", CursorType::IBEAM)
@@ -1928,6 +1946,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
         .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    // the resolution of the water reflection passes (Scene.planarReflectionResolution)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlanarReflectionResolution")
+        .addVariable("OFF", PlanarReflectionResolution::OFF)
+        .addVariable("QUARTER", PlanarReflectionResolution::QUARTER)
+        .addVariable("HALF", PlanarReflectionResolution::HALF)
+        .addVariable("FULL", PlanarReflectionResolution::FULL)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2289,6 +2316,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ignoreEventsHandledByUI", &Engine::isIgnoreEventsHandledByUI, &Engine::setIgnoreEventsHandledByUI)
         .addStaticFunction("isUIEventReceived", &Engine::isUIEventReceived)
         .addStaticFunction("wantsGamepadNavigation", &Engine::wantsGamepadNavigation)
+        .addStaticFunction("wantsKeyboardNavigation", &Engine::wantsKeyboardNavigation)
         .addStaticProperty("updateTime", &Engine::getUpdateTime, &Engine::setUpdateTime)
         .addStaticFunction("setUpdateTimeMS", &Engine::setUpdateTimeMS)
         .addStaticProperty("interpolationAlpha", &Engine::getInterpolationAlpha)
@@ -2316,7 +2344,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
+        .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // false while the window can't be seen: the game updates without drawing (desktops)
+        .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -2340,6 +2372,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
         .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
@@ -3334,6 +3367,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
+        .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
+        .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)
+        .addProperty("planarReflectionShadows", &Scene::getPlanarReflectionShadows, &Scene::setPlanarReflectionShadows)
+        .addProperty("planarReflectionFarClip", &Scene::getPlanarReflectionFarClip, &Scene::setPlanarReflectionFarClip)
+        .addProperty("planarReflectionClipOffset", &Scene::getPlanarReflectionClipOffset, &Scene::setPlanarReflectionClipOffset)
+        .addProperty("maxPlanarReflections", &Scene::getMaxPlanarReflections, &Scene::setMaxPlanarReflections)
         // a copy (edit it and assign it back, which applies it)
         .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
@@ -3355,6 +3395,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)
         .addProperty("defaultPointsShader", &Scene::getDefaultPointsShader, &Scene::setDefaultPointsShader)
         .addProperty("defaultLinesShader", &Scene::getDefaultLinesShader, &Scene::setDefaultLinesShader)
+        // property values of a default shader, inherited by the objects that use it
+        .addFunction("setDefaultShaderUniform",
+            luabridge::overload<ShaderType, const std::string&, const Vector4&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector3&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector2&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, float>(&Scene::setDefaultShaderUniform))
+        .addFunction("getDefaultShaderUniform", &Scene::getDefaultShaderUniform)
+        .addFunction("hasDefaultShaderUniform", &Scene::hasDefaultShaderUniform)
+        .addFunction("removeDefaultShaderUniform", &Scene::removeDefaultShaderUniform)
         .addProperty("postProcessPasses", &Scene::getPostProcessPasses, &Scene::setPostProcessPasses)
         .addFunction("setPostProcessUniform",
             luabridge::overload<unsigned int, const std::string&, const Vector4&>(&Scene::setPostProcessUniform),
@@ -3935,12 +3984,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("hapticFeedback", [] (HapticFeedback type) { return System::instance().hapticFeedback(type); })
 
         //UserSettings not need here
-
-        .addStaticFunction("initializeAdMob", [] () { return System::instance().initializeAdMob(); })
-        .addStaticFunction("setMaxAdContentRating", [] (AdMobRating rating) { return System::instance().setMaxAdContentRating(rating); })
-        .addStaticFunction("loadInterstitialAd", [] (const std::string& adUnitID) { return System::instance().loadInterstitialAd(adUnitID); })
-        .addStaticFunction("isInterstitialAdLoaded", [] () { return System::instance().isInterstitialAdLoaded(); })
-        .addStaticFunction("showInterstitialAd", [] () { return System::instance().showInterstitialAd(); })
 
         .addStaticFunction("initializeCrazyGamesSDK", [] () { return System::instance().initializeCrazyGamesSDK(); })
         .addStaticFunction("showCrazyGamesAd", [] (std::string type) { return System::instance().showCrazyGamesAd(type); })

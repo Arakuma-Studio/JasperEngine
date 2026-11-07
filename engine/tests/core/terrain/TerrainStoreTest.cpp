@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The stores and the store contract (S53 R2, R3, R86, R87; AC1, AC2, AC68)
+// The stores and the store contract (T1 R2, R3, R86, R87; AC1, AC2, AC68)
 
 #include "TerrainGoldenSequences.h"
 #include "TerrainTestSupport.h"

@@ -80,6 +80,9 @@ APP="$(sed -n 's/^executable: //p' "$OUT/logs/sim.log" | head -n 1)"
 [[ -d "$APP" && "$APP" == *.app ]] || fail "the simulator build gave no .app ($APP)"
 BUNDLE="$(plutil -extract CFBundleIdentifier raw "$APP/Info.plist")"
 [[ "$BUNDLE" == com.jasperengine.packaging ]] || fail "the .app's bundle id is $BUNDLE"
+# App Store Connect refuses an app whose required-reason APIs no privacy manifest declares
+plutil -lint "$APP/PrivacyInfo.xcprivacy" > /dev/null || fail "the .app has no valid PrivacyInfo.xcprivacy"
+grep -q NSPrivacyAccessedAPICategoryUserDefaults "$APP/PrivacyInfo.xcprivacy" || fail "the privacy manifest lacks the engine's entries"
 ok "xcodebuild made $APP for the simulator"
 
 RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
@@ -153,6 +156,7 @@ DEVICE_APP="$(sed -n 's/^executable: //p' "$OUT/logs/device-noteam.log" | head -
 [[ -d "$DEVICE_APP" ]] || fail "the device build gave no .app ($DEVICE_APP)"
 BINARY="$DEVICE_APP/$(plutil -extract CFBundleExecutable raw "$DEVICE_APP/Info.plist")"
 lipo -archs "$BINARY" | grep -q arm64 || fail "not an arm64 binary: $(lipo -archs "$BINARY")"
+plutil -lint "$DEVICE_APP/PrivacyInfo.xcprivacy" > /dev/null || fail "the device .app has no valid PrivacyInfo.xcprivacy"
 xcrun vtool -show-build "$BINARY" | grep -q "platform IOS" || fail "not an iOS device binary"
 if codesign -dv "$DEVICE_APP" 2>&1 | grep -q "TeamIdentifier=[A-Z0-9]"; then fail "signed although no team was set"; fi
 [[ -d "$OUT/device-noteam/UnifiedLighting/JasperEnginePlayer.xcodeproj" ]] || fail "no Xcode project in the output"
