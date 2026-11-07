@@ -64,6 +64,7 @@ ios): low, medium, high, ultra. Defaults: desktop high, web medium, mobile low.
   `shadow_distance` for long views.
 - At most 9 projective slots (each directional cascade and each spot light takes one) and 4
   point lights cast shadows at once; the most important lights get them.
-- WebGL2 and GLES3 render ultra like high (no PCSS); point lights never take PCSS.
+- WebGL2 and GLES3 give ultra PCSS only where a variant has a texture unit left (always with
+  directional lights only); point lights never take PCSS.
 - A forked mesh shader written before these shadows keeps directional and spot shadows only;
   `check_shader` warns "legacy shadow interface"; re-fork it.

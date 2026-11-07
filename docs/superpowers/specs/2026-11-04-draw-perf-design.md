@@ -680,3 +680,54 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   batched and three unbatched frames it compares; the warm request is made by that first draw, so the
   wait for idle GPU creation does not cover it. The test now compares from a frame in which no draw
   waited.
+
+## Follow-ups (2026-11-07)
+
+**PCSS on GLES3/WebGL2** (the follow-up of section 13; workstream `fu/pcss-gles`).
+
+- **Where it was off.** `includes/lights.glsl` declared PCSS's raw-depth view of the shadow atlas
+  (`SHADOW_DATA_RAW`) only `!IS_GLES && !HAS_TERRAIN_PBR`, and `RenderSystem::processLights` never
+  set the PCSS flag (header.z 8) on `GraphicBackend::GLES3`: the view is one more fragment texture,
+  and S10 counted the worst GLES3 Lit variant at 16 of GLES3's 16 guaranteed units.
+- **What changed.** Every `Shq` variant declares the view (`SHADOW_RAW_VIEW_OFF` leaves it out).
+  For GLES3, `ShaderVariantCompiler::compile` builds a variant again with `SHADOW_RAW_VIEW_OFF` when
+  the view makes its fragment stage the 17th texture (or texture-sampler pair); its log then has a
+  `pcss-left-out` line and the editor's shader build prints "no PCSS" for it (`preprocess` gives the
+  same source). The flag is set on every backend: a variant without the view filters with the Vogel
+  disk whatever it says. The look is the desktop's: the same GLSL, nothing GLES-specific.
+- **Which variants get it** (measured with the GLES3 compiler, `ShadowPcssGles` prints them):
+  - the directional-only Lit (`Dlo`) always: two textures fewer (spot mask, point atlas), so at most
+    15 with the view (14 + 1 for three extension maps with IBL, SSAO and the colour LUT);
+  - a general Lit when its textures leave a unit: most do (13 + 1 for a normal-mapped Lit with IBL,
+    SSAO and the LUT); one at 16 already (three extension maps with IBL, SSAO and the LUT) does not;
+  - painted terrains: the general one is at 15 (not 16 as S10 counted: with the colour LUT it drops
+    its emissive texture), so it takes the view on every backend; S10's terrain exclusion is gone.
+  - Desktop backends keep the view in every `Shq` variant as before (their devices have 32 units and
+    more; a variant over the engine's budget of 16 is warned about by the build, as before).
+- **Cost** (the GLES3 fragment stage, from the compiler; the red run printed the same variants
+  without the view): one texture and one sampler more, no uniform vector more; the source grows by
+  about 6 KB (the `Dlo` Lit with three extension maps: 67,942 to 74,002 bytes, 9 %). Per shadowed
+  fragment of the sun, the Vogel disk takes 16 comparison taps and PCSS 16 raw-depth taps (the
+  blocker search; a fragment with no blocker stops there) plus 16 to 32 comparison taps (twice in
+  the cascade blend band): two to three times the shadow lookups where there is a penumbra or a
+  shadow. On llvmpipe (640 x 360, `ShadowPcssGlesGpu`, printed, frames read back) the three runs
+  gave High 17.4 to 18.7 ms, Ultra 17.3 to 19.2 ms and Ultra through the GLES3 programs 13.8 to
+  18.5 ms a frame: no difference above the noise of a shared software rasterizer, which proves
+  nothing for a phone's GPU: on an Adreno 640 / Mali-G76 class device at 1080p the S10 budget table gives the Low tier's
+  grid (4 fetches) 1.0 ms for a full-screen sun, so PCSS's 32 to 48 lookups are several milliseconds.
+- **Decision (as Unity does with soft shadow quality).** PCSS on GLES3 is the user's choice, never a
+  default: Android keeps the Low tier and the web Medium; Ultra is opt-in per platform in Project
+  Settings, whose tooltip now says what it costs on phones and the web. A project that picks Ultra
+  for them gets PCSS wherever the variant has the texture unit, and the Vogel disk with a build line
+  saying so where it has not. No new shader property bit; the shader cache moved to `v54`.
+- **Tests.** `ShadowPcssGles` (core: the GLES3 `Dlo` Lit and terrain have the view within GLES3's
+  texture, sampler and uniform limits; a general Lit has it where it fits, is built without it and
+  says so where it does not, and `preprocess` agrees), `ShadowPcssGlesGpu` (core, glcore: the GL
+  device runs the GLES3 programs of the mesh variants, which draw the desktop's Ultra image exactly,
+  and that image differs from High's), `ShadowDataLayout.HighFiltersAddTheRawDepthView` and
+  `test_shadows.py::test_shader_cross_compile` (now: GLES3 has the view), `DirectionalOnlyVariants`
+  (editor: `Shq` bases on every backend, the view within the budget). `GATE=pcss tools/build.sh
+  web-gate` (`tools/test-projects/pcss`) draws the same scene in WebGL2 (SwiftShader): no WebGL
+  error, and the centre pixel is PCSS's (135; llvmpipe 136, the Vogel disk 143).
+- **Open.** The general painted terrain's GLES3 fragment stage has 235 uniform vectors, over GLES3's
+  guaranteed 224, with or without PCSS (its layer blocks): a terrain-uniforms item, not this one.
