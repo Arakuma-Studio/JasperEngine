@@ -143,7 +143,7 @@ namespace {
         o.raw[0].target = field.get();
         o.raw[1].target = box.get();
         o.set(2, (float)g.x, (float)g.y, (float)p.number("edge_bias") / 100.0f, seed);
-        o.set(3, std::max(1.0f, 1.5f * s));
+        o.set(3, std::max(1.0f, 1.5f * s), (float)ctx.width, (float)ctx.height);
         if (!ctx.runner.run(o)) return;
         TitlePass f = tfx::makePass(ctx, tfx::Program::DripField, "drips field", *drips);
         f.raw[0].target = origins.get();
@@ -208,7 +208,7 @@ namespace {
         d.gizmos = {{GizmoKind::Direction, "angle", "length"}, {GizmoKind::Light, "light_angle", nullptr}};
         d.reach = [](const ParamValues& p) { return (float)(p.number("length") + p.number("width") * p.number("head") + p.number("merge")); };
         d.gather = [](const ParamValues&) { return -1.0f; };
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F1;
         d.live = {LiveKind::Kernel, {"length"}, (uint32_t)Program::DripField};
         d.glyphSafety = GlyphSafety::Approximate;
@@ -327,7 +327,7 @@ namespace {
         d.gizmos = {{GizmoKind::Direction, "stroke_angle", "stroke_length"}};
         d.reach = [](const ParamValues& p) { return (float)std::max(p.number("dust_reach"), p.number("edge_width")); };
         d.gather = [](const ParamValues& p) { return (float)std::max(p.number("dust_reach"), p.number("edge_width")) + 2.0f; };
-        d.costClass = CostClass::C1;
+        d.costClass = CostClass::C2;
         d.fallback = FallbackClass::F0;
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"chalkboard", "blackboard", "pastel", "crayon", "チョーク", "黒板"};

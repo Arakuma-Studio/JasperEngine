@@ -164,7 +164,7 @@ namespace {
         d.reach = [](const ParamValues& p) { return (float)std::max(0.0, p.number("offset")) + stitchAcross(p); };
         d.gather = [](const ParamValues&) { return (float)(STITCH_MARCH_STEPS * 1.5); };
         d.outline = true;
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F0;
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"embroidery", "sewing", "thread", "patch", "badge", "seam", "刺繍", "ステッチ"};

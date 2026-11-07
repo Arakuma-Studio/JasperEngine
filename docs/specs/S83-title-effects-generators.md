@@ -1598,10 +1598,12 @@ rest of S82 lands in 6B.
     `material_detail`) with the element program's formulas: fill (every kind but `image` and
     `source`; the layer's colours with `color_mode: layer`), opacity, bevel (profiles, Direction,
     soften, light, gloss contours, highlight and shadow), finish, surface and colour textures (the
-    procedural kinds), pattern (every kind), satin, sheen, inner glow and the gloss cap. Reflection
-    maps, glass and refraction need more images than an effect pass binds and are not drawn by the
-    effect (the Glass preset is a bevel, inner glow and gloss at 0.75 opacity); `size_mode: fit`
-    takes 12 % of `size` as the half-thickness. The renderer's element pass is unchanged.
+    procedural kinds), pattern (every kind), satin, sheen, inner glow and the gloss cap. A
+    reflection map needs a panorama an effect pass does not bind: an enabled reflection is a sky
+    and ground horizon by the surface normal (what Chrome and Gold Chrome map through their finish);
+    glass and refraction are not drawn by the effect (the Glass preset is a bevel, inner glow and
+    gloss at 0.75 opacity); `size_mode: fit` takes 12 % of `size` as the half-thickness. The
+    renderer's element pass is unchanged.
 13. **Implementation: Pixelate's palette is a palette image** (one colour per pixel, up to 256, an
     image asset): S43's `.palette` asset type has not landed; the param takes `.palette` assets when
     it does. Pixelate carries `jfx_color.glsl`'s OKLab conversion (that file declares the HTML UI's
@@ -1626,3 +1628,17 @@ rest of S82 lands in 6B.
     `fx_follow_missing` is the generators'; `fx_bake_only_realtime`, `fx_live_budget` and
     `fx_realtime_budget` need S81's Render Mode and are not registered yet; Glint (3D) is S86's
     member (listed here as a style setting); the device figures of AC22 are pending (no device).
+17. **Implementation: the declared classes are the static model's.** §6.4's model applied literally
+    (FRE = Σ pixels x max(1, taps / 4), the shared distance field its own row) puts twelve effects one
+    class above §6.6's estimates: Motion Blur, Chromatic Aberration and Chalk C2; Contour Lines,
+    Neon Tube, Tilt-Shift Blur, Radial Blur, Extrude, Floor Reflection, Drips, Stitch and Shatter C3;
+    Motion Trail C4 (its smear marches 214 taps). Each definition declares what its `estimate`
+    gives at defaults (`TitleFxBudget.StaticModel`), so the badges, `list_title_library` and the
+    Realtime rules agree with the model; the desktop timings of AC15 decide whether the model's
+    constants should loosen.
+18. **Implementation: hard-edged cuts and the RGBA8 path.** Chalk, Frost, Ink Brush Stroke and Stitch
+    cut their shapes at noise or arc-length thresholds; where the RGBA8 path's 1/64 px distance
+    steps cross a threshold a lone pixel flips fully. `TitleFxFallbackGpu` holds them to their
+    class's mean and share of pixels over 8/255 but not its maximum. Parity exceptions (AC4):
+    Shatter (another piece layout, Deviation 10) and Extrude (the trimmed image one pixel deeper
+    at 0.25 shifts the centring; the block metric reads that as 16 % of blocks).

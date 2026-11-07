@@ -144,7 +144,9 @@ namespace {
         a.set(8, sh.r, sh.g, sh.b, (float)num(bevel, "shadow_opacity", 0.6));
         a.set(9, on(finish) ? 1.0f : 0.0f, (float)num(finish, "amount", 1), texSurface ? (float)texId : 0.0f, (float)num(texture, "amount", 0.3));
         a.set(10, texPx, (float)texDir.x, (float)texDir.y, 0.35f * (float)std::min(ctx.width, ctx.height));
-        a.set(11, (float)std::fmod(texSeed * 17.31, 97.0), (float)std::fmod(texSeed * 7.77, 89.0));
+        const Json& reflection = member(mat, "reflection");
+        a.set(11, (float)std::fmod(texSeed * 17.31, 97.0), (float)std::fmod(texSeed * 7.77, 89.0), on(reflection) ? 1.0f : 0.0f,
+              (float)num(reflection, "amount", 1));
         if (!ctx.runner.run(a)) return;
 
         // satin's blurred silhouette (its size is Photoshop's blur radius ~ 2 sigma)
@@ -221,7 +223,7 @@ namespace {
         m.label = "Material";
         m.kind = ParamKind::Material;
         m.defaultValue = bevelMaterial();
-        m.description = "The material: every Material member but reflection, glass and refraction (those need the title renderer's maps)";
+        m.description = "The material: every Material member but glass and refraction; a reflection without its map is a sky and ground horizon";
         m.anim = FxAnim::Rerender;
         d.params = {
             choice("color_mode", "Color", "layer", {{"layer", "Layer Colors"}, {"fill", "Material Fill"}}, "Shade the layer's own colours, or the material's fill"),

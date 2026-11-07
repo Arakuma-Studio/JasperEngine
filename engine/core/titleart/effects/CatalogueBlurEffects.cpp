@@ -98,7 +98,7 @@ namespace {
         d.gizmos = {{GizmoKind::Direction, "angle", "distance"}};
         d.reach = [](const ParamValues& p) { return (float)(p.number("distance") * (p.string("mode") == "trail" ? 1.0 : 0.5)); };
         d.gather = [](const ParamValues& p) { return (float)p.number("distance"); };
-        d.costClass = CostClass::C1;
+        d.costClass = CostClass::C2;
         d.fallback = FallbackClass::F1;
         d.glyphSafety = GlyphSafety::Unsafe;
         d.aliases = {"motionBlur", "speed blur", "directional blur", "streak", "動き", "モーションブラー"};
@@ -281,7 +281,7 @@ namespace {
         d.gizmos = {{GizmoKind::Point, "center", nullptr}, {GizmoKind::Direction, "angle", nullptr}};
         d.reach = [](const ParamValues& p) { return 1.5f * (float)p.number("blur"); };
         d.gather = [](const ParamValues& p) { return 2.0f * (float)p.number("blur"); };
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F1;
         d.live = {LiveKind::Kernel, {"center", "angle", "width", "falloff"}, (uint32_t)Program::TiltBlend};
         d.glyphSafety = GlyphSafety::Unsafe;
@@ -348,7 +348,7 @@ namespace {
         d.gather = [](const ParamValues&) { return -1.0f; };
         // the streaks run out from (or around) a centre anywhere on the canvas: the whole canvas
         d.fillsCanvas = [](const ParamValues&) { return true; };
-        d.costClass = CostClass::C1;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F1;
         d.live = {LiveKind::Kernel, {"amount", "spin"}, (uint32_t)Program::RadialBlur};
         d.glyphSafety = GlyphSafety::Unsafe;

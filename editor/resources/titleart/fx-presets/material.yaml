@@ -17,6 +17,7 @@ presets:
       material:
         fill: {kind: solid, color: "#ffffff"}
         bevel: {enabled: true, profile: smooth, size_mode: fit, fit: 100, depth: 5, soften: 1, gloss: linear, highlight_opacity: 0.7, shadow_opacity: 0.35}
+        reflection: {enabled: true, blur: 20}
         finish:
           enabled: true
           amount: 1
@@ -29,6 +30,7 @@ presets:
       material:
         fill: {kind: solid, color: "#ffffff"}
         bevel: {enabled: true, profile: smooth, size_mode: fit, fit: 100, depth: 5, soften: 1, gloss: linear, highlight_opacity: 0.7, shadow_opacity: 0.35}
+        reflection: {enabled: true, blur: 20}
         finish:
           enabled: true
           amount: 1

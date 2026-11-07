@@ -445,7 +445,7 @@ namespace {
         d.reach = [](const ParamValues& p) { return (p.string("mode") == "inside" ? 0.0f : contourReach(p)) + (float)p.number("glow_size"); };
         d.addsLight = [](const ParamValues&) { return true; };
         d.outline = true;
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F2;
         d.live = {LiveKind::Kernel, {"offset", "intensity", "glow"}, (uint32_t)Program::ContourLines};
         d.glyphSafety = GlyphSafety::Approximate;
@@ -548,7 +548,7 @@ namespace {
         d.reach = [](const ParamValues& p) { return neonReach(p); };
         d.gather = [](const ParamValues& p) { return 1.25f * (float)p.number("glow_size") + (float)p.number("width"); };
         d.addsLight = [](const ParamValues&) { return true; };
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F2;
         d.live = {LiveKind::Kernel, {"core", "glow", "seed"}, (uint32_t)Program::NeonCompose};
         d.glyphSafety = GlyphSafety::Approximate;

@@ -76,7 +76,7 @@ namespace {
         d.gizmos = {{GizmoKind::Direction, "angle", "length"}, {GizmoKind::Light, "light_angle", nullptr}};
         d.reach = [](const ParamValues& p) { return (float)p.number("length"); };
         d.gather = [](const ParamValues& p) { return (float)p.number("length"); };
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F0;
         d.glyphSafety = GlyphSafety::Unsafe;
         d.aliases = {"extrude2d", "3d text", "block letters", "depth", "long shadow", "立体", "押し出し"};
@@ -190,7 +190,7 @@ namespace {
         };
         d.reach = [](const ParamValues& p) { return (float)(std::max(0.0, p.number("gap")) + p.number("length") + p.number("blur")); };
         d.gather = [](const ParamValues&) { return -1.0f; };
-        d.costClass = CostClass::C2;
+        d.costClass = CostClass::C3;
         d.fallback = FallbackClass::F0;
         d.live = {LiveKind::ScaleSplit, {"opacity"}, (uint32_t)Program::FloorReflection};
         d.glyphSafety = GlyphSafety::Unsafe;

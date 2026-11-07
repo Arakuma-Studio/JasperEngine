@@ -163,7 +163,7 @@ namespace {
             return (float)(p.string("mode") == "echo" ? std::max(1, p.integer("copies")) * (p.number("offset") + p.number("echo_blur")) : p.number("length"));
         };
         d.gather = [](const ParamValues&) { return -1.0f; };
-        d.costClass = CostClass::C3;
+        d.costClass = CostClass::C4;
         d.fallback = FallbackClass::F0;
         d.live = {LiveKind::Kernel, {"offset", "opacity"}, (uint32_t)Program::MotionEcho};
         d.glyphSafety = GlyphSafety::Unsafe;
@@ -215,7 +215,7 @@ namespace {
         d.gizmos = {{GizmoKind::Point, "center", nullptr}, {GizmoKind::Direction, "angle", nullptr}};
         d.reach = [](const ParamValues& p) { return (float)(p.number("amount") * (p.string("type") == "directional" ? 1.0 : 2.0)); };
         d.gather = [](const ParamValues& p) { return (float)(p.number("amount") * 2.0); };
-        d.costClass = CostClass::C1;
+        d.costClass = CostClass::C2;
         d.fallback = FallbackClass::F0;
         d.live = {LiveKind::Kernel, {"amount"}, (uint32_t)Program::Chromatic};
         d.glyphSafety = GlyphSafety::Approximate;
