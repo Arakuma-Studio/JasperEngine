@@ -98,6 +98,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/VoxelSystem.h"
+#include "voxel/VoxelWorkQueue.h"
 #include "voxel/VoxelAssetFile.h"
 #include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
@@ -349,6 +350,8 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
     installUndoHooks();
     // a volume's file holds its base's description: presets and Noise Graphs are rebuilt from it (T6 R33)
     VoxelAssets::setBaseResolver(&resolveVoxelBase);
+    // a mesh job's result waits for the system's next update, which an idle editor would not run
+    voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
 }
 
 editor::Project::~Project(){

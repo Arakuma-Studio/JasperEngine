@@ -127,3 +127,28 @@ TEST(VoxelWorkQueue, CancelDropsQueuedWork) {
     ASSERT_EQ(dropped.size(), 1u);
     EXPECT_EQ(dropped[0], 1u);
 }
+
+// A finished job tells the host before any pump: an editor that sleeps while idle wakes for it
+TEST(VoxelWorkQueue, FinishedJobNotifiesBeforeThePump) {
+    jobs::Config config;
+    config.workers = 2;
+    jobs::JobSystem system(config);
+    WorkQueue queue(&system);
+    std::atomic<int> notified{0};
+    WorkQueue::setFinishedNotifier([&notified]() { notified++; });
+    std::atomic<bool> ran{false};
+    queue.push(1, WorkPriority::Visible, 0.0, [&ran] { ran = true; });
+    queue.pump();
+    // nothing pumps again: the notice comes from the worker
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (notified.load() == 0 && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+    WorkQueue::setFinishedNotifier(nullptr);
+    EXPECT_TRUE(ran.load());
+    EXPECT_EQ(notified.load(), 1);
+    std::vector<uint64_t> finished, dropped;
+    while (finished.empty() && std::chrono::steady_clock::now() < deadline) {
+        queue.pump();
+        queue.takeFinished(finished, dropped);
+    }
+    EXPECT_EQ(finished, std::vector<uint64_t>{1});
+}

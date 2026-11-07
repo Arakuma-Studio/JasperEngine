@@ -3,6 +3,8 @@
 
 #include "VoxelGenerationTask.h"
 
+#include "EditorHost.h"
+
 #include "Project.h"
 #include "command/Command.h"
 #include "command/CommandHandle.h"
@@ -84,6 +86,8 @@ bool VoxelGenerationTask::start(Project* targetProject, uint32_t targetScene, En
     worker = std::thread([this]() {
         steps->run([this]() { return cancelled.load(); }, [this](float value) { progressValue.store(value); });
         done.store(true);
+        // an idle editor sleeps: the frame that polls this needs waking (EditorHost runs its tasks every frame)
+        getEditorHost().enqueueMainThreadTask([]() {});
     });
     return true;
 }

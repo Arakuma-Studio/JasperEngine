@@ -6,17 +6,33 @@
 
 #include "VoxelTestScene.h"
 
+#include "EditorHost.h"
 #include "component/TerrainComponent.h"
 #include "pool/TextureDataPool.h"
 #include "voxel/VoxelGeneration.h"
+#include "voxel/VoxelGenerationTask.h"
 
 #include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
 
 namespace {
+
+    // An editor's host that counts the main-thread tasks asked of it: each wakes a sleeping editor
+    class CountingHost : public EditorHost {
+    public:
+        std::atomic<int> tasks{0};
+        void enqueueMainThreadTask(std::function<void()> task) override {
+            tasks++;
+            EditorHost::enqueueMainThreadTask(std::move(task));
+        }
+    };
 
     class VoxelGenerate : public VoxelSceneTest {
     protected:
@@ -93,4 +109,28 @@ TEST_F(VoxelGenerate, BaseNoDescriptionRebuildsIsStoredWhole) {
     EXPECT_TRUE(reopened->baseResolved);
     EXPECT_EQ(voxel::contentHash(*reopened->store), generated);
     TextureDataPool::remove("voxel-generate-height");
+}
+
+// The panel polls the task in its frames, which an idle editor does not draw: the finished worker asks
+// for one
+TEST_F(VoxelGenerate, FinishedTaskWakesAnIdleEditor) {
+    addVolume();
+    system->finishPendingWork();
+    CountingHost host;
+    EditorHost& previous = getEditorHost();
+    setEditorHost(&host);
+    VoxelGenerationTask task;
+    VoxelGenerateRequest request;
+    request.source = "preset";
+    request.preset = "caves";
+    request.seed = 3;
+    std::string error;
+    ASSERT_TRUE(task.start(project.get(), sceneProject->id, owner, request, false, error)) << error;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (host.tasks.load() == 0 && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT_GT(host.tasks.load(), 0);
+    VoxelGenerateResult result;
+    while (!task.poll(result) && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT_TRUE(result.ok) << result.error;
+    setEditorHost(&previous);
 }

@@ -38,6 +38,9 @@ namespace jasperengine::voxel {
         ~WorkQueue();
 
         void push(uint64_t id, WorkPriority priority, double distance, std::function<void()> work);
+        // Called on the worker as each job finishes, any queue's: its result waits for the next pump,
+        // and a host whose loop sleeps while idle (the editor) wakes it here. Null: nothing.
+        static void setFinishedNotifier(std::function<void()> notify);
         // True when it was still queued, or in flight and not started
         bool cancel(uint64_t id);
 

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 #include <chrono>
 #include <utility>
 
@@ -24,6 +25,27 @@ WorkQueue::~WorkQueue() {
         item.task.cancel();
         item.task.wait();
     }
+}
+
+namespace {
+
+    std::mutex voxelFinishedNotifierMutex;
+    std::function<void()> voxelFinishedNotifier;
+
+    void notifyVoxelJobFinished() {
+        std::function<void()> notify;
+        {
+            std::lock_guard<std::mutex> lock(voxelFinishedNotifierMutex);
+            notify = voxelFinishedNotifier;
+        }
+        if (notify) notify();
+    }
+
+}
+
+void WorkQueue::setFinishedNotifier(std::function<void()> notify) {
+    std::lock_guard<std::mutex> lock(voxelFinishedNotifierMutex);
+    voxelFinishedNotifier = std::move(notify);
 }
 
 void WorkQueue::push(uint64_t id, WorkPriority priority, double distance, std::function<void()> work) {
@@ -130,6 +152,7 @@ void WorkQueue::submitNext() {
         // Only a pacing estimate: two jobs finishing together may lose one sample, which costs nothing
         const double previous = average->load(std::memory_order_relaxed);
         average->store(static_cast<float>(previous + (ms - previous) * AVERAGE_SMOOTHING), std::memory_order_relaxed);
+        notifyVoxelJobFinished();
         return true;
     }, options);
     running.push_back(std::move(entry));
