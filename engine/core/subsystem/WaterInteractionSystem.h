@@ -5,6 +5,7 @@
 #define WATER_INTERACTION_SYSTEM_H
 
 #include "Export.h"
+#include "ecs/ComponentFwd.h"
 #include "ecs/SubSystem.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
