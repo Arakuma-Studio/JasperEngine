@@ -356,6 +356,7 @@ namespace {
         int lostBelow = 0;     // under the volume's ground: fell through
         int lostInside = 0;    // deep in solid
         int lostSlow = 0;      // of those, thrown under 20 m/s
+        int left = 0;          // bounced off the volume's footprint: the ground ends there, no evidence
     };
 
 }
@@ -444,6 +445,11 @@ protected:
         for (Entity body : thrown) {
             const float speed = 5.0f + static_cast<float>(replay() % 195);
             const Vector3 p = scene->getComponent<Transform>(body).worldPosition;
+            // a body that bounced off the 128 m ground fell off its edge, not through it
+            if (p.x < 0.0f || p.z < 0.0f || p.x > 128.0f || p.z > 128.0f) {
+                result.left++;
+                continue;
+            }
             const double value = valueAt(store, toLocal(p));
             if (p.y < 28.0f || value < -1.5) {
                 result.lost++;
@@ -451,8 +457,8 @@ protected:
                 if (speed < 20.0f) result.lostSlow++;
             }
         }
-        std::printf("[bench] tunnelling (rescue %s): %d lost (%d below, %d inside, %d under 20 m/s), %d rescues\n", rescue ? "on" : "off",
-                    result.lost, result.lostBelow, result.lostInside, result.lostSlow, result.rescues);
+        std::printf("[bench] tunnelling (rescue %s): %d lost (%d below, %d inside, %d under 20 m/s), %d left the footprint, %d rescues\n",
+                    rescue ? "on" : "off", result.lost, result.lostBelow, result.lostInside, result.lostSlow, result.left, result.rescues);
         return result;
     }
 };

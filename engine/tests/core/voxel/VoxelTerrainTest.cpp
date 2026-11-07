@@ -196,9 +196,10 @@ TEST_F(VoxelTerrain, CutsOnlyNonFlush) {
     EXPECT_GT(result.holesCut, 0);
     drain();
     const int holes = holeCount();
-    // about pi * 6^2, grown by R44's rim (the terrain collider's cell and a texel: radius 9)
+    // about pi * 6^2, grown by R44's rim (where the ground stays lower, then the terrain collider's
+    // cell and a texel: about pi * 10.5^2)
     EXPECT_GT(holes, 110);
-    EXPECT_LT(holes, 300);
+    EXPECT_LT(holes, 420);
     // Far texels stay; and a change smaller than the tolerance stays flush
     const EditOp small = digOp(sphereShape(10.0, surfaceHeight() + 0.9, 10.0, 1.0));
     const EditResult tiny = system->edit(owner, std::span<const EditOp>(&small, 1), EditOptions{});
@@ -412,6 +413,7 @@ TEST_F(VoxelTerrain, RimHasNoStep) {
     // radial paths, 5 mm apart: a slope moves at most a few mm between samples, a step all at once
     const float spacing = 0.005f;
     float worstDrawn = 0.0f, worstColliding = 0.0f;
+    float lowestDrawn = 1e9f, lowestColliding = 1e9f;
     for (const Vector2 centre : {Vector2(64.0f, 64.0f), Vector2(72.0f, 72.0f)}) {
         for (int ray = 0; ray < 16; ray++) {
             const float angle = 6.2831853f * static_cast<float>(ray) / 16.0f;
@@ -424,12 +426,18 @@ TEST_F(VoxelTerrain, RimHasNoStep) {
                 // walking out of the mouth, a step up is the next sample higher than this one
                 if (!std::isnan(lastDrawn) && drawn.source != voxel::GroundSource::None) worstDrawn = std::max(worstDrawn, drawn.height - lastDrawn);
                 if (!std::isnan(lastColliding) && !std::isnan(colliding)) worstColliding = std::max(worstColliding, colliding - lastColliding);
+                if (drawn.source != voxel::GroundSource::None) lowestDrawn = std::min(lowestDrawn, drawn.height);
+                if (!std::isnan(colliding)) lowestColliding = std::min(lowestColliding, colliding);
                 lastDrawn = drawn.source != voxel::GroundSource::None ? drawn.height : std::nanf("");
                 lastColliding = colliding;
             }
         }
     }
-    std::printf("[bench] cave-mouth rim: largest step up %.4f m drawn, %.4f m colliding\n", worstDrawn, worstColliding);
+    std::printf("[bench] cave-mouth rim: largest step up %.4f m drawn, %.4f m colliding; lowest %.3f and %.3f m under the surface\n",
+                worstDrawn, worstColliding, surface - lowestDrawn, surface - lowestColliding);
+    // the paths went down into the mouth, drawn and colliding alike
+    EXPECT_LT(lowestDrawn, surface - 0.9f);
+    EXPECT_LT(lowestColliding, surface - 0.9f);
     EXPECT_LE(worstDrawn, 0.02f);
     EXPECT_LE(worstColliding, 0.02f);
 }
