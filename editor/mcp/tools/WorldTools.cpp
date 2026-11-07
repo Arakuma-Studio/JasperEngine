@@ -6578,9 +6578,8 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
-        "Give a Sprite its frames: sheet (.aseprite, texture or .spriteatlas, with its tag clips), or texture with slice "
-        "(row-major cells) or frames (pixel rects), written to the texture's Sprite Mode; frame picks the shown one. Animate: "
-        "set_sprite_animation (jasper://docs/sprites).",
+        "Give a Sprite its frames: sheet (.aseprite, texture, .spriteatlas; with tag clips), or texture with slice (cells) or "
+        "frames (rects) into its Sprite Mode; frame picks one. Animate: set_sprite_animation (jasper://docs/sprites).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -6591,17 +6590,17 @@ void registerWorldTools(McpRegistry& registry) {
                 {"tile_size", vec2("")}, {"columns", integer("")}, {"rows", integer("")},
                 {"offset", vec2("")}, {"padding", vec2("")},
                 {"count", integer("")}, {"names", array(string(""), "")},
-                {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("")}})},
+                {"prefix", string("")}, {"sheet_size", vec2("")}})},
             {"frames", array(object({{"name", string("")}, {"rect", vec4("")}}, {"rect"}), "")},
-            {"frame", Json{{"type", {"integer", "string"}}, {"default", 0}}},
-            {"clips", withDefault(boolean(""), true)},
-            {"resize", withDefault(boolean(""), true)},
+            {"frame", Json{{"type", {"integer", "string"}}}},
+            {"clips", boolean("")},
+            {"resize", boolean("")},
             {"size", vec2("")},
             {"pivot", stringEnum("", {"center", "top_center", "bottom_center", "left_center", "right_center",
                                       "top_left", "bottom_left", "top_right", "bottom_right", "frame"})},
-            {"inline", withDefault(boolean(""), false)},
-            {"convert", withDefault(boolean(""), false)},
-            {"all_users", withDefault(boolean(""), false)}
+            {"inline", boolean("")},
+            {"convert", boolean("")},
+            {"all_users", boolean("")}
         }),
         setSpriteFramesTool, false, false);
 

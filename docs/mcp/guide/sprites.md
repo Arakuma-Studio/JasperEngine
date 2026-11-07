@@ -93,7 +93,7 @@ Every error has `kind`, `field`, `message` and `fix`:
   file's sprite properties (user properties named `<component>.<property>`, such as
   `light2d.intensity`), as dropping the file in the Scene view does.
 - Without `sheet`: `texture` with `slice` (row-major cells: `tile_size`, `columns`, `rows`,
-  `offset`, `padding`, `count`, `names`, `prefix`, `sheet_size` when the image is unreadable) or
+  `offset`, `padding`, `count`, `names`, `prefix` (default `frame_`), `sheet_size` when the image is unreadable) or
   `frames` (pixel rects `[x, y, w, h]` from the image's top-left). They write the texture's
   Sprite Mode (Multiple) and make the Sprite show one of its frames, so every sprite of that texture
   can use them; `inline: true` keeps them in the Sprite instead (legacy).
@@ -101,7 +101,7 @@ Every error has `kind`, `field`, `message` and `fix`:
   order kept, so clip keys and Sprite Animations keep their indices); `all_users: true` converts
   every sprite of the project using that texture with the same frames (open and closed scenes,
   prefabs). One `undo {scope: "project"}` restores all of it.
-- `frame` picks the frame shown; `resize` (default true) sizes the Sprite to it (`0` width and
+- `frame` (default 0) picks the frame shown; `resize` (default true) sizes the Sprite to it (`0` width and
   height for a sheet: the frame's own size); `size` sets it; `pivot` takes a preset or `frame` (the
   frame's own pivot).
 - Animate: an Animation Player with the tag clips, `set_sprite_animation`, or scripts:
