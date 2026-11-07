@@ -142,9 +142,13 @@ namespace jasperengine::editor {
         };
         using Done = std::function<void(const GenerationResult&)>;
 
-        // R28: on Lane::Background, GateClass::Heavy; done runs on the main thread, always, once.
+        // R28: on Lane::Background, GateClass::Heavy (an interactive Preview on Lane::Normal); done runs on the
+        // main thread, from the EditorHost queue, always, once.
         // Null with done called at once when the request is refused. Refused in Play (R33).
         static std::shared_ptr<Run> start(Project* project, uint32_t sceneId, Entity entity, GenerationRequest request, Done done);
+        // Tests only: runs first in each start() job, so a test can make one throw (nothing in evaluate throws but
+        // an allocation) and see done report it. Empty in the editor.
+        static void setJobFaultForTests(std::function<void()> fault);
     };
 
 }

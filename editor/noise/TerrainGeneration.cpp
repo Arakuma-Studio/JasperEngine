@@ -3,6 +3,7 @@
 
 #include "TerrainGeneration.h"
 
+#include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandGroup.h"
 #include "command/CommandHandle.h"
@@ -557,6 +558,11 @@ namespace {
         float progress() const override { return done01.load(std::memory_order_relaxed); }
     };
 
+    std::function<void()>& jobFault() {
+        static std::function<void()> fault;
+        return fault;
+    }
+
     SceneProject* sceneOf(Project* project, uint32_t sceneId) {
         SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
         return scene && scene->scene ? scene : nullptr;
@@ -585,6 +591,10 @@ namespace {
         return static_cast<size_t>(rect.area()) * static_cast<size_t>(format.channels) * static_cast<size_t>(format.bitsPerChannel / 8);
     }
 
+}
+
+void TerrainGeneration::setJobFaultForTests(std::function<void()> fault) {
+    jobFault() = std::move(fault);
 }
 
 std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* project, uint32_t sceneId, Entity entity, GenerationRequest request, Done done) {
@@ -635,11 +645,12 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
         run->done.store(true, std::memory_order_release);
         done(final);
     };
-    jobs::submit([run, prepared, result, project, sceneId, entity, finish]() {
+    jobs::submit([run, prepared, result, project, sceneId, entity, finish, fault = jobFault()]() {
         // done always runs, once: a job that threw would otherwise leave its caller's progress bar up forever
         std::string failure;
         bool finished = false;
         try {
+            if (fault) fault();
             finished = evaluate(*prepared, &run->token, true, *result);
         } catch (const std::exception& e) {
             failure = e.what();
@@ -647,7 +658,9 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
             failure = "unknown error";
         }
         run->done01 = 0.9f;
-        jobs::postToMain([run, prepared, result, project, sceneId, entity, finish, finished, failure]() {
+        // The editor's own queue, not jobs::postToMain: that one drains only in a frame that draws a scene, and
+        // an idle editor draws none, so a Preview's result would wait for the next unrelated redraw
+        getEditorHost().enqueueMainThreadTask([run, prepared, result, project, sceneId, entity, finish, finished, failure]() {
             // the same on the main thread: an exception here would skip done and keep the run up forever
             const auto onMain = [&]() {
                 if (!failure.empty()) {

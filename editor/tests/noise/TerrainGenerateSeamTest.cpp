@@ -10,6 +10,7 @@
 #include "support/EditorTestSupport.h"
 
 #include "AppSettings.h"
+#include "EditorHost.h"
 #include "Engine.h"
 #include "Project.h"
 #include "command/CommandHistory.h"
@@ -23,10 +24,14 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
+#include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -58,6 +63,63 @@ namespace {
         }();
         editor::test::useProjectPaths(project.get());
         return project.get();
+    }
+
+    // The App's side of enqueueMainThreadTask: a task waits for the main loop's next frame, and a post from a
+    // worker wakes the loop. Its frames never drain jobs::postToMain, as an editor that draws no scene does not.
+    struct LoopHost : EditorHost {
+        std::mutex mutex;
+        std::vector<std::function<void()>> tasks;
+        std::atomic<int> wakes{0};
+
+        void enqueueMainThreadTask(std::function<void()> task) override {
+            std::lock_guard<std::mutex> lock(mutex);
+            tasks.push_back(std::move(task));
+            wakes++;
+        }
+        void processMainThreadTasks() override {
+            std::vector<std::function<void()>> now;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                now.swap(tasks);
+            }
+            for (std::function<void()>& task : now) task();
+        }
+    };
+
+    struct HostScope {
+        explicit HostScope(EditorHost& host) { setEditorHost(&host); }
+        ~HostScope() { setEditorHost(nullptr); }
+    };
+
+    // Idle editor frames until called, at most `seconds`
+    void runFramesUntil(LoopHost& host, const bool& called, int seconds) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+        while (!called && std::chrono::steady_clock::now() < deadline) {
+            host.processMainThreadTasks();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    }
+
+    Entity addTerrain(Scene* scene, SceneProject* sceneProject, float terrainSize, float maxHeight) {
+        Entity entity = scene->createUserEntity();
+        scene->setEntityName(entity, "Terrain");
+        scene->addComponent<Transform>(entity, {});
+        TerrainComponent terrain;
+        terrain.terrainSize = terrainSize;
+        terrain.maxHeight = maxHeight;
+        scene->addComponent<TerrainComponent>(entity, terrain);
+        sceneProject->entities.push_back(entity);
+        return entity;
+    }
+
+    // The preset with the fewest words: seam tests, not performance ones
+    TerrainPreset simplestPreset(const std::vector<TerrainPreset>& presets) {
+        const TerrainPreset* simple = &presets.front();
+        for (const TerrainPreset& preset : presets) {
+            if (TerrainPresets::json(preset.id).size() < TerrainPresets::json(simple->id).size()) simple = &preset;
+        }
+        return *simple;
     }
 
     // The shape of T1's dialog: what it shows, and what it does on Create
@@ -102,36 +164,107 @@ TEST(TerrainGeneration, CreateDialogSeam) {
         EXPECT_GT(preset.terrainSize, 0.0f) << preset.id;
         EXPECT_GT(preset.maxHeight, 0.0f) << preset.id;
     }
-    // the graph with the fewest words: a seam test, not a performance one
-    const TerrainPreset* simple = &dialog.offered.front();
-    for (const TerrainPreset& preset : dialog.offered) {
-        if (TerrainPresets::json(preset.id).size() < TerrainPresets::json(simple->id).size()) simple = &preset;
-    }
-    dialog.choose(*simple);
+    dialog.choose(simplestPreset(dialog.offered));
+    const Entity entity = addTerrain(scene, sceneProject, dialog.terrainSize, dialog.maxHeight);
 
-    Entity entity = scene->createUserEntity();
-    scene->setEntityName(entity, "Terrain");
-    scene->addComponent<Transform>(entity, {});
-    TerrainComponent terrain;
-    terrain.terrainSize = dialog.terrainSize;
-    terrain.maxHeight = dialog.maxHeight;
-    scene->addComponent<TerrainComponent>(entity, terrain);
-    sceneProject->entities.push_back(entity);
-
+    LoopHost host;
+    HostScope scope(host);
     bool called = false;
     GenerationResult got;
     std::shared_ptr<TerrainGeneration::Run> run = dialog.create(project, sceneId, entity, [&](const GenerationResult& result) {
         called = true;
         got = result;
     });
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
-    while (!called && std::chrono::steady_clock::now() < deadline) {
-        jobs::drainMainQueue();
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    }
+    runFramesUntil(host, called, 120);
     ASSERT_TRUE(called);
     EXPECT_TRUE(got.ok) << got.error;
     EXPECT_NE(got.undoName.find(dialog.chosen.name), std::string::npos) << got.undoName;
     EXPECT_NE(got.undoName.find("seed 7"), std::string::npos) << got.undoName;
     EXPECT_FALSE(scene->getComponent<TerrainComponent>(entity).heightMap.empty()) << "the map exists and was written";
+}
+
+// The Generate section's Preview in an editor that draws nothing else: its result comes back through the editor's
+// own queue, on the main thread, and wakes the loop. Through jobs::postToMain it waited for an unrelated redraw.
+TEST(TerrainGeneration, PreviewResultReachesAnIdleEditor) {
+    noise::registerNoiseKind();
+    Project* project = seamProject();
+    project->createNewScene("Idle Preview", SceneType::SCENE_3D);
+    const uint32_t sceneId = project->getSelectedSceneId();
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const TerrainPreset preset = simplestPreset(TerrainPresets::list());
+    const Entity entity = addTerrain(sceneProject->scene, sceneProject, preset.terrainSize, preset.maxHeight);
+
+    GenerationRequest request;
+    graph::LoadReport report;
+    request.graph = graph::load(TerrainPresets::json(preset.id), report);
+    ASSERT_TRUE(report.ok) << report.error;
+    request.displayName = preset.name;
+    request.resolution = 33;
+    request.dryRun = true;
+    request.interactive = true;
+
+    LoopHost host;
+    HostScope scope(host);
+    const std::thread::id mainThread = std::this_thread::get_id();
+    bool called = false;
+    bool onMain = false;
+    GenerationResult got;
+    std::shared_ptr<TerrainGeneration::Run> run = TerrainGeneration::start(project, sceneId, entity, std::move(request), [&](const GenerationResult& result) {
+        called = true;
+        onMain = std::this_thread::get_id() == mainThread;
+        got = result;
+    });
+    ASSERT_TRUE(run);
+    runFramesUntil(host, called, 10);
+    ASSERT_TRUE(called) << "the result never reached the editor's loop";
+    EXPECT_TRUE(onMain);
+    EXPECT_GE(host.wakes.load(), 1) << "a result posted from the job wakes an idle loop";
+    EXPECT_TRUE(got.ok) << got.error;
+    EXPECT_TRUE(got.dryRun);
+    EXPECT_TRUE(run->finished());
+}
+
+// R28's "always, once": a job that throws ends the run with its error, which the Generate section shows as its
+// status, instead of a progress bar that never ends
+TEST(TerrainGeneration, AJobThatThrowsReportsItsError) {
+    noise::registerNoiseKind();
+    Project* project = seamProject();
+    project->createNewScene("Throwing Job", SceneType::SCENE_3D);
+    const uint32_t sceneId = project->getSelectedSceneId();
+    SceneProject* sceneProject = project->getScene(sceneId);
+    const TerrainPreset preset = simplestPreset(TerrainPresets::list());
+    const Entity entity = addTerrain(sceneProject->scene, sceneProject, preset.terrainSize, preset.maxHeight);
+
+    GenerationRequest request;
+    graph::LoadReport report;
+    request.graph = graph::load(TerrainPresets::json(preset.id), report);
+    ASSERT_TRUE(report.ok) << report.error;
+    request.displayName = preset.name;
+    request.resolution = 33;
+    request.dryRun = true;
+
+    LoopHost host;
+    HostScope scope(host);
+    struct FaultScope {
+        FaultScope() { TerrainGeneration::setJobFaultForTests([]() { throw std::runtime_error("out of memory"); }); }
+        ~FaultScope() { TerrainGeneration::setJobFaultForTests(nullptr); }
+    } fault;
+    bool called = false;
+    int calls = 0;
+    GenerationResult got;
+    std::shared_ptr<TerrainGeneration::Run> run = TerrainGeneration::start(project, sceneId, entity, std::move(request), [&](const GenerationResult& result) {
+        called = true;
+        calls++;
+        got = result;
+    });
+    ASSERT_TRUE(run);
+    runFramesUntil(host, called, 10);
+    ASSERT_TRUE(called) << "a job that threw never reported";
+    host.processMainThreadTasks();
+    EXPECT_EQ(calls, 1);
+    EXPECT_FALSE(got.ok);
+    EXPECT_FALSE(got.cancelled);
+    EXPECT_EQ(got.errorCode, "evaluate-failed");
+    EXPECT_NE(got.error.find("out of memory"), std::string::npos) << got.error;
+    EXPECT_TRUE(run->finished());
 }

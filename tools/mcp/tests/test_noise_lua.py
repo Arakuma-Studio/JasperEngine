@@ -10,10 +10,14 @@ EDITOR = {"create": True, "name": "Noise Lua Test"}
 TIMEOUT = 600
 
 SCRIPT = """
-local self = {}
+local NoiseLua = {}
 local function report(line) print("[noise-lua] " .. line) end
 
-function self.start()
+function NoiseLua:init()
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function NoiseLua:start()
     report("perlin " .. string.format("%.6f", Noise.perlin(1.5, 2.5, 7)))
     report("perlin3 " .. string.format("%.6f", Noise.perlin3(1.5, 0.25, 2.5, 7)))
     report("cellular " .. string.format("%.6f", Noise.cellular(1.5, 2.5, 7, "f2_minus_f1")))
@@ -32,14 +36,17 @@ function self.start()
     self.task = graph:sampleGridAsync{x = 0, z = 0, width = 64, depth = 64, step = 1 / 64, seed = 7}
 end
 
-function self.onUpdate()
+function NoiseLua:onUpdate()
+    if self.task then
+        report("progress " .. string.format("%.3f", self.task.progress))
+    end
     if self.task and self.task.done then
         report("async " .. self.task:result().hash)
         self.task = nil
     end
 end
 
-return self
+return NoiseLua
 """
 
 
@@ -88,4 +95,4 @@ async def test_noise_lua_in_play(ed: Editor):
     ed.check(lines.get("grid_only", "").startswith("true") and "n" in lines["grid_only"], f"sample on a grid-only graph names the node: {lines.get('grid_only')}")
     # Same bits as the tool and the golden table's grid
     ed.check_eq(lines.get("grid"), preview["outputs"]["height"], "Lua's grid is the tool's")
-    ed.check_eq(lines.get("async"), lines.get("grid"), f"the async grid has the same bits (errors in Play: {errors})")
+    ed.check_eq(lines.get("async"), lines.get("grid"), f"the async grid has the same bits (errors in Play: {errors}; last progress {lines.get('progress')})")
