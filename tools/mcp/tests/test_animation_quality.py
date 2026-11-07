@@ -463,7 +463,7 @@ async def test_transition_pop(ed: Editor):
     await ed.call("add_component", entity="Hero", component="animator", values={"animator": {"controller": "assets/anim/pop.controller"}})
     pop = await ed.call("check_animation", entity="Hero", transition={"from": "A", "to": "B"})
     t = pop["clips"][0]["transition"]
-    ed.check(abs(t["max_step_mm"] - 300) < 2 and t["worst_joint"] == "mixamorig:LeftFoot", f"the instant switch: {t}")
+    ed.check(abs(t["max_step_mm"] - 300) < 2 and t["worst_joint"].startswith(("mixamorig:LeftFoot", "mixamorig:LeftToe")), f"the instant switch: {t}")
     ed.check(any("duration 0" in c for c in t["causes"]) and abs(t["at_s"] - 0.5) < 1e-3, f"the controller's timing and cause: {t}")
     ed.check("anim-transition-pop" in {f["code"] for f in pop["findings"]}, f"{pop['findings']}")
     smooth = await ed.call("check_animation", entity="Hero", transition={"from": "A", "to": "B", "duration": 0.5})

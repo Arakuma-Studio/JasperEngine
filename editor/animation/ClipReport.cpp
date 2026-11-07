@@ -99,12 +99,12 @@ namespace{
         }
 
         void pose(float time){
-            sample(time);
+            sampleAt(time);
             resolve(local);
         }
 
-        // the local pose at `time` (local()), without its rig space
-        void sample(float time){
+        // the local pose at `time` (localPose()), without its rig space
+        void sampleAt(float time){
             local.copyFrom(rest);
             for (Binding& binding : bindings){
                 if (!anim::sampleTrack(*binding.track, time, sample, &binding.cursor)) continue;
@@ -123,9 +123,9 @@ namespace{
             }
         }
 
-        // the rig space of `pose` (local() or a blend of two posers' local poses)
-        void resolve(const anim::Pose& pose){
-            anim::poseToRigSpace(pose, parents, anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
+        // the rig space of `from` (localPose() or a blend of two posers' local poses)
+        void resolve(const anim::Pose& from){
+            anim::poseToRigSpace(from, parents, anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
         }
 
         const anim::Pose& localPose() const { return local; }
@@ -462,8 +462,8 @@ namespace{
                 a.pose((float)t);
                 b.resolve(a.localPose());
             }else{
-                a.sample((float)t);
-                b.sample((float)into);
+                a.sampleAt((float)t);
+                b.sampleAt((float)into);
                 const float weight = facts.durationSeconds > 0.0f ? (float)std::min(1.0, into / facts.durationSeconds) : 1.0f;
                 blendPoses(a.localPose(), b.localPose(), weight, bones, blend);
                 b.resolve(blend);
