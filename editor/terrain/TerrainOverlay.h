@@ -58,6 +58,9 @@ namespace jasperengine::editor {
     // What a source bakes from: the terrain, its maps and the image's size. A texel's centre is at
     // localOf(x, y), terrain-local.
     struct TerrainOverlayBake {
+        // the terrain's scene and entity: what a source reads beside the maps (T5's trees)
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
         TerrainComponent* terrain = nullptr;
         const terrain::TerrainMapStore* store = nullptr;
         const TerrainOverlaySettings* settings = nullptr;

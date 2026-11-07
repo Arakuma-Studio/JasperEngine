@@ -243,6 +243,7 @@ namespace jasperengine{
         // its stochastic vec4 (16 floats), or less from a fork made before it
         unsigned int sizeFSParams = 0;
         int slotFSTexCoordSets = -1;
+        int slotVSFoliage = -1;
         int slotVSFade = -1;
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
         int slotVSObjectLights = -1;    // includes/lights.glsl
@@ -290,6 +291,7 @@ namespace jasperengine{
         int slotFSDepthMaterial = -1;
         unsigned int sizeFSDepthMaterial = 0; // reflected: 2 vec4 with Stochastic Tiling, else 1
         int slotVSDepthFade = -1;
+        int slotVSDepthFoliage = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthLattice = -1;
@@ -300,6 +302,7 @@ namespace jasperengine{
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
+        int slotVSGBufferFoliage = -1;
         int slotVSGBufferFade = -1;
         int slotFSGBufferMaterial = -1;
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2

@@ -26,6 +26,7 @@ namespace {
         {TextureStrategy::NONE, "none"}};
     const EnumNames<AtmosphereQuality> kAtmosphere[] = {{AtmosphereQuality::OFF, "off"}, {AtmosphereQuality::LOW, "low"},
         {AtmosphereQuality::MEDIUM, "medium"}, {AtmosphereQuality::HIGH, "high"}};
+    const EnumNames<FoliageQuality> kFoliage[] = {{FoliageQuality::LOW, "low"}, {FoliageQuality::MEDIUM, "medium"}, {FoliageQuality::HIGH, "high"}};
     const EnumNames<PbrTier> kPbrTier[] = {{PbrTier::FULL, "full"}, {PbrTier::REDUCED, "reduced"}};
     const EnumNames<ShadowTier> kShadowTier[] = {{ShadowTier::LOW, "low"}, {ShadowTier::MEDIUM, "medium"}, {ShadowTier::HIGH, "high"},
         {ShadowTier::ULTRA, "ultra"}};
@@ -80,6 +81,9 @@ json PlayerConfig::toJson() const {
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    if (!foliageQualityUncapped) {
+        out["foliageQuality"] = {nameOf(kFoliage, foliageQuality[0]), nameOf(kFoliage, foliageQuality[1]), nameOf(kFoliage, foliageQuality[2])};
+    }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
@@ -184,6 +188,10 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.threading.reservedFrameWorkers = threading->value("reservedFrameWorkers", config.threading.reservedFrameWorkers);
             config.threading.ioThreads = threading->value("ioThreads", config.threading.ioThreads);
             config.threading.webPumpBudgetMs = threading->value("webPumpBudgetMs", config.threading.webPumpBudgetMs);
+        }
+        if (const auto foliage = in.find("foliageQuality"); foliage != in.end() && foliage->is_array()) {
+            config.foliageQualityUncapped = false;
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++) valueOf(kFoliage, (*foliage)[i].get<std::string>(), config.foliageQuality[i]);
         }
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);

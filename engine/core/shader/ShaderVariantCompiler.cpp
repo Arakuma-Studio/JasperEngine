@@ -410,6 +410,10 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
     if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     // S57's lighting: the screen-tile lights of a pixel-lit variant, the capsule and contact
     // shadows of a shadowed one, and the OIT accumulation (its main is wrapped, prepareVariantArgs)
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)) defs.push_back({"USE_TILED_LIGHTS", "1"});       // 'Til'
@@ -440,6 +444,10 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -464,6 +472,10 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_OCCLUSION_TEXTURE", "1"});         // 'Occ'
     if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
     if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

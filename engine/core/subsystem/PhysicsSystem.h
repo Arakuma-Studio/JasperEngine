@@ -778,6 +778,9 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::PhysicsSystem* getWorld3D();
+		// T5 R18: an engine-owned static body whose shape comes from outside, with no colliders of
+		// its own: created or swapped now, and left alone by the collider sync
+		bool setPrebuiltBodyShape3D(Entity entity, const JPH::ShapeRefC& shape);
 		bool loadRigidbody(Entity entity);
 		void destroyRigidbody(RigidbodyComponent& body);
 		// The 3D counterpart of ensureRigidbody2DLoaded()

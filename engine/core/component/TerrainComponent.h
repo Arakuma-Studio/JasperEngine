@@ -27,6 +27,7 @@
 // instead of resizing every other slice up with it.
 #define MAX_TERRAIN_DETAIL_SIZE 2048
 
+#include "asset/AssetRef.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
 #include "texture/Material.h"
@@ -164,6 +165,50 @@ namespace jasperengine{
         float minDrawDistance = 0;
         unsigned int seed = 0;
         bool castShadows = true; // off spares grass-scale scatter the shadow cascades
+
+        // T5: each default changes nothing, so a layer made before them places and looks the same
+        float minHeightRatio = 1; //Min/Max Height, over the width scale
+        float maxHeightRatio = 1;
+        Vector4 healthyColor = Vector4(1, 1, 1, 1); //linear tint
+        Vector4 dryColor = Vector4(1, 1, 1, 1);
+        float noiseSpread = 0; //noise cells per world unit between dry and healthy; 0 picks per instance
+        float windBend = 0; //0 draws the variant without wind
+        float densityFalloffStart = 1; //share of the draw distance where density starts to fall
+        float farDensity = 1; //what density falls to at the draw distance
+        float densityScale = 1; //the layer's own multiplier of Detail Density
+        unsigned int algorithmVersion = 1; //what its seed means: a changed scatter gets a new one
+    };
+
+    enum class TerrainTreeWindMask : uint8_t{
+        Height,
+        VertexColor
+    };
+
+    enum class TerrainTreeCollision : uint8_t{
+        None,
+        Capsule
+    };
+
+    // One kind of tree of a Terrain (T5 R13, R16): the instances live in treeData, not in the scene
+    struct TerrainTreePrototype{
+        unsigned int id = 0; //stable: the store's records name it
+        AssetRef meshPath;
+        std::vector<AssetRef> lodMeshes; //explicit LOD 1..3; empty: the generated levels of meshPath
+        std::vector<float> lodDistances; //where LOD 1, 2, 3 start, world units
+        float bendFactor = 0.5f;
+        TerrainTreeWindMask windMask = TerrainTreeWindMask::Height;
+        unsigned int shadowLodMask = 0x7F; //bit n: mesh LOD n casts; bit 7: the impostor casts
+        TerrainTreeCollision collision = TerrainTreeCollision::None;
+        float collisionRadius = 0.5f;
+        float collisionHeight = 4.0f;
+        bool navObstacle = false;
+        // the baked impostor: atlases, and what they were baked from
+        Texture impostorAlbedo;
+        Texture impostorNormal;
+        int impostorViews = 0; //0: none baked
+        Vector3 impostorBoundsCenter;
+        Vector2 impostorSize;
+        std::string impostorSourceHash;
     };
 
     struct JASPERENGINE_API TerrainComponent{
@@ -180,6 +225,21 @@ namespace jasperengine{
         std::vector<TerrainSurfaceLayer> surfaceLayers;
 
         std::vector<TerrainFoliageLayer> foliageLayers;
+        std::vector<TerrainTreePrototype> treePrototypes;
+        AssetRef treeData; //the .jetrees file of its trees
+
+        // Terrain Settings (T5 R20). An old scene loads these; a new Terrain sets Detail Distance
+        // to 80 (applyNewTerrainDefaults).
+        float detailDistance = 0; //0: each layer's Draw Distance only
+        float detailDensity = 1;
+        float treeDistance = 1000;
+        float billboardStart = 80;
+        float fadeLength = 5;
+        int maxMeshTrees = 200;
+        Vector3 windDirection = Vector3(0, 0, 1);
+        float windSpeed = 1;
+        float windSize = 8;
+        float windBending = 0.5f;
 
         bool autoSetRanges = true;
         bool heightMapLoaded = false;

@@ -153,6 +153,14 @@ int ShaderData::getAttrIndex(AttributeType type){
             "i_objectNormal0", "i_objectNormal1", "i_objectNormal2",
             "i_objectMvp0", "i_objectMvp1", "i_objectMvp2", "i_objectMvp3", "i_objectExtra"};
         attrstr = objectNames[(int)type - (int)AttributeType::OBJECTMODEL0];
+    }else if (type == AttributeType::INSTANCEPACKED0){
+        attrstr = "i_packed0";
+    }else if (type == AttributeType::INSTANCEPACKED1){
+        attrstr = "i_packed1";
+    }else if (type == AttributeType::INSTANCEPACKED2){
+        attrstr = "i_packed2";
+    }else if (type == AttributeType::INSTANCEPACKED3){
+        attrstr = "i_packed3";
     }
 
     if (attrstr.empty()){
@@ -200,6 +208,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_fs_texCoordSets";
     }else if (type == UniformBlockType::PBR_VS_FADE){
         ustr = "u_vs_fade";
+    }else if (type == UniformBlockType::PBR_VS_FOLIAGE){
+        ustr = "u_vs_foliage";
     }else if (type == UniformBlockType::FS_LIGHTING){
         ustr = "u_fs_lighting";
     }else if (type == UniformBlockType::FS_REFLECTION_PROBE){

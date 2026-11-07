@@ -2354,6 +2354,25 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
     return true;
 }
 
+bool PhysicsSystem::setPrebuiltBodyShape3D(Entity entity, const JPH::ShapeRefC& shape){
+    ensureWorld3D();
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body || !shape || steppingWorld3D){
+        return false;
+    }
+    if (!body->body.IsInvalid()){
+        getBodyInterface3D().SetShape(body->body, shape, false, JPH::EActivation::DontActivate);
+    }else if (!createGenericJoltBody(entity, *body, shape)){
+        return false;
+    }
+    body->needReloadBody = false;
+    body->needUpdateColliders = false;
+    body->massDirty = false;
+    body->needApplyParameters = false;
+    body->newBody = false;
+    return true;
+}
+
 bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
     if (body.body.IsInvalid()){
         return syncRigidbodyColliders(entity, body);

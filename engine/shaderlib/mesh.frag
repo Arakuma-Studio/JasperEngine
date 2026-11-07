@@ -254,7 +254,12 @@ const float M_PI = 3.141592653589793;
 // the LOD cross-fade's dither (USE_LOD_FADE): LOD_FADE_CLIP() before every colour write (no semicolon)
 #include "includes/lod_fade.glsl"
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();
     #endif

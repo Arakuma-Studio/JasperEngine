@@ -572,6 +572,7 @@ namespace jasperengine::editor{
         bool flattenPickOnStroke = true;
         std::string placeAssetPath;
         bool placeInstanced = true;      // one draw per asset instead of one entity per object
+        bool placeAsTree = true;         // T5: Paint Trees' Place As; placeInstanced is what GameObject means
         float placeSpacing = 2.0f;
         float placeMinScale = 1.0f;      // 1.0 keeps the scale the model file authored
         float placeMaxScale = 1.0f;
@@ -910,6 +911,10 @@ namespace jasperengine::editor{
         bool dynamicBatching = true;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
+        // Quality > Foliage Quality and Foliage Distance: desktop, mobile, web (T5 R21, R66). Without
+        // the field an old project is High and uncapped everywhere, so it looks the same (F12).
+        std::array<FoliageQuality, 3> foliageQuality;
+        bool foliageQualityDeclared = false;
         std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
@@ -1576,6 +1581,9 @@ namespace jasperengine::editor{
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr bool defaultDynamicBatching = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // a project without the field; a new project writes High, Low, Low
+        static constexpr std::array<FoliageQuality, 3> defaultFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
@@ -1706,6 +1714,9 @@ namespace jasperengine::editor{
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
+        void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool declared = true);
+        const std::array<FoliageQuality, 3>& getFoliageQuality() const;
+        bool isFoliageQualityDeclared() const;
 
         // Quality > Foliage Distance of desktop, mobile and web games: scales every terrain foliage
         // layer's draw distances (Engine::setFoliageDistanceScaleDefaults; the editor's views run

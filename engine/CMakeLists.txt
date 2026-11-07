@@ -1744,6 +1744,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/NativeClassesLua.cpp
     core/script/binding/NetClassesLua.cpp
     core/script/binding/ParticleClassesLua.cpp
+    core/script/binding/FoliageLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
@@ -1798,6 +1799,9 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemFoliage.cpp
+    core/subsystem/FoliageSystem.cpp
+    core/subsystem/FoliagePhysics.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp

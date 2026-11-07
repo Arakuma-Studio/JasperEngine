@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 2b99a72e2e4e04577919276fa9922450
-id: 881594344
+guid: 6806ad6114e7cf2e2b5309da4378af2a
+id: 926908432
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -39,15 +39,27 @@ shaderKeys:
     properties: 1112
   - type: mesh
     properties: 8589935704
+  - type: mesh
+    properties: 1099511628888
+  - type: mesh
+    properties: 1108101563480
   - type: sky
   - type: depth
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 1112
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1099511628888
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1108101563480
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -67,7 +79,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.2, -0.5, 0.3]
-        worldDirection: [-0.2, -0.5, 0.3]
         color: [1, 1, 1]
         range: 100
         intensity: 4
@@ -193,7 +204,7 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 71fab0881240ee01d00e0379167cbe0f
+              nameGuid: 3d58c11c8c5d0aba655e7c4727324cc1
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
@@ -221,9 +232,6 @@ entities:
         verticesAABB:
           min: [-5, 0, -5]
           max: [5, 0, 5]
-        worldAABB:
-          min: [-10, 0, -10]
-          max: [10, 0, 10]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -354,9 +362,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [-0.5, 0, -0.5]
-          max: [0.5, 1, 0.5]
         receiveLights: true
         receiveIBL: false
         castShadows: true

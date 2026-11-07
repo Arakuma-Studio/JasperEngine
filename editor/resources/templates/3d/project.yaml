@@ -5,6 +5,10 @@ canvasHeight: 720
 scalingMode: fitwidth
 textureStrategy: none
 vsync: true
+foliageQuality:
+  desktop: high
+  mobile: low
+  web: low
 htmlUiMsaaSamples: 4
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
@@ -16,7 +20,11 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 881594344
+startSceneId: 926908432
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: 2b99a72e2e4e04577919276fa9922450
+    filepathGuid: 6806ad6114e7cf2e2b5309da4378af2a

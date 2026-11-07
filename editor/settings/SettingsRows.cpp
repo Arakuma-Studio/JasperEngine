@@ -113,6 +113,8 @@ const EnumMap<Scaling> scalingModes[] = {
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<FoliageQuality> foliageQualities[] = {
+    {"low", FoliageQuality::LOW}, {"medium", FoliageQuality::MEDIUM}, {"high", FoliageQuality::HIGH}};
 const EnumMap<LightMode> lightModes[] = {
     {"automatic", LightMode::AUTOMATIC}, {"per_object", LightMode::PER_OBJECT}, {"tiled", LightMode::TILED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
@@ -2195,7 +2197,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = keys[group];
             s.type = "number";
             s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
-                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance, and Tree Distance and Billboard Start; 0 draws none (Lua: Engine.foliageDistanceScale).";
             s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
             s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 double v;
@@ -2204,6 +2206,29 @@ std::vector<Setting> mcpSettingsTable() {
                     std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
                     all[group] = static_cast<float>(v);
                     ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        // T5 R21: what foliage scales and caps per platform group
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "enum";
+            s.values = enumNames(foliageQualities);
+            s.description = std::string("Foliage Quality (detail density, instance and draw caps, impostor blending: low, medium, high) of ") + groups[group] + ".";
+            s.get = [group](SettingsContext& ctx) { return Json(enumName(foliageQualities, ctx.project()->getFoliageQuality()[group])); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                FoliageQuality quality;
+                if (!parseEnum(foliageQualities, value, quality, error)) return false;
+                if (apply) {
+                    std::array<FoliageQuality, 3> all = ctx.project()->getFoliageQuality();
+                    all[group] = quality;
+                    ctx.project()->setFoliageQuality(all);
                 }
                 return true;
             };
@@ -3503,6 +3528,9 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_quality_desktop", "Quality", "", "Foliage Quality (Desktop)", "grass trees details impostors"},
+    {"quality.foliage_quality_mobile", "Quality", "", "Foliage Quality (Mobile)", "grass trees details impostors"},
+    {"quality.foliage_quality_web", "Quality", "", "Foliage Quality (Web)", "grass trees details impostors"},
     {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},

@@ -41,7 +41,12 @@ in vec2 v_projZW;
     #include "includes/stochastic.glsl"
 #endif
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #if defined(ALPHA_MASK)
         float alpha = depthMaterial.alphaParams.x;
     #endif

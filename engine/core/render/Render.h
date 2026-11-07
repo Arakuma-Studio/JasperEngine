@@ -262,7 +262,12 @@ namespace jasperengine{
         OBJECTMVP1,
         OBJECTMVP2,
         OBJECTMVP3,
-        OBJECTEXTRA
+        OBJECTEXTRA,
+        // foliage's compact instance (includes/foliage_instance.glsl, T5 F3)
+        INSTANCEPACKED0,
+        INSTANCEPACKED1,
+        INSTANCEPACKED2,
+        INSTANCEPACKED3
     };
 
     enum class AttributeDataType{
@@ -282,6 +287,7 @@ namespace jasperengine{
         PBR_FS_PARAMS,
         PBR_FS_TEXCOORDSETS,
         PBR_VS_FADE,
+        PBR_VS_FOLIAGE,
         FS_LIGHTING,
         FS_REFLECTION_PROBE,
         FS_FOG,

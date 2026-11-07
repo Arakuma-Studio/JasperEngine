@@ -3,6 +3,7 @@
 
 #include "reflect/Enums.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/FogComponent.h"
@@ -599,6 +600,16 @@ namespace {
         {v(ParticleEmitterShape::Cone), "Cone", "Cone", "ParticleEmitterShape::Cone", "cone"},
     };
 
+    constexpr EnumItem kTerrainTreeWindMaskItems[] = {
+        {v(TerrainTreeWindMask::Height), "Height", "Height", "TerrainTreeWindMask::Height", "height"},
+        {v(TerrainTreeWindMask::VertexColor), "VertexColor", "Vertex Color", "TerrainTreeWindMask::VertexColor", "vertex_color"},
+    };
+
+    constexpr EnumItem kTerrainTreeCollisionItems[] = {
+        {v(TerrainTreeCollision::None), "None", "None", "TerrainTreeCollision::None", "none"},
+        {v(TerrainTreeCollision::Capsule), "Capsule", "Capsule", "TerrainTreeCollision::Capsule", "capsule"},
+    };
+
     constexpr EnumItem kPivotPresetItems[] = {
         {v(PivotPreset::CENTER), "center", "Center", "PivotPreset::CENTER"},
         {v(PivotPreset::TOP_CENTER), "top_center", "Top Center", "PivotPreset::TOP_CENTER"},
@@ -811,6 +822,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kMaterialStencilOp{"MaterialStencilOp", kMaterialStencilOpItems, v(MaterialStencilOp::KEEP)};
     const EnumDesc kParticleEmitterShape{"ParticleEmitterShape", kParticleEmitterShapeItems, v(ParticleEmitterShape::Box)};
     const EnumDesc kPivotPreset{"PivotPreset", kPivotPresetItems, v(PivotPreset::BOTTOM_LEFT)};
+    const EnumDesc kTerrainTreeWindMask{"TerrainTreeWindMask", kTerrainTreeWindMaskItems, v(TerrainTreeWindMask::Height)};
+    const EnumDesc kTerrainTreeCollision{"TerrainTreeCollision", kTerrainTreeCollisionItems, v(TerrainTreeCollision::None)};
     const EnumDesc kPrimitiveType{"PrimitiveType", kPrimitiveTypeItems, v(PrimitiveType::TRIANGLES)};
     const EnumDesc kProgressbarType{"ProgressbarType", kProgressbarTypeItems, v(ProgressbarType::HORIZONTAL)};
     const EnumDesc kReflectionProbeMode{"ReflectionProbeMode", kReflectionProbeModeItems, v(ReflectionProbeMode::STATIC)};

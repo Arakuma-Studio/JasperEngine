@@ -10,6 +10,7 @@
 
 #include "Scene.h"
 #include "component/InstancedMeshComponent.h"
+#include "subsystem/FoliageSystem.h"
 #include "component/MeshComponent.h"
 #include "component/NavMeshAgentComponent.h"
 #include "component/NavMeshLinkComponent.h"
@@ -84,7 +85,6 @@ namespace {
 #endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
-#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -118,7 +118,6 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
-#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
@@ -148,11 +147,9 @@ namespace {
     }
 #endif
 
-#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
-#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -432,6 +429,7 @@ namespace {
         void addMeshComponent(Entity entity, const Matrix4& worldOf, uint8_t area);
         void collectRenderMeshes();
         void collectTerrains();
+        void collectTrees();
         void addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride);
         void collectColliders3D();
         void collectColliders2D();
@@ -596,6 +594,9 @@ namespace {
             if (!transform)
                 continue;
             if (InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity)) {
+                // T5 R34: grass and tree prototypes never enter a bake; trees come by collectTrees
+                if (instanced->foliage)
+                    continue;
                 Mesh local;
                 MeshTriangles::appendMeshTriangles(&mesh, Matrix4(), local.vertices, local.indices);
                 for (const InstanceData& instance : instanced->instances) {
@@ -690,6 +691,27 @@ namespace {
             if (!transform)
                 continue;
             addTerrainLattice(terrain, transform->modelMatrix, policy.area, 0);
+        }
+    }
+
+    // T5 R34: a cylinder per visible tree with navObstacle, under every Use Geometry, following the
+    // Terrain's NavMeshModifier policy
+    void Collector::collectTrees() {
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (!foliage)
+            return;
+        auto terrains = scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++) {
+            const Entity entity = terrains->getEntity(i);
+            Policy policy;
+            if (!collectable(entity, policy))
+                continue;
+            foliage->forEachNavObstacle(entity, [&](const Vector3& base, float radius, float height) {
+                Mesh mesh;
+                addCylinder(mesh, height * 0.5f, radius);
+                addTriangles(mesh, navFromWorld * Matrix4::translateMatrix(base + Vector3(0.0f, height * 0.5f, 0.0f)), policy.area);
+                stats.instances++;
+            });
         }
     }
 
@@ -1064,6 +1086,7 @@ namespace {
             boundsMax.y = input->config.cellSize;
         } else {
             collectTerrains();
+            collectTrees();
             collectRenderMeshes();
             collectColliders3D();
             collectVolumes();

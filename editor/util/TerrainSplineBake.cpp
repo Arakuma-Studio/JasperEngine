@@ -5,6 +5,9 @@
 // (MIT, see the header and NOTICE.md).
 
 #include "TerrainSplineBake.h"
+#include "command/type/TreeEditCmd.h"
+#include "subsystem/FoliageSystem.h"
+#include "terrain/FoliageRules.h"
 #include "component/Transform.h"
 
 #include "Catalog.h"
@@ -481,6 +484,59 @@ bool editor::TerrainSplineBake::bakeInto(terrain::TerrainMapStore& store, Projec
     return true;
 }
 
+// The trees whose base is within the band of the route the bake flattened (S18 R11's footprint)
+std::vector<uint32_t> editor::TerrainSplineBake::treesInFootprint(const terrain::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach){
+    std::vector<uint32_t> ids;
+    for (const terrain::TreeRecord& record : store.records()){
+        const float x = terrain::foliageTreeLocalX(record, terrainSize);
+        const float z = terrain::foliageTreeLocalZ(record, terrainSize);
+        if (terrain::foliageDistanceToPolyline(line, x, z) <= reach){
+            ids.push_back(record.id);
+        }
+    }
+    return ids;
+}
+
+static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity){
+    editor::SceneProject* sceneProject = project->getScene(sceneId);
+    Scene* scene = sceneProject->scene;
+    const SplineComponent* spline = scene->findComponent<SplineComponent>(splineEntity);
+    const Transform* terrainTransform = scene->findComponent<Transform>(terrainEntity);
+    TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
+    if (!spline || !spline->terrain.clearTrees || !terrainTransform || !terrain){
+        return false;
+    }
+    FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
+    std::shared_ptr<terrain::TreeStore> store = foliage->getTreeStore(terrainEntity);
+    if (!store || store->empty()){
+        return false;
+    }
+    std::shared_ptr<SplineSystem> system = scene->findSystem<SplineSystem>();
+    std::vector<spline::SplineStation> stations;
+    if (!system || !system->getWorldStations(splineEntity, 0.0f, stations, true) || stations.size() < 2){
+        return false;
+    }
+    const Matrix4 inverse = terrainTransform->modelMatrix.inverse();
+    std::vector<Vector2> line;
+    line.reserve(stations.size());
+    float radius = 0.0f;
+    for (const spline::SplineStation& station : stations){
+        const Vector3 local = inverse * station.position;
+        line.emplace_back(local.x, local.z);
+        radius = std::max({radius, station.halfWidthLeft, station.halfWidthRight});
+    }
+    const float reach = radius + spline->terrain.extraWidth + spline->terrain.falloff;
+    const std::vector<uint32_t> removed = editor::TerrainSplineBake::treesInFootprint(*store, terrain->terrainSize, line, reach);
+    if (removed.empty()){
+        return false;
+    }
+    terrain::TreeDelta delta;
+    store->apply(removed, {}, {}, &delta);
+    editor::CommandHandle::get(sceneId)->addCommand(new editor::TreeEditCmd(project, sceneId, terrainEntity,
+        "Erase Trees (" + scene->getEntityName(terrainEntity) + ")", std::move(delta)));
+    return true;
+}
+
 bool editor::TerrainSplineBake::apply(Project* project, uint32_t sceneId, Entity splineEntity, TerrainBakeChanges& changes,
                                       std::string& error){
     SceneProject* sceneProject = project->getScene(sceneId);
@@ -505,7 +561,12 @@ bool editor::TerrainSplineBake::apply(Project* project, uint32_t sceneId, Entity
 
     auto delta = std::make_unique<TerrainMapDeltaCmd>(project, sceneId, terrainEntity, splineEntity, overlay, false, "Apply Spline to Terrain");
     overlay.discard();
+    // T5 R29: the footprint's trees go in the same undo step as the maps
+    CommandHistory* history = CommandHandle::get(sceneId);
+    const size_t mark = history->mark();
+    const bool treesCleared = clearSplineTrees(project, sceneId, splineEntity, terrainEntity);
     if (delta->empty()){
+        if (treesCleared) history->groupSince(mark);
         return true;
     }
     auto warnIfNoFile = [&](const Texture* texture){
@@ -518,7 +579,8 @@ bool editor::TerrainSplineBake::apply(Project* project, uint32_t sceneId, Entity
     for (const auto& item : changes.density){
         warnIfNoFile(&terrain.foliageLayers[item.first].densityMap);
     }
-    CommandHandle::get(sceneId)->addCommandNoMerge(delta.release());
+    history->addCommandNoMerge(delta.release());
+    if (treesCleared) history->groupSince(mark);
     return true;
 }
 

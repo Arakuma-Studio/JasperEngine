@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "Stream.h"
 #include "util/TerrainDetailRules.h"
 
@@ -84,4 +86,21 @@ TEST(TerrainDetailRules, DecoderClampsOutOfRangeValues){
     EXPECT_EQ(layer.maxScale, 3.0f);
     EXPECT_EQ(layer.maxSlope, 90.0f);
     EXPECT_EQ(layer.drawDistance, 1.0f);
+}
+
+// T5 AC42: the foliage fields are in the table, so edit_terrain_details, set_properties and the load
+// clamp all hold them
+TEST(TerrainDetailRules, FoliageFieldsAreInTheTable){
+    std::vector<std::string> keys;
+    for (const terraindetail::DetailRange& range : terraindetail::detailRanges()) keys.push_back(range.key);
+    for (const char* key : {"min_height_ratio", "max_height_ratio", "noise_spread", "wind_bend", "density_falloff_start", "far_density", "density_scale"}){
+        EXPECT_NE(std::find(keys.begin(), keys.end(), key), keys.end()) << key;
+    }
+    TerrainFoliageLayer layer;
+    layer.minHeightRatio = 1.5f;
+    layer.maxHeightRatio = 0.5f;
+    EXPECT_NE(terraindetail::checkDetailLayer(layer).find("min_height_ratio"), std::string::npos);
+    const TerrainFoliageLayer loaded = Stream::decodeTerrainFoliageLayer(YAML::Load("{windBend: 5, farDensity: -1}"));
+    EXPECT_EQ(loaded.windBend, 1.0f);
+    EXPECT_EQ(loaded.farDensity, 0.0f);
 }

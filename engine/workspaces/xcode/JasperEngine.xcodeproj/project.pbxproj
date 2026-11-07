@@ -4529,6 +4529,17 @@
 		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
 		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
 		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E47B131D45080D653E7 /* FoliageLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474296E82A1489FA1A /* FoliageLua.cpp */; };
+		4A534E47D488E9E2E5FCA950 /* FoliageLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474296E82A1489FA1A /* FoliageLua.cpp */; };
+		4A534E475354715988994280 /* RenderSystemFoliage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47455B0B0B1DAFB591 /* RenderSystemFoliage.cpp */; };
+		4A534E477CA3CE864977F43E /* RenderSystemFoliage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47455B0B0B1DAFB591 /* RenderSystemFoliage.cpp */; };
+		4A534E474C1938A0916547C2 /* FoliageSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EA880354A3466F54 /* FoliageSystem.cpp */; };
+		4A534E47479595579F7D940A /* FoliageSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EA880354A3466F54 /* FoliageSystem.cpp */; };
+		4A534E4731E966DE3238B3F4 /* FoliagePhysics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4774170120B80738B8 /* FoliagePhysics.cpp */; };
+		4A534E473B21901082D0758F /* FoliagePhysics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4774170120B80738B8 /* FoliagePhysics.cpp */; };
+		4A534E471C8FB9A8396D666E /* FoliageQuality.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740AB62A2850A6B9F /* FoliageQuality.h */; };
+		4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */; };
+		4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479C6E796903EF07CE /* FoliageSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8838,6 +8849,13 @@
 		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
 		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
 		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E474296E82A1489FA1A /* FoliageLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FoliageLua.cpp; sourceTree = "<group>"; };
+		4A534E47455B0B0B1DAFB591 /* RenderSystemFoliage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemFoliage.cpp; sourceTree = "<group>"; };
+		4A534E47EA880354A3466F54 /* FoliageSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FoliageSystem.cpp; sourceTree = "<group>"; };
+		4A534E4774170120B80738B8 /* FoliagePhysics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FoliagePhysics.cpp; sourceTree = "<group>"; };
+		4A534E4740AB62A2850A6B9F /* FoliageQuality.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliageQuality.h; sourceTree = "<group>"; };
+		4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliagePhysics.h; sourceTree = "<group>"; };
+		4A534E479C6E796903EF07CE /* FoliageSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliageSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9393,6 +9411,7 @@
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 				5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */,
+				4A534E474296E82A1489FA1A /* FoliageLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10972,6 +10991,7 @@
 				4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */,
 				4A534E475065F0D282851FFA /* DrawBatcher.h */,
 				4A534E47E7BE6C143B079A81 /* FrustumCull.h */,
+				4A534E4740AB62A2850A6B9F /* FoliageQuality.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11358,6 +11378,11 @@
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 				5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */,
+				4A534E47455B0B0B1DAFB591 /* RenderSystemFoliage.cpp */,
+				4A534E47EA880354A3466F54 /* FoliageSystem.cpp */,
+				4A534E4774170120B80738B8 /* FoliagePhysics.cpp */,
+				4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */,
+				4A534E479C6E796903EF07CE /* FoliageSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15704,6 +15729,9 @@
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
 				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E471C8FB9A8396D666E /* FoliageQuality.h in Headers */,
+				4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */,
+				4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18250,6 +18278,10 @@
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
+				4A534E47B131D45080D653E7 /* FoliageLua.cpp in Sources */,
+				4A534E475354715988994280 /* RenderSystemFoliage.cpp in Sources */,
+				4A534E474C1938A0916547C2 /* FoliageSystem.cpp in Sources */,
+				4A534E4731E966DE3238B3F4 /* FoliagePhysics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19087,6 +19119,10 @@
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
+				4A534E47D488E9E2E5FCA950 /* FoliageLua.cpp in Sources */,
+				4A534E477CA3CE864977F43E /* RenderSystemFoliage.cpp in Sources */,
+				4A534E47479595579F7D940A /* FoliageSystem.cpp in Sources */,
+				4A534E473B21901082D0758F /* FoliagePhysics.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

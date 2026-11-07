@@ -50,14 +50,12 @@ namespace {
                 terrain.heightMapLoaded = false;
                 terrain.needUpdateTerrain = true;
                 terrain.needUpdateTexture = true;
-                terrain.needUpdateFoliage = true;
                 break;
             case MapKind::Blend:
             case MapKind::Hole:
                 terrain.needUpdateTexture = true;
                 break;
             case MapKind::Density:
-                terrain.needUpdateFoliage = true;
                 break;
         }
         if (Texture* texture = terrainMapTexture(terrain, map)) {
@@ -162,8 +160,8 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // T1 sets nothing a struct default does not: T3 R53 and T5 F12 add theirs here
-    (void)terrain;
+    // T5 F12: an old scene's 0 means no Terrain-wide limit; T3 R53 adds its own here
+    terrain.detailDistance = 80.0f;
 }
 
 void jasperengine::applyLayerOrder(TerrainComponent& terrain, std::span<const int> order) {

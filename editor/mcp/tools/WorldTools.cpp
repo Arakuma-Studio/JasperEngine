@@ -10,6 +10,7 @@
 #include "component/OnScreenControlComponents.h"
 #include "model/ModelAudit.h"
 #include "McpTools.h"
+#include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
 #include "AnimationKeys.h"
@@ -1265,6 +1266,22 @@ void sampleTerrainTool(const CallPtr& call) {
         }
         data["grid"] = {{"size", n}, {"rows_from", "local -z to +z"}, {"columns_from", "local -x to +x"},
                         {"world_heights", rows}, {"min", lo}, {"max", hi}, {"mean", sum / static_cast<float>(n * n)}};
+    }
+    if (args.value("foliage", false)) {
+        // T5 R55: over T1's region (world or local, as the call's space)
+        std::optional<FoliageRegionXZ> region;
+        if (has(args, "region")) {
+            const Json& box = args["region"];
+            if (!box.is_object() || !box.contains("min") || !box.contains("max") || !box["min"].is_array() || !box["max"].is_array() || box["min"].size() != 2 || box["max"].size() != 2) {
+                call->fail("region must be {min: [x, z], max: [x, z]}.");
+                return;
+            }
+            const float offsetX = world ? transform.worldPosition.x : 0.0f;
+            const float offsetZ = world ? transform.worldPosition.z : 0.0f;
+            region = FoliageRegionXZ{box["min"][0].get<float>() - offsetX, box["min"][1].get<float>() - offsetZ,
+                                     box["max"][0].get<float>() - offsetX, box["max"][1].get<float>() - offsetZ};
+        }
+        data["foliage"] = foliageStatsJson(target.project, target.scene, target.entity, region);
     }
     call->ok("Sampled terrain \"" + scene->getEntityName(target.entity) + "\".", data);
 }
@@ -6126,7 +6143,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"stats", array(string(""), "height, slope, layers.")},
             {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
             {"issues", withDefault(boolean("Problems and fixes."), false)},
-            {"hash", withDefault(boolean("Content hash of each map."), false)}
+            {"hash", withDefault(boolean("Content hash of each map."), false)},
+            {"foliage", withDefault(boolean("Details and trees in region."), false)}
         }),
         sampleTerrainTool, true, true);
     group.clear();

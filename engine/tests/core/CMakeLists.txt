@@ -58,6 +58,8 @@ endif()
 # contraction there either, or arm64 would seed its maps differently (docs/specs/T1-terrain-authoring.md R8)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
@@ -69,6 +71,15 @@ jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliagePhysicsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageSystemCoreTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TreeStoreTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainBatchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainFilterTest.cpp
@@ -221,7 +232,9 @@ add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cp
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 # je-bench-audio: the loudness budgets (S38 R16-R17)
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)
+# je-bench-foliage: foliage's budgets (T5 R41, R42, R45, docs/perf/foliage.md)
+add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

@@ -917,3 +917,65 @@ claim for a GPU can come from this host, and a report must say so.
 - **Sibling specs were written at the same time.** All six were read and matched afterwards. T1's names win
   for `TerrainMapStore`, `TerrainSurfaceQuery`, operation registration and overlay source where a later change
   differs, and this spec's sketches follow with no change in behaviour.
+
+## Deviations
+
+Recorded by the implementation, each with what it does instead and why.
+
+1. **`FoliageMapPatch` instead of a `SurfaceView` window.** T1's `SurfaceView` samples a whole component on
+   the main thread and has no window. A placement job copies its cell's rectangle of the height, density and
+   noise maps into a patch and samples it with the same arithmetic, equal to the bit to whole-map sampling
+   (`FoliageScatter.PatchesMatchTheWholeMap`). Holes are a shared whole-map copy, refreshed on a hole edit,
+   and read through T1's `isHole`.
+2. **T1's `edit_terrain`, `visualize_terrain` and overlays, with T5's ops in a call of their own.** T1's
+   checkpoint landed first (R67). Its parser reads T5's registered ops; a list of them runs as a job
+   (`FoliageOpRunner`: T1's `applyOps` on a snapshot, off the main thread, so a big scatter does not stall),
+   which a list mixing them with map ops or `create` would make all-or-nothing across two engines: such a
+   call is refused with the split to make. `edit_terrain` gains `wait` and `timeout_seconds` for that job.
+   Density undo is T1's `TerrainMapDeltaCmd`; trees are a `TreeEditCmd` in the same group. `density` and
+   `tree_density` are T1 overlay sources (registered by `TerrainFoliagePanel`); `visualize_terrain`'s
+   `foliage_quality` is gone (a tier is a project setting). A tree overlay redraws when its settings change or
+   the terrain's maps do, not after each tree edit.
+3. **Compound shapes on the main thread.** At most two cells a frame, and in the same frame on a runtime
+   removal (the risk table's default): Jolt's shape build off the main thread is not on every target.
+4. **Runtime clones load the flushed file** instead of sharing the store's pointer. `shareTreeStore` and
+   copy on first write exist for duplicated Terrains; a Play clone goes through its loader so its path is the
+   one an exported game runs.
+5. **AC7 compares within one run.** The pre-T5 golden could not be committed first, since this branch starts
+   after T1's foundation changed the terrain draw. `FoliageGpu.LegacyLayerLooksTheSame` draws T5's layer and
+   the same placement on a legacy Instanced Mesh with the old fade, and holds them to AC7's bounds.
+6. **A fourth hook in `RenderSystem`.** `selectMeshDraw` needs a branch of its own for a foliage slot's
+   instance range, beyond F1's three.
+7. **The bake renders two passes** (unlit colour and world normal) with `library:impostor_bake` rather than
+   reading the G-buffer: that path works on the backends and on the lite player alike.
+8. **Point-light shadow faces use the main camera's list** (`instanceView` -1). A list per face would cost
+   six culls for a light that rarely reaches foliage.
+9. **`noise_mask` is refused until T2 lands.** `host.noiseMask` is the hook, and `FoliageRules.NoiseMask`
+   passes with a caller's buffer.
+10. **Dither on built-in Lit, `library:foliage` and `library:impostor` only.** A custom surface shader keeps
+    its own alpha; it fades with distance through its discard.
+11. **`TreeRecord.rotation` stores the yaw; the lean's share is in the upper five flag bits.** The tilt is
+    derived at a cell's build, so the undo of a sculpt restores the store's bytes (AC21).
+12. **The "Terrain Settings: Foliage" section lives in the panel.** T1's Terrain Settings panel
+    (`TerrainSettingsPanel`) landed with the T1 checkpoint; moving the section into it is left for after this
+    merge, with the same fields.
+13. **R66: render-correctness landed first.** T5 takes its `TerrainFoliageLayer::minDrawDistance`, its
+    `Engine` Foliage Distance API and project key (`foliageDistanceScale`, settings `quality.foliage_distance_*`),
+    and adds Tree Distance and Billboard Start to what the scale multiplies. Its new-project default stays 1
+    everywhere (its `test_render_correctness.py` pins that), so new projects do not write 0.5 on Mobile and Web
+    (R20): the new-project Foliage Quality of Low there is the mobile protection. Its chunk-entity foliage in
+    `MeshSystem` gives way to F1's `FoliageSystem`; `TerrainFoliageGpu.*` keeps what each test pinned (one entity
+    a layer that walking never destroys and that places only entering cells; scaled Draw and Min Draw distances;
+    a scale change drawing nothing twice; 0 removing foliage and the preview ignoring it), read from the view's
+    instances instead of chunk components.
+14. **Details on a brush frame.** T1's stroke sessions publish what each frame wrote as `TerrainEditEvents`,
+    which `FoliageSystem` hears; a restored snapshot refills every cell.
+15. **Tree obstacles do not need Physics 3D.** The collector's cylinder builder is compiled in without it,
+    since a navmesh is not a physics feature.
+16. **R65: agent-authoring landed first.** `edit_terrain_details`, `sample_terrain`'s `details` and `drawn` and
+    `MeshSystem::getFoliageInstanceCount` stay theirs; the count forwards to `FoliageSystem` (the instances a
+    layer holds over its resident cells, what `drawn` meant). T5's float layer fields join `detailRanges()`
+    (`min_height_ratio`, `max_height_ratio`, `noise_spread`, `wind_bend`, `density_falloff_start`,
+    `far_density`, `density_scale`), so the tool, `set_properties` and the load clamp hold them. The colours
+    (`healthy_color`, `dry_color`) are vectors, which that table of floats does not hold: they go through
+    `set_properties` as any colour does.

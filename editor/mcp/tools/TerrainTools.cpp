@@ -4,6 +4,7 @@
 // T1 R68, R69, R95: edit_terrain, the declarative write route for agents (every op of Table 1 through
 // the engine's applyOps, one undo step a call, all-or-nothing, dry_run), and export_terrain_heightmap.
 
+#include "FoliageTools.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 #include "TerrainToolsSupport.h"
@@ -37,11 +38,13 @@
 #include "terrain/TerrainRawIO.h"
 #include "terrain/TerrainSizePresets.h"
 #include "terrain/TerrainLayers.h"
+#include "terrain/FoliageOps.h"
 #include "terrain/TerrainOps.h"
 #include "object/TerrainOpsJson.h"
 #include "terrain/TerrainOpsUndo.h"
 #include "util/FileUtils.h"
 #include "util/FloatImage.h"
+#include "util/ImpostorBaker.h"
 #include "util/SafeWrite.h"
 #include "subsystem/NavigationSystem.h"
 #include "util/TerrainMapUtils.h"
@@ -554,6 +557,17 @@ void editTerrainTool(const CallPtr& call) {
         return;
     }
 
+    // T5's ops write trees as well as density maps: they run as a job on a snapshot, in a call of their own
+    if (std::any_of(ops.begin(), ops.end(), [](const Op& op) { return isFoliageOp(op); })) {
+        if (hasKey(args, "create")) {
+            rollback();
+            call->fail("create: foliage ops run in a call of their own; create the terrain first, then send them.");
+            return;
+        }
+        editFoliageFromOps(call, TerrainTarget{target.project, target.scene, target.entity}, std::move(ops), space, dryRun);
+        return;
+    }
+
     terrain::OpOptions options;
     if (hasKey(args, "map_resolution") && args["map_resolution"].is_number_integer()) options.newMapResolution = args["map_resolution"].get<int>();
 
@@ -839,6 +853,9 @@ void visualizeTerrainTool(const CallPtr& call) {
 
 void registerTerrainTools(McpRegistry& registry) {
     using namespace schema;
+    terrain::registerFoliageOps();
+    // T5 R56: editor only, so Lua's applyOps does not know it
+    ImpostorBaker::registerOp();
 
     ToolDef edit;
     edit.name = "edit_terrain";
@@ -856,9 +873,11 @@ void registerTerrainTools(McpRegistry& registry) {
         {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
         {"create", string("Size preset for a terrain with no maps.")},
         {"map_resolution", integer("New maps.", 2, 8192)},
-        {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject("{op, shape, filter, ...}: raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes...")}}},
+        {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject("{op, shape, filter, ...}: raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes, scatter_by_rules...")}}},
         {"dry_run", withDefault(boolean(""), false)},
-        {"hash", withDefault(boolean("Hash each changed map."), false)}
+        {"hash", withDefault(boolean("Hash each changed map."), false)},
+        {"wait", withDefault(boolean("Foliage ops are a job: wait for its end."), true)},
+        {"timeout_seconds", number("", 0, 3600)}
     });
     edit.handler = terrain_tools::editTerrainTool;
     registry.addTool(std::move(edit));

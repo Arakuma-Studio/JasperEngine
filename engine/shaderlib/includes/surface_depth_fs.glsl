@@ -27,7 +27,12 @@ in vec2 v_projZW;
 
 #include "includes/depth_util.glsl"
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef SURFACE_DEPTH_DISCARD
         vec2 uv = vec2(0.0);
         vec4 color = vec4(1.0);

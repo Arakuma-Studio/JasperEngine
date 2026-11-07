@@ -204,6 +204,13 @@ namespace jasperengine{
         // a version 2 Particle System's renderer settings (runtime, written by its system)
         InstanceParticleRender particle;
 
+        // a foliage prototype (T5 R6): its instances live in FoliageSystem's lists, by foliageSlot
+        bool foliage = false;
+        bool foliageWind = false;       // 'Wnd'
+        bool foliageDither = false;     // 'Dth'
+        bool foliageExpanded = false;   // R37: a program with no compact variant, from a 96-byte stream
+        uint32_t foliageSlot = 0;
+
         bool needUpdateBuffer = false;
         bool needUpdateInstances = true;
     };
