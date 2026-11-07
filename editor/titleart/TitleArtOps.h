@@ -121,6 +121,9 @@ namespace jasperengine::editor {
         // the label of the field the last set() wrote ("Rim Width", "Outer Glow Size"): a one-value
         // `set` names its undo step "Set <label>"
         std::string lastSetLabel;
+        // a registered op's own undo step name ("Set Dimension 3D", "Apply Material Gold"); empty:
+        // its title-cased op name
+        std::string undoName;
     };
 
     struct ReservedTitleOp {

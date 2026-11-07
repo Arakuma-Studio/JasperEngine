@@ -6,6 +6,8 @@
 // compare with a kept revision or a PNG, the forced RGBA8 path, and the checks of the registry.
 
 #include "TitleArtToolsShared.h"
+#include "titleart/three_d/Title3DEditor.h"
+#include "titleart/three_d/TitleMesh.h"
 
 #include "App.h"
 #include "EditorHost.h"
@@ -24,6 +26,8 @@
 #include "command/UndoOrigin.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+
+#include <cstring>
 #include "util/ImageDiff.h"
 #include "util/PngWriter.h"
 #include "util/SafeWrite.h"
@@ -620,9 +624,30 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
+        // S86's keys: the tier to render 3D layers at, and the intermediate image (none: the render)
+        if (it.key() == "quality") {
+            titleart::TitleTier tier;
+            if (!it.value().is_string() || !titleart::titleTierFromName(it.value().get<std::string>(), tier)) {
+                error = "bad_option: `options.quality` is bake, high, medium or low.";
+                return false;
+            }
+            continue;
+        }
+        if (it.key() == "debug_view") {
+            const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
+            if (view == "none") continue;
+            static const char* const VIEWS[] = {"normals", "ao", "glint", "environment", "ink", "wireframe"};
+            if (std::find(std::begin(VIEWS), std::end(VIEWS), view) != std::end(VIEWS)) {
+                error = "not_available: render_title debug_view '" + view + "' is not in this build; it serves none.";
+            } else {
+                error = "bad_option: `options.debug_view` is none, normals, ao, glint, environment, ink or wireframe.";
+            }
+            return false;
+        }
         bool known = false;
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
+            if (std::strcmp(k.owner, "S86") == 0) continue;
             known = true;
             error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves none.";
             return false;
@@ -736,6 +761,11 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     const float scale = std::min(1.0f, static_cast<float>(s->maxWidth) / static_cast<float>(std::max(1, regionW * columns)));
     uint32_t flags = 0;
     if (s->fallback == "rgba8") flags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS | titleart::TITLE_ART_TEST_NO_R16F | titleart::TITLE_ART_TEST_NO_RGBA32F;
+    // options.quality (S86): 3D layers render at that tier (RenderRequest::tier: 0 bake, 1 high, 2 medium, 3 low)
+    titleart::TitleTier tier = titleart::TitleTier::Bake;
+    if (args.contains("options") && args["options"].is_object() && args["options"].contains("quality")) {
+        titleart::titleTierFromName(args["options"].value("quality", std::string("bake")), tier);
+    }
     for (size_t v = 0; v < s->variants.size(); v++) {
         PendingRender r;
         r.variant = static_cast<int>(v);
@@ -747,6 +777,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         r.request.content = content;
         r.request.contentLayers = contentLayers;
         r.request.testFlags = flags;
+        r.request.tier = static_cast<int>(tier);
         s->renders.push_back(r);
         if (v == 0 && s->fallback == "compare") {
             PendingRender forced = s->renders.back();
@@ -768,6 +799,12 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         s->renders.push_back(c);
     }
     (void)ch;
+    // stats_3d (S86 R60): every 3D layer's mesh at the requested tier
+    const titleart::Json stats3d = title3DStats(*s->variants[0].doc, TitleArtRenderHost::editor().resolver(project), tier);
+    if (!stats3d.empty()) {
+        s->extra["stats_3d"] = fromOrdered(stats3d);
+        s->extra["quality"] = titleart::titleTierName(tier);
+    }
     s->spec = std::move(spec);
     auto task = std::make_shared<FrameTask>();
     std::weak_ptr<FrameTask> weakTask = task;

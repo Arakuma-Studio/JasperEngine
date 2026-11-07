@@ -27,6 +27,12 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
+#include "titleart/three_d/BevelProfile.h"
+#include "titleart/three_d/Title3DEditor.h"
+#include "titleart/three_d/TitleGlbWriter.h"
+#include "titleart/three_d/Title3DSchema.h"
+#include "titleart/three_d/Title3DStyle.h"
+#include "titleart/three_d/TitleEnvironment.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
 
@@ -176,6 +182,9 @@ void listTitleLibraryTool(const CallPtr& call) {
             else if (std::strcmp(k.kind, "generators") == 0) n = registry.generators().size();
             else if (std::strcmp(k.kind, "blend_modes") == 0) n = titleart::TITLE_BLEND_COUNT;
             else if (std::strcmp(k.kind, "fonts") == 0) n = fonts().size();
+            else if (std::strcmp(k.kind, "materials_3d") == 0) n = titleart::title3DMaterialPresetNames().size();
+            else if (std::strcmp(k.kind, "environments") == 0) n = titleart::title3DEnvironmentNames().size();
+            else if (std::strcmp(k.kind, "bevel_profiles") == 0) n = titleart::three_d::bevelProfileNames().size();
             counts[k.kind] = n;
             text += " " + std::string(k.kind) + " " + std::to_string(n) + (*k.owner ? " (" + std::string(k.owner) + ")" : "") + ",";
         }
@@ -189,7 +198,7 @@ void listTitleLibraryTool(const CallPtr& call) {
         call->fail("Unknown kind '" + kind + "'.");
         return;
     }
-    if (*known->owner) {
+    if (*known->owner && std::strcmp(known->owner, "S86") != 0) {
         call->ok(std::string(known->label) + " arrive with " + known->owner + ".",
                  Json{{"kind", kind}, {"rows", Json::array()}, {"total", 0}, {"note", std::string(known->label) + " arrive with " + known->owner}});
         return;
@@ -243,6 +252,29 @@ void listTitleLibraryTool(const CallPtr& call) {
         for (Json& row : fonts()) {
             if (!matches(query, {row.value("path", std::string()), row.value("family", std::string())})) continue;
             rows.push_back(std::move(row));
+        }
+    } else if (kind == "materials_3d") {
+        // S86's material presets (R17), in the picker's sections
+        for (const std::string& preset : titleart::title3DMaterialPresetNames()) {
+            const titleart::TitleMaterial3D m = titleart::decodeMaterial3D(titleart::materialPreset(preset));
+            const std::string section = titleart::materialPresetSection(preset);
+            if (!matches(query, {preset, section})) continue;
+            rows.push_back(Json{{"id", preset}, {"section", section}, {"color", titleart::formatTitleColor(m.color)}, {"metallic", m.metallic},
+                                {"roughness", m.roughness}, {"clearcoat", m.clearcoat}, {"transmission", m.transmission}, {"ramp", m.gradient.has_value()}});
+        }
+    } else if (kind == "environments") {
+        // S86's environments (R24): procedural studios, Poly Haven photos (S84's four among them), custom, matcap
+        for (const std::string& env : titleart::title3DEnvironmentNames()) {
+            const titleart::TitleEnvScene* scene = titleart::titleEnvironmentPreset(env);
+            const char* source = scene ? (scene->procedural ? "procedural" : "photo") : env.c_str();
+            if (!matches(query, {env, source})) continue;
+            rows.push_back(Json{{"id", env}, {"source", source}, {"hdri", scene ? scene->hdri : std::string()},
+                                {"builds", scene ? scene->procedural : env == "matcap"}});
+        }
+    } else if (kind == "bevel_profiles") {
+        for (const std::string& profile : titleart::three_d::bevelProfileNames()) {
+            if (!matches(query, {profile})) continue;
+            rows.push_back(Json{{"id", profile}, {"custom", profile == "custom"}});
         }
     }
     const size_t total = rows.size();
@@ -455,10 +487,17 @@ void getTitleTool(const CallPtr& call) {
     }
     titleart::forEachLayer(doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
         if (!only.empty() && str(layer, "id") != only) return true;
-        layers.push_back(layerSummary(doc, layer, names, detail, fields));
+        Json summary = layerSummary(doc, layer, names, detail, fields);
+        // S86: a 3D layer's effective style and lighting, each lighting value with its source
+        if (titleart::layerTypeHasStyle(titleart::layerTypeOf(layer)) && str(layer, "dimension") == "3d") {
+            summary["three_d"] = fromOrdered(title3DLayerInfo(layer, doc));
+        }
+        layers.push_back(std::move(summary));
         return true;
     });
     out["layers"] = layers;
+    const titleart::Json stats3d = title3DStats(doc, TitleArtRenderHost::editor().resolver(project), titleart::TitleTier::Bake);
+    if (!stats3d.empty()) out["stats_3d"] = fromOrdered(stats3d);
     out["exposed"] = fromOrdered(doc.root["exposed"]);
     out["outputs"] = outputsOf(project, file, doc);
     out["problems"] = problemsOf(project, doc, document->warnings());
@@ -632,6 +671,9 @@ struct FormatOwner {
 const FormatOwner FORMATS[] = {{"bake", "S80"}, {"glb", "S86"}, {"png", "S87"}, {"psd", "S87"}, {"svg", "S87"}, {"sheet", "S87"},
                                {"atlas", "S87"}, {"sequence", "S87"}, {"ktx2", "S87"}, {"csv", "S87"}, {"xliff", "S87"}};
 
+// the GLB of a title's 3D layers (S86, below)
+void exportTitleGlb(const CallPtr& call, Project* project, const fs::path& file, const std::string& relative);
+
 void exportTitleTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
@@ -642,8 +684,12 @@ void exportTitleTool(const CallPtr& call) {
         return;
     }
     const std::string format = args.value("format", std::string("bake"));
+    if (format == "glb") {
+        exportTitleGlb(call, project, file, relative);
+        return;
+    }
     for (const FormatOwner& f : FORMATS) {
-        if (format == f.format && std::strcmp(f.owner, "S80") != 0) {
+        if (format == f.format && std::strcmp(f.owner, "S80") != 0 && std::strcmp(f.owner, "S86") != 0) {
             call->fail("not_available: format '" + format + "' arrives with " + f.owner + "; this build exports format bake.",
                        Json{{"code", "not_available"}, {"owner", f.owner}, {"formats", Json::array({"bake"})}});
             return;
@@ -822,17 +868,76 @@ bool titleArtViewImage(Project* project, const fs::path& file, int maxSize, texs
     return true;
 }
 
+// ==================================================================== export_title format glb (S86)
+
+namespace {
+
+void exportTitleGlb(const CallPtr& call, Project* project, const fs::path& file, const std::string& relative) {
+    const Json& args = call->args();
+    TitleGlbOptions options;
+    if (args.contains("options")) {
+        const Json& o = args["options"];
+        for (auto it = o.begin(); it != o.end(); ++it) {
+            if (it.key() != "glb" || !it->is_object()) {
+                call->fail("bad_option: format glb takes options {glb: {units_per_px, include_bands}}; '" + it.key() + "' is not valid. Nothing was written.",
+                           Json{{"code", "bad_option"}, {"valid", Json::array({"glb"})}});
+                return;
+            }
+            for (auto g = it->begin(); g != it->end(); ++g) {
+                if (g.key() == "units_per_px" && g->is_number() && g->get<double>() > 0) options.unitsPerPx = g->get<double>();
+                else if (g.key() == "include_bands" && g->is_boolean()) options.includeBands = g->get<bool>();
+                else {
+                    call->fail("bad_option: options.glb takes units_per_px (> 0) and include_bands; '" + g.key() + "' is not valid. Nothing was written.",
+                               Json{{"code", "bad_option"}, {"valid", Json::array({"units_per_px", "include_bands"})}});
+                    return;
+                }
+            }
+        }
+    }
+    titleart::TitleArtDoc doc;
+    std::string code, error;
+    if (!loadTitleArtForBake(project, file, doc, code, error)) {
+        call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
+        return;
+    }
+    const TitleGlbResult glb = writeTitleGlb(doc, TitleArtRenderHost::editor().resolver(project), options);
+    if (!glb.ok) {
+        call->fail(glb.error + ". Nothing was written.", Json{{"code", glb.error.substr(0, glb.error.find(':'))}});
+        return;
+    }
+    fs::path out = file;
+    out.replace_extension(".glb");
+    if (!args.value("dry_run", false) &&
+        !assetio::writeFile(out, std::string_view(reinterpret_cast<const char*>(glb.bytes.data()), glb.bytes.size()), assetio::Durability::Document, &error)) {
+        call->fail("write_failed: " + error + ". Nothing was written.", Json{{"code", "write_failed"}});
+        return;
+    }
+    std::string written = relative;
+    const size_t dot = written.rfind('.');
+    if (dot != std::string::npos) written = written.substr(0, dot);
+    written += ".glb";
+    Json warnings = Json::array();
+    for (const std::string& w : glb.warnings) warnings.push_back(w);
+    call->ok(written + ": " + std::to_string(glb.layers) + " 3D layer(s), " + std::to_string(glb.triangles) + " triangles" +
+                 (glb.warnings.empty() ? "." : ", " + std::to_string(glb.warnings.size()) + " warning(s)."),
+             Json{{"format", "glb"}, {"path", written}, {"bytes", glb.bytes.size()}, {"layers", glb.layers}, {"triangles", glb.triangles},
+                  {"warnings", warnings}, {"dry_run", args.value("dry_run", false)}});
+}
+
+} // namespace
+
 // ==================================================================== registration
 
 void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
+    registerTitle3DEditor();
     {
         ToolDef tool;
         tool.name = "list_title_library";
         tool.title = "List Title Library";
         tool.description =
-            "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts lists rows "
-            "(looks, color_schemes, templates, environments, materials_3d, bevel_profiles, animation_presets: later). "
+            "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts, environments, "
+            "materials_3d, bevel_profiles lists rows (looks, color_schemes, templates, animation_presets: later). "
             "id: one effect's or generator's params and the op to paste. query filters names, aliases, categories.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);

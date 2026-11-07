@@ -1630,8 +1630,9 @@ TitleOpsResult TitleArtOps::apply(const TitleArtDoc& doc, const TitleJson& ops, 
         bool ok = false;
         auto handler = registry().handlers.find(name);
         if (handler != registry().handlers.end()) {
+            ctx.undoName.clear();
             ok = handler->second(ctx, op);
-            names.push_back(titleCase(name));
+            names.push_back(ctx.undoName.empty() ? titleCase(name) : ctx.undoName);
         } else if (std::find(s80Table().begin(), s80Table().end(), name) != s80Table().end()) {
             Batch batch(ctx);
             ok = batch.run(name, op);
