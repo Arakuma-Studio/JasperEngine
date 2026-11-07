@@ -162,7 +162,6 @@ namespace luabridge
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
-    template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};

@@ -1976,6 +1976,12 @@ std::vector<std::filesystem::path> editor::Project::getBuildScriptDirs() const{
     return dirs;
 }
 
+bool editor::Project::isEngineApiSkippedDir(const std::filesystem::path& dir){
+    std::string ext = dir.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == ".framework" || ext == ".xcframework" || ext == ".bundle";
+}
+
 bool editor::Project::hasNativeCppPlugins() const{
     return !NativePlugins::scan(getProjectPath()).filesWith("cpp", {".cpp", ".cc", ".cxx", ".c"}).empty();
 }
@@ -3030,17 +3036,12 @@ std::string editor::Project::toFourPartVersion(const std::string& source){
     return result;
 }
 
-bool editor::isAdMobAppIdValid(const std::string& value){
-    const std::string prefix = "ca-app-pub-";
-    if (value.compare(0, prefix.size(), prefix) != 0) return false;
+const editor::ApplePrivacy::Manifest& editor::Project::getApplePrivacy() const{
+    return applePrivacy;
+}
 
-    const size_t tilde = value.find('~', prefix.size());
-    if (tilde == std::string::npos || tilde == prefix.size() || tilde + 1 == value.size()) return false;
-
-    for (size_t i = prefix.size(); i < value.size(); i++) {
-        if (i != tilde && !std::isdigit(static_cast<unsigned char>(value[i]))) return false;
-    }
-    return true;
+void editor::Project::setApplePrivacy(const ApplePrivacy::Manifest& privacy){
+    applePrivacy = ApplePrivacy::normalized(privacy);
 }
 
 editor::WebProjectSettings& editor::Project::getWebProjectSettings(){
@@ -6044,8 +6045,15 @@ void editor::Project::copyEngineApiToProject() {
 
         // Sync only files whose contents actually changed so reopening the editor
         // does not touch header timestamps and force a rebuild of game scripts.
-        for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(engineApiSource)) {
+        for (auto it = std::filesystem::recursive_directory_iterator(engineApiSource); it != std::filesystem::recursive_directory_iterator(); ++it) {
+            const auto& dirEntry = *it;
             editor::getEditorHost().reportLoadingProgress();
+
+            // a vendored SDK bundle: only the Apple exports use it, and they read the engine folder
+            if (dirEntry.is_directory() && isEngineApiSkippedDir(dirEntry.path())) {
+                it.disable_recursion_pending();
+                continue;
+            }
 
             if (dirEntry.is_regular_file()) {
                 auto ext = dirEntry.path().extension().string();

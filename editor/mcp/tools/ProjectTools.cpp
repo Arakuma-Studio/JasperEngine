@@ -44,6 +44,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
+#include "util/ApplePrivacy.h"
 #include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
@@ -1257,7 +1258,8 @@ const std::vector<std::string>& nativeSettingKeys() {
         "android.gradle_dependencies", "android.gradle_repositories", "android.gradle_properties", "android.extra_permissions",
         "android.manifest_xml", "android.manifest_application_xml", "ios.plist_entries", "ios.plist_xml", "ios.frameworks",
         "ios.cocoapods", "ios.swift_packages", "ios.entitlements_xml", "ios.deployment_target", "macos.plist_entries",
-        "macos.frameworks", "web.script_urls"};
+        "macos.frameworks", "web.script_urls", "apple.privacy_tracking", "apple.privacy_tracking_domains",
+        "apple.privacy_collected_data", "apple.privacy_accessed_apis"};
     return keys;
 }
 
@@ -1293,7 +1295,7 @@ void nativePluginsTool(const CallPtr& call) {
             const Json value = setting.get(rowContext);
             // only what is set (the defaults are empty, and 15.0)
             if ((value.is_string() && (value.get<std::string>().empty() || (setting.key == "ios.deployment_target" && value == "15.0"))) ||
-                ((value.is_array() || value.is_object()) && value.empty())) {
+                ((value.is_array() || value.is_object()) && value.empty()) || (value.is_boolean() && !value.get<bool>())) {
                 continue;
             }
             settings[setting.key] = value;
@@ -1305,8 +1307,45 @@ void nativePluginsTool(const CallPtr& call) {
         call->ok(text, data);
         return;
     }
+    if (action == "privacy_manifest") {
+        const std::string platform = args.value("platform", "ios");
+        if (platform != "ios" && platform != "macos") {
+            call->fail("platform must be \"ios\" or \"macos\".");
+            return;
+        }
+        std::vector<std::string> plistKeys;
+        for (const auto& [key, value] : project->getIOSProjectSettings().plistEntries) plistKeys.push_back(key);
+        const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, project->getIOSProjectSettings().plistXml);
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(projectPath, project->getApplePrivacy(), platform, trackingUsage);
+        const ApplePrivacy::Manifest& m = composed.manifest;
+        Json data;
+        data["platform"] = platform;
+        data["xml"] = ApplePrivacy::toXml(m);
+        data["tracking"] = m.tracking;
+        data["tracking_domains"] = m.trackingDomains;
+        Json collected = Json::array();
+        for (const ApplePrivacy::CollectedData& item : m.collectedData) {
+            collected.push_back({{"type", item.type}, {"linked", item.linked}, {"tracking", item.tracking}, {"purposes", item.purposes}});
+        }
+        data["collected_data"] = collected;
+        Json apis = Json::array();
+        for (const ApplePrivacy::AccessedApi& api : m.accessedApis) apis.push_back({{"type", api.type}, {"reasons", api.reasons}});
+        data["accessed_apis"] = apis;
+        Json sources = Json::array();
+        for (const ApplePrivacy::Source& source : composed.sources) sources.push_back({{"what", source.what}, {"origin", source.origin}});
+        data["sources"] = sources;
+        data["plugin_manifests"] = composed.pluginManifests;
+        data["warnings"] = composed.warnings;
+        std::string text = std::string(platform == "ios" ? "iOS" : "macOS") + " privacy manifest: " + std::to_string(m.accessedApis.size()) +
+                           " API type(s), tracking " + (m.tracking ? "on (" + std::to_string(m.trackingDomains.size()) + " domain(s))" : "off") +
+                           ", " + std::to_string(m.collectedData.size()) + " collected data type(s), " +
+                           std::to_string(composed.pluginManifests.size()) + " plugin manifest(s)";
+        if (!composed.warnings.empty()) text += "; " + std::to_string(composed.warnings.size()) + " warning(s)";
+        call->ok(text + ".", data);
+        return;
+    }
     if (action != "create") {
-        call->fail("action must be \"list\" or \"create\".");
+        call->fail("action must be \"list\", \"create\" or \"privacy_manifest\".");
         return;
     }
     if (ctx.isPlaying()) {
@@ -1478,9 +1517,11 @@ void registerProjectTools(McpRegistry& registry) {
         tool.description =
             "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
             "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
-            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... privacy_manifest: the composed Apple "
+            "PrivacyInfo.xcprivacy (engine + apple.privacy_* + plugin manifests). jasper://docs/native-bridge.";
         tool.inputSchema = object({
-            {"action", stringEnum("", {"list", "create"})},
+            {"action", stringEnum("", {"list", "create", "privacy_manifest"})},
+            {"platform", stringEnum("privacy_manifest; default ios", {"ios", "macos"})},
             {"name", string("e.g. Device")},
             {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
             {"android_language", stringEnum("", {"java", "kotlin"})},

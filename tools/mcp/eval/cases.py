@@ -1064,6 +1064,34 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_privacy_manifest_by_hand",
+        "kind": "bad",
+        "what_happened": "Before the privacy manifest settings an agent asked for an App Store privacy manifest wrote "
+                         "PrivacyInfo.xcprivacy into the exported Xcode project by hand, which the next export replaces.",
+        "text_at_issue": "native_plugins description 'privacy_manifest: the composed Apple PrivacyInfo.xcprivacy (engine + "
+                         "apple.privacy_* + plugin manifests)'; the apple.privacy_* settings' descriptions",
+        "source": "mobile-shipping spec (Doriax catch-up): the iOS privacy manifest; no transcript",
+        "prompt": "Our iOS game shows ads from an SDK that tracks users through ads.example.com. Set up the App Store "
+                  "privacy manifest for it.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "apple.privacy_tracking: false (bool) Privacy manifest NSPrivacyTracking: the app or its SDKs track users. "
+                "apple.privacy_tracking_domains: [] (list) NSPrivacyTrackingDomains. apple.privacy_collected_data: [] (list) "
+                "[{type, linked?, tracking?, purposes}]. apple.privacy_accessed_apis: [] (list) [{type, reasons}]. Added to the "
+                "engine's own entries; iOS and macOS. Undoable.",
+                {"settings": {"apple.privacy_tracking": False, "apple.privacy_tracking_domains": [],
+                              "apple.privacy_collected_data": [], "apple.privacy_accessed_apis": []}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["apple.privacy_tracking", "apple.privacy_tracking_domains"]})},
+            {"tool": "native_plugins", "result": ok(
+                "iOS privacy manifest: 3 API type(s), tracking on (1 domain(s)), 0 collected data type(s), 0 plugin manifest(s).",
+                {"platform": "ios", "tracking": True, "tracking_domains": ["ads.example.com"], "warnings": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"apple.privacy_tracking": True}}}],
+                   "edits_must_not": [r"PrivacyInfo\.xcprivacy$"], "shell_must_not": [r"PrivacyInfo\.xcprivacy"]},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_shader_list_incomplete",
         "kind": "bad",
         "what_happened": "get_build_info hands the closed scenes it has no time for to a job and answers with the list so far "

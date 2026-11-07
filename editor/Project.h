@@ -40,6 +40,7 @@
 #include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
+#include "util/ApplePrivacy.h"
 #include "window/SpriteNormalsWindowSettings.h"
 #include "input/InputActions.h"
 #include "shader/ShaderGlobals.h"
@@ -727,9 +728,6 @@ namespace jasperengine::editor{
         bool hideStatusBar = true;
         bool hideHomeIndicator = true;
         bool supportsHighRefreshRate = true;
-        // Google Mobile Ads is linked only when enabled
-        bool admobEnabled = false;
-        std::string admobAppId;
         // S30: the team that signs a device build, and the archive's export method
         std::string teamId;
         std::string exportMethod = "development";   // development, ad-hoc, app-store
@@ -769,9 +767,6 @@ namespace jasperengine::editor{
         AndroidInternetAccess internetAccess = AndroidInternetAccess::Auto;
         bool allowBackup = true;
         bool fullscreen = true;
-        // Google Mobile Ads is compiled in only when enabled
-        bool admobEnabled = false;
-        std::string admobAppId;
         // S30: a prebuilt player's package (androidFormatName: aab, the default; apk-per-abi; or
         // apk, the universal APK of every selected ABI), and the release keystore (its passwords
         // are never saved: the build asks, or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS);
@@ -787,13 +782,6 @@ namespace jasperengine::editor{
         std::string manifestXml;               // raw XML inside <manifest>, before <application>
         std::string manifestApplicationXml;    // raw XML inside <application>
     };
-
-    // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
-    inline constexpr const char* androidSampleAdMobAppId = "ca-app-pub-3940256099942544~3347511713";
-    inline constexpr const char* iosSampleAdMobAppId = "ca-app-pub-3940256099942544~1458002511";
-
-    // ca-app-pub-<publisher>~<app>; ad unit ids have a slash instead
-    bool isAdMobAppIdValid(const std::string& value);
 
     struct ComponentRecoveryEntry {
         Entity entity;
@@ -950,6 +938,8 @@ namespace jasperengine::editor{
         WindowsProjectSettings windowsProjectSettings;
         MacOSProjectSettings macOSProjectSettings;
         IOSProjectSettings iosProjectSettings;
+        // the project's additions to the Apple privacy manifest (iOS and macOS): apple.privacy
+        ApplePrivacy::Manifest applePrivacy;
         AndroidProjectSettings androidProjectSettings;
         CommandHistory projectHistory;
         uint64_t selectionGesture = 1;
@@ -1756,6 +1746,9 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> getBuildScriptDirs() const;
         // plugins/native/cpp has C++ sources (the Play library is built for them)
         bool hasNativeCppPlugins() const;
+        // The engine API sync leaves out SDK bundles (.framework, .xcframework, .bundle): their
+        // headers are no engine API
+        static bool isEngineApiSkippedDir(const std::filesystem::path& dir);
 
         void setCxxStandard(int standard);
         int getCxxStandard() const;
@@ -1960,6 +1953,10 @@ namespace jasperengine::editor{
         const MacOSProjectSettings& getMacOSProjectSettings() const;
         IOSProjectSettings& getIOSProjectSettings();
         const IOSProjectSettings& getIOSProjectSettings() const;
+        // Project Settings > Player > iOS / macOS > Privacy Manifest: what the game adds to the
+        // engine's PrivacyInfo.xcprivacy (ApplePrivacy::compose); edit with ApplePrivacySettingsCmd
+        const ApplePrivacy::Manifest& getApplePrivacy() const;
+        void setApplePrivacy(const ApplePrivacy::Manifest& privacy);
         AndroidProjectSettings& getAndroidProjectSettings();
         const AndroidProjectSettings& getAndroidProjectSettings() const;
 

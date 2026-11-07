@@ -36,14 +36,6 @@
 
 #import "ios/EngineView.h"
 
-// Google Mobile Ads is linked only when the project enables AdMob
-#ifdef JASPERENGINE_ADMOB
-#import "ios/AdMobAdapter.h"
-
-static AdMobAdapter* admob = nil;
-#define JASPERENGINE_IOS_ADMOB 1
-#endif
-
 // The text input lives on the view, which owns the hidden text field
 static EngineView* appleEngineView(){
     MTKView* view = Renderer.view;
@@ -74,21 +66,7 @@ static void setAppleCursorHidden(bool hidden){
 }
 #endif
 
-#if TARGET_OS_IPHONE && !defined(JASPERENGINE_IOS_ADMOB)
-static void warnNoAdMob(){
-    static bool warned = false;
-    if (!warned){
-        warned = true;
-        jasperengine::Log::warn("AdMob is not in this build: enable Google AdMob in Project Settings > Player > iOS");
-    }
-}
-#endif
-
 JasperEngineApple::JasperEngineApple(){
-#if defined(JASPERENGINE_IOS_ADMOB)
-    if (!admob)
-        admob = [[AdMobAdapter alloc]init];
-#endif
 }
 
 JasperEngineApple::~JasperEngineApple(){
@@ -96,9 +74,6 @@ JasperEngineApple::~JasperEngineApple(){
     CGAssociateMouseAndMouseCursorPosition(true);
     appleMouseLocked = false;
     setAppleCursorHidden(false);
-#endif
-#if defined(JASPERENGINE_IOS_ADMOB)
-    admob = nil;
 #endif
 }
 
@@ -372,7 +347,7 @@ std::string JasperEngineApple::getShaderPath(){
 
 namespace {
 
-    // standardUserDefaults is shared with the app's SDKs (AdMob / UMP consent, IABTCF_* strings):
+    // standardUserDefaults is shared with the app's SDKs (ads consent: UMP, IABTCF_* strings):
     // deleteAll must only remove the game's keys. The engine keeps their names in this list:
     // every key it writes, and every key of an older build the game reads back. Other SDKs'
     // keys are never adopted from a read, only when the game itself writes one.
@@ -586,56 +561,6 @@ void JasperEngineApple::removeAllKeys(){
 
 void JasperEngineApple::saveUserSettings(){
     [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-void JasperEngineApple::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
-#if defined(JASPERENGINE_IOS_ADMOB)
-    [admob initializeAdMob: tagForChildDirectedTreatment and:tagForUnderAgeOfConsent];
-#elif TARGET_OS_IPHONE
-    warnNoAdMob();
-#endif
-}
-
-void JasperEngineApple::setMaxAdContentRating(jasperengine::AdMobRating rating){
-    int irating = 0;
-    if (rating == jasperengine::AdMobRating::General){
-        irating = 1;
-    }else if (rating == jasperengine::AdMobRating::ParentalGuidance){
-        irating = 2;
-    }else if (rating == jasperengine::AdMobRating::Teen){
-        irating = 3;
-    }else if (rating == jasperengine::AdMobRating::MatureAudience){
-        irating = 4;
-    }
-#if defined(JASPERENGINE_IOS_ADMOB)
-    [admob setMaxAdContentRating: irating];
-#elif TARGET_OS_IPHONE
-    warnNoAdMob();
-#endif
-}
-
-void JasperEngineApple::loadInterstitialAd(const std::string& adUnitID){
-#if defined(JASPERENGINE_IOS_ADMOB)
-    [admob loadInterstitial:[NSString stringWithUTF8String:adUnitID.c_str()]];
-#elif TARGET_OS_IPHONE
-    warnNoAdMob();
-#endif
-}
-
-bool JasperEngineApple::isInterstitialAdLoaded(){
-#if defined(JASPERENGINE_IOS_ADMOB)
-    return [admob isInterstitialAdLoaded];
-#else
-    return false;
-#endif
-}
-
-void JasperEngineApple::showInterstitialAd(){
-#if defined(JASPERENGINE_IOS_ADMOB)
-    [admob showInterstitial];
-#elif TARGET_OS_IPHONE
-    warnNoAdMob();
-#endif
 }
 
 // ------------------------------------------------------------------ platform services
