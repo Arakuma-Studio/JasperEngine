@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PositionTween.h"
+#include "component/PositionTweenComponent.h"
 
 using namespace jasperengine;
 

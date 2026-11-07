@@ -152,10 +152,24 @@ Allocators are serial-use (one user at a time, asserted in builds with assertion
 the memory they hold under AddressSanitizer. Each registers a record in `memory::snapshot()`
 with its kind (Arena, Pool, Range, Tracked), residency (Cpu, Gpu, Mapped), current bytes,
 peak, capacity and count. Readers never lock: each record is a seqlock. Tracked by default:
-`Texture.GPU`, `Texture.RenderTargets`, `Mesh.GPUBuffers`, `Lua.Heap`,
-`Physics.JoltTempAllocator`, `Jobs.Slabs`, `Jobs.Queues`, the scratch arenas and `Engine.FrameArena.*`.
+`Texture.GPU`, `Texture.RenderTargets`, `Mesh.GPUBuffers`, `Lua.Heap`, `Animation.Clips`,
+`Physics.JoltTempAllocator`, `Jobs.Slabs`, `Jobs.Queues`, the scratch arenas, `Engine.FrameArena.*`
+and `Render.PipelineDescs` (the base pipeline descriptions render objects share: one per distinct
+shader and vertex layout, however many objects draw with it).
 For std containers, use `ArenaAllocator<T>`. `std::pmr` is outside the portable C++20 subset
 (S01).
+
+Components hold what they use: a mesh's submeshes, external buffers and bone palette, a sprite's
+and a Points' frames, a Sprite Animation's frames and a tilemap's tiles and rects are arrays that
+grow when an index past their end is written (`GrowArray`, `StableArray`; a submesh never moves
+while its mesh lives), with no capacity; `ARRAY_INDEX_LIMIT` (65,536) only refuses absurd indices.
+A mesh without a skin has no bone palette. The Systems window and `get_ecs_stats` (`element_bytes`,
+`heap_bytes` per type) show what each component type takes.
+
+After a scene load, a Play Stop and a scene close, the engine gives the heap's free pages back to the
+system (`memory::requestHeapTrim`: one Background-lane job; glibc Linux `malloc_trim`, macOS and
+iOS `malloc_zone_pressure_relief`, Android 9+ `mallopt(M_PURGE)`; nothing on the web, where linear
+memory cannot shrink, nor on Windows).
 
 ## Tools
 

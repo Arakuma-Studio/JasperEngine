@@ -7,17 +7,14 @@
 #include "SubSystem.h"
 
 
-#include "component/MeshComponent.h"
-#include "component/ModelComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/MeshPolygonComponent.h"
-#include "component/CameraComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/TerrainComponent.h"
-#include "component/TilemapComponent.h"
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Ray.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
 #include "texture/TexturePack.h"
+#include "subsystem/GltfNormalize.h"
 
 #include "jobs/JobSystem.h"
 
@@ -26,6 +23,14 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
+#include "io/watch/FileIdentity.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
+#include "util/OutOfLineValue.h"
 
 namespace tinygltf {
     struct Accessor;
@@ -36,6 +41,10 @@ namespace tinygltf {
 }
 
 namespace jasperengine{
+
+    struct InstanceData;
+    struct Submesh;
+    struct TerrainFoliageLayer;
 
     class JASPERENGINE_API MeshSystem : public SubSystem {
 
@@ -64,6 +73,10 @@ namespace jasperengine{
             std::string loadedMeshPath;
             bool loadFailed = false;
             float chunkSize = 0; //the size the slot coordinates are in
+            // the scaled distances the slots were filled for: a slot past the span keeps its
+            // instances and fade, so a new distance (the quality scale too) refills every slot
+            float appliedDrawDistance = -1.0f;
+            float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
         };
@@ -96,8 +109,8 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
-        // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
-        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
+        static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
@@ -122,8 +135,8 @@ namespace jasperengine{
         static void applyDefaultObjMaterial(Submesh& submesh);
         std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
-        // false as well when the view has no buffer to add; capacityReached: the mesh has no room for it
-        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached);
+        // false as well when the view has no buffer to add
+        bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
@@ -147,8 +160,6 @@ namespace jasperengine{
             const char* name = "";
         };
         bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
-        // one warning per extension a model uses and the engine does not read (an error when required)
-        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -186,11 +197,17 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
+        // generated code hold them too (the editor applies them on load and before a save)
+        static void applyTerrainMapSettings(TerrainComponent& terrain);
 
         // What each generator makes of its mesh before filling the geometry: the submesh
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // How many joints the skinned vertices name: their largest bone id plus one (0 without
+        // skinned vertices). A palette shorter than that is read past its end
+        static size_t skinJointCount(MeshComponent& mesh);
         static void prepareMeshPolygonMesh(MeshComponent& mesh);
         static void prepareTilemapMesh(MeshComponent& mesh);
         // Both terrain submeshes (full and half resolution) draw with this layout
@@ -232,7 +249,7 @@ namespace jasperengine{
         void createCylinder(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createCapsule(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createTorus(MeshComponent& mesh, float radius=1, float ringRadius=0.5, unsigned int sides=36, unsigned int rings=16);
-        bool canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh, std::string* reason = nullptr) const;
+        bool canMergeStaticModel(const ModelComponent& model, std::string* reason = nullptr) const;
         bool canEditModelHierarchy(const ModelComponent& model, std::string* reason = nullptr) const;
         // Whether a part or local group can move without breaking the model's animation.
         bool canEditModelPart(const ModelComponent& model, Entity part, std::string* reason = nullptr) const;
@@ -252,9 +269,20 @@ namespace jasperengine{
         // relative; from a project since moved, the longest tail of it that names a file in
         // assetsRoot. Any other id is returned unchanged.
         static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
+        // The file a reader loads for a model (S53 R12, every parse site asks here): its cooked
+        // .glb when there is one (CookedModels: the export's index, the editor's cook cache),
+        // else an FBX's imported .glb, else the file itself. A cooked .glb keeps the source's
+        // image URIs: they resolve against the source's directory.
+        static std::string getImportedModelPath(const std::string& filename);
         // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
         // next to the FBX in an exported game (<name>.fbx.glb)
-        static std::string getImportedModelPath(const std::string& filename);
+        static std::string getFbxImportPath(const std::string& filename);
+        // Parses a model file through getImportedModelPath (a cooked .glb or an FBX's import is
+        // read instead, with texture and buffer URIs still relative to the source): every glTF
+        // parse site goes through it
+        static bool readGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // readGLTFFile, then normalizeGLTF: the model as core glTF
+        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the
@@ -282,6 +310,10 @@ namespace jasperengine{
         // (animation clips spec 9.R13) while the entities that use it, not reloaded, keep showing
         // their images. A later invalidateModelFile still drops those images.
         static void invalidateModelParse(const std::string& filename);
+
+        // the name of the buffers a load appends to a pooled parse (converted, baked copies): not
+        // the file's, so they stay when the file's bytes are released (ModelCpuData)
+        static constexpr const char* kSyntheticBufferName = "JasperEngineSynthetic";
 
         // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
         // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too
@@ -322,6 +354,8 @@ namespace jasperengine{
         static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
+        // an EXT_mesh_gpu_instancing node's copies as the entity's instances (S53 R3)
+        void applyGLTFInstances(Entity entity, const std::vector<GltfInstance>& instances);
         void removeInstancedMesh(Entity entity);
         bool hasInstancedMesh(Entity entity) const;
 

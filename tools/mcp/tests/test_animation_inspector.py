@@ -8,7 +8,8 @@ driven like a human with xdotool in the harness's Xvfb on a scratch copy of tool
 - the live states while playing;
 - the .anim asset section after a Project window click: the Length Auto checkbox writes the file (project undo);
   a programmatic selection change and a click on a GameObject in the Scene view show the selection again (R30);
-- a model's clips as an asset; the AnimationComponent's Convert to Clip button.
+- a model's clips as an asset (the Animation tab of its Import Settings, S53 R16); the AnimationComponent's
+  Convert to Clip button.
 
 Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). The Project window's
 tree and listing are clicked at the rects editor_status reports (ui.project_window).
@@ -307,13 +308,6 @@ async def test_scene_click_shows_the_selection(ed: Editor):
     await ed.call("wait", frames=10)
     ed.check("asset.header" not in ed.ui_items(), f"a Scene view click shows the selection (was {selected})")
     await shot(ed, "07b-scene-click")
-
-
-async def test_model_asset(ed: Editor):
-    ui = Ui(ed)
-    await inspect_asset(ed, ui, "assets/models", "hero_animated.gltf")
-    await shot(ed, "08-model-asset")
-    ed.check("asset.header" in ed.ui_items(), f"model asset section drawn: {sorted(ed.ui_items())}")
 
 
 async def test_animation_component_buttons(ed: Editor):

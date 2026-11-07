@@ -150,6 +150,15 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
   the path from the root (results always show `path`).
 
+## What a clip costs
+
+`get_animation {clip, max_keys: 1}` and `get_asset_info {path}` (under `clip`) return `stats`:
+`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s` and
+`constant_tracks` (tracks of several keys that never move). Asking does not keep the clip loaded.
+Across the project: `get_memory_stats {prefix: "Animation.Clips"}` is what is loaded now, and
+`get_frame_times {monitors: ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms",
+"Anim Wave ms", "Anim Finalize ms", "Clip memory"]}` what the Animators cost per frame.
+
 ## Channels and keys
 
 edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead of `value`):
@@ -271,6 +280,28 @@ An event with no subscriber and no method logs a warning once in play mode; `bin
 through `setmetatable(T, {__index = Base})` / `setmetatable({}, Base)` count, with `Base` in the
 script or from `require`).
 
+## Audio cues
+
+To play a sound at a clip time, give the clip `audio` cues, not an event plus a Lua `Audio.play`:
+cues need no script and start on the exact sample of the crossing. Each cue has `time` and exactly
+one of:
+
+| key | plays | other keys |
+|---|---|---|
+| `sound` | an audio clip or a `.soundevent` (project path or GUID) as its own voice | `spatial: true` + `path` (a GameObject under the root it follows; `""` the root), `volume_db` (-60..12), `pitch_semitones` (-24..24), `group` (a mixer group; default the event's, else Master) |
+| `source` | `play()` of the AudioSource at that path (its clip or event, group, 3D settings): its `audiosource.volume/speed/pan` property tracks shape it | |
+| `snapshot` | the project mixer's snapshot of that name | `seconds` (transition), `unscaled` |
+
+Common keys: `stop` (`none`, the default, plays to its end; `state_exit` stops it with a 10 ms
+fade when its state stops, is left or finishes fading out), `follow_speed` (the state's speed
+also scales the pitch), `name`. `events_mode` applies to `audio` too (`merge`: same time and kind
+replaced). Cues fire with events' rules (Animation Player states, the Animator's leader clip per
+layer, montages; never in edit-mode previews). A clip with cues is saved as version 3.
+`get_animation {clip}` lists `audio: [{index, time, kind, sound {path, guid}, length, ...}]`
+(`length`: the sound's seconds, for placing an end). A cue that does not resolve warns once per
+Play (`Audio: cue 2 of ...: Body/LeftFoot binds nothing`). Recipes: jasper://docs/sound (Timeline
+audio).
+
 ## The Animation Player
 
 Component `animationplayer` (Add Component > Animation > Animation Player). Properties:
@@ -390,18 +421,19 @@ player beside an Animator hands over to it, so scripts written for upstream keep
 |---|---|
 | `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create` | clip-file settings: pass `clip` |
 | `tracks[].path` | clip binding: pass `clip`; scene tracks use `target` |
+| `audio[].source`, `audio[].stop`, `audio[].follow_speed` | clip cue keys: an audio action lasts its frame (`duration`) |
 
 Clip mode arguments: `clip`, `create` (`{}` a new file; `{from: <entity Animation>}` converts
 its keyframe tracks into the file and gives the Animation's target, or `root`, an Animation
 Player playing it, and `remove_tracks: true` also removes the converted tracks from the
 Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
-file), `tracks`, `events`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
+file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
 `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 
 Results: `{clip, created, read_only, length, explicit_length, wrap, frame_rate, tracks: [{index,
-path, channel, key_count, keys, loop, relative, points?}], events, preview_model?, source?,
+path, channel, key_count, keys, loop, relative, points?}], events, audio?, preview_model?, source?,
 changes, warnings, users, users_total?, bindings?}`. `users` lists the Animation Player entries
 in open scenes and loaded prefabs that play the file (`{scene, entity, entry, state}`; a prefab
 user is `{prefab, entry}`; at most 50, `users_total` counts them all; closed scenes are not
@@ -419,7 +451,8 @@ changed it (else the file stays and the console says so).
 - glTF/FBX animations are read-only clips named `<model>#<animation>`
   (`assets/models/hero.gltf#Walk`; `#Animation <i>` for unnamed ones (`#<i>` is accepted too),
   `"Walk 2"` for a duplicate name). Reference them in `clips` like files; read them with
-  `get_animation {clip}` (`get_asset_info` on the model lists the animations). To edit one,
+  `get_animation {clip}` (`get_asset_info` on the model lists the animations, each with its
+  `keys` and `runtime_bytes`). To edit one,
   extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from:
   "assets/models/hero.gltf#Walk"}, root: "Hero"}`. With `root` whose Animation Player lists the
   model clip, those entries switch to the new file (state names kept) in the same call, one
@@ -517,7 +550,13 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
+the actions end), `autoplay`, `speed` set the Animation. `audio: [{time, sound | snapshot, path,
+duration, lane, volume_db, pitch_semitones, group, spatial, seconds, name}]` creates audio actions
+(an action GameObject with an AudioSource playing the clip or `.soundevent`) and Mixer Snapshot
+actions at frame start `time`; `path` names the action's target (where a `spatial` one plays);
+`duration` 0 is the sound's length (a snapshot's: `seconds`), a shorter one cuts it. They start
+once per loop pass, placed to the sample, and stop with the Animation; `remove_actions` removes
+them; `get_animation` lists them as `audio[]` with their frame `index`. One scene undo step per call.
 
 ## Common mistakes
 

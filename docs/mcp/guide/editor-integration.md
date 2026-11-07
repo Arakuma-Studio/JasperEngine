@@ -189,7 +189,7 @@ project, or empty the trash.
 
 `list_shortcuts {group?, context?, conflicts_only?}` is the command catalog: each command's
 `chords`, `default_chords`, `context` (`global`, `editor`, `scene_view`, `hierarchy`,
-`project`, `console`, `animation`, `pose_animation`), `menu_path` and the `menu_shortcut` its menu item shows, and
+`project`, `console`, `animation`, `pose_animation`, `curve`, `color_picker`), `menu_path` and the `menu_shortcut` its menu item shows, and
 `conflicts` / `shadowed_by` (a Global or Editor key over a window's own). `set_shortcut {id,
 chords}` rebinds (`[]` unbinds, `null` resets); a chord another command has in the same context
 fails unless `force: true`, which takes it from that command. Rebindings are the user's, in

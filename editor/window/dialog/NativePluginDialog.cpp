@@ -10,8 +10,10 @@
 #include "util/FileUtils.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <cstdio>
+#include <sstream>
 #include <cstring>
 
 using namespace jasperengine::editor;
@@ -100,7 +102,7 @@ void NativePluginDialog::show() {
     }
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(560.0f), 0.0f), ImGuiCond_Appearing);
     bool open = true;
-    if (!ImGui::BeginPopupModal(title, &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!EditorModal::begin(title, &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
         if (!open) m_isOpen = false;
         return;
     }
@@ -111,6 +113,8 @@ void NativePluginDialog::show() {
         return;
     }
 
+    EditorModal::message("Writes the plugin's file for each platform into plugins/native and a Lua mock into the Lua folder (native_mocks), "
+                         "which answers Native.call in editor Play and desktop builds. methods: names, comma-separated (async ones: name:async).");
     ImGui::TextWrapped("Writes the plugin's file for each platform into plugins/native and a Lua mock into the Lua folder "
                        "(native_mocks), which answers Native.call in editor Play and desktop builds.");
     ImGui::Separator();
@@ -123,18 +127,18 @@ void NativePluginDialog::show() {
     };
     label("Name");
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText("##NativePluginName", m_name, sizeof(m_name), ImGuiInputTextFlags_CallbackCharFilter, identifierFilter);
+    EditorModal::inputText("##NativePluginName", "name", m_name, sizeof(m_name), ImGuiInputTextFlags_CallbackCharFilter, identifierFilter);
 
     label("Platforms");
-    ImGui::Checkbox("Android", &m_android);
+    EditorModal::checkbox("Android", "android", &m_android);
     ImGui::SameLine();
-    ImGui::Checkbox("iOS", &m_ios);
+    EditorModal::checkbox("iOS", "ios", &m_ios);
     ImGui::SameLine();
-    ImGui::Checkbox("macOS", &m_macos);
+    EditorModal::checkbox("macOS", "macos", &m_macos);
     ImGui::SameLine();
-    ImGui::Checkbox("Web", &m_web);
+    EditorModal::checkbox("Web", "web", &m_web);
     ImGui::SameLine();
-    ImGui::Checkbox("C++", &m_cpp);
+    EditorModal::checkbox("C++", "cpp", &m_cpp);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A C++ plugin answers everywhere first: it is compiled only where no platform plugin of the name is chosen here.");
     }
@@ -142,20 +146,37 @@ void NativePluginDialog::show() {
     ImGui::BeginDisabled(!m_android);
     label("Android language");
     ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    EditorModal::enumField("android_language", m_androidLanguage, {androidLanguages[0], androidLanguages[1]});
     ImGui::Combo("##NativePluginAndroidLanguage", &m_androidLanguage, androidLanguages, 2);
     label("Java package");
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText("##NativePluginPackage", m_package, sizeof(m_package), ImGuiInputTextFlags_CallbackCharFilter, packageFilter);
+    EditorModal::inputText("##NativePluginPackage", "java_package", m_package, sizeof(m_package), ImGuiInputTextFlags_CallbackCharFilter, packageFilter);
     ImGui::EndDisabled();
 
     ImGui::BeginDisabled(!m_ios && !m_macos);
     label("Apple language");
     ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    EditorModal::enumField("apple_language", m_appleLanguage, {appleLanguages[0], appleLanguages[1]});
     ImGui::Combo("##NativePluginAppleLanguage", &m_appleLanguage, appleLanguages, 2);
     ImGui::EndDisabled();
 
     ImGui::Separator();
     ImGui::TextUnformatted("Methods");
+    {
+        std::string methods;
+        for (const Method& method : m_methods) methods += (methods.empty() ? "" : ",") + std::string(method.name) + (method.async ? ":async" : "");
+        if (EditorModal::field("methods", methods)) {
+            m_methods.clear();
+            std::stringstream list(methods);
+            for (std::string item; std::getline(list, item, ',');) {
+                Method method;
+                const size_t mark = item.find(":async");
+                method.async = mark != std::string::npos;
+                std::snprintf(method.name, sizeof(method.name), "%s", item.substr(0, mark).c_str());
+                m_methods.push_back(method);
+            }
+        }
+    }
     int remove = -1;
     for (size_t i = 0; i < m_methods.size(); i++) {
         ImGui::PushID(static_cast<int>(i));
@@ -180,7 +201,7 @@ void NativePluginDialog::show() {
         ImGui::TextDisabled("Files:");
         for (const std::string& path : planned) ImGui::BulletText("%s", path.c_str());
     }
-    ImGui::Checkbox("Replace existing files", &m_overwrite);
+    EditorModal::checkbox("Replace existing files", "replace_existing", &m_overwrite);
     if (!invalid.empty()) ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", invalid.c_str());
     if (!m_error.empty()) {
         ImGui::PushTextWrapPos(0.0f);
@@ -191,15 +212,16 @@ void NativePluginDialog::show() {
     // like native_plugins: its C++ joins the Play library at the next Play
     const bool playing = m_project && m_project->isAnyScenePlaying();
     if (playing) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Stop Play mode to create a native plugin.");
+    EditorModal::error(!invalid.empty() ? invalid : !m_error.empty() ? m_error : playing ? std::string("Stop Play mode to create a native plugin.") : std::string());
     const float buttonWidth = Theme::dpi(120.0f);
     ImGui::BeginDisabled(!invalid.empty() || playing);
-    if (ImGui::Button("Create", ImVec2(buttonWidth, 0.0f))) {
+    if (EditorModal::button("Create", "ok", ImVec2(buttonWidth, 0.0f))) {
         create();
         if (!m_isOpen) ImGui::CloseCurrentPopup();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }

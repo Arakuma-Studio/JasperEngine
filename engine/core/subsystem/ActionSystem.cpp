@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ActionSystem.h"
+#include "component/CanvasGroupComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -9,10 +10,16 @@
 #include "util/Angle.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/KeyframeSampling.h"
+#include "component/AnimationPlayerComponent.h"
+#include "profiler/Profile.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "lattice/LatticeSolver.h"
 #include "subsystem/UISystem.h"
+#include "audio/AudioMixer.h"
+#include "audio/TimelineAudio.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -21,6 +28,9 @@
 #include <unordered_set>
 
 using namespace jasperengine;
+
+// the loop-end tests' slack (S40 R20): seconds of float error a frame end summed over a pass may carry
+static constexpr float kLoopEndTolerance = 1e-5f;
 
 ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
@@ -32,6 +42,7 @@ ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
 void ActionSystem::actionStart(Entity entity, bool newRun){
     ActionComponent& action = scene->getComponent<ActionComponent>(entity);
     Signature signature = scene->getSignature(entity);
+    const ActionState before = action.state;
 
     // a paused action resumes where it was, a new run starts from the target's current pose
     if (action.state == ActionState::Stopped && newRun){
@@ -39,6 +50,8 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
             for (ActionFrame& frame : animcomp->actions){
                 frame.started = false;
             }
+            // a new pass: its audio and snapshot frames start again (S40 R20)
+            animcomp->pass++;
         }
 
         KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
@@ -57,6 +70,10 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
     }
     signature = scene->getSignature(entity);
     const Entity target = started->target;
+
+    if (isTimelineAudioAction(entity)){
+        startTimelineAudio(entity, *started, before);
+    }
 
     // Reset blend weight to full when an animation starts without a pending fade
     // (a fade-in sets weight/fadeSpeed before triggering start, so preserve those).
@@ -143,8 +160,12 @@ void ActionSystem::actionStop(Entity entity){
         animcomp->stopOnFadeOut = false;
     }
 
+    const bool timelineAudio = isTimelineAudioAction(entity);
     actionComponentStop(*action);
     animationStopChildren(animationChildren);
+    if (timelineAudio && scene->isEntityCreated(entity)){
+        stopTimelineAudio(entity);
+    }
 
     if (!scene->isEntityCreated(entity)){
         return;
@@ -201,6 +222,11 @@ void ActionSystem::actionPause(Entity entity){
 
     actionComponentPause(*action);
     animationPauseChildren(animationChildren);
+#if JASPERENGINE_SOUND_LAYER
+    if (scene->isEntityCreated(entity) && isTimelineAudioAction(entity)){
+        TimelineAudio::pauseSource(scene, entity);
+    }
+#endif
 
     if (ActionComponent* paused = scene->findComponent<ActionComponent>(entity)){
         if (isParticleController(entity, *paused)){
@@ -215,6 +241,132 @@ void ActionSystem::actionComponentPause(ActionComponent& action){
 
     StructuralDeferScope deferScope(*scene);
     action.onPause.call();
+}
+
+// ---------------------------------------------------------------- the legacy timeline's sound (S40)
+
+bool ActionSystem::isTimelineAudioAction(Entity entity){
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return false;
+    const Signature signature = scene->getSignature(entity);
+    if (!signature.test(scene->getComponentId<ActionComponent>())) return false;
+    if (!signature.test(scene->getComponentId<AudioSourceComponent>()) && !signature.test(scene->getComponentId<AudioSnapshotComponent>())) return false;
+    return !signature.test(scene->getComponentId<TweenComponent>()) && !signature.test(scene->getComponentId<SpriteAnimationComponent>()) &&
+           !signature.test(scene->getComponentId<AnimationComponent>()) && !signature.test(scene->getComponentId<KeyframeTracksComponent>());
+}
+
+void ActionSystem::startTimelineAudio(Entity entity, ActionComponent& action, ActionState before){
+#if JASPERENGINE_SOUND_LAYER
+    if (timelinePreview) return;
+    const TimelineStartContext context = timelineStart.active ? timelineStart : TimelineStartContext();
+    TimelineCueInfo info;
+    info.timeline = "actions";
+    info.scene = scene;
+    info.player = context.animation != NULL_ENTITY ? context.animation : entity;
+    info.clip = scene->getEntityName(info.player);
+    info.cue = context.frame;
+    info.position = context.startTime;
+    const Entity target = action.target;
+    // speed: the source's own (applied by the audio), times the action's and its animation's (R21)
+    const float speedScale = action.speed * (context.active ? context.speedScale : 1.0f);
+    if (scene->findComponent<AudioSourceComponent>(entity)){
+        if (before == ActionState::Paused){
+            // a resume plays on from where it held, whatever this frame's placement (R19)
+            TimelineAudio::startSource(scene, entity, 0, speedScale, target, info);
+        }else{
+            const uint32_t delay = context.active ? context.delay : 0;
+            TimelineAudio::logStart(info, "source", scene->getEntityName(entity), delay);
+            TimelineAudio::startSource(scene, entity, delay, speedScale, target, info);
+        }
+    }
+    if (AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entity)){
+        if (before != ActionState::Paused && !snapshot->snapshot.empty()){
+            snapshot->previousSnapshot = AudioMixer::getCurrentSnapshot();
+            TimelineAudio::logStart(info, "snapshot", snapshot->snapshot, 0);
+            const bool applied = TimelineAudio::transition(snapshot->snapshot, snapshot->seconds,
+                                                           snapshot->unscaled ? std::optional<bool>(true) : std::nullopt, info);
+            // the transition can run Lua (none today), so the component is found again
+            if (AudioSnapshotComponent* current = scene->findComponent<AudioSnapshotComponent>(entity)) current->applied = applied;
+        }
+    }
+#else
+    (void)entity;
+    (void)action;
+    (void)before;
+#endif
+}
+
+void ActionSystem::stopTimelineAudio(Entity entity){
+#if JASPERENGINE_SOUND_LAYER
+    if (timelinePreview) return;
+    // the frames an explicit duration cuts stopped at their end already: what still plays when the
+    // Animation ends by itself is an auto-length frame's sound, which ends by itself too
+    if (scene->findComponent<AudioSourceComponent>(entity) && !animationEndingNaturally) TimelineAudio::stopSource(scene, entity);
+    AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entity);
+    if (!snapshot || !snapshot->applied) return;
+    snapshot->applied = false;
+    // back to what was there, only while the mixer still shows this action's snapshot (R18)
+    if (snapshot->revert && !snapshot->previousSnapshot.empty() && AudioMixer::getCurrentSnapshot() == snapshot->snapshot){
+        TimelineCueInfo info;
+        info.timeline = "actions";
+        info.scene = scene;
+        info.player = entity;
+        info.clip = scene->getEntityName(entity);
+        const float seconds = snapshot->revertSeconds >= 0.0f ? snapshot->revertSeconds : snapshot->seconds;
+        TimelineAudio::transition(snapshot->previousSnapshot, seconds, snapshot->unscaled ? std::optional<bool>(true) : std::nullopt, info);
+    }
+#else
+    (void)entity;
+#endif
+}
+
+void ActionSystem::animationAudioFrames(Entity entity, double dt, float advance, int& passed, float& actionsEnd, bool afterWrap){
+    ActionComponent* parent = scene->findComponent<ActionComponent>(entity);
+    AnimationComponent* anim = scene->findComponent<AnimationComponent>(entity);
+    if (!parent || !anim) return;
+    for (size_t i = 0; i < anim->actions.size(); i++){
+        const Entity child = anim->actions[i].action;
+        if (!isTimelineAudioAction(child)) continue;
+        ActionComponent* iaction = scene->findComponent<ActionComponent>(child);
+        const float childSpeed = iaction->speed > 0.0f ? iaction->speed : 1.0f;
+        const float T = parent->timecount;
+        const float startTime = anim->actions[i].startTime;
+        // E: where its frame ends on the animation's time line
+        const float end = startTime + getFrameDuration(anim->actions[i]) / childSpeed;
+        actionsEnd = std::max(actionsEnd, end);
+        if (T - startTime > end - startTime - kLoopEndTolerance) passed++;
+
+        if (T + kLoopEndTolerance >= end){
+            // an explicit duration ended: it stops (a shorter one cuts the sound); an auto-length
+            // frame's sound ends by itself (a Sound Event's random pitch may make it longer)
+            if (anim->actions[i].duration > 0.0f && iaction->state != ActionState::Stopped) actionStop(child);
+        }else if (anim->actions[i].audioPass != anim->pass && startTime < T + advance){
+            // once per pass, placed where the animation's time reaches its start this frame (R21)
+            anim->actions[i].audioPass = anim->pass;
+            anim->actions[i].started = true;
+            const ActionState state = iaction->state;
+            if (state == ActionState::Running || state == ActionState::Paused) actionStop(child);
+            if (scene->isEntityCreated(child) && scene->findComponent<ActionComponent>(child)){
+                timelineStart.active = true;
+#if JASPERENGINE_SOUND_LAYER
+                // the fraction of this update before the animation reaches it, of the update's own span
+                timelineStart.delay = startTime > T && advance > 0.0f ? TimelineAudio::delayFrames((startTime - T) / advance, dt) : 0;
+#endif
+                timelineStart.speedScale = parent->speed;
+                timelineStart.animation = entity;
+                timelineStart.frame = (int)i;
+                timelineStart.startTime = startTime;
+                actionStart(child, true);
+                timelineStart = TimelineStartContext();
+            }
+        }else if (anim->actions[i].audioPass == anim->pass && iaction->state == ActionState::Paused && !afterWrap && startTime <= T){
+            // the animation resumed: so does its sound
+            actionStart(child, false);
+        }
+        // the callbacks may have changed the frames or the components
+        parent = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+        anim = parent ? scene->findComponent<AnimationComponent>(entity) : nullptr;
+        if (!anim) return;
+    }
 }
 
 void ActionSystem::actionUpdate(double dt, ActionComponent& action){
@@ -258,10 +410,21 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
     ActionComponent* parent = &action;
     AnimationComponent* anim = &animcomp;
 
+    // audio and snapshot frames start once per pass, placed inside the frame (S40 R20)
+    const float advance = (float)(dt * parent->speed);
+    animationAudioFrames(entity, dt, advance, totalActionsPassed, actionsEnd, false);
+    parent = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+    anim = parent ? scene->findComponent<AnimationComponent>(entity) : nullptr;
+    if (!anim) return;
+
     for (size_t i = 0; i < anim->actions.size(); i++){
 
         float timeDiff = parent->timecount - anim->actions[i].startTime;
         Entity child = anim->actions[i].action;
+
+        if (child == NULL_ENTITY || !scene->isEntityCreated(child) || isTimelineAudioAction(child)){
+            continue;
+        }
 
         Signature isignature = scene->getSignature(child);
 
@@ -295,7 +458,8 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
                 float frameDuration = getFrameDuration(anim->actions[i]) / iaction->speed;
                 actionsEnd = std::max(actionsEnd, anim->actions[i].startTime + frameDuration);
 
-                if (timeDiff > frameDuration) {
+                // a whole number of frames summed in floats must not wrap a frame late (S40 R20)
+                if (timeDiff > frameDuration - kLoopEndTolerance) {
                     totalActionsPassed++;
                 }
             }
@@ -306,21 +470,40 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 
     bool actionsPassed = totalActionsPassed == (int)anim->actions.size();
     // timecount already runs at the action's speed
-    bool durationPassed = anim->duration >= 0 && parent->timecount >= anim->duration;
+    bool durationPassed = anim->duration >= 0 && parent->timecount + kLoopEndTolerance >= anim->duration;
 
     if (actionsPassed || durationPassed) {
         if (!anim->loop) {
             animationApplyEnd(*parent, *anim, durationPassed);
+            animationEndingNaturally = true;
             actionStop(entity);
+            animationEndingNaturally = false;
         }else{
             float loopDuration = durationPassed ? anim->duration : actionsEnd;
 
+            // the audio of this pass ends before the wrap (S40 R20)
+            for (const ActionFrame& frame : std::vector<ActionFrame>(anim->actions)){
+                if (frame.action == NULL_ENTITY || !scene->isEntityCreated(frame.action) || !isTimelineAudioAction(frame.action)) continue;
+                const ActionComponent* child = scene->findComponent<ActionComponent>(frame.action);
+                if (child && child->state != ActionState::Stopped) actionStop(frame.action);
+            }
+            parent = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+            anim = parent ? scene->findComponent<AnimationComponent>(entity) : nullptr;
+            if (!anim) return;
+
             // keep the overshoot, or the cycle gets longer at lower frame rates
-            if (loopDuration > 0 && parent->timecount >= loopDuration){
+            if (loopDuration > 0 && parent->timecount + kLoopEndTolerance >= loopDuration){
                 parent->timecount = std::fmod(parent->timecount, loopDuration);
+                // wrapped by the tolerance: the start of the next pass
+                if (parent->timecount + kLoopEndTolerance >= loopDuration) parent->timecount = 0;
             }else{
                 parent->timecount = 0;
             }
+            anim->pass++;
+            // the frames at the loop's start are placed in this update, as the clip cues of a loop are
+            int ignoredPassed = 0;
+            float ignoredEnd = 0.0f;
+            animationAudioFrames(entity, dt, advance, ignoredPassed, ignoredEnd, true);
         }
     }
 }
@@ -1113,6 +1296,19 @@ float ActionSystem::getDuration(Entity entity, int depth) {
             totalMs += spriteanim->framesTime[i];
         }
         duration = totalMs / 1000.0f;
+    } else if (isTimelineAudioAction(entity)) {
+        // an audio action lasts its sound at its source's speed, a snapshot action its transition (S40 R21)
+        if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(entity)) {
+#if JASPERENGINE_SOUND_LAYER
+            const AssetRef& sound = audio->event.empty() ? audio->filename : audio->event;
+            const double length = TimelineAudio::soundLength(sound.guid.isNull() ? sound.path : sound.guid.str());
+            duration = audio->speed > 0.0f ? (float)(length / audio->speed) : (float)length;
+#else
+            duration = audio->speed > 0.0f ? (float)(audio->length / audio->speed) : (float)audio->length;
+#endif
+        } else if (const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(entity)) {
+            duration = std::max(0.0f, snapshot->seconds);
+        }
     } else if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)) {
         // a particle system's controller: one cycle of a looping effect (timeline wrapping),
         // else until its last particle dies
@@ -1209,6 +1405,14 @@ ActionComponent* ActionSystem::actionStateChange(Entity entity, ActionComponent&
 }
 
 void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponent& action){
+#if JASPERENGINE_SOUND_LAYER
+    // an audio action ends with its sound, so its onStop fires (S40 R21)
+    if (!timelinePreview && isTimelineAudioAction(entity) && scene->findComponent<AudioSourceComponent>(entity) &&
+        !TimelineAudio::isSourcePlaying(scene, entity)){
+        actionStop(entity);
+        return;
+    }
+#endif
     Signature signature = scene->getSignature(entity);
     Signature targetSignature;
     if (action.target != NULL_ENTITY){
@@ -1405,6 +1609,7 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
     // Drives one or more top-level animations into a single pose-blend scope so
     // concurrently running clips crossfade (used by the editor transition preview).
     clearPoseBlend();
+    timelinePreview = true;
 
     std::unordered_set<Entity> visitedAnimations;
 
@@ -1469,6 +1674,7 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
     }
 
     flushPoseBlend();
+    timelinePreview = false;
 }
 
 void ActionSystem::updateActionPreview(double dt, Entity entity){
@@ -1483,6 +1689,7 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
         return;
     }
 
+    timelinePreview = true;
     ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
     if (action && action->state == ActionState::Running){
@@ -1491,6 +1698,7 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
         processRunningAction(dt, entity, *action);
         flushPoseBlend();
     }
+    timelinePreview = false;
 }
 
 // The unscaled frame delta of an update given the scaled one. While the time scale is above 0
@@ -1568,11 +1776,16 @@ void ActionSystem::update(double dt){
 
 	}
 
-    // Animation Players add their states to the same blend
-    updatePlayers(dt);
-
-    // Write the blended (weighted-average) pose to each animated target.
-    flushPoseBlend();
+    // Animation Players add their states to the same blend; then write the blended
+    // (weighted-average) pose to each animated target
+    if (scene->getComponentArray<AnimationPlayerComponent>()->size() > 0){
+        // the profiler's Animation band: this time is not the Scripts of Update
+        JE_PROFILE_SCOPE("Animation");
+        updatePlayers(dt);
+        flushPoseBlend();
+    }else{
+        flushPoseBlend();
+    }
     poseBlendScope = false;
     // the writes that run onEnable / onDisable, now that a callback may sample a player
     applyDeferredPropertyWrites();

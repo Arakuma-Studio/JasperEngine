@@ -68,8 +68,28 @@ async def test_create_from_templates(ed: Editor):
         errors = [e for e in console.get("entries", []) if e.get("level") == "error"]
         ed.check(not errors, f"{template} loads without errors: {errors[:5]}")
         project = yaml.safe_load((target / "project.yaml").read_text())
+        # a template with no audio node of its own starts as any new project (S38 R8)
+        ed.check_eq(project.get("audio", {}).get("outputStage"), "linear", f"{template}: the new-project audio")
+        mixer = project["audio"]["mixer"]
+        ed.check((target / project.get("assetsDir", ".") / mixer).is_file(), f"{template}: {mixer}")
         ed.check(project.get("versionControl", {}).get("lfs", False) is True or "lfs: true" in (target / "project.yaml").read_text(),
                  f"{template}: a new project gets Git LFS (S29 R21)")
+        # mesh detail levels are on in every new project, with the cross-fade (S54 R1, AC9)
+        lod_keys = ["mesh_lod_enabled", "mesh_lod_cross_fade", "mesh_lod_cross_fade_duration"]
+        lod = (await ed.call("get_scene_settings", names=lod_keys))["settings"]
+        ed.check_eq([lod["mesh_lod_enabled"], lod["mesh_lod_cross_fade"]], [True, True], f"{template}: LOD and Cross Fade on")
+        ed.check(abs(lod["mesh_lod_cross_fade_duration"] - 0.5) < 1e-6, f"{template}: Cross-fade Duration 0.5 s: {lod}")
+        if template == "3d":
+            await ed.call("set_scene_settings", settings={"mesh_lod_cross_fade": False, "mesh_lod_cross_fade_duration": 1.25})
+            changed = (await ed.call("get_scene_settings", names=lod_keys))["settings"]
+            ed.check_eq(changed["mesh_lod_cross_fade"], False)
+            ed.check(abs(changed["mesh_lod_cross_fade_duration"] - 1.25) < 1e-6, f"{changed}")
+            await ed.call("undo")
+            undone = (await ed.call("get_scene_settings", names=lod_keys))["settings"]
+            ed.check_eq([undone["mesh_lod_cross_fade"], undone["mesh_lod_cross_fade_duration"]], [True, 0.5],
+                        "one undo step restores both settings")
+            biases = (await ed.call("get_project_settings", keys=["quality.lod_bias", "quality.shadow_lod_bias"]))["settings"]
+            ed.check_eq([biases["quality.lod_bias"], biases["quality.shadow_lod_bias"]], [1.0, 1.0], "the LOD biases' defaults")
         names = [n["name"] for n in tree["nodes"]]
         if template == "empty":
             ed.check("Directional Light" not in names and "Skybox" not in names, f"empty: only a camera: {names}")

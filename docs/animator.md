@@ -177,6 +177,12 @@ Completely stops them. **Write Bones: Exposed** writes only the bones listed (an
 attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
 per frame (see `docs/perf/animator.md`).
 
+What it costs right now: Window > Analysis > Profiler shows the Animator under the **Animation**
+band of CPU Usage, and its monitors `Animators`, `Animators sampled`, `Animators culled`,
+`Anim Prepare ms`, `Anim Wave ms`, `Anim Finalize ms` and `Clip memory` (`get_frame_times {monitors}`
+for agents). Prepare and Finalize are main thread time; Wave is the wall time of the parallel update.
+`Animation.Clips` in Jobs & Memory counts the clips loaded now.
+
 ## Files
 
 `.controller` and `.mask` are JSON version 2, `.montage` version 1 (`"format":

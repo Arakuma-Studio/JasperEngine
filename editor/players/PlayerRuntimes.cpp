@@ -73,6 +73,7 @@ bool PlayerInfo::fromJson(const std::string& text, PlayerInfo& out, std::string&
         info.engineVersion = in.value("engineVersion", "");
         info.gitSha = in.value("gitSha", "");
         info.contentFormatVersion = in.value("contentFormatVersion", "");
+        info.modelCookFormats = in.value("modelCookFormats", std::vector<int>{});
         info.capacities = in.value("capacities", std::map<std::string, unsigned int>{});
         info.features = in.value("features", std::vector<std::string>{});
         info.variant = in.value("variant", std::string("full"));
@@ -98,7 +99,8 @@ std::string PlayerInfo::toJson() const {
     out["engineVersion"] = engineVersion;
     out["gitSha"] = gitSha;
     out["contentFormatVersion"] = contentFormatVersion;
-    out["capacities"] = capacities;
+    out["modelCookFormats"] = modelCookFormats;
+    if (!capacities.empty()) out["capacities"] = capacities;
     out["features"] = features;
     out["variant"] = variant;
     out["notices"] = notices;
@@ -151,7 +153,7 @@ const std::vector<PlayerVariant>& PlayerRuntimes::variants() {
         }
         std::stable_partition(out.begin(), out.end(), [](const PlayerVariant& v) { return v.suffix.empty(); });
         if (out.empty() || !out.front().suffix.empty())
-            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation"}});
+            out.insert(out.begin(), PlayerVariant{"full", "", {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer"}});
         return out;
     }();
     return list;
