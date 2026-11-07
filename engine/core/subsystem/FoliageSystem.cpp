@@ -2158,6 +2158,26 @@ void FoliageSystem::update(double dt) {
     drawables = any;
     if (onTreeHit.empty() == contactsConnected) updateContactSubscription();
 
+    // A prototype whose mesh loads after its cells were listed (its shaders still building) draws
+    // nothing until the views look again; a still camera's signature would not make them (R9)
+    uint64_t loaded = FNV1A64_SEED;
+    const auto mixLoaded = [&](Entity entity) {
+        const MeshComponent* mesh = entity != NULL_ENTITY ? scene->findComponent<MeshComponent>(entity) : nullptr;
+        const uint8_t state = mesh && mesh->loaded ? 1 : 0;
+        loaded = fnv1a64(&state, sizeof(state), loaded);
+    };
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        for (const DetailLayerState& layer : region->layers) mixLoaded(layer.entity);
+        for (const TreePrototypeState& prototype : region->prototypes) {
+            for (Entity lod : prototype.lods) mixLoaded(lod);
+            mixLoaded(prototype.impostor);
+        }
+    }
+    if (loaded != loadedSignature) {
+        loadedSignature = loaded;
+        residencyRevision++;
+    }
+
     uint64_t cpuBytes = 0;
     uint64_t gpuBytes = 0;
     for (const std::unique_ptr<RegionState>& region : impl->regions) {

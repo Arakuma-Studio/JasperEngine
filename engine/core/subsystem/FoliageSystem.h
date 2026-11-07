@@ -301,6 +301,7 @@ namespace jasperengine {
         void reportMemory(uint64_t cpuBytes, uint64_t gpuBytes);
         uint64_t reportedCpuBytes = 0;
         uint64_t reportedGpuBytes = 0;
+        uint64_t loadedSignature = 0;
         bool contactsConnected = false;
 
         struct Impl;
