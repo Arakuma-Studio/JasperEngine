@@ -1958,6 +1958,37 @@ CASES = [
         "max_turns": 6,
     },
     {
+        "id": "guard_focus_graph_editor",
+        "kind": "guard",
+        "what_happened": "The Graph Editor (S90) shows a graph to a watching human. Without its enum value the schema says it "
+                         "cannot be named; without path, the agent can only show whatever graph was open last.",
+        "text_at_issue": "focus_window's window enum: 'graph_editor', and its path parameter",
+        "source": "S90 M2 (s90-canvas) and its review (I6); no failure on record",
+        "prompt": "Open assets/materials/Wood.procmat in the editor's Graph Editor so I can look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "graph_editor", "path": "assets/materials/Wood.procmat"},
+             "result": ok("Focused the Graph Editor window.", {"window": "graph_editor", "graph": "assets/materials/Wood.procmat"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor", "path": "re:Wood\\.procmat"}}],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_focus_particle_effect",
+        "kind": "guard",
+        "what_happened": "S91 added the Particle Effect window; focus_window's enum names it so an agent showing a human an "
+                         "effect brings that window up instead of a screenshot or the Inspector.",
+        "text_at_issue": "focus_window's window enum: 'particle_effect'",
+        "source": "S91 (new window); no failure on record",
+        "prompt": "Bring the Particle Effect window to the front, I want to watch the effect's timing with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "particle_effect"},
+             "result": ok("Focused the Particle Effect window.", {"window": "particle_effect"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "particle_effect"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
         "id": "guard_patch_did_you_mean",
         "kind": "guard",
         "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "

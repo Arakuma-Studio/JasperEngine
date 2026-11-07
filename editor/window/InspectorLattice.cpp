@@ -83,6 +83,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TweenComponent.h"
 #include "component/TranslateTracksComponent.h"
+#include "component/Transform.h"
 #include "component/MorphTracksComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"

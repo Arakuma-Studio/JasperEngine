@@ -6,6 +6,8 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/GraphEditorWindow.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
@@ -1568,6 +1570,19 @@ void focusWindowTool(const CallPtr& call) {
         // it shows the selected GameObject's controller (or the .controller opened last)
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
+    } else if (window == "particle_effect") {
+        // it shows the .particles or the subtree opened last
+        app.getParticleEffectWindow()->setOpen(true);
+        imguiName = ParticleEffectWindow::WINDOW_NAME;
+    } else if (window == "graph_editor") {
+        // `path` opens that graph (as a double-click on it does); without it, the one open
+        GraphEditorWindow* graphs = app.getGraphEditorWindow();
+        if (args.contains("path") && !graphs->openGraph(args.value("path", std::string()))) {
+            call->fail("path: " + graphs->getStatus() + ".");
+            return;
+        }
+        graphs->setOpen(true);
+        imguiName = GraphEditorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1616,13 +1631,17 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals.");
+                   "vertex_animation_baker, sprite_normals, graph_editor.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
         call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("path") && window != "graph_editor") {
+        call->fail("path: only for window \"graph_editor\".");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -1640,6 +1659,11 @@ void focusWindowTool(const CallPtr& call) {
                                 {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "graph_editor") {
+                const auto& document = call->ctx().app().getGraphEditorWindow()->getDocument();
+                data["graph"] = document ? Json(document->projectPath()) : Json();
+                if (!document) data["next"] = "No graph is open: focus_window {window: \"graph_editor\", path} opens one.";
+            }
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
             if (window == "profiler") {
                 const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
@@ -2089,22 +2113,24 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
+            "Open and bring an editor panel to the front, e.g. for a watching human. Not needed for "
+            "screenshot. console: returns its rows, categories and selection; preferences: opens a page; "
+            "systems: returns each row's Enabled rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
+                                       "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
-                {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
+                {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Select the row of this message id (as a click).")}
+                {"select", integer("Click this message id's row.")}
             })},
-            {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
+            {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"path", string("graph_editor: file to open")},
             {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;

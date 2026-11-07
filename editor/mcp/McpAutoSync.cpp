@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "graph/GraphDocument.h"
 #include "graph/GraphRegistry.h"
 #include "vat/VatDocument.h"
 #include "util/FileUtils.h"
@@ -409,6 +410,10 @@ void McpAutoSync::prepare(McpContext& ctx) {
         });
         // and .vat documents' (Inspector edits of a Vertex Animation)
         VatDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+        // and graph files' (the Graph Editor's steps, their undo and redo)
+        GraphDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
             w4::syncFiles(*target, changed, false);
         });
     }

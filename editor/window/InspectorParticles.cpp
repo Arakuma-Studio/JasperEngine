@@ -11,6 +11,7 @@
 // effect's edit changes that GameObject only; a multi-selection takes the same change.
 
 #include "InspectorWindow.h"
+#include "ParticleModuleRows.h"
 #include "widget/ColorField.h"
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
@@ -18,6 +19,8 @@
 #include "App.h"
 #include "Backend.h"
 #include "Catalog.h"
+#include "EditorHost.h"
+#include "Out.h"
 #include "Project.h"
 #include "Widgets.h"
 #include "Theme.h"
@@ -67,6 +70,21 @@ namespace {
         std::set<std::string>* expanded = nullptr;
         bool changed = false;
         bool commit = false;
+        // the fields that are not their defaults (marked), and those a label's menu reset this frame
+        std::set<std::string> nonDefault;
+        std::vector<std::string> resets;
+        // the UI probe's names of the value widgets ("<probe>.<field path>"), empty for none
+        std::string probe;
+        // the curve field that opened the Curve window this frame
+        bool curveOpened = false;
+        std::string curveField;
+        CurveDriver curveDriver = CurveDriver::NormalizedAge;
+        void curveBegan(editor::ui::EditPhase phase, const std::string& path, CurveDriver driver) {
+            if (phase != editor::ui::EditPhase::Begin) return;
+            curveOpened = true;
+            curveField = path;
+            curveDriver = driver;
+        }
 
         // a field window's phase (S27 FieldEdit.h): its session in this history, its values
         // merged into the step, a one-go change its own step
@@ -107,6 +125,36 @@ namespace {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(label.c_str());
         if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+        if (indent > 0) ImGui::Unindent(indentWidth() * indent);
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+    }
+
+    // A field's label cell: marked when the value is not its default (Unity's override bar), with
+    // Reset on a right-click
+    void effectFieldLabel(FieldUi& ui, const FieldDesc& f, const std::string& path, int indent) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        if (indent > 0) ImGui::Indent(indentWidth() * indent);
+        const bool marked = ui.nonDefault.count(path) > 0;
+        // the bar inside the cell (the table clips what is left of it), the label after it
+        const float bar = editor::Theme::dpi(2.0f);
+        if (marked) {
+            const ImVec2 at = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + bar, at.y + ImGui::GetFrameHeight()), ImGui::GetColorU32(ImGuiCol_CheckMark));
+        }
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + bar * 3.0f);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(f.label);
+        if (ImGui::IsItemHovered()) {
+            if (f.tooltip && marked) ImGui::SetTooltip("%s\n(changed from the default: right-click to reset)", f.tooltip);
+            else if (f.tooltip) ImGui::SetTooltip("%s", f.tooltip);
+            else if (marked) ImGui::SetTooltip("Changed from the default: right-click to reset");
+        }
+        if (marked && ImGui::BeginPopupContextItem("##field_menu")) {
+            if (ImGui::MenuItem("Reset")) ui.resets.push_back(path);
+            ImGui::EndPopup();
+        }
         if (indent > 0) ImGui::Unindent(indentWidth() * indent);
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(-FLT_MIN);
@@ -211,12 +259,13 @@ namespace {
     }
 
     void drawMinMaxCurve(FieldUi& ui, const FieldDesc& f, MinMaxCurve& value, const std::string& id, int indent) {
-        labelCell(f.label, f.tooltip, indent);
+        effectFieldLabel(ui, f, id, indent);
         editor::ui::CurveFieldOptions options;
         options.range = particleRange(value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr);
         options.label = f.label;
         const editor::ui::EditPhase phase = editor::ui::minMaxCurveField(id.c_str(), value, options);
         ui.phase(phase, f.label);
+        ui.curveBegan(phase, id, value.driver);
         // the curve's driver below it
         if (value.usesCurve()) drawDriver(ui, value, indent + 1);
     }
@@ -230,7 +279,7 @@ namespace {
     }
 
     void drawMinMaxGradient(FieldUi& ui, const FieldDesc& f, MinMaxGradient& value, const std::string& id, int indent) {
-        labelCell(f.label, f.tooltip, indent);
+        effectFieldLabel(ui, f, id, indent);
         editor::ui::GradientFieldOptions options;
         options.label = f.label;
         ui.phase(editor::ui::minMaxGradientField(id.c_str(), value, options), f.label);
@@ -309,7 +358,7 @@ namespace {
         ImGui::PushID(id.c_str());
         switch (f.type) {
             case FieldType::Bool: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 bool v = *static_cast<bool*>(p);
                 if (ImGui::Checkbox("##v", &v)) {
                     *static_cast<bool*>(p) = v;
@@ -318,7 +367,7 @@ namespace {
                 break;
             }
             case FieldType::Int: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 int& v = *static_cast<int*>(p);
                 const bool clamp = ranged(f);
                 const bool edited = ImGui::DragInt("##v", &v, 0.2f, clamp ? (int)f.minValue : 0, clamp ? (int)f.maxValue : 0, "%d",
@@ -327,7 +376,7 @@ namespace {
                 break;
             }
             case FieldType::UInt: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 uint32_t& v = *static_cast<uint32_t*>(p);
                 const uint32_t lo = f.minValue > 0.0f ? (uint32_t)f.minValue : 0u;
                 const uint32_t hi = f.maxValue < 4.0e9f ? (uint32_t)f.maxValue : 0xffffffffu;
@@ -336,43 +385,43 @@ namespace {
                 break;
             }
             case FieldType::Float: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 ui.track(dragFloat("##v", static_cast<float*>(p), f));
                 break;
             }
             case FieldType::Enum: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 uint8_t& v = *static_cast<uint8_t*>(p);
                 if (enumCombo("##v", f.options, f.optionCount, v)) ui.track(true, true);
                 break;
             }
             case FieldType::Mask: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 drawMask(ui, *static_cast<uint32_t*>(p));
                 break;
             }
             case FieldType::Vector2: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat2("##v", &static_cast<Vector2*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
             case FieldType::Vector3: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat3("##v", &static_cast<Vector3*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
             case FieldType::Vector4: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat4("##v", &static_cast<Vector4*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
             case FieldType::Color: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 colorRow(ui, "##v", *static_cast<Vector4*>(p), f.label);
                 break;
             }
             case FieldType::String: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 std::string& v = *static_cast<std::string*>(p);
                 if (f.flags & FieldFlag_AssetPath) {
                     drawAssetPath(ui, v, guid);
@@ -392,16 +441,18 @@ namespace {
                 drawMinMaxGradient(ui, f, *static_cast<MinMaxGradient*>(p), id, indent);
                 break;
             case FieldType::Curve: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 Curve& curve = *static_cast<Curve*>(p);
                 editor::ui::CurveFieldOptions options;
                 options.range = particleRange(curve, nullptr);
                 options.label = f.label;
-                ui.phase(editor::ui::curveField(id.c_str(), curve, options), f.label);
+                const editor::ui::EditPhase phase = editor::ui::curveField(id.c_str(), curve, options);
+                ui.phase(phase, f.label);
+                ui.curveBegan(phase, id, CurveDriver::NormalizedAge);
                 break;
             }
             case FieldType::Gradient: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 Gradient& gradient = *static_cast<Gradient*>(p);
                 editor::ui::GradientFieldOptions options;
                 options.label = f.label;
@@ -409,12 +460,12 @@ namespace {
                 break;
             }
             case FieldType::Struct: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 if (f.element) drawStruct(ui, *f.element, p, id, indent + 1, Pass::All);
                 break;
             }
             case FieldType::Array: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 const size_t count = f.array.size(p);
                 ImGui::Text("%zu", count);
                 ImGui::SameLine();
@@ -443,7 +494,7 @@ namespace {
                 break;
             }
             case FieldType::IntArray: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 std::vector<int>& v = *static_cast<std::vector<int>*>(p);
                 ImGui::Text("%zu", v.size());
                 ImGui::SameLine();
@@ -471,7 +522,7 @@ namespace {
                 break;
             }
             case FieldType::StringArray: {
-                labelCell(f.label, f.tooltip, indent);
+                effectFieldLabel(ui, f, id, indent);
                 std::vector<std::string>& v = *static_cast<std::vector<std::string>*>(p);
                 ImGui::Text("%zu", v.size());
                 ImGui::SameLine();
@@ -503,6 +554,7 @@ namespace {
                 break;
             }
         }
+        if (!ui.probe.empty()) editor::UIProbe::item(ui.probe + "." + id);
         ImGui::PopID();
     }
 
@@ -601,6 +653,49 @@ namespace {
         ImGui::EndTable();
     }
 
+    // the module's section of the docs, in the browser
+    void helpButton(const ModuleDesc& module) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        const bool clicked = ImGui::Button(ICON_FA_CIRCLE_QUESTION "##module_help");
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open the %s documentation", module.label);
+        if (clicked) {
+            const std::string url = editor::particlerows::moduleHelpUrl(module);
+            auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
+            if (!openInShell || !openInShell(ImGui::GetCurrentContext(), url.c_str())) {
+                editor::Out::warning("Could not open your browser. Visit %s", url.c_str());
+            }
+        }
+    }
+
+    // A module header's right-click menu: Reset, Copy Module, Paste Module, Paste Values (and Remove
+    // Module, which the caller does: true when it was picked)
+    bool moduleMenu(FieldUi& ui, ParticleEffectDocument& edited, const ModuleDesc& module, const char* id) {
+        bool remove = false;
+        if (!ImGui::BeginPopupContextItem(id)) return false;
+        if (ImGui::MenuItem("Reset") && editor::particlerows::resetModule(edited, module.id)) ui.track(true, true);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Copy Module")) ImGui::SetClipboardText(editor::particlerows::copyModule(edited, module.id).c_str());
+        const char* clipboard = ImGui::GetClipboardText();
+        const std::string text = clipboard ? clipboard : "";
+        const ModuleDesc* copied = editor::particlerows::clipboardModule(text);
+        std::string error;
+        if (ImGui::MenuItem(copied ? (std::string("Paste Module (") + copied->label + ")").c_str() : "Paste Module", nullptr, false, copied != nullptr)) {
+            if (editor::particlerows::pasteModule(edited, text, false, &error)) ui.track(true, true);
+        }
+        if (ImGui::MenuItem("Paste Values", nullptr, false, copied == &module)) {
+            if (editor::particlerows::pasteModule(edited, text, true, &error)) ui.track(true, true);
+        }
+        if (!error.empty()) editor::Out::warning("Particle module: %s", error.c_str());
+        if (!module.alwaysPresent) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("Remove Module")) remove = true;
+        }
+        ImGui::EndPopup();
+        return remove;
+    }
+
     // The whole effect: Main always open, a foldout per present module with its checkbox,
     // Add Module, the exposed parameters. Edits go into `edited`; `ui` says what happened.
     void drawEffectDocument(FieldUi& ui, ParticleEffectDocument& edited, const std::string& prefix) {
@@ -609,6 +704,7 @@ namespace {
 
         // Main: the effect's own settings and the Main module, always open
         ImGui::SeparatorText(mainModule.label);
+        moduleMenu(ui, edited, mainModule, "##main_menu");
         beginRows(prefix + "_main", labelSize);
         drawStruct(ui, ParticleModules::documentFields(), &edited, "effect", 0, Pass::Basic);
         drawStruct(ui, mainModule.fields, mainModule.module(edited), mainModule.key, 0, Pass::Basic);
@@ -640,11 +736,7 @@ namespace {
             const float rightEdge = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
             const bool open = ImGui::TreeNodeEx("##module", flags, "%s", "");
             if (module.tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", module.tooltip);
-            bool remove = false;
-            if (!module.alwaysPresent && ImGui::BeginPopupContextItem("##module_menu")) {
-                if (ImGui::MenuItem("Remove Module")) remove = true;
-                ImGui::EndPopup();
-            }
+            bool remove = moduleMenu(ui, edited, module, "##module_menu");
             ImGui::SameLine(ImGui::GetTreeNodeToLabelSpacing());
             if (module.hasEnable) {
                 bool enabled = module.isEnabled(edited);
@@ -657,6 +749,8 @@ namespace {
                 ImGui::SameLine();
             }
             ImGui::TextUnformatted(module.label);
+            ImGui::SameLine(std::max(0.0f, rightEdge - trashWidth() * (module.alwaysPresent ? 1.0f : 2.0f)));
+            helpButton(module);
             if (!module.alwaysPresent) {
                 ImGui::SameLine(std::max(0.0f, rightEdge - trashWidth()));
                 bool clicked = false;
@@ -699,6 +793,17 @@ namespace {
                 if (module.tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", module.tooltip);
             }
             if (!any) ImGui::TextDisabled("Every module is in the list");
+            // a copied module the effect lacks comes in as it was
+            const char* clipboard = ImGui::GetClipboardText();
+            const std::string text = clipboard ? clipboard : "";
+            const ModuleDesc* copied = editor::particlerows::clipboardModule(text);
+            if (copied && !copied->isPresent(edited)) {
+                ImGui::Separator();
+                if (ImGui::MenuItem((std::string("Paste Module (") + copied->label + ")").c_str()) &&
+                    editor::particlerows::pasteModule(edited, text, false)) {
+                    ui.track(true, true);
+                }
+            }
             ImGui::EndPopup();
         }
 
@@ -711,6 +816,31 @@ namespace {
         }
     }
 
+}
+
+void editor::particlerows::drawEffect(EffectRows& rows, ParticleEffectDocument& edited) {
+    FieldUi ui;
+    ui.project = rows.project;
+    ui.history = rows.history;
+    ui.expanded = rows.expanded;
+    ui.nonDefault = nonDefaultFields(edited);
+    ui.probe = UIProbe::enabled() ? rows.prefix : std::string();
+    drawEffectDocument(ui, edited, rows.prefix);
+    // a label's Reset is a change of its own, one step
+    for (const std::string& path : ui.resets) {
+        if (resetField(edited, path)) ui.track(true, true);
+    }
+    rows.changed = rows.changed || ui.changed;
+    rows.commit = rows.commit || ui.commit;
+    if (ui.curveOpened) {
+        rows.curveOpened = true;
+        rows.curveField = ui.curveField;
+        rows.curveDriver = ui.curveDriver;
+    }
+}
+
+void editor::particlerows::drawDiagnostics(const std::vector<Diagnostic>& diagnostics) {
+    ::drawDiagnostics(diagnostics);
 }
 
 // The history step of the last edit, kept merging until the edit ends (a drag released)
@@ -793,6 +923,12 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Writes the effect to a .particles file in the assets folder and plays it from there");
     }
 
+    if (entities.size() == 1) {
+        if (anyAsset || anyInline) ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_FIRE " Open in Particle Effect")) getEditorHost().openParticleEffectSubtree(sceneProject->id, entities[0]);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("This GameObject's Particle Systems, and those below it, as one effect: outline, timing, preview");
+    }
+
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
     if (!ParticleEffectEdit::read(*first, document, &diagnostics)) {
@@ -802,11 +938,12 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     drawDiagnostics(diagnostics);
 
     ParticleEffectDocument edited = document;
-    FieldUi ui;
+    particlerows::EffectRows ui;
     ui.project = project;
     ui.history = CommandHandle::get(sceneProject->id);
     ui.expanded = &particleExpanded;
-    drawEffectDocument(ui, edited, "particle");
+    ui.prefix = "particle";
+    particlerows::drawEffect(ui, edited);
 
     if (ui.changed) {
         const nlohmann::ordered_json patch = ParticleEffectEdit::diff(ParticleEffectCodec::toKeyedJson(document), ParticleEffectCodec::toKeyedJson(edited));
@@ -1077,11 +1214,12 @@ void editor::InspectorWindow::drawParticleAssetInspector() {
     if (!readable) return;
 
     ParticleEffectDocument edited = document;
-    FieldUi ui;
+    particlerows::EffectRows ui;
     ui.project = project;
     ui.history = project->getProjectCommandHistory();
     ui.expanded = &particleExpanded;
-    drawEffectDocument(ui, edited, "particle_asset");
+    ui.prefix = "particle_asset";
+    particlerows::drawEffect(ui, edited);
 
     CommandHistory* history = project->getProjectCommandHistory();
     if (ui.changed) {

@@ -586,6 +586,35 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   in a game calls them; a player's size was not measured (AC18's check is M6's).
 - **Not run.** Vulkan (lavapipe) and any hardware GPU: the GPU tests ran on glcore only. Tier selection,
   the CPU tier's evaluator, MCP tools and the window are later milestones.
+### M2 (s90-canvas): the graph-editing foundation
+
+- **R26, the window for every kind.** The foundation is a window of its own, **Graph Editor**
+  (Window > Assets > Graph Editor, `focus_window graph_editor`), which opens a file of any
+  registered kind no other window claims; the Procedural Material window is a subclass with its own
+  name and kind (`GraphEditorWindow`'s protected virtuals: thumbnails, cost, preview pane, toolbar
+  extras, kind problems, change hooks). Until a kind registers, only the test kind reaches it.
+- **Groups and comments.** The model has groups (drawn around their members, a press on the title
+  drags them) and no comments, so the canvas draws none.
+- **Dirty state.** None, as every asset window: an edit is written at once as one GraphEditCmd
+  step; a field's drag folds through its session (the Animator rule).
+- **R30.** A node without a position is a model state (`graph::Node::placed`): saved without a
+  position, so editors keep laying it out until a move or the `layout` op places it. Opening never
+  writes. `layout {ids?}` is in `graph::apply` (so `edit_graph` takes it); its text in
+  `edit_graph`'s description is left to M6's budget pass, only its error lists it.
+- **Search entries.** `NodeTypeDesc::aliases` is new (kinds fill it from Material Maker's
+  aliases). Enum values are entries only once the user types, so the unfiltered list stays one row
+  per node type.
+- **Ramps.** Gradient and curve parameters are `ParamDesc` kinds `gradient` and `curve` in Material
+  Maker's JSON shapes. The Gradient Editor's key limit is a field option (32 for a graph, 8 stays
+  the default); a graph gradient whose colour and alpha keys sit at more than 32 places is refused
+  with a status line, since a file point holds both. Interpolations 2 and 3 show as Blend and are
+  kept unless the mode is changed.
+- **Review round 1.** The window's edits follow `edit_graph`'s rule: an edit (a paste, a value, a
+  wire) that adds an error issue is refused, and a pasted node takes only its type, place and
+  values from the clipboard. `layout` spaces each node by its port rows (`LAYOUT_ROW` 180 plus 20
+  per row), room for a 112-unit image. `focus_window` takes `path` for `graph_editor`, so an agent
+  can show a human a given graph. A Preset saved from a 32-key graph ramp still reloads as 8 keys
+  (the swatch library's gradients are the particles' format); that stays for M4.
 
 ### M4 agent side (s90-bake)
 
@@ -620,8 +649,7 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
 - **R8, until s90-tiers.** The tier a result names comes from the device's name only (llvmpipe, lavapipe,
   softpipe, SwiftShader and the Windows and Apple software renderers are `software`): `ProceduralRun::editorTier`.
   Vulkan's `deviceType` and the CPU tier are s90-tiers'.
-- **R33.** `search` matches words in a type's id, display name and category; aliases join when the graph
-  window's `NodeTypeDesc::aliases` does. A kind of more than 40 types lists its categories without a filter.
+- **R33.** `search` matches words in a type's id, display name, category and aliases (`NodeTypeDesc::aliases`). A kind of more than 40 types lists its categories without a filter.
   An unknown id in `ids` is an error that names `search`.
 - **R34.** No `as` parameter: an image's role is its import type (normal, single channel as a height, else
   base colour). `submesh` defaults to 0.

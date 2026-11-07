@@ -5,6 +5,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
+#include "graph/GraphEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
@@ -4982,6 +4983,10 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         editor::getEditorHost().openInputActions(filePath);
     } else if (file.type == FileType::COLOR_LUT) {
         assignColorLut(filePath);  // the open scene's Color Grading LUT
+    } else if (Util::isParticleEffectFile(filePath.string()) && project->isInsideAssetsPath(filePath)) {
+        // the Particle Effect window on it (S91); a single click still shows it in the Inspector
+        // and the context menu has Open as Text
+        editor::getEditorHost().openParticleEffect(project->normalizeToAssetsRelative(filePath).generic_string());
     } else if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(filePath.string())) {
         // Unity: selected and shown in the Inspector (the context menu has Open as Text)
         selectedFiles.clear();
@@ -4994,6 +4999,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
+    } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
+        // a graph kind's file: the window of its kind (S90 R26)
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);

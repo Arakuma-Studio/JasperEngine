@@ -24,7 +24,11 @@ namespace jasperengine::graph {
 
     struct ParamDesc {
         std::string name;
-        std::string kind;                    // float, int, bool, string, enum, vector2, vector3, color, asset, any
+        // float, int, bool, string, enum, vector2, vector3, color ({r, g, b, a} or [r, g, b, a],
+        // as shown: sRGB), asset ({guid, path}), gradient ({points: [{pos, r, g, b, a}],
+        // interpolation 0 constant, 1 linear, 2 and 3 smooth}), curve ({points: [{x, y, ls, rs}]},
+        // the slopes left and right of each point), any
+        std::string kind;
         Json defaultValue;
         std::optional<double> min;
         std::optional<double> max;
@@ -35,6 +39,7 @@ namespace jasperengine::graph {
         std::string id;
         std::string category;
         std::string displayName;
+        std::vector<std::string> aliases;    // other names a search finds it by
         std::vector<Port> ports;             // the static ports (passthrough unused)
         std::vector<ParamDesc> params;
         // set for dynamic-port types: the ports a node with these params has; such nodes store

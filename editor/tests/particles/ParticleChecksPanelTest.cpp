@@ -14,6 +14,7 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticlePreviewSource.h"
 #include "particles/ParticleSheetBake.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/widget/ParticleChecksPanel.h"
 #include "ScriptDataTestSupport.h"
 
@@ -128,6 +129,35 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     qa::Json cleared = qa::Json::array({qa::row("capacity_hit", "content")});
     ParticlePreviewSource::rounds().record(scope, cleared);
     h.project->setParticleQaSettings(ParticleQaSettings());
+}
+
+// S91 AC15 in the window: the Particle Effect window hosts the panel on the effect it shows, with its
+// seed, and the hosted rows are the tool's
+TEST(ParticleChecksPanel, TheWindowsHostedRowsAreTheTools){
+    Headless& h = headless();
+    ASSERT_TRUE(h.ready);
+    const std::string scope = "assets/fx/burst.particles";
+    ParticleEffectWindow window(h.project.get());
+    window.openEffect(scope);
+    window.update(1.0 / 60.0);
+    ASSERT_EQ(window.getSeed(), 5u) << "the effect's own seed";
+
+    ParticlePreviewRequest windowRequest;
+    std::string error;
+    ASSERT_TRUE(window.getChecksPanel().buildRequest(h.project.get(), windowRequest, error)) << error;
+    ParticlePreviewRequest toolRequest;
+    ASSERT_TRUE(ParticlePreviewSource::fromAsset(scope, toolRequest.systems, error)) << error;
+    ASSERT_TRUE(ParticlePreviewSource::complete(h.project.get(), qa::Json{{"frames", 0}, {"seed", window.getSeed()}}, scope, toolRequest, error)) << error;
+
+    EXPECT_EQ(windowRequest.seed, toolRequest.seed) << "the window's seed drives its panel";
+    const qa::Json windowReport = runThroughFrames(windowRequest);
+    const qa::Json toolReport = runThroughFrames(toolRequest);
+    EXPECT_EQ(windowReport["checks"].dump(), toolReport["checks"].dump());
+    const std::vector<ParticleChecksPanel::Row> rows = ParticleChecksPanel::rowsOf(windowReport);
+    ASSERT_FALSE(rows.empty());
+    EXPECT_EQ(rows[0].id, "capacity_hit");
+    EXPECT_EQ(rows[0].fix, 0) << "a single edit: the window's Fix button";
+    window.close();
 }
 
 TEST(ParticleSheetBake, SheetIsTheCellsRowByRowAndItsEffectPlaysIt){

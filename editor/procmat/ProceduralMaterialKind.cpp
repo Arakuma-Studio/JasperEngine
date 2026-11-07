@@ -153,7 +153,8 @@ namespace {
         graph::ParamDesc param;
         param.name = definition.at("name").get<std::string>();
         const std::string kind = definition.value("type", std::string());
-        static const std::map<std::string, std::string> kinds = {{"float", "float"}, {"boolean", "bool"}, {"enum", "enum"}, {"size", "int"}, {"color", "color"}};
+        static const std::map<std::string, std::string> kinds = {{"float", "float"}, {"boolean", "bool"}, {"enum", "enum"}, {"size", "int"}, {"color", "color"},
+                                                                          {"gradient", "gradient"}, {"curve", "curve"}};
         auto mapped = kinds.find(kind);
         param.kind = mapped != kinds.end() ? mapped->second : "any";
         if (auto fallback = definition.find("default"); fallback != definition.end()) param.defaultValue = *fallback;

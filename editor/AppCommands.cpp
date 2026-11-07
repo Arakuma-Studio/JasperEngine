@@ -9,6 +9,7 @@
 #include "App.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -462,6 +463,14 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    // (any graph window: the Graph Editor or a graph kind's own)
+    claims.add({"Graph Editor", []() { return GraphEditorWindow::focused() != nullptr; },
+                {{Verb::Delete, {{}, []() { return GraphEditorWindow::focused()->canDelete(); }, []() { GraphEditorWindow::focused()->removeSelection(); }}},
+                 {Verb::Copy, {{}, []() { return !GraphEditorWindow::focused()->selectedNodes().empty(); }, []() { GraphEditorWindow::focused()->copySelection(); }}},
+                 {Verb::Paste, {{}, []() { return GraphEditorWindow::focused()->canPaste(); }, []() { GraphEditorWindow::focused()->paste(); }}},
+                 {Verb::Duplicate, {{}, []() { return !GraphEditorWindow::focused()->selectedNodes().empty(); }, []() { GraphEditorWindow::focused()->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, []() { GraphEditorWindow::focused()->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},

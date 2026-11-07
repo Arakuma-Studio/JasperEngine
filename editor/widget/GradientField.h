@@ -8,7 +8,8 @@
 // Editor: Unity's layout, alpha keys above the bar and colour keys below it; a click adds a key,
 // a drag moves it, dragging it off the bar deletes it; the selected key's Color (the Color
 // window) or Alpha and its Location; Mode Blend or Fixed; presets from the swatch libraries'
-// gradient section. At most 8 colour and 8 alpha keys. Keys are sRGB (S20's Gradient).
+// gradient section. At most 8 colour and 8 alpha keys (Gradient::kMaxKeys, the particles' and
+// Unity's limit), or the field's maxKeys (a graph's ramp: 32). Keys are sRGB (S20's Gradient).
 // Undo as the Curve window: each gesture one step (a colour key's Color window session one).
 
 #include "widget/FieldEdit.h"
@@ -26,6 +27,7 @@ namespace jasperengine::editor::ui {
         const char* label = nullptr;
         bool mixed = false;
         float height = 0.0f;
+        size_t maxKeys = Gradient::kMaxKeys;   // per list (colour, alpha)
     };
 
     EditPhase gradientField(const char* id, Gradient& gradient, const GradientFieldOptions& options = {});

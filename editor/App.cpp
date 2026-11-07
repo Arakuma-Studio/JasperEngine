@@ -12,8 +12,10 @@
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
 #include "window/AudioMixerWindow.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -241,7 +243,9 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    particleEffectWindow = new ParticleEffectWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
+    graphEditorWindow = new GraphEditorWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
@@ -738,6 +742,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
             catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
+        menuSubmenu("Visual Effects", {
+            catalogItem("window.particleEffect", windowMenuLabel(ParticleEffectWindow::WINDOW_NAME))
+        }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -745,7 +752,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
-            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME)),
+            catalogItem("window.graphEditor", windowMenuLabel(GraphEditorWindow::WINDOW_NAME))
         }),
         menuSubmenu("Analysis", {
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
@@ -1029,6 +1037,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleSoundBrowser:
             soundBrowserWindow->open();
             break;
+        case AppMenuCommand::ToggleGraphEditor:
+            graphEditorWindow->setOpen(true);
+            graphEditorWindow->requestFocus();
+            break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();
             break;
@@ -1037,6 +1049,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
+            break;
+        case AppMenuCommand::ToggleParticleEffect:
+            showEditorWindow(particleEffectWindow);
             break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
@@ -2177,10 +2192,14 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
     // the Audio Mixer's strips want the width of the views
     ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Particle Effect window: a preview and its timing, as wide as the views
+    ImGui::DockBuilderDockWindow(ParticleEffectWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    // a graph wants the width of the views
+    ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2823,10 +2842,11 @@ void editor::App::show(){
         // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
-        // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+        // the Animator, Particle Effect and graph windows edit project assets (their selection in the Inspector too)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || particleEffectWindow->isFocused() ||
+                GraphEditorWindow::focused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
-                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
+                 (animatorWindow->inspectorShowsSelection() || GraphEditorWindow::anyInspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2931,8 +2951,11 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    particleEffectWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    // the Graph Editor and every graph kind's own window
+    GraphEditorWindow::showAll();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -5133,6 +5156,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animatorWindow->clearSceneState(sceneId);
     }
 
+    if (particleEffectWindow) {
+        particleEffectWindow->clearSceneState(sceneId);
+    }
+
     if (avatarWindow) {
         avatarWindow->clearSceneState(sceneId);
     }
@@ -5164,7 +5191,9 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    particleEffectWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
+    GraphEditorWindow::prepareAllForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
@@ -5824,6 +5853,14 @@ void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
     audioMixerWindow->open(mixer);
 }
 
+void editor::App::openParticleEffect(const std::string& assetPath){
+    particleEffectWindow->openEffect(assetPath);
+}
+
+void editor::App::openParticleEffectSubtree(uint32_t sceneId, uint32_t root){
+    particleEffectWindow->openSubtree(sceneId, (Entity)root);
+}
+
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
     if (!editRecipe) {
         textureSynthesisWindow->openWithExample(image);
@@ -5877,7 +5914,8 @@ namespace {
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
-                      editor::AudioMixerWindow* audioMixer) {
+                      editor::AudioMixerWindow* audioMixer, editor::ParticleEffectWindow* particleEffect,
+                      editor::GraphEditorWindow* graphEditor) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5901,6 +5939,8 @@ namespace {
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
         visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
+        visit(editor::ParticleEffectWindow::WINDOW_NAME, particleEffect);
+        visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
     }
 
 }
@@ -5919,7 +5959,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow);
     return panels;
 }
 
@@ -5932,7 +5972,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5946,6 +5986,8 @@ void editor::App::applyDefaultLayout(){
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     audioMixerWindow->setOpen(false);
+    particleEffectWindow->setOpen(false);
+    graphEditorWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);
@@ -6125,7 +6167,9 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    particleEffectWindow->setOpen(visibility.particleEffect);
     soundBrowserWindow->setOpen(visibility.soundBrowser);
+    graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -6146,7 +6190,9 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.particleEffect = particleEffectWindow->isOpen();
     visibility.soundBrowser = soundBrowserWindow->isOpen();
+    visibility.graphEditor = graphEditorWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

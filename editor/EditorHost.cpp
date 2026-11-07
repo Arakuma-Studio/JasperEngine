@@ -124,6 +124,12 @@ void EditorHost::openConsole() {
 void EditorHost::openAudioMixerWindow(const std::filesystem::path&) {
 }
 
+void EditorHost::openParticleEffect(const std::string&) {
+}
+
+void EditorHost::openParticleEffectSubtree(uint32_t, uint32_t) {
+}
+
 void EditorHost::openTextureSynthesis(const std::filesystem::path& image, bool) {
     Out::warning("Texture Synthesis needs the editor window: %s not opened", image.string().c_str());
 }

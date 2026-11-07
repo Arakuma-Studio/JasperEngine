@@ -361,6 +361,8 @@ void CurveWindow::open(ImGuiID id, const std::vector<Curve>& fieldCurves, const 
     if (target != 0) close();
     setBeginEditHandler(&CurveWindow::beginEdit);
     target = id;
+    const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+    opener = window && window->RootWindow && window->RootWindow->Name ? window->RootWindow->Name : "";
     options = fieldOptions;
     curves = fieldCurves;
     twoCurves = curves.size() > 1;
@@ -507,7 +509,14 @@ CurveWindow::UiState CurveWindow::uiState() const {
     return state;
 }
 
+void CurveWindow::setPlayhead(float time) {
+    editor.setPlayhead(true, time);
+    playheadFrame = ImGui::GetFrameCount();
+}
+
 void CurveWindow::show() {
+    // the playhead's owner did not set it this frame (closed, or another field opened)
+    if (playheadFrame != ImGui::GetFrameCount()) editor.setPlayhead(false);
     // a field not drawn for a frame (its window closed): the window closes, its step committed
     if (target != 0 && ImGui::GetFrameCount() - lastSeenFrame > 1) close();
     // a gesture's last value reached the field: its step is done (and a close waiting for it)

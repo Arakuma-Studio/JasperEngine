@@ -76,7 +76,9 @@ namespace jasperengine::editor{
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
+    class ParticleEffectWindow;
     class SoundBrowserWindow;
+    class GraphEditorWindow;
     class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
@@ -252,7 +254,9 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        ParticleEffectWindow* particleEffectWindow;
         SoundBrowserWindow* soundBrowserWindow;
+        GraphEditorWindow* graphEditorWindow;
         AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -691,6 +695,8 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
         AnimatorWindow* getAnimatorWindow() const { return animatorWindow; }
+        ParticleEffectWindow* getParticleEffectWindow() const { return particleEffectWindow; }
+        GraphEditorWindow* getGraphEditorWindow() const { return graphEditorWindow; }
         AvatarWindow* getAvatarWindow() const;
         // the Avatar Configuration window on the Model of `entity` (anim-retarget 9)
         void openAvatarWindow(uint32_t sceneId, Entity entity);
@@ -713,6 +719,8 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openParticleEffect(const std::string& assetPath) override;
+        void openParticleEffectSubtree(uint32_t sceneId, uint32_t root) override;
         void openBuildReport(const std::filesystem::path& report) override;
         void openMeshAudit() override;
         void openConsole() override;

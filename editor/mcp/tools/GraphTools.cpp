@@ -212,7 +212,8 @@ void listGraphNodeTypesTool(const CallPtr& call) {
         categories[type.category.empty() ? "Other" : type.category]++;
         if (!ids.empty() && !ids.count(type.id)) continue;
         if (!category.empty() && lowered(type.category) != category) continue;
-        const std::string haystack = lowered(type.id + " " + type.displayName + " " + type.category);
+        std::string haystack = lowered(type.id + " " + type.displayName + " " + type.category);
+        for (const std::string& alias : type.aliases) haystack += " " + lowered(alias);
         if (std::any_of(words.begin(), words.end(), [&](const std::string& word) { return haystack.find(word) == std::string::npos; })) continue;
         matched.push_back(&type);
     }
@@ -380,7 +381,7 @@ void registerGraphTools(McpRegistry& registry) {
         tool.title = "List Graph Node Types";
         tool.description = "A kind's node types, one signature line each: id(inputs; param=default[min..max]) -> outputs. A large "
                            "kind lists its categories until category, search or ids narrows it; detail adds the full ports and params.";
-        tool.inputSchema = object({{"kind", string("")}, {"category", string("")}, {"search", string("Words in the id or name.")},
+        tool.inputSchema = object({{"kind", string("")}, {"category", string("")}, {"search", string("Words in the id, name or aliases.")},
                                    {"ids", array(string(""), "")}, {"detail", withDefault(boolean(""), false)}}, {"kind"});
         tool.annotations.readOnly = true;
         tool.handler = listGraphNodeTypesTool;
