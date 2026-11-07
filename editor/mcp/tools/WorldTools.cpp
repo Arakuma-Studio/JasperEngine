@@ -6068,7 +6068,7 @@ void registerWorldTools(McpRegistry& registry) {
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{path|color, index}: slot index's r,g,b weight layers 3*index..+2. layers: textures, uv_scale, tint and "
         "factors per surface layer, stochastic_tiling (up to 3x the reads) and its cell_size/blend_sharpness/"
-        "contrast/rotation. Images under the assets dir.",
+        "contrast/rotation. Images in the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
