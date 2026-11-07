@@ -143,6 +143,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - The foundation took about 10 hours. Main cause: the coordinator made every stream wait on it, leaving half the host idle
   from 08:03. Stopped waiting: T2, T3, T5 and T6 start now on the foundation's committed work; queue changed to 3 slots of 3 jobs.
 - `origin/main` moved 95 more commits and took S53-S73, so the specs moved to their own T1-T6 series. Merged.
+- 2026-11-07: the coordinator session restarted and stopped every agent mid-work; all five leads revived from their saved
+  state (their own sub-agents are gone; T2's canvas agent had died on an API weekly limit). `origin/main` was 763 commits
+  ahead: Doriax render-correctness (foliage ring, Min Draw Distance, Foliage Distance), mesh-memory, ssr-probes and
+  build-toolchain landed, plus a header fan-out cut and a generated AssetRefSchema. Merged into integration (conflicts in the
+  asset table, reflection, CreateEntityCmd includes and the Xcode project; holeMap now gets its reference row from reflection).
+  Each stream merges integration once. Owner repeated: light, filtered suites only.
 - Stream findings so far (filtered runs only, nothing is final):
   - T2: erosion's default `radius` of 1 made terrain rougher (one-texel roughness x1.52). Coordinator overrode the spec: default is
     now 2 (x1.04, 9.0 M steps/s on a busy host, budget 8, needs an idle-host bench). File node order is safe because `fromJson`
