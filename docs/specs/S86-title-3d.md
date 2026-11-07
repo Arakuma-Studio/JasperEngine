@@ -1380,7 +1380,8 @@ rest of S82 lands in 6B.
     reversed winding; `PipelineState::mirrored` (R44) is therefore not added.
 16. **Implementation: what this branch does not implement** (each is listed in the final report): SAO (R31), glints (R32: S83's
     `Glint3D`, S86's sprite glints), the gem behind pass (R21: gems refract the environment), the cap position rebuild and
-    patterns on 3D faces (R22), picture projection (R1a), per-part environments in one draw, `debug_view` other than `none`,
+    patterns on 3D faces (R22), picture projection (R1a), per-part environments in one draw, the `ao`, `glint`, `ink` and `wireframe` debug views (`none`,
+    `normals` and `environment` are served),
     the 3D Designer rows, pickers and gizmo target (R50-R58: S82's hooks are not in this tree), Lua (R63: S81's component is not
     in this tree), the cooked `.titlemesh` export and its player load (the format, writer and reader are implemented), the
     parity goldens (AC21) and the device runs (AC23).
