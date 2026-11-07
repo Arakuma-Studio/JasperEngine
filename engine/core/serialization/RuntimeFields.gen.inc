@@ -621,6 +621,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
     JE_RF(Collider2D, material, 0x23926496u, String),
     JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
+    JE_RF(Collider2D, slice, 0xd4adaecfu, String),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -1609,8 +1610,9 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
-    JE_RF(SpriteComponent, pixelsPerUnit, 0xd42e8cc4u, Float),
-    JE_RF(SpriteComponent, pixelRotation, 0x236ae730u, Enum),
+    JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
+    JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
+    JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -1662,7 +1664,6 @@ const FieldEntry kBody_TilemapComponent_fields[] = {
     JE_RF(TilemapComponent, automaticFlipY, 0x66dfd1a6u, Bool),
     JE_RF(TilemapComponent, flipY, 0x357fc631u, Bool),
     JE_RF(TilemapComponent, textureScaleFactor, 0x1543f1a5u, Float),
-    JE_RF(TilemapComponent, pixelsPerUnit, 0xde152a5du, Float),
     JE_RF(TilemapComponent, reserveTiles, 0x82fb6b88u, UInt),
     JE_RF(TilemapComponent, numTilesRect, 0x677b6dc6u, UInt),
     JE_RF(TilemapComponent, tilesRect, 0x83fb4258u, Array),
@@ -2393,18 +2394,22 @@ const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
 };
 const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
-const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
-    JE_RF(PixelPerfectCameraComponent, enabled, 0x5f55db78u, Bool),
-    JE_RF(PixelPerfectCameraComponent, referenceWidth, 0xec604284u, UInt),
-    JE_RF(PixelPerfectCameraComponent, referenceHeight, 0x8cfdacb3u, UInt),
-    JE_RF(PixelPerfectCameraComponent, upscaleMode, 0x450a5fd7u, Enum),
-    JE_RF(PixelPerfectCameraComponent, upscaleRenderTexture, 0xb491256fu, Bool),
-    JE_RF(PixelPerfectCameraComponent, pixelSnapping, 0x97e12055u, Bool),
-    JE_RF(PixelPerfectCameraComponent, rotationMode, 0xf779ad8au, Enum),
-    JE_RF(PixelPerfectCameraComponent, subpixelSmoothing, 0xdd22b981u, Bool),
-    JE_RF(PixelPerfectCameraComponent, letterboxColor, 0x7cab54bfu, Vector4),
+const FieldEntry kBody_WaterExcluderComponent_fields[] = {
+    JE_RF(WaterExcluderComponent, enabled, 0x1f8220bfu, Bool),
+    JE_RF(WaterExcluderComponent, shape, 0x2f859f6fu, Enum),
+    JE_RF(WaterExcluderComponent, center, 0x05110537u, Vector3),
+    JE_RF(WaterExcluderComponent, size, 0x1fad5cbbu, Vector3),
 };
-const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
+const StructTable kBody_WaterExcluderComponent{"waterexcluder", kBody_WaterExcluderComponent_fields, std::size(kBody_WaterExcluderComponent_fields)};
+
+const FieldEntry kBody_WaterWakeComponent_fields[] = {
+    JE_RF(WaterWakeComponent, enabled, 0x111e1027u, Bool),
+    JE_RF(WaterWakeComponent, foam, 0x2a7d6e07u, Float),
+    JE_RF(WaterWakeComponent, waves, 0xb229e9e8u, Float),
+    JE_RF(WaterWakeComponent, width, 0xe2a14056u, Float),
+    JE_RF(WaterWakeComponent, length, 0x0f985d8eu, Float),
+};
+const StructTable kBody_WaterWakeComponent{"waterwake", kBody_WaterWakeComponent_fields, std::size(kBody_WaterWakeComponent_fields)};
 
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
@@ -2513,7 +2518,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
-    JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
+    JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENTS_END
 };
 

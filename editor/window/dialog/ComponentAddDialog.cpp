@@ -96,6 +96,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
+            {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
+            {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},
             {ComponentType::BuoyancyComponent, "Floats its dynamic Rigidbody in Water Volumes"},
             {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},

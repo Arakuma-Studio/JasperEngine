@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "animation/CanvasGroupTracks.h"
+#include "sprite/SpriteSheet.h"
 #include "component/AudioSourceComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/BuoyancyComponent.h"
@@ -22,7 +23,9 @@
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/SplineInstantiateComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CameraFollowComponent.h"
@@ -394,11 +397,16 @@ namespace {
 
     // ---- sprite frame (Unity's m_Sprite swap): Sprite::setFrame(int) ----
 
-    // the frame whose rect the sprite shows (-1: none of them)
+    // the frame whose rect the sprite shows (-1: none of them); a sheet sprite's frame is its index
+    // into the sheet (S44 R50: no rect comparison)
     bool readSpriteFrame(Scene* scene, Entity entity, const PropertyParams&, float* out){
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
+        if (!sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            return true;
+        }
         out[0] = -1.0f;
         const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : mesh->submeshes[0].textureRect;
         const Texture& texture = mesh->submeshes[0].material.baseColorTexture;
@@ -426,6 +434,12 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
         const long id = std::lround(in[0]);
+        if (!sprite->sheet.empty()){
+            // before the sheet loads any index is kept (the sprite clamps it once it knows the count)
+            if (id < 0 || (sprite->sheetData && id >= (long)sprite->sheetData->frames.size())) return false;
+            sprite->frame = (int)id;
+            return true;
+        }
         if (id < 0 || (unsigned long)id >= sprite->numFramesRect) return false;
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, sprite->framesRect[(size_t)id].rect);
         return true;
@@ -433,10 +447,15 @@ namespace {
     bool hasSprite(EntityRegistry* registry, Entity entity, const PropertyParams&){
         return registry && registry->findComponent<SpriteComponent>(entity) && registry->findComponent<MeshComponent>(entity);
     }
-    // the texture rect a frame write replaces
+    // the texture rect a frame write replaces (a sheet sprite: its frame index, the rest unused)
     bool snapshotSpriteRect(Scene* scene, Entity entity, const PropertyParams&, float* out){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!mesh) return false;
+        if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity); sprite && !sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            out[1] = out[2] = out[3] = 0.0f;
+            return true;
+        }
         const Rect& rect = mesh->submeshes[0].textureRect;
         out[0] = rect.getX(); out[1] = rect.getY(); out[2] = rect.getWidth(); out[3] = rect.getHeight();
         return true;
@@ -445,6 +464,10 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         if (!mesh || !sprite) return false;
+        if (!sprite->sheet.empty()){
+            sprite->frame = std::max(0, (int)std::lround(in[0]));
+            return true;
+        }
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, Rect(in[0], in[1], in[2], in[3]));
         return true;
     }
@@ -633,6 +656,8 @@ namespace {
         rows.push_back(enabledRow<CharacterController2DComponent>("charactercontroller2d"));
         rows.push_back(enabledRow<CharacterControllerComponent>("charactercontroller"));
         rows.push_back(enabledRow<WaterVolumeComponent>("watervolume"));
+        rows.push_back(enabledRow<WaterExcluderComponent>("waterexcluder"));
+        rows.push_back(enabledRow<WaterWakeComponent>("waterwake"));
         rows.push_back(enabledRow<BuoyancyComponent>("buoyancy"));
         rows.push_back(enabledRow<NavMeshSurfaceComponent>("navmeshsurface"));
         rows.push_back(enabledRow<NavMeshAgentComponent>("navmeshagent"));

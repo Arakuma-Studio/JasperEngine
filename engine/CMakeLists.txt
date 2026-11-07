@@ -1555,6 +1555,12 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/asset/ImportedAssets.cpp
+    # sprite sheets (S44): the record, its IO, the pool, frame geometry
+    core/sprite/SpriteSheetIO.cpp
+    core/sprite/SpriteSheetPool.cpp
+    core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/AsepriteClips.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
@@ -1639,6 +1645,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/environment/WaterVolume.cpp
+    core/object/environment/WaterExcluder.cpp
+    core/object/environment/WaterWake.cpp
     core/object/physics/Buoyancy.cpp
     core/object/spline/Spline.cpp
     core/object/spline/SplineExtrude.cpp
@@ -1776,6 +1784,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/subsystem/VideoPlayerSystem.cpp
@@ -1875,6 +1884,8 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
+    core/util/WaterExclusion.cpp
+    core/util/WaterWakeMap.cpp
     core/util/XMLUtils.cpp
 )
 

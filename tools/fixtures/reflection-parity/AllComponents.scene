@@ -2896,10 +2896,47 @@ entities:
         revertSeconds: 0.75
   - type: Entity
     entity: 1093
-    name: PixelPerfectCameraComponent
+    name: WaterExcluderComponent
     components:
       transform:
         position: [92, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterexcluder:
+        enabled: false
+        shape: sphere
+        center: [0.5, 1.5, 2.5]
+        size: [3.5, 4.5, 5.5]
+  - type: Entity
+    entity: 1094
+    name: WaterWakeComponent
+    components:
+      transform:
+        position: [93, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterwake:
+        enabled: false
+        foam: 1.5
+        waves: 0.5
+        width: 2.5
+        length: 6.5
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
         visible: true

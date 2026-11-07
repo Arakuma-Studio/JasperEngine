@@ -1952,6 +1952,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("FULL", PlanarReflectionResolution::FULL)
         .endNamespace();
 
+    // the side of the Water Wakes' map (Scene.waterWakeResolution): AUTO 256, 128 on mobile and web
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterWakeResolution")
+        .addVariable("AUTO", WaterWakeResolution::AUTO)
+        .addVariable("LOW", WaterWakeResolution::LOW)
+        .addVariable("MEDIUM", WaterWakeResolution::MEDIUM)
+        .addVariable("HIGH", WaterWakeResolution::HIGH)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TonemapMode")
         .addVariable("NONE", TonemapMode::NONE)
@@ -3360,6 +3369,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("planarReflectionFarClip", &Scene::getPlanarReflectionFarClip, &Scene::setPlanarReflectionFarClip)
         .addProperty("planarReflectionClipOffset", &Scene::getPlanarReflectionClipOffset, &Scene::setPlanarReflectionClipOffset)
         .addProperty("maxPlanarReflections", &Scene::getMaxPlanarReflections, &Scene::setMaxPlanarReflections)
+        .addProperty("waterWakeResolution", &Scene::getWaterWakeResolution, &Scene::setWaterWakeResolution)
+        .addProperty("waterWakeArea", &Scene::getWaterWakeArea, &Scene::setWaterWakeArea)
+        .addProperty("waterWakeFade", &Scene::getWaterWakeFade, &Scene::setWaterWakeFade)
         // a copy (edit it and assign it back, which applies it)
         .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)

@@ -898,4 +898,76 @@ regenerated; the cooked scene format carries them through the generated field ta
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the implementation (`feature/s44-aseprite-import`):
+
+- **Old palette chunks.** The 6-bit palette chunk is `0x000B` (Aseprite's decoder and its
+  `FLI_COLOR`); §4/R1 call it `0x0011`. Both are read. Its 6-bit values are widened by bit
+  replication (`(v << 2) | (v >> 4)`), as Aseprite does, not by `v × 255 / 63` (10 values differ by 1).
+- **Hue and Saturation.** The default is Aseprite's current (1.3.15+) `set_sat`; the asefile
+  goldens and `blend_saturation_bug` predate that fix, so `RenderOptions::legacyHsl` (CLI
+  `--legacy-hsl`) reproduces 1.3.12 and earlier, and those goldens are checked with it.
+- **Groups.** `RenderOptions::groups` (`FromFile`, `Flatten`, `Compose`): Aseprite's own CLI
+  `--sheet` export never composes group opacity or blend, so goldens made with it use `Flatten`;
+  the importer uses `FromFile` (what the artist saw).
+- **Guide.** No `## Pixel art` digest section: the upstream MCP rules (merged into this branch)
+  give an area one "Other areas" entry; S44's is "sprites and .aseprite files (set_sprite_frames
+  sheet): jasper://docs/sprites", with eval case `bad_aseprite_by_hand`.
+- **AC12's `create_entity` from the asset** is `set_sprite_frames {create, sheet}` (the drop's
+  code, `AsepriteSpriteSetup`), so no new `create_entity` parameter; it names the GameObject from
+  `create.name` and gives no layer children (the drop does both). The drop itself is tested by
+  dragging in the editor (`test_aseprite_import.py::test_drop`).
+- **`playTag`** is stepped by `MeshSystem` on the Sprite's own runtime fields with the sheet's
+  durations instead of a Sprite Animation action entity: a Lua `Sprite` wrapper owns its action's
+  entity, so a tag would stop with the wrapper. Behaviour is R38's (direction, repeat, speed, no
+  128-frame limit, no clip events).
+- **Pixels per unit.** S41 is not on main: `pixelsPerUnit: project` resolves to 1 (R11).
+- **Colours.** No `Rgba8`/OKLab types (S43's): `PixelImage` uses `PixelRgba` (`std::array<uint8_t, 4>`);
+  overloads for S43's `Rgba8` are left to whichever lands second.
+- **Format numbers.** Scene 7 → 8 and prefab 8 → 9 (identity migrations, fixture
+  `editor/tests/fixtures/migrations/scene-v7-sprites.scene`, `SpriteSheetMigrationTest`).
+- **Compression `project`.** Pages are added to the export's S14 texture cook keyed by their
+  `je-imported/` path (sprite type); `none` ships the PNG pages. The editor draws the pages as
+  imported in both cases: its view cook (S14 R8) skips what the editor derives into `.jasperengine/`,
+  so a `none` sheet is never shown block-compressed.
+- **Real Aseprite goldens.** §9's corpus is authored with Aseprite 1.3.18
+  (`tools/pixelart/make_golden_corpus.lua`/`.py`, `editor/tests/fixtures/aseprite/s44-corpus/`) and
+  every fixture has Aseprite's `--data` JSON; `AsepriteParityTest` checks the frames (flattened and
+  composed), the indexed + background file and `describe` against them; the manual gate is
+  `tools/pixelart/aseprite_compat.py`. A batch save never sets the "groups are composed" header flag
+  and has no Lua API for slice keys after frame 0: the script patches both and Aseprite re-saves.
+  Aseprite's `--sheet` clears an indexed background's transparent index while `--save-as` keeps it
+  opaque; the importer follows `--save-as` (a background layer is opaque by definition).
+  `aseprite_compat.py` against Aseprite 1.3.18.6 on all 64 fixture files: 637 of 640 checks pass,
+  none fails, 3 are skipped where Aseprite's own `--sheet` and `--save-as` disagree (the editor's
+  side recorded in its build image, as the host has no display libraries).
+- **Cache key.** It holds the file's asset path and GUID besides §6.5's content, settings and
+  versions: the outputs name the file (frame names, the sheet's source, the clips' `source.path`),
+  so a copy or a rename is its own import (one reimport after a rename).
+- **Palettes (R6).** The palettes a file keeps (frame 0's and one copy per change) are limited to
+  64 MiB, besides the 1 GiB of pixels: a file of many changes to a 65,536-entry palette is
+  `too_large` instead of an allocation of gigabytes.
+- **Tag repeats.** A repeat count above Aseprite's 16-bit 65,535 is clamped (with a warning), and
+  a playback unrolls at most 2^20 frames (fewer passes beyond that).
+- **Sprite Preview.** Compare at 1x draws both frames at the preview's integer zoom (S41's Game
+  view scale is not on main).
+- **Budgets (AC15, AC20).** Measured on the shared 8-core build host under load (load average
+  4.5-8; budgets printed, enforced only by the benchmark run's `perfSlack()`), with `AsepriteBench`
+  documents built in code at R26's sizes (2.67 MB file, not 1.5 MB). After parallel cel inflate and
+  deflate (up to 8 threads) and an RGBA composition fast path: compose one 256² 8-layer frame
+  0.64 ms (budget 1), write unchanged 3.9 ms (5), import of a 64×64 24-frame file 0.9 ms (50) are
+  met; read 104 ms (40, was 238) and write with every cel changed 197 ms (120, was 639) are bound
+  by zlib inflating and deflating 128 MB of cels; a 2,000-frame sheet parse is 15 ms (5) through
+  the JSON parser. A quiet-machine benchmark run should confirm the three misses before any
+  further work (a faster deflate library would be a new vendored dependency).
+- **`--data` names.** Aseprite's `--data` calls the four HSL modes `hsl_hue`, `hsl_saturation`,
+  `hsl_color` and `hsl_luminosity`; `describe` keeps §6.3's `hue` ... (the parity test maps them),
+  and omits a slice key's centre when the key has none (Aseprite's hidden keys).
+- **Late import problems (R36).** An import runs as a job, so its problems are not known when the
+  call that synced the file returns: they are reported by the next call's `external_changes`
+  (`problems`, with an empty `changed`). An edit of a `.aseprite.meta` on disk reimports its file.
+- **AC23's render.** The before/after comparison is `tools/mcp/tests/test_sprite_migration_render.py`
+  (the v7 scene drawn in the Scene view, saved at the new version, reopened and drawn again, pixel
+  for pixel), not a committed PNG golden: a golden would pin the GPU's rasterisation, not the
+  migration. The v8 prefab is checked on the YAML side (`SpriteSheetMigrationTest`).
+- **Load report.** R48's "the sheet is missing, the inline frames are used" is a new
+  `LoadIssueKind::Fallback` (`fallback`), a warning; the field keeps its value.

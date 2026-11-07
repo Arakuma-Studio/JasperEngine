@@ -212,6 +212,18 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Add Pose | N | Pose Animation |
 | Global Edit | E | Pose Animation |
 
+## Sprite Preview
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause | Space | Sprite Preview |
+| Previous Frame | , | Sprite Preview |
+| Next Frame | . | Sprite Preview |
+| First Frame | Home | Sprite Preview |
+| Last Frame | End | Sprite Preview |
+| Zoom In | = / NumpadAdd | Sprite Preview |
+| Zoom Out | - / NumpadSubtract | Sprite Preview |
+
 ## Project
 
 | Command | Shortcut | Context |

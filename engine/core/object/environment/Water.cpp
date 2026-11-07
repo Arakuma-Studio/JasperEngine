@@ -14,6 +14,8 @@
 #include "texture/Material.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
+#include "component/WaterExcluderComponent.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
 #endif
@@ -237,7 +239,17 @@ std::optional<Vector3> Water::getNormal(Scene* scene, float x, float z){
     return surface->getNormal(x, z, getTime(scene));
 }
 
+// inside an active Water Excluder (a boat, a cabin): no water there
+static bool waterKeptDry(Scene* scene, const Vector3& point){
+    if (!scene || scene->getComponentArray<WaterExcluderComponent>()->size() == 0)
+        return false;
+    std::shared_ptr<WaterInteractionSystem> interaction = scene->findSystem<WaterInteractionSystem>();
+    return interaction && interaction->findExcluder(point) != NULL_ENTITY;
+}
+
 bool Water::isUnderwater(Scene* scene, const Vector3& point){
+    if (waterKeptDry(scene, point))
+        return false;
     const SplineWaterSample water = splineWater(scene, point.x, point.z);
     if (water.hit)
         return point.y < water.height;
@@ -268,6 +280,7 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
     std::vector<WaterSurface> surfaces;
     bool surfacesRead = false;
     float time = 0.0f;
+    std::shared_ptr<WaterInteractionSystem> excluders;
     PhysicsSystem* physics = scene->getSystem<PhysicsSystem>().get();
 
     for (int i = 0; i < (int)bodies->size(); i++){
@@ -290,6 +303,8 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
             surfacesRead = true;
             surfaces = getSurfaces(scene);
             time = getTime(scene);
+            if (scene->getComponentArray<WaterExcluderComponent>()->size() > 0)
+                excluders = scene->findSystem<WaterInteractionSystem>();
         }
         if (surfaces.empty())
             return;
@@ -302,6 +317,9 @@ void Water::applyBuoyancy(Scene* scene, float deltaTime){
         const Vector3 point((float)center.GetX(), (float)center.GetY(), (float)center.GetZ());
         const WaterSurface* surface = findSurface(surfaces, point, true);
         if (!surface)
+            continue;
+        // inside a Water Excluder it does not own (cargo in a boat): dry
+        if (excluders && excluders->findExcluder(point, bodies->getEntity(i)) != NULL_ENTITY)
             continue;
 
         // the surface over the centre of mass, with the waves of the frame about to be drawn
@@ -337,7 +355,8 @@ void Water::updateUnderwater(Scene* scene){
     const WaterSurface* surface = nullptr;
     float height = 0.0f;
     bool under = false;
-    if (camera){
+    // a camera inside a Water Excluder (a cabin below the waterline) sees no water around it
+    if (camera && !waterKeptDry(scene, camera->worldPosition)){
         const Vector3& eye = camera->worldPosition;
         surface = findSurface(surfaces, eye);
         if (surface){

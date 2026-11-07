@@ -15837,11 +15837,26 @@ _SOKOL_PRIVATE void _sg_mtl_discard_sampler(_sg_sampler_t* smp) {
     _sg_mtl_release_resource(_sg.frame_index, smp->mtl.sampler_state);
 }
 
+// JasperEngine: invariant position (PATCHES.md): Metal ignores a vertex function's
+// [[position, invariant]] unless its library is compiled with preserveInvariance, and with fast
+// math on, a matrix read from a vertex buffer (an instanced batch) and the same matrix read from a
+// uniform block gave positions a few ULP apart: depth pre-pass and colour pass no longer met.
+// Created once and never released (ARC or not); macOS 11 and iOS 14 have it, below our targets.
+_SOKOL_PRIVATE MTLCompileOptions* _sg_mtl_compile_options(void) {
+    static MTLCompileOptions* options = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        options = [[MTLCompileOptions alloc] init];
+        options.preserveInvariance = YES;
+    });
+    return options;
+}
+
 _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_compile_library(const char* src) {
     NSError* err = NULL;
     id<MTLLibrary> lib = [_sg.mtl.device
         newLibraryWithSource:[NSString stringWithUTF8String:src]
-        options:nil
+        options:_sg_mtl_compile_options() // JasperEngine: invariant position
         error:&err
     ];
     if (err) {

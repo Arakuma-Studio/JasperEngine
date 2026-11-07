@@ -5016,6 +5016,11 @@
      131072,
      true
     ],
+    "colliders[].slice": [
+     1,
+     131072,
+     true
+    ],
     "colliders[].type": [
      13,
      131072,
@@ -9816,23 +9821,11 @@
       8,
       "bottom_right",
       "Bottom Right"
-     ]
-    ],
-    "pixelRotation": [
-     [
-      0,
-      "camera",
-      "Camera"
      ],
      [
-      1,
-      "steps_90",
-      "90 Degree Steps"
-     ],
-     [
-      2,
-      "on_grid",
-      "Rotate On Grid"
+      9,
+      "frame",
+      "From Frame"
      ]
     ]
    },
@@ -9843,11 +9836,13 @@
     "automaticFlipY",
     "enabled",
     "flipY",
+    "frame",
+    "frameName",
     "framesRect",
     "height",
     "pivotPreset",
-    "pixelRotation",
-    "pixelsPerUnit",
+    "sheet",
+    "sheetGuid",
     "textureScaleFactor",
     "width"
    ],
@@ -9868,6 +9863,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -9883,13 +9888,8 @@
      1024,
      true
     ],
-    "pixelRotation": [
-     13,
-     0,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -9920,6 +9920,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -9935,13 +9945,8 @@
      1024,
      true
     ],
-    "pixelRotation": [
-     13,
-     0,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -10340,7 +10345,6 @@
     "enabled",
     "flipY",
     "height",
-    "pixelsPerUnit",
     "reserveTiles",
     "textureScaleFactor",
     "tiles",
@@ -10376,11 +10380,6 @@
     ],
     "numTilesRect": [
      9,
-     4194304,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      4194304,
      true
     ],
@@ -10428,11 +10427,6 @@
     ],
     "numTilesRect": [
      9,
-     4194304,
-     true
-    ],
-    "pixelsPerUnit": [
-     2,
      4194304,
      true
     ],
@@ -21022,241 +21016,157 @@
    "type_of_name": 91
   },
   {
-   "display_name": "Pixel Perfect Camera",
+   "display_name": "Water Excluder",
    "enum_options": {
-    "rotationMode": [
-     [
-      1,
-      "steps_90",
-      "90 Degree Steps"
-     ],
-     [
-      2,
-      "on_grid",
-      "Rotate On Grid"
-     ]
-    ],
-    "upscaleMode": [
+    "shape": [
      [
       0,
-      "integer",
-      "Integer (Letterbox)"
+      "box",
+      "Box"
      ],
      [
       1,
-      "integer_expand",
-      "Integer (Expand)"
+      "sphere",
+      "Sphere"
      ],
      [
       2,
-      "stretch_fill",
-      "Stretch Fill"
+      "convex_hull",
+      "Convex Hull"
      ]
     ]
    },
    "has_enabled": true,
-   "icon": "ef808a",
-   "key": "pixelperfectcamera",
+   "icon": "ef889a",
+   "key": "waterexcluder",
    "known_keys": [
+    "center",
     "enabled",
-    "letterboxColor",
-    "pixelSnapping",
-    "referenceHeight",
-    "referenceWidth",
-    "rotationMode",
-    "subpixelSmoothing",
-    "upscaleMode",
-    "upscaleRenderTexture"
+    "shape",
+    "size"
    ],
-   "name": "PixelPerfectCameraComponent",
+   "name": "WaterExcluderComponent",
    "properties_of_default": {
-    "baseHeight": [
-     8,
+    "center": [
+     5,
      0,
-     false
-    ],
-    "baseWidth": [
-     8,
-     0,
-     false
-    ],
-    "cropped": [
-     0,
-     0,
-     false
+     true
     ],
     "enabled": [
      0,
      0,
      true
     ],
-    "letterboxColor": [
-     6,
-     0,
-     true
-    ],
-    "pixelRatio": [
-     8,
-     0,
-     false
-    ],
-    "pixelSnapping": [
-     0,
-     0,
-     true
-    ],
-    "referenceHeight": [
-     9,
-     0,
-     true
-    ],
-    "referenceWidth": [
-     9,
-     0,
-     true
-    ],
-    "rotationMode": [
+    "shape": [
      13,
      0,
      true
     ],
-    "snappedPosition": [
+    "size": [
      5,
      0,
-     false
-    ],
-    "subpixelOffset": [
-     4,
-     0,
-     false
-    ],
-    "subpixelSmoothing": [
-     0,
-     0,
      true
-    ],
-    "targetHeight": [
-     8,
-     0,
-     false
-    ],
-    "targetWidth": [
-     8,
-     0,
-     false
-    ],
-    "upscaleMode": [
-     13,
-     0,
-     true
-    ],
-    "upscaleRenderTexture": [
-     0,
-     0,
-     true
-    ],
-    "viewport": [
-     6,
-     0,
-     false
     ]
    },
    "properties_without_component": {
-    "baseHeight": [
-     8,
+    "center": [
+     5,
      0,
-     false
-    ],
-    "baseWidth": [
-     8,
-     0,
-     false
-    ],
-    "cropped": [
-     0,
-     0,
-     false
+     true
     ],
     "enabled": [
      0,
      0,
      true
     ],
-    "letterboxColor": [
-     6,
-     0,
-     true
-    ],
-    "pixelRatio": [
-     8,
-     0,
-     false
-    ],
-    "pixelSnapping": [
-     0,
-     0,
-     true
-    ],
-    "referenceHeight": [
-     9,
-     0,
-     true
-    ],
-    "referenceWidth": [
-     9,
-     0,
-     true
-    ],
-    "rotationMode": [
+    "shape": [
      13,
      0,
      true
     ],
-    "snappedPosition": [
+    "size": [
      5,
      0,
-     false
-    ],
-    "subpixelOffset": [
-     4,
-     0,
-     false
-    ],
-    "subpixelSmoothing": [
-     0,
-     0,
      true
-    ],
-    "targetHeight": [
-     8,
-     0,
-     false
-    ],
-    "targetWidth": [
-     8,
-     0,
-     false
-    ],
-    "upscaleMode": [
-     13,
-     0,
-     true
-    ],
-    "upscaleRenderTexture": [
-     0,
-     0,
-     true
-    ],
-    "viewport": [
-     6,
-     0,
-     false
     ]
    },
    "structural_update_flags": 0,
    "type": 92,
    "type_of_key": 92,
    "type_of_name": 92
+  },
+  {
+   "display_name": "Water Wake",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9db3",
+   "key": "waterwake",
+   "known_keys": [
+    "enabled",
+    "foam",
+    "length",
+    "waves",
+    "width"
+   ],
+   "name": "WaterWakeComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 93,
+   "type_of_key": 93,
+   "type_of_name": 93
   }
  ],
  "ease_options": [
@@ -26199,98 +26109,6 @@
     true
    ]
   },
-  "PixelPerfectCameraComponent": {
-   "baseHeight": [
-    8,
-    0,
-    false
-   ],
-   "baseWidth": [
-    8,
-    0,
-    false
-   ],
-   "cropped": [
-    0,
-    0,
-    false
-   ],
-   "enabled": [
-    0,
-    0,
-    true
-   ],
-   "letterboxColor": [
-    6,
-    0,
-    true
-   ],
-   "pixelRatio": [
-    8,
-    0,
-    false
-   ],
-   "pixelSnapping": [
-    0,
-    0,
-    true
-   ],
-   "referenceHeight": [
-    9,
-    0,
-    true
-   ],
-   "referenceWidth": [
-    9,
-    0,
-    true
-   ],
-   "rotationMode": [
-    13,
-    0,
-    true
-   ],
-   "snappedPosition": [
-    5,
-    0,
-    false
-   ],
-   "subpixelOffset": [
-    4,
-    0,
-    false
-   ],
-   "subpixelSmoothing": [
-    0,
-    0,
-    true
-   ],
-   "targetHeight": [
-    8,
-    0,
-    false
-   ],
-   "targetWidth": [
-    8,
-    0,
-    false
-   ],
-   "upscaleMode": [
-    13,
-    0,
-    true
-   ],
-   "upscaleRenderTexture": [
-    0,
-    0,
-    true
-   ],
-   "viewport": [
-    6,
-    0,
-    false
-   ]
-  },
   "PointsComponent": {
    "autoTransparency": [
     0,
@@ -27837,6 +27655,16 @@
     1024,
     true
    ],
+   "frame": [
+    8,
+    1024,
+    true
+   ],
+   "frameName": [
+    1,
+    0,
+    true
+   ],
    "height": [
     9,
     1024,
@@ -27852,13 +27680,8 @@
     1024,
     true
    ],
-   "pixelRotation": [
-    13,
-    0,
-    true
-   ],
-   "pixelsPerUnit": [
-    2,
+   "sheet": [
+    18,
     1024,
     true
    ],
@@ -28282,11 +28105,6 @@
    ],
    "numTilesRect": [
     9,
-    4194304,
-    true
-   ],
-   "pixelsPerUnit": [
-    2,
     4194304,
     true
    ],
@@ -29011,6 +28829,28 @@
     true
    ]
   },
+  "WaterExcluderComponent": {
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ]
+  },
   "WaterVolumeComponent": {
    "angularDrag": [
     2,
@@ -29054,6 +28894,33 @@
    ],
    "waves": [
     13,
+    0,
+    true
+   ]
+  },
+  "WaterWakeComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "foam": [
+    2,
+    0,
+    true
+   ],
+   "length": [
+    2,
+    0,
+    true
+   ],
+   "waves": [
+    2,
+    0,
+    true
+   ],
+   "width": [
+    2,
     0,
     true
    ]
@@ -29425,7 +29292,8 @@
     "top_left",
     "bottom_left",
     "top_right",
-    "bottom_right"
+    "bottom_right",
+    "frame"
    ]
   },
   "PrimitiveType": {

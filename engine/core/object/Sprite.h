@@ -13,8 +13,12 @@
 
 #include <memory>
 #include "component/SpriteComponent.h"
+#include <string>
+#include <vector>
 
 namespace jasperengine{
+    struct SpriteSheetData;
+
     class JASPERENGINE_API Sprite: public Mesh{
 
     private:
@@ -91,6 +95,28 @@ namespace jasperengine{
         void pauseAnimation();
         void resumeAnimation();
         void stopAnimation();
+
+        // A sheet sprite (docs/specs/S44-aseprite-import.md R38, R51): its frames come from a
+        // sprite sheet (an .aseprite file, a texture). setFrame(index|name) works on it too.
+        // "" goes back to the inline frames.
+        void setSheet(const std::string& path);
+        std::string getSheet() const;
+        // the sheet (loaded now when the sprite has not drawn it yet); null without one
+        std::shared_ptr<const SpriteSheetData> getSheetData() const;
+        int getFrameIndex() const;
+        std::string getFrameName() const;
+        // the sheet's frames, or the inline ones
+        int getFrameCount() const;
+
+        // A sheet tag at the sheet's durations, following its direction and repeat (repeat 0
+        // loops); `speed` scales time. No clip events (the Animation Player has them).
+        void playTag(const std::string& name, float speed = 1.0f);
+        void stopTag();
+        std::string getTag() const;          // the tag playing (or that finished last), "" for none
+        bool isTagPlaying() const;
+        // the slice's box on the shown frame in the GameObject's local units (y up), with its
+        // centre and pivot in the same units; false when absent or hidden on that frame
+        bool getSliceRect(const std::string& name, Rect& bounds, Rect* center = nullptr, Vector2* pivot = nullptr) const;
 
     };
 }

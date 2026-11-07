@@ -114,10 +114,11 @@ TEST(PixelSnapShaderTest, VertexCost){
     EXPECT_EQ(plain.functions.count("pixelSnapRound2"), 0u) << "without the bit nothing of the rule is compiled";
 }
 
-// S41's variant bits stay where saved shader keys and caches put them: MESH 42 'Pxs', DEPTH 19,
-// UI 5, PARTICLES 11, and BLIT 18 'Psb' (Stretch Fill; a later spec takes the next free bit)
+// S41's variant bits stay where saved shader keys and caches put them: MESH 45 'Pxs' (42-43 are
+// the water interaction's, 44 draw-perf's), DEPTH 19, UI 5, PARTICLES 11, and BLIT 18 'Psb'
+// (Stretch Fill); each type's count covers it, so a later spec takes the next free bit
 TEST(PixelSnapShaderTest, VariantBitsArePinned){
-    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::MESH), shaderPropertyBit(42));
+    EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::MESH), shaderPropertyBit(45));
     EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::DEPTH), shaderPropertyBit(19));
     EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::UI), shaderPropertyBit(5));
     EXPECT_EQ(ShaderPool::getPixelSnapProperty(ShaderType::PARTICLES), shaderPropertyBit(11));
@@ -126,9 +127,11 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
         int index = 0;
         while (index < 64 && shaderPropertyBit(index) != bit) index++;
         EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
+        EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is the last bit of its type";
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
 }
 
 // a block the engine extends (pixelSnapDraw) is uploaded at most as large as the shader declares

@@ -28,6 +28,7 @@
 #include "window/ProjectWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -109,6 +110,8 @@
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -246,6 +249,8 @@ editor::App::App(){
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
+    spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
+    pixelart::aseprite::asepriteEditorHooks().openSpritePreview = [this](const std::string& p) { spritePreviewWindow->open(p); };
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
@@ -756,6 +761,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
+        menuSubmenu("2D", {
+            catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -1038,6 +1046,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
+            break;
+        case AppMenuCommand::ToggleSpritePreview:
+            spritePreviewWindow->open();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -2180,6 +2191,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2821,7 +2833,8 @@ void editor::App::show(){
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+        // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || spritePreviewWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (animatorWindow->isFocused()) {
@@ -2889,6 +2902,8 @@ void editor::App::show(){
     ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
     showAlert();
+    // Open in Aseprite (S44 R32): a request waiting on detection, the Aseprite Not Found dialog
+    pixelart::aseprite::updateAsepriteOpen();
 
     sceneSaveDialog.show();
     // the importers' edits not applied, asked about before a selection change, Play or the close
@@ -2935,6 +2950,7 @@ void editor::App::show(){
     audioCapturesWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
+    spritePreviewWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -3847,6 +3863,10 @@ void editor::App::pollExternalChanges(){
         ModelCookQueue& models = ModelCookQueue::get();
         if (models.getProject() != &project) models.attach(&project);
         wake = models.update() || wake;
+        // .aseprite imports (S44): run on the Background lane, swapped in here
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != &project) imports.attach(&project);
+        wake = imports.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -5179,6 +5199,7 @@ void editor::App::prepareForProjectSwitch() {
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
+    spritePreviewWindow->resetForProjectSwitch();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -5682,10 +5703,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
     //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    // v52: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
+    // v52: water-boats: MESH 'Wex' and 'Wwk' (42, 43), includes/water_interaction.glsl and the
+    //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
+    // v54: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
     //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
-    //      vertex stages; MESH 'Pxs' bit 42, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v52";
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18. (v53 and
+    //      MESH 44 are draw-perf's.)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

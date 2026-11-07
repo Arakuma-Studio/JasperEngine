@@ -765,6 +765,39 @@ CASES = [
                    "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_aseprite_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
+                         "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
+                         "animation frame by frame; the editor imports .aseprite files itself (S44).",
+        "text_at_issue": "guide Other areas: 'sprites and .aseprite files (set_sprite_frames sheet)'; set_sprite_frames "
+                         "description: 'sheet (.aseprite or texture, with its tag clips)'",
+        "source": "S44 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
+        "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
+                "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
+                "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
+                {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
+                 "tags": ["idle", "walk"], "outputs": {"clips": [
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
+            {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
+                "lists 2 tag clip(s), Default Clip idle.",
+                {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
+                 "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
+                                     {"tool": "set_sprite_animation"}],
+                   "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
+        "max_turns": 10,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
@@ -1748,6 +1781,55 @@ CASES = [
         "checks": {"calls": [{"tool": "set_properties"}],
                    "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_water_inside_boat",
+        "kind": "bad",
+        "what_happened": "An open boat floating on library:water showed the water's surface inside its hull; hiding it "
+                         "takes a Water Excluder on the boat (its mesh's convex hull by default), not a stencil mask, a "
+                         "forked water shader or a second mesh.",
+        "text_at_issue": "component Water Excluder 'Keeps water out of a boat or a dry space: no surface inside, no "
+                         "underwater fade, cargo stays dry'",
+        "source": "water-boats spec (Doriax 1ecdb8b41)",
+        "prompt": "The Rowboat floats on the Lake, but the lake's water shows inside the boat, above its floor. Make the "
+                  "inside of the boat dry.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("Rowboat [21] (mesh, rigidbody, buoyancy), Lake [12] (mesh, watervolume)",
+                                                   {"entities": [{"id": 21, "name": "Rowboat"}, {"id": 12, "name": "Lake"}]})},
+            {"tool": "get_entity", "result": ok("Rowboat [21] components: transform mesh rigidbody buoyancy", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Water Volume (watervolume): A body of water: what has a Buoyancy floats in it; Water Excluder "
+                "(waterexcluder): Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo "
+                "stays dry; Water Wake (waterwake): Foam and waves behind it while it moves through water ...",
+                {"components": [{"key": "waterexcluder", "name": "Water Excluder"}, {"key": "waterwake", "name": "Water Wake"}]})},
+            {"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}, "result": ok(
+                "Added Water Excluder to GameObject 21 \"Rowboat\" (shape convex_hull).", {"entity": {"id": 21}})},
+            {"tool": "sample_water", "result": ok("(0, -0.2, 0): dry (Water Excluder Rowboat), surface 0.01",
+                                                  {"samples": [{"in_water": False, "excluded_by": {"id": 21}}]})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_water_wake_check",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "Whether a moving boat leaves a wake (and whether its cargo is dry) is read from sample_water's "
+                         "per-point wake and excluded_by, not guessed from a screenshot.",
+        "text_at_issue": "sample_water description: 'the Water Excluder keeping it dry and the Water Wakes there. report: "
+                         "the excluders' hulls, the wakes and which waters draw them'",
+        "source": "water-boats spec (Doriax 755e7d723)",
+        "prompt": "The game is playing and the Speedboat is moving along +Z on the Lake. Is it leaving foam behind it? "
+                  "It is at about (0, 0, 10) now.",
+        "mocks": [
+            {"tool": "sample_water", "result": ok(
+                "(0, 0, 6): in water, surface 0.02\nwake Speedboat: emitting, 6.10 m/s\nwake map: active",
+                {"samples": [{"point": [0, 0, 6], "in_water": True, "wake": {"foam": 0.62, "height": 0.08}}],
+                 "wakes": [{"entity": {"id": 30}, "emitting": True, "speed": 6.1}], "wake_map": {"active": True}})},
+        ],
+        "checks": {"calls": [{"tool": "sample_water"}]},
+        "max_turns": 8,
     },
     {
         "id": "guard_ssr_reflection_source",

@@ -34,8 +34,11 @@
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
 #include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheet.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
+#include "StreamPreserved.h"
 #include "StreamSchema.h"
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
@@ -419,6 +422,14 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     if (sprite.pixelRotation != PixelRotation::CAMERA)
         node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
 
+    // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
+    if (!sprite.sheet.empty()) {
+        encodeAssetRef(node, "sheet", sprite.sheet);
+        node["frame"] = YamlNumbers::integerText(sprite.frame);
+        node["frameName"] = sprite.frameName;
+        return node;
+    }
+
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         framesNode.push_back(encodeSpriteFrameData(sprite.framesRect[i]));
@@ -449,6 +460,29 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["sheet"]) {
+        const AssetRef sheet = decodeAssetRef(node, "sheet");
+        if (sheet.path != sprite.sheet.path) {
+            sprite.sheetData.reset();
+            sprite.builtFrame = -1;
+        }
+        sprite.sheet = sheet;
+        sprite.resolveFrameName = true;
+        sprite.needUpdateSprite = true;
+    }
+    if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
+    if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
+    // R48: a saved frame name the sheet no longer has falls back to the saved index, said in the
+    // load report (the sheet is the import the editor already has; none yet: nothing to check)
+    if (!sprite.sheet.empty() && !sprite.frameName.empty() && node["frameName"]) {
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path)) {
+            if (sheet->findFrame(sprite.frameName) < 0 && sheet->frameCount() > 0) {
+                const int shown = std::clamp(sprite.frame, 0, sheet->frameCount() - 1);
+                StreamLoad::fallbackValue(node["frameName"], "the sheet " + sprite.sheet.path + " has no frame \"" + sprite.frameName +
+                                          "\": frame " + std::to_string(shown) + " (\"" + sheet->frames[static_cast<size_t>(shown)].name + "\") is shown");
+            }
+        }
+    }
     if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
     if (node["pixelRotation"]){
         const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
@@ -1259,6 +1293,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
         if (collider.receiver != NULL_ENTITY) {
             shapeNode["receiver"] = collider.receiver;
         }
+        // S44: written only when set (an older editor keeps it as unknown data)
+        if (!collider.slice.empty()) {
+            shapeNode["slice"] = collider.slice;
+        }
 
         YAML::Node pointsNode;
         for (const Vector2& point : collider.points) {
@@ -1346,6 +1384,8 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
             if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
             collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+            collider.slice = shapeNode["slice"] ? shapeNode["slice"].as<std::string>() : std::string();
+            collider.sliceVisible = false;
 
             // "vertices": files of before
             const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];

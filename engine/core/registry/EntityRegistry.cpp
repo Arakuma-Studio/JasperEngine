@@ -88,7 +88,9 @@
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "script/AsyncOwner.h"
 
 #include <algorithm>
@@ -211,6 +213,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
     // S40 R18: after the last one, so no ComponentType moves
     registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
+    registerComponent<WaterExcluderComponent>(ComponentOrder::Insertion, "WaterExcluderComponent");
+    registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
     // complete: markChangedComponent may look into it

@@ -252,6 +252,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
         "Generate and edit normal maps for 2D sprites";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
+    b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
+        "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
@@ -417,6 +419,17 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("pose.paste", "Paste Pose", C::PoseAnimation, "Ctrl+V");
     b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
     b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
+
+    // The Sprite Preview window (docs/specs/S44-aseprite-import.md R31): while it has focus; , and .
+    // step as in Aseprite
+    b.group = "Sprite Preview";
+    b.add("spritePreview.playPause", "Play / Pause", C::SpritePreview, "Space");
+    b.add("spritePreview.previousFrame", "Previous Frame", C::SpritePreview, ",").repeat = true;
+    b.add("spritePreview.nextFrame", "Next Frame", C::SpritePreview, ".").repeat = true;
+    b.add("spritePreview.firstFrame", "First Frame", C::SpritePreview, "Home").description = "The first frame of the tag (or of the file)";
+    b.add("spritePreview.lastFrame", "Last Frame", C::SpritePreview, "End").description = "The last frame of the tag (or of the file)";
+    b.add("spritePreview.zoomIn", "Zoom In", C::SpritePreview, "=", "NumpadAdd").repeat = true;
+    b.add("spritePreview.zoomOut", "Zoom Out", C::SpritePreview, "-", "NumpadSubtract").repeat = true;
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

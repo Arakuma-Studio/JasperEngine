@@ -2,7 +2,8 @@
 MCP and the editor. The component goes on a camera only (one undo step), its layout values read
 for the Game view's size (k = 4 for 320 x 180 at 1280 x 720), configure_game_view's pixel_scale
 forces k (1x is the base image at one physical pixel per pixel), the project's Pixels Per Unit and
-integer Scaling modes are settings, and in the Scene view (real input in the harness's Xvfb) a
+integer Scaling modes are settings (an .aseprite sheet of pixels per unit "project" imports
+again with the project's), and in the Scene view (real input in the harness's Xvfb) a
 wheel notch steps the Pixel Zoom (2x to 3x) and the Move tool moves on whole pixels.
 
 Runs on an owned empty project with a 320 x 180 canvas.
@@ -11,11 +12,12 @@ Runs on an owned empty project with a 320 x 180 canvas.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
 
-from harness import Editor, skip
+from harness import REPO, Editor, skip
 from htmlui_pixels import decode_png
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Pixel Perfect"}
@@ -155,6 +157,33 @@ async def test_project_settings(ed: Editor):
     bad = await ed.call_raw("set_project_settings", {"values": {"graphics.pixels_per_unit": 300}})
     ed.check(bad.is_error, f"1 to 256: {bad.text}")
     await ed.call("set_project_settings", values={"graphics.pixels_per_unit": 1, "graphics.scaling_mode": "fit_width"})
+
+
+async def sheet_pixels_per_unit(ed: Editor, path: str, previous_key: str = "") -> tuple[float, str]:
+    """the imported sheet's pixels per unit (its sheet.json in the import cache) and the import's key"""
+    for _ in range(300):
+        info = (await ed.call("get_asset_info", path=path)).get("aseprite", {})
+        key = info.get("import", {}).get("cache", {}).get("key", "")
+        if info.get("import_state") == "imported" and key and key != previous_key:
+            sheets = list(ed.project.rglob(f"{key}/sheet.json"))
+            ed.check(len(sheets) == 1, f"one sheet.json for the import {key}: {sheets}")
+            return float(json.loads(sheets[0].read_text())["pixels_per_unit"]), key
+        await ed.call("wait", seconds=0.1)
+    ed.fail(f"{path} has no new import (key {previous_key})")
+
+
+async def test_aseprite_sheet_takes_project_pixels_per_unit(ed: Editor):
+    await setup(ed)
+    sheet = "assets/sprites/ppu.aseprite"
+    (ed.project / "assets" / "sprites").mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "editor" / "tests" / "fixtures" / "aseprite" / "asefile" / "basic-16x16.aseprite", ed.project / sheet)
+    await ed.call("sync_files", paths=[sheet])
+    ppu, key = await sheet_pixels_per_unit(ed, sheet)
+    ed.check(ppu == 1, f"the sheet takes the project's 1 pixel per unit: {ppu}")
+    await ed.call("set_project_settings", values={"graphics.pixels_per_unit": 16})
+    ppu, _ = await sheet_pixels_per_unit(ed, sheet, key)
+    ed.check(ppu == 16, f"changing the project's Pixels Per Unit imports the sheet again with it: {ppu}")
+    await ed.call("set_project_settings", values={"graphics.pixels_per_unit": 1})
 
 
 class Ui:

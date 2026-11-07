@@ -32,6 +32,8 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/CameraComponent.h"
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
@@ -90,6 +92,9 @@ namespace {
         FACT_CONTACT_LIGHT   = 1u << 13, // a shadowed directional or spot light with contact shadows
         FACT_CAPSULE_CASTERS = 1u << 14, // Capsule Shadow Casters
         FACT_OIT_CAMERA      = 1u << 15, // a camera drawing Order Independent
+        // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
+        FACT_WATER_EXCLUDERS = 1u << 16,
+        FACT_WATER_WAKES     = 1u << 17,
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -143,6 +148,12 @@ namespace {
             }
             if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
                 facts |= FACT_CAPSULE_CASTERS;
+            }
+            if (registry->findComponent<WaterExcluderComponent>(entity)){
+                facts |= FACT_WATER_EXCLUDERS;
+            }
+            if (registry->findComponent<WaterWakeComponent>(entity)){
+                facts |= FACT_WATER_WAKES;
             }
             if (const CameraComponent* camera = registry->findComponent<CameraComponent>(entity)){
                 if (camera->transparencyMode == TransparencyMode::ORDER_INDEPENDENT)
@@ -240,6 +251,8 @@ namespace {
         environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
         environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
+        environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
+        environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
         return environment;
     }
 
@@ -250,7 +263,7 @@ namespace {
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
-            (e.oit ? (1u << 29) : 0u);
+            (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)

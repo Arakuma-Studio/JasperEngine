@@ -1293,7 +1293,7 @@ looks through the scene's meshes: for many points a frame, keep the results.
 |---|---|
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
-| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in (false inside a Water Excluder) |
 | `Water.getTime(scene)` | the scene clock the waves run on, seconds (one value a frame); without `scene` the main scene's |
 | `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface's motion: rising and falling, and with `GERSTNER` rolling back and forth), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
 | `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
@@ -1304,9 +1304,32 @@ extent, Y depth), `surfaceOffset`, `infinite`, `density`, `flow`, `linearDrag`, 
 `Buoyancy(scene, entity)`): `columns` (`BuoyancyColumns.AUTO_2x2` / `AUTO_3x3` / `CUSTOM`),
 `customPoints` ({Vector3...}), `volumeScale`, `dragScale`, `enabled`.
 
+A `WaterSample` also tells `excluder` (the Water Excluder keeping the point dry: `inWater` is then
+false, the surface still reported), `excluded`, and the Water Wakes there: `wakeFoam` (0..1) and
+`wakeHeight` (metres of wake crest; both 0 without a wake).
+
+A Water Excluder (`go:getWaterExcluder()`, `WaterExcluder(scene, entity)`; keeps water out: no
+surface drawn, no underwater fade, nothing floats in it but the Rigidbody it belongs to): `enabled`,
+`shape` (`WaterExcluderShape.BOX` / `SPHERE` / `CONVEX_HULL`, the hull of the GameObject's mesh),
+`center`, `size` (Vector3, local, Box and Sphere), `hullStatus` (ro: `"ready"`, `"pending"`,
+`"no_mesh"`, `"flat"`, `"no_physics"`, `"none"` for the other shapes), `hullFaces` (ro),
+`contains(point)`. A Water Wake (`go:getWaterWake()`, `WaterWake(scene, entity)`; foam and waves
+behind it on the water while it moves): `enabled`, `foam`, `waves` (0..2), `width`, `length`
+(metres; 0: from the excluder or the mesh), `emitting` and `speed` (ro, the last step). The
+scene's wake map: `scene.waterWakeResolution` (`WaterWakeResolution.AUTO` / `LOW` / `MEDIUM` /
+`HIGH`: 128, 256, 512 texels; AUTO 256, 128 on mobile and web), `scene.waterWakeArea` (metres),
+`scene.waterWakeFade` (seconds).
+
 ```lua
 local y = Water.getHeight(self.scene, pos.x, pos.z)
 if y and pos.y < y then -- swimming
+end
+local hold = self.gameObject:getWaterExcluder()
+hold.shape = WaterExcluderShape.BOX
+hold.size = Vector3(2, 1, 5)
+local wake = self.gameObject:getWaterWake()
+wake.foam = 1.5
+if Water.sample(self.scene, pos).excluded then -- in the dry hold
 end
 ```
 
@@ -1948,7 +1971,30 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
+| sheet sprites: `sheet` (rw path: an `.aseprite` file or a texture; setting it shows frame 0), `frame` (rw index, 0-based), `frameName` (rw), `frameCount` | properties |
+| `getSheet()` -> `SpriteSheet` or nil | method |
+| `playTag(name, speed)`, `stopTag()`; `tag` (name or nil), `isTagPlaying` | tags at the sheet's durations, direction and repeat (no clip events) |
+| `getTag(name)` -> `{name, from, to, direction, repeat, durationMs, color, userData}`, `getTags()` | methods |
+| `getSlice(name)` -> `{name, rect, center, pivot, visible, userData}` on the shown frame in local units, `getSlices()`, `getUserData()` | methods |
 | plus Mesh: `color`, `alpha`, `setColor`, `setTexture`, ... | |
+
+`SpriteSheet.load(path)` (nil and a logged error when there is none) gives `path`, `frameCount`,
+`pageCount`, `frameNames`, `tags`, `slices`, `properties` and `findFrame(name)` (-1 when absent),
+`getFrame(nameOrIndex)`, `getTag(name)`, `getSlice(name, frame)` (pixels, y down).
+
+```lua
+local hero = Sprite(self.scene, self.entity)
+hero.sheet = "assets/sprites/hero.aseprite"
+hero:playTag("walk")
+local hurt = hero:getSlice("hurt")
+if hurt and hurt.visible then
+    print(hero.tag, hero.frame, hurt.rect.width)
+end
+local sheet = SpriteSheet.load("assets/sprites/hero.aseprite")
+if sheet then
+    print(sheet.frameCount, sheet:findFrame("hero 3"), sheet:getTag("walk").durationMs)
+end
+```
 
 ### 4.6 SpriteAnimation (Action)
 

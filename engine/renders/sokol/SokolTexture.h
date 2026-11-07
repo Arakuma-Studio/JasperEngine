@@ -99,7 +99,7 @@ namespace jasperengine{
 
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
-                    ColorFormat colorFormat, TextureFilter filter);
+                    ColorFormat colorFormat, TextureFilter filter, TextureWrap wrap = TextureWrap::CLAMP_TO_EDGE);
         // a second view of source's image with a nearest, non-comparison sampler: the raw
         // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
         // which must outlive it.

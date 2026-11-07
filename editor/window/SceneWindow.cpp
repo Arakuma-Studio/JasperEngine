@@ -8,6 +8,8 @@
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "widget/ColorField.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "pixelart/PixelSnap.h"
@@ -670,6 +672,25 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 if (Util::isAnimationClipFile(path)) clips.push_back(path);
                             }
                             Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (SpriteSheetPool::isAsepritePath(droppedRelativePath)) {
+                    // an .aseprite file (S44 R33): onto a Sprite its sheet, onto an Animation
+                    // Player its clips, else a new animated Sprite where it drops; one step
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            if (!insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else {
+                                Vector3 dropPosition(0.0f, 0.0f, 0.0f);
+                                if (sceneProject->sceneType == SceneType::SCENE_3D) {
+                                    dropPosition = getDropSurface(sceneProject, x, y, {}).point;
+                                } else if (RayReturn hit = sceneProject->sceneRender->screenToRay(x, y).intersects(Plane(Vector3(0, 0, 1), Vector3(0, 0, 0)))) {
+                                    dropPosition = hit.point;
+                                }
+                                pixelart::aseprite::dropAseprite(project, sceneProject->id, droppedAssetPath, selEntity, NULL_ENTITY, dropPosition);
+                            }
                             focusSceneWindow(*sceneProject);
                         }
                     }

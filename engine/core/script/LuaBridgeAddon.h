@@ -13,6 +13,7 @@
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -171,6 +172,8 @@ namespace luabridge
     template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
     template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
+    template<> struct Stack<WaterExcluderShape> : EnumWrapper<WaterExcluderShape>{};
+    template<> struct Stack<WaterWakeResolution> : EnumWrapper<WaterWakeResolution>{};
     template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
     template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
     template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};

@@ -27,6 +27,9 @@ namespace jasperengine{
         Vector3 normal = Vector3(0.0f, 1.0f, 0.0f);   // the surface's
         Vector3 flowVelocity;               // the volume's flow plus the surface's rise (0, dh/dt, 0)
         Entity volume = NULL_ENTITY;        // the Water Volume (or library:water mesh) it is in or over
+        Entity excluder = NULL_ENTITY;      // the Water Excluder keeping it dry (inWater false then)
+        float wakeFoam = 0.0f;              // the Water Wakes' foam there (0..1; 0 without)
+        float wakeHeight = 0.0f;            // the crest of their waves there (metres)
 
         bool isInWater() const { return inWater; }
         float getSurfaceHeight() const { return surfaceHeight; }
@@ -34,6 +37,10 @@ namespace jasperengine{
         Vector3 getFlowVelocity() const { return flowVelocity; }
         Entity getVolume() const { return volume; }
         bool hasWater() const { return volume != NULL_ENTITY; }
+        Entity getExcluder() const { return excluder; }
+        bool isExcluded() const { return excluder != NULL_ENTITY; }
+        float getWakeFoam() const { return wakeFoam; }
+        float getWakeHeight() const { return wakeHeight; }
     };
 
     // The Water Volumes of a scene and the Buoyancy they give (docs/specs/S22-gameplay.md
@@ -82,6 +89,8 @@ namespace jasperengine{
         void applyBuoyancy(float dt);
 
         WaterSample sample(const Vector3& point) const;
+        // sample without the Water Excluders and Wakes
+        WaterSample sampleSurface(const Vector3& point) const;
         // the surface height at a world XZ (NaN where no water is)
         float sampleHeight(float x, float z) const;
 

@@ -21,6 +21,11 @@
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "object/environment/Water.h"
+#include "component/MeshComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "pool/ShaderPool.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "mcp/tools/PlayViewCommon.h"
 #include "io/FileData.h"
 #include "util/ProjectChecks.h"
@@ -368,6 +373,81 @@ void getInputStateTool(const CallPtr& call) {
     call->ok(text, data);
 }
 
+// sample_water's report: the Water Excluders (hulls), the Water Wakes, the wake map and which water
+// draws take the excluder and wake variants ('Wex', 'Wwk')
+std::string waterInteractionReport(SceneProject* scene, WaterInteractionSystem* interaction, Json& result) {
+    Scene* s = scene->scene;
+    auto bounds = [](const AABB& box) {
+        return box.isNull() ? Json() : Json{{"min", Json::array({box.getMinimum().x, box.getMinimum().y, box.getMinimum().z})},
+                                            {"max", Json::array({box.getMaximum().x, box.getMaximum().y, box.getMaximum().z})}};
+    };
+    static const char* const kShapeNames[] = {"box", "sphere", "convex_hull"};
+    std::string text;
+    Json excluders = Json::array();
+    auto excluderArray = s->getComponentArray<WaterExcluderComponent>();
+    for (size_t i = 0; i < excluderArray->size(); i++) {
+        const WaterExcluderComponent& component = excluderArray->getComponentFromIndex(i);
+        const Entity entity = excluderArray->getEntity(i);
+        Json item = {{"entity", McpRefs::entityJson(scene, entity)}, {"shape", kShapeNames[(int)component.shape]}};
+        bool active = false;
+        AABB world;
+        if (interaction) {
+            for (const WaterInteractionSystem::Excluder& excluder : interaction->getExcluders()) {
+                if (excluder.entity == entity) {
+                    active = true;
+                    world = excluder.worldBounds;
+                }
+            }
+        }
+        item["active"] = active;
+        item["world_bounds"] = bounds(world);
+        if (component.shape == WaterExcluderShape::CONVEX_HULL) {
+            const WaterInteractionSystem::HullInfo hull = interaction ? interaction->getHullInfo(entity) : WaterInteractionSystem::HullInfo();
+            item["hull_status"] = getWaterHullStatusName(hull.status);
+            item["hull_faces"] = hull.faces;
+        }
+        excluders.push_back(item);
+        text += "excluder " + s->getEntityName(entity) + (active ? ": active" : ": inactive") +
+                (component.shape == WaterExcluderShape::CONVEX_HULL ? ", hull " + item["hull_status"].get<std::string>() : std::string()) + "\n";
+    }
+    Json wakes = Json::array();
+    auto wakeArray = s->getComponentArray<WaterWakeComponent>();
+    for (size_t i = 0; i < wakeArray->size(); i++) {
+        const Entity entity = wakeArray->getEntity(i);
+        const WaterInteractionSystem::EmitterInfo info = interaction ? interaction->getEmitterInfo(entity) : WaterInteractionSystem::EmitterInfo();
+        wakes.push_back({{"entity", McpRefs::entityJson(scene, entity)}, {"emitting", info.emitting}, {"speed", info.speed},
+                         {"water", info.water != NULL_ENTITY ? McpRefs::entityJson(scene, info.water) : Json()}});
+        char line[160];
+        std::snprintf(line, sizeof(line), "wake %s: %s, %.2f m/s\n", s->getEntityName(entity).c_str(), info.emitting ? "emitting" : "not on water", info.speed);
+        text += line;
+    }
+    const WaterInteractionSystem::WakeMapInfo map = interaction ? interaction->getWakeMapInfo() : WaterInteractionSystem::WakeMapInfo();
+    Json waters = Json::array();
+    auto meshes = s->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        bool water = false;
+        uint64_t properties = 0;
+        for (unsigned int sub = 0; sub < mesh.numSubmeshes; sub++) {
+            if (Water::isWaterShader(mesh.submeshes[sub].material.shader)) {
+                water = true;
+                properties |= mesh.submeshes[sub].shaderProperties;
+            }
+        }
+        if (!water)
+            continue;
+        waters.push_back({{"entity", McpRefs::entityJson(scene, entity)}, {"exclusion", (properties & ShaderPool::getWaterExclusionProperty()) != 0},
+                          {"wake", (properties & ShaderPool::getWaterWakeProperty()) != 0}});
+    }
+    result["excluders"] = excluders;
+    result["wakes"] = wakes;
+    result["wake_map"] = {{"active", map.active}, {"size", map.size}, {"area", map.area}, {"corner", Json::array({map.corner.x, map.corner.y})}};
+    result["waters"] = waters;
+    text += std::string("wake map: ") + (map.active ? "active" : "idle") + "\n";
+    return text;
+}
+
 // sample_water: what the water is at points (Water.sample), the running scene while playing
 void sampleWaterTool(const CallPtr& call) {
     const Json& args = call->args();
@@ -387,14 +467,18 @@ void sampleWaterTool(const CallPtr& call) {
         call->fail(McpRefs::notOpenError(project, *scene));
         return;
     }
-    if (!args.contains("points") || !args["points"].is_array() || args["points"].empty()) {
-        call->fail("points: a list of [x, y, z] world points.");
+    const bool report = args.contains("report") && args["report"].is_boolean() && args["report"].get<bool>();
+    if (args.contains("points") ? (!args["points"].is_array() || args["points"].empty()) : !report) {
+        call->fail("points: a list of [x, y, z] world points (or report: true alone).");
         return;
     }
     auto vec = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
     Json samples = Json::array();
     std::string text;
-    for (const Json& point : args["points"]) {
+    std::shared_ptr<WaterInteractionSystem> interaction = scene->scene->findSystem<WaterInteractionSystem>();
+    const bool wakeMap = interaction && interaction->isWakeActive();
+    const Json points = args.contains("points") ? args["points"] : Json::array();
+    for (const Json& point : points) {
         if (!point.is_array() || point.size() != 3 || !point[0].is_number() || !point[1].is_number() || !point[2].is_number()) {
             call->fail("points: each one [x, y, z] numbers.");
             return;
@@ -407,20 +491,29 @@ void sampleWaterTool(const CallPtr& call) {
             item["normal"] = vec(sample.normal);
             item["flow_velocity"] = vec(sample.flowVelocity);
             item["volume"] = McpRefs::entityJson(scene, sample.volume);
+            // the Water Excluder keeping it dry, the Water Wakes' map there (null: no wake running)
+            item["excluded_by"] = sample.isExcluded() ? McpRefs::entityJson(scene, sample.excluder) : Json();
+            item["wake"] = wakeMap ? Json{{"foam", sample.wakeFoam}, {"height", sample.wakeHeight}} : Json();
         } else {
             item["surface_height"] = nullptr;
         }
         samples.push_back(item);
-        char line[160];
-        if (sample.hasWater())
+        char line[200];
+        if (sample.isExcluded())
+            std::snprintf(line, sizeof(line), "(%g, %g, %g): dry (Water Excluder %s), surface %.6g\n", p.x, p.y, p.z,
+                          scene->scene->getEntityName(sample.excluder).c_str(), sample.surfaceHeight);
+        else if (sample.hasWater())
             std::snprintf(line, sizeof(line), "(%g, %g, %g): %s, surface %.6g\n", p.x, p.y, p.z, sample.inWater ? "in water" : "above", sample.surfaceHeight);
         else
             std::snprintf(line, sizeof(line), "(%g, %g, %g): no water\n", p.x, p.y, p.z);
         text += line;
     }
+    Json result{{"scene_id", scene->id}, {"water_time", Water::getTime(scene->scene)}, {"shader_time", Engine::getShaderTime()},
+                {"samples", samples}};
+    if (report)
+        text += waterInteractionReport(scene, interaction.get(), result);
     // water_time: the clock the waves run on (the scene's, Water.getTime); shader_time: the wall clock
-    call->ok(text, Json{{"scene_id", scene->id}, {"water_time", Water::getTime(scene->scene)}, {"shader_time", Engine::getShaderTime()},
-                        {"samples", samples}});
+    call->ok(text, result);
 }
 
 } // namespace
@@ -486,13 +579,15 @@ void registerGameplayTools(McpRegistry& registry) {
         tool.description =
             "What the water is at world points (Lua Water.sample), at this frame's water_time: in_water, the surface "
             "height over the point with the waves the shader draws (null: no water there), its normal, the water's "
-            "velocity (flow + the surface rising) and the Water Volume (or library:water mesh). The running scene "
-            "while playing.";
+            "velocity (flow + the surface rising), the Water Volume (or library:water mesh), the Water Excluder keeping "
+            "it dry and the Water Wakes there. report: the excluders' hulls, the wakes and which waters draw them. The "
+            "running scene while playing.";
         tool.inputSchema = object({
             {"points", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 256},
                             {"items", Json{{"type", "array"}, {"minItems", 3}, {"maxItems", 3}, {"items", Json{{"type", "number"}}}}}}},
+            {"report", boolean("")},
             {"scene", sceneRef()}
-        }, {"points"});
+        }, {});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = sampleWaterTool;

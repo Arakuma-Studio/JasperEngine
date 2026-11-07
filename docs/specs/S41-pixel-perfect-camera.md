@@ -771,8 +771,9 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     `Engine::removeScene` of the main scene drop the Pixel Perfect Camera's view; the new main
     scene's camera sets its own on its update. Without it a scene switch kept the old scene's
     integer layout (`EngineViewLayoutTest.ThePixelPerfectViewGoesWithItsMainScene`).
-22. **Variant bits and S55.** `Pxs` is MESH bit 42 and DEPTH bit 19 (S57 and S55 took MESH 36-41 and
-    DEPTH 18), UI bit 5, PARTICLES bit 11; Stretch Fill is BLIT bit 18 (`Psb`). The per-draw
+22. **Variant bits and S55.** `Pxs` is MESH bit 45 and DEPTH bit 19 (S57 and S55 took MESH 36-41 and
+    DEPTH 18, the water interaction MESH 42-43, draw-perf MESH 44), UI bit 5, PARTICLES bit 11;
+    Stretch Fill is BLIT bit 18 (`Psb`). The per-draw
     `pixelSnapDraw` is part of the per-draw object blocks (`includes/object_params.glsl`,
     `object_depth_params.glsl`), so a pixel-snapped drawable never joins an automatic GPU
     instancing batch (`getSubmeshBatchVariant`).
@@ -781,7 +782,7 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     post-colour vectors before them, unread): every other program's frame block, and the bytes
     uploaded to it, are what they were. `pixelSnap` holds half the target (`xy`), `flipY` and k;
     `pixelSnapOffset` where NDC 0 lands (`xy`), the on-grid view flag and the bias. The editor's
-    shader cache moves to `v52`.
+    shader cache moves to `v54` (`v53` is draw-perf's).
 24. **Shadow maps and uploads.** A depth draw into a shadow map never snaps (its frame block holds
     the camera's grid; `RenderSystem::depthSnapMode`). A block the engine extends with
     `pixelSnapDraw` is uploaded at most at the shader's reflected size (a fork without the member).

@@ -659,6 +659,14 @@ uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
 }
 
+uint64_t ShaderPool::getWaterExclusionProperty(){
+    return shaderPropertyBit(42);
+}
+
+uint64_t ShaderPool::getWaterWakeProperty(){
+    return shaderPropertyBit(43);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -667,7 +675,7 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
 // bit; set for the drawables of a scene whose camera has a Pixel Perfect Camera snapping
 uint64_t ShaderPool::getPixelSnapProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:      return shaderPropertyBit(42);
+        case ShaderType::MESH:      return shaderPropertyBit(45);
         case ShaderType::DEPTH:     return shaderPropertyBit(19);
         case ShaderType::UI:        return shaderPropertyBit(5);
         case ShaderType::PARTICLES: return shaderPropertyBit(11);
@@ -690,7 +698,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 43;
+        case ShaderType::MESH:   return 46;
         case ShaderType::DEPTH:  return 20;
         case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 6;
@@ -790,8 +798,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
             // the object block per instance (getAutoInstancingProperty)
             case 41: return shortName ? "Aui" : "Auto Instancing";
+            // what keeps water out and the wakes on it (includes/water_interaction.glsl): a
+            // shader requiring waterexclusion / waterwake in a scene with Water Excluders / Wakes
+            case 42: return shortName ? "Wex" : "Water Exclusion";
+            case 43: return shortName ? "Wwk" : "Water Wake";
+            // 44: draw-perf's 'Dlo'
             // the pixel-snap rule on the vertices (S41, PIXEL_SNAP: includes/pixel_snap.glsl)
-            case 42: return shortName ? "Pxs" : "Pixel Snap";
+            case 45: return shortName ? "Pxs" : "Pixel Snap";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -1203,7 +1216,9 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
     // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
     // Ter, Ist, Txr...).
-    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
+    // wakes or holes)
+    static const int meshBits[] = {43, 42, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
