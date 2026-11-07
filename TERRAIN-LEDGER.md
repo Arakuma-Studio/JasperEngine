@@ -163,7 +163,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
-- Follow-ups outside the programme (for their owners, not fixed here): `RagdollWizardDialog::instance().show()` is drawn only from
+- Follow-ups outside the programme (for their owners, not fixed here):
+  - `SplineGpu.FenceAndWall` fails deterministically on integration's engine code alone (6612 pixels over threshold, fence rails
+    about 1.5 px lower; posts and wall match), proven by T3 building integration's exact `engine/`. T1's passing run predates the
+    upstream merge, so it came with upstream (likely render-correctness or mesh-memory). The final baseline checks it on plain
+    `origin/main`; it is not a terrain-programme regression and is reported to that work's owner. `RagdollWizardDialog::instance().show()` is drawn only from
   the Inspector, the same bug T2 found and fixed for Create Terrain (a dialog opened from another tab is never drawn).
 - Shader undefined behaviour or driver bug, found by T3's merged MCP run: a new terrain limits layers per pixel (R53), and that
   variant at High tier and High Lit Quality (the editor default) had never been drawn by any GPU test. llvmpipe kills it with an
