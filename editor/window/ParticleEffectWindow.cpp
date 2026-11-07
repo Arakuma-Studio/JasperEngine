@@ -891,7 +891,9 @@ void ParticleEffectWindow::drawOutline() {
         return;
     }
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("##eye", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+    // the eye's whole button: the UI probe lists only what is drawn whole
+    ImGui::TableSetupColumn("##eye", ImGuiTableColumnFlags_WidthFixed,
+                            ImGui::CalcTextSize(ICON_FA_EYE_SLASH).x + ImGui::GetStyle().FramePadding.x * 2.0f + Theme::dpi(4.0f));
     ImGui::TableSetupColumn("Outline", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(170.0f));
     ImGui::TableSetupColumn("Timing", ImGuiTableColumnFlags_WidthStretch);
     // the header row: the ruler with the playhead over the timing column

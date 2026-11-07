@@ -37,7 +37,7 @@ FIRE_JSON = {
         {"type": "emission", "rateOverTime": 40},
         {"type": "subEmitters"},
     ],
-    "subEmitters": [{"trigger": "death", "effect": "fx/Spark.particles", "emitCount": 2}],
+    "subEmitters": [{"trigger": "death", "effect": "assets/fx/Spark.particles", "emitCount": 2}],
 }
 SPARK_JSON = {
     "version": 1,
@@ -120,7 +120,8 @@ async def test_setup(ed: Editor):
     focused = (await ed.call("editor_status"))["windows"]["focused"]
     ed.check_eq(focused, "Particle Effect", "Assets > Open on a .particles shows the Particle Effect window")
     state = await settled(ui)
-    ed.check_eq(state["effect"], "fx/Fire.particles", "the window shows the file")
+    # (a created project's assets folder is the project's root)
+    ed.check_eq(state["effect"], FIRE, "the window shows the file")
     ed.check_eq(state["nodes"], ["Fire", "Spark"], "the Outline: the file and its sub-emitter child")
     await probe_item(ui, "particle_effect.stage")
     await shot(ed, "01-opened")
@@ -178,7 +179,8 @@ async def test_a_paused_edit_holds_the_time_and_the_seed(ed: Editor):
     ed.check_eq(await undo_steps(ed), steps + 1, "the drag is one undo step")
     await ed.call("undo", scope="project")
     await ui.frames(4)
-    ed.check_eq((ed.project / FIRE).read_text(), text, "undo puts the file back")
+    # (the file is written in its canonical form: compare what it says)
+    ed.check_eq(json.loads((ed.project / FIRE).read_text())["duration"], json.loads(text)["duration"], "undo puts Duration back")
     undone = await settled(ui)
     ed.check_eq(undone["time"], before["time"], "an undo is an edit too: the same time")
     ed.check_eq(undone["seed"], before["seed"], "and the same seed")

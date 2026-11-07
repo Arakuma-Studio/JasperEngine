@@ -131,7 +131,7 @@ async def test_double_click_particles_opens_the_particle_effect_window(ed: Edito
     ed.check_eq(await focused(ed), "Particle Effect", "the Particle Effect window takes the focus (S91)")
     ed.check_eq(await buffers(ed), [], "no text buffer opens")
     status = (await ed.call("editor_status"))["ui"]["particle_effect"]
-    ed.check_eq(status["effect"], "mats/Smoke.particles", "the window shows the effect")
+    ed.check_eq(status["effect"], EFFECT, "the window shows the effect")
     await probe_item(ui, "particle_effect.stage")
     await shot(ed, "particle-effect-window")
 
