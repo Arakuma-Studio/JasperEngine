@@ -887,7 +887,9 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
             #ifdef TERRAIN_CLIFF
                 // T3 R11: this layer's Flat Only never reads a side plane
                 #ifdef HAS_NORMALS
-                    terrainSideAmount = terrainLayers.flatOnly[index / 4][index % 4] > 0.5 ? 0.0 : terrainSideAmountAll;
+                    // the component by a mask: a vector of a block indexed by a variable does not cross-compile to GL
+                    vec4 flatOnlyMask = vec4(equal(ivec4(index % 4), ivec4(0, 1, 2, 3)));
+                    terrainSideAmount = dot(terrainLayers.flatOnly[index / 4], flatOnlyMask) > 0.5 ? 0.0 : terrainSideAmountAll;
                 #endif
             #endif
 

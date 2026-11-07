@@ -85,11 +85,14 @@ namespace {
 
         // the view's count of the frame, per pixel on the terrain (R: the count at 8/255 a step)
         std::vector<int> readCounts(terrain::TerrainDebugView view){
+            // the background black: a count of 0, where the sky's red would read as a count
+            scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             terrain::TerrainQualitySettings::setDebugView(view);
             EXPECT_TRUE(render());
             std::vector<uint8_t> frame;
             EXPECT_TRUE(readFrame(frame));
             terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::SHADED);
+            scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             std::vector<int> counts(frame.size() / 4);
             for (size_t i = 0; i < counts.size(); i++){
                 // the sky's blue channel is its own: only pixels the view wrote count (a ramp's alpha)
@@ -290,6 +293,11 @@ TEST_F(TerrainMaterialsGpu, ShaderMatchesCpuSelect){
     camera.setTarget(0.0f, 0.0f, 0.0f);
 
     TerrainComponent& terrainComponent = component();
+    // nearest, so a pixel's weights are one texel's, as the CPU reads them here
+    for (Texture& map : terrainComponent.blendMaps){
+        map.setMinFilter(TextureFilter::NEAREST);
+        map.setMagFilter(TextureFilter::NEAREST);
+    }
     for (terrain::TerrainQuality tier : {terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
         setTier(tier);
         const std::vector<int> counts = readCounts(terrain::TerrainDebugView::LAYER_COUNT);
@@ -421,7 +429,20 @@ TEST_F(TerrainMaterialsGpu, MacroVariation){
     component().macroStrength = 0.9f;
     EXPECT_EQ(maxFetches(), before) << "no texture read";
     ASSERT_TRUE(render());
+    std::vector<uint8_t> tinted;
+    ASSERT_TRUE(readFrame(tinted));
     expectFrameGolden("terrain_macro_noise");
+    // strength 0 draws the layers as they are: the tint is what changed the frame
+    component().macroStrength = 0.0f;
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> untinted;
+    ASSERT_TRUE(readFrame(untinted));
+    double difference = 0.0;
+    for (size_t i = 0; i < tinted.size(); i += 4){
+        difference += std::abs(tinted[i + 1] - untinted[i + 1]);
+    }
+    EXPECT_GT(difference / static_cast<double>(tinted.size() / 4), 2.0) << "the noise tints the ground";
+    component().macroStrength = 0.9f;
 
     component().macroMode = TerrainMacroMode::BASE_MAP;
     Material material = terrain->getMaterial();
