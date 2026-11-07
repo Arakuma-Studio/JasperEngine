@@ -3099,7 +3099,7 @@ bool editor::Exporter::copyAssets() {
 
         // Noise Graphs are recipes: a project that bakes them pays nothing (T2 R45). When the module
         // is needed every one ships, because a Lua string can name any of them.
-        if (moduleUsageKnown && !moduleUsage.needs("noise") && entry.path().extension() == ".noisegraph") continue;
+        if (moduleUsageKnown && !moduleUsage.needs("noise") && entry.path().extension() == ".noisegraph") return TreeStep::Skip;
 
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
@@ -3162,9 +3162,9 @@ bool editor::Exporter::copyAssets() {
             std::string voxelError;
             if (!cook::cookVoxelVolumeFile(entry.path(), destPath, relPath.generic_string(), voxelOptions, voxelError)) {
                 setError(voxelError);
-                return false;
+                return stop();
             }
-            continue;
+            return TreeStep::Skip;
         }
 
         // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most

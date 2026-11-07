@@ -21,6 +21,7 @@
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
