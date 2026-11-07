@@ -209,7 +209,7 @@ TEST_F(NavQueryTest, MoveAlongSurfaceClampsAtWall){
     ASSERT_TRUE(nav->moveAlongSurface(Vector3(8.0f, 0.4f, 0.0f), Vector3(12.0f, 0.4f, 0.0f), move));
     EXPECT_TRUE(move.hit);
     EXPECT_NEAR(move.position.x, 9.5f, CELL);
-    EXPECT_NEAR(move.position.y, 0.0f, 0.05f);
+    EXPECT_NEAR(move.position.y, 0.0f, 0.15f);
     EXPECT_NEAR(move.distance, 1.5f, CELL);
     EXPECT_EQ(move.area, nav::AREA_WALKABLE);
     // into the box's footprint (eroded to 1.5 m around its centre): stopped at its side

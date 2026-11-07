@@ -708,6 +708,13 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   mask alone (the 16 cost variants of one mask shared one filter there). The red run is the
   freeing part: after the first agents leave, 15 new masks fit (S19 kept the old mask's filter, so
   the 15th new mask fell back to every area and walked the masked strip).
+- S55 P1: an agent with area costs of its own steers without Detour's visibility shortcut
+  (`DT_CROWD_OPTIMIZE_VIS`): `dtPathCorridor::optimizePathVisibility` raycasts without costs and cut
+  the agent straight through the area it pays 10 for (the first `NavCrowdTest.PerAgentAreaCosts`
+  run). The topology optimisation, which searches with the filter's costs, stays on. Agents without
+  costs of their own keep S19's flags (and S19's behaviour with project costs).
+- S55 P1: AC8 compares the raycast's cost with length x cost to 1e-3 *relative*: Detour prices the
+  polygons' 3D segments (their detail heights), while `distance` stays S19's planar length.
 - S55 P1: AC2's red control is a run with `findRandomPoint` temporarily calling Detour's
   `dtNavMeshQuery::findRandomPoint` (the unit tests cannot include Detour's headers); the log is
   kept with the package's evidence.
@@ -743,8 +750,6 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 - S55 P2: AC18's allocation count covers the area sync's share of a tick (`syncAreaOverrides`, 600
   calls with 50 agents, no overrides): S19's tick itself allocates (its sorted agent list), which
   `NavSystemTest.GameplayZeroCost` (P3) measures.
-- S55 P2: R43's `modifiers[].apply_at_runtime` belongs to S54 P2's `modifiers[]` list, which is not on
-  `nav/integration` yet: whichever lands second adds the field.
 
 - S55 P3: `agent.path` (`getAgentCorridorPath`) starts at the agent's position, as `calculatePath`'s
   paths and Unity's `NavMeshAgent.path` do, so AC21 compares its corners after the first with

@@ -229,6 +229,8 @@ async def test_door_and_bridge_in_play(ed: Editor):
     ed.check(not door_override(info, d["door"])["applied"], f"{info['area_overrides']}")
     bridge = [l for l in info["links"] if l["entity"]["id"] == d["bridge"]][0]
     ed.check(bridge["activated"] and "occupied" not in bridge, f"{bridge}")
+    door = [m for m in info["modifiers"] if m["entity"]["id"] == d["door"]][0]
+    ed.check(door["apply_at_runtime"] is True, f"{door}")
 
     st = await ed.call("get_play_state")
     if st["state"] != "stopped":

@@ -461,7 +461,6 @@ void getNavigationInfoTool(const CallPtr& call) {
         Json item = {{"entity", McpRefs::entityJson(scene, entity)}, {"start", vec3Json(model * link.startPoint)},
                      {"end", vec3Json(model * link.endPoint)}, {"bidirectional", link.bidirectional}, {"area", link.area},
                      {"width", link.width}, {"enabled", link.enabled}, {"activated", link.activated}};
-        if (playing) item["occupied"] = system->isLinkOccupied(entity);
         auto state = linkStates.find(entity);
         const bool held = state != linkStates.end() && state->second.surface != NULL_ENTITY;
         item["surface"] = held ? McpRefs::entityJson(scene, state->second.surface) : Json();
@@ -469,14 +468,15 @@ void getNavigationInfoTool(const CallPtr& call) {
         item["connections"] = held ? state->second.connections : 0;
         item["island_start"] = held ? state->second.islandStart : -1;
         item["island_end"] = held ? state->second.islandEnd : -1;
+        if (playing) item["occupied"] = system->isLinkOccupied(entity);
         links.push_back(item);
     }
-    // S55 R43: runtime modifier volumes and script volumes, applied or not (with `entities`, those
-    // GameObjects' volumes only)
+    // S55 R43: runtime modifier volumes and script volumes, applied or not (with `entities`, only
+    // those GameObjects' volumes)
     Json areaOverrides = Json::array();
     int appliedOverrides = 0;
     for (const NavigationSystem::AreaOverrideStatus& status : system->getAreaOverrides()) {
-        if (filtered && (status.handle != 0 || !only.count(status.modifier))) continue;
+        if (status.handle != 0 ? filtered : !listed(status.modifier)) continue;
         Json source = status.handle != 0 ? Json{{"handle", status.handle}} : Json{{"entity", McpRefs::entityJson(scene, status.modifier)}};
         areaOverrides.push_back({{"source", source}, {"area", status.area}, {"applied", status.applied}, {"polygons", status.polygons}});
         if (status.applied) appliedOverrides++;
@@ -521,8 +521,7 @@ void getNavigationInfoTool(const CallPtr& call) {
                      {"apply_to_children", modifier.applyToChildren}};
         if (modifier.overrideArea) item.update({{"area", modifier.area}, {"area_name", areaName(modifier.area)}});
         if (modifier.useVolume) item["volume"] = {{"center", vec3Json(modifier.volumeCenter)}, {"size", vec3Json(modifier.volumeSize)}};
-        // S55 R43
-        item["apply_at_runtime"] = modifier.applyAtRuntime;
+        if (modifier.useVolume) item["apply_at_runtime"] = modifier.applyAtRuntime;
         modifiers.push_back(item);
     }
     // S54 R13: the one findings function, with the dirty counts read above
@@ -542,8 +541,8 @@ void getNavigationInfoTool(const CallPtr& call) {
     }
     Json data = {{"scene_id", scene->id}, {"playing", playing}, {"navmesh_available", nav::isNavMeshAvailable()},
                  {"settings", settingsJson(project->getNavigationSettings())}, {"surfaces", surfaces}, {"grids", grids},
-                 {"links", links}, {"area_overrides", areaOverrides}, {"agents", agents}, {"obstacles", obstacles},
-                 {"modifiers", modifiers}, {"findings", findings},
+                 {"links", links}, {"area_overrides", areaOverrides}, {"agents", agents}, {"obstacles", obstacles}, {"modifiers", modifiers},
+                 {"findings", findings},
                  {"stats", {{"crowds", system->getCrowdCount()}, {"crowd_agents", system->getAgentCount()}, {"bytes", system->getMemoryBytes()}}}};
     text += "\n  " + std::to_string(links.size()) + " link(s), " + std::to_string(agents.size()) + " agent(s), " +
             std::to_string(obstacles.size()) + " obstacle(s), " + std::to_string(modifiers.size()) + " modifier(s)";
@@ -995,7 +994,7 @@ void queryNavigationTool(const CallPtr& call) {
         call->fail("op: path, sample, raycast, closest_edge, reachable, locate, random or move_along.");
         return;
     }
-    // every op starts at from but random, which without it draws anywhere (S55 R42)
+    // every op needs from but random (without it: anywhere)
     NavPoint from;
     const bool hasFrom = args.contains("from") && !args["from"].is_null();
     if ((op != "random" || hasFrom) && !parseNavPointArg(scene, args, "from", from, error)) {
@@ -1094,7 +1093,6 @@ void queryNavigationTool(const CallPtr& call) {
                                                               : system->calculatePath(from.position, to.position, filter);
         if (op == "path") {
             item.update(navPathJson(scene, path, full));
-            // S55 R42: what it costs; per corner and area with the whole answer
             if (full) addPathCosts(item, path);
             else item["cost"] = rounded(path.cost);
             return item;
@@ -1538,8 +1536,8 @@ void visualizeNavigationTool(const CallPtr& call) {
     overlay.enabled = true;
     data["overlay"] = {{"navmesh", overlay.showNavMesh}, {"tiles", overlay.showTileBounds}, {"heightmesh", overlay.showHeightMesh},
                        {"grid", overlay.showGrid}, {"links", overlay.showLinks}, {"obstacles", overlay.showObstacles},
-                       {"area_overrides", overlay.showAreaOverrides},
-                       {"avoidance", overlay.showAvoidance}, {"color_by", colorByName(overlay.colorBy)}, {"slope", overlay.showSteepSlopes},
+                       {"area_overrides", overlay.showAreaOverrides}, {"avoidance", overlay.showAvoidance},
+                       {"color_by", colorByName(overlay.colorBy)}, {"slope", overlay.showSteepSlopes},
                        {"tile_labels", overlay.showTileLabels},
                        {"paths", overlay.showPaths == NavOverlaySettings::Paths::All ? "all" : overlay.showPaths == NavOverlaySettings::Paths::None ? "none" : "selected"}};
     scene->needUpdateRender = true;
@@ -1624,12 +1622,12 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Query Navigation";
         tool.description =
             "A navmesh or Nav Grid query in world space, in edit or play: path, sample (nearest point), raycast, closest_edge, "
-            "reachable, locate (is a point on the navmesh; if not, why), random, move_along (jasper://docs/navigation). A failed "
-            "path says why and what to do. from/to: a point or a GameObject (an agent: its feet, type and mask). target: navmesh "
-            "(by agent_type), grid or a surface/grid GameObject. area_mask: a bit per area.";
+            "reachable, locate (is a point on the navmesh; if not, why), random, move_along. A failed path says why and what to "
+            "do. from/to: a point or a GameObject (an agent: its feet, type and mask). target: navmesh (by agent_type), grid or a "
+            "surface/grid GameObject. area_mask: a bit per area.";
         tool.inputSchema = object({
             {"op", withDefault(stringEnum("", {"path", "sample", "raycast", "closest_edge", "reachable", "locate", "random", "move_along"}), "path")},
-            {"from", navPointSchema("Not for random anywhere.")},
+            {"from", navPointSchema("")},
             {"to", navPointSchema("Or a list of up to 64.", MAX_TARGETS)},
             {"max_distance", number("Default: sample 2, locate 5; closest_edge, random.", 0.0, 1e6)},
             {"seed", integer("random.", 0, 4294967295LL)},
@@ -1706,16 +1704,16 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Visualize Navigation";
         tool.description =
             "Turn on the Scene view's AI Navigation overlay and set what it shows (navmesh in area, island or tile colours, "
-            "steep slopes, tile labels, agent paths, links...) of a scene (the running one while playing); path draws a "
-            "query_navigation path with its reason. frame first moves the Scene camera to the navmesh or a GameObject. "
+            "steep slopes, tile labels, agent paths, links, area overrides...) of a scene (the running one while playing); path "
+            "draws a query_navigation path with its reason. frame first moves the Scene camera to the navmesh or a GameObject. "
             "screenshot: true or scene returns the Scene view, game the Game view.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"show", object({{"navmesh", boolean("")}, {"tiles", boolean("")}, {"heightmesh", boolean("")}, {"grid", boolean("")},
                              {"paths", Json{{"anyOf", Json::array({Json{{"type", "boolean"}}, stringEnum("", {"none", "selected", "all"})})}}},
                              {"avoidance", boolean("")}, {"links", boolean("")}, {"obstacles", boolean("")}, {"islands", boolean("")},
-                             {"area_overrides", boolean("")},
-                             {"tile_colors", boolean("")}, {"slope", boolean("")}, {"tile_labels", boolean("")}})},
+                             {"tile_colors", boolean("")}, {"slope", boolean("")}, {"tile_labels", boolean("")},
+                             {"area_overrides", boolean("")}})},
             {"path", object({{"from", navPointSchema("")}, {"to", navPointSchema("")}, {"agent_type", agentTypeRef()},
                              {"area_mask", integer("", 0, 65535)}}, {"from", "to"})},
             {"frame", Json{{"description", "navmesh or a GameObject."}, {"type", Json::array({"integer", "string"})}}},

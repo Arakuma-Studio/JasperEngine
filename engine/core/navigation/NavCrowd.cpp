@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::nav;
@@ -245,7 +246,11 @@ struct NavCrowd::Impl {
             out.maxSpeed = 0.0f;
             out.maxAcceleration = 0.0f;
         } else {
-            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO;
+            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_TOPO;
+            // Detour's visibility shortcut raycasts without costs: it would cut an agent's own
+            // costly areas (spec S55 R9) straight through, so agents with costs of their own skip it
+            if (std::none_of(std::begin(p.areaCosts), std::end(p.areaCosts), [](float cost) { return cost > 0.0f; }))
+                out.updateFlags |= DT_CROWD_OPTIMIZE_VIS;
             if (p.quality != AvoidanceQuality::None) {
                 out.updateFlags |= DT_CROWD_OBSTACLE_AVOIDANCE | DT_CROWD_SEPARATION;
                 out.obstacleAvoidanceType = (unsigned char)((int)p.quality - 1);

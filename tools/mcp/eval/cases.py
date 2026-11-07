@@ -880,7 +880,6 @@ CASES = [
         "max_turns": 12,
     },
 
-
     # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {
         "id": "guard_navigation_path_reason",

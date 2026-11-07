@@ -732,9 +732,10 @@ TEST_F(NavCrowdTest, PerAgentAreaCosts){
     const Entity surface = planeSurface(30.0f, 10.0f);
     areaVolume(Vector3(0.0f, 0.0f, -1.0f), Vector3(2.0f, 4.0f, 8.0f), 3);
     bake(surface);
-    const Entity careful = agent(*scene, Vector3(-10.0f, 0.0f, -1.0f));
-    const Entity alike = agent(*scene, Vector3(-10.0f, 0.0f, -3.5f));
-    const Entity plain = agent(*scene, Vector3(-10.0f, 0.0f, 1.5f));
+    // the plain agent walks far from the careful one's way to the gap (no avoidance between them)
+    const Entity careful = agent(*scene, Vector3(-10.0f, 0.0f, 0.5f));
+    const Entity alike = agent(*scene, Vector3(-13.0f, 0.0f, 4.0f));
+    const Entity plain = agent(*scene, Vector3(-10.0f, 0.0f, -3.5f));
     NavMeshAgent(scene.get(), careful).setAreaCost(3, 10.0f);
     NavMeshAgent(scene.get(), alike).setAreaCost(3, 10.0f);
     EXPECT_FLOAT_EQ(NavMeshAgent(scene.get(), careful).getAreaCost(3), 10.0f);
@@ -747,8 +748,8 @@ TEST_F(NavCrowdTest, PerAgentAreaCosts){
     EXPECT_FLOAT_EQ(nav->getAgentQueryFilter(careful).getAreaCost(3), 10.0f);
     EXPECT_EQ(nav->getAgentQueryFilter(plain).costMask, 0);
 
-    NavMeshAgent(scene.get(), careful).setDestination(Vector3(10.0f, 0.0f, -1.0f));
-    NavMeshAgent(scene.get(), plain).setDestination(Vector3(10.0f, 0.0f, 1.5f));
+    NavMeshAgent(scene.get(), careful).setDestination(Vector3(10.0f, 0.0f, 0.5f));
+    NavMeshAgent(scene.get(), plain).setDestination(Vector3(10.0f, 0.0f, -3.5f));
     float carefulMaxZ = -1e9f, plainMaxZ = -1e9f;
     bool plainInMud = false, carefulInMud = false;
     for (int tick = 0; tick < 60 * 15; tick++) {
@@ -763,7 +764,7 @@ TEST_F(NavCrowdTest, PerAgentAreaCosts){
     EXPECT_GT(carefulMaxZ, 3.0f - 0.2f);
     EXPECT_FALSE(carefulInMud);
     EXPECT_TRUE(plainInMud);
-    EXPECT_LT(plainMaxZ, 3.0f);
+    EXPECT_LT(plainMaxZ, 0.0f);
     EXPECT_GT(position(careful).x, 9.0f);
     EXPECT_GT(position(plain).x, 9.0f);
 

@@ -272,9 +272,10 @@ TEST_F(NavAreaOverrideTest, SurvivesTileSwap){
     obstacle.carve = true;
     obstacle.carveOnlyStationary = false;
     scene->addComponent<NavMeshObstacleComponent>(crate, obstacle);
-    const uint64_t before = nav->getNavMesh(fixture.surface)->getRevision();
+    // its tile is rebuilt: a new tile reference (in the tile state's header)
+    const std::vector<uint8_t> before = nav->getNavMesh(fixture.surface)->getTileStateBytes(-1, -1);
     steps(3);
-    EXPECT_NE(nav->getNavMesh(fixture.surface)->getRevision(), before) << "the obstacle carved";
+    EXPECT_NE(nav->getNavMesh(fixture.surface)->getTileStateBytes(-1, -1), before) << "the obstacle carved its tile";
     EXPECT_FALSE(doorOpen(nav, fixture)) << "after a carving rebuild";
 
     // the link moved: its tiles rebuilt
@@ -368,9 +369,10 @@ TEST_F(NavAreaOverrideTest, ScriptVolumeHandle){
     nav->syncAreaOverrides();
     ASSERT_TRUE(nav->samplePosition(Vector3(0.0f, 0.0f, 0.0f), 0.3f, hit));
     EXPECT_EQ(hit.area, 3);
-    // an area outside 0-15 is refused
+    // an area outside 0-15 is refused, with a warning
+    test::LogCapture log;
     EXPECT_EQ(nav->setAreaInVolume(fixture.doorCenter, fixture.doorSize, none, nav::AREA_COUNT), 0u);
-    EXPECT_ENGINE_WARNINGS(1);
+    EXPECT_EQ(log.count(D_LOG_WARN, "setAreaInVolume"), 1u);
 
     // Stop: the handles end
     nav->destroy();
@@ -416,12 +418,13 @@ TEST_F(NavAreaOverrideTest, LinkActivated){
     Doors fixture = doors(*scene);
     bake(fixture.surface);
     ASSERT_EQ(nav->calculatePath(fixture.east, fixture.island).status, nav::PathStatus::Complete);
+    const int dirty = nav->countDirtyTiles(fixture.surface);
     NavMeshLinkComponent& bridge = scene->getComponent<NavMeshLinkComponent>(fixture.bridge);
     bridge.activated = false;
     nav->syncAreaOverrides();
     EXPECT_FALSE(nav->getNavMesh(fixture.surface)->isLinkActive((uint32_t)fixture.bridge));
     EXPECT_EQ(nav->calculatePath(fixture.east, fixture.island).status, nav::PathStatus::Partial);
-    EXPECT_EQ(nav->countDirtyTiles(fixture.surface), 0) << "Activated is not a bake input";
+    EXPECT_EQ(nav->countDirtyTiles(fixture.surface), dirty) << "Activated is not a bake input";
     bridge.activated = true;
     nav->syncAreaOverrides();
     EXPECT_EQ(nav->calculatePath(fixture.east, fixture.island).status, nav::PathStatus::Complete);
