@@ -16,6 +16,8 @@
 #include "StreamSchema.h"
 #include "util/YamlNumbers.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 
 // ---------------------------------------------------------------- NavMesh Surface
@@ -37,6 +39,7 @@ YAML::Node editor::Stream::encodeNavMeshSurfaceComponent(const NavMeshSurfaceCom
     node["minRegionArea"] = surface.minRegionArea;
     node["plane"] = StreamSchema::navPlane().toString(surface.plane);
     node["runtimeCarving"] = surface.runtimeCarving;
+    node["maxCarvingObstacles"] = surface.maxCarvingObstacles;
     encodeAssetRef(node, "navMeshData", surface.navMeshData);
     return node;
 }
@@ -60,6 +63,9 @@ NavMeshSurfaceComponent editor::Stream::decodeNavMeshSurfaceComponent(const YAML
     if (node["minRegionArea"]) surface.minRegionArea = YamlNumbers::as<float>(node["minRegionArea"]);
     if (node["plane"]) surface.plane = decodeEnum(node, "plane", StreamSchema::navPlane());
     if (node["runtimeCarving"]) surface.runtimeCarving = YamlNumbers::as<bool>(node["runtimeCarving"]);
+    // (S74: missing in S19-era scenes, which keep the default 128)
+    if (node["maxCarvingObstacles"])
+        surface.maxCarvingObstacles = std::clamp(YamlNumbers::as<int>(node["maxCarvingObstacles"]), 1, 4096);
     if (node["navMeshData"]) surface.navMeshData = decodeAssetRef(node, "navMeshData");
     return surface;
 }
@@ -87,6 +93,10 @@ YAML::Node editor::Stream::encodeNavMeshAgentComponent(const NavMeshAgentCompone
     node["updateRotation"] = agent.updateRotation;
     node["driver"] = StreamSchema::navAgentDriver().toString(agent.driver);
     node["surface"] = agent.surface;
+    node["stuckDetection"] = agent.stuckDetection;
+    node["stuckSpeedRatio"] = agent.stuckSpeedRatio;
+    node["stuckTimeout"] = agent.stuckTimeout;
+    node["repathWhenStuck"] = agent.repathWhenStuck;
     return node;
 }
 
@@ -113,6 +123,10 @@ NavMeshAgentComponent editor::Stream::decodeNavMeshAgentComponent(const YAML::No
     if (node["updateRotation"]) agent.updateRotation = YamlNumbers::as<bool>(node["updateRotation"]);
     if (node["driver"]) agent.driver = decodeEnum(node, "driver", StreamSchema::navAgentDriver());
     if (node["surface"]) agent.surface = YamlNumbers::as<Entity>(node["surface"]);
+    if (node["stuckDetection"]) agent.stuckDetection = YamlNumbers::as<bool>(node["stuckDetection"]);
+    if (node["stuckSpeedRatio"]) agent.stuckSpeedRatio = YamlNumbers::as<float>(node["stuckSpeedRatio"]);
+    if (node["stuckTimeout"]) agent.stuckTimeout = YamlNumbers::as<float>(node["stuckTimeout"]);
+    if (node["repathWhenStuck"]) agent.repathWhenStuck = YamlNumbers::as<bool>(node["repathWhenStuck"]);
     return agent;
 }
 
@@ -163,6 +177,7 @@ YAML::Node editor::Stream::encodeNavMeshLinkComponent(const NavMeshLinkComponent
     node["bidirectional"] = link.bidirectional;
     node["autoUpdatePosition"] = link.autoUpdatePosition;
     node["area"] = link.area;
+    node["activated"] = link.activated;
     return node;
 }
 
@@ -179,6 +194,7 @@ NavMeshLinkComponent editor::Stream::decodeNavMeshLinkComponent(const YAML::Node
     if (node["bidirectional"]) link.bidirectional = YamlNumbers::as<bool>(node["bidirectional"]);
     if (node["autoUpdatePosition"]) link.autoUpdatePosition = YamlNumbers::as<bool>(node["autoUpdatePosition"]);
     if (node["area"]) link.area = YamlNumbers::as<int>(node["area"]);
+    if (node["activated"]) link.activated = YamlNumbers::as<bool>(node["activated"]);
     return link;
 }
 
@@ -194,6 +210,7 @@ YAML::Node editor::Stream::encodeNavMeshModifierComponent(const NavMeshModifierC
     node["useVolume"] = modifier.useVolume;
     node["volumeCenter"] = encodeVector3(modifier.volumeCenter);
     node["volumeSize"] = encodeVector3(modifier.volumeSize);
+    node["applyAtRuntime"] = modifier.applyAtRuntime;
     return node;
 }
 
@@ -209,6 +226,7 @@ NavMeshModifierComponent editor::Stream::decodeNavMeshModifierComponent(const YA
     if (node["useVolume"]) modifier.useVolume = YamlNumbers::as<bool>(node["useVolume"]);
     if (node["volumeCenter"]) modifier.volumeCenter = decodeVector3(node["volumeCenter"]);
     if (node["volumeSize"]) modifier.volumeSize = decodeVector3(node["volumeSize"]);
+    if (node["applyAtRuntime"]) modifier.applyAtRuntime = YamlNumbers::as<bool>(node["applyAtRuntime"]);
     return modifier;
 }
 

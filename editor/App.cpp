@@ -5683,7 +5683,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
     //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
+    // v52: water-boats: MESH 'Wex' and 'Wwk' (42, 43), includes/water_interaction.glsl and the
+    //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
+    // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
+    //      includes/lights.glsl and punctual.glsl)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
 }
 
 void editor::App::pushTabNotificationStyle(){

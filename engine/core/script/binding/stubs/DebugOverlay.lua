@@ -23,6 +23,7 @@
 ---@field frameMsMax number
 ---@field frameMs1PercentLow number # the average of the slowest 1% of frames
 ---@field drawCalls integer # of the last drawn frame
+---@field setPassCalls integer # pipelines applied in the last drawn frame (Unity's SetPass calls)
 ---@field instances integer
 ---@field triangles integer
 ---@field processMemoryBytes integer # resident memory of the process (0: unknown on this platform)

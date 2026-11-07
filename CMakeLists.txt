@@ -715,6 +715,15 @@ else()
     set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The model cook (S53): its normalised normals, their octahedral decode and the LODs they guide
+# are the same bytes on every CPU, so a cooked model and its cache key do not depend on the machine
+set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/model/GltfDocument.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The audio analysis (S36, S39's tempo grid): the committed library analysis.json and every agent's
+# numbers are the same on every CPU (arm64 Clang fuses a multiply and an add by default); the
+# decoders and AudioMeter it reads get the same in engine/CMakeLists.txt
+set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp

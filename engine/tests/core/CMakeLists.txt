@@ -120,6 +120,11 @@ jasperengine_add_test_target(jasperengine-core-tests
         JASPER_TEST_CRASH_TEST_BINARY="$<TARGET_FILE:jasperengine-crash-test>"
 )
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
+# the navigation tests call into Recast/Detour directly (the vendored patches, the tile builds'
+# rcContext: docs/specs/S74-navigation-fixes.md AC1-AC3, AC7)
+if(TARGET recastnavigation)
+    target_link_libraries(jasperengine-core-tests PRIVATE recastnavigation)
+endif()
 # tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND AND NOT WIN32)

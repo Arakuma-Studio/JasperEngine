@@ -1352,7 +1352,8 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     appendMeshStatsLines(meshLines, playing ? frameStats.vertices : viewStats.vertices, lod, sceneProject && sceneProject->scene && sceneProject->scene->isMeshLodEnabled());
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
-    snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
+    snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   SetPass calls: %u   Tris: %llu", frameStats.drawCalls, frameStats.setPassCalls,
+             (unsigned long long)frameStats.triangles);
     snprintf(lines[3], sizeof(lines[3]), "Screen: %dx%d", width, height);
     // Engine.targetFrameRate / vSyncCount of the playing game (-1: the platform's rate)
     const int targetFps = Engine::getTargetFrameRate();

@@ -25,6 +25,7 @@
 #include "object/ui/Text.h"
 #include "pool/MeshBufferPool.h"
 #include "render/LightingTiers.h"
+#include "render/ObjectRender.h"
 #include "render/RenderStats.h"
 #include "shader/ShaderManifest.h"
 #include "render/SystemRender.h"
@@ -480,6 +481,16 @@ TEST_F(SpriteBatchGpu, SettledSpritesShowDirectWrites){
         *x += 6.0f;
     }
     written.needUpdateBuffer = true;
+    // the masked sprite reloads into another variant whose first draws wait for its pipeline to
+    // be warmed (spec S32), batched or not: compared from a frame in which no draw waited (the
+    // three frames of each side would otherwise catch the variant arriving in one only)
+    uint32_t waited = ObjectRender::getWaitingDrawCount();
+    ASSERT_TRUE(GpuEnvironment::runFrames([&](){
+        const uint32_t now = ObjectRender::getWaitingDrawCount();
+        const bool none = now == waited;
+        waited = now;
+        return none && scene.getSystem<RenderSystem>()->isAllLoaded();
+    }));
     expectSameImage(0, 3);
 }
 

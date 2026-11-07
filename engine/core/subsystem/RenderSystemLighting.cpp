@@ -391,8 +391,9 @@ void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned 
                                      const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits){
     const bool tiled = (properties & lightingBit(ShaderPool::LightingFeature::TILED_LIGHTS)) != 0;
     // bit 31 of the masked bits (the post colour's, never in them) tells the Tiled form
+    // and bit 1 (UV1's, never in them) a 'Dlo' variant's list (orderObjectLights: directional only)
     const uint32_t lightBits = static_cast<uint32_t>(properties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30))) |
-                               (tiled ? 0x80000000u : 0u);
+                               (tiled ? 0x80000000u : 0u) | ((properties & ShaderPool::getDirectionalOnlyProperty()) ? 0x2u : 0u);
     if (lightBits != builtLightBits){
         if (tiled){
             // the vertex stage's block holds the object's vertex lights alone (its pixel lights

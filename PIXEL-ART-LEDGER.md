@@ -217,8 +217,25 @@ Per spec, the merged tree passes:
 `build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
 list them. There is no CI.
 
+Every landing set also runs the shared-data suites: editor unit `ShaderNeutralApi*:ReflectParity*:ReflectRegistry*:RuntimeFields*:CookedScene*:ReflectLocators*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`; `python3 tools/mcp/eval/test_grade.py`.
+
 ## Log
 
+- 2026-11-07: S43's review fixes are done (`896a4e77d`; it waits for S41 before its final
+  merge).
+  - S44 landing attempt: the merged tree failed `test_editor_modals` because of two raw ImGui
+    modals in S44 (`AsepriteImporterView.cpp:756`, `AsepriteEditorHooks.cpp:90`, against `main`'s
+    S69 `EditorModal` rule). The unpushed local merge was dropped. S41 had merged that local
+    `main`, so its branch contains S44's commits, and the landing order is now S44, then S41,
+    then S43.
+  - Shared registries on `main` after the Doriax program landed: MESH bits to 44 (S41 `Pxs` moves
+    to 45), GBUFFER 16–18, shader cache v53 (S41 takes v54), cooked scene format 1.5.
+  - The shared-data suites (`ShaderNeutralApi`, `ReflectParity`, `ReflectRegistry`,
+    `RuntimeFields`, `CookedScene`, `ReflectLocators`; `test_reflection`,
+    `test_saved_output_determinism`, `test_editor_modals`; `eval/test_grade.py`) are now part of
+    every landing set.
+  - All three implementers then hit an API weekly limit. The session moved accounts, and S44 and
+    S41 were revived.
 - 2026-11-07: On plain `main` ac10792fb, four MCP tests fail. They are pre-existing, not ours:
   `test_reflection` (`test_golden_resave`, `test_codegen_golden`,
   `test_inspector_layout_parity`) and

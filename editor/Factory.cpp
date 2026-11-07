@@ -3125,6 +3125,15 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
             out << ind2 << "scene->setPlanarReflectionClipOffset(" << formatFloat(scene->getPlanarReflectionClipOffset()) << ");\n";
         if (scene->getMaxPlanarReflections() != defaults.maxPlanarReflections)
             out << ind2 << "scene->setMaxPlanarReflections(" << scene->getMaxPlanarReflections() << ");\n";
+        // the Water Wakes' map
+        if (scene->getWaterWakeResolution() != defaults.waterWakeResolution){
+            static const char* const names[] = {"AUTO", "LOW", "MEDIUM", "HIGH"};
+            out << ind2 << "scene->setWaterWakeResolution(WaterWakeResolution::" << names[(int)scene->getWaterWakeResolution()] << ");\n";
+        }
+        if (scene->getWaterWakeArea() != defaults.waterWakeArea)
+            out << ind2 << "scene->setWaterWakeArea(" << formatFloat(scene->getWaterWakeArea()) << ");\n";
+        if (scene->getWaterWakeFade() != defaults.waterWakeFade)
+            out << ind2 << "scene->setWaterWakeFade(" << formatFloat(scene->getWaterWakeFade()) << ");\n";
     }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";

@@ -767,6 +767,43 @@ async def test_cli_shaders_summary_counts_navmesh_surfaces():
         check("'Ground Surface' is not baked" in r.stdout, f"the unbaked surface is reported: {r.stdout[-1000:]}")
 
 
+async def test_cli_navigation_findings(ed: Editor):
+    """S75 AC21: a whole-project check reports every navigation finding of the shared list with its
+    code and severity: a baked floor with a NavMesh Link whose end hangs in the air and an agent
+    far off the navmesh are warnings (exit 0); an unreadable .navmesh is an error (exit 1)."""
+    made = await ed.call("create_scene", name="NavCheck", type="3D", path="scenes/NavCheck")
+    scene = made["scene"]["id"]
+    floor = await ed.call("create_entity", scene=scene, type="plane", name="Floor", scale=[2, 1, 2])
+    await ed.call("add_component", scene=scene, entity=floor["entity_id"], component="navmeshsurface")
+    link = await ed.call("create_entity", scene=scene, type="empty", name="Dangling Link", position=[0, 0, 0])
+    await ed.call("add_component", scene=scene, entity=link["entity_id"], component="navmeshlink",
+                  values={"navmeshlink": {"startPoint": [0, 0, 0], "endPoint": [0, 8, 0]}})
+    agent = await ed.call("create_entity", scene=scene, type="empty", name="Far Agent", position=[0, 0, 60])
+    await ed.call("add_component", scene=scene, entity=agent["entity_id"], component="navmeshagent")
+    baked = await ed.call("bake_navigation", scene=scene, mode="full")
+    ed.check(baked["polys"] > 0, f"{baked}")
+    await ed.call("save_scene", scene=scene)
+    asset = (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]["asset"]
+    with scratch_project(ed.project) as project:
+        code, data = run_json(project, "--shaders")
+        nav = [(f["code"], f["severity"], f["path"]) for f in data["findings"] if f["tool"] == "navigation"]
+        check(("link_unconnected", "warning", "scenes/NavCheck.scene") in nav, f"the dangling link: {nav}")
+        check(("agent_off_mesh", "warning", "scenes/NavCheck.scene") in nav, f"the agent off the navmesh: {nav}")
+        check(not any(severity == "error" for _, severity, _ in nav), f"{nav}")
+        check_eq(code, 0, f"warnings only: {data['findings']}")
+        check(data["checked"]["navigation"] >= 1, f"{data['checked']}")
+        r = run_check(project, "--shaders")
+        check("[link_unconnected]" in r.stdout and "'Dangling Link'" in r.stdout, f"the text names the code and the link: {r.stdout[-2000:]}")
+
+        navmesh = project / asset if (project / asset).exists() else project / "assets" / asset
+        check(navmesh.exists(), f"the baked .navmesh: {navmesh}")
+        navmesh.write_bytes(b"not a navmesh")
+        code, data = run_json(project, "--shaders")
+        nav = [(f["code"], f["severity"]) for f in data["findings"] if f["tool"] == "navigation"]
+        check(("navmesh_unreadable", "error") in nav, f"the refused asset is an error: {nav}")
+        check_eq(code, 1, f"an error finding fails the check: {nav}")
+
+
 EFFECT_FRAG = """#version 450
 // @effect     check-glow
 // @kind       paint

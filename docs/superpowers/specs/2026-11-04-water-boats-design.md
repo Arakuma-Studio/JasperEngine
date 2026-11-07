@@ -838,4 +838,62 @@ Changed (hot files marked *):
 
 ## 14. Deviations
 
-None yet. The implementer records any here.
+Recorded during implementation (branch `dc/water-boats`, built on `dc/water-reflections`):
+
+1. **Bit and flag numbers.** `main` had taken MESH bits 36-41 (S57's lighting, LOD fade, auto
+   instancing) and water-reflections `ShaderRequire_PlanarReflection = 1 << 12` by the time this
+   was built: 'Wex' and 'Wwk' are MESH bits 42 and 43, `ShaderRequire_WaterExclusion` /
+   `ShaderRequire_WaterWake` are `1 << 13` / `1 << 14`. A branch merging MESH bits before this one
+   takes the next free ones (the short names are the identity).
+2. **Lua names.** Bound getters are properties (`.claude/rules/scripting.md`): `WaterSample.excluded`
+   (not `isExcluded()`), `WaterWake.emitting` / `speed`, `WaterExcluder.hullStatus` / `hullFaces`.
+3. **The wake's automatic footprint and Fit to Mesh** use the meshes a hull is built from (the
+   GameObject's mesh, or its model's mesh nodes: `WaterInteractionSystem::getMeshSourceLocalBounds`),
+   so the Inspector's "Auto" line, Fit to Mesh and the wake agree.
+4. **Opaque water reading the excluders or the wake map is not automatically instanced**
+   (`getSubmeshBatchVariant`): both are chosen per mesh. Only a variant with 'Wex' or 'Wwk' (a
+   scene with the component) draws alone; without them opaque water tiles batch as before.
+   Transparent water was never batched.
+5. **Prebuilt players.** A Convex Hull excluder makes the scene need the `physics3d` module
+   (`editor/players/ModuleUsage.cpp`): the hull is built by Jolt.
+6. **Tests renamed and regrouped.** `WaterInteractionTest.*` (scene-level: excluders, owner rule,
+   wakes, pause and stop) replaces the spec's `WaterExcluder.*` / `WaterWake.*` scene suites;
+   `WaterBoatsGpu.WakeUploadsOncePerFrame` replaces `WaterWake.OneUploadPerFrame` (the upload is a
+   RenderSystem draw); the variant tests are editor tests (`WaterInteractionVariants.*`, they need
+   the library manifests and the collector).
+7. **The wake bench** is `WaterWakeBench.Step256x4` / `Step128x4` in `jasperengine-core-tests`, the
+   budgets enforced through `JASPER_TEST_PERF_SLACK` like the other *Bench suites (AGENTS.md:
+   wall-clock budgets through `perfSlack()`), not an entry in `tools/perf/bench-thresholds.json`.
+8. **The water's per-draw data lives in its own custom block, and the excluders in a data texture**,
+   not a uniform block of its own: a lit `library:water` with every feature is at the fragment
+   stage's budget of uniform blocks, and the `u_fs_waterInteraction` block the spec planned put it
+   over (measured on the first build: `checkResourceBudget` reported 10 blocks for the variant with
+   shadows, fog and the post colour). The 35 vectors of excluder rows were then over GLES3 /
+   WebGL2's guaranteed 224 fragment uniform vectors, which sokol's GL backends flatten the blocks
+   into (measured: 248 for the eight-light water with shadows, 213 without the bits). So
+   `WATER_INTERACTION_PARAMS` (`includes/water_interaction_params.glsl`) appends three engine-written
+   vectors (`waterExclusion`: the count and the excluders' rows as bytes, `waterWakeArea`,
+   `waterWakeParams`; reserved names like `sceneTime`) to the shader's `u_fs_customParams`,
+   `CustomUniformBlock::writeWaterInteraction` writes them each draw, and the frame's excluders
+   (at most 256) are rows of an RGBA32F texture uploaded once a frame (`u_waterExclusionData`,
+   read with `texelFetch`). The bits add three textures, three vectors and no block
+   (`WaterInteractionVariants.WorstWaterVariantsCompileForEveryBackend`); the sixteen-light water
+   with shadows is over 224 without the bits too (water-reflections' shader).
+9. **The wake step is cheaper than Doriax's**, measured by the bench: Doriax's stamping as ported took
+   52 ms a step at 256 texels with four hulls. The history keeps a bow sample every 0.5 m (or a fifth
+   of the hull's length; Doriax every 0.25 m or a tenth), the crests are stamped again 20 times a
+   second at most (once they may have moved half a texel: 16 times at 256 texels over 64 m, 8 at
+   128; the foam every step), the crests along straight runs of samples (one stamp while the samples
+   between stay within half a texel of its line, at most 16), one transverse wave stamp on each of
+   their crests (where the samples' phase peaks; Doriax stamps every sample's), a stamp skips texels
+   already at its strength, and the falloffs are polynomial in the squared distance (a crest
+   `(1 - d^2)^2`, close to Doriax's `0.5 + 0.5 cos(pi d)`; foam solid to d = 0.45 as Doriax's), with
+   no root or cosine per texel; the RGBA texels are packed in a loop that vectorizes.
+10. **Cooked scenes carry the wake settings as format 1.5** (after water-reflections' 1.4): D12 holds
+    for the project format, but a prebuilt player reads scene settings from the cooked record
+    (`cook::writeSceneSettings`), so the three are appended there; a 1.4 record leaves them at
+    their defaults (`CookedScene.SceneSettingsKeepWaterWakes`). The editor's shader cache is v52.
+11. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
+    running) `Step128x4` measured 140 us (budget 200) and `Step256x4` 570 us (budget 300). The
+    budgets are enforced only with `JASPER_TEST_PERF_SLACK` on a quiet machine
+    (`docs/testing.md`), and that run has not been made.

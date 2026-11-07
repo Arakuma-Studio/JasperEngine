@@ -86,6 +86,12 @@ namespace jasperengine::editor {
         // the directory external buffers and images resolve against
         const std::filesystem::path& getBaseDir() const { return baseDir; }
 
+        // meshopt_decodeFilterOct with its scalar arithmetic: the SIMD paths estimate the length
+        // (SSE's rsqrt differs by vendor, NEON's is coarser and fused), so the normals the cook
+        // decodes from its own encoding, and the LODs it guides with them, would differ by CPU.
+        // A source's views decode as a game's loader does (meshoptimizer's own).
+        static void decodeOctahedral(void* data, size_t count, size_t stride);
+
         // A binary glTF of `json` with `bin` as its BIN chunk (padded as the format wants)
         static std::vector<uint8_t> writeGlb(const Json& json, const std::vector<uint8_t>& bin);
 

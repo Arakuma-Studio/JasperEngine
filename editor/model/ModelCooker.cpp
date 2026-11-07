@@ -767,7 +767,7 @@ namespace {
                 stream.encoded.resize(count * stride);
                 meshopt_encodeFilterOct(stream.encoded.data(), count, stride, bits.normal, input.data());
                 stream.data = stream.encoded;
-                meshopt_decodeFilterOct(stream.data.data(), count, stride);
+                GltfDocument::decodeOctahedral(stream.data.data(), count, stride);
                 stream.layout.componentType = stride == 4 ? gltf::BYTE : gltf::SHORT;
                 stream.layout.normalized = true;
                 // the filter's elements are four components; a normal reads the first three

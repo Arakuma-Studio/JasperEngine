@@ -109,6 +109,8 @@ void getMaterialVariantTool(const CallPtr& call){
         {"mobileStripped", mobile.strippedMaps},
         {"litQuality", scene->getLitQuality() == LitQuality::HIGH ? "high" : "standard"},
         {"terrain", terrain},
+        // the loaded variant is the directional-only Lit ('Dlo': every Light of the scene directional)
+        {"directional_only", (sub.shaderProperties & ShaderPool::getDirectionalOnlyProperty()) != 0},
         {"projectLitVariants", litVariantCount(project)}
     };
     std::string text = McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(submesh) + ": " +

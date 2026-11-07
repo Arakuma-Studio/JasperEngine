@@ -90,6 +90,8 @@
 #include "component/PhysicsCommon.h"
 #include <optional>
 #include "WaterVolume.h"
+#include "WaterExcluder.h"
+#include "WaterWake.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
@@ -1275,6 +1277,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("flowVelocity", &WaterSample::getFlowVelocity)
         .addProperty("volume", &WaterSample::getVolume)
         .addProperty("hasWater", &WaterSample::hasWater)
+        // the Water Excluder keeping the point dry (inWater false), and the Water Wakes there
+        .addProperty("excluder", &WaterSample::getExcluder)
+        .addProperty("excluded", &WaterSample::isExcluded)
+        .addProperty("wakeFoam", &WaterSample::getWakeFoam)
+        .addProperty("wakeHeight", &WaterSample::getWakeHeight)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1296,6 +1303,41 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("linearDrag", &WaterVolume::getLinearDrag, &WaterVolume::setLinearDrag)
         .addProperty("angularDrag", &WaterVolume::getAngularDrag, &WaterVolume::setAngularDrag)
         .addProperty("waves", &WaterVolume::getWaves, &WaterVolume::setWaves)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterExcluderShape")
+        .addVariable("BOX", WaterExcluderShape::BOX)
+        .addVariable("SPHERE", WaterExcluderShape::SPHERE)
+        .addVariable("CONVEX_HULL", WaterExcluderShape::CONVEX_HULL)
+        .endNamespace();
+
+    // keeps water out: no surface drawn inside, no underwater fade, nothing floated but its own body
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterExcluder, EntityHandle>("WaterExcluder")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterExcluder::isValid)
+        .addProperty("enabled", &WaterExcluder::isEnabled, &WaterExcluder::setEnabled)
+        .addProperty("shape", &WaterExcluder::getShape, &WaterExcluder::setShape)
+        .addProperty("center", &WaterExcluder::getCenter, &WaterExcluder::setCenter)
+        .addProperty("size", &WaterExcluder::getSize, &WaterExcluder::setSize)
+        .addProperty("hullStatus", &WaterExcluder::getHullStatus)
+        .addProperty("hullFaces", &WaterExcluder::getHullFaces)
+        .addFunction("contains", &WaterExcluder::contains)
+        .endClass();
+
+    // foam and waves left on the water while it moves
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterWake, EntityHandle>("WaterWake")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterWake::isValid)
+        .addProperty("enabled", &WaterWake::isEnabled, &WaterWake::setEnabled)
+        .addProperty("foam", &WaterWake::getFoam, &WaterWake::setFoam)
+        .addProperty("waves", &WaterWake::getWaves, &WaterWake::setWaves)
+        .addProperty("width", &WaterWake::getWidth, &WaterWake::setWidth)
+        .addProperty("length", &WaterWake::getLength, &WaterWake::setLength)
+        .addProperty("emitting", &WaterWake::isEmitting)
+        .addProperty("speed", &WaterWake::getSpeed)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1458,6 +1500,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         })
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
+        .addFunction("getWaterExcluder", &GameObject::getWaterExcluder)
+        .addFunction("getWaterWake", &GameObject::getWaterWake)
         .addFunction("getSpline", &GameObject::getSpline)
         .addFunction("getSplineExtrude", &GameObject::getSplineExtrude)
         .addFunction("getSplineInstantiate", &GameObject::getSplineInstantiate)

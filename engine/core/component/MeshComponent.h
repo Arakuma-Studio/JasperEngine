@@ -119,6 +119,8 @@ namespace jasperengine{
         uint64_t epoch = 0;     // RenderSystem's light list epoch, 0 = not picked yet
         // a directional light went into the SH (more directional lights than the cap)
         bool foldedDirectional = false;
+        // picked for a directional-only ('Dlo') variant: its point and spot lights went into the SH
+        bool directionalOnly = false;
     };
 
     // The extra draw of a submesh whose material has an extra pass (Material::extraPass,

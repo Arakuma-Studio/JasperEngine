@@ -7,6 +7,9 @@
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
 #include "object/environment/Water.h"
+#include "shader/ShaderManifest.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -167,4 +170,47 @@ float editor::WaterEditorUtils::materialWaveLength(Scene* scene, Entity entity){
             longest = std::max(longest, waves.length);
     }
     return longest;
+}
+
+AABB editor::WaterEditorUtils::meshSourceLocalBounds(Scene* scene, Entity entity){
+    return WaterInteractionSystem::getMeshSourceLocalBounds(scene, entity);
+}
+
+bool editor::WaterEditorUtils::sceneDrawsWaterInteraction(Scene* scene, bool wake){
+    const uint32_t flag = wake ? ShaderRequire_WaterWake : ShaderRequire_WaterExclusion;
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++){
+        const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            const std::string& shader = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[s], sceneMeshShader);
+            if (shader.empty() || ShaderReference::isBuiltin(shader))
+                continue;
+            const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+            if (manifest && (manifest->getPossibleRequire() & flag))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool editor::WaterEditorUtils::excluderDriesItsOwnBodies(Scene* scene, Entity excluder){
+    if (WaterInteractionSystem::getExcluderOwner(scene, excluder) != NULL_ENTITY)
+        return false;
+    auto bodies = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies->size(); i++){
+        const RigidbodyComponent& body = bodies->getComponentFromIndex(i);
+        const Entity entity = bodies->getEntity(i);
+        if (body.type != BodyType::DYNAMIC || (body.buoyancy <= 0.0f && !scene->findComponent<BuoyancyComponent>(entity)))
+            continue;
+        // the body under the excluder's GameObject
+        Entity current = entity;
+        for (int hops = 0; current != NULL_ENTITY && hops < 256; hops++){
+            if (current == excluder)
+                return true;
+            const Transform* transform = scene->findComponent<Transform>(current);
+            current = transform ? transform->parent : NULL_ENTITY;
+        }
+    }
+    return false;
 }

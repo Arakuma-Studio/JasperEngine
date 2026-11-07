@@ -28,7 +28,7 @@
 #include "util/NativePlugins.h"
 #include "util/ApplePrivacy.h"
 #include "util/PngEditorChunks.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
 #include "asset/AssetTypes.h"
@@ -2502,10 +2502,8 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     return scene->getComponentArray<Rigidbody2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
                 });
             }
-            // S19 R42: surfaces of the build that are not baked or out of date
-            for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(project)) {
-                Out::warning("%s (scene %s). Window > AI > Navigation > Bake All bakes now.", finding.message.c_str(), finding.sceneName.c_str());
-            }
+            // S19 R42, S75 R36: the build's navigation warnings and errors (never blocking)
+            logNavigationPreflight(project);
             if (!project->isPhysics3DEnabled()) {
                 warnDroppedPhysics("3D", [](Scene* scene) {
                     return scene->getComponentArray<RigidbodyComponent>()->size() > 0 || scene->getComponentArray<Joint3DComponent>()->size() > 0;

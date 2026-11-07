@@ -56,6 +56,9 @@
 #include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "particles/ParticleRender.h"
 #include "subsystem/ParticleSystemState.h"
@@ -862,6 +865,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     declareHookType(scene->getComponentId<ParticleSystemComponent>());
     declareHookType(scene->getComponentId<ReflectionProbeComponent>());
     declareHookType(scene->getComponentId<SkyboxComponent>());
+    declareHookType(scene->getComponentId<WaterExcluderComponent>());
+    declareHookType(scene->getComponentId<WaterWakeComponent>());
     declareHookType(scene->getComponentId<UIComponent>());
 #ifdef JASPERENGINE_EDITOR
     declareHookType(scene->getComponentId<Transform>());
@@ -932,6 +937,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     lightListEpoch = 1;
     lightListCap = 0;
     lightCapacityTier = 8;
+    directionalLightsOnly = false;
+    loadedDirectionalLightsOnly = false;
     loadedLitQuality = LitQuality::STANDARD;
     loadedPbrTier = PbrTier::FULL;
 }
@@ -955,6 +962,9 @@ void RenderSystem::load(){
     activeSky = NULL_ENTITY;
     lastBatchSort = true;
     lastMeshLodEnabled = false;
+    objectLightsCleared = false;
+    directionalLightsOnlyKnown = false;
+    nonDirectionalLightSeen = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -976,6 +986,8 @@ void RenderSystem::load(){
 void RenderSystem::destroy(){
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
+
+    destroyWaterInteraction();
 
     // the FLATTEN Canvas Group layers and their composite (made again on use)
     destroyCanvasLayers();
@@ -1404,7 +1416,11 @@ int RenderSystem::checkLightsAndShadow(){
         if (light.shadows){
             hasShadows = true;
         }
+        if (light.type != LightType::DIRECTIONAL){
+            nonDirectionalLightSeen = true;
+        }
     }
+    directionalLightsOnly = hasLights && !nonDirectionalLightSeen;
 
     // 2D lights are gated only by their own component count, NOT by
     // scene->getLightState(): the editor forces LightState::OFF in 2D scenes
@@ -1956,6 +1972,17 @@ void RenderSystem::updateSceneLights(){
     }
 }
 
+namespace {
+    // a submesh of the mesh draws the directional-only Lit ('Dlo')
+    bool drawsDirectionalOnly(const MeshComponent& mesh){
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (mesh.submeshes[s].shaderProperties & ShaderPool::getDirectionalOnlyProperty())
+                return true;
+        }
+        return false;
+    }
+}
+
 void RenderSystem::updateObjectLights(){
     // a directional light that only changed direction (a turning sun)
     auto onlyTurned = [this](int index){
@@ -1988,6 +2015,17 @@ void RenderSystem::updateObjectLights(){
     };
 
     auto meshes = scene->getComponentArray<MeshComponent>();
+    // without lights every mesh picks nothing: cleared once, then nothing to do each frame (lights
+    // coming back change the light list, so every mesh picks again)
+    if (!hasLights){
+        if (!objectLightsCleared){
+            for (int i = 0; i < meshes->size(); i++)
+                meshes->getComponentFromIndex(i).lights.epoch = 0;
+            objectLightsCleared = true;
+        }
+        return;
+    }
+    objectLightsCleared = false;
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
         const Entity entity = meshes->getEntity(i);
@@ -2002,7 +2040,9 @@ void RenderSystem::updateObjectLights(){
         }
 
         const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
-        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB;
+        // (a mesh that left the 'Dlo' variant picks again: its point and spot lights were in the SH)
+        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB ||
+                      picked.directionalOnly != drawsDirectionalOnly(mesh);
 
         if (!repick && !changedLights.empty()){
             // a light that reached it changed, or a changed light reaches it now
@@ -2048,6 +2088,10 @@ void RenderSystem::updateObjectLights(){
 // center, so a light never just vanishes.
 void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform){
     MeshLights& picked = mesh.lights;
+    // a mesh still on the 'Dlo' variant when a point or spot light arrives (its general variant
+    // builds meanwhile) takes that light in its SH: drawn, never shaded as a sun nor dropped
+    const bool directionalOnly = drawsDirectionalOnly(mesh);
+    picked.directionalOnly = directionalOnly;
     const LightBounds bounds(mesh.worldAABB, transform.worldPosition);
     const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
     const int cap = std::min(lightListCap, MAX_LIGHTS_PER_OBJECT);
@@ -2109,6 +2153,10 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
         // so turning it towards the mesh picks again)
         if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
             continue;
+        if (directionalOnly && !candidate.directional){
+            fold(i);
+            continue;
+        }
 
         // ranked without the spot cone: a spot may light part of the mesh away from its center
         Vector3 towardsLight;
@@ -2159,6 +2207,9 @@ void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t propert
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const bool pixel = (properties & (1u << 3)) != 0;
     const bool vertex = (properties & (1u << 28)) != 0;
+    // a 'Dlo' variant shades every light as directional: one that is not is in its SH
+    // (selectMeshLights), never in the list it would draw as a sun
+    const bool directionalOnly = (properties & ShaderPool::getDirectionalOnlyProperty()) != 0;
     const MeshLights& picked = mesh.lights;
 
     pixelCount = 0;
@@ -2169,6 +2220,8 @@ void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t propert
         for (unsigned int k = 0; k < picked.count; k++){
             const int index = picked.lights[k];
             if (index >= (int)sceneLights.size())
+                continue;
+            if (directionalOnly && sceneLights[index].position_type.w != 0.0f)
                 continue;
             const bool perPixel = pixel && (!vertex || sceneLights[index].shading != LightShading::VERTEX);
             if (pass == 0 && perPixel && pixelCount < capacity){
@@ -3027,14 +3080,14 @@ void RenderSystem::renderReflectionProbeCapture(){
     }
     // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S55 R5)
     const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, true);
-    std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
-    if (SystemRender::isDrawBatching()){
-        // GPU Instancing: culled once, drawn in batches (spec S55)
+    {
+        // culled once, then sorted by distance band and state; with GPU Instancing drawn in
+        // batches (spec S55)
         VisibleFrustum frustum;
         frustum.planes = captureCamera.frustumPlanes;
         frustum.farClip = captureCamera.farClip;
         frustum.eye = capturePosition;
-        buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false);
+        buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false, true);
     }
     SystemRender::beginDrawBatch();
     for (const OpaqueRenderData& opaque : opaqueRenders){
@@ -3224,9 +3277,14 @@ bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights, bool
     return checkPBRTextures(getMeshShaderEnvironment(), inputs);
 }
 
+bool RenderSystem::isBuiltinLit(const std::string& shader){
+    // its S11 lobe/quality variants ("builtin:lit#...") too
+    return shader.empty() || ShaderReference::getBase(shader) == ShaderReference::BUILTIN_LIT;
+}
+
 bool RenderSystem::supportsStochasticTiling(const std::string& shader){
     // the built-in Lit, its S11 lobe/quality variants ("builtin:lit#...") too
-    if (shader.empty() || ShaderReference::getBase(shader) == ShaderReference::BUILTIN_LIT)
+    if (isBuiltinLit(shader))
         return true;
     if (ShaderReference::isLibrary(shader))
         return false;
@@ -3255,6 +3313,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     MeshShaderEnvironment environment;
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
+    environment.directionalLightsOnly = directionalLightsOnly;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -3274,6 +3333,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.capsuleShadows = lighting.capsuleShadows;
     environment.contactShadows = lighting.contactShadows;
     environment.oit = lighting.oit;
+    environment.waterExclusion = hasWaterExcluders;
+    environment.waterWake = hasWaterWakes;
     return environment;
 }
 
@@ -3338,6 +3399,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     SubmeshShaderInputs inputs = submeshInputs;
     inputs.manifest = findManifest(pass.shader);
     inputs.stochasticShader = supportsStochasticTiling(pass.shader);
+    inputs.builtinLit = isBuiltinLit(pass.shader) && !inputs.manifest;
     inputs.features = inputs.manifest ? ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures) : std::vector<std::string>();
     // the pass has no lighting field: its shader's default mode
     inputs.lighting = MaterialLighting::AUTO;
@@ -3775,6 +3837,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     const std::string& shader = getSubmeshShader(mesh, submesh, sceneMeshShader);
     inputs.manifest = findManifest(shader);
     inputs.stochasticShader = supportsStochasticTiling(shader);
+    inputs.builtinLit = isBuiltinLit(shader) && !inputs.manifest;
     inputs.depthProgram = ShaderReference::isLibrary(shader) && inputs.manifest && inputs.manifest->depth;
     if (inputs.manifest){
         inputs.features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
@@ -4086,6 +4149,15 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS);
     if (p_contactShadows)
         variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS);
+    // 'Dlo': the engine's Lit in a scene of directional lights only (not with Tiled lights,
+    // whose tiles list the scene's lights as they come)
+    if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
+        variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
+    if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
+        variant.properties |= ShaderPool::getWaterExclusionProperty();
+    if ((manifestRequire & ShaderRequire_WaterWake) && environment.waterWake)
+        variant.properties |= ShaderPool::getWaterWakeProperty();
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -4243,6 +4315,17 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotPlanarReflection = shaderData.getTextureIndexByName("u_planarReflectionTexture");
     if (bindings.slotPlanarReflection.first != -1)
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the Water Excluders and the wake map (includes/water_interaction.glsl): no hull and no wake
+    // until a draw binds its own (a white hull map holds no column)
+    bindings.slotWaterExclusionMaps = shaderData.getTextureIndexByName("u_waterExclusionMaps");
+    if (bindings.slotWaterExclusionMaps.first != -1)
+        render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT, &emptyArrayWhite);
+    bindings.slotWaterExclusionData = shaderData.getTextureIndexByName("u_waterExclusionData");
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
+    bindings.slotWaterWake = shaderData.getTextureIndexByName("u_waterWakeTexture");
+    if (bindings.slotWaterWake.first != -1)
+        render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, &emptyBlack);
     // the frame's blurred scene (includes/blurred_scene.glsl), black until a draw binds it
     bindings.slotFSBlurredScene = shaderData.getUniformBlockIndexByName("u_fs_blurredScene");
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
@@ -6122,18 +6205,15 @@ bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& 
 }
 
 void RenderSystem::updateAllTerrainRenderTextures(){
-    auto meshes = scene->getComponentArray<MeshComponent>();
-    for (int i = 0; i < meshes->size(); i++){
-        MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload){
+    // the terrains' meshes (a scene without terrains walks nothing)
+    auto terrains = scene->getComponentArray<TerrainComponent>();
+    for (int i = 0; i < terrains->size(); i++){
+        const Entity entity = terrains->getEntity(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || !mesh->loaded || mesh->needReload){
             continue;
         }
-
-        Entity entity = meshes->getEntity(i);
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-        if (terrain){
-            updateTerrainRenderTextures(entity, *terrain, mesh);
-        }
+        updateTerrainRenderTextures(entity, terrains->getComponentFromIndex(i), *mesh);
     }
 }
 
@@ -8322,6 +8402,10 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     resolveSubmeshRenderState(mesh, submesh, inputs.manifest.get(), blended, transparentQueue);
     if (transparentQueue)
         return batch;
+    // the Water Excluders and the wake tag are chosen per mesh (applyWaterInteraction): a variant
+    // reading them ('Wex', 'Wwk': only while the scene has the component) draws alone
+    if (variant.properties & (ShaderPool::getWaterExclusionProperty() | ShaderPool::getWaterWakeProperty()))
+        return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
     const bool builtinShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc);
@@ -8706,7 +8790,15 @@ namespace {
     }
 }
 
-void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines){
+uint8_t RenderSystem::distanceBand(float squaredDistance){
+    // ilogb is a domain error for zero, NaN and infinity: those never reach it
+    if (!(squaredDistance > 1.0f))
+        return 0;
+    return (uint8_t)std::min(std::ilogb(std::min(squaredDistance, FLT_MAX)) / 2, 63);
+}
+
+void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines,
+                                     bool sortByState){
     const size_t count = queue.size();
     visibleCandidates.resize(count);
     visibleResults.resize(count);
@@ -8794,6 +8886,18 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
             whole.preCulled = candidate.cullBounds;
             visibleEntries.push_back(whole);
         }
+    }
+    if (sortByState){
+        // culled first, then sorted: band, then the state of the entry's first draw
+        for (OpaqueRenderData& entry : visibleEntries){
+            entry.band = distanceBand(entry.distanceToCamera);
+            if (!entry.mesh->loaded || entry.submeshMask == 0)
+                continue;
+            Submesh& submesh = entry.mesh->submeshes[(unsigned int)std::countr_zero(entry.submeshMask)];
+            entry.stateKey = ((uint64_t)submesh.render.getPipelineId(pipType) << 32) |
+                             VisibleList::mixKey(materialKey(submesh), meshKey(submesh.render));
+        }
+        std::sort(visibleEntries.begin(), visibleEntries.end(), OpaqueRenderComparison());
     }
     // the batches form from consecutive draws: equal keys together within each priority
     const size_t kept = visibleEntries.size();
@@ -9008,6 +9112,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     applySceneInputs(render, extra.libraryBindings);
     applyEnvironment(render, extra.libraryBindings, mesh, transform);
     applyPlanarReflection(render, extra.libraryBindings, entity);
+    applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material, extra.customFSParams);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -10227,6 +10332,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applySceneInputs(render, libraryBindings);
             applyEnvironment(render, libraryBindings, mesh, transform);
             applyPlanarReflection(render, libraryBindings, entity);
+            applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material, mesh.submeshes[i].customFSParams);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -14899,6 +15005,185 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
 }
 
+void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
+                                         const Material& material, CustomUniformBlock& customParams){
+    if (customParams.waterInteractionOffset < 0)
+        return;
+    // (every member zero: Vector4's default)
+    fs_water_interaction_t block;
+    std::shared_ptr<WaterInteractionSystem> water = scene->findSystem<WaterInteractionSystem>();
+
+    // the excluders over the mesh (its surface within the waves' reach) in the pass camera's
+    // view, nearest first: the cap is reached only with more than 8 of them in view
+    if (water && hasWaterExcluders && bindings.slotWaterExclusionMaps.first != -1){
+        AABB bounds = mesh.worldAABB;
+        if (!bounds.isNull() && !bounds.isInfinite()){
+            WaterWaveParams waves;
+            const float reach = std::max(1.0f, Water::readWaves(material, waves) ? 2.0f * waves.getBand() : 0.0f);
+            bounds.setMinimumY(bounds.getMinimum().y - reach);
+            bounds.setMaximumY(bounds.getMaximum().y + reach);
+            const std::vector<WaterInteractionSystem::Excluder>& excluders = water->getExcluders();
+            std::vector<std::pair<float, size_t>> nearest;
+            for (size_t e = 0; e < excluders.size(); e++){
+                const WaterInteractionSystem::Excluder& excluder = excluders[e];
+                // a hull waits for its map in the array
+                if (excluder.hullMap && (excluder.hullLayer < 0 || excluder.hullLayer >= waterExclusionMapLayers))
+                    continue;
+                if (!bounds.intersects(excluder.worldBounds))
+                    continue;
+                if (passCamera && !isInsideCamera(passCamera->farClip, passCamera->frustumPlanes, excluder.worldBounds))
+                    continue;
+                const Vector3 closest(std::clamp(passEye.x, excluder.worldBounds.getMinimum().x, excluder.worldBounds.getMaximum().x),
+                                      std::clamp(passEye.y, excluder.worldBounds.getMinimum().y, excluder.worldBounds.getMaximum().y),
+                                      std::clamp(passEye.z, excluder.worldBounds.getMinimum().z, excluder.worldBounds.getMaximum().z));
+                nearest.push_back({(closest - passEye).squaredLength(), e});
+            }
+            std::sort(nearest.begin(), nearest.end());
+            if (nearest.size() > (size_t)WATER_EXCLUDERS_PER_DRAW && !waterExcluderCapWarned){
+                waterExcluderCapWarned = true;
+                Log::warn("More than %d Water Excluders in view over one water mesh (entity %u): the farthest keep no water out",
+                          WATER_EXCLUDERS_PER_DRAW, (unsigned int)entity);
+            }
+            // their rows in the frame's data texture (syncWaterInteraction), three bytes to a float
+            int count = 0;
+            uint32_t packed[3] = {0, 0, 0};
+            for (const auto& candidate : nearest){
+                if (count == WATER_EXCLUDERS_PER_DRAW)
+                    break;
+                if (candidate.second >= waterExclusionRows)
+                    continue;
+                packed[count / 3] |= (uint32_t)candidate.second << (8 * (count % 3));
+                count++;
+            }
+            block.exclusion = Vector4((float)count, (float)packed[0], (float)packed[1], (float)packed[2]);
+        }
+    }
+
+    // the wake map, with the tag of the water body this mesh is part of
+    const bool wake = water && hasWaterWakes && water->isWakeActive() && waterWakeTexture.isCreated();
+    if (wake){
+        const WaterWakeMap& map = water->getWakeMap();
+        const float texel = map.getTexel();
+        const Vector2 corner = map.getCorner();
+        block.wakeArea = Vector4(corner.x, corner.y, 1.0f / ((float)map.getSize() * texel), 1.0f);
+        // a full crest's height, its slope taken over one texel
+        block.wakeParams = Vector4(WATER_WAKE_CREST_HEIGHT / texel, 1.0f / (float)map.getSize(), (float)water->getBodyTag(entity) / 255.0f, 0.0f);
+    }
+
+    // into the shader's custom block, which the draw uploads next (applyCustomUniforms)
+    customParams.writeWaterInteraction(&block, sizeof(block));
+    if (bindings.slotWaterExclusionMaps.first != -1)
+        render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT,
+                          waterExclusionMapLayers > 0 ? &waterExclusionMaps : &emptyArrayWhite);
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
+    if (bindings.slotWaterWake.first != -1)
+        render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, wake ? &waterWakeTexture : &emptyBlack);
+}
+
+void RenderSystem::syncWaterInteraction(){
+    std::shared_ptr<WaterInteractionSystem> water = scene->findSystem<WaterInteractionSystem>();
+    if (!water || !Engine::isViewLoaded())
+        return;
+
+    // the hull maps, one layer each, made again when a hull or the layer list changes
+    if (water->getHullMapsVersion() != waterExclusionMapsVersion){
+        waterExclusionMapsVersion = water->getHullMapsVersion();
+        if (waterExclusionMapLayers > 0 || waterExclusionMaps.isCreated()){
+            waterExclusionMaps.destroyTexture();
+            waterExclusionMapLayers = 0;
+        }
+        std::vector<void*> data;
+        std::vector<size_t> sizes;
+        for (Entity layer : water->getHullLayers()){
+            const std::vector<uint8_t>* map = water->getHullMap(layer);
+            if (!map)
+                break;
+            data.push_back(const_cast<uint8_t*>(map->data()));
+            sizes.push_back(map->size());
+        }
+        if (!data.empty() && data.size() == water->getHullLayers().size()){
+            if (waterExclusionMaps.createTexture("water|exclusion|maps", WATER_EXCLUDER_HULL_MAP_SIZE, WATER_EXCLUDER_HULL_MAP_SIZE,
+                                                 ColorFormat::RGBA, TextureType::TEXTURE_ARRAY, (int)data.size(), data.data(), sizes.data(),
+                                                 TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+                waterExclusionMapLayers = (int)data.size();
+            }else{
+                waterExclusionMaps.destroyTexture();
+            }
+        }
+    }
+
+    // the frame's excluders, a row each (at most 256: a draw names its rows in bytes), uploaded
+    // once a frame (sokol's one update per image per frame)
+    const uint64_t dataFrame = SystemRender::getFrameCount();
+    if (hasWaterExcluders && dataFrame != waterExclusionDataFrame){
+        const std::vector<WaterInteractionSystem::Excluder>& excluders = water->getExcluders();
+        const size_t rows = std::min(excluders.size(), (size_t)256);
+        if (ensureWaterExclusionData(rows)){
+            waterExclusionTexels.assign((size_t)waterExclusionData.getHeight() * 4, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+            for (size_t e = 0; e < rows; e++){
+                const WaterInteractionSystem::Excluder& excluder = excluders[e];
+                for (int r = 0; r < 3; r++)
+                    waterExclusionTexels[e * 4 + (size_t)r] = excluder.worldToUnit.row((unsigned int)r);
+                const float shape = excluder.hullMap ? 2.0f : (excluder.shape == WaterExcluderShape::SPHERE ? 1.0f : 0.0f);
+                waterExclusionTexels[e * 4 + 3] = Vector4(shape, (float)std::max(excluder.hullLayer, 0), 0.0f, 0.0f);
+            }
+            if (waterExclusionData.updateTexture(waterExclusionTexels.data(), waterExclusionTexels.size() * sizeof(Vector4))){
+                waterExclusionRows = rows;
+                waterExclusionDataFrame = dataFrame;
+            }
+        }
+    }
+
+    // the wake map: made with the map, uploaded at most once a frame (sokol's one update per
+    // image per frame; Doriax c5b7a99dc), freed when no wake is left
+    if (water->isWakeActive()){
+        const WaterWakeMap& map = water->getWakeMap();
+        if (waterWakeTexture.isCreated() && waterWakeTexture.getWidth() != map.getSize())
+            waterWakeTexture.destroyTexture();
+        if (!waterWakeTexture.isCreated() &&
+                !waterWakeTexture.createDynamicTexture("water|wake", map.getSize(), map.getSize(), ColorFormat::RGBA,
+                                                       TextureFilter::LINEAR, TextureWrap::REPEAT))
+            return;
+        // (a scene drawn by two views in a frame uploads in the first)
+        const uint64_t frame = SystemRender::getFrameCount();
+        if (water->isWakeDirty() && frame != waterWakeUploadFrame &&
+                waterWakeTexture.updateTexture(map.getTexels().data(), map.getTexels().size())){
+            waterWakeUploadFrame = frame;
+            water->markWakeUploaded();
+        }
+    }else if (waterWakeTexture.isCreated()){
+        waterWakeTexture.destroyTexture();
+    }
+}
+
+bool RenderSystem::ensureWaterExclusionData(size_t rows){
+    int height = 1;
+    while ((size_t)height < rows)
+        height <<= 1;
+    if (waterExclusionData.isCreated() && waterExclusionData.getHeight() >= height)
+        return true;
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
+    return waterExclusionData.createDynamicTexture("water|exclusion|data", 4, height);
+}
+
+void RenderSystem::destroyWaterInteraction(){
+    if (waterExclusionMaps.isCreated())
+        waterExclusionMaps.destroyTexture();
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
+    waterExclusionMapLayers = 0;
+    // made again from the system's maps on the next draw
+    waterExclusionMapsVersion = 0;
+    if (waterWakeTexture.isCreated())
+        waterWakeTexture.destroyTexture();
+}
+
 // Drives each mirror's reflection camera: its view = mainView * reflect(plane),
 // so the reflected scene is rendered into that camera's framebuffer. Runs after
 // the main camera is updated and before the draw pass. The handedness flip from
@@ -15281,6 +15566,31 @@ void RenderSystem::needReloadMeshes() {
     for (int i = 0; i < meshes->size(); i++) {
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
         mesh.needReload = true;
+    }
+}
+
+void RenderSystem::needReloadWaterVariants() {
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    auto readsWater = [](const std::string& shader){
+        if (shader.empty() || ShaderReference::isBuiltin(shader))
+            return false;
+        const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        return manifest && (manifest->getPossibleRequire() & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)) != 0;
+    };
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        bool water = false;
+        for (unsigned int s = 0; s < mesh.numSubmeshes && !water; s++){
+            const Material& material = mesh.submeshes[s].material;
+            water = readsWater(getSubmeshShader(mesh, mesh.submeshes[s], sceneMeshShader)) || readsWater(material.extraPass->shader);
+        }
+        if (!water)
+            continue;
+        if (mesh.loaded && !mesh.needReload)
+            mesh.needVariantReload = true;
+        else
+            mesh.needReload = true;
     }
 }
 
@@ -15695,75 +16005,6 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
 
     if (mesh.loaded)
         instmesh.needUpdateBuffer = true;
-}
-
-// The sweep of a convex slice toward the light is bounded by the slice's faces the light leaves
-// it through and by the planes along the light through its silhouette edges.
-int RenderSystem::getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
-                                          unsigned int slotResolution, float normalBias, const Vector3& lightTravel, Plane* planes){
-    const Matrix4& viewProjection = receiverViewProjection;
-    const Matrix4 inverse = viewProjection.inverse();
-    // a texel of the slot along its coarser axis (the normal offset is given in the finer one's)
-    const float projScale = std::min(std::abs(lightProjection[0][0]), std::abs(lightProjection[1][1]));
-    const float texel = 2.0f / ((float)std::max(1u, slotResolution) * projScale);
-    // the normal offset moves the lookup, the 7x7 PCF and its bilinear taps reach 4 texels out
-    const float margin = (std::abs(normalBias) + 8.0f) * texel;
-    if (!inverse.isValid() || !std::isfinite(margin) || lightTravel.squaredLength() < 0.000001f)
-        return 0;
-    const Vector3 lightDirection = lightTravel.normalized();
-
-    Vector3 corners[8];
-    Vector3 center = Vector3::ZERO;
-    const Vector4 clipCorners[8] = {
-        Vector4(-1, 1,-1, 1), Vector4( 1, 1,-1, 1), Vector4( 1,-1,-1, 1), Vector4(-1,-1,-1, 1),
-        Vector4(-1, 1, 1, 1), Vector4( 1, 1, 1, 1), Vector4( 1,-1, 1, 1), Vector4(-1,-1, 1, 1)
-    };
-    for (int c = 0; c < 8; c++){
-        const Vector4 corner = inverse * clipCorners[c];
-        if (std::abs(corner.w) < 0.000001f)
-            return 0;
-        corners[c] = Vector3(corner.x, corner.y, corner.z) / corner.w;
-        center += corners[c] / 8.0f;
-    }
-
-    int count = 0;
-
-    // the slice's faces the light leaves it through: sweeping the slice toward the light
-    // keeps them (the others are swept away)
-    Plane frustum[6];
-    updateCameraFrustumPlanes(viewProjection, frustum);
-    for (int f = 0; f < 6; f++){
-        if (frustum[f].normal.dotProduct(lightDirection) < -0.00001f){
-            planes[count] = frustum[f];
-            planes[count].d += margin;
-            count++;
-        }
-    }
-
-    // and the planes along the light through its silhouette edges
-    static const int edges[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
-    for (const auto& edge : edges){
-        Vector3 normal = (corners[edge[1]] - corners[edge[0]]).crossProduct(lightDirection);
-        if (normal.normalizeL() < 0.000001f)
-            continue;
-        if (normal.dotProduct(center - corners[edge[0]]) < 0.0f)
-            normal = -normal;
-
-        Plane plane(normal, corners[edge[0]]);
-        bool silhouette = true;
-        for (const Vector3& corner : corners){
-            if (plane.getDistance(corner) < -0.001f){
-                silhouette = false;
-                break;
-            }
-        }
-        if (silhouette){
-            plane.d += margin + 0.001f;
-            planes[count++] = plane;
-        }
-    }
-
-    return count;
 }
 
 void RenderSystem::changeLoaded(void* data){
@@ -16222,8 +16463,9 @@ const Matrix4& RenderSystem::objectMVP(Transform& transform) const{
 
 bool RenderSystem::isMirroredDraw(const MeshComponent& mesh, const Matrix4& modelMatrix){
     // the transform mirrors the mesh (its triangles turn over on screen) unless its winding
-    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import)
-    return (modelMatrix.determinant() < 0.0f) != mesh.mirroredWinding;
+    // order already compensates that mirror (MeshComponent::mirroredWinding, glTF import). Model
+    // matrices are affine: the 3x3 determinant has the full one's sign (9 products, not 96)
+    return (modelMatrix.determinant3x3() < 0.0f) != mesh.mirroredWinding;
 }
 
 const Matrix4& RenderSystem::objectModel(Transform& transform) const{
@@ -16638,6 +16880,16 @@ void RenderSystem::update(double dt){
     // library:underwater passes on while the main camera is under a water (Water.h)
     Water::updateUnderwater(scene);
 
+    // the water variants follow the scene's Water Excluders and Wakes ('Wex', 'Wwk'), enabled or
+    // not (a script switches them on without a variant change); the last one gone drops the bit
+    const bool waterExcluders = scene->getComponentArray<WaterExcluderComponent>()->size() > 0;
+    const bool waterWakes = scene->getComponentArray<WaterWakeComponent>()->size() > 0;
+    if (waterExcluders != hasWaterExcluders || waterWakes != hasWaterWakes){
+        hasWaterExcluders = waterExcluders;
+        hasWaterWakes = waterWakes;
+        needReloadWaterVariants();
+    }
+
     // a new device tier, thermal step or project LOD bias (QualityResolver): the post-processing
     // tiers resolve again, the instance views pick their LODs again, and SSAO's mesh variant
     // follows a tier that turns it off
@@ -16917,6 +17169,16 @@ void RenderSystem::update(double dt){
     const int lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     if (lightCapacity != lightCapacityTier){
         lightCapacityTier = lightCapacity;
+        needReloadMeshVariants();
+    }
+    // so is whether every light is directional ('Dlo': the loaded variant draws until the other is
+    // built); the first update takes the scene's as it is (no mesh loaded before it: they load
+    // below with it), so a scene does not load its meshes twice
+    if (!directionalLightsOnlyKnown){
+        directionalLightsOnlyKnown = true;
+        loadedDirectionalLightsOnly = directionalLightsOnly;
+    }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
+        loadedDirectionalLightsOnly = directionalLightsOnly;
         needReloadMeshVariants();
     }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
@@ -17281,8 +17543,11 @@ void RenderSystem::update(double dt){
                 mesh.needReload = false;
             }
             if (!mesh.loadCalled){
+#if JASPERENGINE_PROFILER
+                // (a diagnostic of the builds with the profiler: a release game reads no clock here)
                 static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
                 const auto l0 = std::chrono::steady_clock::now();
+#endif
                 const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
                 if (!loadMesh(entity, mesh, pipelines, instmesh, terrain) &&
                         SystemRender::getResourcePoolExhaustions() != poolFullBefore){
@@ -17291,9 +17556,11 @@ void RenderSystem::update(double dt){
                     mesh.loadFailed = true;
                     mesh.loadCalled = true;
                 }
+#if JASPERENGINE_PROFILER
                 const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - l0).count();
                 if (timing && ms > 5.0)
                     Log::print("[shader-timing] loadMesh %s: %.1f ms", scene->getEntityName(entity).c_str(), ms);
+#endif
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
                 // Bones cancel out this mesh's model matrix, so the shader draws at
@@ -17302,7 +17569,12 @@ void RenderSystem::update(double dt){
                 // too, but unions body-sized boxes over the skeleton. Local space so the editor
                 // draws the same box.
                 mesh.skinnedAABB.setNull();
-                if (!instmesh){
+                // only a skinned mesh draws through its bones (loadMesh set hasSkinning above, in
+                // this iteration): a rigid one's palette, if it holds one, moves nothing
+                bool skinned = false;
+                for (unsigned int s = 0; s < mesh.numSubmeshes && !skinned; s++)
+                    skinned = mesh.submeshes[s].hasSkinning;
+                if (!instmesh && skinned){
                     const size_t boneBounds = std::min(mesh.bonesAABB.size(), mesh.bonesMatrix.stored());
                     for (size_t b = 0; b < boneBounds; b++){
                         if (!mesh.bonesAABB[b].isNull()){
@@ -17757,6 +18029,8 @@ void RenderSystem::draw(){
     // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
     // synced it): their render points again, so this frame shows it
     refreshGroupFadedPoints();
+    // the Water Excluders' hull maps and the Water Wakes' map, before any pass draws a water
+    syncWaterInteraction();
     beginBatchFrame();
     drawFramePasses();
     drawCameras(true);
@@ -17928,6 +18202,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     Transform& cameraTransform = *pass.cameraTransform;
     const bool isMainCamera = pass.isMain;
     passCamera = &camera;
+    passEye = cameraTransform.worldPosition;
     const int terrainView = pass.terrainView;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
@@ -18541,7 +18816,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                     opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size(),
                                              true, LodFadePass::FADE});
             }
-            if (mesh.isTransparent() && distanceSort){
+            // (culled before the sort: drawMesh does not test it again)
+            if (mesh.isTransparent() && distanceSort && isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)){
                 // a Particle System's sorting fudge moves it in the queue (lower: on top)
                 const bool particles = instmesh && instmesh->particle.alignment != InstanceAlignment::None;
                 const float fudge = particles ? instmesh->particle.sortingFudge : 0.0f;
@@ -18551,18 +18827,15 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         if (distanceSort){
-            // sortPriority first (lower draws first, so stencil writers go before their
-            // readers), then nearest first; ties keep the transform order (no allocation,
-            // unlike std::stable_sort)
-            std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
-        }
-        if (distanceSort && SystemRender::isDrawBatching()){
-            // GPU Instancing: culled once (on jobs), split by submesh, batches grouped (spec S55)
+            // culled once (on jobs), then sorted: sortPriority first (lower draws first, so
+            // stencil writers go before their readers), the distance band, the render state,
+            // then nearest first (OpaqueRenderComparison); with GPU Instancing split by submesh
+            // and the batches grouped (spec S55)
             VisibleFrustum frustum;
             frustum.planes = camera.frustumPlanes;
             frustum.farClip = camera.farClip;
             frustum.eye = cameraTransform.worldPosition;
-            buildVisibleQueue(opaqueRenders, frustum, colorPip, false);
+            buildVisibleQueue(opaqueRenders, frustum, colorPip, false, true);
         }
     }
 
@@ -19001,7 +19274,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (renderData.type == TransparentRenderType::MESH){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
             passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
+            passPreCulled = true;
             submitMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            passPreCulled = false;
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
@@ -19556,6 +19831,13 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<ReflectionProbeComponent>()) {
         hasReflectionProbes = true;
         needReloadMeshVariants();
+    } else if (componentId == scene->getComponentId<WaterExcluderComponent>() && !hasWaterExcluders) {
+        // the water variants take 'Wex' (includes/water_interaction.glsl)
+        hasWaterExcluders = true;
+        needReloadWaterVariants();
+    } else if (componentId == scene->getComponentId<WaterWakeComponent>() && !hasWaterWakes) {
+        hasWaterWakes = true;
+        needReloadWaterVariants();
     }
 }
 

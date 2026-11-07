@@ -105,6 +105,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
             sg_destroy_image(image);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     void destroyView(sg_view view){
@@ -112,6 +113,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 }
@@ -429,6 +431,7 @@ void SokolFramebuffer::destroyFramebuffer(){
                     SokolCmdQueue::add_command_destroy_view(colorAttachmentViews[a][i]);
                 }else{
                     sg_destroy_view(colorAttachmentViews[a][i]);
+                    SokolSystem::forgetAppliedBindings();
                 }
             }
         }
@@ -441,6 +444,7 @@ void SokolFramebuffer::destroyFramebuffer(){
                 SokolCmdQueue::add_command_destroy_view(view);
             }else{
                 sg_destroy_view(view);
+                SokolSystem::forgetAppliedBindings();
             }
         };
         if (ownsDepthAttachment)
