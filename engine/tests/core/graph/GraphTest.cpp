@@ -285,6 +285,49 @@ TEST_F(GraphTest, ApplyAndInverseRestoreEveryOp) {
     }
 }
 
+// S90 R30: a node an agent wrote with no position stays without one through a load and a save,
+// so an editor keeps laying it out; the layout op places those, and its undo takes them back
+TEST_F(GraphTest, NodesWithoutAPositionAreLaidOutByTheLayoutOp) {
+    const std::string text = R"({"formatVersion": 1, "kind": "test", "kindVersion": 2, "nextId": 1, "nodes": [
+        {"id": "n1", "type": "const", "params": {"value": 1}},
+        {"id": "n2", "type": "const", "params": {"value": 2}},
+        {"id": "n3", "type": "add", "params": {"mode": "linear"}},
+        {"id": "n4", "type": "sink", "position": [-500.0, 40.0], "params": {}}],
+      "edges": [{"id": "e1", "from": {"node": "n1", "port": "value"}, "to": {"node": "n3", "port": "a"}},
+                {"id": "e2", "from": {"node": "n2", "port": "value"}, "to": {"node": "n3", "port": "b"}}]})";
+    Graph graph = loadOk(text);
+    EXPECT_EQ(unplacedNodes(graph), (std::vector<std::string>{"n1", "n2", "n3"}));
+    EXPECT_EQ(save(graph).find("\"position\""), save(graph).rfind("\"position\"")) << "only n4 has a position after a save";
+
+    const std::string before = save(graph);
+    const GraphOp inverse = apply(graph, opFromJson({{"op", "layout"}}));
+    EXPECT_TRUE(unplacedNodes(graph).empty());
+    const Node* a = graph.findNode("n1");
+    const Node* b = graph.findNode("n2");
+    const Node* blend = graph.findNode("n3");
+    EXPECT_EQ(a->position.x, b->position.x) << "both sources in the first column";
+    EXPECT_NE(a->position.y, b->position.y);
+    EXPECT_EQ(blend->position.x, a->position.x + LAYOUT_COLUMN) << "what they feed one column right";
+    EXPECT_GT(a->position.x, graph.findNode("n4")->position.x) << "to the right of the placed node, not on it";
+    EXPECT_EQ(graph.findNode("n4")->position.x, -500.0) << "the placed node stays";
+    EXPECT_EQ(describe(graph, opFromJson({{"op", "layout"}})), "Arrange Nodes");
+
+    apply(graph, inverse);
+    EXPECT_EQ(save(graph), before) << "the undo takes the positions away again";
+    EXPECT_EQ(unplacedNodes(graph).size(), 3u);
+
+    // a move places a node; the move's undo takes its position away
+    const GraphOp unmove = apply(graph, opFromJson({{"op", "moveNodes"}, {"positions", {{"n1", {7, 8}}}}}));
+    EXPECT_TRUE(graph.findNode("n1")->placed);
+    apply(graph, unmove);
+    EXPECT_EQ(save(graph), before);
+
+    // with ids: those nodes, whatever they had
+    apply(graph, opFromJson({{"op", "layout"}, {"ids", {"n4"}}}));
+    EXPECT_EQ(graph.findNode("n4")->position.x, 0.0) << "alone among unplaced nodes: at the origin";
+    EXPECT_THROW(apply(graph, opFromJson({{"op", "layout"}, {"ids", {"n404"}}})), GraphOpError);
+}
+
 TEST_F(GraphTest, BadOpChangesNothing) {
     Graph graph = loadOk(SAMPLE);
     const std::string before = save(graph);

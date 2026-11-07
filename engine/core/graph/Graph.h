@@ -61,6 +61,9 @@ namespace jasperengine::graph {
         std::string id;                 // "n12", never reused within a file
         std::string type;               // a node type id of the graph's kind
         Vec2 position;
+        // false: the file gives no position (an agent wrote the node without one). Saved without
+        // one too, so editors keep laying it out (layoutPositions) until it is moved (S90 R30)
+        bool placed = true;
         std::optional<Vec2> size;
         Json params = Json::object();   // name -> value (asset references: {guid, path})
         std::optional<std::vector<Port>> dynamicPorts;
@@ -187,7 +190,8 @@ namespace jasperengine::graph {
     // for byte. Ops and their args:
     //   addNode {node (id optional: allocated), edges?, restore?: true (an undo's: the node as given,
     //                 no defaults)}                          removeNode {id} (and its edges)
-    //   moveNodes {ids, delta: [x, y]} or {positions: {id: [x, y]}}
+    //   moveNodes {ids, delta: [x, y]} or {positions: {id: [x, y] or null (no position)}}
+    //   layout {ids?} (the nodes without a position, or `ids`: placed by layoutPositions)
     //   setParam {node, name, value} (value null removes)    connect {from: {node, port}, to: {...}, id?}
     //   disconnect {id} or {from, to}                         addVariable {variable}
     //   removeVariable {name}                                 renameVariable {from, to}
@@ -205,6 +209,15 @@ namespace jasperengine::graph {
     };
 
     JASPERENGINE_API GraphOp apply(Graph& graph, const GraphOp& op);
+
+    // Where an automatic layout puts `ids` (S90 R30): left to right by their longest path from a
+    // source among them, a column per step, each column in the order of the rows feeding it.
+    // Beside the other placed nodes, to their right, so nothing lands on them. Deterministic.
+    inline constexpr double LAYOUT_COLUMN = 280.0;
+    inline constexpr double LAYOUT_ROW = 200.0;
+    JASPERENGINE_API std::vector<std::pair<std::string, Vec2>> layoutPositions(const Graph& graph, const std::vector<std::string>& ids);
+    // The ids of the nodes without a position, in file order
+    JASPERENGINE_API std::vector<std::string> unplacedNodes(const Graph& graph);
     JASPERENGINE_API GraphOp opFromJson(const Json& json);
     JASPERENGINE_API Json toJson(const GraphOp& op);
     // "Connect Speed → Blend", "Move 3 Nodes": the undo name of an op
