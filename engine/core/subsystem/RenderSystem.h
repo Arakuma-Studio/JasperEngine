@@ -2829,6 +2829,8 @@ namespace jasperengine{
 		void beginBatchPass(BatchPass pass, BatchMode mode, CameraComponent* camera, Transform* cameraTransform, PipelineType pipType,
 		                    const Matrix4& viewProjection, float farClip, const Plane* frustumPlanes);
 		void endBatchPass();
+		// draws what the batcher holds now (as the pass's end would), inside a batch pass
+		void flushHeldBatchDraws();
 		bool batchingActive() const { return batchPassActive; }
 		// colour pass: drawn alone (drawMesh) or held for a batch
 		bool submitMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,

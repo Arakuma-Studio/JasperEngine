@@ -18957,8 +18957,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     unsigned int passColorCopies = passSceneColor ? 1u : 0u;
     // (the draws the batcher still holds from the hierarchy loop, its UI and sprites, drawn first:
     // the count sees them)
-    if (batchPassActive)
-        batcher.flush();
+    if (passSceneColor)
+        flushHeldBatchDraws();
     const bool recopies = !passSceneColor || Engine::getFrameDrawCalls() == drawsAtCopy;
     bool queueCopied = false;
     bool queueDrawnSinceCopy = false;
