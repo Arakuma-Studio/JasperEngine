@@ -31,7 +31,10 @@
 //   hasPreviewPane / drawPreviewPane      a column right of the canvas (the preview, R27)
 //   drawToolbarExtras                     controls after the toolbar's own (seed, Bake, the tier)
 //   collectProblems                       the kind's checks, as Problems strip rows with a fix
-//   documentChanged / selectionChanged    a new revision of the graph; the selected nodes changed
+//   documentChanged / selectionChanged    a new revision of the graph (hand getDocument()->graph() to a
+//                                         ProceduralSession::setGraph); the selected nodes changed
+//   frameStarted                          once a frame while the window is open, before it draws (a
+//                                         session's update(): its evaluator's slice and the debounce)
 
 #pragma once
 
@@ -169,6 +172,7 @@ namespace jasperengine::editor{
         virtual void collectProblems(std::vector<Problem>&) const {}
         virtual void documentChanged() {}
         virtual void selectionChanged() {}
+        virtual void frameStarted() {}
 
         Project* project;
 

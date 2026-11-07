@@ -779,6 +779,7 @@ void GraphEditorWindow::show(){
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     syncToDocument();
+    if (document) frameStarted();
     drawToolbar();
     if (!document){
         ImGui::Spacing();
