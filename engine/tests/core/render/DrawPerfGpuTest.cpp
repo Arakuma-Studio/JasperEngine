@@ -213,19 +213,6 @@ TEST_F(DrawPerfGpu, RigidMeshIgnoresABonePalette){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-TEST_F(DrawPerfGpu, EngineFramebufferSkipsSwapchainPipelines){
-    JASPER_REQUIRE_GPU();
-    sun(false);
-    Primitive& made = box(0.0f, 0.0f, 0.0f, true);
-    settle();
-    // the frames draw into the test's target (GpuEnvironment: Engine::setFramebuffer), never the
-    // swapchain: no mesh makes its pipelines
-    const Submesh& submesh = made.getComponent<MeshComponent>().submeshes[0];
-    EXPECT_EQ(submesh.render.getPipelineId(PIP_DEFAULT), 0u) << "a swapchain pipeline was made";
-    EXPECT_NE(submesh.render.getPipelineId(PIP_RTT), 0u);
-    EXPECT_NO_ENGINE_ERRORS();
-}
-
 TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     JASPER_REQUIRE_GPU();
     sun(true);

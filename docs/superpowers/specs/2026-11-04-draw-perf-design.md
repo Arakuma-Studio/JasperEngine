@@ -666,3 +666,10 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   `TransformPropagation.WorldValuesMatchTheGeneralProducts` lives in `engine/tests/core/ecs` (beside
   its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
   v52 (v51 is water-reflections').
+- **D8 is withdrawn.** Skipping the swapchain pipelines while `Engine::getFramebuffer()` is set lost
+  draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` a sprite turned alpha-masked
+  draws when batching is off but not in its batched single run (the frame counts one draw for two
+  runs), and the test passes once `PIP_DEFAULT` is built again. Not every path follows the scene's
+  pipeline set either: `getBatchEligibility` asks for `PIP_DEFAULT`, which the editor would then
+  never have. The cause in the batched path is not found, so `getScenePipelines` is `main`'s again
+  and `EditorFramebufferSkipsSwapchainPipelines` (criterion 13) is not shipped.
