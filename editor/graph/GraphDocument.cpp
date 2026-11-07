@@ -241,10 +241,11 @@ bool GraphDocument::apply(const std::vector<graph::GraphOp>& ops, const std::str
         return failWith(applyError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
     const std::string name = !undoName.empty() ? undoName : names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)";
-    // (its change listener reloads this document before addCommand returns)
     if (!project->getProjectCommandHistory()->addCommand(new GraphEditCmd(filePath, text, after, name))){
         return failWith(applyError, "writing '" + relativePath + "' failed");
     }
+    // (GraphEditCmd's change listener has reloaded it already; its undo and redo need that one)
+    reload();
     return true;
 }
 

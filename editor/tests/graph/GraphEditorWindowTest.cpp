@@ -367,6 +367,7 @@ TEST_F(GraphEditorWindowTest, TheSearchRanksNamesAliasesAndEnumValues) {
     const auto entries = window.searchNodes("multiply");
     const std::string added = window.pickSearchEntry(entries[0]);
     ASSERT_FALSE(added.empty());
+    ASSERT_NE(window.getDocument()->graph().findNode(added), nullptr);
     EXPECT_EQ(window.getDocument()->graph().findNode(added)->params.value("mode", std::string()), "multiply");
     EXPECT_EQ(window.getDocument()->graph().findNode(added)->params.value("weight", 0.0), 0.5) << "the other defaults too";
 }
