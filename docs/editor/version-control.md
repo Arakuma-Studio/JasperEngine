@@ -142,9 +142,10 @@ Fetch and Push do not exist. Locks are Subversion locks on `svn:needs-lock` file
 window reads the `.mine`/`.rOLD`/`.rNEW` files. The baseline is BASE, the revision checked out:
 HEAD given anywhere (the Scene Diff, Diff Against Baseline, the tools) reads BASE, so another
 user's newer commit never shows as a change of yours; a revision number compares with that
-revision. A file added with `svn add` has no BASE (the Scene Diff lists all of it as added); a file
-moved with `svn move` compares with the file it was moved from. A working copy of `^/tags/<tag>`
-shows its tag in the status bar.
+revision. A file added with `svn add` has no BASE (the Scene Diff lists all of it as added; Revert
+unschedules the add and keeps the file); a file moved with `svn move`, alone or in its folder,
+compares with the file it was moved from; a copy is new and compares with its source. A working
+copy of `^/tags/<tag>` shows its tag in the status bar.
 
 ## Checking it by hand
 

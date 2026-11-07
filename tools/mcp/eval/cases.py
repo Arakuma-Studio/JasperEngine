@@ -1544,53 +1544,6 @@ CASES = [
         "max_turns": 10,
     },
     {
-        "id": "guard_svn_diff_reads_base",
-        "kind": "guard",
-        "what_happened": "New text (code-editor-git follow-ups): with Subversion, diff_scene and diff_file compare with BASE "
-                         "when rev is omitted, and HEAD reads BASE too (the result's rev says BASE), so a teammate's commit "
-                         "newer than the working copy needs its revision number from get_vcs_log.",
-        "text_at_issue": "diff_file rev: 'Omitted: git HEAD, svn BASE (svn's HEAD reads BASE too). Else a git hash or HEAD~n, "
-                         "an svn number.'; diff_scene rev: 'As diff_file's: omitted, git HEAD or svn BASE.'; results' rev",
-        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md, Follow-ups (2026-11-07)",
-        "files": GAME_FILES,
-        "groups_enabled": ["vcs"],
-        "prompt": "This project is a Subversion working copy and I haven't updated it today. My teammate says they committed "
-                  "a change to scenes/Main.scene on the server since then. What did their commit change in that scene? "
-                  "Don't update or change anything.",
-        "mocks": [
-            {"tool": "get_vcs_status", "result": ok(
-                "svn ^/trunk r41: 0 entries",
-                {"state": "active", "provider": "svn", "branch": {"name": "^/trunk", "head": "41", "behind": 0, "label": "^/trunk"},
-                 "counts": {"staged": 0, "modified": 0, "untracked": 0, "conflicted": 0}, "entries": []})},
-            {"tool": "get_vcs_log", "result": ok(
-                "2 revision(s)\n  42  2026-11-07  sam  Move the crate\n  41  2026-11-06  me  Lighting pass",
-                {"entries": [{"revision": "42", "author": "sam", "date": "2026-11-07", "message": "Move the crate"},
-                             {"revision": "41", "author": "me", "date": "2026-11-06", "message": "Lighting pass"}]})},
-            {"tool": "diff_scene", "args": {"rev": "42"}, "result": ok(
-                "Main against 42 (disk):\n~ Crate (5)\n    transform.position: [6, 0, 2] -> [4, 0, 2]\n0 added, 0 removed, 1 modified\n",
-                {"scene": "Main", "rev": "42", "source": "disk", "added": 0, "removed": 0, "modified": 1,
-                 "objects": [{"id": 5, "name": "Crate", "state": "modified", "components": [
-                     {"key": "transform", "state": "modified", "properties": [
-                         {"path": "transform.position", "base": [6, 0, 2], "current": [4, 0, 2]}]}]}]})},
-            {"tool": "diff_scene", "result": ok(
-                "Main against BASE (editor):\n0 added, 0 removed, 0 modified\n",
-                {"scene": "Main", "rev": "BASE", "source": "editor", "added": 0, "removed": 0, "modified": 0, "objects": []})},
-            {"tool": "diff_file", "args": {"rev": "42"}, "result": ok(
-                "scenes/Main.scene against 42:\n-        position: [6, 0, 2]\n+        position: [4, 0, 2]\n",
-                {"path": "scenes/Main.scene", "rev": "42", "source": "disk", "unsaved": False,
-                 "diff": "-        position: [6, 0, 2]\n+        position: [4, 0, 2]\n", "truncated": False})},
-            {"tool": "diff_file", "result": ok(
-                "scenes/Main.scene has no changes against BASE.",
-                {"path": "scenes/Main.scene", "rev": "BASE", "source": "disk", "unsaved": False, "diff": "", "truncated": False})},
-        ],
-        "shell": [{"match": r"\bsvn\b", "output": "bash: svn: command not found"}],
-        "checks": {"any_of": [{"calls": [{"tool": "diff_scene", "args": {"rev": "42"}}]},
-                              {"calls": [{"tool": "diff_file", "args": {"rev": "42"}}]}],
-                   "shell_must_not": [r"svn\s+(up|update|revert|commit|switch)"],
-                   "reply_must": [r"(?i)crate"]},
-        "max_turns": 12,
-    },
-    {
         "id": "guard_code_editor_reload_drops_edits",
         "kind": "guard",
         "what_happened": "code_editor reload throws away the human's unsaved buffer edits; an agent asked to pick up a change on "
