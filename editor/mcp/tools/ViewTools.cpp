@@ -2094,9 +2094,9 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
+            "Bring an editor panel to the front, e.g. to show a watching human. Not needed before "
+            "screenshot. console: what it shows (rows, categories, selection); preferences: opens a page; "
+            "systems: each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
