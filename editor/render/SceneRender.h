@@ -363,6 +363,12 @@ namespace jasperengine::editor{
         void dropParticleShapeLines(const std::set<Entity>& current);
         std::map<Entity, LineRenderer*> particleShapeLines;
 
+        // Hides the icons and lines of one GameObject inactive in hierarchy (Unity draws no
+        // gizmos for those; the icon picker refuses them too); called after its update
+        virtual void hideEntityGizmos(Entity entity);
+        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones)
+        bool gizmoActive(Entity entity) const;
+
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
         void setEditorOverlay(Entity entity);
@@ -478,7 +484,10 @@ namespace jasperengine::editor{
         // editor gizmos and overlays. For the running scene, after the game's frame,
         // layers are the game's layer scenes framed like the game frames its canvas;
         // for a stopped scene beside it, they are its inline child scenes.
-        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
+        // replacingBase: during Play, the scene a game load put in place of this one, drawn as the
+        // base through replacingCamera (the editor camera's mirror in it) instead of this scene
+        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+            Scene* replacingBase = nullptr, Entity replacingCamera = NULL_ENTITY);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
         float getOverlayScale() const { return overlayScale; }

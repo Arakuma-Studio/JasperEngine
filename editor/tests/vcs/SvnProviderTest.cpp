@@ -95,12 +95,13 @@ TEST(SvnProvider, EndToEnd) {
 
     // add: unversioned files show as such, and a commit of them adds them first
     writeFile(wcA / "a.txt", "line1\n");
+    writeFile(wcA / "icon@2x.lua", "x\n");
     writeFile(wcA / "art/needs.bin", "binary\n");
     VcsSnapshot snapshot = statusOf(alice);
     ASSERT_NE(snapshot.find("a.txt"), nullptr);
     EXPECT_EQ(snapshot.find("a.txt")->worktree, FileState::Untracked);
     std::string revision;
-    VcsResult result = offMain([&]() { return alice.commit(std::vector<RepoPath>{"a.txt", "art/needs.bin"}, "add files", revision); });
+    VcsResult result = offMain([&]() { return alice.commit(std::vector<RepoPath>{"a.txt", "icon@2x.lua", "art/needs.bin"}, "add files", revision); });
     ASSERT_TRUE(result.ok) << result.message;
     EXPECT_EQ(revision, "1");
     box.svnOk(wcA, {"propset", "svn:needs-lock", "*", "art/needs.bin"});
@@ -118,9 +119,24 @@ TEST(SvnProvider, EndToEnd) {
     std::string base;
     ASSERT_TRUE(offMain([&]() { return alice.baseContent("a.txt", "BASE", base); }).ok);
     EXPECT_EQ(base, "line1\n");
+    ASSERT_TRUE(offMain([&]() { return alice.baseContent("a.txt", "BASE", base, 2); }).ok);
+    EXPECT_EQ(base, "lin");
     std::string diff;
     ASSERT_TRUE(offMain([&]() { return alice.textDiff("a.txt", "BASE", diff); }).ok);
     EXPECT_NE(diff.find("+line1 alice"), std::string::npos);
+
+    // a name with '@': svn reads a peg revision in it unless the path is escaped, and diff
+    // against BASE takes no escape
+    writeFile(wcA / "icon@2x.lua", "y\n");
+    ASSERT_TRUE(offMain([&]() { return alice.baseContent("icon@2x.lua", "BASE", base); }).ok);
+    EXPECT_EQ(base, "x\n");
+    for (const char* rev : {"BASE", "1"}) {
+        diff.clear();
+        const VcsResult atDiff = offMain([&]() { return alice.textDiff("icon@2x.lua", rev, diff); });
+        ASSERT_TRUE(atDiff.ok) << rev << ": " << atDiff.message;
+        EXPECT_NE(diff.find("-x\n+y\n"), std::string::npos) << rev << ": " << diff;
+    }
+    writeFile(wcA / "icon@2x.lua", "x\n");
 
     // conflict: bob changes the same line and updates
     ASSERT_TRUE(offMain([&]() { return bob.pull(); }).ok);

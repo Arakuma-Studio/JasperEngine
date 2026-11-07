@@ -1,4 +1,5 @@
-file(GLOB MESHOPTIMIZER_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+# not a glob: the folder's path may hold glob characters
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} MESHOPTIMIZER_SRCS)
 
 add_library(
     meshoptimizer

@@ -7,6 +7,7 @@
 #include "EditorFrame.h"
 #include "GamepadDB.h"
 #include "WindowLinux.h"
+#include "X11Visibility.h"
 #include "GlxWorkerContext.h"
 #include "renderer/Renderer.h"
 
@@ -93,6 +94,8 @@ struct NativeWindow {
     int y = 0;
     int width = 0;
     int height = 0;
+    // _NET_WM_STATE_HIDDEN: minimized by a window manager that keeps the window mapped (mutter)
+    bool wmHidden = false;
 };
 
 struct Gamepad {
@@ -175,6 +178,7 @@ struct LinuxBackendData {
     Atom netWmState = None;
     Atom netWmStateMaxVert = None;
     Atom netWmStateMaxHorz = None;
+    Atom netWmStateHidden = None;
     Atom netWmStateAbove = None;
     Atom netWmStateSkipTaskbar = None;
     Atom netWmWindowType = None;
@@ -1024,6 +1028,9 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
             XNFocusWindow, result->handle,
             nullptr);
     }
+    // a window manager may hold the state from the start (a session restoring it minimized); later
+    // changes come as PropertyNotify (handleEvent)
+    result->wmHidden = X11Visibility::hasNetWmState(backend->display, result->handle, backend->netWmStateHidden);
     backend->windows[result->handle] = result;
     return result;
 }
@@ -1204,10 +1211,11 @@ ImVec2 getWindowPosition(NativeWindow* window) {
     return ImVec2(static_cast<float>(x), static_cast<float>(y));
 }
 
+// can't be seen: unmapped, or _NET_WM_STATE_HIDDEN (a minimize that keeps the window mapped)
 bool isWindowMinimized(NativeWindow* window) {
     XWindowAttributes attributes{};
     if (!XGetWindowAttributes(backend->display, window->handle, &attributes)) return true;
-    return attributes.map_state != IsViewable;
+    return attributes.map_state != IsViewable || window->wmHidden;
 }
 
 float envScale(const char* name) {
@@ -1705,6 +1713,15 @@ void processEvent(XEvent& event) {
         event.xproperty.atom == XA_RESOURCE_MANAGER) {
         updateMonitors();
         backend->redrawRequested = true;
+        return;
+    }
+    if (event.type == PropertyNotify && event.xproperty.atom == backend->netWmState) {
+        // a window manager's minimize that keeps the window mapped (isWindowMinimized)
+        if (NativeWindow* window = findWindow(event.xproperty.window)) {
+            window->wmHidden = event.xproperty.state != PropertyDelete &&
+                X11Visibility::hasNetWmState(backend->display, window->handle, backend->netWmStateHidden);
+            backend->redrawRequested = true;
+        }
         return;
     }
     if (event.type == PropertyNotify && event.xproperty.state == PropertyDelete) {
@@ -2718,6 +2735,7 @@ bool initializeX11(editor::App& app) {
     backend->netWmState = atom("_NET_WM_STATE");
     backend->netWmStateMaxVert = atom("_NET_WM_STATE_MAXIMIZED_VERT");
     backend->netWmStateMaxHorz = atom("_NET_WM_STATE_MAXIMIZED_HORZ");
+    backend->netWmStateHidden = atom("_NET_WM_STATE_HIDDEN");
     backend->netWmStateAbove = atom("_NET_WM_STATE_ABOVE");
     backend->netWmStateSkipTaskbar = atom("_NET_WM_STATE_SKIP_TASKBAR");
     backend->netWmWindowType = atom("_NET_WM_WINDOW_TYPE");

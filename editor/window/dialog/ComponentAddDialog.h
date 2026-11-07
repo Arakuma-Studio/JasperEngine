@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "imgui.h"
 #include "Catalog.h"
+#include "util/ScriptAttach.h"
 
 namespace jasperengine {
 namespace editor {
@@ -44,6 +45,9 @@ private:
     std::function<void()> m_onCancel;
     std::function<bool(ComponentType)> m_canAddComponent;
     std::function<void()> m_onNewScript;
+    // the project's scripts (Unity's Add Component > Scripts), listed in the Scripts category and the search
+    std::vector<ScriptCandidate> m_scripts;
+    std::function<void(const ScriptCandidate&)> m_onScript;
 
     void finish(bool cancelled);
 
@@ -59,6 +63,9 @@ public:
         ImVec2 anchorMin = ImVec2(0, 0),
         ImVec2 anchorMax = ImVec2(0, 0)
     );
+
+    // after open: the project's scripts it lists and what picking one does
+    void setScripts(std::vector<ScriptCandidate> scripts, std::function<void(const ScriptCandidate&)> onScript);
 
     void show();
     bool isOpen() const { return m_isOpen; }

@@ -52,6 +52,7 @@ int editor::Platform::vibrationCount = 0;
 int editor::Platform::hapticCount = 0;
 bool editor::Platform::hostFocused = true;
 bool editor::Platform::hostFocusKnown = false;
+bool editor::Platform::gameHiddenSimulated = false;
 
 namespace {
     // get_play_state.platform.opened_urls keeps the last ones
@@ -201,6 +202,7 @@ void editor::Platform::resetPlayRecords(){
     warnedUnsupportedOrientation = false;
     // Play starts focused: only later changes of the window's focus count
     hostFocusKnown = false;
+    gameHiddenSimulated = false;
 }
 
 void editor::Platform::endPlaySimulation(){
@@ -208,6 +210,7 @@ void editor::Platform::endPlaySimulation(){
     allowedMask = PlatformRules::ALL_ORIENTATIONS;
     simulation.orientation = settingsOrientation;
     hostFocusKnown = false;
+    gameHiddenSimulated = false;
 }
 
 const std::deque<editor::OpenedUrl>& editor::Platform::getOpenedUrls(){
@@ -239,6 +242,20 @@ void editor::Platform::forwardHostFocus(bool focused, bool playSessionActive){
     if (focused == hostFocused) return;
     hostFocused = focused;
     Engine::systemFocus(focused);
+}
+
+void editor::Platform::forwardHostVisibility(bool windowVisible, bool playSessionActive){
+    // edit mode keeps the engine visible; Play starts visible (Engine::resetApplicationState)
+    if (!playSessionActive) return;
+    Engine::systemVisibilityChanged(windowVisible && !gameHiddenSimulated);
+}
+
+void editor::Platform::setGameHiddenSimulated(bool hidden){
+    gameHiddenSimulated = hidden;
+}
+
+bool editor::Platform::isGameHiddenSimulated(){
+    return gameHiddenSimulated;
 }
 
 bool editor::Platform::isHeadless(){

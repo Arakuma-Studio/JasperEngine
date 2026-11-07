@@ -14,6 +14,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "subsystem/MeshSystem.h"
+#include "component/MeshComponent.h"
 #include "yaml-cpp/yaml.h"
 
 #include <atomic>
@@ -107,6 +108,36 @@ namespace jasperengine::editor{
         std::map<int, std::vector<float>> savedMorphWeights;
         void recordMorphWeights(Scene* scene, const ModelComponent& model);
         void restoreMorphWeights(Scene* scene, const ModelComponent& model);
+
+        // The mesh-wide settings of the parts (shadows, lights, shaders...) the user set, carried by
+        // node to the parts a same-file rebuild makes, like the arrangement. Not the winding order:
+        // the loader derives it from the node's transform, which a re-export may mirror
+        struct PartMeshSettings {
+            NodeRef part;
+            bool castShadows = true;
+            bool receiveShadows = true;
+            bool staticShadowCaster = false;
+            bool receiveLights = true;
+            bool receiveIBL = true;
+            CullingMode cullingMode = CullingMode::BACK;
+            bool lodEnabled = false;
+            float lodBias = 1.0f;
+            bool transparent = false;
+            bool autoTransparency = true;
+            ShaderRef customShader;
+            ShaderRef customDepthShader;
+            bool renderInReflectionProbes = true;
+            bool shadowsBillboard = false;
+            bool allowGpuInstancing = false;
+            LodFadeMode lodFadeMode = LodFadeMode();
+            bool lodAnimateCrossFading = false;
+            float lodFadeTransitionWidth = 0.0f;
+            float lodCullBelow = 0.0f;
+            ShaderUniformValues shaderUniforms;
+        };
+        std::vector<PartMeshSettings> savedPartSettings;
+        void recordPartMeshSettings(Scene* scene, const ModelComponent& model);
+        void restorePartMeshSettings(Scene* scene, const ModelComponent& model);
 
         static std::vector<Entity> collectModelDeleteRoots(Scene* scene, const ModelComponent& model);
         static bool isMappedMeshNode(const ModelComponent& model, Entity entity);

@@ -35,6 +35,9 @@ namespace jasperengine{
         FunctionSubscribe<void()> onChange;
         FunctionSubscribe<void()> onSubmit;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onChange); f(onSubmit); }
+
         bool needUpdateInputField = true;
     };
 

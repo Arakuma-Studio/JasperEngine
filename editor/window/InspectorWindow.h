@@ -15,6 +15,7 @@
 #include "util/PrimitiveParameters.h"
 #include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
@@ -25,6 +26,7 @@
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
+#include "animation/ActionPreviewSnapshot.h"
 #include "ecs/Signature.h"
 #include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
@@ -298,7 +300,8 @@ namespace jasperengine::editor{
             SliderFloat,
             ColorRGB,
             ColorRGBA,
-            Combo
+            Combo,
+            LayerMask   // a uint32_t layer mask: Unity's mask field
         };
 
         struct DirtyMaterialEntry {
@@ -334,12 +337,9 @@ namespace jasperengine::editor{
         bool actionPreviewing = false;
         Entity actionPreviewEntity = 0;
         uint32_t actionPreviewSceneId = 0;
-        struct ActionPreviewState {
-            Entity entity = 0;
-            Entity parent = 0;
-            YAML::Node components;
-        };
-        std::vector<ActionPreviewState> actionPreviewStates;
+        // the authored state of what the action preview writes; values commands write meanwhile
+        // are kept (runtime-core spec 6.6)
+        ActionPreviewSnapshot actionPreviewSnapshot;
 
         // PreviewOwner tokens of the action preview's roots (animation clips 9.R7): acquiring them
         // stops the Animation window or Pose window preview of the same model first
@@ -461,6 +461,12 @@ namespace jasperengine::editor{
         void writeDirtyMaterial(const DirtyMaterialEntry& entry);
         template<typename T>
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
+        // the Planar Reflections section of the scene settings (water-reflections)
+        void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+    public:
+        // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+        static std::string sceneLayerMaskLabel(uint32_t mask);
+    private:
 
         // Sound preview helpers
         bool ensureSoundPreviewInitialized();
@@ -480,6 +486,9 @@ namespace jasperengine::editor{
 
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
+        // the Add Script picker's list (read when it opens) and search text
+        std::vector<ScriptCandidate> addScriptCandidates;
+        char addScriptSearch[128] = {};
         ShaderForkDialog shaderForkDialog;
         ComponentAddDialog componentAddDialog;
         TextureSlicerToolDialog textureSlicerToolDialog;
@@ -591,7 +600,14 @@ namespace jasperengine::editor{
         bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
-        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // New Script (or, existing: Existing Script) dialog; what it makes goes on the entities
+        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities, bool existing);
+        // a script file onto the entities (ScriptAttach), problems to the Console
+        void attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file);
+        // the Scripts header's Add Script picker: the project's scripts, New Script..., Browse...
+        void drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // every one of the entities runs the candidate's file already
+        bool scriptOnAll(SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptCandidate& candidate) const;
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
         // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)
@@ -621,10 +637,12 @@ namespace jasperengine::editor{
             uint32_t sceneId = 0;
         };
 
-        EntityPickerResult drawEntityPickerPopup(const std::string& popupId, const Signature& filter, SceneProject* owningScene, bool includeChildScenes, Entity currentValue, uint32_t currentValueSceneId = 0, const std::vector<Entity>& excludeEntities = {});
+        EntityPickerResult drawEntityPickerPopup(const std::string& popupId, const Signature& filter, SceneProject* owningScene, bool includeRelatedScenes, Entity currentValue, uint32_t currentValueSceneId = 0, const std::vector<Entity>& excludeEntities = {});
         void syncSubSelection(SceneProject* sceneProject, Entity entity, int tileIndex, int instanceIndex);
 
-        void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "");
+        // widthKey: part of the table's id, so a saved (resized) column width lasts only as long as
+        // the rows it was made for (a hash of a uniform table's member names; 0 for none)
+        void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "", uint64_t widthKey = 0);
         void endTable();
         bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
@@ -653,13 +671,20 @@ namespace jasperengine::editor{
             bool buildFailed = false; // the fork failed and the built-in is rendering
         };
         ShaderUniformRows resolveShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity);
-        // rows under the Shader row, stored by name in shaderUniforms
+        // the rows of the properties table under the Shader rows, stored by name in shaderUniforms
         void drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows);
         // one member row: a label for engine-written and non-editable members, else a
         // drag field; true with newValue when it changed
         // reserveRight: room left after the field (a link button drawn on the same line)
+        // chain: the value shown while the member has none of its own (ShaderUniforms::resolve);
+        // revertTooltip: an own value gets a revert arrow with that tooltip, which sets *revert
         bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
-                                  float reserveRight = 0.0f);
+                                  float reserveRight = 0.0f, const UniformChain* chain = nullptr, bool* revert = nullptr,
+                                  const char* revertTooltip = nullptr);
+        // the label column of a properties table: its widest member name (or manifest label)
+        float getShaderPropertiesLabelSize(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest);
+        // the hash of a table's member names (beginTable's widthKey)
+        static uint64_t shaderMembersKey(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest);
         // Under a Stochastic Tiling Rotation row (a material's, a terrain layer's): when the rotation is
         // on and the normal map's average normal leans (util/NormalMapTilt), a warning and a button that
         // sets rotationProperty to 0 on every entity in one undo step
@@ -682,9 +707,11 @@ namespace jasperengine::editor{
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
         // builtInLabel names the empty entry instead ("None" for an extra pass)
+        // onForkLibrary, when given: a "Fork" item while a library shader is picked, called with it
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                     const std::function<void(const std::string&)>& setShader, const std::string& popupName,
-                                    const char* builtInLabel = nullptr);
+                                    const char* builtInLabel = nullptr,
+                                    const std::function<void(const std::string&)>& onForkLibrary = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
@@ -751,6 +778,9 @@ namespace jasperengine::editor{
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
         void drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
+        // One default shader's table (its Shader row and status) and, when it is set, its
+        // "<Shader> Properties" table of the scene's values every object using it inherits
+        void drawSceneDefaultShader(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
 
         // Ordered user post-process chain: per-pass enable, shader fork/pick, reorder
         // and remove. Uniform rows come from the fork's own u_fs_postParams block.
@@ -835,6 +865,7 @@ namespace jasperengine::editor{
 
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawMeshComponentFields(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -845,6 +876,9 @@ namespace jasperengine::editor{
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Unity's Button: Interactable, then the reflected rows by transition and navigation mode,
+        // Visualize and the state while playing (InspectorButton.cpp)
+        void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
