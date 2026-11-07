@@ -3,6 +3,7 @@
 
 #include "EntityRegistry.h"
 #include "component/ActionComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"

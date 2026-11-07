@@ -36,6 +36,7 @@ std::vector<std::string> player::builtModules() {
     if (nav::isNavMeshAvailable()) modules.push_back("navigation");
 #if JASPERENGINE_SOUND_LAYER
     modules.push_back("soundlayer");
+#endif
 #if JASPERENGINE_NOISE_ENABLED
     modules.push_back("noise");
 #endif
