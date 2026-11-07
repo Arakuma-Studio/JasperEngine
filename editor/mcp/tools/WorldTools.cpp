@@ -37,6 +37,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/WriteFilesCmd.h"
 #include "physics/PolygonDecomposition2D.h"
 #include "physics/PhysicsMaterial.h"
 #include "util/PhysicsMaterialAssets.h"
@@ -72,6 +73,7 @@
 #include "mcp/tools/ParticleShared.h"
 #include "util/Color.h"
 #include "util/ProjectUtils.h"
+#include "util/TerrainDetailRules.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/ProgressbarComponent.h"
@@ -522,15 +524,26 @@ Json terrainSample(Scene* scene, Entity entity, const Vector3& local) {
                 {"height", world.y}, {"normalized", normalized}, {"normal", McpValues::toJson(normal)}};
 }
 
+// A detail layer (foliageLayers[i]) as edit_terrain_details takes it
+Json detailLayerJson(Project* project, const TerrainFoliageLayer& layer) {
+    Json out = {{"mesh", McpValues::assetPathToJson(project, layer.meshPath)},
+                {"density_map", McpValues::assetPathToJson(project, layer.densityMap.getPath())},
+                {"seed", layer.seed}, {"cast_shadows", layer.castShadows}};
+    for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) out[range.key] = McpValues::number(layer.*range.field);
+    return out;
+}
+
 Json terrainInfo(Project* project, Scene* scene, Entity entity) {
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
     Json blendMaps = Json::array();
     for (Texture& map : terrain.blendMaps) blendMaps.push_back(McpValues::assetPathToJson(project, map.getPath()));
-    Json foliage = Json::array();
-    for (const TerrainFoliageLayer& layer : terrain.foliageLayers) {
-        foliage.push_back({{"mesh", McpValues::assetPathToJson(project, layer.meshPath)}, {"density", layer.density},
-                           {"drawn", scene->getSystem<MeshSystem>()->getFoliageInstanceCount(entity, static_cast<int>(foliage.size()))}});
+    Json details = Json::array();
+    for (size_t i = 0; i < terrain.foliageLayers.size(); i++) {
+        Json layer = detailLayerJson(project, terrain.foliageLayers[i]);
+        layer["index"] = i;
+        layer["drawn"] = scene->getSystem<MeshSystem>()->getFoliageInstanceCount(entity, i);
+        details.push_back(layer);
     }
     const float half = terrain.terrainSize * 0.5f;
     return Json{
@@ -541,7 +554,7 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"height_map_loaded", terrain.heightMap.hasData()},
         // false until the editor has rebuilt the mesh (and collision) from the current height map
         {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
-        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage}
+        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"details", details}
     };
 }
 
@@ -740,7 +753,31 @@ void setTerrainMapsTool(const CallPtr& call) {
     if (has(args, "blendmap")) {
         const Json& spec = args["blendmap"];
         Texture blend;
-        if (spec.is_object()) {
+        // the slot: blendMaps[index] weights surfaceLayers[index * 3 + channel]; no gaps
+        int slot = 0;
+        if (spec.is_object() && has(spec, "index")) {
+            slot = spec["index"].is_number_integer() ? spec["index"].get<int>() : -1;
+            if (slot < 0 || slot >= MAX_TERRAIN_BLENDMAPS) {
+                call->fail("blendmap.index must be 0-" + std::to_string(MAX_TERRAIN_BLENDMAPS - 1) + " (slot i weights layers 3i to 3i+2).");
+                return;
+            }
+            if (slot > static_cast<int>(blendMaps.size())) {
+                call->fail("blend map slot " + std::to_string(slot) + " needs slot " + std::to_string(slot - 1) +
+                           " first (the terrain has " + std::to_string(blendMaps.size()) + ").");
+                return;
+            }
+        }
+        if (spec.is_object() && has(spec, "path") && has(spec, "color")) {
+            call->fail("blendmap takes path or color, not both.");
+            return;
+        }
+        if (spec.is_object() && has(spec, "path")) {
+            if (!texturePath(spec["path"], "blendmap.path", blend)) {
+                call->fail(error);
+                return;
+            }
+            result["blendmap"] = {{"path", spec["path"]}};
+        } else if (spec.is_object()) {
             Vector3 color(0, 0, 0);
             if (has(spec, "color") && !McpValues::parseVector3(spec["color"], color)) {
                 call->fail("blendmap.color must be [r, g, b] (0-1: the weights of layers 0, 1, 2).");
@@ -765,8 +802,9 @@ void setTerrainMapsTool(const CallPtr& call) {
         } else {
             result["blendmap"] = {{"path", spec}};
         }
-        if (blendMaps.empty()) blendMaps.resize(1);
-        blendMaps[0] = blend;
+        if (static_cast<int>(blendMaps.size()) <= slot) blendMaps.resize(slot + 1);
+        blendMaps[slot] = blend;
+        result["blendmap"]["index"] = slot;
         blendChanged = true;
     }
 
@@ -820,6 +858,58 @@ void setTerrainMapsTool(const CallPtr& call) {
                     result["notes"].push_back(where + std::string(param.name) + " is stored but has no effect until stochastic_tiling is true.");
                 }
             }
+            // the Terrain Layer's factors, in the Inspector's ranges
+            struct FactorParam { const char* name; float TerrainSurfaceLayer::*field; float lo, hi; };
+            static const FactorParam factorParams[] = {
+                {"normal_strength", &TerrainSurfaceLayer::normalStrength, 0.0f, 2.0f},
+                {"roughness_factor", &TerrainSurfaceLayer::roughnessFactor, 0.0f, 1.0f},
+                {"metallic_factor", &TerrainSurfaceLayer::metallicFactor, 0.0f, 1.0f},
+                {"occlusion_strength", &TerrainSurfaceLayer::occlusionStrength, 0.0f, 1.0f}};
+            for (const FactorParam& param : factorParams) {
+                if (!has(item, param.name)) continue;
+                const Json& value = item[param.name];
+                const double number = value.is_number() ? value.get<double>() : -1.0;
+                if (!value.is_number() || !std::isfinite(number) || number < param.lo || number > param.hi) {
+                    std::ostringstream range;
+                    range << where << param.name << " must be a number from " << param.lo << " to " << param.hi << ".";
+                    call->fail(range.str());
+                    return;
+                }
+                layer.*param.field = static_cast<float>(number);
+            }
+            if (has(item, "uv_scale")) {
+                Vector2 scale;
+                if (!McpValues::parseVector2(item["uv_scale"], scale) || !(scale.x >= 0.01f && scale.x <= 100.0f) ||
+                    !(scale.y >= 0.01f && scale.y <= 100.0f)) {
+                    call->fail(where + "uv_scale must be [x, y], each 0.01-100 (times the detail tiling).");
+                    return;
+                }
+                layer.uvScale = scale;
+            }
+            if (has(item, "uv_offset")) {
+                Vector2 offset;
+                if (!McpValues::parseVector2(item["uv_offset"], offset) || !std::isfinite(offset.x) || !std::isfinite(offset.y)) {
+                    call->fail(where + "uv_offset must be [x, y].");
+                    return;
+                }
+                layer.uvOffset = offset;
+            }
+            if (has(item, "tint")) {
+                Vector4 tint = layer.colorFactor;
+                if (!McpValues::parseVector4(item["tint"], tint)) {
+                    Vector3 rgb;
+                    if (!McpValues::parseVector3(item["tint"], rgb)) {
+                        call->fail(where + "tint must be [r, g, b] or [r, g, b, a], linear 0-1.");
+                        return;
+                    }
+                    tint = Vector4(rgb.x, rgb.y, rgb.z, tint.w);
+                }
+                if (!(tint.x >= 0 && tint.x <= 1 && tint.y >= 0 && tint.y <= 1 && tint.z >= 0 && tint.z <= 1 && tint.w >= 0 && tint.w <= 1)) {
+                    call->fail(where + "tint must be [r, g, b] or [r, g, b, a], linear 0-1.");
+                    return;
+                }
+                layer.colorFactor = tint;
+            }
             if (has(item, "hex_tiling")) layer.hexTiling = boolOr(item, "hex_tiling", layer.hexTiling);
             if (has(item, "hex_rotation")) {
                 if (!item["hex_rotation"].is_number()) {
@@ -866,6 +956,251 @@ void setTerrainMapsTool(const CallPtr& call) {
     result["terrain"] = entityJson(target, entity);
     result["info"] = terrainInfo(project, scene, entity);
     call->ok("Set the terrain maps of " + McpRefs::entityPath(target.scene, entity) + ".", result);
+}
+
+// edit_terrain_details: Unity's terrain Details (TerrainComponent::foliageLayers), validated, one undo step
+void editTerrainDetailsTool(const CallPtr& call) {
+    Target target;
+    if (!resolveTerrain(call, target) || !sceneStopped(call, target)) return;
+    const Json& args = call->args();
+    Project* project = target.project;
+    Scene* scene = target.engineScene();
+    const uint32_t sceneId = target.sceneId();
+    const Entity entity = target.entity;
+    std::vector<TerrainFoliageLayer> layers = scene->getComponent<TerrainComponent>(entity).foliageLayers;
+    const bool editing = has(args, "remove") || has(args, "update") || has(args, "add");
+    Json notes = Json::array();
+    Json written = Json::array();
+    // generated density maps: written by the command, so undo removes them and a refused call writes none
+    std::vector<WriteFilesCmd::Item> maps;
+    std::vector<std::string> meshes;
+    std::string error;
+
+    // the fields of an update or add item onto layer `index`; where: "update[0]"
+    auto applyFields = [&](const Json& item, TerrainFoliageLayer& layer, int index, const std::string& where, bool isAdd) {
+        if (!item.is_object()) {
+            error = where + " must be an object of detail layer fields.";
+            return false;
+        }
+        static const std::vector<std::string> other = {"index", "mesh", "density_map", "seed", "cast_shadows"};
+        for (auto it = item.begin(); it != item.end(); ++it) {
+            const std::string& key = it.key();
+            const bool known = std::find(other.begin(), other.end(), key) != other.end() ||
+                std::any_of(editor::terrain::detailRanges().begin(), editor::terrain::detailRanges().end(),
+                            [&key](const editor::terrain::DetailRange& range) { return key == range.key; });
+            if (!known || (isAdd && key == "index")) {
+                std::string valid = "mesh, density_map, seed, cast_shadows";
+                for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) valid += std::string(", ") + range.key;
+                error = where + ": unknown field \"" + key + "\". Fields: " + (isAdd ? "" : "index, ") + valid + ".";
+                return false;
+            }
+        }
+        if (has(item, "mesh")) {
+            const Json& mesh = item["mesh"];
+            std::filesystem::path absolute;
+            std::string stored;
+            if (!mesh.is_string() || mesh.get<std::string>().empty()) {
+                error = where + ".mesh must be a project-relative model path (.obj, .gltf, .glb or .fbx).";
+                return false;
+            }
+            if (!McpRefs::resolveProjectPath(project, mesh.get<std::string>(), absolute, error, true) ||
+                !McpValues::assetPathFromJson(project, mesh.get<std::string>(), stored, error)) {
+                error = where + ".mesh: " + error;
+                return false;
+            }
+            if (!editor::terrain::isDetailMeshPath(stored)) {
+                error = where + ".mesh \"" + mesh.get<std::string>() + "\" is not a model a detail layer draws: use an .obj, .gltf, .glb or .fbx file.";
+                return false;
+            }
+            meshes.push_back(stored);
+            layer.meshPath = stored;
+        } else if (isAdd) {
+            error = where + ".mesh is required: the model each instance draws (.obj, .gltf, .glb or .fbx).";
+            return false;
+        }
+        for (const editor::terrain::DetailRange& range : editor::terrain::detailRanges()) {
+            if (!has(item, range.key)) continue;
+            const Json& value = item[range.key];
+            if (!value.is_number()) {
+                error = where + "." + range.key + " must be a number.";
+                return false;
+            }
+            layer.*range.field = value.get<float>();
+        }
+        if (has(item, "seed")) {
+            if (!item["seed"].is_number_integer() || item["seed"].get<long long>() < 0 ||
+                item["seed"].get<long long>() > static_cast<long long>(std::numeric_limits<unsigned int>::max())) {
+                error = where + ".seed must be an integer 0-4294967295.";
+                return false;
+            }
+            layer.seed = static_cast<unsigned int>(item["seed"].get<long long>());
+        }
+        if (has(item, "cast_shadows")) {
+            if (!item["cast_shadows"].is_boolean()) {
+                error = where + ".cast_shadows must be true or false.";
+                return false;
+            }
+            layer.castShadows = item["cast_shadows"].get<bool>();
+        }
+        if (has(item, "density_map")) {
+            const Json& map = item["density_map"];
+            if (map.is_string() && map.get<std::string>().empty()) {
+                layer.densityMap = Texture();
+            } else if (map.is_string()) {
+                std::filesystem::path absolute;
+                std::string stored;
+                if (!McpRefs::resolveProjectPath(project, map.get<std::string>(), absolute, error, true) ||
+                    !McpValues::assetPathFromJson(project, map.get<std::string>(), stored, error)) {
+                    error = where + ".density_map: " + error;
+                    return false;
+                }
+                layer.densityMap = Texture(stored);
+            } else if (map.is_object()) {
+                for (auto it = map.begin(); it != map.end(); ++it) {
+                    if (it.key() != "fill" && it.key() != "resolution") {
+                        error = where + ".density_map: unknown key \"" + it.key() + "\" ({fill: 0-1, resolution: 2-4096}).";
+                        return false;
+                    }
+                }
+                TerrainDensityMapRequest request;
+                const Json fill = map.value("fill", Json(1.0));
+                const Json resolution = map.value("resolution", Json(project->getTerrainEditorSettings().densityMapResolution));
+                if (!fill.is_number() || fill.get<double>() < 0.0 || fill.get<double>() > 1.0) {
+                    error = where + ".density_map.fill must be a number 0-1 (the share of density everywhere).";
+                    return false;
+                }
+                if (!resolution.is_number_integer() || resolution.get<int>() < 2 || resolution.get<int>() > 4096) {
+                    error = where + ".density_map.resolution must be an integer 2-4096.";
+                    return false;
+                }
+                request.fill = fill.get<float>();
+                request.resolution = resolution.get<int>();
+                TerrainBlendmapResult generated = TerrainMaps::encodeDensityMap(project, sceneId, entity, index, request);
+                if (!generated.success) {
+                    error = where + ".density_map: " + (generated.error.empty() ? "could not make the density map." : generated.error);
+                    return false;
+                }
+                layer.densityMap = Texture(generated.relativePath);
+                maps.push_back({generated.fullPath, std::move(generated.encoded)});
+                written.push_back(McpValues::assetPathToJson(project, generated.relativePath));
+            } else {
+                error = where + ".density_map must be an image path, \"\" (none) or {fill: 0-1, resolution}.";
+                return false;
+            }
+        }
+        const std::string invalid = editor::terrain::checkDetailLayer(layer);
+        if (!invalid.empty()) {
+            error = where + ": " + invalid;
+            return false;
+        }
+        return true;
+    };
+
+    // remove: indices before the call, all checked first
+    std::vector<int> removed;
+    if (has(args, "remove")) {
+        if (!args["remove"].is_array()) {
+            call->fail("remove must be a list of detail layer indices.");
+            return;
+        }
+        for (const Json& item : args["remove"]) {
+            const int index = item.is_number_integer() ? item.get<int>() : -1;
+            if (index < 0 || index >= static_cast<int>(layers.size()) || std::find(removed.begin(), removed.end(), index) != removed.end()) {
+                call->fail("remove: " + item.dump() + " is not a detail layer index (0-" + std::to_string((int)layers.size() - 1) +
+                           ", each once); nothing was changed.");
+                return;
+            }
+            removed.push_back(index);
+        }
+        std::vector<int> order = removed;
+        std::sort(order.rbegin(), order.rend());
+        for (int index : order) layers.erase(layers.begin() + index);
+    }
+    if (has(args, "update")) {
+        if (!args["update"].is_array()) {
+            call->fail("update must be a list of {index, ...fields}.");
+            return;
+        }
+        for (size_t i = 0; i < args["update"].size(); i++) {
+            const Json& item = args["update"][i];
+            const std::string where = "update[" + std::to_string(i) + "]";
+            const int index = item.is_object() && item.contains("index") && item["index"].is_number_integer() ? item["index"].get<int>() : -1;
+            if (index < 0 || index >= static_cast<int>(layers.size())) {
+                call->fail(where + ".index must be a detail layer index 0-" + std::to_string((int)layers.size() - 1) +
+                           " (after remove); nothing was changed.");
+                return;
+            }
+            if (!applyFields(item, layers[index], index, where, false)) {
+                call->fail(error + " Nothing was changed.");
+                return;
+            }
+        }
+    }
+    Json added = Json::array();
+    if (has(args, "add")) {
+        if (!args["add"].is_array()) {
+            call->fail("add must be a list of {mesh, ...fields}.");
+            return;
+        }
+        for (size_t i = 0; i < args["add"].size(); i++) {
+            TerrainFoliageLayer layer;
+            if (!applyFields(args["add"][i], layer, static_cast<int>(layers.size()), "add[" + std::to_string(i) + "]", true)) {
+                call->fail(error + " Nothing was changed.");
+                return;
+            }
+            layers.push_back(layer);
+            added.push_back(layers.size() - 1);
+        }
+    }
+
+    if (editing) {
+        // an FBX draws from its import, made the first time (as the Terrain window does)
+        for (const std::string& mesh : meshes) {
+            if (!project->prepareModelFile(mesh)) {
+                call->fail("Could not import " + mesh + " (see the console). Nothing was changed.");
+                return;
+            }
+        }
+        auto multi = std::make_unique<MultiPropertyCmd>();
+        if (!maps.empty()) {
+            ProjectWindow* window = call->ctx().projectWindow();
+            multi->addCommand(std::make_unique<WriteFilesCmd>(std::move(maps), [window](const std::vector<std::filesystem::path>& paths) {
+                if (!window) return;
+                for (const std::filesystem::path& path : paths) window->requestThumbnailGeneration(path, true);
+            }));
+        }
+        multi->addPropertyCmd<std::vector<TerrainFoliageLayer>>(project, sceneId, entity, ComponentType::TerrainComponent,
+                                                                "foliageLayers", layers);
+        if (!runSceneCommand(sceneId, multi.release(), error, "Could not change the terrain detail layers.")) {
+            call->fail(error);
+            return;
+        }
+    }
+    Json list = Json::array();
+    for (size_t i = 0; i < layers.size(); i++) {
+        Json layer = detailLayerJson(project, layers[i]);
+        layer["index"] = i;
+        if (layers[i].densityMap.empty()) {
+            notes.push_back("Layer " + std::to_string(i) + " has no density map, so it draws nothing: density_map {fill: 1} "
+                            "makes a uniform one, or paint it with sculpt_terrain paint_density.");
+        }
+        if (layers[i].density > 20.0f) {
+            notes.push_back("Layer " + std::to_string(i) + ": density " + std::to_string((int)layers[i].density) + " places up to " +
+                            std::to_string((int)std::lround(layers[i].density * 64.0f)) +
+                            " instances per 8 m cell; budget it for mobile and web (cast_shadows false for grass).");
+        }
+        list.push_back(layer);
+    }
+    Json data = {{"terrain", entityJson(target, entity)}, {"layers", list}};
+    if (!added.empty()) data["added"] = added;
+    if (!removed.empty()) data["removed"] = removed;
+    if (!written.empty()) data["written"] = written;
+    if (!notes.empty()) data["notes"] = notes;
+    std::string text = editing ? "Set the detail layers of " + McpRefs::entityPath(target.scene, entity) + " (one undo step): " +
+                                 std::to_string(layers.size()) + " layer(s)."
+                               : McpRefs::entityPath(target.scene, entity) + " has " + std::to_string(layers.size()) + " detail layer(s).";
+    for (const Json& note : notes) text += " " + note.get<std::string>();
+    call->ok(text, data);
 }
 
 void sampleTerrainTool(const CallPtr& call) {
@@ -1303,8 +1638,9 @@ bool applyCollider3D(const Target& target, Entity entity, const Json& spec, Coll
     }
 
     if (!readVec3(spec, "center", shape.position, error)) return false;
-    if (has(spec, "rotation") && !McpValues::parseQuaternion(spec["rotation"], shape.rotation)) {
-        error = "rotation must be [x, y, z, w] or {\"euler\": [x, y, z]} degrees.";
+    std::string why;
+    if (has(spec, "rotation") && !McpValues::parseQuaternion(spec["rotation"], shape.rotation, &why)) {
+        error = "rotation: " + why;
         return false;
     }
     if (has(spec, "size")) {
@@ -3242,9 +3578,10 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
         }
         const Json& v = item["value"];
         bool ok = true;
+        std::string why;
         // a key read back from a result carries {euler, quat}: euler (the field agents edit) wins,
         // the quat is only read when it is alone
-        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v.is_object() && v.contains("euler") ? Json{{"euler", v["euler"]}} : v, key.quat);
+        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v.is_object() && v.contains("euler") ? Json{{"euler", v["euler"]}} : v, key.quat, &why);
         else if (channel == Channel::Morph) {
             ok = v.is_array();
             for (const Json& w : v) {
@@ -3252,6 +3589,10 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
                 else key.weights.push_back(w.get<float>());
             }
         } else ok = McpValues::parseVector3(v, key.vec);
+        if (!ok && !why.empty()) {
+            error = "keys[" + std::to_string(i) + "].value: " + why;
+            return false;
+        }
         if (!ok) {
             error = "keys[" + std::to_string(i) + "].value must be " +
                     (channel == Channel::Rotation ? std::string("[x, y, z, w] or {\"euler\": [x, y, z]} degrees")
@@ -3535,6 +3876,9 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         item["kind"] = kind;
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(frame.action)) {
             item["target"] = ac->target != NULL_ENTITY && scene->isEntityCreated(ac->target) ? entityJson(target, ac->target) : Json(nullptr);
+            // a nested action's own start (only when set: most have none)
+            if (ac->startOffset > 0.0f) item["start_offset"] = ac->startOffset;
+            if (ac->randomStart) item["random_start"] = true;
         }
         for (const auto& c : channels()) {
             if (kind == std::string(c.first) + "_track") item["keys"] = keysJson(scene, frame.action, c.second, keyLimit);
@@ -3590,6 +3934,8 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         out["target"] = action->target != NULL_ENTITY && scene->isEntityCreated(action->target) ? entityJson(target, action->target) : Json(nullptr);
         out["autoplay"] = action->state == ActionState::Running;
         out["speed"] = action->speed;
+        out["start_offset"] = action->startOffset;
+        out["random_start"] = action->randomStart;
     }
     return out;
 }
@@ -3819,6 +4165,7 @@ void editAnimationTool(const CallPtr& call) {
             create->addProperty<Ease>(ComponentType::TweenComponent, "function", Ease(ease));
             Transform* tf = scene->findComponent<Transform>(tweenTarget);
             bool ok = true;
+            std::string rotationWhy;
             if (typeName == "position" || typeName == "scale") {
                 Vector3 from = tf ? (typeName == "position" ? tf->position : tf->scale) : Vector3::ZERO, to;
                 ok = (!has(item, "from") || McpValues::parseVector3(item["from"], from)) && McpValues::parseVector3(item["to"], to);
@@ -3829,7 +4176,7 @@ void editAnimationTool(const CallPtr& call) {
                 // turns from by angle degrees around axis: full turns, which a tween to an end rotation cannot
                 Quaternion from = tf ? tf->rotation : Quaternion();
                 Vector3 axis(0.0f, 1.0f, 0.0f);
-                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) &&
+                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from, &rotationWhy)) &&
                      (!has(item, "axis") || McpValues::parseVector3(item["axis"], axis)) && axis.length() > 0.0f &&
                      (!has(item, "angle") || item["angle"].is_number());
                 create->addProperty<Quaternion>(ComponentType::RotationTweenComponent, "startRotation", from);
@@ -3838,7 +4185,8 @@ void editAnimationTool(const CallPtr& call) {
                 create->addProperty<float>(ComponentType::RotationTweenComponent, "angle", numberOr(item, "angle", 360.0f));
             } else if (typeName == "rotation") {
                 Quaternion from = tf ? tf->rotation : Quaternion(), to;
-                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) && McpValues::parseQuaternion(item["to"], to);
+                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from, &rotationWhy)) &&
+                     McpValues::parseQuaternion(item["to"], to, &rotationWhy);
                 create->addProperty<Quaternion>(ComponentType::RotationTweenComponent, "startRotation", from);
                 create->addProperty<Quaternion>(ComponentType::RotationTweenComponent, "endRotation", to);
                 create->addProperty<bool>(ComponentType::RotationTweenComponent, "shortestPath", boolOr(item, "shortest_path", true));
@@ -3854,6 +4202,7 @@ void editAnimationTool(const CallPtr& call) {
                     create->addProperty<float>(ComponentType::AlphaTweenComponent, "endAlpha", item["to"].get<float>());
                 }
             }
+            if (!ok && !rotationWhy.empty()) { failWith(where + ": " + rotationWhy); return; }
             if (!ok) { failWith(where + ": from / to don't fit a " + typeName + " tween (vectors [x,y,z], rotations [x,y,z,w] or {\"euler\": [...]}, colors [r,g,b], alpha numbers; a spin's axis a non-zero [x,y,z] and angle degrees)."); return; }
             if (!step.add(guard.release())) { failWith(where + ": could not create the tween."); return; }
             ActionFrame frame;
@@ -3948,6 +4297,9 @@ void editAnimationTool(const CallPtr& call) {
                              boolOr(args, "autoplay", false) ? ActionState::Running : ActionState::Stopped);
     }
     if (has(args, "speed")) addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "speed", numberOr(args, "speed", 1.0f));
+    if (has(args, "random_start")) {
+        addProp<bool>(*edits, target, animation, ComponentType::ActionComponent, "randomStart", boolOr(args, "random_start", false));
+    }
     if (!step.add(editsGuard.release())) { failWith("The editor rejected the animation edit."); return; }
     if (!toDelete.empty()) {
         if (!step.add(new DeleteEntityCmd(target.project, target.sceneId(), toDelete))) { failWith("Could not delete the removed actions."); return; }
@@ -4309,6 +4661,11 @@ struct UiBuild {
     UndoStep* step = nullptr;
     int count = 0;
     bool layoutGroup = false;
+    // the GameObjects made by name, and the Explicit navigation targets that name one of them
+    // (resolved once the whole tree exists)
+    std::map<std::string, Entity> byName;
+    struct NavTarget { Entity entity; const char* property; Json ref; std::string where; };
+    std::vector<NavTarget> navTargets;
 };
 
 const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
@@ -4332,6 +4689,103 @@ bool readActionPair(const Json& node, const std::string& where, std::string& hor
     }
     horizontal = actions[0].get<std::string>();
     vertical = actions[1].get<std::string>();
+    return true;
+}
+
+// a button node's Selectable keys (ui-components): textures, transition, fade_duration, scale,
+// navigation (a mode, or {mode, wrap_around, up, down, left, right}), select_on_enable
+bool addButtonNodeKeys(UiBuild& build, const Json& node, Entity entity, const std::string& where, MultiPropertyCmd& multi, std::string& error) {
+    static const char* const keys[] = {"textures", "transition", "fade_duration", "scale", "navigation", "select_on_enable"};
+    bool any = false;
+    for (const char* key : keys) any = any || has(node, key);
+    if (!any) return true;
+    const Target& target = build.target;
+    Scene* scene = target.engineScene();
+    if (!scene->findComponent<ButtonComponent>(entity)) {
+        error = where + ": textures, transition, fade_duration, scale, navigation and select_on_enable are for buttons.";
+        return false;
+    }
+    const ComponentType bc = ComponentType::ButtonComponent;
+    Json values = Json::object();
+    if (has(node, "textures")) {
+        static const std::vector<std::pair<const char*, const char*>> states = {
+            {"normal", "textureNormal"}, {"hovered", "textureHovered"}, {"pressed", "texturePressed"}, {"selected", "textureSelected"},
+            {"disabled", "textureDisabled"}};
+        const Json& textures = node["textures"];
+        if (!textures.is_object()) {
+            error = where + ".textures must be {normal, hovered, pressed, selected, disabled} asset paths.";
+            return false;
+        }
+        for (auto it = textures.begin(); it != textures.end(); ++it) {
+            auto state = std::find_if(states.begin(), states.end(), [&](const auto& entry) { return it.key() == entry.first; });
+            if (state == states.end()) {
+                error = where + ".textures: unknown state '" + it.key() + "' (normal, hovered, pressed, selected, disabled).";
+                return false;
+            }
+            values[state->second] = it.value();
+        }
+        if (textures.contains("normal") &&
+            !addCatalogProperties(target.project, target.scene, entity, ComponentType::UIComponent, Json{{"texture", textures["normal"]}}, multi, error)) {
+            error = where + ".textures.normal: " + error;
+            return false;
+        }
+    }
+    if (has(node, "transition")) values["transition"] = node["transition"];
+    if (has(node, "fade_duration")) values["fadeDuration"] = node["fade_duration"];
+    if (has(node, "select_on_enable")) values["selectOnEnable"] = node["select_on_enable"];
+    if (has(node, "scale")) {
+        const Json& scale = node["scale"];
+        static const std::vector<std::pair<const char*, const char*>> states = {
+            {"hovered", "scaleHovered"}, {"pressed", "scalePressed"}, {"selected", "scaleSelected"}};
+        if (!scale.is_object()) {
+            error = where + ".scale must be {hovered, pressed, selected} factors (1: none).";
+            return false;
+        }
+        for (auto it = scale.begin(); it != scale.end(); ++it) {
+            auto state = std::find_if(states.begin(), states.end(), [&](const auto& entry) { return it.key() == entry.first; });
+            if (state == states.end()) {
+                error = where + ".scale: unknown state '" + it.key() + "' (hovered, pressed, selected).";
+                return false;
+            }
+            values[state->second] = it.value();
+        }
+    }
+    if (has(node, "navigation")) {
+        const Json& navigation = node["navigation"];
+        if (navigation.is_string()) {
+            values["navigationMode"] = navigation;
+        } else if (navigation.is_object()) {
+            static const std::vector<std::pair<const char*, const char*>> targets = {
+                {"up", "selectOnUp"}, {"down", "selectOnDown"}, {"left", "selectOnLeft"}, {"right", "selectOnRight"}};
+            for (auto it = navigation.begin(); it != navigation.end(); ++it) {
+                if (it.key() == "mode") {
+                    values["navigationMode"] = it.value();
+                } else if (it.key() == "wrap_around") {
+                    values["wrapAround"] = it.value();
+                } else {
+                    auto dir = std::find_if(targets.begin(), targets.end(), [&](const auto& entry) { return it.key() == entry.first; });
+                    if (dir == targets.end()) {
+                        error = where + ".navigation: unknown key '" + it.key() + "' (mode, wrap_around, up, down, left, right).";
+                        return false;
+                    }
+                    // a node name of this call, or a GameObject already in the scene: once the tree exists
+                    build.navTargets.push_back({entity, dir->second, it.value(), where + ".navigation." + it.key()});
+                }
+            }
+            // targets mean Explicit unless the mode says otherwise
+            if (!navigation.contains("mode") && (navigation.contains("up") || navigation.contains("down") || navigation.contains("left") ||
+                                                 navigation.contains("right"))) {
+                values["navigationMode"] = "explicit";
+            }
+        } else {
+            error = where + ".navigation must be a mode (none, horizontal, vertical, automatic, explicit) or {mode, wrap_around, up, down, left, right}.";
+            return false;
+        }
+    }
+    if (!values.empty() && !addCatalogProperties(target.project, target.scene, entity, bc, values, multi, error)) {
+        error = where + ": " + error;
+        return false;
+    }
     return true;
 }
 
@@ -4475,11 +4929,12 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     }
     if (has(node, "colors")) {
         if (!scene->findComponent<ButtonComponent>(entity) || !node["colors"].is_object()) {
-            error = where + ".colors {normal, hovered, pressed, disabled} is for buttons.";
+            error = where + ".colors {normal, hovered, pressed, selected, disabled} is for buttons.";
             return false;
         }
         static const std::vector<std::pair<const char*, const char*>> states = {
-            {"normal", "colorNormal"}, {"hovered", "colorHovered"}, {"pressed", "colorPressed"}, {"disabled", "colorDisabled"}};
+            {"normal", "colorNormal"}, {"hovered", "colorHovered"}, {"pressed", "colorPressed"}, {"selected", "colorSelected"},
+            {"disabled", "colorDisabled"}};
         for (const auto& state : states) {
             if (!has(node["colors"], state.first)) continue;
             if (!parseColor4(node["colors"][state.first], color)) {
@@ -4495,7 +4950,14 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
             error = where + ".texture: " + (error.empty() ? std::string("this element has no image.") : error);
             return false;
         }
+        // a Button draws its Normal texture: the image's alone would be replaced at its first state change
+        if (scene->findComponent<ButtonComponent>(entity) &&
+            !addCatalogProperties(target.project, target.scene, entity, ComponentType::ButtonComponent, Json{{"textureNormal", node["texture"]}}, *multi, error)) {
+            error = where + ".texture: " + error;
+            return false;
+        }
     }
+    if (!addButtonNodeKeys(build, node, entity, where, *multi, error)) return false;
     if (has(node, "value")) {
         if (scene->findComponent<OnScreenButtonComponent>(entity)) {
             addProp<float>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "value", std::clamp(numberOr(node, "value", 1.0f), -1.0f, 1.0f));
@@ -4602,6 +5064,7 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
 
+    if (!name.empty()) build.byName.emplace(name, entity);
     out = entityJson(target, entity);
     out["type"] = typeName;
     if (textEntity != NULL_ENTITY && textEntity != entity) out["text_entity"] = entityJson(target, textEntity);
@@ -4650,10 +5113,34 @@ void createUiTool(const CallPtr& call) {
         step.fail(call, error);
         return;
     }
+    // Explicit navigation targets: a node of this call by name, else a GameObject of the scene
+    if (!build.navTargets.empty()) {
+        auto* multi = new MultiPropertyCmd();
+        std::unique_ptr<MultiPropertyCmd> guard(multi);
+        for (const UiBuild::NavTarget& nav : build.navTargets) {
+            Entity targetEntity = NULL_ENTITY;
+            if (nav.ref.is_string() && build.byName.count(nav.ref.get<std::string>())) {
+                targetEntity = build.byName[nav.ref.get<std::string>()];
+            } else if ((targetEntity = resolveRef(target.scene, nav.ref, error)) == NULL_ENTITY) {
+                step.fail(call, nav.where + ": " + error + " (a node name of this call or a GameObject of the scene).");
+                return;
+            }
+            addProp<Entity>(*multi, target, nav.entity, ComponentType::ButtonComponent, nav.property, targetEntity);
+        }
+        if (!step.add(guard.release())) {
+            step.fail(call, "The editor rejected the navigation targets.");
+            return;
+        }
+    }
     step.commit();
     std::string text = "Created " + std::to_string(build.count) + " UI element(s) under \"" + tree["name"].get<std::string>() + "\" (one undo step).";
     Json data = {{"root", tree}, {"count", build.count}};
-    if (target.scene->sceneType != SceneType::SCENE_UI) {
+    if (target.scene->sceneType == SceneType::SCENE_3D) {
+        // a HUD built here moves with the 3D camera and every level needs its own copy
+        data["next"] = "In a 3D scene UI widgets sit in its world and move with its camera: build a HUD or menu in a UI "
+                       "scene attached with set_child_scene, or as an HTML UI document (create_ui_document).";
+        text += " " + data["next"].get<std::string>();
+    } else if (target.scene->sceneType != SceneType::SCENE_UI) {
         text += " Note: UI pointer events (button presses) reach a scene whose camera is a UI camera; a HUD usually lives in a UI scene (child scene).";
     }
     Scene* scene = target.engineScene();
@@ -5580,9 +6067,9 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_terrain_maps", "Set Terrain Maps",
         "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
-        "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
-        "normal/roughness/metallic/occlusion), stochastic_tiling (hides tiling repetition, up to 3x the reads) "
-        "and its cell_size/blend_sharpness/contrast/rotation. Images under the assets dir.",
+        "{path|color, index}: slot index's r,g,b weight layers 3*index..+2. layers: textures, uv_scale, tint and "
+        "factors per surface layer, stochastic_tiling (up to 3x the reads) and its cell_size/blend_sharpness/"
+        "contrast/rotation. Images under the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -5595,7 +6082,9 @@ void registerWorldTools(McpRegistry& registry) {
                 {"seed", integer("")},
                 {"resolution", integer("Default: Terrain setting.", 2, 4096)}}}, {"additionalProperties", false}}},
             {"blendmap", {{"type", {"string", "object"}}, {"properties", {
-                {"color", vec3("Layer 0,1,2 weights 0-1.")},
+                {"path", string("")},
+                {"color", vec3("Weights 0-1.")},
+                {"index", integer("")},
                 {"resolution", integer("", 2, 4096)}}}, {"additionalProperties", false}}},
             {"layers", array(object({
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
@@ -5607,13 +6096,30 @@ void registerWorldTools(McpRegistry& registry) {
                 {"cell_size", withDefault(number("Texture repeats.", 0.25, 4), 1)},
                 {"blend_sharpness", withDefault(number("", 0, 1), 0.4)},
                 {"contrast", withDefault(number("", 0, 1), 0.45)},
-                {"rotation", withDefault(number("Of +-180 deg.", 0, 1), 0)}
+                {"rotation", withDefault(number("Of +-180 deg.", 0, 1), 0)},
+                {"uv_scale", vec2("")}, {"uv_offset", vec2("")}, {"tint", color("")},
+                {"normal_strength", number("")}, {"roughness_factor", number("")},
+                {"metallic_factor", number("")}, {"occlusion_strength", number("")}
             }, {"index"}), "")}
         }),
         setTerrainMapsTool, false, false);
 
+    add("edit_terrain_details", "Edit Terrain Details",
+        "Terrain detail layers (Unity's Details: grass, rocks, flowers as instanced meshes): remove [indices], update "
+        "[{index, ...}], add [{mesh, ...}] in that order, one undo step; no edits lists them. A layer draws nothing "
+        "without a density map: density_map {fill: 0-1}, or paint with sculpt_terrain. Fields and ranges: "
+        "jasper://docs/terrain.",
+        object({
+            {"scene", sceneRef()},
+            {"entity", entityRef("Default: the only terrain.")},
+            {"remove", array(integerItem, "")},
+            {"update", array(anyObject("{index, ...fields}"), "")},
+            {"add", array(anyObject("{mesh, density_map, density, ...}"), "")}
+        }),
+        editTerrainDetailsTool, false, false);
+
     add("sample_terrain", "Sample Terrain",
-        "Terrain size, max_height, maps, layers and heights. points: each one's position, world height, 0-1 "
+        "Terrain size, max_height, maps, layers, details (drawn instances) and heights. points: each one's position, world height, 0-1 "
         "height, normal; else an N x N grid of world heights, min/max/mean (rows -z to +z, columns -x to +x).",
         object({
             {"scene", sceneRef()},
@@ -5857,6 +6363,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"loop", boolean("")},
             {"duration", number("")},
             {"speed", number("")},
+            {"random_start", boolean("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}
         }),
@@ -5903,11 +6410,11 @@ void registerWorldTools(McpRegistry& registry) {
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
         "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
         "properties, children}. Types: panel (text = "
-        "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick, "
+        "title), image, text, button (text = label, select_on_enable), input_field, progress_bar (value 0-1), scrollbar, "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls for Input actions: onscreen_stick, "
         "onscreen_button, touch_area. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
-        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, interactable, "
+        "parent (screen for roots), position offsets; stretch + margins [l,t,r,b] fills. Colors linear. canvas_group: true | {alpha, interactable, "
         "blocks_raycasts, ignore_parent_groups, render_mode}.",
         object({
             {"scene", sceneRef()},

@@ -735,3 +735,91 @@ Existing suites to keep green: `test_build.py`, `test_build_method.py`,
   `engine/platform/emscripten`. No overlap with apply.cmake, but both touch the web gate if it adds
   tests there.
 - **`code-editor-git`.** No overlap.
+
+## Deviations
+
+Recorded during implementation (branch `dc/export-pipeline`).
+
+1. **Capacities of script-only prefabs (6.7, F8, Doriax b1df76163): not implemented.** Lead
+   decision (LEDGER.md, "Capacities"): `mesh-memory` removes the fixed component capacities, so the
+   counting has nothing left to size. T9 and acceptance criterion 9 are dropped with it.
+2. **Failure wording.** The Build dialog prefixes every failure with "Build failed:", so the
+   exporter's own messages say what failed instead of repeating it: "Compiling failed with N
+   error(s). First: <file>:<line>: <message>" and "CMake configuration failed with ...". A failure
+   with no recognised error line names the last output line. Shader build failures say "<n>
+   shader(s) failed to build. First: <shader> (<language>): <reason>".
+3. **The Play-time C++ build in MCP (`compile_scripts`, `play` start).** These tools keep
+   `ProjectChecks::summarizeCppBuild`, an existing parser with its own deduplication and limits
+   (60 errors, 30 warnings), and do not take `BuildDiagnostics`. The Generator does use
+   `BuildErrorLog` to repeat the errors at the end of the Play build's log. MCP's `build_project`,
+   the exporter, the Console's level and the CLI share `BuildDiagnostics`.
+4. **The start scene in Build Settings.** Scenes In Build lists saved scenes only, and the start
+   scene is chosen from it, so a never-saved scene cannot be the start scene (Unity's untitled
+   scenes are not in its build list either). Never-saved scenes still ship (6.6), with the warning
+   and the **Save...** button.
+5. **Base scene.** Covering the start scene leaves frames with no main scene. To make the loading
+   scene clear the frame and own the swapchain redirect, `Engine::getBaseScene()` (the main scene,
+   else the bottom running scene) was added. `RenderSystem::isBaseLayer`, `isFixedResolutionActive`,
+   `updateSwapchainRedirect` and `Engine::endCompositeFramebuffer` use it. Without it, the loading
+   scene would draw as a layer over an uncleared frame.
+6. **`webTreePathRefusal`** (the Windows `%` refusal walk) does not skip earlier exports. It only
+   refuses paths with `%` or `"`. A false refusal there names the folder, and moving the earlier
+   export out of the project (which the build now asks for) clears it.
+7. **The web gate with a special path (T19)** was not added. The quoting of `--preload-file` and
+   `--pre-js` is checked by reading the generated flags (6.12) and by the normal web build. T18
+   (configure in "My Game @1 [x]") covers the globs.
+8. **Lean MCP rules.** No tool description changed. The new result text (the refusal, the `W-...`
+   codes) has the eval case `guard_build_output_inside_project` (tools/mcp/eval/cases.py), and the
+   detail went to `docs/mcp/guide/shipping.md`. The agent guide is unchanged. The live eval was not
+   run here: it needs Orquester-managed accounts. `test_grade.py` passes.
+9. **Linked folders follow S68's walker.** This overrides 6.1 and rule 7.2. S68 (linked folders,
+   now on `main`) owns link following: `copyAssets`, `copyLua` and `copyCustomShaderSources` use
+   its `Exporter::walkTree`, which handles cycles, the export's own folder and the link budget. On
+   top of it this feature adds three things to that walker: the earlier-export skip, failed copies
+   and removals failing the export, and a root that cannot be listed failing it. That walker keeps
+   S68's `skip_permission_denied`, so an unreadable folder there is skipped without
+   `W-UNREADABLE-FOLDER`. `exportfiles::walk` (generated sources, C++ scripts, artifacts) does not
+   enter linked folders.
+10. **One shader-key function with S64.** S64 (shader lists for closed scenes) landed first, with
+    `Project::collectBuildShaderKeys` and `finishBuildShaderKeys` in `editor/project/
+    ProjectShaderLists.cpp`. This feature's dead-fork filter moved into those two functions (an
+    optional `deadForks` out-parameter), so there is a single implementation. The exporter, Build
+    Settings, `get_build_info`/`generate_shaders`, Play's startup and the standalone cache all go
+    through it.
+11. **T17 (prebuilt web favicon in the slow lane)** was not added: the MCP suite has no prebuilt web
+    build. The prebuilt `finalizeWeb` and the Compile path share `Exporter::writeWebFavicon`, which
+    T16 covers through the source export.
+12. **Test adjustments.**
+    - T1 uses a binary data file (`ui/level.bin`). A texture would ship cooked, so its source copy
+      never runs.
+    - T2's walk order is "a folder's files, then its folders, each in name order"
+      (`ExportFiles.h`).
+    - T10 sets a loading timeout of 0, because unit frames do not draw.
+    - T9 (capacities) is dropped with deviation 1.
+    - The CLI red control and the special-path red control run against `main`'s export code and
+      engine CMake files, applied as one patch on the build box.
+13. **Review round (2026-11-07).**
+    - The texture and model cooks list the project's assets from the asset database, so they
+      skip earlier exports through `exportfiles::ExportFolderFinder`.
+    - Every export walk and copy uses the long-path form (`exportfiles::longPath`, `\\?\` on
+      Windows). Windows was not built here; the code was checked by reading only.
+    - S68's walker fails on a folder it cannot list, naming it. Only permission errors become
+      `W-UNREADABLE-FOLDER`.
+    - A compiler error counts once in the Console. The repeat at the log's end and the failure
+      line are info.
+    - Play-time CMake configure errors are collected too.
+    - The removal of a stale bridging header, entitlements file and Podfile is checked.
+    - A `;` in an export or build path is refused.
+    - Android player folders are recognised as exports (`<app>.aab`, `<app>[-<abi>].apk`).
+    - Tests added: T11 (the Windows half runs only on Windows), T12, T14 (slow lane), and the
+      checks the review listed for T1, T3, T6 (as a unit test of `finishBuildShaderKeys`), T7
+      and T8.
+    - Untested here: the Apple removals and the Play-time configure collection have no test (the
+      Xcode paths and a failing CMake configure in Play are not reachable in the suites); the
+      Windows long paths cannot run on Linux.
+
+14. **Merge with build-toolchain.** build-toolchain gave `Exporter::copyTreeIfChanged` a
+    permission sync: an unchanged file takes the source's mode, so `./gradlew` stays executable
+    over an older export. `exportfiles::mirrorTree` replaces that function here, so the sync moved
+    into it (non-Windows), and `ExportCopy.UnchangedFileGetsTheSourcesPermissions` calls
+    `mirrorTree`. `Exporter::ensureExecutable` is unchanged.

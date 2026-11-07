@@ -264,6 +264,7 @@ namespace jasperengine::editor {
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();
         static const EnumTable<Scaling>& scalingMode();
         static const EnumTable<SceneColorScale>& sceneColorScale();
+        static const EnumTable<PlanarReflectionResolution>& planarReflectionResolution();
         static const EnumTable<SceneType>& sceneType();
         static const EnumTable<ScriptPropertyType>& scriptPropertyType();
         static const EnumTable<ScriptType>& scriptType();

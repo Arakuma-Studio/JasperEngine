@@ -17,7 +17,9 @@ Covered here, where the App's key routing, focus and real mouse input matter:
 - R31: the entity mode's lanes are view only (showing them writes nothing) and a real frame drag to
   another lane is one scene step writing that frame's track; its dropdown lists the clip entries;
 - R6 / R7: a save during the entity preview writes the unpreviewed scene and stops it; a clip preview
-  of a hierarchy the entity preview writes (also through a nested Animation, I9) stops it.
+  of a hierarchy the entity preview writes (also through a nested Animation, I9) stops it;
+- runtime-core 6.6 / 6.7: edits made during the entity preview are kept (and undo to the authored value);
+  edit_animation's random_start, an Action's startOffset through set_properties.
 """
 
 from __future__ import annotations
@@ -427,3 +429,67 @@ async def test_a_clip_preview_stops_the_entity_preview_of_its_hierarchy(ed: Edit
     ed.check(not r["previewing"], f"the clip preview of the Robot stopped the entity preview that writes it: {r}")
     await ed.call("preview_animation", animation="Robot", action="stop")
     ed.check(close(await position(ed, "Hero"), S["rest_hero"]), "Hero at rest")
+
+
+# ---------------------------------------------------------------------------- runtime-core: edits during the preview, start offsets
+
+async def field(ed: Editor, entity, component: str, name: str):
+    """A component field's value from get_entity (the value of a {value, ...} entry)."""
+    comp = harness.find_key(await ed.call("get_entity", entity=entity, detail="full"), component)
+    value = harness.find_key(comp, name) if comp is not None else None
+    return value.get("value", value) if isinstance(value, dict) else value
+
+
+async def test_edits_during_the_entity_preview_are_kept(ed: Editor):
+    """runtime-core 6.6: values written while the entity preview runs (set_properties, as an Inspector field)
+    stay when it seeks and stops; what the preview animated goes back; the undo of an edit made then goes
+    back to the authored value, not to a previewed pose."""
+    await ed.call("edit_animation", target="Robot", name="RobotEdits", tweens=[{"type": "position", "to": [0.75, 1, 0], "duration": 1.0}])
+    tween = harness.find_key(await ed.call("get_animation", entity="RobotEdits"), "actions")[0]["action"]
+    tween_ref = tween["id"] if isinstance(tween, dict) else tween
+    rest = await position(ed, "Robot")
+    rest_scale = await field(ed, "Robot", "transform", "scale")
+    r = await ed.call("preview_animation", animation="RobotEdits", action="play", wait_ms=300)
+    ed.check(r["previewing"], f"entity preview running: {r}")
+    await ed.call("preview_animation", animation="RobotEdits", action="pause")
+    ed.check(not close(await position(ed, "Robot"), rest), "the preview moved Robot")
+
+    await ed.call("set_properties", entity=tween_ref, values={"tween": {"duration": 2.0}})
+    await ed.call("set_properties", entity="Robot", values={"transform": {"scale": [2, 2, 2]}})
+    await ed.call("preview_animation", animation="RobotEdits", action="seek", time=0.2)
+    ed.check_eq(float(await field(ed, tween_ref, "tween", "duration")), 2.0, "a seek keeps the tween's new duration")
+    await ed.call("preview_animation", animation="RobotEdits", action="stop")
+
+    ed.check_eq(float(await field(ed, tween_ref, "tween", "duration")), 2.0, "the edited duration stays after Stop")
+    ed.check(close(await field(ed, "Robot", "transform", "scale"), [2, 2, 2]), "the edited scale stays after Stop")
+    ed.check(close(await position(ed, "Robot"), rest), "the previewed position went back")
+
+    await ed.call("undo", scope="scene")
+    ed.check(close(await field(ed, "Robot", "transform", "scale"), rest_scale), "the scale's undo gives the authored value")
+    await ed.call("undo", scope="scene")
+    ed.check_eq(float(await field(ed, tween_ref, "tween", "duration")), 1.0, "the duration's undo gives the authored value")
+    ed.check(close(await position(ed, "Robot"), rest), "no previewed pose came back with the undos")
+
+
+async def test_start_offset_through_edit_animation(ed: Editor):
+    """runtime-core 6.7: edit_animation random_start and set_properties' action startOffset set the
+    Animation's Action; get_animation reports them; each is one undo step; a nested action's own Start
+    Offset is reported; a clip refuses random_start."""
+    await ed.call("edit_animation", target="Robot", name="RobotOffsets", tweens=[{"type": "scale", "to": [1.2, 1.2, 1.2], "duration": 1.0}])
+    r = await ed.call("edit_animation", animation="RobotOffsets", random_start=True)
+    ed.check_eq(harness.find_key(r, "random_start"), True, f"reported: {r}")
+    await ed.call("set_properties", entity="RobotOffsets", values={"action": {"startOffset": 0.5}})
+    got = await ed.call("get_animation", entity="RobotOffsets")
+    ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.5, True), f"get_animation: {got}")
+    await ed.call("undo", scope="scene")
+    await ed.call("undo", scope="scene")
+    got = await ed.call("get_animation", entity="RobotOffsets")
+    ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.0, False), "one undo step each")
+
+    tween = harness.find_key(got, "actions")[0]["action"]
+    tween_ref = tween["id"] if isinstance(tween, dict) else tween
+    await ed.call("set_properties", entity=tween_ref, values={"action": {"startOffset": 0.25}})
+    ed.check_eq(float(await field(ed, tween_ref, "action", "startOffset")), 0.25, "a nested action's Start Offset")
+    got = await ed.call("get_animation", entity="RobotOffsets")
+    ed.check_eq(harness.find_key(got, "actions")[0].get("start_offset"), 0.25, f"reported on the nested action: {got}")
+    await ed.call("edit_animation", clip=ROBOT_CLIP, random_start=True, expect_error=True)

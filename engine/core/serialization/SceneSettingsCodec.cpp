@@ -133,6 +133,15 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     // format 1.2 (S54)
     w.boolean(scene.isMeshLodCrossFade());
     w.f32(scene.getMeshLodCrossFadeDuration());
+    // format 1.3: the default shaders' property values
+    for (ShaderType type : kDefaultShaderTypes) write(w, scene.getDefaultShaderUniforms(type));
+    // format 1.4 (water-reflections): the planar reflections
+    w.u8(static_cast<uint8_t>(scene.getPlanarReflectionResolution()));
+    w.u32(scene.getPlanarReflectionLayers());
+    w.boolean(scene.getPlanarReflectionShadows());
+    w.f32(scene.getPlanarReflectionFarClip());
+    w.f32(scene.getPlanarReflectionClipOffset());
+    w.svarint(scene.getMaxPlanarReflections());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -217,4 +226,21 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     if (r.atEnd()) return;
     scene.setMeshLodCrossFade(r.boolean());
     scene.setMeshLodCrossFadeDuration(r.f32());
+    // a 1.2 record ends here: no default shader property values (format 1.3)
+    if (r.atEnd()) return;
+    for (ShaderType type : kDefaultShaderTypes) {
+        ShaderUniformValues values;
+        read(r, values);
+        if (!values.empty()) scene.setDefaultShaderUniforms(type, values);
+    }
+    // a 1.3 record ends here: the planar reflections keep their defaults (format 1.4)
+    if (r.atEnd()) return;
+    const uint8_t resolution = r.u8();
+    if (resolution <= static_cast<uint8_t>(PlanarReflectionResolution::FULL))
+        scene.setPlanarReflectionResolution(static_cast<PlanarReflectionResolution>(resolution));
+    scene.setPlanarReflectionLayers(r.u32());
+    scene.setPlanarReflectionShadows(r.boolean());
+    scene.setPlanarReflectionFarClip(r.f32());
+    scene.setPlanarReflectionClipOffset(r.f32());
+    scene.setMaxPlanarReflections(static_cast<int>(r.svarint()));
 }

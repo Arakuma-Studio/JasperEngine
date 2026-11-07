@@ -399,6 +399,21 @@ TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
     EXPECT_EQ(old.postWrapMode, CurveWrapMode::Clamp);
 }
 
+namespace {
+    // the bytes format 1.4 appends to a scene's settings (its planar reflections)
+    size_t planarReflectionTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.u8(static_cast<uint8_t>(scene.getPlanarReflectionResolution()));
+        tail.u32(scene.getPlanarReflectionLayers());
+        tail.boolean(scene.getPlanarReflectionShadows());
+        tail.f32(scene.getPlanarReflectionFarClip());
+        tail.f32(scene.getPlanarReflectionClipOffset());
+        tail.svarint(scene.getMaxPlanarReflections());
+        return tail.data().size();
+    }
+}
+
 // S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
 // them (1.2); a 1.0 record (without either) and a 1.1 record (without the cross-fade) leave what
 // they lack at its defaults
@@ -436,11 +451,17 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     jasperengine::cook::Writer v12(none, [](Entity e) { return static_cast<uint32_t>(e); });
     v12.boolean(true);
     v12.f32(0.0f);
-    ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size());
+    // (1.3) the five default shaders' property values, none set here
+    jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
+    for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
+    // (1.4) the planar reflections
+    const size_t v14 = planarReflectionTailBytes(*scene);
+    ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
-    // the 1.1 record: the same bytes without the cross-fade
+    // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r11(std::span<const uint8_t>(bytes.data(), bytes.size() - v12.data().size()), strings.strings(), entityOf);
+    jasperengine::cook::Reader r11(std::span<const uint8_t>(bytes.data(), bytes.size() - v12.data().size() - v13.data().size() - v14),
+                                   strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r11, *older.scene->scene);
     ASSERT_FALSE(r11.failed()) << r11.error();
     EXPECT_TRUE(older.scene->scene->isCapsuleShadowsEnabled());
@@ -451,7 +472,7 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // the 1.0 record: without either
     {
         DecodedScene old = emptyScene();
-        jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - v11.data().size() - v12.data().size()),
+        jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - v11.data().size() - v12.data().size() - v13.data().size() - v14),
                                        strings.strings(), entityOf);
         jasperengine::cook::readSceneSettings(r10, *old.scene->scene);
         ASSERT_FALSE(r10.failed()) << r10.error();
@@ -522,6 +543,64 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowIntensity(), 1.0f);
     EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowSoftness(), 0.25f);
 
+}
+
+// water-reflections: the scene's six planar reflection settings survive a cook (format 1.4); a 1.3
+// record leaves them at their defaults
+TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPlanarReflectionResolution(PlanarReflectionResolution::QUARTER);
+    scene->setPlanarReflectionLayers(0x5u);
+    scene->setPlanarReflectionShadows(false);
+    scene->setPlanarReflectionFarClip(60.0f);
+    scene->setPlanarReflectionClipOffset(0.2f);
+    scene->setMaxPlanarReflections(3);
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+
+    DecodedScene loaded = emptyScene();
+    jasperengine::cook::Reader r(std::span<const uint8_t>(bytes.data(), bytes.size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
+    ASSERT_FALSE(r.failed()) << r.error();
+    EXPECT_TRUE(r.atEnd());
+    const Scene& got = *loaded.scene->scene;
+    EXPECT_EQ(got.getPlanarReflectionResolution(), PlanarReflectionResolution::QUARTER);
+    EXPECT_EQ(got.getPlanarReflectionLayers(), 0x5u);
+    EXPECT_FALSE(got.getPlanarReflectionShadows());
+    EXPECT_FLOAT_EQ(got.getPlanarReflectionFarClip(), 60.0f);
+    EXPECT_FLOAT_EQ(got.getPlanarReflectionClipOffset(), 0.2f);
+    EXPECT_EQ(got.getMaxPlanarReflections(), 3);
+
+    // the prebuilt player's path: the whole scene cooked and loaded by CookedSceneLoader
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_EQ(player.scene->scene->getPlanarReflectionResolution(), PlanarReflectionResolution::QUARTER);
+    EXPECT_EQ(player.scene->scene->getPlanarReflectionLayers(), 0x5u);
+    EXPECT_FALSE(player.scene->scene->getPlanarReflectionShadows());
+    EXPECT_FLOAT_EQ(player.scene->scene->getPlanarReflectionFarClip(), 60.0f);
+    EXPECT_FLOAT_EQ(player.scene->scene->getPlanarReflectionClipOffset(), 0.2f);
+    EXPECT_EQ(player.scene->scene->getMaxPlanarReflections(), 3);
+
+    // the 1.3 record: the same bytes without the planar reflections
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene)),
+                                   strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
+    ASSERT_FALSE(r13.failed()) << r13.error();
+    const SceneSettings defaults;
+    const Scene& old = *older.scene->scene;
+    EXPECT_EQ(old.getPlanarReflectionResolution(), defaults.planarReflectionResolution);
+    EXPECT_EQ(old.getPlanarReflectionLayers(), defaults.planarReflectionLayers);
+    EXPECT_EQ(old.getPlanarReflectionShadows(), defaults.planarReflectionShadows);
+    EXPECT_FLOAT_EQ(old.getPlanarReflectionFarClip(), defaults.planarReflectionFarClip);
+    EXPECT_FLOAT_EQ(old.getPlanarReflectionClipOffset(), defaults.planarReflectionClipOffset);
+    EXPECT_EQ(old.getMaxPlanarReflections(), defaults.maxPlanarReflections);
 }
 
 TEST(RuntimeFields, Generated) {

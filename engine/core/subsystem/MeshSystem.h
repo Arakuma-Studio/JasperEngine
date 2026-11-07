@@ -196,11 +196,11 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
+        // The instances one detail layer (foliageLayers[layer]) holds now, over its resident cells (MCP readback)
+        size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Loads again what foliage draws from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
-        // What the placement holds for a detail layer, over its resident cells
-        uint64_t getFoliageInstanceCount(Entity terrainEntity, int layer) const;
         // A prototype's mesh, on the Background path: false while it loads (isAsyncModelLoadPending says which)
         bool loadFoliageMesh(Entity entity, const std::string& path);
         // Retries the failed loads of a file that appeared or changed on disk
@@ -347,6 +347,11 @@ namespace jasperengine{
         static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
         // Normalized [0,1] height at a terrain-local position; 0 without pixels
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
+
+        // The part entities of a model whose geometry is on child entities (one per glTF mesh
+        // node, ModelComponent::meshNodesMapping) that exist and have a mesh, in node-index
+        // order; empty for any other entity (a model on its own mesh too)
+        std::vector<Entity> getModelParts(Entity model) const;
 
         bool hasPendingAsyncModelLoads() const;
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still

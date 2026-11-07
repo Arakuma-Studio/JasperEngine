@@ -32,7 +32,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCANNED = ["editor", "engine"]
 SKIPPED_DIRS = {"tests", "libs", "external"}
-SKIPPED_PREFIXES = ("engine/platform/apple/GoogleMobileAds",)
 EXTENSIONS = (".cpp", ".h", ".hpp", ".cc", ".mm", ".m", ".c", ".inl")
 
 ANSI_CALLS = (
@@ -97,8 +96,6 @@ def scan(root):
                     continue
                 path = os.path.join(directory, name)
                 relative = os.path.relpath(path, root).replace(os.sep, "/")
-                if relative.startswith(SKIPPED_PREFIXES):
-                    continue
                 in_block_comment = False
                 with open(path, encoding="utf-8", errors="replace") as handle:
                     for number, line in enumerate(handle, 1):

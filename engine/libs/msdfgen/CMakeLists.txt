@@ -4,7 +4,9 @@
 # (engine/core/htmlui/RmlFontMsdf.cpp, S16 R16). Only core/ is vendored: no ext/ (FreeType,
 # Skia, PNG), no OpenMP. msdfgen-config.h stands in for the header its CMake generates.
 
-file(GLOB MSDFGEN_CORE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/core/*.cpp")
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(MSDFGEN_GLOB_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB MSDFGEN_CORE_SOURCES "${MSDFGEN_GLOB_DIR}/core/*.cpp")
 
 add_library(
 

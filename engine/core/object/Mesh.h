@@ -7,6 +7,8 @@
 #include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
+#include "ecs/ComponentFwd.h"
+#include <vector>
 #include "texture/Material.h"
 
 namespace jasperengine{
@@ -88,7 +90,11 @@ namespace jasperengine{
         AABB getVerticesAABB() const;
         AABB getWorldAABB() const;
 
+        // on a model made of parts (its geometry on child entities, one per glTF mesh node):
+        // the parts' submeshes, numbered part after part in node order
         unsigned int getNumSubmeshes() const;
+        // Unity's Mesh.vertexCount (a model made of parts: all of them)
+        unsigned int getVertexCount() const;
 
         void setReceiveLights(bool receiveLights);
         bool isReceiveLights() const;
@@ -223,6 +229,25 @@ namespace jasperengine{
         size_t getNumInstances();
 
         void clearInstances();
+
+        // A Mesh call on a model made of parts (MeshSystem::getModelParts) acts on its parts:
+        // mesh-wide setters write every part, getters read the first; calls on "submesh 0"
+        // act on each part's first submesh; a submesh index counts across the parts.
+        struct MeshTarget{
+            Entity entity;
+            MeshComponent* mesh;
+        };
+        // the parts, empty when it is not a model made of parts
+        std::vector<Entity> getModelParts() const;
+        // what a setter writes: every part, else its own mesh
+        std::vector<MeshTarget> getTargetMeshes() const;
+        // what a getter reads: the first part, else its own mesh
+        MeshTarget getFirstMesh() const;
+        // the mesh holding a model-wide submesh index (made local to it); entity NULL_ENTITY
+        // when out of range (logged with `what`)
+        MeshTarget findSubmesh(unsigned int& submesh, const char* what) const;
+        // refused on a model made of parts (logged once per GameObject)
+        bool refuseOnParts(const char* what) const;
     };
 }
 

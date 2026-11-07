@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "command/type/ShaderOverridesCmd.h"
 #include "cook/BuildReport.h"
 #include "window/EditorModal.h"
 #include "player/PlayerModules.h"
@@ -19,6 +20,7 @@
 #include "Theme.h"
 #include "Factory.h"
 #include "SettingsCategoryList.h"
+#include "window/ConsoleWindow.h"
 
 #include <algorithm>
 #include "util/CommandRunner.h"
@@ -155,13 +157,34 @@ void ExportWindow::refreshShaderSelection() {
 }
 
 void ExportWindow::includeShader(ShaderKey key) {
-    m_shaderExclusions.erase(key);
+    std::set<ShaderKey> additions = m_shaderAdditions;
+    std::set<ShaderKey> exclusions = m_shaderExclusions;
+    exclusions.erase(key);
     const bool fromScene = std::any_of(m_shaderEntries.begin(), m_shaderEntries.end(), [key](const ShaderEntry& entry) {
         return entry.key == key && entry.fromScene;
     });
-    if (!fromScene) m_shaderAdditions.insert(key);
+    if (!fromScene) additions.insert(key);
+    applyShaderOverrides(additions, exclusions);
+}
+
+void ExportWindow::applyShaderOverrides(const std::set<ShaderKey>& additions, const std::set<ShaderKey>& exclusions) {
+    // one project undo step, saved at once (as edit_build_shaders); the list shows the project's
+    const ShaderOverrides& current = m_project->getShaderOverrides();
+    if (current.additions != additions || current.exclusions != exclusions) {
+        auto* command = new ShaderOverridesCmd(m_project, current, ShaderOverrides{additions, exclusions});
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
+    syncShaderOverrides(true);
+}
+
+void ExportWindow::syncShaderOverrides(bool force) {
+    // the project's lists, which MCP edits and undo change while the window is open
+    const ShaderOverrides& shaders = m_project->getShaderOverrides();
+    if (!force && shaders.additions == m_shaderAdditions && shaders.exclusions == m_shaderExclusions) return;
+    m_shaderAdditions = shaders.additions;
+    m_shaderExclusions = shaders.exclusions;
     refreshShaderSelection();
-    saveCurrentSettingsToProject();
 }
 
 void ExportWindow::populateBackendList() {
@@ -328,10 +351,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
         settings.graphicBackendConfigured = true;
     }
 
-    ShaderOverrides& shaders = m_project->getShaderOverrides();
-    changed = changed || shaders.additions != m_shaderAdditions || shaders.exclusions != m_shaderExclusions;
-    shaders.additions = m_shaderAdditions;
-    shaders.exclusions = m_shaderExclusions;
+    // shader overrides are not written here: every edit applied them through ShaderOverridesCmd
     m_projectSettingsDirty = m_projectSettingsDirty || changed;
     if (saveProjectFile && m_projectSettingsDirty) {
         if (!m_project->saveProjectFile()) {
@@ -345,6 +365,7 @@ bool ExportWindow::saveCurrentSettingsToProject(bool saveProjectFile) {
 
 void ExportWindow::show() {
     if (!m_isOpen) return;
+    if (m_project) syncShaderOverrides(false);
 
     ImGui::OpenPopup("Build Settings##ExportModal");
 
@@ -840,10 +861,11 @@ void ExportWindow::drawShaderSection() {
         if (selectionExcluded) {
             includeShader(key);
         } else {
-            m_shaderAdditions.erase(key);
-            m_shaderExclusions.insert(key);
-            refreshShaderSelection();
-            saveCurrentSettingsToProject();
+            std::set<ShaderKey> additions = m_shaderAdditions;
+            std::set<ShaderKey> exclusions = m_shaderExclusions;
+            additions.erase(key);
+            exclusions.insert(key);
+            applyShaderOverrides(additions, exclusions);
         }
     }
     ImGui::EndDisabled();
@@ -880,10 +902,7 @@ void ExportWindow::drawShaderSection() {
 
     ImGui::BeginDisabled(m_shaderAdditions.empty() && m_shaderExclusions.empty());
     if (ImGui::Button("Reset Shader Overrides")) {
-        m_shaderAdditions.clear();
-        m_shaderExclusions.clear();
-        refreshShaderSelection();
-        saveCurrentSettingsToProject();
+        applyShaderOverrides({}, {});
     }
     ImGui::EndDisabled();
     drawAddShaderDialog();
@@ -1076,7 +1095,15 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     if (m_targetDir.empty()) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Choose an output directory");
     }
-    if (targetNotEmpty) {
+    // never into the project (Exporter::outputFolderRefusal), checked when the folder changes
+    if (m_refusalCheckedDir != m_targetDir) {
+        m_refusalCheckedDir = m_targetDir;
+        m_outputRefusal = Exporter::outputFolderRefusal(m_project, m_targetDir);
+    }
+    if (!m_outputRefusal.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), ICON_FA_CIRCLE_XMARK " %s", m_outputRefusal.c_str());
+        canExport = false;
+    } else if (targetNotEmpty) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " The output directory is not empty: existing files will be overwritten");
     }
     for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
@@ -1089,6 +1116,18 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         if (!scene.filepath.empty()) {
             hasSavedScenes = true;
             break;
+        }
+    }
+    // a scene never saved ships as it is now (W-SCENE-NOT-SAVED)
+    if (hasSavedScenes) {
+        for (const auto& scene : m_project->getScenes()) {
+            if (!scene.filepath.empty() || !scene.scene) continue;
+            ImGui::PushID(static_cast<int>(scene.id));
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Scene '%s' has never been saved: the build ships it as it is now",
+                               scene.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Save...")) m_project->saveScene(scene.id);
+            ImGui::PopID();
         }
     }
 
@@ -1605,6 +1644,45 @@ void ExportWindow::drawAddShaderDialog() {
     }
 }
 
+void ExportWindow::drawBuildErrors(const ExportProgress& progress) {
+    if (progress.errors.empty()) return;
+    if (progress.errorCount > progress.errors.size()) {
+        ImGui::Text("Errors (showing %zu of %zu)", progress.errors.size(), progress.errorCount);
+    } else {
+        ImGui::Text("Errors (%zu)", progress.errorCount);
+    }
+    const float lines = static_cast<float>(std::min<size_t>(progress.errors.size(), 8));
+    if (ImGui::BeginChild("##BuildErrors", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * lines + ImGui::GetStyle().WindowPadding.y * 2.0f),
+                          ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar)) {
+        for (size_t i = 0; i < progress.errors.size(); i++) {
+            const BuildDiagnostic& error = progress.errors[i];
+            ImGui::PushID(static_cast<int>(i));
+            if (error.file.empty()) {
+                ImGui::TextUnformatted(error.summary().c_str());
+            } else {
+                // a link: the file at the line, as the Console opens it
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.70f, 1.0f, 1.0f));
+                ImGui::TextUnformatted(error.summary().c_str());
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open %s at line %d", error.file.c_str(), error.line);
+                }
+                if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+                    SourceLocation location;
+                    location.path = error.file;
+                    location.line = error.line;
+                    location.column = error.column;
+                    ConsoleWindow::openLocation(location, false);
+                }
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::Spacing();
+}
+
 void ExportWindow::drawProgress() {
     ExportProgress progress = m_exporter.getProgress();
 
@@ -1639,9 +1717,19 @@ void ExportWindow::drawProgress() {
         ImGui::TextWrapped(ICON_FA_CIRCLE_XMARK " Build failed: %s", progress.errorMessage.c_str());
         ImGui::PopStyleColor();
         ImGui::Spacing();
+        drawBuildErrors(progress);
 
-        float closeWidth = Theme::dpi(120.0f);
-        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth);
+        const float closeWidth = Theme::dpi(120.0f);
+        const float copyWidth = Theme::dpi(120.0f);
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth - (progress.errors.empty() ? 0.0f : copyWidth + ImGui::GetStyle().ItemSpacing.x));
+        if (!progress.errors.empty()) {
+            if (ImGui::Button("Copy Errors", ImVec2(copyWidth, 0))) {
+                std::string text;
+                for (const BuildDiagnostic& error : progress.errors) text += error.text + "\n";
+                ImGui::SetClipboardText(text.c_str());
+            }
+            ImGui::SameLine();
+        }
         if (EditorModal::button("Close", "ok", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1652,26 +1740,27 @@ void ExportWindow::drawProgress() {
             launchBuiltPlayer();
         }
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
+        const ExportResult result = m_exporter.getResult();
+        if (result.warnings.empty()) {
+            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed successfully!");
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_CIRCLE_CHECK " Build completed with %zu warning(s)", result.warnings.size());
+        }
         // S53 R21: what ships, by category, with the full report a click away
-        {
-            const ExportResult built = m_exporter.getResult();
-            if (!built.buildReport.empty()) {
-                BuildReport report;
-                std::string reportError;
-                if (BuildReport::load(built.buildReport, report, reportError)) {
-                    ImGui::TextUnformatted(("Build Report: " + BuildReport::formatBytes(report.totalBytes)).c_str());
-                    for (const std::string& category : BuildReport::categoryNames()) {
-                        const auto it = report.categories.find(category);
-                        if (it == report.categories.end() || it->second == 0) continue;
-                        ImGui::TextDisabled("  %-9s %s", category.c_str(), BuildReport::formatBytes(it->second).c_str());
-                    }
-                    if (ImGui::SmallButton(ICON_FA_CHART_BAR " Open Build Report")) editor::getEditorHost().openBuildReport(built.buildReport);
+        if (!result.buildReport.empty()) {
+            BuildReport report;
+            std::string reportError;
+            if (BuildReport::load(result.buildReport, report, reportError)) {
+                ImGui::TextUnformatted(("Build Report: " + BuildReport::formatBytes(report.totalBytes)).c_str());
+                for (const std::string& category : BuildReport::categoryNames()) {
+                    const auto it = report.categories.find(category);
+                    if (it == report.categories.end() || it->second == 0) continue;
+                    ImGui::TextDisabled("  %-9s %s", category.c_str(), BuildReport::formatBytes(it->second).c_str());
                 }
+                if (ImGui::SmallButton(ICON_FA_CHART_BAR " Open Build Report")) editor::getEditorHost().openBuildReport(result.buildReport);
             }
         }
         if (m_mode == ExportMode::Player) {
-            const ExportResult result = m_exporter.getResult();
             ImGui::PushTextWrapPos(0.0f);
             if (result.methodUsed == BuildMethod::Prebuilt) ImGui::TextDisabled("Prebuilt player %s", result.playerId.c_str());
             else ImGui::TextDisabled("Compiled from source%s%s", result.compileReasons.empty() ? "" : ": ",
@@ -1691,11 +1780,14 @@ void ExportWindow::drawProgress() {
                     ImGui::EndTooltip();
                 }
             }
-            for (const BuildWarning& warning : result.warnings)
-                ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", warning.code.c_str(), warning.message.c_str());
-            for (const std::string& note : result.notes) ImGui::TextUnformatted(note.c_str());
             ImGui::PopTextWrapPos();
         }
+        // every mode's warnings (an earlier export left out, a never-saved scene...) and notes
+        ImGui::PushTextWrapPos(0.0f);
+        for (const BuildWarning& warning : result.warnings)
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", warning.code.c_str(), warning.message.c_str());
+        for (const std::string& note : result.notes) ImGui::TextUnformatted(note.c_str());
+        ImGui::PopTextWrapPos();
         ImGui::Spacing();
 
         float closeWidth = Theme::dpi(120.0f);

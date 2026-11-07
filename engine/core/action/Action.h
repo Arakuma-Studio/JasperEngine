@@ -38,6 +38,14 @@ namespace jasperengine{
         void setWeight(float weight);
         float getWeight() const;
 
+        // Seconds into the action each new run starts at (Play mode and builds; a negative or
+        // non-finite value becomes 0 with a warning)
+        void setStartOffset(float startOffset);
+        float getStartOffset() const;
+        // Each new run starts at a random point of one cycle (overrides the start offset)
+        void setRandomStart(bool randomStart);
+        bool isRandomStart() const;
+
         bool isRunning() const;
         bool isStopped() const;
         bool isPaused() const;

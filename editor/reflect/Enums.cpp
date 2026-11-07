@@ -16,6 +16,7 @@
 #include "particles/LegacyParticleSystem.h"
 #include "component/ScriptComponent.h"
 #include "component/ScrollbarComponent.h"
+#include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/LightComponent.h"
@@ -656,6 +657,22 @@ namespace {
         {v(ScriptType::LUA), "lua", "Lua", "ScriptType::LUA", nullptr, kScriptLuaAliases},
     };
 
+    constexpr EnumItem kButtonTransitionItems[] = {
+        {v(ButtonTransition::NONE), "none", "None", "ButtonTransition::NONE"},
+        {v(ButtonTransition::COLOR_TINT), "color_tint", "Color Tint", "ButtonTransition::COLOR_TINT"},
+        {v(ButtonTransition::SPRITE_SWAP), "sprite_swap", "Sprite Swap", "ButtonTransition::SPRITE_SWAP"},
+        {v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP), "color_tint_and_sprite_swap", "Color Tint + Sprite Swap",
+         "ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP"},
+    };
+
+    constexpr EnumItem kNavigationModeItems[] = {
+        {v(NavigationMode::NONE), "none", "None", "NavigationMode::NONE"},
+        {v(NavigationMode::HORIZONTAL), "horizontal", "Horizontal", "NavigationMode::HORIZONTAL"},
+        {v(NavigationMode::VERTICAL), "vertical", "Vertical", "NavigationMode::VERTICAL"},
+        {v(NavigationMode::AUTOMATIC), "automatic", "Automatic", "NavigationMode::AUTOMATIC"},
+        {v(NavigationMode::EXPLICIT), "explicit", "Explicit", "NavigationMode::EXPLICIT"},
+    };
+
     constexpr EnumItem kScrollbarTypeItems[] = {
         {v(ScrollbarType::VERTICAL), "vertical", "Vertical", "ScrollbarType::VERTICAL"},
         {v(ScrollbarType::HORIZONTAL), "horizontal", "Horizontal", "ScrollbarType::HORIZONTAL"},
@@ -814,6 +831,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kRigidbodyMotionQuality{"RigidbodyMotionQuality", kRigidbodyMotionQualityItems, v(RigidbodyMotionQuality::DISCRETE), nullptr,
                                            kRigidbodyMotionQualityOrder};
     const EnumDesc kScriptType{"ScriptType", kScriptTypeItems, v(ScriptType::CPP)};
+    const EnumDesc kButtonTransition{"ButtonTransition", kButtonTransitionItems, v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP)};
+    const EnumDesc kNavigationMode{"NavigationMode", kNavigationModeItems, v(NavigationMode::AUTOMATIC)};
     const EnumDesc kScrollbarType{"ScrollbarType", kScrollbarTypeItems, v(ScrollbarType::VERTICAL)};
     const EnumDesc kShadowCaster2DShape{"ShadowCaster2DShape", kShadowCaster2DShapeItems, v(ShadowCaster2DShape::AUTO_QUAD)};
     const EnumDesc kShadowUpdateMode{"ShadowUpdateMode", kShadowUpdateModeItems, v(ShadowUpdateMode::AUTO)};

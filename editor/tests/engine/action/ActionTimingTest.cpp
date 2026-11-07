@@ -11,16 +11,20 @@
 
 #include "Scene.h"
 #include "subsystem/ActionSystem.h"
+#include "action/Action.h"
 #include "action/Animation.h"
 #include "action/PositionTween.h"
 #include "action/SpriteAnimation.h"
+#include "action/keyframe/TranslateTracks.h"
 #include "component/ActionComponent.h"
+#include "component/ParticleSystemComponent.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 
 #include <cmath>
+#include <memory>
 #include <vector>
 
 using namespace jasperengine;
@@ -131,6 +135,264 @@ TEST(ActionSpeed, NegativeSpeedHoldsAtTheStart) {
     EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.0f) << "plays back to the start and stays there";
     EXPECT_FLOAT_EQ(tween.getTime(), 0.0f);
     EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 0.0f);
+}
+
+// a non-looping Animation with a duration samples its tracks at the end of the clip on its last
+// update at any speed: the duration is clip time (runtime-core spec 6.3)
+TEST(ActionSpeed, NonLoopingAnimationEndsOnItsLastKeyAtSpeedTwo) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    TranslateTracks track(&scene, {0.0f, 1.0f}, {Vector3(0, 0, 0), Vector3(10, 0, 0)});
+
+    Animation animation(&scene);
+    animation.setDuration(1.0f);
+    animation.addActionFrame(0.0f, 1.0f, track.getEntity(), target);
+    animation.setSpeed(2.0f);
+    animation.start();
+
+    step(scene, 0.3, 4);
+    EXPECT_TRUE(animation.isStopped());
+    EXPECT_NEAR(scene.getComponent<Transform>(target).position.x, 10.0f, 1e-4f) << "the last key, not the pose at half the clip";
+}
+
+// ---- Start Offset and Random Start (runtime-core spec 6.7)
+
+TEST(ActionStartOffset, TweenStartsAtItsOffset) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f);
+    tween.setTarget(target);
+    tween.setStartOffset(0.25f);
+    tween.start();
+
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.25f);
+    EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 2.5f);
+    // an update applies the value at the time it starts from, then advances
+    step(scene, 0.25, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.5f) << "it plays on from there";
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 5.0f);
+}
+
+TEST(ActionStartOffset, LoopingTweenWrapsAnOffsetPastItsPeriod) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f, true);
+    tween.setTarget(target);
+    tween.setStartOffset(2.25f);
+    tween.start();
+
+    step(scene, 0.0, 1);
+    EXPECT_TRUE(tween.isRunning());
+    EXPECT_NEAR(scene.getComponent<Transform>(target).position.x, 2.5f, 1e-4f) << "two whole cycles in, then a quarter";
+}
+
+TEST(ActionStartOffset, NonLoopingOffsetPastTheEndHoldsTheEnd) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f);
+    tween.setTarget(target);
+    tween.setStartOffset(5.0f);
+    tween.start();
+
+    step(scene, 0.0, 1);
+    EXPECT_TRUE(tween.isStopped());
+    EXPECT_FLOAT_EQ(scene.getComponent<Transform>(target).position.x, 10.0f);
+}
+
+TEST(ActionStartOffset, ResumeAfterPauseKeepsTheTime) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 4.0f);
+    tween.setTarget(target);
+    tween.setStartOffset(0.25f);
+    tween.start();
+    step(scene, 0.0, 1);
+    step(scene, 0.5, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.75f);
+
+    tween.pause();
+    step(scene, 0.5, 1);
+    tween.start();
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.75f) << "a resume is no new run";
+
+    tween.restart();
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.25f) << "a restart is a new run: the offset again";
+}
+
+TEST(ActionStartOffset, SpeedDoesNotScaleTheOffset) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 4.0f);
+    tween.setTarget(target);
+    tween.setSpeed(2.0f);
+    tween.setStartOffset(0.5f);
+    tween.start();
+
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.5f) << "seconds of the action's own time";
+    step(scene, 0.1, 1);
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.7f);
+}
+
+TEST(ActionStartOffset, NegativeOffsetIsZero) {
+    Scene scene;
+    PositionTween tween(&scene);
+    tween.setStartOffset(-1.0f);
+    EXPECT_FLOAT_EQ(tween.getStartOffset(), 0.0f);
+}
+
+namespace {
+    // the start phases of two looping tweens with Random Start, after one update of 0 s
+    std::vector<float> randomPhases(Scene& scene, bool restart = false) {
+        std::vector<float> phases;
+        std::vector<std::unique_ptr<PositionTween>> tweens;
+        for (int i = 0; i < 2; i++) {
+            auto tween = std::make_unique<PositionTween>(&scene);
+            tween->setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f, true);
+            tween->setTarget(createTransformTarget(scene));
+            tween->setRandomStart(true);
+            tween->start();
+            tweens.push_back(std::move(tween));
+        }
+        step(scene, 0.0, 1);
+        if (restart) {
+            for (auto& tween : tweens) tween->restart();
+            step(scene, 0.0, 1);
+        }
+        for (auto& tween : tweens) phases.push_back(tween->getTimeCount());
+        return phases;
+    }
+}
+
+TEST(ActionStartOffset, RandomStartIsDeterministicAndDiffersBetweenCopies) {
+    Scene first;
+    const std::vector<float> a = randomPhases(first);
+    ASSERT_EQ(a.size(), 2u);
+    for (float phase : a) {
+        EXPECT_GE(phase, 0.0f);
+        EXPECT_LT(phase, 1.0f) << "a point of one cycle";
+    }
+    EXPECT_NE(a[0], a[1]) << "copies start apart";
+
+    Scene second;
+    EXPECT_EQ(randomPhases(second), a) << "the same scene starts the same every playthrough";
+
+    Scene third;
+    const std::vector<float> restarted = randomPhases(third, true);
+    EXPECT_NE(restarted[0], a[0]) << "each new run picks again";
+}
+
+TEST(ActionStartOffset, AnimationChildOffsetShiftsItsTrack) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    TranslateTracks track(&scene, {0.0f, 1.0f}, {Vector3(0, 0, 0), Vector3(10, 0, 0)});
+    track.setStartOffset(0.5f);
+
+    Animation animation(&scene);
+    animation.addActionFrame(0.0f, 1.0f, track.getEntity(), target);
+    animation.setLoop(true);
+    animation.start();
+
+    step(scene, 0.0, 1);
+    EXPECT_NEAR(scene.getComponent<Transform>(target).position.x, 5.0f, 1e-4f) << "the track starts half way";
+}
+
+TEST(ActionStartOffset, SpriteAnimationStartsOnTheOffsetFrame) {
+    Scene scene;
+    Entity target = createSpriteTarget(scene);
+
+    SpriteAnimation anim(&scene);
+    anim.setAnimation({0, 1, 2, 3}, {100, 100, 100, 100}, true);
+    anim.setTarget(target);
+    anim.setStartOffset(0.25f);
+    anim.start();
+
+    SpriteAnimationComponent& spriteanim = scene.getComponent<SpriteAnimationComponent>(anim.getEntity());
+    step(scene, 0.0, 1);
+    EXPECT_EQ(spriteanim.frameIndex, 2) << "250 ms in: the third frame";
+    step(scene, 0.05, 1);
+    EXPECT_EQ(spriteanim.frameIndex, 3) << "its remaining 50 ms";
+
+    // past the end of a non-looping one: the last frame, then it stops
+    SpriteAnimation once(&scene);
+    once.setAnimation({0, 1, 2}, {100, 100, 100}, false);
+    once.setTarget(createSpriteTarget(scene));
+    once.setStartOffset(10.0f);
+    once.start();
+    step(scene, 0.0, 1);
+    EXPECT_EQ(scene.getComponent<SpriteAnimationComponent>(once.getEntity()).frameIndex, 2);
+    step(scene, 0.01, 1);
+    EXPECT_TRUE(once.isStopped());
+}
+
+// frames and frame times of different lengths wrap on their own: a looping cycle is lcm(3, 2) = 6 steps,
+// 100 200 100 200 100 200 ms; a huge offset of a one-shot is its end (no overflow)
+TEST(ActionStartOffset, SpriteOffsetWrapsMixedListsAndHugeOffsets) {
+    Scene scene;
+    SpriteAnimation anim(&scene);
+    anim.setAnimation({0, 1, 2}, {100, 200}, true);
+    anim.setTarget(createSpriteTarget(scene));
+    anim.setStartOffset(10 * 0.9f + 0.35f);   // ten cycles, then 350 ms: 100 + 200 in, 50 into the third frame
+    anim.start();
+    step(scene, 0.0, 1);
+    const SpriteAnimationComponent& spriteanim = scene.getComponent<SpriteAnimationComponent>(anim.getEntity());
+    EXPECT_EQ(spriteanim.frameIndex, 2);
+    EXPECT_EQ(spriteanim.frameTimeIndex, 0) << "the third step takes the first frame time again";
+    EXPECT_NEAR((double)spriteanim.spriteFrameCount, 50.0, 1.0);
+
+    SpriteAnimation once(&scene);
+    once.setAnimation({0, 1, 2}, {100, 100, 100}, false);
+    once.setTarget(createSpriteTarget(scene));
+    once.setStartOffset(1.0e7f);
+    once.start();
+    step(scene, 0.0, 1);
+    EXPECT_EQ(scene.getComponent<SpriteAnimationComponent>(once.getEntity()).frameIndex, 2) << "the last frame";
+    step(scene, 0.01, 1);
+    EXPECT_TRUE(once.isStopped());
+}
+
+TEST(ActionStartOffset, PreviewIgnoresOffsets) {
+    Scene scene;
+    Entity target = createTransformTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f);
+    tween.setTarget(target);
+    tween.setStartOffset(0.5f);
+    tween.setRandomStart(true);
+    tween.start();
+
+    scene.getSystem<ActionSystem>()->updateActionPreview(0.0, tween.getEntity());
+    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.0f) << "an editor preview starts at the clip's beginning";
+}
+
+TEST(ActionStartOffset, ParticleControllerIgnoresOffsets) {
+    Scene scene;
+    Entity system = createTransformTarget(scene);
+    scene.addComponent<ParticleSystemComponent>(system, ParticleSystemComponent());
+
+    Action controller(&scene);
+    controller.setTarget(system);
+    controller.setStartOffset(1.0f);
+    controller.start();
+    step(scene, 0.0, 1);
+    EXPECT_FLOAT_EQ(controller.getTimeCount(), 0.0f) << "a Particle System has Start Delay and Prewarm instead";
 }
 
 // ---- sprite animations

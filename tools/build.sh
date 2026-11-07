@@ -43,8 +43,8 @@
 # JASPER_BENCH_ENTITIES sets the reflection codec benchmark's scene size (ReflectCodecBench).
 # linux, web, unit-tests, htmlui-tests: CXX_STANDARD=<n> builds at another supported C++ standard
 # than the default (JASPERENGINE_CXX_STANDARD), next to the default build (build/linux/editor-cxx<n>,
-# build/web/cxx<n>, ...). linux first checks engine/ and editor/ with tools/check-cxx-subset.py and
-# tools/check-pollers.py.
+# build/web/cxx<n>, ...). linux first checks engine/ and editor/ with tools/check-cxx-subset.py,
+# tools/check-pollers.py and tools/check_event_clears.py.
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
@@ -409,6 +409,7 @@ linux)
     run bash -euo pipefail -c "
         python3 tools/check-cxx-subset.py
         python3 tools/check-pollers.py
+        python3 tools/check_event_clears.py
         cmake --preset $PRESET -B $OUT/$EDITOR_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
             -DJASPERENGINE_WERROR=$WERROR_VALUE \
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
@@ -727,10 +728,13 @@ android)
         PROJECT_ENV="$PROJECT_ENV JASPERENGINE_ANDROID_ABIS=$ANDROID_ABIS"
     fi
     mkdir -p "$ROOT/$APK_DIR"
+    # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
+    # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
-        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
+        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
+        python3 /src/tools/ci/check_gradle_warnings.py /src/$APK_DIR/gradle.log
     "
     ls -l "$ROOT/$APK_DIR"/*.apk
     ;;

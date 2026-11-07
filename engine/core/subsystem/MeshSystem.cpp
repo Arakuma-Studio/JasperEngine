@@ -4,6 +4,7 @@
 #include "MeshSystem.h"
 #include "subsystem/FoliageSystem.h"
 #include "component/ActionComponent.h"
+#include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/BoneComponent.h"
@@ -13,6 +14,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/InstancedMeshComponent.h"
 
 #include "Scene.h"
 #include "object/TerrainEdit.h"
@@ -695,7 +697,12 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
     mesh.buffer.addAttribute(AttributeType::COLOR, 4);
 
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    // shared by content (MeshBufferPool): sprites of one shape draw from one GPU buffer, a
+    // changed sprite takes the buffer of its new bytes (RenderSystem::refreshImmutableBuffer); one
+    // whose geometry kept changing has a dynamic buffer of its own, which it keeps
+    BufferRender* render = mesh.buffer.getRender();
+    if (!(mesh.buffer.getUsage() == BufferUsage::DYNAMIC && render->isCreated() && !render->isShared()))
+        mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
 void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
@@ -819,7 +826,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
             if (previousGrid != 0 && previousGrid != grid){
                 mesh.needReload = true;
             }else{
-                mesh.needUpdateBuffer = true; // buffer is not immutable
+                mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
             }
         }
         return true;
@@ -900,7 +907,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         if (previousGrid > 1){
             mesh.needReload = true;
         }else{
-            mesh.needUpdateBuffer = true; // buffer is not immutable
+            mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
         }
     }
 
@@ -1548,6 +1555,18 @@ bool MeshSystem::isAsyncModelLoadPending(const Scene* scene, const std::string& 
 
 bool MeshSystem::isModelPreloading(const std::string& filename){
     return isAsyncModelLoadPending(nullptr, filename);
+}
+
+std::vector<Entity> MeshSystem::getModelParts(Entity model) const{
+    std::vector<Entity> parts;
+    const ModelComponent* modelcomp = scene->findComponent<ModelComponent>(model);
+    if (!modelcomp)
+        return parts;
+    for (const auto& node : modelcomp->meshNodesMapping){
+        if (node.second != model && scene->isEntityCreated(node.second) && scene->findComponent<MeshComponent>(node.second))
+            parts.push_back(node.second);
+    }
+    return parts;
 }
 
 bool MeshSystem::hasPendingAsyncModelLoads() const{
@@ -3757,8 +3776,8 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     float rootNodeSize = terrain.terrainSize / terrain.rootGridSize;
 
     if (terrain.autoSetRanges){
-        CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-        if (camera.farClip < (rootNodeSize * 2)){
+        const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (camera && camera->farClip < (rootNodeSize * 2)){
             Log::warn("Terrain quadtree root is not in camera field of view. Increase terrain root grid.");
         }
     }
@@ -3798,7 +3817,7 @@ bool MeshSystem::hasPendingFoliageUpdates() const{ return scene->getSystem<Folia
 std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{ return scene->getSystem<FoliageSystem>()->getEntities(terrainEntity); }
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{ return scene->getSystem<FoliageSystem>()->getOwner(foliageEntity); }
 void MeshSystem::reloadFoliageMesh(const std::string& filename){ scene->getSystem<FoliageSystem>()->reloadMesh(filename); }
-uint64_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, int layer) const{ return scene->getSystem<FoliageSystem>()->getInstanceCount(terrainEntity, layer); }
+size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{ return static_cast<size_t>(scene->getSystem<FoliageSystem>()->getInstanceCount(terrainEntity, static_cast<int>(layer))); }
 
 void MeshSystem::retryFailedModelLoads(const std::string& filename){
     const std::string key = getModelFilenameKey(filename);
@@ -3854,11 +3873,12 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
         return;
     }
 
-    if (scene->getCamera() == NULL_ENTITY){
+    // a scene not loaded yet (an inline child scene) has no camera: the ranges wait for it
+    const CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+    if (!cameraPtr){
         return;
     }
-
-    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    const CameraComponent& camera = *cameraPtr;
 
     // Each level doubles the node size, so its range doubles too and every level keeps
     // the same detail on screen. Halving the far clip down instead leaves every range
@@ -6539,7 +6559,12 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
     }
 
     if (sprite.needUpdateSprite){
-        CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
+        // no camera yet (a scene drawn before it was loaded): built once it has one
+        CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (!cameraPtr){
+            return false;
+        }
+        CameraComponent& camera = *cameraPtr;
         if (sprite.automaticFlipY){
             changeFlipY(sprite.flipY, camera, mesh);
         }
@@ -6621,8 +6646,11 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
 bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
     if (polygon.needUpdatePolygon){
         if (polygon.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(polygon.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(polygon.flipY, *camera, mesh);
         }
 
         if (createMeshPolygon(polygon, mesh)){
@@ -6638,8 +6666,11 @@ bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshCo
 bool MeshSystem::createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     if (tilemap.needUpdateTilemap){
         if (tilemap.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(tilemap.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(tilemap.flipY, *camera, mesh);
         }
 
         if (createTilemap(tilemap, mesh)){

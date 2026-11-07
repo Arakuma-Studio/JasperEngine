@@ -29,6 +29,8 @@ private:
     bool m_isOpen = false;
     Project* m_project = nullptr;
     ShaderType m_shaderType = ShaderType::MESH;
+    // a library shader to fork ("library:water") instead of the built-in one of m_shaderType
+    std::string m_librarySource;
     std::filesystem::path m_projectPath;
     std::string m_selectedPath;
     char m_nameBuffer[128] = {};
@@ -49,7 +51,7 @@ private:
 public:
     void open(Project* project, ShaderType shaderType, const std::string& defaultBaseName,
               std::function<void(const std::filesystem::path&, const std::string&, bool)> onCreate,
-              std::function<void()> onCancel = nullptr);
+              std::function<void()> onCancel = nullptr, const std::string& librarySource = std::string());
 
     void show();
     bool isOpen() const { return m_isOpen; }

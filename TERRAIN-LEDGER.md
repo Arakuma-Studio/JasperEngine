@@ -83,7 +83,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
   rules (a failing eval case for new text, guide limits, budget ratchet).
 - D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
-  determinism can be checked here. Asset types: NoiseGraph 28, TreeData 29, TerrainWorld 30, VoxelVolume 31.
+  determinism can be checked here. Asset types: TreeData 29, TerrainWorld 30, VoxelVolume 31, NoiseGraph 32 (upstream's SoundEvent took 28,
+  so NoiseGraph moved; only T2 declares NoiseGraph, and the others take it from T2's branch).
 - D23. Owner rule: nothing runs a full suite until the very end of the whole programme. Streams run only filtered tests, and
   not `tools/check-changed`. Full gates, the MCP baseline, and web and Android builds run once on the merged tree, by the coordinator.
 
