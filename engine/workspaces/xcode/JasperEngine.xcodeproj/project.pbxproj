@@ -4529,6 +4529,7 @@
 		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
 		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
 		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8838,6 +8839,7 @@
 		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
 		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
 		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainSurfaceLayer.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11073,6 +11075,7 @@
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 				4A534E47B4E493A883DC863A /* UISelectable.h */,
+				4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -15704,6 +15707,7 @@
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
 				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
