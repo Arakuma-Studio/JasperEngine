@@ -46,15 +46,16 @@ void editor::InspectorWindow::drawVoxelVolumeComponent(ComponentType cpType, Sce
 
     beginTable(cpType, getLabelSize("Navigation Update"));
     // Voxel Size belongs to the file (R1): shown here, changed with Apply to Voxel Size
-    if (propertyHeader("Voxel Size")) {
-        ImGui::BeginDisabled();
-        float voxelSize = asset && asset->store ? asset->store->desc().voxelSize : 0.0f;
-        ImGui::SetNextItemWidth(-1);
-        ImGui::DragFloat("##voxelSize", &voxelSize, 0.0f, 0.0f, 0.0f, "%.3f m");
-        ImGui::EndDisabled();
-        ImGui::SetItemTooltip("The asset's: scale the Transform and use Apply to Voxel Size to change it");
-    }
-    if (asset && asset->store && propertyHeader("Dimensions")) {
+    // (propertyHeader's answer is its reset button, which these read-only rows do not have)
+    propertyHeader("Voxel Size");
+    ImGui::BeginDisabled();
+    float voxelSize = asset && asset->store ? asset->store->desc().voxelSize : 0.0f;
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##voxelSize", &voxelSize, 0.0f, 0.0f, 0.0f, "%.3f m");
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("The asset's: scale the Transform and use Apply to Voxel Size to change it");
+    if (asset && asset->store) {
+        propertyHeader("Dimensions");
         const voxel::Int3 size = asset->store->desc().dimensions;
         ImGui::AlignTextToFramePadding();
         ImGui::Text("%d x %d x %d", size.x, size.y, size.z);
