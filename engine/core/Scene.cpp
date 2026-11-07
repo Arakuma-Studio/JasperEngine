@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"

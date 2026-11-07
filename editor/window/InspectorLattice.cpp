@@ -6,6 +6,7 @@
 
 #include "InspectorWindow.h"
 #include "component/LatticeFollowerComponent.h"
+#include "component/Transform.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
