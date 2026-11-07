@@ -115,7 +115,8 @@ Each update does these steps, every list in the order of the scene's Animator co
       `onEnable` / `onDisable` run.
 4. **Callbacks**, Animator by Animator, on the main thread: root motion (`onAnimatorMove`),
    `onStateEnter` / `onStateExit`, `onMontageEnded`, events (`onEvent`, then the scripts' methods of
-   that name), then the state callbacks of an Animation Player on the same GameObject.
+   that name), the clips' audio cues, then the state callbacks of an Animation Player on the same
+   GameObject.
 
 So any callback reads this frame's value of any Animator's property, and an `onEnable` that a track
 caused never interrupts another Animator's values. A callback that removes an Animator stops what
