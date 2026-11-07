@@ -66,6 +66,8 @@
 #include "pose/PoseImage.h"
 
 #include "Backend.h"
+#include "window/HierarchyWindow.h"
+#include <cstring>
 #include "InspectorWindow.h"
 #include "App.h"
 #include "Theme.h"
@@ -3662,12 +3664,10 @@ static std::vector<Entity> prefabEntities(const std::vector<std::pair<fs::path, 
     return entities;
 }
 
-void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen) {
-    std::string yamlString;
-    if (contentLen >= sizeof(EntityPayload)) {
-        yamlString = std::string(entityContent + sizeof(EntityPayload), contentLen - sizeof(EntityPayload));
+void editor::ProjectWindow::saveEntityFile(const fs::path& directory, uint32_t sceneId, const std::string& yamlString) {
+    if (yamlString.empty() || !project->getScene(sceneId)) {
+        return;
     }
-
     YAML::Node entityNode = YAML::Load(yamlString);
 
     // A prefab has one root GameObject: several dragged roots make one prefab each (Unity's
@@ -3737,7 +3737,6 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
 
     // Unity: a Prefab instance root dragged in asks "Create Prefab or Variant?" (an original
     // prefab from its GameObjects, or a variant of its prefab it becomes an instance of)
-    const uint32_t sceneId = project->getSelectedSceneId();
     PendingPrefabDrop pending;
     pending.sceneId = sceneId;
     for (size_t i = 0; i < roots.size(); i++) {
@@ -4257,11 +4256,23 @@ void editor::ProjectWindow::show() {
 
                 saveMaterialFile(currentPath, materialContent, contentLen, sourcePtr);
             }
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
-                const char* entityContent = (const char*)payload->Data;
-                size_t contentLen = payload->DataSize;
-
-                saveEntityFile(currentPath, entityContent, contentLen);
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                if (payload->DataSize >= static_cast<int>(sizeof(EntityPayload))) {
+                    EntityPayload entity;
+                    std::memcpy(&entity, payload->Data, sizeof(EntityPayload));
+                    const uint32_t sceneId = payloadSceneId(entity, project->getSelectedSceneId());
+                    // a child scene's GameObject is a reference: its prefab is made from its own scene
+                    std::string problem = sameSceneDropProblem(*project, entity, project->getSelectedSceneId(), true);
+                    if (!problem.empty()) {
+                        const SceneProject* source = project->getScene(sceneId);
+                        problem += ": open " + (source ? "\"" + source->name + "\"" : std::string("it")) + " to make a prefab of its GameObjects";
+                        ImGui::SetTooltip("%s", problem.c_str());
+                    } else if (payload->IsDelivery()) {
+                        if (HierarchyWindow* hierarchy = Backend::getApp().getHierarchyWindow()) {
+                            saveEntityFile(currentPath, sceneId, hierarchy->encodeDraggedSelection(sceneId, entity.entity));
+                        }
+                    }
+                }
             }
             ImGui::EndDragDropTarget();
         }

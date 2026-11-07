@@ -1062,7 +1062,12 @@ namespace {
                 }
                 return;
             }
-            (*fn)();
+            // no hook (an exported game): a throw is logged and the timer keeps its schedule
+            try {
+                (*fn)();
+            } catch (...) {
+                CrashHook::logFailure("timer:C++");
+            }
             return;
         }
         if (!L){

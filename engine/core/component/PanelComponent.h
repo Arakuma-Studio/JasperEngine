@@ -47,6 +47,9 @@ namespace jasperengine{
         FunctionSubscribe<void()> onMove;
         FunctionSubscribe<void(int, int)> onResize;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onMove); f(onResize); }
+
         bool needUpdatePanel = true;
     };
 

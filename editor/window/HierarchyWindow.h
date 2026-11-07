@@ -7,6 +7,7 @@
 #include "SceneWindow.h"
 #include "command/type/CreateEntityCmd.h"
 #include "imgui.h"
+#include "util/EntityPayload.h"
 #include <list>
 #include <string>
 #include <vector>
@@ -193,7 +194,8 @@ namespace jasperengine::editor{
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
 
-        std::vector<char> buildEntityPayload(const TreeNode& node);
+        // the drag's header (no YAML: a Project window drop encodes the selection itself)
+        EntityPayload buildEntityPayload(const TreeNode& node, bool& allowed);
         std::filesystem::path getPrefabSaveDirectory() const;
         void saveNodeAsPrefab(const TreeNode& node);
 
@@ -258,6 +260,10 @@ namespace jasperengine::editor{
         void updateSearchAndSelectionOrder(TreeNode& root, bool treeRebuilt);
 
     public:
+        // The YAML of a drag of `dragged` (with the selection it moves) from the Hierarchy of
+        // `sceneId`: what a Project window drop makes a prefab of. Empty when that is not the
+        // selected scene or the selection holds GameObjects Play created.
+        std::string encodeDraggedSelection(uint32_t sceneId, Entity dragged);
         static constexpr const char* WINDOW_NAME = "Hierarchy";
 
         static std::string getObjectIcon(Signature signature, Scene* scene);

@@ -74,6 +74,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
+#include "component/ActionComponent.h"
 
 #include "LogCapture.h"
 
@@ -357,6 +358,47 @@ TEST(StreamComponent, ParticleSystemUnscaledTimeOnlyWhenOn){
     // the old component decoded over: an absent key is off again
     const ParticleSystemComponent over = Stream::decodeParticleSystemComponent(plainNode, &unscaled);
     EXPECT_FALSE(over.useUnscaledTime);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// (runtime-core) an action's Start Offset and Random Start: written only away from their defaults
+// (scenes from before them read and write as they were), read back, exported when set
+TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
+    ActionComponent plain{};
+    const YAML::Node plainNode = reflect::encodeValue(ComponentType::ActionComponent, &plain);
+    EXPECT_FALSE(plainNode["startOffset"]) << "the default is not written";
+    EXPECT_FALSE(plainNode["randomStart"]);
+
+    ActionComponent set{};
+    set.startOffset = 0.35f;
+    set.randomStart = true;
+    set.phase = 0.2f;
+    set.runs = 3;
+    const YAML::Node node = reflect::encodeValue(ComponentType::ActionComponent, &set);
+    ASSERT_TRUE(node["startOffset"]);
+    EXPECT_FLOAT_EQ(node["startOffset"].as<float>(), 0.35f);
+    EXPECT_TRUE(node["randomStart"].as<bool>());
+    EXPECT_FALSE(node["phase"]) << "runtime state is not saved";
+    const ActionComponent decoded = roundTrip(ComponentType::ActionComponent, set);
+    EXPECT_FLOAT_EQ(decoded.startOffset, 0.35f);
+    EXPECT_TRUE(decoded.randomStart);
+    EXPECT_FLOAT_EQ(decoded.phase, 0.0f);
+    EXPECT_EQ(decoded.runs, 0u);
+
+    // a file from before them (no keys) decodes to the defaults
+    const ActionComponent old = reflect::decodeValue<ActionComponent>(ComponentType::ActionComponent, YAML::Load("speed: 2"));
+    EXPECT_FLOAT_EQ(old.startOffset, 0.0f);
+    EXPECT_FALSE(old.randomStart);
+
+    // exported code: only when set
+    const reflect::ComponentDesc& desc = *reflect::find(ComponentType::ActionComponent);
+    reflect::CodegenContext ctx;
+    ctx.variable = "action";
+    EXPECT_EQ(reflect::cppAssignments(desc, &plain, ctx).find("startOffset"), std::string::npos);
+    const std::string code = reflect::cppAssignments(desc, &set, ctx);
+    EXPECT_NE(code.find("action.startOffset = 0.35"), std::string::npos) << code;
+    EXPECT_NE(code.find("action.randomStart = true"), std::string::npos) << code;
+    EXPECT_EQ(code.find("phase"), std::string::npos) << code;
     EXPECT_NO_ENGINE_ERRORS();
 }
 

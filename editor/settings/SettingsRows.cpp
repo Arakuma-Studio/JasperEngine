@@ -2780,6 +2780,16 @@ std::vector<Setting> mcpSettingsTable() {
                 return readBool(value, settings.commitAndPush, error);
             });
         }
+        {
+            Setting s;
+            s.key = "editor.vcs.code_editor_changes";
+            s.type = "bool";
+            s.description = "Version control: the code editor marks the lines changed since the last commit.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().codeEditorChanges); };
+            vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.codeEditorChanges, error);
+            });
+        }
 
         // ---- debug: the on-device console and stats overlay, the log (jasper://docs/debugging),
         // from the reflection table
@@ -3377,6 +3387,7 @@ const Placement placements[] = {
     {"editor.vcs.lock_poll_seconds", "Version Control", "Refresh", "Lock Poll (s)", "locks server refresh seconds"},
     {"editor.vcs.auto_fetch_minutes", "Version Control", "Refresh", "Auto Fetch (min)", "fetch remote minutes"},
     {"editor.vcs.commit_and_push", "Version Control", "Commit", "Commit and Push", "push remote"},
+    {"editor.vcs.code_editor_changes", "Version Control", "Code Editor", "Show Changes in Code Editor", "gutter markers diff lines"},
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},

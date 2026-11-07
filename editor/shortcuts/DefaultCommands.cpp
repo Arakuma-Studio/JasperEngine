@@ -139,6 +139,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("playmode.playOrResume", "Play or Resume", C::Global, "F5");
     b.add("playmode.pauseOnly", "Pause", C::Global, "F6");
     b.add("playmode.stop", "Stop", C::Global, "F7");
+    // Escape in the Game view does it too (Unity), the key still reaching the game
+    b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
+        "Give a cursor the running game captured back to the editor; click the Game view to return it";
 
     b.group = "Assets";
     b.menu("assets.createFolder", "Create Folder", AppMenuCommand::AssetsCreateFolder);

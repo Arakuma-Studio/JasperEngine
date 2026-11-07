@@ -436,6 +436,14 @@ namespace jasperengine{
         ShaderRef defaultPointsShader;
         ShaderRef defaultLinesShader;
 
+        // property values of the default shaders, inherited by the components (and mesh
+        // materials) that use them, under their own values (ShaderUniforms::resolve)
+        ShaderUniformValues defaultMeshShaderUniforms;
+        ShaderUniformValues defaultUIShaderUniforms;
+        ShaderUniformValues defaultSkyShaderUniforms;
+        ShaderUniformValues defaultPointsShaderUniforms;
+        ShaderUniformValues defaultLinesShaderUniforms;
+
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;
 

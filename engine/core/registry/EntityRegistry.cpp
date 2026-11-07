@@ -336,7 +336,7 @@ bool EntityRegistry::changeTransformChildren(Entity entity){
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
-            childTransform.needUpdateChildVisibility = true;
+            // no visibility cascade: the children and theirs keep their own flags
             hadChildren = true;
         }
     }

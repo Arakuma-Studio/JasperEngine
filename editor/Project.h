@@ -236,6 +236,9 @@ namespace jasperengine::editor{
         bool isVisible = false;
         bool opened = true;
         bool expandedInline = false;
+        // a Play copy a game load put in place of the played scene: the editor camera's mirror in
+        // it, which the Scene view draws it through (render/ViewCameraMirror.h)
+        Entity sceneViewMirror = NULL_ENTITY;
         SceneDisplaySettings displaySettings;
         ScenePlayState playState = ScenePlayState::STOPPED;
         YAML::Node playStateSnapshot;
@@ -1428,7 +1431,7 @@ namespace jasperengine::editor{
         void configureGenerator();
         void saveModifiedChildScenes(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
         bool hasSceneUnsavedChangesImpl(uint32_t sceneId, std::unordered_set<uint32_t>& visited) const;
-        void saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<void(bool)> callback);
+        void saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<bool(uint32_t)> needsSave, std::function<void(bool)> callback);
 
         void collectInvolvedScenes(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds);
         void collectStartActiveScenes(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds);
@@ -1439,6 +1442,8 @@ namespace jasperengine::editor{
         // Above zero while a non-interactive API runs: alertUser() only logs
         int nonInteractiveDepth = 0;
         void alertUser(const std::string& title, const std::string& message);
+        // a scene save that failed: logged, and alerted once with the reason (from the main thread)
+        void reportSceneSaveFailure(const std::string& message);
         // A scene path given to a non-interactive API: absolute, normalized, inside the
         // project, ".scene" added when withExtension; empty (and `error` set) when invalid
         std::filesystem::path resolveScenePath(const std::filesystem::path& path, bool withExtension, std::string& error) const;
@@ -2175,13 +2180,22 @@ namespace jasperengine::editor{
         // True when saving the scene to path (its own file when empty) would drop data its load
         // report holds
         bool isSceneSaveGated(const SceneProject* sceneProject, const std::filesystem::path& path = {}) const;
-        void saveAllScenes(std::function<void(bool)> callback = nullptr);
+        // The first scene to get a file becomes the start scene when none is set (or it names a scene
+        // no longer listed)
+        void ensureStartScene();
+        // includeUntitled (File > Save All): the scenes never saved come after the modified ones,
+        // each through the Save Scene dialog; the save before a quit or a project switch leaves them
+        void saveAllScenes(std::function<void(bool)> callback = nullptr, bool includeUntitled = false);
+        // unsaved changes, or loaded and never saved (not a Play copy or a prefab stage)
+        bool sceneNeedsSave(uint32_t sceneId) const;
         void saveLastSelectedScene(std::function<void(bool)> callback = nullptr);
 
         uint32_t createNewScene(std::string sceneName, SceneType type);
         // False when the scene could not be read, which does not mean it is gone:
         // the file may be unreadable only in this checkout
-        bool loadScene(fs::path filepath, bool opened, bool isNewScene = true, bool loadSceneData = true);
+        // allowOutside: a scene the project lists already (project.yaml, an undo) may be outside the
+        // project folder (an old project's); a scene new to it may not
+        bool loadScene(fs::path filepath, bool opened, bool isNewScene = true, bool loadSceneData = true, bool allowOutside = false);
         // An untitled scene from a document's text (a crash backup of one): modified, no path
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
@@ -2243,9 +2257,26 @@ namespace jasperengine::editor{
 
         std::vector<std::filesystem::path> findSceneFiles() const;
         uint32_t findSceneByPath(const std::filesystem::path& filepath) const;
+        // One file per scene (docs/data-safety.md, "Scene files and identity"). The key two spellings of
+        // one project file share: project-relative, lexically normal, generic, lower case on a
+        // case-insensitive project volume
+        static std::string sceneFileKeyOf(const std::filesystem::path& relative, bool caseInsensitive);
+        // A scene whose file claims an id another (earlier) scene has gets a fresh one, written into
+        // its file at once (Unity regenerates a duplicate GUID the same way)
+        void giveSceneFileItsOwnId(SceneProject& sceneProject, const std::filesystem::path& fullPath);
+        std::string sceneFileKey(const std::filesystem::path& path) const;
+        // The scene (not `exceptSceneId`, not a Play copy) saved at `path`: by key, or the same file
+        // through fs::equivalent when both exist. NULL_PROJECT_SCENE when none
+        uint32_t findOtherSceneUsingFile(const std::filesystem::path& path, uint32_t exceptSceneId) const;
+        // "" when `path` may become the file of `sceneId`, else why not (outside the project unless it
+        // is the scene's own file, not a .scene, another scene's file, a folder)
+        std::string sceneSavePathProblem(uint32_t sceneId, const std::filesystem::path& path) const;
 
         bool loadChildSceneInline(uint32_t childSceneId);
         void unloadChildSceneInline(uint32_t childSceneId);
+        // An inline child scene is drawn as a layer (its own camera): loaded once, so its update
+        // never runs without a camera (beside a running game nothing activates it)
+        static void prepareInlineChildForView(Scene* scene);
 
         bool addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
         void removeChildScene(uint32_t sceneId, uint32_t childSceneId);
@@ -2257,6 +2288,10 @@ namespace jasperengine::editor{
         bool isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const;
         void setChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId, bool startActive);
         std::vector<uint32_t> getChildScenes(uint32_t sceneId) const;
+        // The scenes that load together with `sceneId` through child-scene links: itself, its
+        // ancestors (nearest first), then every descendant of those. Cross-scene GameObject
+        // references are offered and accepted among them only.
+        std::vector<uint32_t> getRelatedScenes(uint32_t sceneId) const;
 
         // A scene as the Scene view of another draws it, see getSceneViewLayers()
         struct SceneViewLayer{
@@ -3118,6 +3153,9 @@ namespace jasperengine::editor{
         // A scene load replaced the played scene itself (another scene, or a fresh copy of it):
         // the game shows the stack that load built, not the played scene
         bool isPlayedSceneReplaced(uint32_t sceneId);
+        // The running scene a game load put in place of the played scene `sceneId` (the one the
+        // Game view shows), null when the played scene still runs: the Scene view draws it
+        SceneProject* getReplacingMainScene(uint32_t sceneId);
     };
 
 }

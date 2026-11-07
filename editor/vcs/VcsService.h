@@ -110,6 +110,16 @@ namespace jasperengine::editor::vcs {
         bool locksPolled() const;
 
         // ---- lookups (main thread)
+        // The baseline every comparison uses (S29 D5): "HEAD" for git, "BASE" for svn; "" while
+        // not active
+        std::string baselineRevision() const;
+        // The revision a caller's rev means: "HEAD" is the baseline everywhere (svn's own HEAD,
+        // the server's newest, would read the network and show other people's commits), so
+        // svn reads BASE for it; any other rev is passed on
+        std::string effectiveRevision(std::string_view rev) const;
+        // The memo key of a file's content at rev: it changes when HEAD moves, the file's blob
+        // changes or it is renamed, never per poll
+        std::string contentMemoKey(const RepoPath& key, std::string_view rev) const;
         bool toKey(const fs::path& absolute, RepoPath& out) const;
         fs::path toAbsolute(std::string_view key) const { return absoluteOf(root, key); }
         const VcsChange* find(const fs::path& absolute) const;

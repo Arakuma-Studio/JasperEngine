@@ -36,21 +36,32 @@ namespace jasperengine::editor {
             DepEdgeKind kind = DepEdgeKind::Other;
         };
 
+        // The identity a copied .scene file got (its own scene id and name)
+        struct SceneCopy {
+            uint32_t id = 0;
+            std::string name;
+        };
+
         struct Result {
             bool ok = false;
             std::string error;
             std::vector<AssetDatabase::Change> changes;
             std::vector<TextReference> textReferencesBroken;
             std::vector<std::string> filesWritten;   // project-relative
+            // copy: each .scene copied, by project-relative path of the copy
+            std::vector<std::pair<std::string, SceneCopy>> copiedScenes;
         };
 
         // The text references into a file or directory that moving or deleting it breaks
         static std::vector<TextReference> textReferencesInto(Project& project, const std::filesystem::path& path);
 
         static Result move(Project& project, const std::filesystem::path& from, const std::filesystem::path& to);
-        // copyGuids (by relative path) keeps a redo's copies at the GUIDs of the first copy
+        // copyGuids and copyScenes (by relative path) keep a redo's copies at the GUIDs, scene ids
+        // and scene names of the first copy. Every copied .scene gets its own scene id and a unique
+        // name (a copy from outside the project keeps an id and a name no project scene has).
         static Result copy(Project& project, const std::filesystem::path& from, const std::filesystem::path& to,
-                           std::map<std::string, std::string>* copyGuids = nullptr);
+                           std::map<std::string, std::string>* copyGuids = nullptr,
+                           std::map<std::string, SceneCopy>* copyScenes = nullptr);
         // Undoes a copy: the copied files and their metas are deleted
         static Result removeCopy(Project& project, const std::filesystem::path& path);
         // To the project trash (.trash), metas included; trashPath gets where it went
