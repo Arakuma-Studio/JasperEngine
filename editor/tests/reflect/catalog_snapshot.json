@@ -2220,6 +2220,7 @@
    "icon": "ef9bbc",
    "key": "terrain",
    "known_keys": [
+    "allowRuntimeEdits",
     "autoSetRanges",
     "billboardStart",
     "blendMap",
@@ -2253,6 +2254,11 @@
    ],
    "name": "TerrainComponent",
    "properties_of_default": {
+    "allowRuntimeEdits": [
+     0,
+     0,
+     true
+    ],
     "autoSetRanges": [
      0,
      33554432,
@@ -2395,6 +2401,11 @@
     ]
    },
    "properties_without_component": {
+    "allowRuntimeEdits": [
+     0,
+     0,
+     true
+    ],
     "autoSetRanges": [
      0,
      33554432,
@@ -27788,6 +27799,11 @@
    ]
   },
   "TerrainComponent": {
+   "allowRuntimeEdits": [
+    0,
+    0,
+    true
+   ],
    "autoSetRanges": [
     0,
     33554432,
