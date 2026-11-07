@@ -466,6 +466,8 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.needUpdateTerrain = true;
     terrain.needUpdateTexture = false;
     terrain.needUpdateFoliage = true;
+    terrain.surfaceRevision = 0;
+    terrain.editState.reset();
 }
 
 template<>

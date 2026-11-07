@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "terrain/TerrainMapPersistence.h"
 #include "util/SafeWrite.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -1101,6 +1102,9 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
 
 bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
     waitForExport();
+
+    // T1 R30: an export packs the maps' files
+    TerrainMapPersistence::get().flushAll();
 
     this->project = proj;
     this->config = cfg;

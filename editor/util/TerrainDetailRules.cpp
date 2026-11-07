@@ -37,7 +37,7 @@ const DetailPair kPairs[] = {
 
 }
 
-const std::vector<editor::terrain::DetailRange>& editor::terrain::detailRanges() {
+const std::vector<editor::terraindetail::DetailRange>& editor::terraindetail::detailRanges() {
     // density: MeshSystem draws at most 8192 instances per 8 m cell (128 per square unit)
     static const std::vector<DetailRange> ranges = {
         {"density", &TerrainFoliageLayer::density, 0.0f, 128.0f,
@@ -57,12 +57,12 @@ const std::vector<editor::terrain::DetailRange>& editor::terrain::detailRanges()
     return ranges;
 }
 
-bool editor::terrain::isDetailMeshPath(const std::string& path) {
+bool editor::terraindetail::isDetailMeshPath(const std::string& path) {
     // every model the import pipeline loads (an FBX through its imported .glb, as the Terrain window assigns it)
     return Util::isModelFile(path);
 }
 
-std::string editor::terrain::checkDetailLayer(const TerrainFoliageLayer& layer) {
+std::string editor::terraindetail::checkDetailLayer(const TerrainFoliageLayer& layer) {
     for (const DetailRange& range : detailRanges()) {
         const float value = layer.*range.field;
         if (!std::isfinite(value) || value < range.min || value > range.max) {
@@ -83,7 +83,7 @@ std::string editor::terrain::checkDetailLayer(const TerrainFoliageLayer& layer) 
     return {};
 }
 
-std::vector<std::string> editor::terrain::clampDetailLayer(TerrainFoliageLayer& layer) {
+std::vector<std::string> editor::terraindetail::clampDetailLayer(TerrainFoliageLayer& layer) {
     std::vector<std::string> changed;
     for (const DetailRange& range : detailRanges()) {
         float& value = layer.*range.field;

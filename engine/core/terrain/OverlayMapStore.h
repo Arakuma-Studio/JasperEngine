@@ -4,7 +4,7 @@
 #ifndef OVERLAY_MAP_STORE_H
 #define OVERLAY_MAP_STORE_H
 
-// S53 R3, DC1, DC2, DC6: a transaction over any store. Commit, dry run, strokes, Esc, delta capture
+// T1 R3, DC1, DC2, DC6: a transaction over any store. Commit, dry run, strokes, Esc, delta capture
 // and live spline sessions are all this object: 64x64 tiles copied on first write, float working
 // values so gentle stamps are not lost to rounding, and the stored bytes from before.
 
@@ -42,8 +42,18 @@ namespace jasperengine::terrain {
         // canWrite for every changed rectangle, then writes only the texels that changed. A refusal
         // or a failed write leaves the base byte-identical. The overlay is empty afterwards.
         WriteResult commit();
-        // Forgets everything: the base never saw it
+        // Forgets everything: the base never saw it, unless flushToBase showed it (rewind first)
         void discard();
+
+        // The base shows the bytes written since the last flush, while the transaction stays open
+        // with its floats and its before bytes: a stroke is visible as it goes (T1 R17, DC2). Maps
+        // this transaction created stay out of the base until the commit.
+        WriteResult flushToBase();
+        // Back to the before bytes: every tile's floats, and the base wherever a flush showed it. The
+        // tiles stay, so the transaction can go on from there (T1 R27, R36; a live spline's re-bake).
+        WriteResult rewind();
+        // The stored bytes as they were before this transaction (rect inside the map)
+        bool readBeforeBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const;
 
         // Every touched tile in a stable order, with its stored bytes before and after: what a delta
         // undo step is cut from
@@ -51,7 +61,7 @@ namespace jasperengine::terrain {
         void visitTiles(const TileVisitor& visitor) const;
 
         size_t tileCount() const;
-        // The heap this transaction holds in tiles (S53 R26's bound)
+        // The heap this transaction holds in tiles (T1 R26's bound)
         size_t memoryBytes() const;
 
         TerrainFrame frame() const override;
@@ -77,6 +87,8 @@ namespace jasperengine::terrain {
             TexelRect rect;
             std::vector<float> values;
             std::vector<uint8_t> before;
+            // the base holds a flush of it, not its before bytes
+            bool shown = false;
         };
 
         struct MapState {
@@ -88,6 +100,8 @@ namespace jasperengine::terrain {
             // ordered, so every walk over the tiles is the same on every platform
             std::map<std::pair<int, int>, Tile> tiles;
             TexelRect dirty;
+            // written since the last flushToBase
+            TexelRect unflushed;
         };
 
         MapState* findState(MapId map);

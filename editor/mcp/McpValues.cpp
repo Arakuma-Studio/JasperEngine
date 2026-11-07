@@ -4242,7 +4242,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                             YAML::Dump(Stream::encodeTerrainFoliageLayer(edited)) == YAML::Dump(Stream::encodeTerrainFoliageLayer(current->foliageLayers[i]))) {
                             continue;
                         }
-                        const std::string why = editor::terrain::checkDetailLayer(edited);
+                        const std::string why = editor::terraindetail::checkDetailLayer(edited);
                         if (!why.empty()) {
                             error = componentLabel + ".foliageLayers[" + std::to_string(i) + "] on " + label + ": " + why +
                                     " (edit_terrain_details edits detail layers).";

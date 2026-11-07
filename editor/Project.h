@@ -539,6 +539,20 @@ namespace jasperengine::editor{
         size_t totalMissing() const;
     };
 
+    // T1 R67: a Paint by Rules row
+    struct TerrainPaintRule {
+        int layer = 0;                  // -1: the base
+        bool useSlope = false;
+        float slopeMin = 0.0f;          // degrees
+        float slopeMax = 90.0f;
+        bool useHeight = false;
+        float heightMin = 0.0f;         // 0-1 of Terrain Height
+        float heightMax = 1.0f;
+        bool invert = false;
+        float opacity = 1.0f;
+        float noise = 0.0f;
+    };
+
     struct TerrainEditorSettings {
         int brushMode = 0;           // TerrainBrushMode::Raise
         int brushShape = 0;          // TerrainBrushShape::Circle
@@ -565,6 +579,10 @@ namespace jasperengine::editor{
         float placeAlignToNormal = 0.0f;
 
         bool paintUseMask = false;       // restrict texture paint to a slope and height range
+        bool filterAllTools = false;     // T1 R66: the Slope Filter reaches every map tool
+        std::vector<TerrainPaintRule> paintRules;   // T1 R67
+        int paintRulesSeed = 0;
+        bool slopeFilterInvert = false;  // T1 R66: the filter keeps what is outside its ranges
         float paintMinSlope = 0.0f;      // degrees
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight

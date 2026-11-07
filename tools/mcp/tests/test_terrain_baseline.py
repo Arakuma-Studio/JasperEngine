@@ -1,6 +1,6 @@
-"""The terrain brushes and generators as the editor made them before S53's operation engine.
+"""The terrain brushes and generators as the editor made them before T1's operation engine.
 
-The fixture was recorded from the unmigrated editor (S53 DC11), so these tests are the regression
+The fixture was recorded from the unmigrated editor (T1 DC11), so these tests are the regression
 proof of the migration: green before it and green after it. To record again from a build known to
 be good: JASPER_TERRAIN_BASELINE_RECORD=1 tools/mcp/run-tests.sh tools/mcp/tests/test_terrain_baseline.py
 """
@@ -25,8 +25,12 @@ RECORDING = os.environ.get("JASPER_TERRAIN_BASELINE_RECORD") == "1"
 SIZE = 64
 RESOLUTION = 64
 MAX_HEIGHT = 16.0
-HEIGHT_TOLERANCE = 1  # 1/65535 (S53 R17)
-BYTE_TOLERANCE = 1    # 1/255
+HEIGHT_TOLERANCE = 1  # 1/65535 (T1 R17)
+# 1/255 per stroke (T1 R17, D-26): the blend and density maps here are written by two strokes, and each
+# rounds where the unmigrated editor truncated, so the second starts up to a step away and can end two
+# off, on the few texels where both fall on the same side
+BYTE_TOLERANCE = 2
+BYTE_SHARE_PAST_ONE = 0.05
 
 # A drag across the map, turning once: every brush runs the same path
 PATH = [[-20.0, -18.0], [-10.0, -4.0], [2.0, 3.0], [12.0, -6.0], [20.0, 10.0]]
@@ -119,8 +123,13 @@ def compare_or_record(store: dict, key: str, values: list, fmt: str, tolerance: 
     if RECORDING:
         store[key] = pack(values, fmt)
         return
-    worst = worst_difference(values, unpack(store[key], fmt))
+    expected = unpack(store[key], fmt)
+    worst = worst_difference(values, expected)
     ed.check(worst <= tolerance, f"{key}: off by {worst} steps from the unmigrated editor (at most {tolerance})")
+    if tolerance > 1:
+        past_one = sum(1 for a, b in zip(values, expected) if abs(a - b) > 1) / len(expected)
+        print(f"     [baseline] {key}: {past_one:.4%} of the values are two steps off")
+        ed.check(past_one <= BYTE_SHARE_PAST_ONE, f"{key}: {past_one:.2%} of the values are more than one step off")
 
 
 def load_fixture() -> dict:

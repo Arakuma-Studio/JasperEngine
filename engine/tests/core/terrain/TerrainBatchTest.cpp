@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The absolute write route for generators (S53 R88, S54 N9, R30; AC69)
+// The absolute write route for generators (T1 R88, T2 N9, R30; AC69)
 
 #include "TerrainTestSupport.h"
 

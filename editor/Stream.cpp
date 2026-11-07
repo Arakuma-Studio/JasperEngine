@@ -1872,6 +1872,23 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     terrainNode["heightMapStartAtMiddle"] = ts.heightMapStartAtMiddle;
     terrainNode["flattenPickOnStroke"] = ts.flattenPickOnStroke;
     terrainNode["paintUseMask"] = ts.paintUseMask;
+    if (ts.filterAllTools) terrainNode["filterAllTools"] = true;
+    if (ts.slopeFilterInvert) terrainNode["slopeFilterInvert"] = true;
+    if (!ts.paintRules.empty()) {
+        YAML::Node rules(YAML::NodeType::Sequence);
+        for (const TerrainPaintRule& rule : ts.paintRules) {
+            YAML::Node r;
+            r["layer"] = rule.layer;
+            if (rule.useSlope) r["slope"] = std::vector<float>{rule.slopeMin, rule.slopeMax};
+            if (rule.useHeight) r["height"] = std::vector<float>{rule.heightMin, rule.heightMax};
+            if (rule.invert) r["invert"] = true;
+            r["opacity"] = rule.opacity;
+            if (rule.noise > 0.0f) r["noise"] = rule.noise;
+            rules.push_back(r);
+        }
+        terrainNode["paintRules"] = rules;
+        terrainNode["paintRulesSeed"] = ts.paintRulesSeed;
+    }
     encodeFinite(terrainNode, "paintMinSlope", ts.paintMinSlope);
     encodeFinite(terrainNode, "paintMaxSlope", ts.paintMaxSlope);
     encodeFinite(terrainNode, "paintMinHeight", ts.paintMinHeight);
@@ -1908,6 +1925,32 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["flattenPickOnStroke"].IsDefined()) ts.flattenPickOnStroke = YamlNumbers::as<bool>(tn["flattenPickOnStroke"]);
     else ts.brushStrength = TerrainEditorSettings{}.brushStrength; // file predates time-based flow; old per-event strengths are far too weak under the new semantics
     if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = YamlNumbers::as<bool>(tn["paintUseMask"]);
+    ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
+    ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
+    ts.paintRules.clear();
+    // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
+    if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {
+        for (const YAML::Node& r : tn["paintRules"]) {
+            if (!r.IsMap()) continue;
+            TerrainPaintRule rule;
+            if (r["layer"].IsDefined()) rule.layer = YamlNumbers::as<int>(r["layer"]);
+            if (r["slope"].IsDefined() && r["slope"].IsSequence() && r["slope"].size() == 2) {
+                rule.useSlope = true;
+                rule.slopeMin = decodeFinite(r["slope"][0], rule.slopeMin);
+                rule.slopeMax = decodeFinite(r["slope"][1], rule.slopeMax);
+            }
+            if (r["height"].IsDefined() && r["height"].IsSequence() && r["height"].size() == 2) {
+                rule.useHeight = true;
+                rule.heightMin = decodeFinite(r["height"][0], rule.heightMin);
+                rule.heightMax = decodeFinite(r["height"][1], rule.heightMax);
+            }
+            rule.invert = r["invert"].IsDefined() && YamlNumbers::as<bool>(r["invert"]);
+            if (r["opacity"].IsDefined()) rule.opacity = decodeFinite(r["opacity"], rule.opacity);
+            if (r["noise"].IsDefined()) rule.noise = decodeFinite(r["noise"], rule.noise);
+            ts.paintRules.push_back(rule);
+        }
+    }
+    if (tn["paintRulesSeed"].IsDefined()) ts.paintRulesSeed = YamlNumbers::as<int>(tn["paintRulesSeed"]);
     if (tn["paintMinSlope"].IsDefined())      ts.paintMinSlope      = decodeFinite(tn["paintMinSlope"], ts.paintMinSlope);
     if (tn["paintMaxSlope"].IsDefined())      ts.paintMaxSlope      = decodeFinite(tn["paintMaxSlope"], ts.paintMaxSlope);
     if (tn["paintMinHeight"].IsDefined())     ts.paintMinHeight     = decodeFinite(tn["paintMinHeight"], ts.paintMinHeight);
@@ -2233,6 +2276,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     const YAML::Node navigationNode = encodeNavOverlaySettings(ds.navigation);
     if (navigationNode.size() > 0)
         sceneNode["navigation"] = navigationNode;
+    const YAML::Node terrainOverlayNode = encodeTerrainOverlaySettings(ds.terrainOverlay);
+    if (terrainOverlayNode.size() > 0)
+        sceneNode["terrainOverlay"] = terrainOverlayNode;
     return sceneNode;
 }
 
@@ -2260,6 +2306,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
+    decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);

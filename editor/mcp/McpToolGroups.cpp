@@ -25,7 +25,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
-        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps, details (grass, rocks) and sampling."},
+        {"terrain", "Terrain edits (edit_terrain: heights, paint, holes, import), details (grass, rocks), stats, heightmap export, brush strokes (jasper://docs/terrain)."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},

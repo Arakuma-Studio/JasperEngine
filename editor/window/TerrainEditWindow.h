@@ -7,12 +7,19 @@
 #include "command/CommandHistory.h"
 #include "Project.h"
 #include "math/Ray.h"
+#include "math/Vector4.h"
+#include "terrain/EditorTerrainStore.h"
+#include "terrain/TerrainBrush.h"
+#include "terrain/TerrainRawIO.h"
+#include "terrain/TerrainStroke.h"
+#include "terrain/TerrainStrokeSession.h"
 #include "util/TerrainMapUtils.h"
 
 #include "imgui.h"
 
 #include <chrono>
-#include <random>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include "io/watch/FileIdentity.h"
@@ -25,42 +32,13 @@ namespace jasperengine{
 
 namespace jasperengine::editor{
 
-    enum class TerrainBrushMode{
-        Raise,
-        Lower,
-        Smooth,
-        Flatten,
-        Sharpen,
-        Noise,
-        Terrace,
-        Stamp,
-        Erode,
-        Ramp,
-        PaintBase,
-        PaintLayer,
-        PaintDensity,
-        EraseDensity,
-        PlaceObject,
-        EraseObject
-    };
-
     // Unity's terrain tool bar: the tool whose settings the window shows.
     enum class TerrainToolCategory{
         Sculpt,
         Texture,
         Details,
-        Trees
-    };
-
-    enum class TerrainBrushShape{
-        Circle,
-        Square
-    };
-
-    enum class TerrainBrushFalloff{
-        Smooth,
-        Linear,
-        Constant
+        Trees,
+        Settings    // T1 R59: Terrain Settings
     };
 
     struct TerrainBrushCursor{
@@ -69,21 +47,8 @@ namespace jasperengine::editor{
         // boundary and (when the falloff has a gradient) the half-strength contour.
         std::vector<Vector3> outerPoints;
         std::vector<Vector3> innerPoints;
-    };
-
-    struct TerrainMapSnapshot{
-        bool empty = true;
-        std::string path;
-        std::string id;
-        TextureFilter minFilter = TextureFilter::LINEAR;
-        TextureFilter magFilter = TextureFilter::LINEAR;
-        TextureWrap wrapU = TextureWrap::REPEAT;
-        TextureWrap wrapV = TextureWrap::REPEAT;
-        ColorFormat colorFormat = ColorFormat::RGBA;
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        std::vector<unsigned char> pixels;
+        // T1 R55: the effective operation's colour (Table 4), the texel-size warning colour under one texel
+        Vector4 color = Vector4(1.0f, 0.78f, 0.22f, 1.0f);
     };
 
     // A brush stroke run without the mouse (MCP tools): the settings the stroke uses. The
@@ -124,50 +89,31 @@ namespace jasperengine::editor{
         uint32_t sceneId = NULL_PROJECT_SCENE;
         Entity entity = NULL_ENTITY;
         TerrainMapRef ref;
-        TerrainMapSnapshot beforeSnapshot;
         // Brush mode for this stroke (modifiers can override the selected mode)
         TerrainBrushMode effectiveMode = TerrainBrushMode::Raise;
-        // Normalized flatten target, sampled from the terrain at stroke start
-        float flattenTarget = 0.5f;
-        // Ramp runs from where the stroke started to wherever it is now
-        Vector3 rampStart = Vector3::ZERO;
-        float rampStartHeight = 0.5f;
-        // Fractional droplets left over from the last stamp, so a slow frame still erodes
-        float erodeCarry = 0.0f;
-        uint32_t erodeSeed = 0;
-        // Stamp pacing: previous stamp position/time for path interpolation and
-        // time-based flow
-        bool hasLastPoint = false;
-        Vector3 lastPoint = Vector3::ZERO;
-        std::chrono::steady_clock::time_point lastStampTime;
-        // Float-space copy of the edited map (1 channel for heights, 4 for blend):
-        // stamps accumulate here and are quantized to the stored bit depth only on
-        // write-back, so gentle repeated stamps aren't lost to rounding.
-        std::vector<float> workingPixels;
-        int workingWidth = 0;
-        int workingHeight = 0;
-        // Texels written so far, cut into the undo patch when the stroke ends
-        TerrainMapRegion dirtyRegion;
-        // Placement strokes write entities instead of a map, so none of the texture state applies
+        // A map stroke's transaction, and the store under it (in this order: the store goes last)
+        std::unique_ptr<EditorTerrainStore> store;
+        std::unique_ptr<TerrainStrokeSession> session;
+        // The first stroke on a map it had to move to a file of the terrain's own undoes as a
+        // structural step, from what it found (T1 R28, R32)
+        bool rebound = false;
+        TerrainMapSnapshot rebindSnapshot;
+        // the samples' clock (T1 R33, R35: only holding still deposits by time)
+        bool started = false;
+        std::chrono::steady_clock::time_point startTime;
+        // Placement strokes write entities instead of a map, so none of the map state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable
         bool instanced = false;
         uint64_t placementStrokeId = 0;
         // Terrain-local XZ of every prop already on this terrain, grown as the stroke places more
         std::vector<Vector2> placedPoints;
-        bool heightReferenceValid = false;
-        float heightReferenceTerrainSize = 0.0f;
-        float heightReferenceMaxHeight = 0.0f;
-        int heightReferenceWidth = 0;
-        int heightReferenceHeight = 0;
-        int heightReferenceChannels = 0;
-        int heightReferenceBytesPerChannel = 1;
-        std::vector<unsigned char> heightReferencePixels;
+        // The drag's spaced stamps (T1 R21)
+        std::optional<terrain::StrokeResampler> placementPath;
     };
 
     class TerrainEditWindow{
     private:
-        class TerrainTextureEditCmd;
         class TerrainInstancePlaceCmd;
         class TerrainInstanceEraseCmd;
         class TerrainObjectStrokeCmd;
@@ -225,6 +171,10 @@ namespace jasperengine::editor{
         float placeAlignToNormal;
 
         bool paintUseMask;
+        bool filterAllTools = false;
+        bool filterInvert = false;
+        // T1 R63: the next click picks the Set Height value instead of painting
+        bool pickHeightArmed = false;
         float paintMinSlope;
         float paintMaxSlope;
         float paintMinHeight;
@@ -233,13 +183,50 @@ namespace jasperengine::editor{
         // An asset the load proved cannot be instanced, so the brush stops retrying it
         std::string instancingRejectedAsset;
         uint64_t placementStrokeCounter = 0;
-        std::mt19937 placementRandom;
-
-        uint64_t editTextureCounter = 1;
+        uint32_t placementSeed = 0;
 
         ActiveStroke stroke;
-        // >= 0 while a scripted stroke runs: the painting time of each applyBrush call
-        float scriptedStampSeconds = -1.0f;
+
+        // T1 R61: Import Raw... and Export Raw...
+        struct ImportRawDialog{
+            bool open = false;
+            bool justOpened = false;
+            std::string path;
+            std::vector<uint8_t> bytes;
+            HeightImportOptions options;
+            HeightImport preview;
+            bool setHeightFromRange = false;
+            std::string message;
+        };
+        struct ExportRawDialog{
+            bool open = false;
+            bool justOpened = false;
+            HeightExportOptions options;
+            std::string message;
+        };
+        ImportRawDialog importRaw;
+        ExportRawDialog exportRaw;
+        // T1 R59: a new Terrain Height keeps the surface where it is
+        bool keepWorldHeights = true;
+        // T1 R62: the point under the pointer, from the last cursor update
+        mutable bool infoValid = false;
+        mutable Entity infoEntity = NULL_ENTITY;
+        mutable Vector3 infoLocal;
+
+        void drawIssuesBanner(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawSettingsTool(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawImportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawExportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain);
+        void drawInfoPanel(SceneProject* sceneProject, TerrainComponent& terrain);
+        // T1 R67: Paint by Rules under Paint Texture; Apply is one undo step
+        void drawPaintByRules(SceneProject* sceneProject, TerrainComponent& terrain);
+        std::string paintRulesMessage;
+        void frameTerrain(SceneProject* sceneProject);
+        // An undoable property of the selected terrain
+        template<typename T> bool setTerrainProperty(const char* property, const T& value);
+        // Terrain Height, with the heights kept in place when keepWorldHeights (one undo step)
+        bool setTerrainHeight(SceneProject* sceneProject, float height, std::string& error);
+        bool importRawFile(SceneProject* sceneProject, std::string& error);
 
         void showTooltip(const char* text, ImGuiHoveredFlags flags = 0);
         bool iconButton(const char* icon, const char* id, const char* tooltip, bool selected, const ImVec2& size);
@@ -252,28 +239,8 @@ namespace jasperengine::editor{
         void drawBrushMask();
         void setBrushMask(const std::string& path);
         bool loadBrushMask();
-        // Brush-local coordinates in [-1, 1], rotated by brushRotation
-        float sampleBrushMask(float localX, float localY) const;
         void drawFoliageMesh(const TerrainFoliageLayer& layer);
         void drawPlacementAsset();
-        std::string makeEditableTextureId(uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
-        std::string makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
-        int expectedChannels(TerrainMapTarget target);
-        ColorFormat expectedFormat(TerrainMapTarget target);
-        static void encodeHeightTexel(unsigned char* pixels, size_t texelIndex, int bytesPerChannel, float value);
-        unsigned char clampByte(float value);
-        bool setFileBackedTextureData(Project* project, Texture& texture, const std::string& relativePath, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
-        bool isOwnedEditableTexturePath(const std::string& path, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
-        bool loadTerrainTextureDataFromPath(Project* project, const std::string& path, TextureData& data);
-        std::vector<unsigned char> copyTexturePixels(TextureData& data);
-        std::vector<unsigned char> convertTexturePixels(TextureData& data, TerrainMapTarget target);
-        std::vector<unsigned char> makeInitialMapPixels(TerrainMapTarget target, int width, int height);
-        void setOwnedTextureData(Texture& texture, const std::string& id, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
-        TerrainMapSnapshot captureSnapshot(Project* project, Texture& texture, bool forcePixels);
-        bool snapshotsEqual(const TerrainMapSnapshot& a, const TerrainMapSnapshot& b);
-        void applySnapshotToTexture(Project* project, Texture& texture, const TerrainMapSnapshot& snapshot);
-        bool ensureEditableMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int resolution);
-        void writeHeight(TextureData& data, int x, int y, float value);
         bool raycastTerrainStrokeSurface(const Ray& localRay, TerrainComponent& terrain, const ActiveStroke* activeStroke, Vector3& localPoint, float& localHeight) const;
 
         SceneProject* findSceneProject(Scene* scene) const;
@@ -288,13 +255,14 @@ namespace jasperengine::editor{
         bool isPlacementBrush() const;
         // Erase needs no asset, placing does
         bool isPlacementReady() const;
-        static bool isScalarTarget(TerrainMapTarget target);
-
-        void captureStrokeHeightReference(TerrainComponent& terrain);
         bool findTerrainHit(Scene* scene, const Ray& ray, Entity& entity, Vector3& localPoint, Vector3& worldPoint, float& localHeight, const ActiveStroke* activeStroke = nullptr) const;
-        bool applyBrush(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
-        bool stampBrush(TerrainComponent& terrain, TextureData& data, TerrainMapTarget target, const Vector3& localPoint, float deltaTime);
-        bool addStrokePatchCommand(SceneProject* sceneProject, Texture& texture);
+        TerrainStrokeBrush makeStrokeBrush(TerrainBrushMode mode, const TerrainComponent& terrain, float pickedHeight, bool scripted) const;
+        // Sets the stroke's session up on the map, moved to a file of the terrain's own first if it must be
+        bool openMapStroke(SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, TerrainBrushMode mode,
+                           const Vector3& startPoint, float pickedHeight, bool scripted);
+        bool strokeTerrainIsThere(SceneProject* sceneProject);
+        bool paintMapStroke(SceneProject* sceneProject, const Vector3& localPoint);
+        bool placeAlongStroke(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
         std::vector<Vector2> collectPlacedPoints(SceneProject* sceneProject, Entity terrainEntity) const;
         // Instanced placement keeps one host entity per asset under the terrain
         static Entity findInstanceHost(SceneProject* sceneProject, Entity terrainEntity, const std::string& assetPath);
@@ -317,8 +285,9 @@ namespace jasperengine::editor{
     public:
         static constexpr const char* WINDOW_NAME = "Terrain";
 
-        static constexpr float MIN_BRUSH_SIZE = 0.1f;
-        static constexpr float MAX_BRUSH_SIZE = 50.0f;
+        // T1 R60: the size a brush may have anywhere; each terrain narrows it (brushSizeLimits)
+        static constexpr float MIN_BRUSH_SIZE = 0.01f;
+        static constexpr float MAX_BRUSH_SIZE = 100000.0f;
         static constexpr float MIN_BRUSH_STRENGTH = 0.01f;
         static constexpr float MAX_BRUSH_STRENGTH = 1.0f;
         static constexpr int MIN_TERRACE_STEPS = 2;
@@ -352,6 +321,14 @@ namespace jasperengine::editor{
         void endStroke();
         void updateFoliagePreview();
         bool updateCursor(Scene* scene, const Ray& ray, TerrainBrushCursor& cursor) const;
+
+        // T1 R60: half a heightmap texel up to the whole terrain
+        static void brushSizeLimits(const TerrainComponent& terrain, float& minSize, float& maxSize);
+
+        // The operation a stroke started now would run: Ctrl inverts, Shift smooths (T1 R56)
+        TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
+        // T1 R55, Table 4: the decal's colour of an operation
+        static Vector4 decalColor(TerrainBrushMode mode);
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);

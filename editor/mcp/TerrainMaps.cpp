@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMaps.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "mcp/McpRefs.h"
@@ -9,7 +10,8 @@
 #include "texture/TextureData.h"
 #include "util/FileUtils.h"
 #include "util/PngWriter.h"
-#include "terrain/TerrainNoise.h"
+#include "terrain/RawMapStore.h"
+#include "terrain/TerrainOps.h"
 
 #include "stb_image_write.h"
 
@@ -18,7 +20,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <random>
+#include <span>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -30,49 +32,31 @@ namespace {
 constexpr int kHeightmapChannels = 1;
 constexpr ColorFormat kHeightmapFormat = ColorFormat::RED16;
 
-void encodeHeight16(std::vector<unsigned char>& pixels, size_t texelIndex, float value) {
-    const float clamped = std::max(0.0f, std::min(1.0f, value));
-    const unsigned int quantized = static_cast<unsigned int>(std::lround(clamped * 65535.0f));
-    const size_t byteIndex = texelIndex * 2;
-    pixels[byteIndex] = static_cast<unsigned char>(quantized & 0xFF);
-    pixels[byteIndex + 1] = static_cast<unsigned char>((quantized >> 8) & 0xFF);
-}
-
+// T1 R19: the internal fill_noise op on a store over the new map's own bytes. flat, middle and
+// fractal_noise keep their bytes; random_noise hashes per texel, so a seed means one map everywhere.
 std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& request) {
     const int resolution = std::max(2, request.resolution);
-    const size_t texelCount = static_cast<size_t>(resolution) * static_cast<size_t>(resolution);
-    std::vector<unsigned char> pixels(texelCount * 2, 0);
-    float baseHeight = std::max(0.0f, std::min(1.0f, request.baseHeight));
-    float amplitude = std::max(0.0f, std::min(1.0f, request.amplitude));
-    float frequency = std::max(0.01f, request.frequency);
-    int octaves = std::max(1, std::min(8, request.octaves));
+    const terrain::MapId heightMap{terrain::MapKind::Height, 0};
 
-    std::mt19937 rng(request.seed);
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-    for (int y = 0; y < resolution; ++y) {
-        for (int x = 0; x < resolution; ++x) {
-            float h = baseHeight;
-            if (request.mode == "random_noise") {
-                h = baseHeight + dist(rng) * amplitude;
-            } else if (request.mode == "fractal_noise") {
-                float sum = 0.0f;
-                float weight = 1.0f;
-                float weightSum = 0.0f;
-                float f = frequency;
-                for (int o = 0; o < octaves; ++o) {
-                    const float nx = (static_cast<float>(x) / static_cast<float>(resolution - 1)) * f;
-                    const float ny = (static_cast<float>(y) / static_cast<float>(resolution - 1)) * f;
-                    sum += (terrain::TerrainNoise::value(nx, ny, request.seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
-                    weightSum += weight;
-                    weight *= 0.5f;
-                    f *= 2.0f;
-                }
-                h = baseHeight + sum / weightSum * amplitude;
-            }
-            encodeHeight16(pixels, static_cast<size_t>(y) * resolution + x, h);
-        }
-    }
-    return pixels;
+    terrain::RawMapStore store(static_cast<float>(resolution), 1.0f);
+    store.addMap(heightMap, resolution, resolution, 1, 16);
+
+    terrain::Op op;
+    op.type = terrain::OpType::FillNoise;
+    op.fill = request.mode == "random_noise" ? terrain::FillMode::RandomNoise
+            : (request.mode == "fractal_noise" ? terrain::FillMode::FractalNoise : terrain::FillMode::Flat);
+    op.baseHeight = request.baseHeight;
+    op.amplitude = request.amplitude;
+    op.frequency = request.frequency;
+    op.octaves = std::max(1, std::min(8, request.octaves));
+    op.seed = request.seed;
+
+    terrain::OpOptions options;
+    options.inPlace = true;
+    terrain::applyOps(store, std::span<const terrain::Op>(&op, 1), options);
+
+    const unsigned char* bytes = store.mapBytes(heightMap);
+    return std::vector<unsigned char>(bytes, bytes + store.mapByteCount(heightMap));
 }
 
 std::string makeTerrainHeightmapPath(Project* project, uint32_t sceneId, Entity entity, uint32_t seed) {

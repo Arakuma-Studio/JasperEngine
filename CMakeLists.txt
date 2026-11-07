@@ -716,7 +716,9 @@ else()
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
+include(${EDITOR_DIR}/terrain/TerrainEditorSources.cmake)
 set(JASPERENGINE_EDITOR_SOURCES
+    ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
@@ -897,6 +899,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
@@ -977,6 +980,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/RagdollWizard.cpp
     ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
+    ${EDITOR_DIR}/window/dialog/CreateTerrainDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
@@ -1216,6 +1220,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainSettingsPanel.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
@@ -1409,7 +1414,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/PrefabOverrideCmd.cpp
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
-    ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainTextureEditCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
@@ -1523,6 +1529,11 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/search/AssetQuery.cpp
         ${EDITOR_DIR}/shortcuts/Chord.cpp
         ${EDITOR_DIR}/spline/SplineEditor.cpp
+        ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+        ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
+        ${EDITOR_DIR}/tests/terrain/TerrainMapDeltaCmdTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainMapPersistenceTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainStrokeSessionTest.cpp
         ${EDITOR_DIR}/tests/PhysicsPlacementWorkspaceTest.cpp
         ${EDITOR_DIR}/tests/ProjectSaveTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimationClipAssetsTest.cpp

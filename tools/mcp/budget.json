@@ -75,7 +75,7 @@
         "terrain": {
             "chars": 16000,
             "tools": 10,
-            "spec": "The one limit for S53-S57 (programme decision D17, S53 R74), lowered to the measured total plus 5 % when S56 lands: sculpt_terrain, set_terrain_maps, sample_terrain, S53's edit_terrain, visualize_terrain and export_terrain_heightmap, S54's generate_terrain and preview_noise_graph, S56's edit_terrain_world, and agent-authoring's edit_terrain_details"
+            "spec": "The one limit for T1-T5 (programme decision D17, T1 R74), lowered to the measured total plus 5 % when T4 lands: sculpt_terrain, set_terrain_maps, sample_terrain, T1's edit_terrain, visualize_terrain and export_terrain_heightmap, T2's generate_terrain and preview_noise_graph, T4's edit_terrain_world, and agent-authoring's edit_terrain_details"
         }
     },
     "exceptions": {

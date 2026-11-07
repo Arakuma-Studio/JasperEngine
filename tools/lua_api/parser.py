@@ -3018,6 +3018,19 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# T1 R75: the terrain writes, raw functions taking and returning tables (docs/scripting/terrain.md)
+OVERRIDES[('Terrain', 'applyOps')] = {
+    'doc': ['Runs edit_terrain\'s op tables (world X and Z, world heights), all or nothing; needs Allow Runtime',
+            'Edits. Returns the result: changed, ops, stats, warnings. docs/scripting/terrain.md.'],
+    'overloads': [([('ops', 'table[]')], 'table')]}
+OVERRIDES[('Terrain', 'getHeights')] = {
+    'doc': ['w * h terrain-local heights of the height map\'s texel rectangle, row by row.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer')], 'number[]')]}
+OVERRIDES[('Terrain', 'setHeights')] = {
+    'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
+            'Returns the result table, as applyOps.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)

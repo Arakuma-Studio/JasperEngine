@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Placement as pure data (S53 R21, AC16) and strokes' stamps (R33-R35)
+// Placement as pure data (T1 R21, AC16) and strokes' stamps (R33-R35)
 
 #include "TerrainTestSupport.h"
 
