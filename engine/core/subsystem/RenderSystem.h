@@ -779,6 +779,9 @@ namespace jasperengine{
 		// passes like the queues
 		std::vector<VisibleCandidate> visibleCandidates;
 		std::vector<VisibleResult> visibleResults;
+		// the candidates' submesh bounds, one pointer a submesh (a mesh's submeshes are allocated
+		// one by one, not side by side)
+		std::vector<const AABB*> visibleSubmeshBounds;
 		std::vector<OpaqueRenderData> visibleEntries;
 		std::vector<int> visiblePriorities;
 		std::vector<uint64_t> visibleKeys;

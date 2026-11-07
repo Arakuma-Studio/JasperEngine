@@ -8802,6 +8802,12 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
     const size_t count = queue.size();
     visibleCandidates.resize(count);
     visibleResults.resize(count);
+    // reserved for every submesh the cull reads, so the candidates' pointers into it stay valid
+    size_t submeshBounds = 0;
+    for (const OpaqueRenderData& entry : queue)
+        submeshBounds += std::min(entry.mesh->numSubmeshes, 32u);
+    visibleSubmeshBounds.clear();
+    visibleSubmeshBounds.reserve(submeshBounds);
     for (size_t i = 0; i < count; i++){
         const OpaqueRenderData& entry = queue[i];
         const MeshComponent& mesh = *entry.mesh;
@@ -8822,8 +8828,9 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         for (unsigned int s = 0; s < mesh.numSubmeshes && rest; s++)
             rest = !mesh.submeshes[s].hasMorphTarget;
         if (rest){
-            candidate.submeshBounds = &mesh.submeshes[0].localBounds;
-            candidate.submeshStride = sizeof(Submesh);
+            candidate.submeshBounds = visibleSubmeshBounds.data() + visibleSubmeshBounds.size();
+            for (unsigned int s = 0; s < mesh.numSubmeshes && s < 32; s++)
+                visibleSubmeshBounds.push_back(&mesh.submeshes[s].localBounds);
             candidate.model = &entry.transform->modelMatrix;
         }
     }
