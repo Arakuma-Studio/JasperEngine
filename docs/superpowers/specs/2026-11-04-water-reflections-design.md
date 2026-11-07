@@ -764,3 +764,17 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
    16 textures. `mesh.frag` gives it the records form (not with a 2D shadow atlas, which takes the 16th texture
    then; it never takes the Tiled form): 211 at most (`TerrainUniformBudget`). Its golden
    (`TerrainLightRecordsGpu`) was captured with the block form and matches the records form exactly.
+7. **Within the bind limits too** (with pcss-gles' rule: 16 samplers across the stages, 16 fragment textures, on
+   every backend): a normal-mapped painted terrain with IBL, SSAO, the post colour, shadows and point or spot lights is
+   at 16 textures and 16 samplers before its records. The records share PCSS's raw view's sampler where a variant has
+   one (both nearest and clamped; texelFetch reads neither), so the directional-only terrain keeps PCSS.
+   `ShaderVariantCompiler::compile` builds a variant still over
+   them after PCSS's fallback without the spot lights' masks (`SPOT_MASKS_OFF`, a `spot-masks-left-out` log line, the
+   editor's build log "no spot light masks"): a masked spot light lights that terrain with its plain cone. Chosen over
+   SSAO (contact darkening under every object on the ground) and over the block form (235 to 267 vectors): masks are
+   rare, and without one the terrain draws the same. Pinned by `TerrainUniformBudgetSlow` (normal-mapped, 8 and 16
+   lights, High and Medium tiers, directional only or not). The records are uploaded only when one changed, and a
+   scene past 128 lights reads the texture's second row (`WaterLightRecordsGpu`).
+8. **Open follow-up (next):** S57's capsule and contact shadows on water and the painted terrain, and the built-in Lit
+   with capsule shadows, 2D lights and fog on GLES3 (307 to 339 fragment vectors and a ninth block); the painted
+   terrain with 2D lights (its 2D lights' block, 50 vectors) keeps the block form and is over 224 with them.

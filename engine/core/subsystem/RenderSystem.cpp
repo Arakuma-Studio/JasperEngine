@@ -1077,7 +1077,9 @@ void RenderSystem::destroy(){
     if (lightRecords.isCreated())
         lightRecords.destroyTexture();
     lightRecordTexels = std::vector<Vector4>();
+    lightRecordScratch = std::vector<Vector4>();
     lightRecordsFrame = UINT64_MAX;
+    lightRecordsUploaded = false;
     sceneInputPoints.clear();
     sceneInputUsage = 0;
     sceneDepthPrograms = false;
@@ -2332,6 +2334,7 @@ bool RenderSystem::ensureLightRecords(int rows){
         lightRecords.destroyTexture();
     // (made again: this frame's records go into the new one)
     lightRecordsFrame = UINT64_MAX;
+    lightRecordsUploaded = false;
     return lightRecords.createDynamicTexture("light records", LIGHT_RECORDS_WIDTH, rows);
 }
 
@@ -2349,13 +2352,23 @@ void RenderSystem::syncLightRecords(){
     const int rows = std::max(1, ((int)sceneLights.size() + lightsPerRow - 1) / lightsPerRow);
     if (!ensureLightRecords(rows))
         return;
-    lightRecordTexels.assign((size_t)LIGHT_RECORDS_WIDTH * (size_t)lightRecords.getHeight(), Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    lightRecordScratch.assign((size_t)LIGHT_RECORDS_WIDTH * (size_t)lightRecords.getHeight(), Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     for (size_t i = 0; i < sceneLights.size(); i++){
         for (int t = 0; t < 4; t++)
-            lightRecordTexels[i * 4 + (size_t)t] = sceneLights[i].packed[t];
+            lightRecordScratch[i * 4 + (size_t)t] = sceneLights[i].packed[t];
     }
-    if (lightRecords.updateTexture(lightRecordTexels.data(), lightRecordTexels.size() * sizeof(Vector4)))
+    // no upload while no record changed (the texture keeps what it was given)
+    if (lightRecordsUploaded && lightRecordScratch.size() == lightRecordTexels.size() &&
+            std::memcmp(lightRecordScratch.data(), lightRecordTexels.data(), lightRecordTexels.size() * sizeof(Vector4)) == 0){
         lightRecordsFrame = frame;
+        return;
+    }
+    if (lightRecords.updateTexture(lightRecordScratch.data(), lightRecordScratch.size() * sizeof(Vector4))){
+        lightRecordsFrame = frame;
+        lightRecordsUploaded = true;
+        lightRecordUploads++;
+        std::swap(lightRecordScratch, lightRecordTexels);
+    }
 }
 
 // An older fork's u_fs_lighting: the camera's part, then the object's first MAX_LIGHTS

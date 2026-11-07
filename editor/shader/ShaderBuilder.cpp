@@ -390,6 +390,11 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         Out::build("Shader %s (%s): no PCSS, its textures leave no texture unit for it; Ultra soft shadows use the High tier's filter",
                    getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
     }
+    // the painted terrain variants whose lights' records leave no unit for the spot lights' masks
+    if (compileLog.find(ShaderVariantCompiler::SPOT_MASKS_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no spot light masks, its textures leave no texture unit for them; masked spot lights light it with their cones",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
     // what a fork reads of the global shader values that Project Settings does not declare as
     // such (once: for the editor's own backend)
     if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {

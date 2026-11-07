@@ -166,8 +166,9 @@ uniform u_fs_pbrParams {
     #if defined(HAS_TERRAIN_PBR) && !defined(USE_SHADOWS_2D)
         // a painted terrain's layers take 45 fragment uniform vectors: its lights' records come
         // from u_lightRecords (two floats a light in the block), so with shadows and fog it stays
-        // within GLES3 / WebGL2's 224 (the texture is its 16th, which the 2D shadow atlas takes
-        // when it has one; it keeps its per-object lists)
+        // within GLES3 / WebGL2's 224. The texture is one more: a variant then over 16 textures or
+        // samplers leaves out PCSS's raw view, then the spot masks (ShaderVariantCompiler::compile);
+        // not with a 2D shadow atlas, whose 2D lights' block is over 224 anyway (spec Follow-ups)
         #define LIGHTS_FS_RECORDS
     #endif
     #include "includes/lights.glsl"

@@ -219,3 +219,60 @@ TEST_F(WaterLightRecordsGpu, RecordsDrawWhatTheBlockDrew){
     EXPECT_LE(largest, 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+// past 128 scene lights the records take a second row of u_lightRecords: the water's lights are
+// scene lights 131 to 135 (130 small ones far away come first), and it still draws the block
+// form's image; with no light changing the frame's records are not uploaded again, and moving a
+// light uploads them
+TEST_F(WaterLightRecordsGpu, LightsPastTheFirstRowAndUploadsOnlyOnChange){
+    JASPER_REQUIRE_GPU();
+    camera.setPosition(0.0f, 9.0f, 10.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+    sun.setShadows(false);
+
+    for (int i = 0; i < 130; i++)
+        addLight(LightType::POINT, Vector3(400.0f + 3.0f * (float)i, 1.0f, 400.0f), Vector3(1.0f, 1.0f, 1.0f), 1.0f, 1.0f);
+    std::vector<Light*> near;
+    for (int i = 0; i < 5; i++){
+        const float x = -4.0f + 2.0f * (float)i;
+        near.push_back(&addLight(LightType::POINT, Vector3(x, 0.8f, (i % 2 == 0) ? -1.5f : 1.5f),
+                                 Vector3(0.3f + 0.15f * (float)i, 1.0f - 0.15f * (float)i, 0.6f), 4.0f, 3.5f));
+    }
+
+    Primitive water(&scene);
+    water.createPlane(16.0f, 16.0f);
+    RenderSystem* render = scene.getSystem<RenderSystem>().get();
+
+    int width = 0, height = 0;
+    std::vector<uint8_t> records, block;
+    water.setMaterial(litWater("library:water"));
+    ASSERT_TRUE(this->render()) << "the scene never finished loading";
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(water.getEntity());
+    ASSERT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "library:water does not read the lights' records";
+    EXPECT_GE(render->getLightRecordsTexture().getHeight(), 2) << "the records take one row";
+    records = readRecordsTarget(width, height);
+
+    // nothing changes: no upload; a light moves: one upload a frame it moves in
+    const uint64_t uploads = render->lightRecordUploads;
+    GpuEnvironment::drawFrames(3);
+    EXPECT_EQ(render->lightRecordUploads, uploads) << "the records were uploaded again with no light changing";
+    near[0]->setPosition(-4.0f, 0.9f, -1.5f);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_GE(render->lightRecordUploads, uploads + 1) << "a moved light's record was not uploaded";
+    EXPECT_LE(render->lightRecordUploads, uploads + 2);
+    near[0]->setPosition(-4.0f, 0.8f, -1.5f);
+    GpuEnvironment::drawFrames(2);
+
+    water.setMaterial(litWater("shaders/BlockWater"));
+    ASSERT_TRUE(this->render()) << "the scene never finished loading";
+    EXPECT_EQ(mesh.submeshes[0].slotLightRecords.first, -1);
+    block = readRecordsTarget(width, height);
+
+    int largest = 0;
+    const size_t differing = differingPixels(records, block, 2, largest);
+    std::printf("[gpu] water light records past 128 lights on %s: %zu pixels over 2 apart from the block form (largest %d)\n",
+                HeadlessContext::getBackendName(), differing, largest);
+    EXPECT_EQ(differing, 0u) << "the records form draws another water than the block form past the first row";
+    EXPECT_NO_ENGINE_ERRORS();
+}

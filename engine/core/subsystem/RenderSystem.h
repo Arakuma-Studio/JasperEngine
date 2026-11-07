@@ -1823,8 +1823,11 @@ namespace jasperengine{
 		static constexpr int LIGHT_RECORDS_WIDTH = 512;
 		object_light_records_t lightRecordsBlock;
 		TextureRender lightRecords;
+		// what the texture holds (uploaded only when a record changed) and the next frame's
 		std::vector<Vector4> lightRecordTexels;
+		std::vector<Vector4> lightRecordScratch;
 		uint64_t lightRecordsFrame = UINT64_MAX;
+		bool lightRecordsUploaded = false;
 		std::unordered_set<Entity> lightRecordMeshes;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
@@ -2249,6 +2252,11 @@ namespace jasperengine{
 		void syncLightRecords();
 		bool ensureLightRecords(int rows);
 		void setLightRecordsMesh(Entity entity, bool records);
+	public:
+		// the light records' uploads so far (tests: none while no light changes)
+		uint64_t lightRecordUploads = 0;
+		const TextureRender& getLightRecordsTexture() const { return lightRecords; }
+	private:
 		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
 		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
 		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);

@@ -1322,13 +1322,15 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
     std::string compileLog;
     // one pass of the pipeline: "" when out holds the variant, else what failed
-    auto build = [&](bool rawViewOff) -> std::string {
+    auto build = [&](bool rawViewOff, bool spotMasksOff) -> std::string {
         shadercompiler::args_t args;
         std::string setupError;
         if (!prepareVariantArgs(key, backend, customSources, args, setupError))
             return setupError;
         if (rawViewOff)
             args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
+        if (spotMasksOff)
+            args.defines.push_back({"SPOT_MASKS_OFF", "1"});
         args.error_output = &compileLog;
 
         if (stopped())
@@ -1378,14 +1380,24 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         return "";
     };
 
-    std::string failure = build(false);
+    std::string failure = build(false, false);
     // a variant the raw-depth view of the shadow atlas (PCSS) takes past the bind limits is built
     // without it (on every backend: the same program everywhere), and filters the Ultra tier's
     // shadows with the High tier's Vogel disk
     if (failure.empty() && isOverBindLimits(out) && out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
         compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would take the variant past 16 samplers or "
                       "16 fragment textures; it filters Ultra shadows with the Vogel disk\n";
-        failure = build(true);
+        failure = build(true, false);
+    }
+    // a variant whose lights' records (u_lightRecords, includes/lights.glsl: the painted terrain's)
+    // still leave it past them is built without the spot lights' masks (SPOT_MASKS_OFF): a masked
+    // spot light lights it with its plain cone
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightRecords").first >= 0 &&
+            out.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first >= 0) {
+        compileLog += std::string(SPOT_MASKS_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
+                      "16 fragment textures; masked spot lights light it with their cones\n";
+        const bool rawViewOff = compileLog.find(PCSS_LEFT_OUT) != std::string::npos;
+        failure = build(rawViewOff, true);
     }
     if (!failure.empty()) {
         if (log && failure != "Cancelled")

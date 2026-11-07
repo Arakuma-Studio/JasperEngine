@@ -114,8 +114,6 @@ uniform u_fs_objectLights {
 } objectLights;
 // @image_sample_type u_lightRecords unfilterable_float
 uniform texture2D u_lightRecords;
-// @sampler_type u_lightRecords_smp nonfiltering
-uniform sampler u_lightRecords_smp;
 
 // a pixel light's two floats: x its scene light, y its packed shadow, mask tile and occlusion
 vec2 lightRecordEntry(int index){
@@ -123,9 +121,6 @@ vec2 lightRecordEntry(int index){
     return ((index & 1) == 0) ? pair.xy : pair.zw;
 }
 
-vec4 lightRecordTexel(int light, int texel){
-    return texelFetch(sampler2D(u_lightRecords, u_lightRecords_smp), ivec2((light & 127) * 4 + texel, light >> 7), 0);
-}
 #endif
 
 #if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED)
@@ -146,8 +141,10 @@ uniform u_fs_objectLights {
 #define LIGHTS_DECLARED
 
 // (a directional-only variant, DIRECTIONAL_LIGHTS_ONLY ('Dlo'), has no spot light to mask nor point
-// light to shadow: neither the mask atlas nor the point shadow block and atlas are declared)
-#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && !defined(DIRECTIONAL_LIGHTS_ONLY)
+// light to shadow: neither the mask atlas nor the point shadow block and atlas are declared; a
+// variant its lights' records leave over the bind limits, SPOT_MASKS_OFF (ShaderVariantCompiler::
+// compile), lights masked spots with their cones)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && !defined(DIRECTIONAL_LIGHTS_ONLY) && !defined(SPOT_MASKS_OFF)
     #define LIGHTS_SPOT_MASKS
     uniform texture2D u_spotMaskAtlas;
     uniform sampler u_spotMaskAtlas_smp;
@@ -174,6 +171,20 @@ uniform u_fs_objectLights {
 #include "includes/punctual.glsl"
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #include "includes/shadow_sampling.glsl"
+#endif
+#ifdef LIGHTS_RECORDS
+    // the records' sampler: PCSS's raw view's where the variant has one (both nearest and clamped
+    // to the edge, and texelFetch reads neither), so the records take no sampler slot there
+    #ifdef SHADOW_DATA_RAW
+        #define LIGHT_RECORDS_SAMPLER u_shadowAtlasRaw_smp
+    #else
+        // @sampler_type u_lightRecords_smp nonfiltering
+        uniform sampler u_lightRecords_smp;
+        #define LIGHT_RECORDS_SAMPLER u_lightRecords_smp
+    #endif
+vec4 lightRecordTexel(int light, int texel){
+    return texelFetch(sampler2D(u_lightRecords, LIGHT_RECORDS_SAMPLER), ivec2((light & 127) * 4 + texel, light >> 7), 0);
+}
 #endif
 // capsule and contact shadows (S57): occlusion of the shadowed lights that take them
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS) && (defined(USE_CAPSULE_SHADOWS) || defined(USE_CONTACT_SHADOWS))
