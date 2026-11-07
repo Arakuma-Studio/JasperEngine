@@ -117,8 +117,11 @@ async def test_preview_does_not_write(ed: Editor):
     status = await wait_status(ed, ui)
     harness.over_budget("Generate section Preview right after start-up", {"click to result": time.monotonic() - started}, 5.0)
     ed.check(status.startswith("Preview"), status)
+    # the image and its statistics are drawn below the buttons, past the window's foot on a small screen: the probe
+    # lists only an item drawn whole in view, so the slope histogram under the image is scrolled up first
+    await ui.reveal("Slope", WINDOW)
     await ui.frames(10)
-    ed.check("terrain.generate.image" in ed.ui_items(), "the hillshaded image")
+    ed.check("terrain.generate.image" in ed.ui_items(), f"the hillshaded image: {sorted(k for k in ed.ui_items() if 'generate' in k)}")
     await save_shot(ed, "terrain-generate-section.png")
     ed.check_eq(map_files(ed), files, "no map file changed")
     again = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
