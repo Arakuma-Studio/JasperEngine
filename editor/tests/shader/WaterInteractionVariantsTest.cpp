@@ -172,28 +172,37 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
                                                        &sources, plainData, &error, &log)) << name << " without the bits: " << error << "\n" << log;
             ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId), backend,
                                                        &sources, data, &error, &log)) << name << ": " << error << "\n" << log;
-            // the bits add two textures and no uniform block
+            // the bits add three textures and no uniform block
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), ShaderVariantCompiler::checkResourceBudget(plainData)) << name;
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
             // GLES3 / WebGL2 guarantee 224 fragment uniform vectors, and sokol's GL backends
-            // flatten the blocks into them
-            size_t vectors = 0;
-            for (const ShaderStage& stage : data.stages){
-                if (stage.type == ShaderStageType::FRAGMENT){
-                    for (const ShaderUniformBlock& block : stage.uniformblocks)
-                        vectors += (block.sizeBytes + 15) / 16;
+            // flatten the blocks into them: the bits add three, and the eight-light water with
+            // shadows stays within them (sixteen lights are over without the bits too)
+            auto fragmentVectors = [](const ShaderData& shader){
+                size_t vectors = 0;
+                for (const ShaderStage& stage : shader.stages){
+                    if (stage.type == ShaderStageType::FRAGMENT){
+                        for (const ShaderUniformBlock& block : stage.uniformblocks)
+                            vectors += (block.sizeBytes + 15) / 16;
+                    }
                 }
-            }
+                return vectors;
+            };
             if (backend == ShaderBackend::GLES3){
-                std::printf("[water] %s: %zu fragment uniform vectors (limit 224)\n", name.c_str(), vectors);
-                EXPECT_LE(vectors, 224u) << name;
+                const size_t vectors = fragmentVectors(data);
+                const size_t plainVectors = fragmentVectors(plainData);
+                std::printf("[water] %s: %zu fragment uniform vectors, %zu without the bits (limit 224)\n", name.c_str(), vectors, plainVectors);
+                EXPECT_LE(vectors, plainVectors + 3) << name;
+                if (environment.lightCapacity <= 8)
+                    EXPECT_LE(vectors, 224u) << name;
             }
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1) << name;
+            EXPECT_NE(data.getTextureIndexByName("u_waterExclusionData").first, -1) << name;
             EXPECT_NE(data.getTextureIndexByName("u_waterWakeTexture").first, -1) << name;
             CustomUniformBlock custom;
             ASSERT_TRUE(custom.resolve(data, "u_fs_customParams")) << name;
             EXPECT_GE(custom.waterInteractionOffset, 0) << name;
-            EXPECT_EQ(custom.waterWakeParamsOffset, custom.waterInteractionOffset + 34 * 16) << name;
+            EXPECT_EQ(custom.waterWakeParamsOffset, custom.waterInteractionOffset + 2 * 16) << name;
         }
     }
 }

@@ -50,8 +50,8 @@ Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& na
 }
 
 bool ShaderUniforms::isReserved(const std::string& name){
-    return name == "time" || name == "resolution" || name == "sceneTime" || name == "waterExclusion" || name == "waterExclusionRows" ||
-           name == "waterExclusionShapes" || name == "waterWakeArea" || name == "waterWakeParams";
+    return name == "time" || name == "resolution" || name == "sceneTime" || name == "waterExclusion" ||
+           name == "waterWakeArea" || name == "waterWakeParams";
 }
 
 bool ShaderUniforms::isEditable(const ShaderUniform& uniform){

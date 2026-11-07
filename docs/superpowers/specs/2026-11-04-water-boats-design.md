@@ -864,15 +864,21 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
 7. **The wake bench** is `WaterWakeBench.Step256x4` / `Step128x4` in `jasperengine-core-tests`, the
    budgets enforced through `JASPER_TEST_PERF_SLACK` like the other *Bench suites (AGENTS.md:
    wall-clock budgets through `perfSlack()`), not an entry in `tools/perf/bench-thresholds.json`.
-8. **The water's per-draw data lives in its own custom block**, not a uniform block of its own: a
-   lit `library:water` with every feature is at the fragment stage's budget of uniform blocks, and
-   the `u_fs_waterInteraction` block the spec planned put it over (measured on the first build:
-   `checkResourceBudget` reported 10 blocks for the variant with shadows, fog and the post colour).
-   `WATER_INTERACTION_PARAMS` (`includes/water_interaction_params.glsl`) appends engine-written
-   members (`waterExclusion`, `waterExclusionRows`, `waterExclusionShapes`, `waterWakeArea`,
-   `waterWakeParams`; reserved names like `sceneTime`) to the shader's `u_fs_customParams`;
-   `CustomUniformBlock::writeWaterInteraction` writes them each draw before the block is uploaded.
-   The bits add two textures and no block (`WaterInteractionVariants.WorstWaterVariantsCompileForEveryBackend`).
+8. **The water's per-draw data lives in its own custom block, and the excluders in a data texture**,
+   not a uniform block of its own: a lit `library:water` with every feature is at the fragment
+   stage's budget of uniform blocks, and the `u_fs_waterInteraction` block the spec planned put it
+   over (measured on the first build: `checkResourceBudget` reported 10 blocks for the variant with
+   shadows, fog and the post colour). The 35 vectors of excluder rows were then over GLES3 /
+   WebGL2's guaranteed 224 fragment uniform vectors, which sokol's GL backends flatten the blocks
+   into (measured: 248 for the eight-light water with shadows, 213 without the bits). So
+   `WATER_INTERACTION_PARAMS` (`includes/water_interaction_params.glsl`) appends three engine-written
+   vectors (`waterExclusion`: the count and the excluders' rows as bytes, `waterWakeArea`,
+   `waterWakeParams`; reserved names like `sceneTime`) to the shader's `u_fs_customParams`,
+   `CustomUniformBlock::writeWaterInteraction` writes them each draw, and the frame's excluders
+   (at most 256) are rows of an RGBA32F texture uploaded once a frame (`u_waterExclusionData`,
+   read with `texelFetch`). The bits add three textures, three vectors and no block
+   (`WaterInteractionVariants.WorstWaterVariantsCompileForEveryBackend`); the sixteen-light water
+   with shadows is over 224 without the bits too (water-reflections' shader).
 9. **The wake step is cheaper than Doriax's**, measured by the bench: Doriax's stamping as ported took
    52 ms a step at 256 texels with four hulls. The history keeps a bow sample every 0.5 m (or a fifth
    of the hull's length; Doriax every 0.25 m or a tenth), the crests are stamped again 20 times a

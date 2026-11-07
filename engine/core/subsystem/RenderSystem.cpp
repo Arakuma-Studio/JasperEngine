@@ -4262,6 +4262,9 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotWaterExclusionMaps = shaderData.getTextureIndexByName("u_waterExclusionMaps");
     if (bindings.slotWaterExclusionMaps.first != -1)
         render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT, &emptyArrayWhite);
+    bindings.slotWaterExclusionData = shaderData.getTextureIndexByName("u_waterExclusionData");
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
     bindings.slotWaterWake = shaderData.getTextureIndexByName("u_waterWakeTexture");
     if (bindings.slotWaterWake.first != -1)
         render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, &emptyBlack);
@@ -14966,18 +14969,18 @@ void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibra
                 Log::warn("More than %d Water Excluders in view over one water mesh (entity %u): the farthest keep no water out",
                           WATER_EXCLUDERS_PER_DRAW, (unsigned int)entity);
             }
+            // their rows in the frame's data texture (syncWaterInteraction), three bytes to a float
             int count = 0;
+            uint32_t packed[3] = {0, 0, 0};
             for (const auto& candidate : nearest){
                 if (count == WATER_EXCLUDERS_PER_DRAW)
                     break;
-                const WaterInteractionSystem::Excluder& excluder = excluders[candidate.second];
-                for (int r = 0; r < 3; r++)
-                    block.exclusionRows[count * 3 + r] = excluder.worldToUnit.row((unsigned int)r);
-                const float shape = excluder.hullMap ? 2.0f : (excluder.shape == WaterExcluderShape::SPHERE ? 1.0f : 0.0f);
-                block.exclusionShapes[count] = Vector4(shape, (float)std::max(excluder.hullLayer, 0), 0.0f, 0.0f);
+                if (candidate.second >= waterExclusionRows)
+                    continue;
+                packed[count / 3] |= (uint32_t)candidate.second << (8 * (count % 3));
                 count++;
             }
-            block.exclusion = Vector4((float)count, 0.0f, 0.0f, 0.0f);
+            block.exclusion = Vector4((float)count, (float)packed[0], (float)packed[1], (float)packed[2]);
         }
     }
 
@@ -14997,6 +15000,8 @@ void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibra
     if (bindings.slotWaterExclusionMaps.first != -1)
         render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT,
                           waterExclusionMapLayers > 0 ? &waterExclusionMaps : &emptyArrayWhite);
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
     if (bindings.slotWaterWake.first != -1)
         render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, wake ? &waterWakeTexture : &emptyBlack);
 }
@@ -15033,6 +15038,28 @@ void RenderSystem::syncWaterInteraction(){
         }
     }
 
+    // the frame's excluders, a row each (at most 256: a draw names its rows in bytes), uploaded
+    // once a frame (sokol's one update per image per frame)
+    const uint64_t dataFrame = SystemRender::getFrameCount();
+    if (hasWaterExcluders && dataFrame != waterExclusionDataFrame){
+        const std::vector<WaterInteractionSystem::Excluder>& excluders = water->getExcluders();
+        const size_t rows = std::min(excluders.size(), (size_t)256);
+        if (ensureWaterExclusionData(rows)){
+            waterExclusionTexels.assign((size_t)waterExclusionData.getHeight() * 4, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+            for (size_t e = 0; e < rows; e++){
+                const WaterInteractionSystem::Excluder& excluder = excluders[e];
+                for (int r = 0; r < 3; r++)
+                    waterExclusionTexels[e * 4 + (size_t)r] = excluder.worldToUnit.row((unsigned int)r);
+                const float shape = excluder.hullMap ? 2.0f : (excluder.shape == WaterExcluderShape::SPHERE ? 1.0f : 0.0f);
+                waterExclusionTexels[e * 4 + 3] = Vector4(shape, (float)std::max(excluder.hullLayer, 0), 0.0f, 0.0f);
+            }
+            if (waterExclusionData.updateTexture(waterExclusionTexels.data(), waterExclusionTexels.size() * sizeof(Vector4))){
+                waterExclusionRows = rows;
+                waterExclusionDataFrame = dataFrame;
+            }
+        }
+    }
+
     // the wake map: made with the map, uploaded at most once a frame (sokol's one update per
     // image per frame; Doriax c5b7a99dc), freed when no wake is left
     if (water->isWakeActive()){
@@ -15055,9 +15082,26 @@ void RenderSystem::syncWaterInteraction(){
     }
 }
 
+bool RenderSystem::ensureWaterExclusionData(size_t rows){
+    int height = 1;
+    while ((size_t)height < rows)
+        height <<= 1;
+    if (waterExclusionData.isCreated() && waterExclusionData.getHeight() >= height)
+        return true;
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
+    return waterExclusionData.createDynamicTexture("water|exclusion|data", 4, height);
+}
+
 void RenderSystem::destroyWaterInteraction(){
     if (waterExclusionMaps.isCreated())
         waterExclusionMaps.destroyTexture();
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
     waterExclusionMapLayers = 0;
     // made again from the system's maps on the next draw
     waterExclusionMapsVersion = 0;

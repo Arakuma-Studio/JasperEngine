@@ -180,13 +180,11 @@ namespace jasperengine{
 	// scene's wake map
 	constexpr int WATER_EXCLUDERS_PER_DRAW = 8;
 	typedef struct fs_water_interaction_t {
-		Vector4 exclusion;                                      // x the excluders in the arrays
-		Vector4 exclusionRows[WATER_EXCLUDERS_PER_DRAW * 3];    // world to 0..1 across each volume
-		Vector4 exclusionShapes[WATER_EXCLUDERS_PER_DRAW];      // x 0 box, 1 sphere, 2 hull; y its layer
+		Vector4 exclusion;      // x the excluders tested; y, z, w their rows in the data texture, three bytes each
 		Vector4 wakeArea;       // xy the map's world corner, z 1 / its world size, w 1 while it holds a wake
 		Vector4 wakeParams;     // x slope per unit of crest over a texel, y 1 / texels, z the body tag / 255
 	} fs_water_interaction_t;
-	static_assert(sizeof(fs_water_interaction_t) == 35 * 16, "WATER_INTERACTION_PARAMS is 35 vec4");
+	static_assert(sizeof(fs_water_interaction_t) == 3 * 16, "WATER_INTERACTION_PARAMS is 3 vec4");
 
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
@@ -876,6 +874,12 @@ namespace jasperengine{
 		bool hasWaterWakes = false;
 		TextureRender waterExclusionMaps;
 		int waterExclusionMapLayers = 0;
+		// the frame's excluders (RGBA32F, 4 texels a row: includes/water_interaction.glsl), the
+		// rows uploaded this frame and the frame they were
+		TextureRender waterExclusionData;
+		std::vector<Vector4> waterExclusionTexels;
+		size_t waterExclusionRows = 0;
+		uint64_t waterExclusionDataFrame = UINT64_MAX;
 		uint64_t waterExclusionMapsVersion = 0;
 		TextureRender waterWakeTexture;
 		uint64_t waterWakeUploadFrame = UINT64_MAX;
@@ -3449,6 +3453,8 @@ namespace jasperengine{
 		// the hull map array and the wake map (once a frame, before the passes draw)
 		void syncWaterInteraction();
 		void destroyWaterInteraction();
+		// the excluders' data texture with room for that many rows (made again only to grow)
+		bool ensureWaterExclusionData(size_t rows);
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		// the inputs a load of the submesh would resolve now, from its attributes of the last load
 		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,

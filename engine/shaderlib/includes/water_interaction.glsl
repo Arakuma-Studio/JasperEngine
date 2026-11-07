@@ -15,10 +15,12 @@
 //
 // Engine data (RenderSystem::applyWaterInteraction, per draw; engine-written members, never set by
 // a material):
-//   customParams.waterExclusion:        x the excluders in the arrays (0..8): the ones over the
-//                                       draw's mesh in the camera's view, nearest first
-//   customParams.waterExclusionRows:    world to 0..1 across each volume, three rows each
-//   customParams.waterExclusionShapes:  x 0 box, 1 sphere, 2 hull; y its hull map layer
+//   customParams.waterExclusion:        x the excluders this draw tests (0..8): the ones over the
+//                                       draw's mesh in the camera's view, nearest first; y, z, w
+//                                       their rows in u_waterExclusionData, three bytes to a float
+//   u_waterExclusionData:               the frame's excluders, a row each (RGBA32F, 4 wide): world
+//                                       to 0..1 across the volume in texels 0..2, texel 3 x 0 box,
+//                                       1 sphere, 2 hull, y its hull map layer
 //   customParams.waterWakeArea:         xy world XZ of the wake map's corner, z 1 / its world size,
 //                                       w 1 while it holds a wake
 //   customParams.waterWakeParams:       x slope per unit of crest over a texel, y 1 / texels
@@ -37,17 +39,27 @@
 
 uniform texture2DArray u_waterExclusionMaps;
 uniform sampler u_waterExclusionMaps_smp;
+// @image_sample_type u_waterExclusionData unfilterable_float
+uniform texture2D u_waterExclusionData;
+// @sampler_type u_waterExclusionData_smp nonfiltering
+uniform sampler u_waterExclusionData_smp;
+
+vec4 waterExcluderTexel(int row, int texel){
+    return texelFetch(sampler2D(u_waterExclusionData, u_waterExclusionData_smp), ivec2(texel, row), 0);
+}
 
 bool waterExcluded(vec3 worldPosition){
     vec4 p = vec4(worldPosition, 1.0);
     for (int i = 0; i < WATER_EXCLUDERS_PER_DRAW; i++){
         if (float(i) >= customParams.waterExclusion.x) break;
-        vec3 q = vec3(dot(customParams.waterExclusionRows[i * 3], p), dot(customParams.waterExclusionRows[i * 3 + 1], p),
-                      dot(customParams.waterExclusionRows[i * 3 + 2], p));
+        int group = i / 3;
+        float packed = group == 0 ? customParams.waterExclusion.y : (group == 1 ? customParams.waterExclusion.z : customParams.waterExclusion.w);
+        int row = (int(packed) >> (8 * (i - group * 3))) & 255;
+        vec3 q = vec3(dot(waterExcluderTexel(row, 0), p), dot(waterExcluderTexel(row, 1), p), dot(waterExcluderTexel(row, 2), p));
         if (any(lessThan(q, vec3(0.0))) || any(greaterThan(q, vec3(1.0))))
             continue;
 
-        vec4 shape = customParams.waterExclusionShapes[i];
+        vec4 shape = waterExcluderTexel(row, 3);
         if (shape.x < 0.5)
             return true;
         if (shape.x < 1.5){

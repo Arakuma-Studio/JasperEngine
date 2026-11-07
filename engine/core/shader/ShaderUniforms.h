@@ -154,6 +154,7 @@ namespace jasperengine{
         // the Water Excluders' hull maps and the wake map (includes/water_interaction.glsl,
         // @require waterexclusion / waterwake); their values go into the custom block
         std::pair<int, int> slotWaterExclusionMaps = {-1, -1};
+        std::pair<int, int> slotWaterExclusionData = {-1, -1};
         std::pair<int, int> slotWaterWake = {-1, -1};
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
@@ -186,6 +187,7 @@ namespace jasperengine{
             slotFSPlanarReflection = -1;
             slotPlanarReflection = {-1, -1};
             slotWaterExclusionMaps = {-1, -1};
+            slotWaterExclusionData = {-1, -1};
             slotWaterWake = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
