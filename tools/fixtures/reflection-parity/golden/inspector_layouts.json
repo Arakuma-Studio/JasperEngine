@@ -7377,6 +7377,14 @@
   {
    "component": "sprite",
    "group": "",
+   "kind": "Asset",
+   "label": "Sprite Sheet",
+   "path": "sheet",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
    "kind": "UInt",
    "label": "Width",
    "path": "width",

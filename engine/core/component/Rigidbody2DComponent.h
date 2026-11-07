@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "ecs/Entity.h"
+#include "math/Rect.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
@@ -89,6 +90,12 @@ namespace jasperengine{
         // also gets this collider's contact callbacks (physics-contacts), none by default
         Entity receiver = NULL_ENTITY;
 
+        // a slice of the GameObject's sheet sprite (docs/specs/S44-aseprite-import.md R17): the
+        // collider is that slice's box on every frame (a 4-point polygon, rebuilt when the box
+        // changes; type and points stay as saved) and has no shape on frames where the slice is
+        // hidden. "" = its own shape.
+        std::string slice;
+
         // runtime, not saved
         // rebuild this collider's shapes at the next sync
         bool dirty = true;
@@ -107,6 +114,11 @@ namespace jasperengine{
         float appliedFriction = -1.0f;
         float appliedRestitution = -1.0f;
         int appliedUserMaterial = -1;
+        // the slice's box on the current frame (its shape's 4 points, never the saved `points`)
+        // and whether the slice shows there
+        bool sliceVisible = false;
+        Rect sliceBounds = Rect(0.0f, 0.0f, 0.0f, 0.0f);
+        std::vector<Vector2> slicePoints;
     };
 
     struct JASPERENGINE_API Rigidbody2DComponent{
@@ -149,6 +161,8 @@ namespace jasperengine{
         Vector2 loadedScale = Vector2::UNIT_SCALE;
 
         // Runtime state of the body sync (PhysicsSystem), not saved
+        // a collider follows a sprite slice (checked once per step only then)
+        bool hasSliceColliders = false;
         // a material set from a script for the whole body, over `material`
         std::shared_ptr<PhysicsMaterialRuntime> materialInstance;
         // the colliders' materials were resolved at this PhysicsMaterialRuntime::revision()

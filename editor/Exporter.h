@@ -28,6 +28,10 @@
 
 #include <memory>
 
+namespace jasperengine::editor::pixelart::aseprite {
+    struct ImportRecord;
+}
+
 namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
@@ -213,6 +217,9 @@ namespace jasperengine::editor {
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
         BuildReport buildReport;
+        // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
+        // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
+        std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
@@ -407,6 +414,11 @@ namespace jasperengine::editor {
         // False, with the error set, when a trusted root of the project leads elsewhere than when it
         // was pinned: the game would ship whatever is there now
         bool checkRootsPinned();
+        // S44: every .aseprite file imported (waited for on the main thread's importer); an import
+        // that fails fails the export, naming the file
+        bool gatherImportedAssets();
+        // S44: the imports' sheets, pages and clips into assets/je-imported/ and its index.json
+        bool copyImportedAssets(const fs::path& assetsDst);
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);

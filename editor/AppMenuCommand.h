@@ -149,7 +149,8 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial,
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
-        ToggleMaximizeOnPlay
+        ToggleMaximizeOnPlay,
+        ToggleSpritePreview           // Window > 2D > Sprite Preview (S44)
     };
 
 }
