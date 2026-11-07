@@ -9,6 +9,9 @@
 // in AnimationClipControllerTest.
 
 #include <gtest/gtest.h>
+#include "animation/AnimationClip.h"
+#include "animation/PropertyBindings.h"
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -95,6 +98,14 @@ TEST(ClipCurves, ComponentsAndLabels) {
     EXPECT_EQ(clipcurves::componentLabel(lattice, 4, {}), "Point 13 y");
     ClipTrackData property;
     property.channel = ClipChannel::Property;
+    property.component = "light";
+    property.property = "intensity";
+    anim::PropertyRef binding;
+    ASSERT_TRUE(anim::parsePropertyRef(property.component, property.property, binding));
+    property.known = binding.known;
+    property.width = binding.width;
+    EXPECT_EQ(clipcurves::componentCount(property), 1u);
+    property.known = false;
     EXPECT_EQ(clipcurves::componentCount(property), 0u);
 }
 

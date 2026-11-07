@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshChangeCmd.h"
+#include "component/MeshComponent.h"
 
 #include "Stream.h"
 

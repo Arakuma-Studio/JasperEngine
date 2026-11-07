@@ -7,6 +7,7 @@
 // command added from inside the hook).
 
 #include <gtest/gtest.h>
+#include "object/Model.h"
 
 #include "command/CommandHistory.h"
 

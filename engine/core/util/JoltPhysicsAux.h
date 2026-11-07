@@ -4,6 +4,7 @@
 #ifndef JoltPhysicsAux_h
 #define JoltPhysicsAux_h
 
+#include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
@@ -46,6 +47,8 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include "audio/AudioMarkers.h"
+
 #include <unordered_map>
 #include <vector>
 
@@ -456,6 +459,7 @@ namespace jasperengine{
 			copy->combinedFriction = friction;
 			copy->combinedRestitution = restitution;
 			copy->sensor = sensor;
+			copy->approachSpeed = std::max(0.0f, (velocity1 - velocity2).dotProduct(normal));
 			return copy;
 		}
 	};
@@ -603,9 +607,16 @@ namespace jasperengine{
             // a trigger pair for trigger listeners, a solid one for collision listeners
             const uint16_t wanted = settings.mIsSensor ? PhysicsCallbacks::TRIGGER_3D : PhysicsCallbacks::COLLISION_3D;
             const bool listened = ((mask1 | mask2) & wanted) != 0;
+#if JASPERENGINE_AUDIO_CAPTURE
+            // a capture marks every contact, with or without a listener
+            if (!listened && !global && !AudioMarkers::isEnabled()){
+                return;
+            }
+#else
             if (!listened && !global){
                 return;
             }
+#endif
 
             RawContact3D raw;
             raw.kind = kind;
@@ -691,6 +702,7 @@ namespace jasperengine{
                 // synchronous mode: the old in-step delivery with a live Contact3D, now on the
                 // main thread
                 std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
+                const AudioSystem::PhysicsCallbackScope audioDefers;
                 Rigidbody body1(scene, PhysicsCallbacks::bodyEntity(inBody1.GetUserData()));
                 Rigidbody body2(scene, PhysicsCallbacks::bodyEntity(inBody2.GetUserData()));
                 event(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));

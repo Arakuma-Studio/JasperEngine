@@ -117,8 +117,8 @@ TEST(AssetTypes, NoiseGraphIsSidecar) {
     EXPECT_EQ(info->base, AssetPathBase::Assets);
 }
 
-TEST(AssetTypes, NoiseGraphValueIs28) {
-    EXPECT_EQ(static_cast<int>(AssetType::NoiseGraph), 28) << "stored in assetmap.bin: it never moves";
+TEST(AssetTypes, NoiseGraphValueIs32) {
+    EXPECT_EQ(static_cast<int>(AssetType::NoiseGraph), 32) << "stored in assetmap.bin: it never moves";
     EXPECT_EQ(assetTypeFromName("noise_graph"), AssetType::NoiseGraph);
     EXPECT_STREQ(assetTypeName(AssetType::NoiseGraph), "noise_graph");
 }

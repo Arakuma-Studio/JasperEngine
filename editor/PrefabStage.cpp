@@ -8,6 +8,7 @@
 // editor/project/PREFABS.md, section 16.
 
 #include "PrefabStage.h"
+#include "component/PrefabComponent.h"
 
 #include "Project.h"
 #include "EditorHost.h"
@@ -296,6 +297,7 @@ bool editor::Project::canInstantiatePrefabIn(uint32_t sceneId, const std::filesy
 
 bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
     std::filesystem::path relative = path.is_absolute() ? normalizeToProjectRelative(path) : path.lexically_normal();
+    relative = getPrefabAssetPath(relative);
     if (relative.empty() || !Util::isPrefabFile(relative.string())) {
         Out::error("Not a prefab: %s", path.string().c_str());
         return false;
@@ -345,7 +347,9 @@ bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_
     return true;
 }
 
-bool editor::Project::pushPrefabStage(const std::filesystem::path& relative, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
+bool editor::Project::pushPrefabStage(const std::filesystem::path& named, uint32_t contextSceneId, Entity contextRoot, bool inContext) {
+    // the asset, at its path, whichever path of its file was named
+    const std::filesystem::path relative = getPrefabAssetPath(named);
     Prefab* prefab = loadPrefabAsset(relative);
     if (!prefab || !prefab->registry || prefab->root == NULL_ENTITY) {
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" could not be read.");

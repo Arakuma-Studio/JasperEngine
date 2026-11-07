@@ -3,6 +3,7 @@
 
 #include "PlayerModules.h"
 
+#include "component/AudioSourceComponent.h"
 #include "navigation/NavTypes.h"
 #include "noise/NoiseSwitch.h"
 
@@ -11,7 +12,7 @@
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "noise"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise"};
     return modules;
 }
 
@@ -33,6 +34,9 @@ std::vector<std::string> player::builtModules() {
     modules.push_back("physics2d");
 #endif
     if (nav::isNavMeshAvailable()) modules.push_back("navigation");
+#if JASPERENGINE_SOUND_LAYER
+    modules.push_back("soundlayer");
+#endif
 #if JASPERENGINE_NOISE_ENABLED
     modules.push_back("noise");
 #endif
@@ -51,6 +55,7 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "physics3d") return "3D physics";
     if (module == "physics2d") return "2D physics";
     if (module == "navigation") return "navigation meshes";
+    if (module == "soundlayer") return "Sound Events and clip import settings";
     if (module == "noise") return "the Noise and NoiseGraph API";
     return module;
 }

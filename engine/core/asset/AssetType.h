@@ -37,8 +37,11 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // 24-27 are pixel art's (programme ledger D19): the value is stored in assetmap.bin, so it never moves
-        NoiseGraph = 28             // a .noisegraph Noise Graph (T2)
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
+        // 29-31 are the terrain programme's other streams (T4-T6); NoiseGraph took 32 when upstream took 28. Stored in
+        // assetmap.bin: these never move.
+        NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -67,6 +70,7 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::SoundEvent: return "sound_event";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::Unknown: break;
         }

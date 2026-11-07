@@ -1,0 +1,74 @@
+{
+ "format": "jasperengine-semantic-vocab",
+ "version": 1,
+ "licence": "MIT",
+ "note": "Written for JasperEngine's starter library (Phase 5 spec 2.11.9): the phrases a clip may be heard as, the four templates every text goes through, and per sound type a query and 3-5 realistic confusions. Not derived from any other project's vocabulary or statistics.",
+ "templates": ["the sound of {}", "{}", "a recording of {}", "{} sound effect"],
+ "phrases": {
+  "material": [
+   "wood", "metal", "glass", "stone", "plastic", "paper", "cloth", "water", "leather", "rubber",
+   "ceramic", "concrete", "gravel", "sand", "mud", "snow", "ice", "dirt", "grass", "dry leaves",
+   "carpet", "tile floor", "cardboard", "sheet metal", "chain", "coins", "bone", "rope", "brick", "crystal",
+   "foam", "cork", "bamboo", "steel", "tin can", "wooden crate", "plastic bag", "fabric", "liquid", "flesh"
+  ],
+  "action": [
+   "wooden knock", "metal clang", "glass clink", "scrape", "slam", "creak", "footsteps on gravel",
+   "footsteps on wood", "footsteps on snow", "footsteps on grass", "footsteps on concrete", "footsteps on metal",
+   "running footsteps", "impact", "explosion", "whoosh", "swish", "rustle", "crumple", "tearing",
+   "splash", "dripping", "pouring", "bubbling", "click", "tap", "thump", "punch", "slap", "crash",
+   "shatter", "crack", "snap", "rattle", "jingle", "clatter", "rolling", "sliding", "dragging", "rubbing",
+   "squeak", "pop", "fizz", "hiss", "buzz", "hum", "beep", "ringing bell", "chime", "hammering",
+   "sawing", "chopping", "zipper", "page turning", "shuffling cards", "throwing", "dropping", "bouncing", "spinning", "rumble",
+   "gunshot", "laser shot", "sword slash", "door opening", "door closing", "lock turning", "whistling", "breathing", "coughing", "screaming"
+  ],
+  "source": [
+   "door", "coin", "button", "laser", "bird", "wind", "rain", "crowd", "engine", "voice",
+   "keyboard", "typewriter", "computer", "robot", "spaceship", "car", "motorcycle", "train", "airplane", "helicopter",
+   "gun", "sword", "arrow", "drum", "piano", "guitar", "bell", "synthesizer", "arcade machine", "monster",
+   "dog", "cat", "horse", "insects", "frog", "ocean waves", "river", "fire", "thunder", "clock",
+   "machine", "fan", "water drops", "glass bottle", "dice", "playing cards", "book", "treasure chest", "lever", "switch",
+   "alarm", "siren", "telephone", "magic spell", "power up", "heartbeat", "man speaking", "woman speaking", "children", "applause",
+   "cheering", "music", "orchestra", "forest", "city street", "cave", "kitchen", "office", "outer space", "factory"
+  ],
+  "character": [
+   "bright", "dull", "metallic", "hollow", "soft", "heavy", "ringing", "noisy", "tonal", "retro",
+   "synthetic", "electronic", "distorted", "muffled", "echoing", "reverberant", "dry", "deep", "high pitched", "low pitched",
+   "short", "long", "sharp", "smooth", "harsh", "gentle", "loud", "quiet", "rhythmic", "chiptune",
+   "glitchy", "airy", "crunchy", "wet", "cinematic", "playful", "eerie", "calm", "tense", "rising",
+   "falling", "pulsing"
+  ]
+ },
+ "types": {
+  "click": {"query": "a user interface click", "confusions": ["a clock ticking", "a finger snap", "a camera shutter", "a water drop"]},
+  "key": {"query": "a keyboard key press", "confusions": ["a mouse click", "a clock ticking", "a light switch", "a stapler"]},
+  "tick": {"query": "a short tick", "confusions": ["a keyboard key press", "a water drop", "a coin dropping", "a woodpecker"]},
+  "tap": {"query": "a light tap on a surface", "confusions": ["a footstep", "a door knock", "a water drop", "a coin dropping"]},
+  "pop": {"query": "a pop", "confusions": ["a click", "a water drop", "a kick drum", "a cough"]},
+  "thump": {"query": "a dull thump", "confusions": ["a door knock", "a heartbeat", "a kick drum", "a footstep"]},
+  "hit": {"query": "a heavy cinematic hit", "confusions": ["an explosion", "a door slam", "thunder", "a car crash"]},
+  "boom": {"query": "a deep boom", "confusions": ["thunder", "a door slam", "a car engine", "a bass drum"]},
+  "paper": {"query": "paper rustling", "confusions": ["cloth rustling", "rain", "footsteps on leaves", "a plastic bag"]},
+  "swish": {"query": "a fast swish", "confusions": ["a breath", "a broom sweeping", "a zipper", "a car passing"]},
+  "whoosh": {"query": "a whoosh passing by", "confusions": ["wind", "a car passing", "a breath", "a jet engine"]},
+  "transition": {"query": "a cinematic transition", "confusions": ["an explosion", "wind", "a car passing", "a crowd"]},
+  "riser": {"query": "a rising tension riser", "confusions": ["a siren", "a jet engine", "wind", "an alarm"]},
+  "reverse": {"query": "a reversed sound swelling up", "confusions": ["a car approaching", "wind", "a breath in", "a vacuum cleaner"]},
+  "glitch": {"query": "a digital glitch", "confusions": ["radio static", "a modem", "rain", "a broken fan"]},
+  "ui": {"query": "a user interface sound", "confusions": ["a doorbell", "a phone ringing", "a bird chirp", "a music box"]},
+  "zap": {"query": "an electric zap", "confusions": ["a bird chirp", "a whistle", "a mosquito", "a phone ringing"]},
+  "chime": {"query": "a bright chime", "confusions": ["a phone ringing", "a bird singing", "a glass breaking", "a music box"]},
+  "shimmer": {"query": "a magical shimmer", "confusions": ["rain", "a glass breaking", "a waterfall", "applause"]},
+  "footstep": {"query": "a footstep", "confusions": ["a door knock", "a heartbeat", "a ball bouncing", "a clock ticking"]},
+  "impact": {"query": "an object hitting a surface", "confusions": ["a door slam", "a footstep", "an explosion", "a gunshot"]},
+  "explosion": {"query": "an explosion", "confusions": ["thunder", "a door slam", "a gunshot", "a car crash"]},
+  "pickup": {"query": "a game item pickup", "confusions": ["a doorbell", "a bird chirp", "a phone notification", "a music box"]},
+  "jump": {"query": "a cartoon jump", "confusions": ["a bird chirp", "a car horn", "a whistle", "a laser shot"]},
+  "hurt": {"query": "a character getting hurt", "confusions": ["a door slam", "a dog barking", "a cough", "a ball bouncing"]},
+  "shoot": {"query": "a gunshot or a laser shot", "confusions": ["a door slam", "fireworks", "a hammer hit", "a whip crack"]},
+  "door": {"query": "a door opening or closing", "confusions": ["a squeaking chair", "a drawer sliding", "footsteps on wood", "a box being dropped"]},
+  "stinger": {"query": "a short musical jingle", "confusions": ["a doorbell", "a phone ringing", "a car horn", "a bird singing"]},
+  "voice": {"query": "a person speaking", "confusions": ["a dog barking", "a crowd", "music", "a bird singing"]},
+  "ambience": {"query": "an ambient background soundscape", "confusions": ["music", "an engine running", "a vacuum cleaner", "applause"]},
+  "music": {"query": "a music loop", "confusions": ["a crowd", "an engine running", "rain", "a person speaking"]}
+ }
+}

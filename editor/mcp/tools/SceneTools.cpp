@@ -804,6 +804,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"shadow_distance", SettingKind::Float, "metres of directional shadows from the camera (0: the quality tier's; a light's own overrides it)"},
         {"shadow_fade_fraction", SettingKind::Float, "last fraction of the shadow distance over which directional shadows fade out (0..1)"},
         {"shadow_cascade_blend", SettingKind::Bool, "blend (dither on Low) between shadow cascades over a band before each split"},
+        {"capsule_shadows_enabled", SettingKind::Bool,
+         "soft shadows of the main directional light from the capsules of the 4 Capsule Shadow Casters nearest the camera "
+         "(per lit pixel, up to 32 capsule tests; Capsules Only casters keep the static shadow cache valid)"},
+        {"capsule_shadow_intensity", SettingKind::Float, "how dark capsule shadows are, 0..1 (1)"},
+        {"capsule_shadow_softness", SettingKind::Float, "how fast a capsule shadow's penumbra widens per metre along the light, 0..2 (0.25)"},
         {"shadows_debug_view", SettingKind::ShadowDebugView,
          "Scene view shadow debug view (editor only, never saved, no undo step): none, cascades, shadow_factor, texel_density, cache, atlas"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
@@ -815,6 +820,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
+        {"mesh_lod_cross_fade", SettingKind::Bool, "dithered cross-fade between detail levels (fading objects draw twice for the duration; off: no fade shaders built or shipped)"},
+        {"mesh_lod_cross_fade_duration", SettingKind::Float, "seconds of a detail level cross-fade, 0.05-2 (default 0.5)"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
         {"scene_color_scale", SettingKind::SceneColorScale,
          "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},
@@ -829,7 +836,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"ssr_intensity", SettingKind::Float, "SSR intensity"},
         {"ssr_blur", SettingKind::Float, "SSR blur"},
         {"ssr_max_steps", SettingKind::Int, "SSR ray march steps"},
-        {"ssr_debug_mode", SettingKind::Int, "SSR debug view (0 off)"},
+        {"ssr_debug_mode", SettingKind::Int, "SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo, "
+         "6 environment specular, 7 reflection source, 8 occlusion"},
         {"canvas_scaler", SettingKind::CanvasScaler,
          "UI scale (Canvas Scaler) of the scene's UI and screen HTML documents: {use_project_default, mode: follow_game_canvas|"
          "constant_pixel_size|scale_with_screen_size|constant_physical_size, reference: [w,h], match_mode: "
@@ -1192,10 +1200,13 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "ssr_debug_mode" && (value.get<int>() < 0 || value.get<int>() > 8)) return expect("0 to 8");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
             if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
+            if (name == "capsule_shadow_intensity" && (value.get<float>() < 0.0f || value.get<float>() > 1.0f)) return expect("0 to 1");
+            if (name == "capsule_shadow_softness" && (value.get<float>() < 0.0f || value.get<float>() > 2.0f)) return expect("0 to 2");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");

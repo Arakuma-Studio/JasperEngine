@@ -6,6 +6,7 @@
 #include "Backtrace.h"
 // timed waits TSan can see (GCC 11 misses libstdc++'s steady-clock wait)
 #include "jobs/detail/TimedWait.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <array>
@@ -694,7 +695,9 @@ namespace je_logger {
         slot->count++;
         if (slot->count <= kValveLimit) {
             if (slot->count == 1) {
-                const size_t length = std::min(sample.size(), kValveSampleBytes);
+                size_t length = std::min(sample.size(), kValveSampleBytes);
+                // between characters, so the summary quoting it is UTF-8
+                while (length > 0 && length < sample.size() && (static_cast<unsigned char>(sample[length]) & 0xC0) == 0x80) length--;
                 std::memcpy(slot->sample, sample.data(), length);
                 slot->sample[length] = '\0';
             }
@@ -941,6 +944,15 @@ namespace je_logger {
         LoggerState& s = logState();
         ThreadState& thread = logCurrentThread();
 
+        // every sink gets UTF-8: a child's output in another code page, a cut string or, on
+        // Windows, ANSI text (StringUtils::legacyToUtf8); valid text costs one scan. A local, not
+        // the thread's buffer: the summaries this call emits come back into logSubmit.
+        std::string repaired;
+        if (!StringUtils::isValidUtf8(text)) {
+            repaired = StringUtils::legacyToUtf8(text);
+            text = repaired;
+        }
+
         if (!s.initialized.load(std::memory_order_acquire)) {
             if (s.residentCount.load(std::memory_order_acquire) > 0 && !thread.holdsQueueLock) {
                 deliverResident(s, thread, level, category, source, text, flags);
@@ -988,7 +1000,9 @@ namespace je_logger {
         std::string& large = thread.largeText;
         if (text.size() > LogRecord::MAX_TEXT_BYTES) {
             char suffix[48];
-            const size_t keep = LogRecord::MAX_TEXT_BYTES - 40;
+            size_t keep = LogRecord::MAX_TEXT_BYTES - 40;
+            // between characters, never inside one
+            while (keep > 0 && (static_cast<unsigned char>(text[keep]) & 0xC0) == 0x80) keep--;
             const int suffixLength = std::snprintf(suffix, sizeof(suffix), "\xE2\x80\xA6[truncated %llu bytes]",
                                                    static_cast<unsigned long long>(text.size() - keep));
             if (text.data() != large.data()) {

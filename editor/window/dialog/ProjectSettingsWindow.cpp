@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "window/ProjectWindow.h"
+#include "io/watch/LinkedFolders.h"
+#include "window/EditorModal.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -22,6 +25,7 @@
 #include "SettingsCategoryList.h"
 #include "asset/AssetMap.h"
 #include "window/CanvasScalerFields.h"
+#include "audio/LoudnessMonitor.h"
 #include "command/type/AudioSettingsCmd.h"
 #include "audio/AudioMixer.h"
 #include "subsystem/AudioSystem.h"
@@ -36,8 +40,13 @@
 #include "command/CommandHistory.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/DeviceSettingsCmd.h"
+#include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "model/ModelCookQueue.h"
+#include "model/ModelSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -75,6 +84,9 @@ static const int textureStrategyCount = sizeof(textureStrategyValues) / sizeof(t
 static const char* mobilePbrTierNames[] = { "Full", "Reduced" };
 static const PbrTier mobilePbrTierValues[] = { PbrTier::FULL, PbrTier::REDUCED };
 static int findMobilePbrTierIndex(PbrTier tier) { return tier == PbrTier::FULL ? 0 : 1; }
+// LightMode's order (its values are the indices)
+static const char* lightModeNames[] = { "Automatic", "Per Object", "Tiled" };
+static const int lightModeCount = sizeof(lightModeNames) / sizeof(lightModeNames[0]);
 
 static const char* windowModeNames[] = { "Windowed", "Maximized", "Fullscreen" };
 static const WindowMode windowModeValues[] = { WindowMode::WINDOWED, WindowMode::MAXIMIZED, WindowMode::FULLSCREEN };
@@ -189,6 +201,7 @@ enum class ProjectCategory {
     NativePlugins,
     Editor,
     Navigation,
+    Mesh,
     Count
 };
 
@@ -941,7 +954,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    for (int i = 0; i < 3; i++)
+        m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
+    m_modelSettings = project->getModelSettings();
     m_playerLogging = project->getPlayerLogging();
     m_playerCrash = project->getPlayerCrash();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
@@ -968,16 +984,17 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     {
         std::error_code ec;
         const fs::path assets = project->getAssetsPath();
-        for (auto it = fs::recursive_directory_iterator(assets, fs::directory_options::skip_permission_denied, ec);
-             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
+        for (watch::LinkedDirectoryIterator it(assets, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)){
             if (it->is_regular_file(ec) && it->path().extension() == ".inputactions")
-                m_inputActionsFiles.push_back(fs::relative(it->path(), project->getProjectPath(), ec));
+                m_inputActionsFiles.push_back(project->normalizeToProjectRelative(it->path()));
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
+    m_lightModeIndex = static_cast<int>(project->getLightMode());
 
     const PresentationSettings& presentation = project->getPresentationSettings();
     m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
@@ -1078,10 +1095,13 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
+    m_drawSubmission = project->getDrawSubmissionSettings();
+    m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
+    snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", m_audioSettings.musicGroup.c_str());
     m_debugSettings = project->getDebugSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
@@ -1147,7 +1167,9 @@ void ProjectSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              projectNoScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Project Settings##ProjectSettingsModal", &m_isOpen, flags);
+    // OK applies only what the page changed, over the project's settings as they are then, so an
+    // agent's concurrent set_project_settings survives it (phase 2 M4): no refusal of edits meanwhile
+    bool popupOpen = EditorModal::begin("Project Settings##ProjectSettingsModal", &m_isOpen, flags, EditorModal::Role::MergesEdits);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -1201,6 +1223,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
+        case ProjectCategory::Mesh: drawMeshSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1223,7 +1246,7 @@ void ProjectSettingsWindow::drawSettings() {
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1244,7 +1267,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     ImGui::SameLine();
     // Escape cancels a Listen of the Input page first
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
@@ -1858,10 +1881,32 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             }
         }
 
+        // automatic GPU instancing (S55)
+        if (settingsui::beginRow("graphics.gpu_instancing")) {
+            const DrawSubmissionSettings defaults;
+            if (projectBeginSettingsRow("GPU Instancing", m_drawSubmission.gpuInstancing != defaults.gpuInstancing)) {
+                m_drawSubmission.gpuInstancing = defaults.gpuInstancing;
+            }
+            ImGui::Checkbox("##GpuInstancing", &m_drawSubmission.gpuInstancing);
+            endSettingsRow("Draws opaque Meshes of the same mesh, material and shader as one instanced draw (the image stays "
+                           "the same), applies constant uniforms once and sorts each pass's draws by state: fewer draw calls, "
+                           "the largest CPU cost on WebGL2 and mobile. A Mesh opts out with Allow GPU Instancing. Off draws "
+                           "every Mesh alone.");
+        }
+
         if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
             drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
                 "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
                 "of the built-in Lit's extended lobes (fewer and lighter shader variants). Desktop exports and the editor draw everything.");
+        }
+
+        if (settingsui::beginRow("graphics.light_mode")) {
+            drawComboSetting("Light Mode", "##LightMode", lightModeNames, lightModeCount, m_lightModeIndex, static_cast<int>(Project::defaultLightMode),
+                "How lit meshes find their point and spot lights:\n"
+                "- Tiled lights every point and spot light per pixel from screen tiles (Forward+, up to 32 a tile; a per-frame CPU job "
+                "and one data texture)\n"
+                "- Per Object caps each object's lights at Max Lights Per Object (the rest fold into its ambient)\n"
+                "- Automatic is Tiled on Medium tiers and above, Per Object on Low");
         }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
@@ -1884,6 +1929,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         }
 
         drawShaderCreationSettings();
+
+        drawUploadBudgetSettings();
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
@@ -1983,7 +2030,392 @@ void ProjectSettingsWindow::drawQualitySettings() {
             if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
+
+        // the scale of every terrain foliage layer's draw distances (Unity's
+        // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
+        static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
+        static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
+        static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+        static const char* const foliageTooltip =
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(foliageKeys[i])) continue;
+            if (projectBeginSettingsRow(foliageRows[i], m_foliageDistanceScale[i] != Project::defaultFoliageDistanceScale[i]))
+                m_foliageDistanceScale[i] = Project::defaultFoliageDistanceScale[i];
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragFloat(foliageIds[i], &m_foliageDistanceScale[i], 0.01f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            endSettingsRow(foliageTooltip);
+        }
+        // the render budgets check_render_budgets holds a scene to (S53 R25): 0 is no limit
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            RenderBudget& budget = m_modelSettings.renderBudgets[f];
+            const std::string family = modelFamilyLabel((ModelFamily)f);
+            const std::string key = std::string("quality.render_budgets.") + modelFamilyName((ModelFamily)f);
+            if (settingsui::beginRow((key + ".triangles").c_str())) {
+                if (projectBeginSettingsRow(("Triangle Budget (" + family + ")").c_str(), budget.triangles != 0)) budget.triangles = 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputScalar(("##BudgetTriangles" + family).c_str(), ImGuiDataType_S64, &budget.triangles);
+                budget.triangles = std::max<long long>(0, budget.triangles);
+                endSettingsRow("Triangles a scene may draw at LOD 0 with every object in view; 0 is no limit (check_render_budgets).");
+            }
+            if (settingsui::beginRow((key + ".draw_calls").c_str())) {
+                if (projectBeginSettingsRow(("Draw Call Budget (" + family + ")").c_str(), budget.drawCalls != 0)) budget.drawCalls = 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputScalar(("##BudgetDraws" + family).c_str(), ImGuiDataType_S64, &budget.drawCalls);
+                budget.drawCalls = std::max<long long>(0, budget.drawCalls);
+                endSettingsRow("Draw calls (one per submesh) a scene may make; 0 is no limit.");
+            }
+            if (settingsui::beginRow((key + ".mesh_memory_mb").c_str())) {
+                if (projectBeginSettingsRow(("Mesh Memory Budget MB (" + family + ")").c_str(), budget.meshMemoryMB != 0.0)) budget.meshMemoryMB = 0.0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble(("##BudgetMemory" + family).c_str(), &budget.meshMemoryMB, 1.0, 16.0, "%.1f");
+                budget.meshMemoryMB = std::max(0.0, budget.meshMemoryMB);
+                endSettingsRow("MB of vertex and index data the scene's cooked models hold on the GPU; 0 is no limit.");
+            }
+            if (settingsui::beginRow((key + ".download_mb").c_str())) {
+                if (projectBeginSettingsRow(("Download Budget MB (" + family + ")").c_str(), budget.downloadMB != 0.0)) budget.downloadMB = 0.0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble(("##BudgetDownload" + family).c_str(), &budget.downloadMB, 1.0, 16.0, "%.1f");
+                budget.downloadMB = std::max(0.0, budget.downloadMB);
+                endSettingsRow("MB of cooked model files the scene downloads; 0 is no limit.");
+            }
+        }
+        drawDeviceTierSettings();
     });
+}
+
+void ProjectSettingsWindow::drawMeshSettings() {
+    projectDrawSettingsPanel("##MeshSettingsPanel", [this]() {
+        ModelProjectSettings& m = m_modelSettings;
+        // each platform's defaults for every model that does not set a value of its own
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            ModelSettingValues& d = m.defaults[f];
+            const ModelFamily family = (ModelFamily)f;
+            const std::string label = modelFamilyLabel(family);
+            const std::string key = std::string("mesh.defaults.") + modelFamilyName(family) + ".";
+            // a combo whose first item is the built-in default (no value stored)
+            auto optionCombo = [&](const char* row, const char* snake, const std::vector<std::string>& names, int current, const char* tooltip) {
+                if (!settingsui::beginRow((key + snake).c_str())) return current;
+                std::vector<const char*> labels;
+                for (const std::string& name : names) labels.push_back(name.c_str());
+                int index = current + 1;
+                const std::string rowLabel = std::string(row) + " (" + label + ")";
+                drawComboSetting(rowLabel.c_str(), ("##Mesh" + label + snake).c_str(), labels.data(), (int)labels.size(), index, 0, tooltip);
+                return index - 1;
+            };
+            {
+                std::vector<std::string> names = {"Built-in (Everything)"};
+                for (OptimizeMesh o : {OptimizeMesh::Everything, OptimizeMesh::PolygonOrder, OptimizeMesh::VertexOrder, OptimizeMesh::Nothing}) names.push_back(optimizeMeshLabel(o));
+                const int value = optionCombo("Optimize Mesh", "optimize_mesh", names, d.optimizeMesh ? (int)*d.optimizeMesh : -1,
+                                              "The vertex cache, overdraw and fetch orders and the welding of exact duplicates.");
+                d.optimizeMesh = value < 0 ? std::optional<OptimizeMesh>() : std::optional<OptimizeMesh>((OptimizeMesh)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Lossless)"};
+                for (MeshCompression c : {MeshCompression::Off, MeshCompression::Lossless, MeshCompression::Low, MeshCompression::Medium, MeshCompression::High})
+                    names.push_back(meshCompressionLabel(c));
+                const int value = optionCombo("Mesh Compression", "mesh_compression", names, d.meshCompression ? (int)*d.meshCompression : -1,
+                                              "Lossless stores the same values in less space; Low, Medium and High store fewer bits (smaller, a little error).");
+                d.meshCompression = value < 0 ? std::optional<MeshCompression>() : std::optional<MeshCompression>((MeshCompression)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Automatic)", "Automatic", "On", "Off"};
+                const int value = optionCombo("Generate LODs", "generate_lods", names, d.generateLods ? (int)*d.generateLods : -1,
+                                              "Automatic bakes the levels the runtime would build; On bakes LOD Count levels of Reduction; Off bakes none.");
+                d.generateLods = value < 0 ? std::optional<GenerateLods>() : std::optional<GenerateLods>((GenerateLods)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (3)", "1", "2", "3"};
+                const int value = optionCombo("LOD Count", "lod_count", names, d.lodCount ? *d.lodCount - 1 : -1, "Levels after LOD 0 when Generate LODs is On.");
+                d.lodCount = value < 0 ? std::optional<int>() : std::optional<int>(value + 1);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Balanced)"};
+                for (LodReduction r : {LodReduction::PreserveDetail, LodReduction::Balanced, LodReduction::Smallest}) names.push_back(lodReductionLabel(r));
+                const int value = optionCombo("Reduction", "lod_reduction", names, d.lodReduction ? (int)*d.lodReduction : -1,
+                                              "How much each level keeps: Preserve Detail 60%, Balanced 50%, Smallest 35%.");
+                d.lodReduction = value < 0 ? std::optional<LodReduction>() : std::optional<LodReduction>((LodReduction)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Auto)"};
+                for (IndexFormat i : {IndexFormat::Auto, IndexFormat::Bits16, IndexFormat::Bits32}) names.push_back(indexFormatLabel(i));
+                const int value = optionCombo("Index Format", "index_format", names, d.indexFormat ? (int)*d.indexFormat : -1,
+                                              "Auto takes 16 bits when a mesh's vertices fit.");
+                d.indexFormat = value < 0 ? std::optional<IndexFormat>() : std::optional<IndexFormat>((IndexFormat)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Automatic)", "Automatic", "On"};
+                const int value = optionCombo("Read/Write", "read_write", names, d.readWrite ? (int)*d.readWrite : -1,
+                                              "Automatic keeps the CPU copy only when something at runtime reads it (colliders, navigation, scripts...).");
+                d.readWrite = value < 0 ? std::optional<ModelReadWrite>() : std::optional<ModelReadWrite>((ModelReadWrite)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (On)", "Off", "On"};
+                const int value = optionCombo("Weld Vertices", "weld_vertices", names, d.weldVertices ? (*d.weldVertices ? 1 : 0) : -1,
+                                              "Merges exact duplicate vertices (Optimize Mesh Everything).");
+                d.weldVertices = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate"};
+                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1, "Calculate makes area-weighted normals, creased at the Smoothing Angle.");
+                d.normals = value < 0 ? std::optional<ModelNormals>() : std::optional<ModelNormals>((ModelNormals)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Off)", "Off", "On"};
+                const int value = optionCombo("Ship Source Files", "ship_source", names, d.shipSource ? (*d.shipSource ? 1 : 0) : -1,
+                                              "Exports keep the source model next to its cook (code that reads the file itself).");
+                d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
+            }
+        }
+        if (settingsui::beginRow("mesh.keep_cpu_data_for_scripts")) {
+            static const char* const scriptLabels[] = {"Automatic", "Keep", "Release"};
+            int value = (int)m.scriptMeshData;
+            drawComboSetting("Keep CPU Data for Scripts", "##MeshScripts", scriptLabels, 3, value, 0,
+                             "Automatic: models keep their CPU mesh data when a script calls a mesh-reading API (createMeshCollider, "
+                             "createConvexHullCollider, a navigation bake). Keep: always. Release: scripts never count.");
+            m.scriptMeshData = (ScriptMeshData)value;
+        }
+        if (settingsui::beginRow("mesh.cache_size_mb")) {
+            const ModelProjectSettings defaults;
+            if (projectBeginSettingsRow("Cache Size", m.cacheSizeMB != defaults.cacheSizeMB)) m.cacheSizeMB = defaults.cacheSizeMB;
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputInt("##MeshCacheSize", &m.cacheSizeMB, 256, 1024);
+            m.cacheSizeMB = std::clamp(m.cacheSizeMB, 64, 1 << 20);
+            endSettingsRow("MB the cooked model cache keeps (least recently used files go first).");
+        }
+        if (!settingsui::beginRow("mesh.clear_cache")) return;
+        projectBeginSettingsRow("Mesh Cache");
+        ModelCookQueue& cooks = ModelCookQueue::get();
+        const bool attached = cooks.getProject() == m_project;
+        ImGui::BeginDisabled(!attached);
+        if (ImGui::Button("Clear Mesh Cache")) {
+            cooks.cancelAll();
+            cooks.getCache().clear();
+            cooks.invalidateAll();
+        }
+        ImGui::EndDisabled();
+        if (attached) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", TextureCookReport::formatBytes(cooks.getCache().totalBytes()).c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Open Mesh Optimization Audit")) editor::getEditorHost().openMeshAudit();
+    });
+}
+
+namespace {
+
+    // the value a cell starts from when a person overrides an inherited one
+    float suggestedDeviceOverride(DeviceOverride field) {
+        switch (field) {
+            case DeviceOverride::RenderScale: return 0.75f;
+            case DeviceOverride::MsaaSamples: return 1.0f;
+            case DeviceOverride::ShadowQuality: return 0.0f;
+            case DeviceOverride::ShadowDistance: return 50.0f;
+            case DeviceOverride::LodBias: return 0.75f;
+            case DeviceOverride::ShadowLodBias: return 0.75f;
+            case DeviceOverride::LitQuality: return 0.0f;
+            case DeviceOverride::TextureQuality: return 1.0f;
+            case DeviceOverride::TargetFrameRate: return 30.0f;
+            case DeviceOverride::MaxPixelLights: return 4.0f;
+            case DeviceOverride::ParticleBudget: return 16384.0f;
+            default: return 0.0f;
+        }
+    }
+
+    // One cell of the Device Tiers table: "-" inherits (click to override), else its widget;
+    // right-click inherits again
+    void drawDeviceTierCell(DeviceOverride field, std::optional<float>& cell) {
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (!cell) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            if (ImGui::Selectable("-##Inherit")) cell = suggestedDeviceOverride(field);
+            ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("Inherits the project's (or the scene's) value. Click to override it on this tier.");
+            return;
+        }
+        float value = *cell;
+        switch (field) {
+            case DeviceOverride::RenderScale:
+                ImGui::SliderFloat("##Cell", &value, 0.5f, 1.0f, "%.2f");
+                break;
+            case DeviceOverride::ShadowDistance:
+                ImGui::DragFloat("##Cell", &value, 1.0f, info.min, info.max, "%.0f m");
+                break;
+            case DeviceOverride::LodBias:
+            case DeviceOverride::ShadowLodBias:
+                ImGui::DragFloat("##Cell", &value, 0.01f, info.min, info.max, "%.2f");
+                break;
+            case DeviceOverride::MsaaSamples: {
+                static const char* const samples[] = {"Off", "2x", "4x"};
+                int index = value >= 4.0f ? 2 : (value >= 2.0f ? 1 : 0);
+                if (ImGui::Combo("##Cell", &index, samples, 3)) value = index == 2 ? 4.0f : (index == 1 ? 2.0f : 1.0f);
+                break;
+            }
+            case DeviceOverride::TextureQuality: {
+                static const char* const mips[] = {"Full (0)", "Half (1)", "Quarter (2)", "Eighth (3)"};
+                int index = std::clamp((int)value, 0, 3);
+                if (ImGui::Combo("##Cell", &index, mips, 4)) value = (float)index;
+                break;
+            }
+            case DeviceOverride::ShadowQuality:
+            case DeviceOverride::LitQuality: {
+                int index = std::clamp((int)value, 0, info.nameCount - 1);
+                if (ImGui::Combo("##Cell", &index, info.names, info.nameCount)) value = (float)index;
+                break;
+            }
+            case DeviceOverride::Bloom:
+            case DeviceOverride::SSAO:
+            case DeviceOverride::Volumetrics:
+                ImGui::Selectable("Off##Cell");
+                break;
+            default: {
+                int number = (int)value;
+                if (ImGui::InputInt("##Cell", &number, 0, 0)) value = (float)std::clamp(number, (int)info.min, (int)info.max);
+                break;
+            }
+        }
+        if (ImGui::BeginPopupContextItem("##CellMenu")) {
+            if (ImGui::MenuItem("Inherit")) cell.reset();
+            ImGui::EndPopup();
+        }
+        if (cell) {
+            cell = value;
+            ImGui::SetItemTooltip("%s Right-click: Inherit.", info.tooltip);
+        }
+    }
+
+}
+
+void ProjectSettingsWindow::drawDeviceTierSettings() {
+    const DeviceSettings defaults;
+    DeviceSettings& d = m_deviceSettings;
+
+    if (settingsui::beginRow("quality.lod_bias")) {
+        if (projectBeginSettingsRow("LOD Bias", d.lodBias != defaults.lodBias)) d.lodBias = defaults.lodBias;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##QualityLodBias", &d.lodBias, 0.01f, 0.05f, 8.0f, "%.2f");
+        d.lodBias = std::clamp(d.lodBias, 0.05f, 8.0f);
+        endSettingsRow("Multiplies every mesh's LOD Bias: below 1 switches to coarser LODs nearer (Unity's QualitySettings.lodBias). "
+                       "A Device Tier's LOD Bias multiplies it again.");
+    }
+    if (settingsui::beginRow("quality.shadow_lod_bias")) {
+        if (projectBeginSettingsRow("Shadow LOD Bias", d.shadowLodBias != defaults.shadowLodBias)) d.shadowLodBias = defaults.shadowLodBias;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##QualityShadowLodBias", &d.shadowLodBias, 0.01f, 0.05f, 8.0f, "%.2f");
+        d.shadowLodBias = std::clamp(d.shadowLodBias, 0.05f, 8.0f);
+        endSettingsRow("Multiplies the LOD bias of what shadow maps draw.");
+    }
+
+    if (settingsui::sectionVisible("Thermal Response")) {
+        ImGui::SeparatorText("Thermal Response");
+        for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+            const DevicePlatformGroup group = (DevicePlatformGroup)g;
+            const std::string key = std::string("quality.thermal_response.") + DeviceNames::group(group);
+            if (!settingsui::beginRow(key.c_str())) continue;
+            const std::string label = std::string("Thermal Response (") + DeviceNames::groupLabel(group) + ")";
+            if (projectBeginSettingsRow(label.c_str(), d.thermalResponse[g] != defaults.thermalResponse[g]))
+                d.thermalResponse[g] = defaults.thermalResponse[g];
+            bool on = d.thermalResponse[g];
+            ImGui::Checkbox(("##ThermalResponse" + std::to_string(g)).c_str(), &on);
+            d.thermalResponse[g] = on;
+            endSettingsRow("When the device reports a Serious thermal state the render scale drops by 20% and the frame rate is "
+                           "capped at 30; at Critical the tier below's shadows and post-processing apply too. It recovers 30 s "
+                           "after the device cools down. Android and iOS report thermal states, macOS too; Windows, Linux and "
+                           "the web stay Nominal.");
+        }
+    }
+
+    if (!settingsui::sectionVisible("Device Tiers")) return;
+    ImGui::SeparatorText("Device Tiers");
+    const int g = std::clamp(m_deviceTierGroup, 0, DEVICE_PLATFORM_GROUP_COUNT - 1);
+    const DevicePlatformGroup group = (DevicePlatformGroup)g;
+    std::string keys[DEVICE_TIER_COUNT];
+    for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+        keys[t] = std::string("quality.device_tiers.") + DeviceNames::group(group) + "." + DeviceNames::tier((DeviceTier)t);
+    auto beginTierRow = [&keys]() { return settingsui::beginRow({keys[0].c_str(), keys[1].c_str(), keys[2].c_str(), keys[3].c_str()}); };
+
+    // the platform group the table edits, and what this machine detects
+    if (beginTierRow()) {
+        bool groupChanged = false;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            groupChanged = groupChanged || d.tiers[g][t] != defaults.tiers[g][t];
+        if (projectBeginSettingsRow("Platform", groupChanged, "Restore this platform's default tiers"))
+            d.tiers[g] = defaults.tiers[g];
+        static const char* const groupLabels[] = {"Desktop", "Mobile", "Web"};
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::Combo("##DeviceTierGroup", &m_deviceTierGroup, groupLabels, DEVICE_PLATFORM_GROUP_COUNT);
+        const DeviceDetection& detection = Device::getDetection();
+        if (detection.detected) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("This machine: %s", DeviceNames::tierLabel(detection.tier));
+            ImGui::SetItemTooltip("%s", detection.reason.c_str());
+        }
+        endSettingsRow("Each tier caps the project's (and the scene's) values on the devices that get it: a tier never raises "
+                       "quality. Players pick the tier from the GPU (docs/device-tiers.md); --device-tier and Device.setTier "
+                       "choose one, and the Game view's Device menu simulates one in Play. An empty cell (-) inherits.");
+    }
+
+    // a header of the tiers, then one row per setting
+    auto tierTable = [](const char* id) {
+        return ImGui::BeginTable(id, DEVICE_TIER_COUNT, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX);
+    };
+    if (beginTierRow()) {
+        projectBeginSettingsRow("");
+        if (tierTable("##DeviceTierHeader")) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(DeviceNames::tierLabel((DeviceTier)t));
+            }
+            ImGui::EndTable();
+        }
+    }
+    for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) {
+        const DeviceOverride field = (DeviceOverride)f;
+        if (!beginTierRow()) continue;
+        bool changed = false;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            changed = changed || d.tiers[g][t].get(field) != defaults.tiers[g][t].get(field);
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        if (projectBeginSettingsRow(info.label, changed)) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+                d.tiers[g][t].set(field, defaults.tiers[g][t].get(field));
+        }
+        ImGui::PushID(f);
+        if (tierTable("##DeviceTierRow")) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+                ImGui::TableNextColumn();
+                ImGui::PushID(t);
+                std::optional<float> cell = d.tiers[g][t].get(field);
+                drawDeviceTierCell(field, cell);
+                d.tiers[g][t].set(field, cell);
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+    }
+}
+
+void ProjectSettingsWindow::drawUploadBudgetSettings() {
+    if (!settingsui::sectionVisible("Upload Budget")) return;
+    ImGui::SeparatorText("Upload Budget");
+    const DeviceSettings defaults;
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+        const DevicePlatformGroup group = (DevicePlatformGroup)g;
+        const std::string key = std::string("graphics.upload_budget_mb.") + DeviceNames::group(group);
+        if (!settingsui::beginRow(key.c_str())) continue;
+        const std::string label = std::string("Upload Budget MB (") + DeviceNames::groupLabel(group) + ")";
+        int& mb = m_deviceSettings.uploadBudgetMB[g];
+        if (projectBeginSettingsRow(label.c_str(), mb != defaults.uploadBudgetMB[g])) mb = defaults.uploadBudgetMB[g];
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputInt(("##UploadBudget" + std::to_string(g)).c_str(), &mb, 1, 8);
+        mb = std::clamp(mb, DeviceSettings::MIN_UPLOAD_BUDGET_MB, DeviceSettings::MAX_UPLOAD_BUDGET_MB);
+        endSettingsRow("Megabytes of texture and buffer data a frame uploads at most from loading threads; the rest waits for the "
+                       "next frames, so streaming does not hitch. A single larger upload goes alone in its frame.");
+    }
 }
 
 void ProjectSettingsWindow::drawTextureSettings() {
@@ -2203,6 +2635,32 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 endSettingsRow("The mixer group new Audio Sources play through.");
             }
 
+            if (settingsui::beginRow("audio.music_group")) {
+                if (projectBeginSettingsRow("Music Group", m_audioMusicGroupBuffer[0] != '\0')) {
+                    m_audioMusicGroupBuffer[0] = '\0';
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::vector<std::string> groups = AudioMixer::getGroupNames();
+                if (ImGui::BeginCombo("##AudioMusicGroup", m_audioMusicGroupBuffer[0] ? m_audioMusicGroupBuffer : (groups.empty() ? "Master" : groups[0].c_str()))) {
+                    for (size_t i = 0; i < groups.size(); i++) {
+                        const char* value = i == 0 ? "" : groups[i].c_str();
+                        if (ImGui::Selectable(groups[i].c_str(), strcmp(value, m_audioMusicGroupBuffer) == 0)) {
+                            snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", value);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The mixer group music plays through when neither Audio.playMusic nor its Sound Event names one.");
+            }
+
+            if (settingsui::beginRow("audio.credits_file")) {
+                if (projectBeginSettingsRow("Audio Credits File", audio.creditsFile != defaults.creditsFile)) {
+                    audio.creditsFile = defaults.creditsFile;
+                }
+                ImGui::Checkbox("##AudioCreditsFile", &audio.creditsFile);
+                endSettingsRow("Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.");
+            }
+
             if (settingsui::beginRow("audio.max_real_voices")) {
                 if (projectBeginSettingsRow("Max Real Voices", audio.maxRealVoices != defaults.maxRealVoices)) {
                     audio.maxRealVoices = defaults.maxRealVoices;
@@ -2227,6 +2685,76 @@ void ProjectSettingsWindow::drawAudioSettings() {
                                "is stopped, or the new one does not start when it is the least important.");
             }
 
+            if (settingsui::beginRow("audio.seed")) {
+                if (projectBeginSettingsRow("Random Seed", audio.seed != defaults.seed)) {
+                    audio.seed = defaults.seed;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioSeed", &audio.seed, 1.0f, 0, 2147483647);
+                audio.seed = std::max(audio.seed, 0);
+                endSettingsRow("The seed of Sound Event picks and clip variation in a run without a device, so it repeats. "
+                               "A run with a device draws its own at each start.");
+            }
+
+            for (const AudioQaField& field : audioQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? audio.qa.*field.real != defaults.qa.*field.real : audio.qa.*field.whole != defaults.qa.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) audio.qa.*field.real = defaults.qa.*field.real;
+                    else audio.qa.*field.whole = defaults.qa.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(audio.qa.*field.real), 0.1f, (float)field.minimum, (float)field.maximum);
+                    audio.qa.*field.real = std::clamp(audio.qa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(audio.qa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    audio.qa.*field.whole = std::clamp(audio.qa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix audio; checks report changed thresholds.").c_str());
+            }
+
+            if (settingsui::beginRow("audio.qa.music_group")) {
+                if (projectBeginSettingsRow("Music Group", audio.qa.musicGroup != defaults.qa.musicGroup)) {
+                    audio.qa.musicGroup = defaults.qa.musicGroup;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                char musicGroup[128];
+                std::snprintf(musicGroup, sizeof(musicGroup), "%s", audio.qa.musicGroup.c_str());
+                if (ImGui::InputText("##AudioMusicGroup", musicGroup, sizeof(musicGroup))) audio.qa.musicGroup = musicGroup;
+                endSettingsRow("The mixer group of the game's music, for the silence check. Changing these does not fix audio; checks report changed thresholds.");
+            }
+
+            if (settingsui::beginRow("audio.capture_max_seconds")) {
+                if (projectBeginSettingsRow("Capture Max Seconds", audio.captureMaxSeconds != defaults.captureMaxSeconds)) {
+                    audio.captureMaxSeconds = defaults.captureMaxSeconds;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureMax", &audio.captureMaxSeconds, 1.0f, 1, 3600);
+                audio.captureMaxSeconds = std::clamp(audio.captureMaxSeconds, 1, 3600);
+                endSettingsRow("Seconds of audio a Play's capture keeps; its events go on being logged after them.");
+            }
+
+            if (settingsui::beginRow("audio.capture_keep")) {
+                if (projectBeginSettingsRow("Capture Keep", audio.captureKeep != defaults.captureKeep)) {
+                    audio.captureKeep = defaults.captureKeep;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureKeep", &audio.captureKeep, 1.0f, 1, 20);
+                audio.captureKeep = std::clamp(audio.captureKeep, 1, 20);
+                endSettingsRow("Capture sessions kept in the project; the oldest goes first.");
+            }
+
+            if (settingsui::beginRow("audio.capture_stems")) {
+                if (projectBeginSettingsRow("Capture Stems", audio.captureStems != defaults.captureStems)) {
+                    audio.captureStems = defaults.captureStems;
+                }
+                ImGui::Checkbox("##AudioCaptureStems", &audio.captureStems);
+                endSettingsRow("A capture also writes each mixer group's audio to its own WAV file.");
+            }
+
             if (settingsui::beginRow("audio.sample_rate")) {
                 if (projectBeginSettingsRow("Sample Rate", audio.sampleRate != defaults.sampleRate)) {
                     audio.sampleRate = defaults.sampleRate;
@@ -2240,12 +2768,58 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 endSettingsRow("The output's sample rate. It applies the next time the audio opens (exports: at start).");
             }
 
+            const float loudnessHelpWidth = -helpMarkerWidth();
+            auto measurement = [&](const char* key, const char* label, const char* id, float& value, float reset, float minimum, float maximum,
+                                   const char* format, const char* help) {
+                if (!settingsui::beginRow(key)) return;
+                if (projectBeginSettingsRow(label, value != reset)) value = reset;
+                ImGui::SetNextItemWidth(loudnessHelpWidth);
+                ImGui::DragFloat(id, &value, 0.1f, minimum, maximum, format);
+                value = std::clamp(value, minimum, maximum);
+                endSettingsRow(help);
+            };
+            measurement("audio.loudness_target_lufs", "Loudness Target", "##AudioLoudnessTarget", audio.loudnessTargetLufs, defaults.loudnessTargetLufs,
+                        -40.0f, -6.0f, "%.1f LUFS", "Measurement only: changing the target changes no sound. The Audio Mixer and the agents read against it.");
+            measurement("audio.loudness_tolerance_lu", "Loudness Tolerance", "##AudioLoudnessTolerance", audio.loudnessToleranceLu, defaults.loudnessToleranceLu,
+                        0.5f, 10.0f, "%.1f LU", "Measurement only: how far from the target still passes.");
+            measurement("audio.true_peak_ceiling_dbtp", "True Peak Ceiling", "##AudioTruePeakCeiling", audio.truePeakCeilingDbtp, defaults.truePeakCeilingDbtp,
+                        -12.0f, 0.0f, "%.1f dBTP", "Measurement only: a limiter's Threshold on the Master is what holds it.");
+
+            if (settingsui::beginRow("audio.output_stage")) {
+                if (projectBeginSettingsRow("Output Stage", audio.outputStage != defaults.outputStage)) audio.outputStage = defaults.outputStage;
+                int stage = audio.outputStage == "linear" ? 1 : 0;
+                static const char* stageNames[] = {"Round-off (soft clip, -1.66 dB)", "Linear (hard clip at 0 dBFS)"};
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##AudioOutputStage", &stage, stageNames, 2)) audio.outputStage = stage == 1 ? "linear" : "roundoff";
+                endSettingsRow("What the output does to the mix. Linear lets a Master limiter's ceiling hold at the device; "
+                               "without a limiter it clips when Master goes over 0 dBFS.");
+            }
+
+            if (settingsui::beginRow("audio.ios_session_category")) {
+                if (projectBeginSettingsRow("iOS Audio Session", audio.iosSessionCategory != defaults.iosSessionCategory)) audio.iosSessionCategory = defaults.iosSessionCategory;
+                static const char* sessionValues[] = {"default", "ambient", "solo_ambient", "playback"};
+                static const char* sessionNames[] = {"Default (miniaudio's)", "Ambient", "Solo Ambient", "Playback"};
+                int session = 0;
+                for (int i = 0; i < 4; i++) if (audio.iosSessionCategory == sessionValues[i]) session = i;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##AudioIosSession", &session, sessionNames, 4)) audio.iosSessionCategory = sessionValues[session];
+                endSettingsRow("iOS only. Ambient respects the silent switch and mixes with the player's music. "
+                               "Default ignores the switch and interrupts the music.");
+            }
+
             ImGui::EndTable();
         }
 
         ImGui::Spacing();
         if (ImGui::Button(ICON_FA_SLIDERS " Open Audio Mixer")) {
             editor::getEditorHost().openAudioMixerWindow(m_audioMixerBuffer[0] ? m_project->resolveAssetPath(FileUtils::pathFromUtf8(m_audioMixerBuffer)) : fs::path());
+        }
+        if (m_project && m_project->isAnyScenePlaying()) {
+            LoudnessMonitor::get().markVisible();
+            const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();
+            if (reading.momentary) {
+                ImGui::Text("Master: %.1f LUFS (target %.1f)", *reading.momentary, m_audioSettings.loudnessTargetLufs);
+            }
         }
         ImGui::SameLine();
         ImGui::TextDisabled("%s", AudioSystem::isInited() ? (std::string("Output: ") + (AudioSystem::isOutputAvailable() ? AudioSystem::getBackendName() : "none (" + AudioSystem::getBackendName() + ")")).c_str() : "");
@@ -2742,7 +3316,8 @@ void ProjectSettingsWindow::drawEditorSettings() {
             ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
             endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
                 "working directory, this machine's build settings and each developer's own layout stay out "
-                "of the repository. A file the editor did not generate is never replaced.");
+                "of the repository. A file the editor did not generate is never replaced, and the lines you "
+                "add below the editor's block are kept.");
         }
         // S29: the project's version control (project.yaml versionControl)
         const VcsProjectSettings vcsDefaults;
@@ -4339,6 +4914,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setPlayerCrash(m_playerCrash);
@@ -4390,6 +4966,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
+    m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));
 
     // The project already carries the values applied above
     const std::string inheritedName = m_project->getApplicationName();
@@ -4530,7 +5107,20 @@ bool ProjectSettingsWindow::applySettings() {
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
     }
+    // undoable: the editor's scenes draw with them at once
+    if (m_drawSubmission != m_project->getDrawSubmissionSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new DrawSubmissionSettingsCmd(m_project, m_drawSubmission));
+    }
+    // undoable: the Device Tier table and the rest (the Game view simulates a tier with it)
+    if (m_deviceSettings != m_project->getDeviceSettings()) {
+        auto* command = new DeviceSettingsCmd(m_project, m_deviceSettings);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
     // undoable: every scene's crowds and grids read them at their next fixed tick
+    if (m_modelSettings != m_project->getModelSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new ModelSettingsCmd(m_project, m_modelSettings));
+    }
     if (m_navigation != m_project->getNavigationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new NavigationSettingsCmd(m_project, m_navigation));
     }
@@ -4568,6 +5158,7 @@ bool ProjectSettingsWindow::applySettings() {
             audio.mixer = audio.mixer.substr(7);
         }
         audio.defaultOutputGroup = m_audioDefaultGroupBuffer;
+        audio.musicGroup = m_audioMusicGroupBuffer;
         if (audio != m_project->getAudioSettings()) {
             auto* command = new AudioSettingsCmd(m_project, m_project->getAudioSettings(), audio);
             command->setNoMerge();

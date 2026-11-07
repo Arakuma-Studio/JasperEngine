@@ -31,7 +31,17 @@ out vec3 v_normal;          // view space
     in vec4 i_matrix_col4;
 #endif
 
-#if defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE)
+// the distance fade, as the colour and depth passes shrink the instance (a faded one must not
+// reflect nor stop SSR's rays)
+#ifdef USE_INSTANCE_FADE
+    #include "includes/instance_fade.glsl"
+#endif
+
+#if defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE) || defined(HAS_OCCLUSION_TEXTURE)
+    #define GBUFFER_UV
+#endif
+
+#ifdef GBUFFER_UV
     // Terrain carries no texcoord vertex attribute (its UVs are generated from the
     // world position in-shader, like mesh.vert). Declaring a_texcoord1 for terrain
     // would leave that attribute slot unbound, making the pipeline's vertex layout
@@ -40,6 +50,11 @@ out vec3 v_normal;          // view space
         in vec2 a_texcoord1;
     #endif
     out vec2 v_uv1;
+    // the second UV set, which the material's maps may be read on (never a terrain's)
+    #ifdef HAS_UV_SET2
+        in vec2 a_texcoord2;
+        out vec2 v_uv2;
+    #endif
 #endif
 
 // a lattice's vertex colour mask (includes/lattice.glsl)
@@ -107,9 +122,12 @@ void main() {
         vec4 objPos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
         latticeNormal = normalize(getSkinNormal(latticeNormal, boneTransform));
         #ifdef HAS_INSTANCING
-            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             vec4 pos = instanceMatrix * objPos;
             latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
+            #ifdef USE_INSTANCE_FADE
+                pos.xyz = mix(i_matrix_col4.xyz, pos.xyz, instanceFadeVisible(i_matrix_col4.xyz));
+            #endif
         #else
             vec4 pos = objPos;
         #endif
@@ -120,8 +138,11 @@ void main() {
     vec3 objNormal = getNormalObj(boneTransform, objPos);
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * objPos;
+        #ifdef USE_INSTANCE_FADE
+            pos.xyz = mix(i_matrix_col4.xyz, pos.xyz, instanceFadeVisible(i_matrix_col4.xyz));
+        #endif
         // instance matrix sits between model and object; fold it in before the
         // (model+view) normal matrix
         v_normal = normalize(mat3(gbufferParams.normalMatrix) * instanceNormal(mat3(instanceMatrix), objNormal));
@@ -141,7 +162,10 @@ void main() {
         vec2 terrainBaseUV = getTerrainTiledTexture(objPos.xyz);
     #endif
 
-    #if defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE)
+    #ifdef GBUFFER_UV
+        #ifdef HAS_UV_SET2
+            v_uv2 = a_texcoord2;
+        #endif
         #ifdef HAS_TERRAIN_PBR
             v_uv1 = terrainBaseUV;
         #elif defined(HAS_TERRAIN)

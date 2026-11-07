@@ -9,12 +9,12 @@
         "variants with as many modules, the later one is the smaller (the measurements of the S34 spec, M8)."
     ],
     "schemaVersion": 1,
-    "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "noise"],
+    "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise"],
     "variants": [
-        {"name": "full", "suffix": "", "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "noise"]},
-        {"name": "ui", "suffix": "ui", "modules": ["htmlui", "runtimeshaders", "physics3d", "physics2d", "navigation", "noise"]},
-        {"name": "core", "suffix": "core", "modules": ["runtimeshaders", "physics3d", "physics2d", "navigation", "noise"]},
-        {"name": "lite3d", "suffix": "lite3d", "modules": ["physics3d", "navigation"]},
-        {"name": "lite2d", "suffix": "lite2d", "modules": ["physics2d", "navigation"]}
+        {"name": "full", "suffix": "", "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise"]},
+        {"name": "ui", "suffix": "ui", "modules": ["htmlui", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise"]},
+        {"name": "core", "suffix": "core", "modules": ["runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise"]},
+        {"name": "lite3d", "suffix": "lite3d", "modules": ["physics3d", "navigation", "soundlayer"]},
+        {"name": "lite2d", "suffix": "lite2d", "modules": ["physics2d", "navigation", "soundlayer"]}
     ]
 }

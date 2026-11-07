@@ -108,11 +108,29 @@ namespace jasperengine {
         void setIgnoreListenerPause(bool ignore);
         bool isIgnoreListenerPause() const;
 
+        // ---- Sound Events and triggers (docs/specs/S37-sound-events.md R9, R12)
+        // the Sound Event it plays, its path; assigning a path or GUID resolves it ("" clears it)
+        void setEvent(const std::string& pathOrGuid);
+        std::string getEvent() const;
+        // AudioPlayOn flags
+        void setPlayOn(uint32_t flags);
+        uint32_t getPlayOn() const;
+        void setMinImpactSpeed(float speed);
+        float getMinImpactSpeed() const;
+        void setFullVolumeImpactSpeed(float speed);
+        float getFullVolumeImpactSpeed() const;
+        // clip mode: each start +- this many semitones (0..24), and -this .. 0 dB (0..60)
+        void setPitchRandomSemitones(float semitones);
+        float getPitchRandomSemitones() const;
+        void setVolumeRandomDb(float db);
+        float getVolumeRandomDb() const;
+
         // Unity's name for speed
         void setPitch(float pitch);
         float getPitch() const;
 
-        // Unity PlayOneShot: an extra voice of the clip over what plays (volume x volumeScale)
+        // Unity PlayOneShot: an extra voice of the clip, or of a Sound Event's pick (its path or
+        // GUID), over what plays (volume x volumeScale)
         void playOneShot(const std::string& filename, float volumeScale = 1.0f);
         // plays from silence to the current volume (starting it when it is not playing)
         void fadeIn(double seconds, bool unscaled = false);

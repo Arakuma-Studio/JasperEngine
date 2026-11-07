@@ -3,7 +3,9 @@
 Every Audio Source plays through a **mixer group**: a bus with a volume in dB, mute, solo, up to 8
 effects and a live meter, inside a tree under **Master**. The project has one **Audio Mixer** asset
 (`.mixer`, JSON) chosen in Project Settings > Audio (`audio.mixer`); without one every sound plays
-through an implicit Master at 0 dB, exactly as before. Scripts change the mixer through **exposed
+through an implicit Master at 0 dB, exactly as before. A project created by this editor starts with
+`audio/Main.mixer`: a Master `limiter` (-1 dB, 1.5 ms, true peak), and the `linear` output stage
+below; a project from before keeps what it had. Scripts change the mixer through **exposed
 parameters** (`AudioMixer.setFloat("MusicVolume", -80)`, Unity's names) and **snapshots**
 (`AudioMixer.transitionTo("Gameplay", 0.65)`). It all works the same in editor Play, in every
 exported build and on machines without an audio device (CI): the mixing goes on without output, so
@@ -95,7 +97,15 @@ Every effect also has `wet` (0..1, default 1; 0 = dry) and `bypass`. Values are 
 | `lofi` | `sampleRate` Hz (8000, 100..22000), `bitDepth` (8, 0.5..16) | |
 | `bassboost` | `boost` (4, 0..10) | |
 | `duck` | `sidechainGroup` (a group name), `level` (0.5, 0..1), `attack` s (0.1), `release` s (0.5) | lowers this group while the side-chain group plays (dialogue over music) |
-| `limiter` | `threshold` dB (-1, -30..0), `release` s (0.1, 0.001..2) | peak limiter: a good last effect on Master |
+| `limiter` | `threshold` dB (-1, -30..0), `release` s (0.1, 0.001..2), `lookahead` ms (0, 0..5), `truePeak` 0/1 (0) | peak limiter: a good last effect on Master. `lookahead` delays the group by that much so that the gain is down when a peak arrives; with `truePeak` 1 and at least 1.5 ms it holds `threshold` + 0.1 dB in true peak up to 24 dB over. Either one makes the file `version` 2. `audio_mixer get` gives `latency_ms` per group |
+
+A limiter's parameters from a script:
+
+```lua
+local limiter = AudioMixer.getGroup("Master"):getEffect("limiter")
+limiter:setParameter("truePeak", 1)
+limiter:setParameter("lookahead", 1.5)
+```
 
 ## 5. Exposed parameters, snapshots, time
 
@@ -148,6 +158,13 @@ Project Settings over MCP: `audio.mixer` (the .mixer path), `audio.max_real_voic
 mixed at once, the quietest others are virtualised; at most 255 minus the mixer's groups), `audio.max_voices` (256: voices playing at
 all), `audio.sample_rate` (`auto`, 22050, 44100, 48000), `audio.default_output_group` (the group
 new Audio Sources get).
+
+`audio.output_stage`: `roundoff` (a soft clipper: a small signal leaves 1.66 dB lower, a -1 dB peak
+near -3.5 dBFS) or `linear` (samples pass unchanged, hard-clipped at 0 dBFS as a last guard: keep a
+limiter on Master). `audio.ios_session_category`: `default` (ignores the
+silent switch and stops the player's music), `ambient`, `solo_ambient`, `playback`; iOS only.
+`audio.loudness_target_lufs` (-18), `audio.loudness_tolerance_lu` (2), `audio.true_peak_ceiling_dbtp`
+(-1) only measure: they change no sample. Reading loudness: `jasper://docs/sound`.
 
 ## 7. Audio Sources
 
@@ -204,9 +221,10 @@ new Audio Sources get).
   (DontDestroyOnLoad) keep their sources, voices, one-shots and fades across loads.
 - No audio device (CI, a server, xvfb): the engine mixes without output (log: "No audio output
   available ... mixing without output"); `AudioSystem.isOutputAvailable()` is false and everything
-  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces it. A player run
-  with `--headless` or `--silent-audio` mixes on the null backend, by the frames' game time: its
-  sounds play, end and fire their events as in a normal run.
+  else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null|deterministic` forces it. A
+  player run with `--headless` or `--silent-audio` mixes on the deterministic driver, by the frames'
+  game time: its sounds play, end and fire their events as in a normal run, the same on every run
+  with the same `--fixed-fps`.
 - The Web needs a user gesture before sound starts (browsers); mixing and meters run before it.
 
 ## 9. Recipes

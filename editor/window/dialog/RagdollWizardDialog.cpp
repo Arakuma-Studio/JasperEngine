@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "RagdollWizardDialog.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/RagdollWizard.h"
 #include "component/AnimationPlayerComponent.h"
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 using namespace jasperengine;
 
@@ -81,9 +83,12 @@ void editor::RagdollWizardDialog::show(){
         justOpened = false;
     }
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(popupName, &isOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
+    if (!EditorModal::begin(popupName, &isOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
         return;
     }
+    EditorModal::message("Ragdoll of \"" + scene->getEntityName(root) + "\": a Rigidbody, collider and joint on each bone, and a Ragdoll on this "
+                         "GameObject. A bone field takes the name of a GameObject (None: left out).");
+    EditorModal::error(error);
 
     ImGui::Text("Ragdoll of \"%s\"", scene->getEntityName(root).c_str());
     ImGui::TextDisabled("A Rigidbody, collider and joint on each bone, and a Ragdoll on this GameObject");
@@ -99,6 +104,15 @@ void editor::RagdollWizardDialog::show(){
             ImGui::TextUnformatted(label);
             ImGui::TableSetColumnIndex(1);
             Entity& bone = bones.slot(slot);
+            std::vector<std::string> boneOptions = {"None"};
+            for (Entity candidate : candidates) boneOptions.push_back(nameOf(candidate));
+            std::string boneName = nameOf(bone);
+            if (EditorModal::enumField(slot, boneName, boneOptions)) {
+                bone = NULL_ENTITY;
+                for (Entity candidate : candidates) {
+                    if (nameOf(candidate) == boneName) bone = candidate;
+                }
+            }
             ImGui::SetNextItemWidth(16.0f * ImGui::GetFontSize());
             if (ImGui::BeginCombo((std::string("##bone_") + slot).c_str(), nameOf(bone).c_str())){
                 if (ImGui::Selectable("None", bone == NULL_ENTITY)) bone = NULL_ENTITY;
@@ -115,14 +129,16 @@ void editor::RagdollWizardDialog::show(){
 
     ImGui::Separator();
     ImGui::SetNextItemWidth(8.0f * ImGui::GetFontSize());
+    EditorModal::field("total_mass", settings.totalMass);
     ImGui::DragFloat("Total Mass (kg)", &settings.totalMass, 0.1f, 0.01f, 100000.0f, "%.2f");
-    ImGui::Checkbox("Flip Forward", &settings.flipForward);
+    EditorModal::checkbox("Flip Forward", "flip_forward", &settings.flipForward);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The character faces the other way (its knees bend backwards with the default)");
     int start = settings.startSimulated ? 1 : 0;
+    if (EditorModal::enumField("start_as", start, {"Animated", "Simulated"})) settings.startSimulated = start == 1;
     ImGui::SetNextItemWidth(8.0f * ImGui::GetFontSize());
     if (ImGui::Combo("Start As", &start, "Animated\0Simulated\0")) settings.startSimulated = start == 1;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Animated: kinematic parts follow the animated bones until ragdoll.simulated = true");
-    ImGui::Checkbox("Self Collision", &settings.selfCollision);
+    EditorModal::checkbox("Self Collision", "self_collision", &settings.selfCollision);
 
     for (const std::string& note : notes){
         ImGui::TextDisabled("%s", note.c_str());
@@ -136,7 +152,7 @@ void editor::RagdollWizardDialog::show(){
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", error.c_str());
     }
 
-    if (ImGui::Button("Create", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
+    if (EditorModal::button("Create", "ok", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
         RagdollBuildResult result;
         if (applyRagdollWizard(project, sceneId, root, bones, settings, result, error)){
             isOpen = false;
@@ -144,7 +160,7 @@ void editor::RagdollWizardDialog::show(){
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
+    if (EditorModal::button("Cancel", "cancel", ImVec2(8.0f * ImGui::GetFontSize(), 0))){
         isOpen = false;
         ImGui::CloseCurrentPopup();
     }

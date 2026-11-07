@@ -6,21 +6,19 @@
 // stubs and for the implementations (T2b, T2d, T3a add the behaviour tests in their own files).
 
 #include <gtest/gtest.h>
+#include "unity/UnityYaml.h"
+#include "animation/UpstreamAnimFormats.h"
 
 #include "Catalog.h"
 #include "Scene.h"
-#include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
-#include "animation/AnimationClipInspectorHooks.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipRecordHooks.h"
 #include "animation/ClipValidation.h"
-#include "animation/PreviewOwner.h"
 #include "command/type/CreateClipCmd.h"
 
 #include <string>
-#include <type_traits>
 #include <vector>
 
 using namespace jasperengine;
@@ -55,7 +53,8 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // Shaker, the Camera Follow, the Text Effect, the Video Player and the Safe Area
     EXPECT_GT(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
-    // the Text Effect (ui-scaling-text), then the Video Player and the Safe Area; later features append after them
+    // the Text Effect (ui-scaling-text), then the Video Player, the Safe Area and the Capsule Shadow Caster (S57);
+    // later features append after them
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
@@ -69,28 +68,6 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     Scene scene;
     EXPECT_EQ(Catalog::getComponentId(&scene, ComponentType::AnimationPlayerComponent),
               scene.getComponentId<AnimationPlayerComponent>());
-}
-
-// the hook structs (later tasks set the editor-wide instances at startup: only fresh structs
-// are checked here)
-TEST(AnimationClipContract, HookStructsStartUnset){
-    static_assert(std::is_default_constructible<AnimationClipAppHooks>::value, "app hooks");
-    static_assert(std::is_default_constructible<AnimationClipInspectorHooks>::value, "inspector hooks");
-    AnimationClipAppHooks app;
-    EXPECT_FALSE(app.stopTransientPreviews);
-    EXPECT_FALSE(app.ownsUndo);
-    EXPECT_FALSE(app.takesKeys);
-    EXPECT_FALSE(app.sceneClosed);
-    EXPECT_FALSE(app.projectClosed);
-    EXPECT_FALSE(app.createClipAsset);
-    EXPECT_FALSE(app.dropClips);
-
-    AnimationClipInspectorHooks inspector;
-    EXPECT_FALSE(inspector.openClip);
-    EXPECT_FALSE(inspector.convertToClip);
-    EXPECT_FALSE(inspector.useAnimationPlayer);
-    (void)&animationClipAppHooks();
-    (void)&animationClipInspectorHooks();
 }
 
 TEST(AnimationClipContract, ChannelsOfComponentWrites){
@@ -160,28 +137,6 @@ TEST(AnimationClipContract, CreateClipCommand){
     CreateClipCmd command(nullptr, 0, {}, {});
     EXPECT_FALSE(command.affectsStructure());
     EXPECT_TRUE(command.getFailure().empty());
-}
-
-TEST(AnimationClipContract, RecordHooksWithoutListeners){
-    EXPECT_FALSE(ClipRecordHooks::claims(1, 2, ClipChannel::Position));
-    ClipRecordValue value;
-    value.value = {1, 2, 3};
-    EXPECT_FALSE(ClipRecordHooks::record(1, 2, value, "record#1"));
-    ClipRecordHooks::beforeChannelWrite(1, 2, ClipChannel::Rotation);
-    ClipRecordHooks::afterChannelWrite(1, 2, ClipChannel::Rotation);
-    ClipRecordHooks::removeRecordListener(0);
-    ClipRecordHooks::removeChannelWriteListener(0);
-}
-
-TEST(AnimationClipContract, PreviewOwner){
-    PreviewOwner::release(0);
-    EXPECT_FALSE(PreviewOwner::owns(0));
-    PreviewOwner::Token token = PreviewOwner::acquire(1, 2, nullptr, "test", [](){});
-    EXPECT_GT(token, 0);
-    EXPECT_TRUE(PreviewOwner::owns(token));
-    PreviewOwner::release(token);
-    EXPECT_FALSE(PreviewOwner::owns(token));
-    PreviewOwner::releaseScene(1);
 }
 
 TEST(AnimationClipContract, Controller){

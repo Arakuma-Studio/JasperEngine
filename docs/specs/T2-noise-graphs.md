@@ -1050,3 +1050,8 @@ Recorded by the implementer. Each names what changed and why; the spec text abov
 - **Hand-picked Simplex radius (R1).** 3D Simplex uses radius 0.5 rather than the paper's 0.6, which keeps the field continuous; the result is clamped to -1..1.
 - **`NoisePresetData.h` (R41).** The test project's build has no hook to embed files, so the presets are a generated, committed header (`tools/noise/gen_test_project_presets.py`, `--check`).
 - **The Android image gains cross compilers too (section 6, D22).** Besides `qemu-user-static`, `gcc-aarch64-linux-gnu` and `gcc-arm-linux-gnueabihf` are in the image, for section 9's fallback when a static bionic binary will not start under qemu-user.
+- **`AssetType::NoiseGraph` is 32, not 28 (R13, AC50; coordinator's decision, ledger D22 updated).** Upstream's Sound Event took 28 before
+  T2 landed, and the value is stored in `assetmap.bin`, so ours moved. 29-31 stay T5's, T4's and T6's. `AssetTypes.NoiseGraphValueIs32` pins it.
+- **"Connect FBm → Remap", not `graph::describe`'s text (R57).** `describe` names a connection's source by its port, and nearly every
+  noise port is called Out ("Connect Out → Remap"). The window names it by the two nodes' display names instead.
+

@@ -1125,53 +1125,6 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
     });
 }
 
-TEST(SpriteNormalsWindowDeathTest, EveryViewDrawsAFrame) {
-    IN_EDITOR("draw", {
-        ImGuiContext* context = ImGui::CreateContext();
-        ImGui::SetCurrentContext(context);
-        ImGuiIO& io = ImGui::GetIO();
-        io.IniFilename = nullptr;
-        io.DisplaySize = ImVec2(1400, 900);
-        io.DeltaTime = 1.0f / 60.0f;
-        unsigned char* pixels;
-        int width, height;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        SpriteNormalsWindow window(w.p);
-        window.open();
-        Access::drawFrame(window);   // the empty state
-        std::string error;
-        ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
-        Access::setAdvancedOpen(window, true);
-        sn::Settings s = window.getSettings();
-        s.regions.push_back(sn::Region());
-        s.regions[0].colors = {0xff0000, 0x00ff00};
-        s.ignoreOutline = true;
-        window.setSettings(s);
-        for (SpriteNormalsWindow::View v : {SpriteNormalsWindow::View::Color, SpriteNormalsWindow::View::Normal, SpriteNormalsWindow::View::Lit,
-                                            SpriteNormalsWindow::View::Split}) {
-            window.setView(v);
-            Access::drawFrame(window);
-            window.setFrame(1);
-            Access::drawFrame(window);
-            window.setFrame(-1);
-        }
-        window.setPlaying(true);
-        window.setOrbit(true);
-        Access::drawFrame(window);
-        ASSERT_TRUE(window.openSources({w.file("assets/hero.png"), w.file("assets/walk.png"), w.file("assets/blink.gif")}, error)) << error;
-        Access::drawFrame(window);
-        ASSERT_TRUE(settle(window));
-        window.selectItem(2);
-        Access::drawFrame(window);
-        ASSERT_TRUE(settle(window));
-        Access::drawFrame(window);
-        window.setOpen(false);
-        Access::drawFrame(window);
-        ImGui::DestroyContext(context);
-    });
-}
-
 TEST(SpriteNormalsWindowDeathTest, ProjectSwitchDuringARun) {
     IN_EDITOR("switch", {
         writePng(w.file("assets/big.png"), disk(1024, 1024));

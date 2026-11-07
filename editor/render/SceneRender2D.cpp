@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender2D.h"
+#include "component/AudioSourceComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/RenderSystem.h"
+#include "component/CharacterController2DComponent.h"
 
 #include "Project.h"
 #include "LineDrawUtils.h"
@@ -1191,7 +1200,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                     co.lines->setVisible(true);
 
                     bool isMainCam = (mainCamera == entity);
-                    updateCameraFrustum(co, cameraComp, isMainCam);
+                    // a selected camera shows its whole frustum, near to far (Unity)
+                    updateCameraFrustum(co, cameraComp, isMainCam, selectedEntities.find(entity) != selectedEntities.end());
                 }else{
                     co.icon->setVisible(false);
                     co.lines->clearLines();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TestHttpServer.h"
+#include "io/File.h"
 
 #include "json.hpp"
 #include "stb_image_write.h"
