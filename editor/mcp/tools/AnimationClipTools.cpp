@@ -45,6 +45,7 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "sprite/SpriteSheetPool.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeTracksComponent.h"
 #include "component/ModelComponent.h"
@@ -2038,8 +2039,12 @@ void editClip(const CallPtr& call) {
         return;
     }
     if (subClip) {
-        call->fail("clip: \"" + relative + "\" is a model clip (read-only): extract it with edit_animation {clip: \"assets/anim/<name>.anim\", "
-                   "create: {from: \"" + relative + "\"}} and edit the file.");
+        // an Aseprite tag clip is remade by every import, a model clip by the model: both read-only
+        const bool tagClip = SpriteSheetPool::isAsepritePath(relative.substr(0, relative.find('#')));
+        const std::string fix = "extract it with edit_animation {clip: \"assets/anim/<name>.anim\", create: {from: \"" + relative +
+                                "\"}} and edit the file";
+        call->fail("clip: \"" + relative + "\" is " + (tagClip ? "an Aseprite tag clip" : "a model clip") + " (read-only): " + fix + ".",
+                   Json{{"error", {{"kind", "read_only_clip"}, {"field", "clip"}, {"message", relative + " is read-only"}, {"fix", fix}}}});
         return;
     }
     EditContext ctx;
