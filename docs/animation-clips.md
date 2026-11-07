@@ -941,7 +941,7 @@ when the numbers do not pay.
 - **Reduce** writes a new `.anim` (`walk.opt.anim`) as one undo step and shows the numbers again, read from the
   file. **Replace This Clip** writes over the source instead, also one undo step. A model's clip always
   becomes a new `.anim`: a model file is never changed.
-- Keys that stay keep their values, in order. Length, events and every track stay. A track that never moves keeps
+- Keys that stay keep their values, in order. Length, events, audio cues and every track stay. A track that never moves keeps
   one key, a moving one its first and last. Tracks with tangents, eases or steps, and morph, lattice, property and
   humanoid tracks keep all their keys.
 - Feet and toes get half the tolerance: a planted foot's slide shows under far less error than a hand's.

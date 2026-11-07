@@ -133,6 +133,7 @@ TEST(ClipReport, StatsOfABuiltClip){
     EXPECT_EQ(report.tracks, 4u);
     EXPECT_FLOAT_EQ(report.lengthSeconds, 1.5f);
     EXPECT_EQ(report.constantTracks, 2u) << "Holds twice: not Moves, and one key is already minimal";
+    EXPECT_EQ(report.audioCues, 0u);
     const nlohmann::json json = anim::clipReportJson(report);
     EXPECT_EQ(json["runtime_bytes"].get<uint64_t>(), clip->memoryBytes());
     EXPECT_TRUE(json["file_bytes"].is_null());
@@ -307,6 +308,11 @@ TEST(ClipReport, TracksThatAreNotBonesCountWhenTheyDiffer){
     event.time = 0.5f;
     event.function = "onStep";
     b.events.push_back(event);
+    ClipAudioCue cue;
+    cue.time = 0.25f;
+    cue.kind = ClipCueKind::Snapshot;
+    cue.snapshot = "Quiet";
+    b.audio.push_back(cue);
     b.length = 3.0f;
     anim::ClipReportRequest request;
     request.clip = AnimationClip::build(b);
@@ -316,11 +322,14 @@ TEST(ClipReport, TracksThatAreNotBonesCountWhenTheyDiffer){
     ASSERT_TRUE(report.compare.has_value());
     EXPECT_EQ(report.compare->unmeasuredDifferences, 1u);
     EXPECT_FALSE(report.compare->eventsMatch);
+    EXPECT_FALSE(report.compare->audioCuesMatch);
+    EXPECT_EQ(report.audioCues, 1u);
     EXPECT_FALSE(report.compare->lengthMatches);
     request.clip = request.compareTo;
     report = anim::analyzeClip(request);
     EXPECT_EQ(report.compare->unmeasuredDifferences, 0u);
     EXPECT_TRUE(report.compare->eventsMatch);
+    EXPECT_TRUE(report.compare->audioCuesMatch);
     EXPECT_TRUE(report.compare->lengthMatches);
 }
 

@@ -571,6 +571,7 @@ anim::ClipReport anim::analyzeClip(const ClipReportRequest& request){
     report.lengthSeconds = clip->getLength();
     report.frameRate = clip->getFrameRate();
     report.wrap = clip->getWrap();
+    report.audioCues = clip->getAudioCues().size();
     for (const AnimationClip::Track& track : clip->getTracks()){
         report.keys += track.keyCount;
         if (isConstant(track)) report.constantTracks++;
@@ -589,6 +590,7 @@ anim::ClipReport anim::analyzeClip(const ClipReportRequest& request){
             compare.worstJoints = clipWorstJointsJson(compare.error, *request.rig, 8);
             compare.unmeasuredDifferences = countUnmeasuredDifferences(*request.compareTo, *clip, *request.rig);
             compare.eventsMatch = sameEvents(*request.compareTo, *clip);
+            compare.audioCuesMatch = request.compareTo->getAudioCues() == clip->getAudioCues();
             compare.lengthMatches = request.compareTo->getLength() == clip->getLength();
             if (request.toleranceMm && compare.error.measured) compare.withinTolerance = compare.error.maxErrorMm <= *request.toleranceMm;
             report.compare = std::move(compare);
@@ -678,6 +680,7 @@ nlohmann::json anim::clipReportJson(const ClipReport& report){
     // the float's own digits, not its expansion as a double (1.33, not 1.3300000429)
     out["length_s"] = std::round((double)report.lengthSeconds * 1000000.0) / 1000000.0;
     out["constant_tracks"] = report.constantTracks;
+    out["audio_cues"] = report.audioCues;
     if (report.skippedTracks) out["skipped_tracks"] = clipSkippedTracksJson(*report.skippedTracks);
     if (report.compare){
         nlohmann::json compare = clipErrorJson(report.compare->error);
@@ -687,6 +690,7 @@ nlohmann::json anim::clipReportJson(const ClipReport& report){
         compare["within_tolerance"] = report.compare->withinTolerance ? nlohmann::json(*report.compare->withinTolerance) : nlohmann::json(nullptr);
         compare["unmeasured_differences"] = report.compare->unmeasuredDifferences;
         compare["events_match"] = report.compare->eventsMatch;
+        compare["audio_cues_match"] = report.compare->audioCuesMatch;
         compare["length_matches"] = report.compare->lengthMatches;
         out["compare"] = compare;
     }

@@ -6,7 +6,7 @@
 //   panels and tools print its struct and never calculate. kClipReportFields names every number
 //   once (the JSON key agents read, the label people read, its unit and how it prints), so the
 //   two cannot disagree: a gtest holds the table and clipReportJson equal.
-// - The stats (Memory, File, Keys, Tracks, Length, Constant Tracks) need no rig. Loop Match, the root
+// - The stats (Memory, File, Keys, Tracks, Length, Constant Tracks, Audio Cues) need no rig. Loop Match, the root
 //   motion facts and a comparison measure on a ClipRig (D5, R19). A new number adds a
 //   member, a table row and a JSON key.
 // - Thread-safety: any thread (AnimationClipPool takes its own lock). `rig` and `compareTo` stay
@@ -118,6 +118,7 @@ namespace jasperengine::anim{
         std::optional<bool> withinTolerance;    // only with a tolerance
         size_t unmeasuredDifferences = 0;       // tracks that are not bones and differ, or are in one clip only
         bool eventsMatch = true;
+        bool audioCuesMatch = true;
         bool lengthMatches = true;
         ClipErrorReport error;
         nlohmann::json worstJoints;             // clipWorstJointsJson: the Worst Joints row
@@ -156,6 +157,7 @@ namespace jasperengine::anim{
         // tracks of more than one key that all hold exactly the same value (and no tangents that
         // leave it): they cost keys and never move. A single-key track is already minimal
         size_t constantTracks = 0;
+        size_t audioCues = 0;                   // S40's cues: kept whole by a reduction, as events
         // set when the request has a rig
         std::optional<ClipSkippedTracks> skippedTracks;
         std::optional<ClipLoopSeam> loopSeam;
@@ -186,6 +188,7 @@ namespace jasperengine::anim{
         {"tracks", "Tracks", "count", ClipFieldFormat::Count, ClipFieldSection::Stats},
         {"length_s", "Length", "s", ClipFieldFormat::Seconds, ClipFieldSection::Stats},
         {"constant_tracks", "Constant Tracks", "count", ClipFieldFormat::Count, ClipFieldSection::Stats},
+        {"audio_cues", "Audio Cues", "count", ClipFieldFormat::Count, ClipFieldSection::Stats},
 
         {"skipped_tracks", "Skipped Tracks", "count", ClipFieldFormat::Count, ClipFieldSection::Skipped},
 
@@ -200,6 +203,7 @@ namespace jasperengine::anim{
         {"joints", "Worst Joints", "mm", ClipFieldFormat::Text, ClipFieldSection::Compare},
         {"unmeasured_differences", "Other Tracks Differ", "count", ClipFieldFormat::Count, ClipFieldSection::Compare},
         {"events_match", "Events Match", "flag", ClipFieldFormat::Flag, ClipFieldSection::Compare},
+        {"audio_cues_match", "Audio Cues Match", "flag", ClipFieldFormat::Flag, ClipFieldSection::Compare},
         {"length_matches", "Length Matches", "flag", ClipFieldFormat::Flag, ClipFieldSection::Compare},
 
         {"loop_seam.max_error_mm", "Loop Match", "mm", ClipFieldFormat::Millimetres, ClipFieldSection::LoopSeam},

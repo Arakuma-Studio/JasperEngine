@@ -268,7 +268,7 @@ The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/verte
 
 `check_animation` returns findings of this shape too, some of them errors, none of them `check`'s: `anim-compare-error` (over the
 limit), `anim-compare-unmeasured` (no bone moves on this rig: no number to trust), `anim-compare-other-tracks`,
-`anim-compare-events`, `anim-compare-length`, `anim-compare-failed`, `anim-loop-seam` (a Loop clip's seam over 10 mm),
+`anim-compare-events` (events or audio cues), `anim-compare-length`, `anim-compare-failed`, `anim-loop-seam` (a Loop clip's seam over 10 mm),
 `anim-root-drift` (a root under 0.25 m/s, or any with `limits.root_drift_mm`, ending over 20 mm or that limit from its start),
 `anim-no-rig`, `anim-unreadable`.
 

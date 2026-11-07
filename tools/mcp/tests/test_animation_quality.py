@@ -31,17 +31,21 @@ OUTPUT = "assets/anim/dense_walk.opt.anim"
 STATE: dict = {}
 
 
-def tree_hash(root: Path) -> str:
-    """every file under assets, and the scenes: a preview must leave all of it alone"""
-    digest = hashlib.sha1()
-    for path in sorted(p for p in root.rglob("*") if p.is_file() and ".jasperengine" not in p.parts):
-        digest.update(str(path.relative_to(root)).encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
+def tree_hash(root: Path) -> dict:
+    """every file of the project but the editor's own cache: a preview must leave all of it alone
+    (a dict, so a failure names the file that changed)"""
+    return {str(p.relative_to(root)): hashlib.sha1(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob("*")) if p.is_file() and ".jasperengine" not in p.parts}
+
+
+def changed(before: dict, after: dict) -> list:
+    return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 
 
 def clip_text(tracks: list, wrap: str = "once", preview: str | None = "models/hero_animated.gltf", extra: dict | None = None) -> str:
-    data = {"format": "jasperengine.anim", "version": 1, "wrap": wrap, "tracks": tracks, "events": []}
+    # with a GUID: the asset database gives a clip without one its own, a write the hashes below would see
+    guid = hashlib.md5(json.dumps(tracks).encode()).hexdigest()
+    data = {"format": "jasperengine.anim", "version": 1, "guid": guid, "wrap": wrap, "tracks": tracks, "events": []}
     if preview:
         data["preview"] = {"model": preview}
     data.update(extra or {})
@@ -94,14 +98,14 @@ async def test_group_hidden_until_enabled(ed: Editor):
     for name in ("check_animation", "optimize_animation"):
         ed.check(name in after, f"{name} is listed once animation is on: {sorted(after)}")
     check = ed.tool("check_animation")
-    ed.check(check.annotations.readOnlyHint is True, "check_animation is read-only")
+    ed.check(check.annotations.read_only_hint is True, "check_animation is read-only")
     enum = check.input_schema["properties"]["checks"]["items"]["enum"]
     ed.check_eq(sorted(enum), sorted(["stats", "loop_seam", "root_motion", "foot_sliding", "transition"]), "every check is listed now")
     for name in ("transition", "feet", "move_speed", "record_seconds", "limits", "top", "compare_to", "entity", "scene", "state"):
         ed.check_in(name, check.input_schema["properties"], "check_animation argument")
     optimize = ed.tool("optimize_animation")
-    ed.check(optimize.annotations.readOnlyHint is not True, "optimize_animation writes")
-    ed.check(optimize.annotations.idempotentHint is True, "the same arguments give the same file")
+    ed.check(optimize.annotations.read_only_hint is not True, "optimize_animation writes")
+    ed.check(optimize.annotations.idempotent_hint is True, "the same arguments give the same file")
 
 
 async def test_checks_of_a_later_stream_say_so(ed: Editor):
@@ -154,7 +158,7 @@ async def test_journey_preview_write_prove(ed: Editor):
     ed.check("Nothing was written" in preview.text, preview.text)
     for word in ("save", "saving", "smaller", "faster"):
         ed.check(word not in preview.text.lower(), f"the text promises: {preview.text}")
-    ed.check_eq(tree_hash(root), before, "a preview writes nothing")
+    ed.check_eq(changed(before, tree_hash(root)), [], "a preview writes nothing")
     ed.check(len(json.dumps(data)) < 2500, f"the result is small: {len(json.dumps(data))} chars")
 
     # 2. the same arguments + output
@@ -189,7 +193,7 @@ async def test_journey_preview_write_prove(ed: Editor):
     bytes_written = output.read_bytes()
     await ed.call("undo", scope="project")
     ed.check(not output.exists(), "undo removes the new file")
-    ed.check_eq(tree_hash(root), before, "undo restores the tree")
+    ed.check_eq(changed(before, tree_hash(root)), [], "undo restores the tree")
     await ed.call("redo", scope="project")
     ed.check_eq(output.read_bytes(), bytes_written, "redo")
 
@@ -310,11 +314,11 @@ async def test_root_switches_the_player_in_one_scene_step(ed: Editor):
     r = await ed.call("optimize_animation", clips=["assets/anim/clean.anim"], output="assets/anim/clean_switched.anim", root="Hero")
     ed.check_eq(r["undo"], {"scope": "scene"}, "the player's change and the file are one scene step")
     players = (await ed.call("get_animation", entity="Hero"))["players"]
-    ed.check_eq(players[0]["states"][0]["clip"], "anim/clean_switched.anim", f"{players}")
+    ed.check_eq(players[0]["states"][0]["clip"], "assets/anim/clean_switched.anim", f"{players}")
     ed.check_eq(players[0]["states"][0]["name"], "clean", "the state keeps its name")
     await ed.call("undo", scope="scene")
     players = (await ed.call("get_animation", entity="Hero"))["players"]
-    ed.check_eq(players[0]["states"][0]["clip"], "anim/clean.anim", "undo")
+    ed.check_eq(players[0]["states"][0]["clip"], "assets/anim/clean.anim", "undo")
     ed.check(not (Path(ed.project) / "assets/anim/clean_switched.anim").exists(), "and the file")
 
 
@@ -323,8 +327,10 @@ async def test_tolerance_and_skin_change_the_answer(ed: Editor):
     coarse = await ed.call("optimize_animation", clips=[DENSE], tolerance_mm=20)
     ed.check(coarse["clips"][0]["keys_after"] <= fine["clips"][0]["keys_after"], f"{fine['clips'][0]} {coarse['clips'][0]}")
     ed.check(fine["clips"][0]["max_error_mm"] <= 0.05, f"{fine['clips'][0]}")
-    r = await ed.call_raw("optimize_animation", {"clips": [DENSE], "skin_distance_mm": 5})
-    ed.check(r.is_error, f"under the floor: {r.text[:200]}")
+    # D5: a floor, not an error; the result says what was used
+    floored = await ed.call("optimize_animation", clips=[DENSE], skin_distance_mm=5)
+    ed.check_eq(floored["skin_distance_mm"], 10, "raised to the floor")
+    ed.check_eq(floored["clips"][0]["skin_distance_mm"], 10, "measured at the floor")
     r = await ed.call_raw("optimize_animation", {"clips": [DENSE], "joints": [{"path": "NoSuchBone", "tolerance_mm": 1}]})
     ed.check(r.is_error and "unknown_joint" in r.text, r.text[:200])
 

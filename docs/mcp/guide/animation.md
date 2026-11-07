@@ -201,8 +201,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 ## What a clip costs
 
 `get_animation {clip, max_keys: 1}` and `get_asset_info {path}` (under `clip`) return `stats`:
-`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s` and
-`constant_tracks` (tracks of several keys that never move). Asking does not keep the clip loaded.
+`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s`,
+`constant_tracks` (tracks of several keys that never move) and `audio_cues`. Asking does not keep the clip loaded.
 Across the project: `get_memory_stats {prefix: "Animation.Clips"}` is what is loaded now, and
 `get_frame_times {monitors: ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms",
 "Anim Wave ms", "Anim Finalize ms", "Clip memory"]}` what the Animators cost per frame.

@@ -57,12 +57,9 @@ def bytes_text(value: int) -> str:
     return f"{value / (1024 * 1024):.1f} MB"
 
 
-def tree_hash(root: Path) -> str:
-    digest = hashlib.sha1()
-    for path in sorted(p for p in root.rglob("*") if p.is_file() and ".jasperengine" not in p.parts):
-        digest.update(str(path.relative_to(root)).encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
+def tree_hash(root: Path) -> dict:
+    return {str(p.relative_to(root)): hashlib.sha1(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob("*")) if p.is_file() and ".jasperengine" not in p.parts}
 
 
 async def project_window(ed: Editor) -> dict:
@@ -108,9 +105,8 @@ async def inspect_asset(ed: Editor, ui, folder: str, name: str) -> None:
 
 
 async def drawn(ed: Editor, ui, label: str, window: str | None = None, frames: int = 600) -> dict:
-    item = await ui.find(label, window, frames=frames)
-    ed.check(item, f"{label} is never drawn in {window}")
-    return item
+    """the item, scrolled into its window's view (a table row below the fold is drawn, not visible)"""
+    return await ui.reveal(label, window, frames=frames)
 
 
 async def setup(ed: Editor):
@@ -130,7 +126,8 @@ async def setup(ed: Editor):
         keys = [[t, v["quat"] if isinstance(v, dict) else v] for t, v in zip(times, row["values"])]
         tracks.append({"path": track["path"], "channel": track["channel"], "keys": keys})
     await ed.call("write_file", path=CLIP, content=json.dumps({
-        "format": "jasperengine.anim", "version": 1, "wrap": "loop", "frame_rate": 30, "tracks": tracks, "events": [],
+        "format": "jasperengine.anim", "version": 1, "guid": "5a74c0de5a74c0de5a74c0de5a74c0de", "wrap": "loop", "frame_rate": 30,
+        "tracks": tracks, "events": [],
         "preview": {"model": "models/hero_animated.gltf"}}))
     S["ui"] = ui_input.for_editor(ed)
     return S["ui"]
@@ -180,7 +177,8 @@ async def test_reduce_keys_previews_writes_and_proves(ed: Editor):
     await drawn(ed, ui, "##reduce_mean_error", "Reduce Keys")
     await drawn(ed, ui, "##reduce_worst_joint", "Reduce Keys")
     await shot(ed, "ac18-4-reduce-keys-preview")
-    ed.check_eq(tree_hash(root), before, "the preview writes nothing")
+    after = tree_hash(root)
+    ed.check_eq(sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k)), [], "the preview writes nothing")
 
     # the same numbers the tool gives for the same settings
     tool = (await ed.call("optimize_animation", clips=[CLIP]))["clips"][0]

@@ -390,8 +390,10 @@ void checkOneClip(const CheckRequest& request, const NamedClip& clip, RigCache& 
                                            std::to_string(compare.unmeasuredDifferences) + " tracks that are not bones differ from " + compare.reference,
                                            "get_animation lists the tracks of both"));
         }
-        if (!compare.eventsMatch) {
-            out.findings.push_back(finding(clip.display, "warning", "anim-compare-events", "its events differ from " + compare.reference, "get_animation lists the events of both"));
+        if (!compare.eventsMatch || !compare.audioCuesMatch) {
+            out.findings.push_back(finding(clip.display, "warning", "anim-compare-events",
+                                           std::string(compare.eventsMatch ? "its audio cues" : compare.audioCuesMatch ? "its events" : "its events and audio cues") +
+                                           " differ from " + compare.reference, "get_animation lists the events and audio cues of both"));
         }
         if (!compare.lengthMatches) {
             out.findings.push_back(finding(clip.display, "warning", "anim-compare-length", "its length differs from " + compare.reference, "get_animation shows both lengths"));

@@ -13,7 +13,7 @@
 //   * tolerance_mm is a bound on the error measureClipError reads from the output, not a per-track
 //     budget: the per-track value is bisected until it holds.
 // - Output: keys are a strict subset of the source's, in order, with their values unchanged. Clip
-//   length, events and every track it cannot measure stay as they are.
+//   length, events, audio cues (S40) and every track it cannot measure stay as they are.
 // - No reporting path: the result says what was kept, never how good it is. Whoever wants the error
 //   measures it (ClipOptimize, ClipReport).
 // - Thread-safety: any thread; nothing shared. Deterministic: the same input gives the same bytes.

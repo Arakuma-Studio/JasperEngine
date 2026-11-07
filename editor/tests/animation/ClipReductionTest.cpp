@@ -183,6 +183,13 @@ TEST(ClipReduction, KeepsLengthAndEveryEventAndNeverRemovesATrack){
     event.function = "onStep";
     event.args.push_back(AnimationEvent::numberArg(3.0));
     source.events.push_back(event);
+    // S40's audio cues ride along like events, and one sits past every key: it holds the length
+    ClipAudioCue cue;
+    cue.time = 2.5f;
+    cue.kind = ClipCueKind::Snapshot;
+    cue.snapshot = "Quiet";
+    cue.seconds = 0.5f;
+    source.audio.push_back(cue);
     const anim::ClipReductionResult result = anim::reduceClip(source, rig, tolerance(5.0));
     ASSERT_TRUE(result.ok) << result.error;
     EXPECT_FLOAT_EQ(result.clip.effectiveLength(), source.effectiveLength());
@@ -190,6 +197,9 @@ TEST(ClipReduction, KeepsLengthAndEveryEventAndNeverRemovesATrack){
     ASSERT_EQ(result.clip.events.size(), 1u);
     EXPECT_EQ(result.clip.events[0].function, "onStep");
     EXPECT_EQ(result.clip.events[0].args, event.args);
+    ASSERT_EQ(result.clip.audio.size(), 1u);
+    EXPECT_EQ(result.clip.audio[0], cue);
+    EXPECT_FLOAT_EQ(result.clip.effectiveLength(), 2.5f);
     // the same event bytes in the file
     ClipData noKeys = source;
     noKeys.tracks.clear();
