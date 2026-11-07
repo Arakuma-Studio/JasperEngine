@@ -137,7 +137,7 @@ TEST(VoxelWorkQueue, FinishedJobNotifiesBeforeThePump) {
     std::atomic<int> notified{0};
     WorkQueue::setFinishedNotifier([&notified]() { notified++; });
     std::atomic<bool> ran{false};
-    queue.push(1, WorkPriority::Visible, 0.0, [&ran] { ran = true; });
+    queue.push(1, WorkPriority::Near, 0.0, [&ran] { ran = true; });
     queue.pump();
     // nothing pumps again: the notice comes from the worker
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
