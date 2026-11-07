@@ -350,7 +350,8 @@ TEST_F(NavCrowdTest, CrowdRebuiltOnNewMesh){
     resolveTransforms(*scene);
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(24.0f, -1.0f, -16.0f), Vector3(56.0f, 2.0f, 16.0f)), error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++)
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++)
         step();
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_EQ(nav->getNavMesh(surface), mesh);
@@ -491,7 +492,8 @@ TEST_F(NavObstacleTest, CutsSurviveRebakeAndReload){
 
     std::string error;
     ASSERT_TRUE(nav->bake(surface, NavBakeMode::FULL, error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++) {
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++) {
         step();
         EXPECT_NE(nav->calculatePath(from, to).status, nav::PathStatus::Complete) << "tick " << tick;
     }
@@ -523,7 +525,8 @@ TEST_F(NavObstacleTest, CutsSurviveUpdateTiles){
     ASSERT_NE(nav->calculatePath(from, to).status, nav::PathStatus::Complete);
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(-2.0f, -1.0f, -2.0f), Vector3(2.0f, 3.0f, 2.0f)), error)) << error;
-    for (int tick = 0; tick < 600 && nav->isBaking(surface); tick++)
+    const auto since = std::chrono::steady_clock::now();
+    for (int tick = 0; bakeRunning(surface, since); tick++)
         step();
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_TRUE(nav->getLastBakeResult(surface) && nav->getLastBakeResult(surface)->ok);

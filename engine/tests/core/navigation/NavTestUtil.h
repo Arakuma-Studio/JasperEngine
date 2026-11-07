@@ -19,6 +19,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -83,6 +84,12 @@ namespace jasperengine::navtest {
         void steps(int count, const std::function<void()>& scripts = nullptr) {
             for (int i = 0; i < count; i++)
                 step(scripts);
+        }
+
+        // A bake's tiles build on the job system, in wall-clock time, while a test steps as fast as
+        // it can: wait for the bake to land (within a generous minute), not for a tick count
+        bool bakeRunning(Entity surface, std::chrono::steady_clock::time_point since) {
+            return nav->isBaking(surface) && std::chrono::steady_clock::now() - since < std::chrono::seconds(60);
         }
 
         Vector3 position(Entity entity) {

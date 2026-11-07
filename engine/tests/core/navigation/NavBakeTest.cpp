@@ -571,7 +571,8 @@ TEST_F(NavBakeTest, RuntimeCarvingBakeDeferred){
     const int budget = nav::getSettings().effectiveCarveTilesPerTick();
     int stagedTicks = 0;
     int swapTick = -1;
-    for (tick = 0; tick < 600 && nav->isBaking(surface); tick++) {
+    const auto since = std::chrono::steady_clock::now();
+    for (tick = 0; bakeRunning(surface, since); tick++) {
         step();
         const NavSurfaceStatus status = nav->getSurfaceStatus(surface);
         if (status.queuedBuilds > 0) {

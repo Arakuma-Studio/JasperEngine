@@ -713,3 +713,19 @@ P2 order:
   Android test's project), with two gate lines.
 
 ## Progress
+
+- S53 P1 (branch `nav/s41-p1`): interface commit `nav: S53 interfaces`; then R1 (patches 2-5),
+  R4-R19 and R25-R26 (runtime docs). Red controls, all recorded under `/tmp/je-logs/s41-p1/`:
+  the release run of the tests against the interface commit (19 of them fail, among them AC1's
+  remaining distance, AC7-AC9, AC11, AC13-AC20, AC22), `MergeCorridorStartMovedBounds` crashes
+  (release) and reports ASan's negative-size `memmove` before patch 3, `RemoveNeverLost` loses
+  its cuts in the S19 code, and UBSan stops the AC1 strip's crowd before patch 5.
+- AC3: no red control could be built: the 100 km slopes bake without the assert before patch 4
+  too (sanitizer run); the patch is upstream's one line.
+- AC10: the S19 code did not fire `onDestinationReached` at the partial end in that run either;
+  the test pins the new rule (arrival needs a corridor ending in the destination's polygon).
+- AC12: the S19 code passed `CrowdRebuiltOnNewMesh` on this allocator (the new `dtNavMesh` got
+  another address); the generation check no longer depends on it.
+- AC25: `NavGridTest.ReservedCellsReported` (P1's `getGridReservedCells`); the overlay tint is P2's.
+- Not run by P1 at the integrator's request (light gate only): the web and Android builds and the
+  navigation web gate (AC21), and je-bench-nav's thresholds on the timing server (AC22, second half).
