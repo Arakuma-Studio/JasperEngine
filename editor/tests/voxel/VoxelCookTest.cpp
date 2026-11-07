@@ -196,6 +196,40 @@ namespace voxel_cook_test {
 
 }
 
+namespace voxel_cook_test {
+
+    // The voxel tiers the MESH keys of a scene holding one volume of this Quality draw with
+    std::set<std::string> collectedVoxelTiers(VoxelQuality quality) {
+        Scene scene;
+        const Entity volume = scene.createEntity();
+        scene.addComponent<Transform>(volume, {});
+        VoxelVolumeComponent component;
+        component.quality = quality;
+        scene.addComponent<VoxelVolumeComponent>(volume, component);
+        ShaderVariantContent content;
+        content.registry = &scene;
+        content.entities = {volume};
+        std::set<ShaderKey> keys;
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys);
+        std::set<std::string> tiers;
+        for (ShaderKey key : keys) {
+            if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH) continue;
+            const std::string name = ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key));
+            for (const char* tier : {"VOXEL_TIER_HIGH", "VOXEL_TIER_MEDIUM", "VOXEL_TIER_LOW"}) {
+                if (name.find(tier) != std::string::npos) tiers.insert(tier);
+            }
+        }
+        return tiers;
+    }
+
+}
+
+// AC39: the chunks' variants come out of the collector's per-device-tier pass, the one an export reads
+TEST(VoxelExport, CollectorShipsChunkVariants) {
+    EXPECT_EQ(collectedVoxelTiers(VoxelQuality::Low), (std::set<std::string>{"VOXEL_TIER_LOW"}));
+    EXPECT_EQ(collectedVoxelTiers(VoxelQuality::Auto), (std::set<std::string>{"VOXEL_TIER_HIGH", "VOXEL_TIER_MEDIUM", "VOXEL_TIER_LOW"}));
+}
+
 // AC34, T3 R34: a first in-game dig finds the holed variant in the build
 TEST(VoxelExport, AttachedShipsHoleVariant) {
     EXPECT_EQ(holedTerrainKeys(VoxelTerrainCut::Off, false), 0);
