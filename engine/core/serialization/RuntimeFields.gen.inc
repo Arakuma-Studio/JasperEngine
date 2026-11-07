@@ -1977,6 +1977,7 @@ const FieldEntry kBody_NavMeshSurfaceComponent_fields[] = {
     JE_RF(NavMeshSurfaceComponent, minRegionArea, 0x911c6021u, Float),
     JE_RF(NavMeshSurfaceComponent, plane, 0x6ffdbefau, Enum),
     JE_RF(NavMeshSurfaceComponent, runtimeCarving, 0x69e7e4fcu, Bool),
+    JE_RF(NavMeshSurfaceComponent, maxCarvingObstacles, 0x5e682c4cu, Int),
     JE_RF(NavMeshSurfaceComponent, navMeshData, 0x1e9815acu, AssetPath),
 };
 const StructTable kBody_NavMeshSurfaceComponent{"navmeshsurface", kBody_NavMeshSurfaceComponent_fields, std::size(kBody_NavMeshSurfaceComponent_fields)};
@@ -2001,6 +2002,10 @@ const FieldEntry kBody_NavMeshAgentComponent_fields[] = {
     JE_RF(NavMeshAgentComponent, updateRotation, 0x8cb43ac5u, Bool),
     JE_RF(NavMeshAgentComponent, driver, 0x3a8edfacu, Enum),
     JE_RF_ENTITY(NavMeshAgentComponent, surface, 0x9ba93021u, Entity),
+    JE_RF(NavMeshAgentComponent, stuckDetection, 0xe54b5f81u, Bool),
+    JE_RF(NavMeshAgentComponent, stuckSpeedRatio, 0x2808a850u, Float),
+    JE_RF(NavMeshAgentComponent, stuckTimeout, 0xfa1f9eb1u, Float),
+    JE_RF(NavMeshAgentComponent, repathWhenStuck, 0x5a5769bcu, Bool),
 };
 const StructTable kBody_NavMeshAgentComponent{"navmeshagent", kBody_NavMeshAgentComponent_fields, std::size(kBody_NavMeshAgentComponent_fields)};
 
@@ -2028,6 +2033,7 @@ const FieldEntry kBody_NavMeshLinkComponent_fields[] = {
     JE_RF(NavMeshLinkComponent, bidirectional, 0x48ad9c8eu, Bool),
     JE_RF(NavMeshLinkComponent, autoUpdatePosition, 0x017eec0eu, Bool),
     JE_RF(NavMeshLinkComponent, area, 0xd776bb2eu, Int),
+    JE_RF(NavMeshLinkComponent, activated, 0xeb106f2eu, Bool),
 };
 const StructTable kBody_NavMeshLinkComponent{"navmeshlink", kBody_NavMeshLinkComponent_fields, std::size(kBody_NavMeshLinkComponent_fields)};
 
@@ -2040,6 +2046,7 @@ const FieldEntry kBody_NavMeshModifierComponent_fields[] = {
     JE_RF(NavMeshModifierComponent, useVolume, 0x5de664c1u, Bool),
     JE_RF(NavMeshModifierComponent, volumeCenter, 0x623196d3u, Vector3),
     JE_RF(NavMeshModifierComponent, volumeSize, 0x03c83a3fu, Vector3),
+    JE_RF(NavMeshModifierComponent, applyAtRuntime, 0xe0ef527bu, Bool),
 };
 const StructTable kBody_NavMeshModifierComponent{"navmeshmodifier", kBody_NavMeshModifierComponent_fields, std::size(kBody_NavMeshModifierComponent_fields)};
 
