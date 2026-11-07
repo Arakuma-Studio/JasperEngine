@@ -70,7 +70,9 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -1346,6 +1348,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<RagdollComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
     copyComponent<WaterVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<WaterExcluderComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<WaterWakeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<BuoyancyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavMeshSurfaceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavMeshAgentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

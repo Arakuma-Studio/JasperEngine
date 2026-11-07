@@ -21,7 +21,9 @@
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/SplineInstantiateComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CameraFollowComponent.h"
@@ -631,6 +633,8 @@ namespace {
         rows.push_back(enabledRow<CharacterController2DComponent>("charactercontroller2d"));
         rows.push_back(enabledRow<CharacterControllerComponent>("charactercontroller"));
         rows.push_back(enabledRow<WaterVolumeComponent>("watervolume"));
+        rows.push_back(enabledRow<WaterExcluderComponent>("waterexcluder"));
+        rows.push_back(enabledRow<WaterWakeComponent>("waterwake"));
         rows.push_back(enabledRow<BuoyancyComponent>("buoyancy"));
         rows.push_back(enabledRow<NavMeshSurfaceComponent>("navmeshsurface"));
         rows.push_back(enabledRow<NavMeshAgentComponent>("navmeshagent"));
