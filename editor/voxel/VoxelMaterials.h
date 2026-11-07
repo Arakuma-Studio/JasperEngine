@@ -7,12 +7,15 @@
 // index is what every sample stores, so slots never move: removing one that is not the last leaves an
 // empty slot there, and Add fills the first empty one.
 
-#include "component/VoxelVolumeComponent.h"
 #include "ecs/Entity.h"
 #include "voxel/VoxelStore.h"
 
 #include <cstdint>
 #include <string>
+
+namespace jasperengine {
+    struct VoxelMaterialSlot;
+}
 
 namespace jasperengine::editor {
 
