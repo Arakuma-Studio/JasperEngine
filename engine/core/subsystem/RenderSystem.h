@@ -192,6 +192,13 @@ namespace jasperengine{
 		Vector4 params;        // x highest mip level, y 1 with an environment
 	} fs_environment_t;
 
+	// u_fs_environment of a shader requiring the planar reflection as well (includes/environment.glsl)
+	typedef struct fs_environment_planar_t {
+		fs_environment_t environment;
+		fs_planar_reflection_t planar;
+	} fs_environment_planar_t;
+	static_assert(sizeof(fs_environment_planar_t) == 7 * 16, "u_fs_environment with the planar members is 7 vec4");
+
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
 		Vector4 boxMin_intensity; // xyz = influence AABB min, w = intensity
@@ -2393,7 +2400,8 @@ namespace jasperengine{
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the reflection environment around a mesh, to a draw whose shader declares it
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
-		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
+		// (the block it made: u_fs_environment is written with the planar reflection's members when it holds them)
+		fs_environment_t applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
@@ -3007,7 +3015,7 @@ namespace jasperengine{
 		// the camera of the camera pass being drawn (renderCameraPass)
 		const CameraComponent* passCamera = nullptr;
 		// u_fs_planarReflection and its texture for a draw of a mesh reading one
-		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const fs_environment_t& environment);
 		// the eye of the camera pass being drawn (its camera's Transform)
 		Vector3 passEye;
 		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the

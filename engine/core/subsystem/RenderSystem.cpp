@@ -4313,6 +4313,11 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     // the planar reflection (includes/planar_reflection.glsl), black until a draw binds its own
     bindings.slotFSPlanarReflection = shaderData.getUniformBlockIndexByName("u_fs_planarReflection");
     bindings.slotPlanarReflection = shaderData.getTextureIndexByName("u_planarReflectionTexture");
+    if (bindings.slotFSEnvironment != -1){
+        unsigned int sizeBytes = 0;
+        shaderData.getUniformBlockMembers("u_fs_environment", sizeBytes);
+        bindings.environmentHoldsPlanar = sizeBytes == sizeof(fs_environment_planar_t);
+    }
     if (bindings.slotPlanarReflection.first != -1)
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
     // the Water Excluders and the wake map (includes/water_interaction.glsl): no hull and no wake
@@ -5381,12 +5386,12 @@ void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBin
         render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, passSceneColor ? passSceneColor : &emptyBlack);
 }
 
-void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform){
-    if (bindings.slotFSEnvironment == -1 && bindings.slotEnvironment.first == -1)
-        return;
+fs_environment_t RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform){
     fs_environment_t block;
     block.colorRotation = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
     block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (bindings.slotFSEnvironment == -1 && bindings.slotEnvironment.first == -1)
+        return block;
     TextureRender* texture = &emptyCubeBlack;
 
     // the probe whose box holds the mesh (as Lit picks it, without its blend and box projection)
@@ -5409,10 +5414,11 @@ void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBin
             }
         }
     }
-    if (bindings.slotFSEnvironment != -1)
+    if (bindings.slotFSEnvironment != -1 && !bindings.environmentHoldsPlanar)
         render.applyUniformBlock(bindings.slotFSEnvironment, sizeof(fs_environment_t), &block);
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, texture);
+    return block;
 }
 
 void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material, unsigned int size){
@@ -9110,8 +9116,8 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     applyFrameBlock(render, extra.libraryBindings);
     applySceneInputs(render, extra.libraryBindings);
-    applyEnvironment(render, extra.libraryBindings, mesh, transform);
-    applyPlanarReflection(render, extra.libraryBindings, entity);
+    const fs_environment_t extraEnvironment = applyEnvironment(render, extra.libraryBindings, mesh, transform);
+    applyPlanarReflection(render, extra.libraryBindings, entity, extraEnvironment);
     applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material, extra.customFSParams);
 
     if (extra.slotFSFog != -1){
@@ -10330,8 +10336,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             applyFrameBlock(render, libraryBindings);
             applySceneInputs(render, libraryBindings);
-            applyEnvironment(render, libraryBindings, mesh, transform);
-            applyPlanarReflection(render, libraryBindings, entity);
+            const fs_environment_t environment = applyEnvironment(render, libraryBindings, mesh, transform);
+            applyPlanarReflection(render, libraryBindings, entity, environment);
             applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material, mesh.submeshes[i].customFSParams);
 
             if (mesh.submeshes[i].hasIBL){
@@ -14978,8 +14984,8 @@ void RenderSystem::shareCameraShadows(CameraShadows& target, const CameraShadows
     }
 }
 
-void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity){
-    if (bindings.slotFSPlanarReflection == -1 && bindings.slotPlanarReflection.first == -1)
+void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const fs_environment_t& environment){
+    if (bindings.slotFSPlanarReflection == -1 && bindings.slotPlanarReflection.first == -1 && !bindings.environmentHoldsPlanar)
         return;
     fs_planar_reflection_t block;
     block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -15001,6 +15007,10 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
     }
     if (bindings.slotFSPlanarReflection != -1)
         render.applyUniformBlock(bindings.slotFSPlanarReflection, sizeof(fs_planar_reflection_t), &block);
+    if (bindings.environmentHoldsPlanar){
+        fs_environment_planar_t both = {environment, block};
+        render.applyUniformBlock(bindings.slotFSEnvironment, sizeof(fs_environment_planar_t), &both);
+    }
     if (bindings.slotPlanarReflection.first != -1)
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
 }

@@ -5666,7 +5666,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
     // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
     //      includes/lights.glsl and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: a shader requiring the environment and the planar reflection reads the planar members
+    //      at the end of u_fs_environment (no u_fs_planarReflection: library:water fits 8 blocks);
+    //      a legacy fork's derived normal without lights is not turned (includes/pbr.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -151,6 +151,8 @@ namespace jasperengine{
         // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
         int slotFSPlanarReflection = -1;
         std::pair<int, int> slotPlanarReflection = {-1, -1};
+        // with both requires the planar reflection's members end u_fs_environment (no block of its own)
+        bool environmentHoldsPlanar = false;
         // the Water Excluders' hull maps and the wake map (includes/water_interaction.glsl,
         // @require waterexclusion / waterwake); their values go into the custom block
         std::pair<int, int> slotWaterExclusionMaps = {-1, -1};
@@ -186,6 +188,7 @@ namespace jasperengine{
             slotEnvironment = {-1, -1};
             slotFSPlanarReflection = -1;
             slotPlanarReflection = {-1, -1};
+            environmentHoldsPlanar = false;
             slotWaterExclusionMaps = {-1, -1};
             slotWaterExclusionData = {-1, -1};
             slotWaterWake = {-1, -1};

@@ -21,6 +21,8 @@
 //                                         the texture origin, as mesh.frag's mirror)
 //   u_fs_planarReflection.params:         x the plane's height, y 1 with a reflection, 0 without
 //   u_planarReflectionTexture:            its colour (display-encoded, decoded with sRGBToLinear)
+// With `@require environment` as well, the two members are the last of u_fs_environment
+// (planarViewProjection, planarParams; includes/environment.glsl) instead of a block of their own.
 
 #ifndef PLANAR_REFLECTION_GLSL
 #define PLANAR_REFLECTION_GLSL
@@ -29,24 +31,32 @@
 
 #include "includes/srgb.glsl"
 
-uniform u_fs_planarReflection {
-    mat4 viewProjection;
-    vec4 params;
-} planarReflection;
+#ifdef SURFACE_ENVIRONMENT
+    #include "includes/environment.glsl"
+    #define PLANAR_REFLECTION_VIEW_PROJECTION environment.planarViewProjection
+    #define PLANAR_REFLECTION_PARAMS environment.planarParams
+#else
+    uniform u_fs_planarReflection {
+        mat4 viewProjection;
+        vec4 params;
+    } planarReflection;
+    #define PLANAR_REFLECTION_VIEW_PROJECTION planarReflection.viewProjection
+    #define PLANAR_REFLECTION_PARAMS planarReflection.params
+#endif
 
 uniform texture2D u_planarReflectionTexture;
 uniform sampler u_planarReflection_smp;
 
 bool planarReflectionPresent(){
-    return planarReflection.params.y > 0.5;
+    return PLANAR_REFLECTION_PARAMS.y > 0.5;
 }
 
 float planarReflectionLevel(){
-    return planarReflection.params.x;
+    return PLANAR_REFLECTION_PARAMS.x;
 }
 
 vec3 planarReflectionColor(vec3 worldPosition, vec2 screenShift){
-    vec4 clip = planarReflection.viewProjection * vec4(worldPosition.x, planarReflection.params.x, worldPosition.z, 1.0);
+    vec4 clip = PLANAR_REFLECTION_VIEW_PROJECTION * vec4(worldPosition.x, PLANAR_REFLECTION_PARAMS.x, worldPosition.z, 1.0);
     // y flipped for the top-left framebuffer origin (all backends), as mesh.frag's mirror
     vec2 uv = vec2(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5) + vec2(screenShift.x, -screenShift.y);
     uv = clamp(uv, vec2(0.001), vec2(0.999));
