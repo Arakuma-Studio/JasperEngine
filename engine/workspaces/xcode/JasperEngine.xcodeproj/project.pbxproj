@@ -712,6 +712,14 @@
 		715CB114288CD3F60049344B /* TerrainComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 715CB113288CD3F60049344B /* TerrainComponent.h */; };
 		715CB117288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
 		715CB118288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
+		5452524E8CAB9B9AC6199E83 /* TerrainOpsJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */; };
+		5452524E63A3CD932B6E8BD6 /* TerrainOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */; };
+		5452524E31CBAE8414211171 /* TerrainOpsJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */; };
+		5452524E6930D70F1A897C58 /* TerrainClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */; };
+		5452524E6271AA8AFD368AF0 /* TerrainClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */; };
+		5452524E866BF03F461AA6AD /* JoltTerrainRefresh.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */; };
+		5452524E439BDDF518A724BF /* JoltTerrainRefresh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */; };
+		5452524E6E63E5739E49CDE9 /* JoltTerrainRefresh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */; };
 		5452524EE6301E4CC7F6349E /* MeshSystemTerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */; };
 		5452524E4FF6457D85F3935C /* MeshSystemTerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */; };
 		5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EE2E21CCF598630C1 /* TerrainEdit.h */; };
@@ -5682,6 +5690,11 @@
 		7158F43E259C2C82006E55D3 /* Renderer.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = Renderer.mm; sourceTree = "<group>"; };
 		715CB113288CD3F60049344B /* TerrainComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainComponent.h; sourceTree = "<group>"; };
 		715CB115288CD40E0049344B /* Terrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Terrain.cpp; sourceTree = "<group>"; };
+		5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainOpsJson.h; sourceTree = "<group>"; };
+		5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainOpsJson.cpp; sourceTree = "<group>"; };
+		5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainClassesLua.cpp; sourceTree = "<group>"; };
+		5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltTerrainRefresh.h; sourceTree = "<group>"; };
+		5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = JoltTerrainRefresh.cpp; sourceTree = "<group>"; };
 		5452524EC625EC925045B524 /* MeshSystemTerrainEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemTerrainEdit.cpp; sourceTree = "<group>"; };
 		5452524EE2E21CCF598630C1 /* TerrainEdit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainEdit.h; sourceTree = "<group>"; };
 		5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainEdit.cpp; sourceTree = "<group>"; };
@@ -9368,6 +9381,7 @@
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
+				5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10219,6 +10233,8 @@
 				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
 				4A534E470DE923DCD3B67E77 /* ContactTracker.cpp */,
 				4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */,
+				5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */,
+				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -11149,6 +11165,8 @@
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
 				5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */,
 				5452524EE2E21CCF598630C1 /* TerrainEdit.h */,
+				5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */,
+				5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -15125,6 +15143,8 @@
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticleSystemComponent.h in Headers */,
 				715CB119288CD40E0049344B /* Terrain.h in Headers */,
+				5452524E8CAB9B9AC6199E83 /* TerrainOpsJson.h in Headers */,
+				5452524E866BF03F461AA6AD /* JoltTerrainRefresh.h in Headers */,
 				5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */,
 				5452524ED02A76CC88034BB8 /* TerrainSurface.h in Headers */,
 				5452524EC929859B34CA2448 /* TerrainStroke.h in Headers */,
@@ -17592,6 +17612,9 @@
 				71D74954296731F200348AB8 /* Tilemap.cpp in Sources */,
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E63A3CD932B6E8BD6 /* TerrainOpsJson.cpp in Sources */,
+				5452524E6930D70F1A897C58 /* TerrainClassesLua.cpp in Sources */,
+				5452524E439BDDF518A724BF /* JoltTerrainRefresh.cpp in Sources */,
 				5452524EE6301E4CC7F6349E /* MeshSystemTerrainEdit.cpp in Sources */,
 				5452524E143AD6092E4F2738 /* TerrainEdit.cpp in Sources */,
 				5452524EA26F89A24A56CFF7 /* TerrainSurface.cpp in Sources */,
@@ -18439,6 +18462,9 @@
 				1721303D2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E31CBAE8414211171 /* TerrainOpsJson.cpp in Sources */,
+				5452524E6271AA8AFD368AF0 /* TerrainClassesLua.cpp in Sources */,
+				5452524E6E63E5739E49CDE9 /* JoltTerrainRefresh.cpp in Sources */,
 				5452524E4FF6457D85F3935C /* MeshSystemTerrainEdit.cpp in Sources */,
 				5452524E14FFF0F1D87ED435 /* TerrainEdit.cpp in Sources */,
 				5452524E67E57E3DEA16E999 /* TerrainSurface.cpp in Sources */,

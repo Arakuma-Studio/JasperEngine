@@ -30,7 +30,9 @@ SOURCES_ANCHORS = ["715CB117288CD40E0049344B /* Terrain.cpp in Sources */,",
                    "715CB118288CD40E0049344B /* Terrain.cpp in Sources */,"]
 
 # engine/core-relative files outside the folder
-FILES = ["object/TerrainEdit.cpp", "object/TerrainEdit.h", "subsystem/MeshSystemTerrainEdit.cpp"]
+FILES = ["object/TerrainEdit.cpp", "object/TerrainEdit.h", "subsystem/MeshSystemTerrainEdit.cpp",
+         "physics/JoltTerrainRefresh.cpp", "physics/JoltTerrainRefresh.h", "script/binding/TerrainClassesLua.cpp",
+         "object/TerrainOpsJson.cpp", "object/TerrainOpsJson.h"]
 
 
 def terrain_files():
