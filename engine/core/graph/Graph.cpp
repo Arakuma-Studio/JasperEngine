@@ -824,9 +824,16 @@ std::vector<std::pair<std::string, Vec2>> jasperengine::graph::layoutPositions(c
             members.push_back({count ? sum / (double)count : (double)members.size(), i});
         }
         std::stable_sort(members.begin(), members.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        double y = origin.y;
         for (size_t r = 0; r < members.size(); r++) {
             row[members[r].second] = (double)r;
-            out.push_back({order[members[r].second], {origin.x + LAYOUT_COLUMN * (double)c, origin.y + LAYOUT_ROW * (double)r}});
+            const Node* node = graph.findNode(order[members[r].second]);
+            size_t inputs = 0, outputs = 0;
+            if (node) {
+                for (const Port& port : portsOf(graph, *node)) (port.direction == PortDirection::In ? inputs : outputs)++;
+            }
+            out.push_back({order[members[r].second], {origin.x + LAYOUT_COLUMN * (double)c, y}});
+            y += LAYOUT_ROW + LAYOUT_PORT_ROW * (double)std::max(inputs, outputs);
         }
     }
     return out;

@@ -14,12 +14,18 @@
 #include "math/Vector4.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 
 namespace jasperengine::editor::graphvalues {
 
-    // A graph's ramp (gradient points, curve points) holds up to 32 keys; the particles' stay at 8
+    // A graph's ramp (gradient points, curve points) holds up to 32 keys; the particles' stay at 8.
+    // A file's ramp of more keys still edits, as long as an edit adds none.
     inline constexpr size_t RAMP_KEYS_MAX = 32;
+
+    // A number field's range: the declared bounds, and where one is missing as far as the field
+    // goes that way (a missing bound is no bound, never 0)
+    void dragRange(const std::optional<double>& min, const std::optional<double>& max, bool whole, double& lo, double& hi);
 
     // {r, g, b, a} or [r, g, b(, a)]; false for anything else
     bool colorFrom(const graph::Json& value, Vector4& out);

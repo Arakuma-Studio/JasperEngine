@@ -9,6 +9,7 @@
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 
+#include <set>
 #include <system_error>
 
 using namespace jasperengine;
@@ -235,8 +236,28 @@ bool GraphDocument::apply(const std::vector<graph::GraphOp>& ops, const std::str
     }
     const std::string after = graph::save(copy);
     if (after == text) return true;
+    // edit_graph's rule (without its allow_invalid): an edit adds no error the graph did not have
+    auto errorKeys = [](const std::vector<graph::Issue>& issues){
+        std::set<std::string> keys;
+        for (const graph::Issue& issue : issues){
+            if (issue.severity == graph::Severity::Error) keys.insert(issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId);
+        }
+        return keys;
+    };
+    const std::set<std::string> before = errorKeys(validation);
+    for (const graph::Issue& issue : graph::validate(copy)){
+        if (issue.severity != graph::Severity::Error) continue;
+        if (before.count(issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId)) continue;
+        if (inverses) inverses->clear();
+        return failWith(applyError, issue.message + ": nothing was written");
+    }
     std::string onDisk;
-    if (ProjectChecks::readFile(filePath, onDisk) && onDisk != text){
+    if (!ProjectChecks::readFile(filePath, onDisk)){
+        // (writing it would bring a deleted file back)
+        reload();
+        return failWith(applyError, "'" + relativePath + "' does not exist any more");
+    }
+    if (onDisk != text){
         reload();
         return failWith(applyError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }

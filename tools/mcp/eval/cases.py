@@ -1960,15 +1960,17 @@ CASES = [
     {
         "id": "guard_focus_graph_editor",
         "kind": "guard",
-        "what_happened": "The Graph Editor (S90) is a window a human watches an agent's graph in; without its enum value the "
-                         "schema says it cannot be named, and agents take a screenshot of the Scene instead.",
-        "text_at_issue": "focus_window's window enum: 'graph_editor'",
-        "source": "S90 M2 (s90-canvas); no failure on record",
-        "prompt": "Show me the graph you just edited in the editor's Graph Editor window, I want to look at it with you.",
+        "what_happened": "The Graph Editor (S90) shows a graph to a watching human. Without its enum value the schema says it "
+                         "cannot be named; without path, the agent can only show whatever graph was open last.",
+        "text_at_issue": "focus_window's window enum: 'graph_editor', and its path parameter",
+        "source": "S90 M2 (s90-canvas) and its review (I6); no failure on record",
+        "prompt": "Open assets/materials/Wood.procmat in the editor's Graph Editor so I can look at it with you.",
         "mocks": [
-            {"tool": "focus_window", "args": {"window": "graph_editor"}, "result": ok("Focused the Graph Editor window.", {"window": "graph_editor"})},
+            {"tool": "focus_window", "args": {"window": "graph_editor", "path": "assets/materials/Wood.procmat"},
+             "result": ok("Focused the Graph Editor window.", {"window": "graph_editor", "graph": "assets/materials/Wood.procmat"})},
         ],
-        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor"}}], "must_not_call": ["screenshot"]},
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor", "path": "re:Wood\\.procmat"}}],
+                   "must_not_call": ["screenshot"]},
         "max_turns": 6,
     },
     {

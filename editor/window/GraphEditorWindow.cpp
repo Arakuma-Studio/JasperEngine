@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -64,6 +65,33 @@ namespace{
 
     GraphJson positionJson(const ImVec2& p){
         return GraphJson::array({std::round((double)p.x), std::round((double)p.y)});
+    }
+
+    // why `value` cannot be this parameter's ("" when it can): what the Inspector shows must read it
+    std::string valueProblem(const graph::ParamDesc& param, const GraphJson& value){
+        const std::string& kind = param.kind;
+        if (kind == "float") return value.is_number() ? std::string() : "takes a number";
+        if (kind == "int") return value.is_number() && std::floor(value.get<double>()) == value.get<double>() ? std::string() : "takes a whole number";
+        if (kind == "bool") return value.is_boolean() ? std::string() : "takes true or false";
+        if (kind == "string") return value.is_string() ? std::string() : "takes text";
+        if (kind == "enum"){
+            const bool known = value.is_string() && std::find(param.enumValues.begin(), param.enumValues.end(), value.get<std::string>()) != param.enumValues.end();
+            return known ? std::string() : "takes one of its values";
+        }
+        if (kind == "vector2" || kind == "vector3"){
+            const size_t count = kind == "vector2" ? 2 : 3;
+            bool ok = value.is_array() && value.size() == count;
+            for (size_t i = 0; ok && i < count; i++) ok = value[i].is_number();
+            return ok ? std::string() : "takes [" + std::string(count == 2 ? "x, y" : "x, y, z") + "]";
+        }
+        Vector4 color;
+        Gradient gradient;
+        Curve curve;
+        if (kind == "color") return graphvalues::colorFrom(value, color) ? std::string() : "takes a colour {r, g, b, a}";
+        if (kind == "gradient") return graphvalues::gradientFrom(value, gradient) ? std::string() : "takes a gradient {points: [{pos, r, g, b, a}]}";
+        if (kind == "curve") return graphvalues::curveFrom(value, curve) ? std::string() : "takes a curve {points: [{x, y, ls, rs}]}";
+        if (kind == "asset") return value.is_object() ? std::string() : "takes an asset {guid, path}";
+        return std::string();
     }
 
     // "Base Color" from "base_color"
@@ -131,7 +159,7 @@ GraphEditorWindow::~GraphEditorWindow(){
 void GraphEditorWindow::prepareForProjectSwitch(){
     closeSearch();
     setDocument(nullptr);
-    selection.clear();
+    setSelection({}, false);
     edgeSelection.clear();
     inspectorClaim = false;
     status.clear();
@@ -156,7 +184,7 @@ bool GraphEditorWindow::openGraph(const std::string& path){
         return false;
     }
     if (next != document){
-        selection.clear();
+        setSelection({}, false);
         edgeSelection.clear();
         inspectorClaim = false;
         closeSearch();
@@ -168,6 +196,7 @@ bool GraphEditorWindow::openGraph(const std::string& path){
 }
 
 void GraphEditorWindow::setDocument(std::shared_ptr<GraphDocument> next){
+    if (document && document != next) documentClosed();
     if (document && listener) document->removeListener(listener);
     listener = 0;
     document = std::move(next);
@@ -263,10 +292,8 @@ std::string GraphEditorWindow::nodeIdOf(uint64_t canvasId) const{
 }
 
 uint64_t GraphEditorWindow::canvasIdOf(const std::string& nodeId) const{
-    for (size_t i = 0; i < nodeIds.size(); i++){
-        if (nodeIds[i] == nodeId) return i + 1;
-    }
-    return 0;
+    auto it = canvasIds.find(nodeId);
+    return it != canvasIds.end() ? it->second : 0;
 }
 
 bool GraphEditorWindow::nodeRect(const std::string& nodeId, ImVec2& min, ImVec2& max) const{
@@ -309,6 +336,18 @@ GraphCanvas::Node GraphEditorWindow::canvasNodeOfType(const std::string& type, c
 }
 
 GraphCanvas::Node GraphEditorWindow::canvasNode(const graph::Node& node) const{
+    NodeFacts facts;
+    for (const graph::Edge& edge : document->graph().edges){
+        if (edge.from.node == node.id) facts.connected.insert("o:" + edge.from.port);
+        if (edge.to.node == node.id) facts.connected.insert("i:" + edge.to.port);
+    }
+    for (const graph::Issue& issue : document->issues()){
+        if (issue.severity == graph::Severity::Error && issue.nodeId == node.id) facts.error = true;
+    }
+    return canvasNode(node, facts);
+}
+
+GraphCanvas::Node GraphEditorWindow::canvasNode(const graph::Node& node, const NodeFacts& facts) const{
     GraphCanvas::Node out;
     const graph::Graph& g = document->graph();
     const graph::GraphKindDesc* kind = document->kind().get();
@@ -324,24 +363,15 @@ GraphCanvas::Node GraphEditorWindow::canvasNode(const graph::Node& node) const{
         out.size = ImVec2(180, 40);
         return out;
     }
-    std::set<std::string> connected;
-    for (const graph::Edge& edge : g.edges){
-        if (edge.from.node == node.id) connected.insert("o:" + edge.from.port);
-        if (edge.to.node == node.id) connected.insert("i:" + edge.to.port);
-    }
     for (const graph::Port& port : graph::portsOf(g, node)){
         const bool output = port.direction == graph::PortDirection::Out;
         GraphCanvas::Port p{port.id, port.name.empty() ? port.id : port.name, portColor(kind, port.type),
-                            connected.count((output ? "o:" : "i:") + port.id) > 0};
+                            facts.connected.count((output ? "o:" : "i:") + port.id) > 0};
         (output ? out.outputs : out.inputs).push_back(p);
     }
-    if (out.inputs.empty() && out.outputs.empty()){
-        // a dataflow graph's node without ports still gets a header, so it reads as one
-        out.size = ImVec2(GraphCanvas::MIN_WIDTH, GraphCanvas::HEADER_HEIGHT + GraphCanvas::PADDING);
-    }
-    for (const graph::Issue& issue : document->issues()){
-        if (issue.severity == graph::Severity::Error && issue.nodeId == node.id) out.error = true;
-    }
+    // (a node without ports is a plain box with its label: a canvas node needs a port to get a header)
+    if (out.inputs.empty() && out.outputs.empty()) out.size = ImVec2(GraphCanvas::MIN_WIDTH, 40.0f);
+    out.error = facts.error;
     out.thumbnail = nodeHasThumbnail(node);
     out.cost = nodeCost(node);
     out.selected = std::find(selection.begin(), selection.end(), node.id) != selection.end();
@@ -422,6 +452,16 @@ std::string GraphEditorWindow::addNode(const std::string& type, const ImVec2& po
 
 bool GraphEditorWindow::setParam(const std::string& nodeId, const std::string& param, const GraphJson& value){
     if (!document || !document->graph().findNode(nodeId)) return false;
+    if (const graph::NodeTypeDesc* type = document->nodeType(document->graph().findNode(nodeId)->type)){
+        for (const graph::ParamDesc& desc : type->params){
+            if (desc.name != param || value.is_null()) continue;
+            const std::string why = valueProblem(desc, value);
+            if (!why.empty()){
+                status = paramLabel(param) + " " + why;
+                return false;
+            }
+        }
+    }
     const GraphJson* current = nullptr;
     const graph::Node* node = document->graph().findNode(nodeId);
     if (auto it = node->params.find(param); it != node->params.end()) current = &*it;
@@ -525,45 +565,60 @@ bool GraphEditorWindow::duplicateSelection(){
 
 bool GraphEditorWindow::pasteText(const std::string& text, const ImVec2& at){
     if (!document || !document->editable()) return false;
+    // the clipboard is anyone's text: every key is checked before it is read
     const GraphJson clip = GraphJson::parse(text, nullptr, false);
-    if (clip.is_discarded() || !clip.is_object() || !clip.contains(CLIPBOARD_KEY) || !clip["nodes"].is_array() || clip["nodes"].empty()){
+    const auto kind = clip.is_object() ? clip.find(CLIPBOARD_KEY) : clip.end();
+    const auto nodes = clip.is_object() ? clip.find("nodes") : clip.end();
+    if (clip.is_discarded() || !clip.is_object() || kind == clip.end() || !kind->is_string() || nodes == clip.end() || !nodes->is_array() ||
+        nodes->empty()){
         status = "the clipboard holds no graph nodes";
         return false;
     }
-    if (clip.value(CLIPBOARD_KEY, std::string()) != document->graph().kind){
-        status = "the clipboard's nodes are of a " + clip.value(CLIPBOARD_KEY, std::string()) + " graph";
+    if (kind->get<std::string>() != document->graph().kind){
+        status = "the clipboard's nodes are of a " + kind->get<std::string>() + " graph";
         return false;
     }
     graph::Graph copy = document->graph();
+    std::vector<graph::Node> parsed;
     ImVec2 min(FLT_MAX, FLT_MAX);
-    for (const GraphJson& node : clip["nodes"]){
-        const graph::Node parsed = graph::nodeFromJson(node);
-        min = ImVec2(std::min(min.x, (float)parsed.position.x), std::min(min.y, (float)parsed.position.y));
+    for (const GraphJson& item : *nodes){
+        if (!item.is_object()) continue;
+        graph::Node node = graph::nodeFromJson(item);
+        if (!document->nodeType(node.type)){
+            status = "the clipboard holds a node of type '" + node.type + "', which this graph's kind does not have";
+            return false;
+        }
+        min = ImVec2(std::min(min.x, (float)node.position.x), std::min(min.y, (float)node.position.y));
+        parsed.push_back(std::move(node));
     }
     std::map<std::string, std::string> ids;
     std::vector<graph::GraphOp> ops;
     std::vector<std::string> pasted;
-    for (const GraphJson& node : clip["nodes"]){
-        graph::Node parsed = graph::nodeFromJson(node);
-        if (parsed.type.empty() || ids.count(parsed.id)) continue;
+    for (const graph::Node& node : parsed){
+        if (ids.count(node.id)) continue;
         const std::string fresh = copy.allocateId("n");
-        ids[parsed.id] = fresh;
-        parsed.id = fresh;
-        parsed.position = {parsed.position.x - min.x + at.x, parsed.position.y - min.y + at.y};
-        parsed.placed = true;
-        ops.push_back({"addNode", {{"node", graph::toJson(parsed)}}});
+        ids[node.id] = fresh;
+        // the type, place and values only: its ports come from its type, never from the text
+        GraphJson clean = {{"id", fresh}, {"type", node.type},
+                           {"position", positionJson(ImVec2((float)node.position.x - min.x + at.x, (float)node.position.y - min.y + at.y))}};
+        if (node.params.is_object() && !node.params.empty()) clean["params"] = node.params;
+        ops.push_back({"addNode", {{"node", clean}}});
         pasted.push_back(fresh);
     }
-    if (clip.contains("edges") && clip["edges"].is_array()){
-        for (const GraphJson& item : clip["edges"]){
+    const auto edges = clip.find("edges");
+    if (edges != clip.end() && edges->is_array()){
+        for (const GraphJson& item : *edges){
+            if (!item.is_object()) continue;
             const graph::Edge edge = graph::edgeFromJson(item);
             if (!ids.count(edge.from.node) || !ids.count(edge.to.node)) continue;
             ops.push_back({"connect", {{"from", {{"node", ids[edge.from.node]}, {"port", edge.from.port}}}, {"to", {{"node", ids[edge.to.node]}, {"port", edge.to.port}}}}});
         }
     }
-    if (pasted.empty()) return false;
-    const std::string firstType = graph::nodeFromJson(clip["nodes"][0]).type;
-    const std::string undo = pasted.size() == 1 ? "Paste " + typeLabel(document->nodeType(firstType), firstType) : "Paste " + std::to_string(pasted.size()) + " Nodes";
+    if (pasted.empty()){
+        status = "the clipboard holds no graph nodes";
+        return false;
+    }
+    const std::string undo = pasted.size() == 1 ? "Paste " + typeLabel(document->nodeType(parsed[0].type), parsed[0].type) : "Paste " + std::to_string(pasted.size()) + " Nodes";
     if (!apply(ops, undo)) return false;
     setSelection(pasted, true);
     return true;
@@ -868,12 +923,23 @@ void GraphEditorWindow::drawProblems(){
 
 void GraphEditorWindow::drawCanvas(){
     const graph::Graph& g = document->graph();
+    // what each node shows, found in one pass over the edges and the issues
+    std::unordered_map<std::string, NodeFacts> facts;
+    for (const graph::Edge& edge : g.edges){
+        facts[edge.from.node].connected.insert("o:" + edge.from.port);
+        facts[edge.to.node].connected.insert("i:" + edge.to.port);
+    }
+    for (const graph::Issue& issue : document->issues()){
+        if (issue.severity == graph::Severity::Error && !issue.nodeId.empty()) facts[issue.nodeId].error = true;
+    }
     nodeIds.clear();
+    canvasIds.clear();
     std::vector<GraphCanvas::Node> nodes;
     for (size_t i = 0; i < g.nodes.size(); i++){
-        GraphCanvas::Node node = canvasNode(g.nodes[i]);
+        GraphCanvas::Node node = canvasNode(g.nodes[i], facts[g.nodes[i].id]);
         node.id = i + 1;
         nodeIds.push_back(g.nodes[i].id);
+        canvasIds[g.nodes[i].id] = i + 1;
         nodes.push_back(std::move(node));
     }
     std::vector<GraphCanvas::Link> links;
@@ -929,7 +995,10 @@ void GraphEditorWindow::drawCanvas(){
         }
     }
 
-    if (result.clickedNode || result.clickedBackground || result.clickedGroup) selectionAtPress = before;
+    // what Esc gives back: the selection at this press, whatever it starts (a wire's too)
+    if (result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) selectionAtPress = before;
+    // a click on empty canvas leaves no wire selected either
+    if (result.clickedBackground && !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl) edgeSelection.clear();
     if (result.cancelled){
         setSelection(selectionAtPress, false);
     }else if (result.selectionChanged && !result.clickedLink){
@@ -1103,16 +1172,17 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
         if (kind == "float" || kind == "int"){
             const bool whole = kind == "int";
             double number = value.is_number() ? value.get<double>() : 0.0;
-            const double lo = param.min.value_or(-DBL_MAX), hi = param.max.value_or(DBL_MAX);
+            double lo, hi;
+            graphvalues::dragRange(param.min, param.max, whole, lo, hi);
             const float speed = param.min && param.max ? (float)((hi - lo) / 200.0) : 0.01f;
             bool changed;
             if (whole){
-                int v = (int)number;
-                changed = ImGui::DragInt("##v", &v, std::max(0.1f, speed), param.min ? (int)lo : 0, param.max ? (int)hi : 0, "%d", ImGuiSliderFlags_AlwaysClamp);
+                int v = (int)std::clamp(number, lo, hi);
+                changed = ImGui::DragInt("##v", &v, std::max(0.1f, speed), (int)lo, (int)hi, "%d", ImGuiSliderFlags_AlwaysClamp);
                 number = v;
             }else{
                 float v = (float)number;
-                changed = ImGui::DragFloat("##v", &v, speed, param.min ? (float)lo : 0.0f, param.max ? (float)hi : 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                changed = ImGui::DragFloat("##v", &v, speed, (float)lo, (float)hi, "%.3f", ImGuiSliderFlags_AlwaysClamp);
                 number = v;
             }
             UIProbe::item("graph.inspector." + param.name);
@@ -1183,7 +1253,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
         }else{
             // string, asset and any: the text (a string), or the JSON (the rest), applied on Enter
             const bool text = kind == "string" && (value.is_string() || value.is_null());
-            const std::string shown = text ? (value.is_string() ? value.get<std::string>() : std::string()) : kind == "asset" && value.is_object() ? value.value("path", std::string()) : value.dump();
+            const std::string shown = text ? (value.is_string() ? value.get<std::string>() : std::string()) : kind == "asset" && value.is_object() && value.contains("path") && value["path"].is_string() ? value["path"].get<std::string>() : value.dump();
             char buffer[1024];
             std::snprintf(buffer, sizeof(buffer), "%s", shown.c_str());
             if (ImGui::InputText("##v", buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue)){

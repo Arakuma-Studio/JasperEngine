@@ -212,9 +212,12 @@ namespace jasperengine::graph {
 
     // Where an automatic layout puts `ids` (S90 R30): left to right by their longest path from a
     // source among them, a column per step, each column in the order of the rows feeding it.
-    // Beside the other placed nodes, to their right, so nothing lands on them. Deterministic.
+    // Beside the other placed nodes, to their right, so nothing lands on them. Deterministic. A
+    // node takes LAYOUT_ROW plus LAYOUT_PORT_ROW per port row of its column: room for an editor's
+    // header, port rows and a 112-unit image (the Graph Editor's node is 150 + 20 per row tall).
     inline constexpr double LAYOUT_COLUMN = 280.0;
-    inline constexpr double LAYOUT_ROW = 200.0;
+    inline constexpr double LAYOUT_ROW = 180.0;
+    inline constexpr double LAYOUT_PORT_ROW = 20.0;
     JASPERENGINE_API std::vector<std::pair<std::string, Vec2>> layoutPositions(const Graph& graph, const std::vector<std::string>& ids);
     // The ids of the nodes without a position, in file order
     JASPERENGINE_API std::vector<std::string> unplacedNodes(const Graph& graph);

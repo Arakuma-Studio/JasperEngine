@@ -74,8 +74,9 @@ namespace jasperengine::editor{
 
         // Applies `ops` in order to a copy and writes the result as one undo step named `undoName`
         // (empty: describe() of a single op, else "Edit Graph (N Changes)"). Nothing is written
-        // when an op throws (`error` says which), when nothing changed (true), or when the file
-        // changed on disk meanwhile (refused; the document reloads). `inverses` gets each op's
+        // when an op throws (`error` says which), when nothing changed (true), when the result has
+        // an error issue the graph did not have (edit_graph's rule), or when the file changed on
+        // disk or is gone meanwhile (refused; the document reloads). `inverses` gets each op's
         // inverse, so a caller learns the ids addNode allocated.
         bool apply(const std::vector<graph::GraphOp>& ops, const std::string& undoName, std::string* error,
                    std::vector<graph::GraphOp>* inverses = nullptr);

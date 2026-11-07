@@ -35,6 +35,12 @@
 //                                         ProceduralSession::setGraph); the selected nodes changed
 //   frameStarted                          once a frame while the window is open, before it draws (a
 //                                         session's update(): its evaluator's slice and the debounce)
+//   documentClosed                        the graph goes (another one opens, the project switches; not
+//                                         from the base destructor, so a subclass's own does the same):
+//                                         cancel what was started for it and drop its images;
+//                                         getDocument() is still the old one
+// App calls prepareForProjectSwitch on every graph window, a kind's too, so none keeps a document of the
+// project that closes.
 
 #pragma once
 
@@ -44,6 +50,8 @@
 
 #include <memory>
 #include <optional>
+#include <set>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -90,7 +98,7 @@ namespace jasperengine::editor{
         void requestFocus() { focusRequest = true; }
         const std::string& windowName() const { return name; }
         const std::string& kindId() const { return kindFilter; }
-        // a project closes: the document and the selection go
+        // a project closes: the document and the selection go (documentClosed, selectionChanged)
         void prepareForProjectSwitch();
 
         // the window on a graph file; false + status when it is not one of its kind or does not load
@@ -173,6 +181,7 @@ namespace jasperengine::editor{
         virtual void documentChanged() {}
         virtual void selectionChanged() {}
         virtual void frameStarted() {}
+        virtual void documentClosed() {}
 
         Project* project;
 
@@ -190,6 +199,7 @@ namespace jasperengine::editor{
         bool frameRequest = false;
         // canvas ids: node index + 1 in the graph, wires from EDGE_BASE
         std::vector<std::string> nodeIds;
+        std::unordered_map<std::string, uint64_t> canvasIds;
         std::vector<GraphCanvas::Node> lastNodes;
         std::vector<std::string> selection;
         std::vector<std::string> selectionAtPress;
@@ -213,6 +223,12 @@ namespace jasperengine::editor{
         int searchCursor = 0;
         ImVec2 contextAt;
 
+        // what a node shows that the graph's edges and issues say
+        struct NodeFacts{
+            std::set<std::string> connected;    // "i:<port>", "o:<port>"
+            bool error = false;
+        };
+        GraphCanvas::Node canvasNode(const graph::Node& node, const NodeFacts& facts) const;
         void setDocument(std::shared_ptr<GraphDocument> next);
         void syncToDocument();
         bool apply(const std::vector<graph::GraphOp>& ops, const std::string& undoName, std::vector<graph::GraphOp>* inverses = nullptr);

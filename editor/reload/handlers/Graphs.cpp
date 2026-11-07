@@ -40,10 +40,13 @@ void reload::addGraphFileProblems(Project& project, const fs::path& path, Json& 
     }
 }
 
-void reload::reloadGraphs(Context& ctx, const std::vector<fs::path>& files) {
-    if (!files.empty()) GraphDocument::filesChanged(files);
-    for (const fs::path& path : files) {
+void reload::reloadGraphs(Context& ctx, const std::vector<fs::path>& external, const std::vector<fs::path>& documents) {
+    for (const fs::path& path : external) {
         addGraphFileProblems(ctx.project, path, ctx.result.problems);
         ctx.service.recordDone("graph", path, 0.0);
     }
+    std::vector<fs::path> reread = external;
+    reread.insert(reread.end(), documents.begin(), documents.end());
+    if (!reread.empty()) GraphDocument::filesChanged(reread);
+    if (ctx.options.full) GraphDocument::checkDiskChanges();
 }

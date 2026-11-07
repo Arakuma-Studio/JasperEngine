@@ -161,7 +161,7 @@ namespace jasperengine::editor{
         // a dataflow node's size from its ports and slot; a state machine's box keeps its own
         static ImVec2 nodeSize(const Node& node);
         // a port's centre in canvas units (on the node's left edge for an input, right for an
-        // output); the node's position when it has no such port
+        // output); the middle of that edge when it has no such port
         static ImVec2 portPosition(const Node& node, const std::string& port, bool output);
         // the thumbnail slot's rect in canvas units (min, max)
         static void thumbnailRect(const Node& node, ImVec2& min, ImVec2& max);

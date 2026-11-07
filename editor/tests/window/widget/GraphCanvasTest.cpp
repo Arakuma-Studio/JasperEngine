@@ -371,3 +371,45 @@ TEST(GraphCanvas, FrameSelectedCentresTheSelection) {
     EXPECT_NEAR(centre.x, ImGui::GetIO().DisplaySize.x * 0.5f, 20.0f);
     EXPECT_NEAR(centre.y, ImGui::GetIO().DisplaySize.y * 0.5f, 20.0f);
 }
+
+// S90 review M3: zoomed out, a point between two rows goes to the nearer port; a node on top hides
+// the ports under it
+TEST(GraphCanvas, APortPressGoesToTheNearestPortOfTheTopNode) {
+    Rig rig;
+    rig.dataflow();
+    const ImVec2 at = rig.centre(1);
+    rig.moveTo(at);
+    for (int i = 0; i < 5; i++) {
+        ImGui::GetIO().AddMouseWheelEvent(0.0f, -1.0f);
+        rig.frame();
+    }
+    ASSERT_LT(rig.canvas.getZoom(), 0.7f);
+    ASSERT_GT(GraphCanvas::controlsAlpha(rig.canvas.getZoom()), 0.0f);
+    const ImVec2 a = rig.port(1, "a", false), b = rig.port(1, "b", false);
+    // a third of the way from b to a: nearer b
+    const ImVec2 nearB(b.x, b.y + (a.y - b.y) / 3.0f);
+    const GraphCanvas::Result joined = rig.dragTo(rig.port(0, "out", true), nearB);
+    EXPECT_EQ(joined.connectTo.port, "b");
+
+    // a box laid over Blend: its ports take no press
+    rig.nodes[2].position = rig.nodes[1].position;
+    rig.nodes[2].size = ImVec2(400, 300);
+    rig.frame();
+    rig.moveTo(rig.port(1, "a", false));
+    rig.frame();
+    rig.press();
+    EXPECT_FALSE(rig.canvas.isWiring()) << "the box on top takes the press";
+    rig.release();
+}
+
+// S90 review M9: a wire to a port a node does not show ends at the middle of that side
+TEST(GraphCanvas, APortANodeDoesNotShowIsTheMiddleOfItsSide) {
+    GraphCanvas::Node node;
+    node.position = ImVec2(10, 20);
+    node.size = ImVec2(120, 40);
+    const ImVec2 in = GraphCanvas::portPosition(node, "gone", false);
+    const ImVec2 out = GraphCanvas::portPosition(node, "gone", true);
+    EXPECT_EQ(in.x, 10.0f);
+    EXPECT_EQ(out.x, 130.0f);
+    EXPECT_EQ(in.y, 40.0f);
+}

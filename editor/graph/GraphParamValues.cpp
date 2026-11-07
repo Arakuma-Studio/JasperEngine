@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 using namespace jasperengine;
@@ -20,11 +21,24 @@ namespace{
         return std::isfinite(out);
     }
 
+    // a whole number at `key`, `fallback` when it is missing or of another type (a file holds anything)
+    int wholeOr(const Json& object, const char* key, int fallback){
+        if (!object.is_object()) return fallback;
+        auto it = object.find(key);
+        return it != object.end() && it->is_number() ? (int)it->get<double>() : fallback;
+    }
+
     // a float stored as JSON without float noise ("0.3" stays 0.3, not 0.30000001192...)
     Json rounded(float value){
         return std::round((double)value * 1e6) / 1e6;
     }
 
+}
+
+void graphvalues::dragRange(const std::optional<double>& min, const std::optional<double>& max, bool whole, double& lo, double& hi){
+    const double far = whole ? (double)std::numeric_limits<int>::max() : (double)std::numeric_limits<float>::max();
+    lo = min.value_or(-far);
+    hi = max.value_or(far);
 }
 
 bool graphvalues::colorFrom(const Json& value, Vector4& out){
@@ -72,7 +86,7 @@ bool graphvalues::gradientFrom(const Json& value, Gradient& out){
         gradient.colorKeys.push_back({pos, Vector3(r, g, b)});
         gradient.alphaKeys.push_back({pos, a});
     }
-    gradient.mode = value.value("interpolation", 1) == 0 ? GradientMode::Fixed : GradientMode::Blend;
+    gradient.mode = wholeOr(value, "interpolation", 1) == 0 ? GradientMode::Fixed : GradientMode::Blend;
     gradient.sortKeys();
     out = gradient;
     return true;
@@ -84,7 +98,9 @@ bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json&
     for (const GradientAlphaKey& key : gradient.alphaKeys) times.push_back(key.time);
     std::sort(times.begin(), times.end());
     times.erase(std::unique(times.begin(), times.end()), times.end());
-    if (times.size() > RAMP_KEYS_MAX){
+    // (a file's ramp over the limit still edits down)
+    const size_t had = like.is_object() && like.contains("points") && like["points"].is_array() ? like["points"].size() : 0;
+    if (times.size() > std::max(RAMP_KEYS_MAX, had)){
         error = "a gradient holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys (colour and alpha keys at different places count apart)";
         return false;
     }
@@ -97,7 +113,7 @@ bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json&
     }
     out["points"] = std::move(points);
     // Blend keeps a smooth interpolation the file had (2, 3): the editor shows those as Blend
-    const int before = like.is_object() ? like.value("interpolation", 1) : 1;
+    const int before = wholeOr(like, "interpolation", 1);
     if (gradient.mode == GradientMode::Fixed) out["interpolation"] = 0;
     else out["interpolation"] = before == 0 ? 1 : before;
     return true;
@@ -123,7 +139,8 @@ bool graphvalues::curveFrom(const Json& value, Curve& out){
 }
 
 bool graphvalues::curveJson(const Curve& curve, const Json& like, Json& out, std::string& error){
-    if (curve.keys.size() > RAMP_KEYS_MAX){
+    const size_t had = like.is_object() && like.contains("points") && like["points"].is_array() ? like["points"].size() : 0;
+    if (curve.keys.size() > std::max(RAMP_KEYS_MAX, had)){
         error = "a curve holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys";
         return false;
     }

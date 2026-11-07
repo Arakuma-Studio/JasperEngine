@@ -22,6 +22,7 @@
 #include "graph/GraphDocument.h"
 #include "graph/GraphParamValues.h"
 #include "graph/GraphRegistry.h"
+#include "procmat/ProceduralMaterialKind.h"
 #include "widget/GradientEditorOps.h"
 #include "window/GraphEditorWindow.h"
 
@@ -151,8 +152,15 @@ namespace {
                        {"shape", "curve", GraphJson{{"points", {{{"x", 0.0}, {"y", 0.0}, {"ls", 0.0}, {"rs", 1.0}}, {{"x", 1.0}, {"y", 1.0}, {"ls", 1.0}, {"rs", 0.0}}}}},
                         std::nullopt, std::nullopt, {}},
                        {"label", "string", "", std::nullopt, std::nullopt, {}},
-                       {"on", "bool", true, std::nullopt, std::nullopt, {}}};
-        kind.nodeTypes = {speed, blend, vec, tint};
+                       {"on", "bool", true, std::nullopt, std::nullopt, {}},
+                       {"texture", "asset", GraphJson(), std::nullopt, std::nullopt, {}}};
+        graph::NodeTypeDesc mix6;
+        mix6.id = "mix6";
+        mix6.displayName = "Mix Six";
+        mix6.category = "Math";
+        for (const char* id : {"i0", "i1", "i2", "i3", "i4", "i5"}) mix6.ports.push_back(port(id, graph::PortDirection::In, "float", id, true));
+        mix6.ports.push_back(port("out", graph::PortDirection::Out, "float", "Out"));
+        kind.nodeTypes = {speed, blend, vec, tint, mix6};
         graph::GraphRegistry::get().registerKind(kind);
     }
 
@@ -196,6 +204,26 @@ namespace {
         ~Frames() {
             ImGui::DestroyContext(context);
             ImGui::SetCurrentContext(previous);
+        }
+        void moveTo(GraphEditorWindow& window, const ImVec2& at) {
+            ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+            frame(window);
+            frame(window);
+        }
+        void button(GraphEditorWindow& window, bool down) {
+            ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+            frame(window);
+        }
+        void click(GraphEditorWindow& window, const ImVec2& at) {
+            moveTo(window, at);
+            button(window, true);
+            button(window, false);
+        }
+        void esc(GraphEditorWindow& window) {
+            ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+            frame(window);
+            ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+            frame(window);
         }
         bool frame(GraphEditorWindow& window) {
             ImGui::NewFrame();
@@ -514,4 +542,211 @@ TEST(GraphParamValues, ColoursGradientsAndCurvesRoundTripInTheirShape) {
     EXPECT_EQ(curve.keys[1].inTangent, 0.5f);
     ASSERT_TRUE(graphvalues::curveJson(curve, GraphJson::object(), out, error));
     EXPECT_EQ(out["points"][0].value("rs", 0.0), 2.0);
+}
+
+// review I1: the clipboard is anyone's text; none of it may throw or abort
+TEST_F(GraphEditorWindowTest, AHostileClipboardIsRefusedWithoutAThrow) {
+    GraphEditorWindow window(project());
+    ASSERT_TRUE(window.openGraph(writeGraph("hostile")));
+    const size_t start = history()->position();
+    for (const char* text : {R"({"graph_clipboard": "window_test"})", R"({"graph_clipboard": 1, "nodes": [{}]})",
+                             R"({"graph_clipboard": "window_test", "nodes": "n1"})", R"({"graph_clipboard": "window_test", "nodes": [5, null]})",
+                             R"({"graph_clipboard": ["window_test"], "nodes": [{"type": "speed"}]})", "[1, 2]", ""}) {
+        EXPECT_NO_THROW(EXPECT_FALSE(window.pasteText(text, ImVec2(0, 0))) << text) << text;
+    }
+    EXPECT_EQ(history()->position(), start) << "nothing written";
+}
+
+// review I2: paste and value edits go through the checks edit_graph makes
+TEST_F(GraphEditorWindowTest, PasteAndValueEditsAreCheckedAsEditGraphChecksThem) {
+    GraphEditorWindow window(project());
+    ASSERT_TRUE(window.openGraph(writeGraph("checked")));
+    const size_t start = history()->position();
+    // a type the kind does not have, with ports of its own invention
+    EXPECT_FALSE(window.pasteText(R"({"graph_clipboard": "window_test", "nodes": [{"id": "a", "type": "bogus", "position": [0, 0],
+        "ports": [{"id": "x", "direction": "out", "type": "float"}]}]})", ImVec2(0, 0)));
+    EXPECT_NE(window.getStatus().find("bogus"), std::string::npos) << window.getStatus();
+    // a known type keeps its type's ports, never the text's
+    ASSERT_TRUE(window.pasteText(R"({"graph_clipboard": "window_test", "nodes": [{"id": "a", "type": "speed", "position": [0, 0],
+        "ports": [{"id": "x", "direction": "in", "type": "string"}], "extra": 1}]})", ImVec2(0, 500)));
+    const graph::Node* pasted = window.getDocument()->graph().findNode(window.selectedNodes().at(0));
+    ASSERT_NE(pasted, nullptr);
+    EXPECT_FALSE(pasted->dynamicPorts.has_value());
+    EXPECT_FALSE(pasted->passthrough.contains("extra"));
+    // values of the wrong type, and an enum value the type does not list
+    EXPECT_FALSE(window.pasteValueText("n2", "weight", R"("abc")"));
+    EXPECT_FALSE(window.setParam("n2", "mode", "cubic"));
+    EXPECT_FALSE(window.setParam("n1", "value", GraphJson::array({1, 2})));
+    EXPECT_EQ(history()->position(), start + 1) << "only the good paste wrote";
+    // an op that adds an error (a wire to a port that does not exist) is refused by the document
+    std::string error;
+    EXPECT_FALSE(window.getDocument()->apply({{"connect", {{"from", {{"node", "n1"}, {"port", "value"}}}, {"to", {{"node", "n2"}, {"port", "nope"}}}}}},
+                                             "", &error));
+    EXPECT_NE(error.find("nothing was written"), std::string::npos) << error;
+    EXPECT_EQ(history()->position(), start + 1);
+}
+
+// review I3: a file holds anything; the Inspector draws it whatever its types
+TEST_F(GraphEditorWindowTest, TheInspectorDrawsWronglyTypedValues) {
+    writeGraph("typed", R"([{"id": "n1", "type": "tint", "position": [0, 0], "params": {
+        "ramp": {"points": [{"pos": 0, "r": 0, "g": 0, "b": 0}, {"pos": 1, "r": 1, "g": 1, "b": 1}], "interpolation": "smooth"},
+        "texture": {"path": 5}, "color": "red", "shape": {"points": 3}, "on": "yes", "label": 7}}])");
+    GraphEditorWindow window(project());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph("assets/graphs/typed.wtgraph"));
+    Frames frames;
+    frames.frame(window);
+    window.selectNodes({"n1"});
+    EXPECT_NO_THROW(EXPECT_TRUE(frames.frame(window)));
+    Gradient gradient;
+    EXPECT_NO_THROW(graphvalues::gradientFrom(window.getDocument()->graph().findNode("n1")->params["ramp"], gradient));
+    GraphJson out;
+    std::string error;
+    EXPECT_NO_THROW(graphvalues::gradientJson(gradient, window.getDocument()->graph().findNode("n1")->params["ramp"], out, error));
+}
+
+// review I5: the Procedural Material kind's ramps are gradients and curves, so they edit in their fields
+TEST(GraphParamValues, TheProceduralMaterialKindsRampsAreGradientsAndCurves) {
+    procmat::registerProceduralMaterialKind();
+    auto kind = graph::GraphRegistry::get().kind(procmat::PROCEDURAL_MATERIAL_KIND);
+    ASSERT_TRUE(kind);
+    size_t gradients = 0, curves = 0;
+    for (const graph::NodeTypeDesc& type : kind->nodeTypes) {
+        for (const graph::ParamDesc& param : type.params) {
+            if (param.kind == "gradient") {
+                gradients++;
+                Gradient value;
+                EXPECT_TRUE(graphvalues::gradientFrom(param.defaultValue, value)) << type.id << "." << param.name << ": the field reads its default";
+            }
+            if (param.kind == "curve") {
+                curves++;
+                Curve value;
+                EXPECT_TRUE(graphvalues::curveFrom(param.defaultValue, value)) << type.id << "." << param.name;
+            }
+        }
+    }
+    EXPECT_GT(gradients, 0u);
+    EXPECT_GT(curves, 0u);
+}
+
+namespace {
+
+    // a kind's window as the Procedural Material one is: images on every node, told when its graph goes
+    class ImageWindow : public GraphEditorWindow {
+    public:
+        using GraphEditorWindow::GraphEditorWindow;
+        int closed = 0;
+        int selections = 0;
+        int frames = 0;
+
+    protected:
+        bool nodeHasThumbnail(const graph::Node&) const override { return true; }
+        void documentClosed() override { closed++; }
+        void selectionChanged() override { selections++; }
+        void frameStarted() override { frames++; }
+    };
+
+}
+
+// review I7: the kind window's seam says when its graph goes and when the selection empties
+TEST_F(GraphEditorWindowTest, AKindWindowHearsItsGraphGo) {
+    ImageWindow window(project(), "Image Graph", "window_test");
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeGraph("seam1")));
+    Frames frames;
+    frames.frame(window);
+    EXPECT_EQ(window.frames, 1);
+    window.selectNodes({"n1"});
+    const int selections = window.selections;
+    ASSERT_TRUE(window.openGraph(writeGraph("seam2")));
+    EXPECT_EQ(window.closed, 1) << "another graph opened";
+    EXPECT_EQ(window.selections, selections + 1) << "its selection emptied";
+    window.prepareForProjectSwitch();
+    EXPECT_EQ(window.closed, 2) << "the project switched";
+    EXPECT_FALSE(window.getDocument());
+}
+
+// review I8: Arrange leaves room for a node's ports and its image
+TEST_F(GraphEditorWindowTest, ArrangedNodesWithImagesDoNotOverlap) {
+    writeGraph("tall", R"([{"id": "n1", "type": "mix6", "params": {}}, {"id": "n2", "type": "mix6", "params": {}},
+        {"id": "n3", "type": "speed", "params": {}}, {"id": "n4", "type": "mix6", "params": {}}])");
+    ImageWindow window(project(), "Image Graph", "window_test");
+    ASSERT_TRUE(window.openGraph("assets/graphs/tall.wtgraph"));
+    ASSERT_TRUE(window.arrange());
+    const graph::Graph& g = window.getDocument()->graph();
+    std::vector<GraphCanvas::Node> shown;
+    for (const graph::Node& node : g.nodes) {
+        GraphCanvas::Node box = window.canvasNode(node);
+        box.size = GraphCanvas::nodeSize(box);
+        shown.push_back(box);
+    }
+    for (size_t i = 0; i < shown.size(); i++) {
+        for (size_t j = i + 1; j < shown.size(); j++) {
+            const GraphCanvas::Node& a = shown[i];
+            const GraphCanvas::Node& b = shown[j];
+            const bool apart = a.position.x + a.size.x <= b.position.x || b.position.x + b.size.x <= a.position.x ||
+                               a.position.y + a.size.y <= b.position.y || b.position.y + b.size.y <= a.position.y;
+            EXPECT_TRUE(apart) << g.nodes[i].id << " and " << g.nodes[j].id << " overlap";
+        }
+    }
+}
+
+// review M1, M2: a click on empty canvas drops the wire selection; Esc during a wire drag keeps the
+// selection the press found
+TEST_F(GraphEditorWindowTest, CanvasClicksDropTheWireAndEscKeepsTheSelectionOfThePress) {
+    GraphEditorWindow window(project());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeGraph("clicks")));
+    ASSERT_TRUE(window.connect("n1", "value", "n2", "a"));
+    Frames frames;
+    frames.frame(window);
+    frames.frame(window);
+    ImVec2 out, in;
+    ASSERT_TRUE(window.portScreen("n1", "value", true, out));
+    ASSERT_TRUE(window.portScreen("n2", "a", false, in));
+    frames.click(window, ImVec2((out.x + in.x) * 0.5f, (out.y + in.y) * 0.5f));
+    ASSERT_FALSE(window.selectedEdge().empty()) << "the wire's click selects it";
+    ImVec2 min, max;
+    ASSERT_TRUE(window.nodeRect("n2", min, max));
+    frames.click(window, ImVec2(max.x + 200, max.y + 200));
+    EXPECT_TRUE(window.selectedEdge().empty()) << "a click on empty canvas drops it";
+
+    // a click selects Speed, then the selection becomes Blend in another way (the search, the Problems strip)
+    ASSERT_TRUE(window.nodeRect("n1", min, max));
+    frames.click(window, ImVec2(min.x + 30, min.y + 8));
+    ASSERT_EQ(window.selectedNodes(), std::vector<std::string>{"n1"});
+    window.selectNodes({"n2"});
+    ASSERT_TRUE(window.portScreen("n1", "value", true, out));
+    frames.moveTo(window, out);
+    frames.button(window, true);
+    frames.moveTo(window, ImVec2(out.x + 150, out.y + 150));
+    frames.esc(window);
+    frames.button(window, false);
+    EXPECT_EQ(window.selectedNodes(), std::vector<std::string>{"n2"}) << "the selection at the wire's press";
+}
+
+TEST(GraphParamValues, AFilesRampOverTheLimitEditsDownAndMissingBoundsAreNoBounds) {
+    GraphJson points = GraphJson::array();
+    for (int i = 0; i < 40; i++) points.push_back({{"pos", i / 39.0}, {"r", 0.0}, {"g", 0.0}, {"b", 0.0}, {"a", 1.0}});
+    const GraphJson file = {{"points", points}};
+    Gradient gradient;
+    ASSERT_TRUE(graphvalues::gradientFrom(file, gradient));
+    gradient.colorKeys.pop_back();
+    gradient.alphaKeys.pop_back();
+    GraphJson out;
+    std::string error;
+    EXPECT_TRUE(graphvalues::gradientJson(gradient, file, out, error)) << "a key fewer: " << error;
+    EXPECT_EQ(out["points"].size(), 39u);
+    gradient.colorKeys.push_back({0.995f, Vector3(0, 0, 0)});
+    gradient.colorKeys.push_back({0.996f, Vector3(0, 0, 0)});
+    gradient.sortKeys();
+    EXPECT_FALSE(graphvalues::gradientJson(gradient, file, out, error)) << "more than the file had";
+
+    double lo, hi;
+    graphvalues::dragRange(std::nullopt, 5.0, false, lo, hi);
+    EXPECT_LT(lo, -1e30) << "no min: none, not 0";
+    EXPECT_EQ(hi, 5.0);
+    graphvalues::dragRange(-3.0, std::nullopt, true, lo, hi);
+    EXPECT_EQ(lo, -3.0);
+    EXPECT_GT(hi, 1e9);
 }

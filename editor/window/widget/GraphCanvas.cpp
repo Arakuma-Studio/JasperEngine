@@ -153,12 +153,14 @@ ImVec2 GraphCanvas::nodeSize(const Node& node){
 
 ImVec2 GraphCanvas::portPosition(const Node& node, const std::string& port, bool output){
     const std::vector<Port>& ports = output ? node.outputs : node.inputs;
+    const ImVec2 size = nodeSize(node);
+    const float x = output ? node.position.x + size.x : node.position.x;
     for (size_t i = 0; i < ports.size(); i++){
         if (ports[i].id != port) continue;
-        const float x = output ? node.position.x + nodeSize(node).x : node.position.x;
         return ImVec2(x, node.position.y + HEADER_HEIGHT + PORT_ROW * ((float)i + 0.5f));
     }
-    return node.position;
+    // a port the node does not show (an unknown type's): the middle of that side
+    return ImVec2(x, node.position.y + size.y * 0.5f);
 }
 
 void GraphCanvas::thumbnailRect(const Node& node, ImVec2& min, ImVec2& max){
@@ -235,21 +237,28 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
     std::unordered_map<uint64_t, const Node*> byId;
     for (const Node& node : nodes) byId[node.id] = &node;
     const float alpha = controlsAlpha(zoom);
-    // the port under a screen point (ports take no press once faded out)
+    // the port under a screen point (ports take no press once faded out): the nearest port of the
+    // topmost node whose box, widened by a port's reach, holds the point, so a node above another
+    // hides its ports, and rows closer than the reach go to the nearer one
     auto portAt = [&](ImVec2 screen, PortRef& out) -> bool {
         if (alpha <= 0.0f) return false;
-        const float reach = std::max(7.0f, PORT_ROW * 0.5f * zoom);
+        const float reachX = std::max(8.0f, 10.0f * zoom);
+        const float reachY = std::max(7.0f, PORT_ROW * 0.5f * zoom);
         for (auto it = nodes.rbegin(); it != nodes.rend(); ++it){
+            const ImVec2 a = toScreen(it->position);
+            const ImVec2 b = toScreen(add(it->position, it->size));
+            if (screen.x < a.x - reachX || screen.x > b.x + reachX || screen.y < a.y || screen.y > b.y) continue;
+            float best = 1e9f;
             for (int side = 0; side < 2; side++){
-                const std::vector<Port>& ports = side ? it->outputs : it->inputs;
-                for (const Port& port : ports){
+                for (const Port& port : side ? it->outputs : it->inputs){
                     const ImVec2 p = toScreen(portPosition(*it, port.id, side == 1));
-                    if (std::fabs(screen.x - p.x) <= std::max(8.0f, 10.0f * zoom) && std::fabs(screen.y - p.y) <= reach){
-                        out = {it->id, port.id, side == 1};
-                        return true;
-                    }
+                    const float dy = std::fabs(screen.y - p.y);
+                    if (std::fabs(screen.x - p.x) > reachX || dy > reachY || dy >= best) continue;
+                    best = dy;
+                    out = {it->id, port.id, side == 1};
                 }
             }
+            return best < 1e9f;
         }
         return false;
     };

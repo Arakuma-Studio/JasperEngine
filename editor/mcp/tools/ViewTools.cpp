@@ -1570,8 +1570,13 @@ void focusWindowTool(const CallPtr& call) {
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
     } else if (window == "graph_editor") {
-        // the graph opened last (a double-click on a graph file opens it)
-        app.getGraphEditorWindow()->setOpen(true);
+        // `path` opens that graph (as a double-click on it does); without it, the one open
+        GraphEditorWindow* graphs = app.getGraphEditorWindow();
+        if (args.contains("path") && !graphs->openGraph(args.value("path", std::string()))) {
+            call->fail("path: " + graphs->getStatus() + ".");
+            return;
+        }
+        graphs->setOpen(true);
         imguiName = GraphEditorWindow::WINDOW_NAME;
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
@@ -1630,6 +1635,10 @@ void focusWindowTool(const CallPtr& call) {
         call->fail("pose: only for window \"pose_animation\".");
         return;
     }
+    if (args.contains("path") && window != "graph_editor") {
+        call->fail("path: only for window \"graph_editor\".");
+        return;
+    }
     // A window opened just now exists after its next draw.
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
@@ -1645,6 +1654,11 @@ void focusWindowTool(const CallPtr& call) {
                                 {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "graph_editor") {
+                const auto& document = call->ctx().app().getGraphEditorWindow()->getDocument();
+                data["graph"] = document ? Json(document->projectPath()) : Json();
+                if (!document) data["next"] = "No graph is open: focus_window {window: \"graph_editor\", path} opens one.";
+            }
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
             if (window == "profiler") {
                 const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
@@ -2111,6 +2125,7 @@ void registerViewTools(McpRegistry& registry) {
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"path", string("graph_editor: a graph file to open.")},
             {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;
