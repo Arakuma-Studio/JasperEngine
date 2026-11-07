@@ -21,6 +21,9 @@
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
 #include "Readback.h"
+#include "TempDir.h"
+
+#include "stb_image_write.h"
 
 #include <gtest/gtest.h>
 
@@ -36,6 +39,20 @@ using namespace jasperengine::test;
 namespace {
 
     constexpr int EDIT_GPU_MAP = 65;
+
+    // a 16 x 16 PNG of one colour (the terrain's layers and blend map: it draws only with them)
+    std::string editGpuPng(TempDir& dir, const std::string& name, uint8_t r, uint8_t g, uint8_t b){
+        std::vector<uint8_t> pixels(16 * 16 * 4);
+        for (size_t i = 0; i < pixels.size(); i += 4){
+            pixels[i] = r;
+            pixels[i + 1] = g;
+            pixels[i + 2] = b;
+            pixels[i + 3] = 255;
+        }
+        const std::string path = dir.file(name + ".png").generic_string();
+        stbi_write_png(path.c_str(), 16, 16, 4, pixels.data(), 16 * 4);
+        return path;
+    }
 
     std::vector<uint8_t> editGpuTarget(){
         Framebuffer& target = GpuEnvironment::target();
@@ -63,7 +80,7 @@ namespace {
         Camera camera{&scene};
         std::shared_ptr<Terrain> terrain;
 
-        EditGpuStage(const std::string& id, const std::vector<uint16_t>& heights){
+        EditGpuStage(TempDir& dir, const std::string& id, const std::vector<uint16_t>& heights){
             scene.setBackgroundColor(0.1f, 0.1f, 0.12f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setPosition(0.0f, 5.0f, 4.0f);
@@ -73,6 +90,10 @@ namespace {
             terrain = std::make_shared<Terrain>(&scene);
             terrain->setSize(8.0f);
             terrain->setMaxHeight(3.0f);
+            // lit layers, so a raised surface shades differently from a flat one
+            terrain->setBlendMap(editGpuPng(dir, "blend", 255, 0, 0));
+            terrain->setTextureLayer(0, editGpuPng(dir, "red", 230, 40, 30));
+            terrain->setTextureLayer(1, editGpuPng(dir, "blue", 30, 60, 230));
             TerrainComponent& component = terrain->getComponent<TerrainComponent>();
             const size_t bytes = heights.size() * 2;
             void* raw = std::malloc(bytes);
@@ -130,11 +151,12 @@ TEST(TerrainEditGpu, StreamMapReadsBack){
 // AC35 (R43, DC9): drawn after an edit equals the same map loaded fresh
 TEST(TerrainEditGpu, UploadMatchesFreshLoad){
     JASPER_REQUIRE_GPU();
+    TempDir dir;
     const std::vector<uint16_t> flat((size_t)EDIT_GPU_MAP * EDIT_GPU_MAP, 16000);
     std::vector<uint16_t> edited;
     std::vector<uint8_t> afterEdit, before;
     {
-        EditGpuStage stage("t1-gpu-edited", flat);
+        EditGpuStage stage(dir, "t1-gpu-edited", flat);
         ASSERT_TRUE(stage.settle());
         before = editGpuTarget();
         TerrainComponent& component = stage.terrain->getComponent<TerrainComponent>();
@@ -154,7 +176,7 @@ TEST(TerrainEditGpu, UploadMatchesFreshLoad){
         edited.assign(pixels, pixels + flat.size());
     }
     ASSERT_GT(editGpuDifference(afterEdit, before), 1.0) << "the edit shows";
-    EditGpuStage fresh("t1-gpu-fresh", edited);
+    EditGpuStage fresh(dir, "t1-gpu-fresh", edited);
     ASSERT_TRUE(fresh.settle());
     EXPECT_LT(editGpuDifference(editGpuTarget(), afterEdit), 1.0) << "what the edit drew is what a fresh load of the map draws";
     EXPECT_NO_ENGINE_ERRORS();
