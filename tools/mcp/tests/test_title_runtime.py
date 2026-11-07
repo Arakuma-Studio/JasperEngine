@@ -104,7 +104,7 @@ async def test_lua_sentences(ed: Editor):
     try:
         await ed.call("wait", frames=3)
         r = await ed.call("eval_lua", code=(
-            "local t = GameObject.find('Logo'):getTitleArt()\n"
+            "local t = object('Logo'):getTitleArt()\n"
             "local ok, err = pcall(function() t.text = 'WIN' end)\n"
             "local ok2, err2 = pcall(function() t.renderMode = TitleArtRenderMode.REALTIME end)\n"
             "return t.title, t.renderMode == TitleArtRenderMode.BAKED, ok, err, ok2, err2, t:getParameter('text'), t:hasParameter('glow_amount')"))
@@ -129,7 +129,7 @@ async def test_realtime_text_change(ed: Editor):
     await ed.call("play", action="start", scene=s["scene"])
     try:
         await ed.call("wait", frames=3)
-        await ed.call("eval_lua", code="GameObject.find('Logo'):getTitleArt().text = 'WIN'")
+        await ed.call("eval_lua", code="object('Logo'):getTitleArt().text = 'WIN'")
         state = await ed.call("get_title", entity="Logo", scene=s["scene"], wait_ready=True, timeout_seconds=60)
         ed.check(state.get("ready") is True, f"ready after the change: {state.get('pending')} {state.get('error')}")
         ed.check_eq(state["effective"].get("text"), "WIN")
