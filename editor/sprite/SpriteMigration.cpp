@@ -113,10 +113,10 @@ namespace jasperengine::editor::sprite {
             return false;
         }
 
+        // an open scene or prefab stage
         struct Loaded {
             SceneProject* scene = nullptr;
-            Prefab* prefab = nullptr;
-            EntityRegistry* registry() const { return scene ? scene->scene : prefab ? prefab->registry.get() : nullptr; }
+            EntityRegistry* registry() const { return scene ? scene->scene : nullptr; }
         };
 
         Loaded loadedOwner(Project& project, const std::string& owner) {
@@ -130,10 +130,8 @@ namespace jasperengine::editor::sprite {
                     return loaded;
                 }
             }
-            if (Util::isPrefabFile(owner)) {
-                Prefab* prefab = project.getPrefab(fs::path(owner));
-                if (prefab && prefab->registry) loaded.prefab = prefab;
-            }
+            // a prefab asset loaded for its instances is edited in its file, then reloaded
+            // (refreshPrefabInstances): its edits in memory alone would never reach the disk
             return loaded;
         }
 
@@ -441,7 +439,7 @@ namespace jasperengine::editor::sprite {
             entry.owner = owner;
             const Loaded loaded = loadedOwner(*project, owner);
             if (EntityRegistry* registry = loaded.registry()) {
-                entry.wasModified = loaded.scene ? loaded.scene->isModified : loaded.prefab->isModified;
+                entry.wasModified = loaded.scene->isModified;
                 for (const LegacySprite* s : sprites) {
                     const Entity entity = static_cast<Entity>(s->entity);
                     SpriteComponent* sprite = registry->findComponent<SpriteComponent>(entity);
@@ -451,11 +449,8 @@ namespace jasperengine::editor::sprite {
                     applyToComponent(*sprite, plan.texture, guid, frame, frame < static_cast<int>(names.size()) ? names[static_cast<size_t>(frame)] : std::string());
                     report->converted++;
                 }
-                if (loaded.scene) {
-                    loaded.scene->isModified = true;
-                    loaded.scene->needUpdateRender = true;
-                }
-                if (loaded.prefab) loaded.prefab->isModified = true;
+                loaded.scene->isModified = true;
+                loaded.scene->needUpdateRender = true;
                 undoData.push_back(std::move(entry));
                 continue;
             }
@@ -494,6 +489,7 @@ namespace jasperengine::editor::sprite {
             report->filesWritten.push_back(owner);
             project->getAssetDatabase().importAssets(full);
             project->getAssetIndex().updateReferrer(owner);
+            if (Util::isPrefabFile(owner) && project->getPrefab(fs::path(owner))) project->refreshPrefabInstances(fs::path(owner), true);
             undoData.push_back(std::move(entry));
         }
         SpriteSheetBuilder::get().invalidate(plan.texture);
@@ -512,6 +508,7 @@ namespace jasperengine::editor::sprite {
                 }
                 project->getAssetDatabase().importAssets(full);
                 project->getAssetIndex().updateReferrer(entry.owner);
+                if (Util::isPrefabFile(entry.owner) && project->getPrefab(fs::path(entry.owner))) project->refreshPrefabInstances(fs::path(entry.owner), true);
                 continue;
             }
             const Loaded loaded = loadedOwner(*project, entry.owner);
@@ -524,11 +521,8 @@ namespace jasperengine::editor::sprite {
                         sprite->builtFrame = -1;
                     }
                 }
-                if (loaded.scene) {
-                    loaded.scene->isModified = entry.wasModified;
-                    loaded.scene->needUpdateRender = true;
-                }
-                if (loaded.prefab) loaded.prefab->isModified = entry.wasModified;
+                loaded.scene->isModified = entry.wasModified;
+                loaded.scene->needUpdateRender = true;
             }
         }
         undoData.clear();

@@ -124,11 +124,9 @@ async def test_convert_all_users_and_undo(ed: Editor):
     closed = S["closed"].read_text()
     check(closed.count("sheet: " + WALK) == 2 and "framesRect" not in closed, f"the closed scene's two sprites are sheet sprites: {closed[:400]}")
     sprite = (await ed.call("get_entity", scene=S["main"], entity="Walker", components=["sprite"]))["components"]["sprite"]
-    check(WALK in json.dumps(sprite.get("sheet")) and not sprite.get("framesRect"), f"Walker is a sheet sprite: {sprite}")
+    check(WALK in json.dumps(sprite.get("sheet")) and not sprite.get("numFramesRect"), f"Walker is a sheet sprite: {sprite}")
     prefab_now = S["prefab"].read_text()
-    if "sheet" not in prefab_now:
-        await ed.call("save_project")
-        prefab_now = S["prefab"].read_text()
+    check("sheet: " + WALK in prefab_now and "framesRect" not in prefab_now, f"the prefab file's sprite converted: {prefab_now[-800:]}")
     await ed.call("instantiate_prefab", scene=S["main"], prefab="prefabs/Walker.prefab", name="FromPrefab")
     got = (await ed.call("get_entity", scene=S["main"], entity="FromPrefab", components=["sprite"]))["components"]["sprite"]
     check(WALK in json.dumps(got.get("sheet")), f"the prefab's sprite converted: {got}")
@@ -143,7 +141,7 @@ async def test_convert_all_users_and_undo(ed: Editor):
     check(now == meta_before or (now is not None and b"spriteSheet" not in now), "the meta as it was")
     check(S["closed"].read_bytes() == closed_before, "the closed scene as it was")
     sprite = (await ed.call("get_entity", scene=S["main"], entity="Walker", components=["sprite"]))["components"]["sprite"]
-    check(not sprite.get("sheet") and sprite.get("framesRect"), f"Walker is inline again: {sprite}")
+    check(not sprite.get("sheet") and sprite.get("numFramesRect") == 3, f"Walker is inline again: {sprite}")
     check(S["prefab"].read_bytes() == prefab_before or "framesRect" in S["prefab"].read_text(), "the prefab as it was")
 
 
