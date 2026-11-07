@@ -275,7 +275,7 @@ void editor::ProjectFileWrites::setSyncHook(SyncHook hook) {
 
 bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
                                               std::function<void(const std::vector<fs::path>&)> afterChange, Guard guard,
-                                              fs::path beneath, bool ownFolders) {
+                                              fs::path beneath, bool ownFolders, const std::string& stepName) {
     if (!project) {
         error = "No project is open to write into.";
         return false;
@@ -295,6 +295,7 @@ bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<Writ
                                : new WriteFilesCmd(std::move(items), std::move(afterChange));
     cmd->setNoMerge();
     cmd->reportFailureTo(failure);
+    if (!stepName.empty()) cmd->setName(stepName);
     // every write, removal and restore beneath `beneath` when it happens; else beneath the write
     // scope it is made in (an MCP call: the project, Command::writeRoot), else (`ownFolders`) each
     // file beneath its own folder

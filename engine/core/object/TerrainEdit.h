@@ -4,9 +4,9 @@
 #ifndef TERRAIN_EDIT_H
 #define TERRAIN_EDIT_H
 
-// The ECS side of the terrain engine (S53 R3, R14, R42, R91, R93): what engine/core/terrain cannot
+// The ECS side of the terrain engine (T1 R3, R14, R42, R91, R93): what engine/core/terrain cannot
 // know because it knows no component. Callers query the surface and write maps through here, and
-// the seams of later specs meet here (S56 adds its world lookup to querySurface).
+// the seams of later specs meet here (T4 adds its world lookup to querySurface).
 
 #include "Engine.h"
 #include "Export.h"
@@ -29,6 +29,7 @@
 namespace jasperengine {
 
     class Scene;
+    class Texture;
     struct TerrainComponent;
     struct Transform;
 
@@ -44,7 +45,7 @@ namespace jasperengine {
     // false. Read-only: particle collisions call it from workers.
     JASPERENGINE_API terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);
 
-    // A world ray against the surface, loading the height map if it must. skipHoles: S53 R16
+    // A world ray against the surface, loading the height map if it must. skipHoles: T1 R16
     JASPERENGINE_API bool raycastTerrain(TerrainComponent& terrain, const Transform& transform, const Ray& ray, bool skipHoles, Vector3& worldPoint);
 
     // R93: the abstract form over one component, for whoever takes a TerrainSurfaceQuery
@@ -59,7 +60,7 @@ namespace jasperengine {
         TerrainComponent* component;
     };
 
-    // R93, S57 R7: the query's copied-texel form, which a job may read while the map changes on the
+    // R93, T5 R7: the query's copied-texel form, which a job may read while the map changes on the
     // main thread. view points into this object: keep it alive, and do not copy it.
     struct JASPERENGINE_API TerrainSurfaceSnapshot {
         TerrainSurfaceSnapshot() = default;
@@ -74,7 +75,7 @@ namespace jasperengine {
 
     // R91: the one place a new terrain gets its defaults, called by every route that makes one for a
     // person or an agent. A struct default stays what an old scene loads with, so the settings only
-    // new terrains should have go here (S55 R53, S57 F12).
+    // new terrains should have go here (T3 R53, T5 F12).
     JASPERENGINE_API void applyNewTerrainDefaults(TerrainComponent& terrain);
 
     // R13: remap_layers moved the paint; this moves the layers, in the same step. order holds the new
@@ -103,6 +104,60 @@ namespace jasperengine {
         static void forgetScene(const Scene* scene);
     };
 
+    // R23, DC10: what a terrain's edits leave for the next MeshSystem::update. Made by the first edit:
+    // a terrain never edited has only a null pointer (R53). The rest of T1 keeps its stream images here.
+    struct TerrainEditState {
+        // R23: during a stroke the surface revision advances at most this often
+        static constexpr double REVISION_SECONDS = 0.25;
+
+        // height texels whose nodes wait for new ranges
+        terrain::TexelRect refit;
+        // a height changed since the last revision
+        bool surfaceMoved = false;
+        double lastRevisionAt = -REVISION_SECONDS;
+        int strokes = 0;
+        // R79: the terrain-local rectangle whose heights or holes the colliders have yet to take,
+        // before the next physics step (physics/JoltTerrainRefresh)
+        bool collisionDirty = false;
+        float collisionMinX = 0.0f, collisionMinZ = 0.0f, collisionMaxX = 0.0f, collisionMaxZ = 0.0f;
+
+        // DC9: an image goes up at most once a frame, and a map bigger than the frame's budget at
+        // most every ceil(bytes / budget) frames; the last edit always goes
+        struct Upload {
+            terrain::MapId map;
+            uint64_t lastFrame = 0;
+            bool waiting = false;
+        };
+        std::vector<Upload> uploads;
+        uint64_t frame = 0;
+        // bytes a frame's uploads may take; 0: Engine::defaultTerrainUploadBytes() (R64: the editor
+        // sets its own)
+        size_t uploadBudget = 0;
+        // R78: the maps were moved under private ids before the first runtime write
+        bool runtimeDetached = false;
+    };
+
+    // DC9: the frames between two uploads of a map of this many bytes
+    JASPERENGINE_API uint64_t terrainUploadInterval(size_t mapBytes, size_t budget);
+
+    // R78: before a game's first write, every map of the terrain moves under a private id
+    // (__terrain_runtime_<n>_<entity>_<map>), so the authored files and another terrain sharing
+    // them never see the change. Once per terrain; false when a map could not be copied.
+    JASPERENGINE_API bool detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity);
+
+    // The map a store's id names on this component; null when the terrain has no such slot
+    JASPERENGINE_API Texture* terrainMapTexture(TerrainComponent& terrain, terrain::MapId map);
+
+    // A map's bytes changed under this rectangle, whoever wrote them: the terrain refits instead of
+    // rebuilding (R23), its image follows, and subscribers hear of it (R42). For a terrain sharing
+    // the file of the one written (R41), this is all it needs.
+    JASPERENGINE_API void noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, terrain::MapId map, terrain::TexelRect rect);
+
+    // Between these the surface revision is held to its stroke rate, and it always advances after the
+    // last end (R23)
+    JASPERENGINE_API void beginTerrainStroke(TerrainComponent& terrain);
+    JASPERENGINE_API void endTerrainStroke(TerrainComponent& terrain);
+
     // R3: the store over a component's maps. Main thread only: a job takes a snapshot (R69). Writes
     // change the map in memory, mark the terrain for the refresh a map change needs, and publish
     // TerrainEditEvents. EditorTerrainStore (editor/terrain/) adds persistence and sharing.
@@ -110,7 +165,10 @@ namespace jasperengine {
     public:
         TerrainComponentStore(Scene* scene, Entity entity, TerrainComponent& terrain);
 
-        TerrainComponent& component() { return terrain; }
+        TerrainComponent& component() { return *terrainPtr; }
+        // The component's array moved: this store goes on over its new place (a store a stroke holds
+        // across frames)
+        void rebind(TerrainComponent& moved) { terrainPtr = &moved; }
 
         terrain::TerrainFrame frame() const override;
         terrain::MapFormat format(terrain::MapId map) const override;
@@ -135,9 +193,10 @@ namespace jasperengine {
         bool sync(terrain::MapId map) const;
         void afterWrite();
 
+    protected:
         Scene* scene;
         Entity entity;
-        TerrainComponent& terrain;
+        TerrainComponent* terrainPtr;
         mutable terrain::RawMapStore bytes;
         std::vector<std::pair<terrain::MapId, terrain::TexelRect>> dirty;
     };

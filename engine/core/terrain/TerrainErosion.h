@@ -4,7 +4,7 @@
 #ifndef TERRAIN_EROSION_H
 #define TERRAIN_EROSION_H
 
-// Erosion over a normalized height buffer, moved from editor/util with its results unchanged (S53
+// Erosion over a normalized height buffer, moved from editor/util with its results unchanged (T1
 // R22). The kernels see a window of the map, so a stamp needs no whole-map buffer; the caller's
 // weight is what keeps the effect inside the stamp.
 

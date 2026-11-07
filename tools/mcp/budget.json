@@ -11,7 +11,8 @@
         "generated tool groups section, and each '## ' section (the text before the first one counts as a section);",
         "sections names a section's own limit. headroom_bytes: the whole text must stay that far under bytes, room",
         "for the tool groups and digest lines later specs add. Area detail goes to docs/mcp/guide/<area>.md, never",
-        "into a raised limit or a smaller headroom."
+        "into a raised limit or a smaller headroom. client_cut: the sections a client that keeps only the first chars",
+        "characters must still get whole (UTF-16 code units, as JavaScript counts), and the pointer the intro must carry."
     ],
     "default_listing": {
         "chars": 99000,
@@ -26,7 +27,19 @@
         "bytes": 8192,
         "headroom_bytes": 1500,
         "section_bytes": 1500,
-        "sections": {}
+        "sections": {},
+        "client_cut": {
+            "chars": 4096,
+            "sections": [
+                "(intro)",
+                "Addressing",
+                "The loop",
+                "Building scenes",
+                "Tool groups"
+            ],
+            "pointer": "read_file jasper://guide",
+            "reason": "Claude Code keeps the first 4096 characters of server instructions (CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH default, agent-authoring)"
+        }
     },
     "groups": {
         "diagnostics": {
@@ -67,7 +80,7 @@
         "terrain": {
             "chars": 16000,
             "tools": 10,
-            "spec": "The one limit for S53-S57 (programme decision D17, S53 R74), lowered to the measured total plus 5 % when S56 lands: sculpt_terrain, set_terrain_maps, sample_terrain, S53's edit_terrain, visualize_terrain and export_terrain_heightmap, S54's generate_terrain and preview_noise_graph, S56's edit_terrain_world, and agent-authoring's edit_terrain_details"
+            "spec": "The one limit for T1-T5 (programme decision D17, T1 R74), lowered to the measured total plus 5 % when T4 lands: sculpt_terrain, set_terrain_maps, sample_terrain, T1's edit_terrain, visualize_terrain and export_terrain_heightmap, T2's generate_terrain and preview_noise_graph, T4's edit_terrain_world, and agent-authoring's edit_terrain_details"
         }
     },
     "exceptions": {
@@ -112,16 +125,16 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1980,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units)"
+            "limit": 1990,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
         },
         "create_particles": {
             "limit": 1888,
             "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
         },
         "set_terrain_maps": {
-            "limit": 2369,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them"
+            "limit": 2719,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors)"
         },
         "inspect_ui": {
             "limit": 1792,

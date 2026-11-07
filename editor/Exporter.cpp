@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "terrain/TerrainMapPersistence.h"
 #include "util/SafeWrite.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -27,6 +28,7 @@
 #include <regex>
 #include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
+#include "util/ApplePrivacy.h"
 #include "util/PngEditorChunks.h"
 #include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
@@ -64,6 +66,7 @@
 #include "texture/TextureExport.h"
 #include "model/ModelExport.h"
 #include "util/StringUtils.h"
+#include "resources/icons/jasperengine-logo_png.h"
 
 #include "stb_image.h"
 #include "tinyxml2.h"
@@ -81,6 +84,7 @@
 #include <cstring>
 #include <fstream>
 #include <future>
+#include <optional>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -109,23 +113,6 @@ namespace {
 using namespace jasperengine;
 
 namespace {
-    // Win32 filesystem operations need the extended prefix beyond MAX_PATH.
-    fs::path copyPath(const fs::path& path) {
-#ifdef _WIN32
-        const fs::path absolutePath = fs::absolute(path);
-        const fs::path::string_type nativePath = absolutePath.native();
-
-        if (nativePath.rfind(L"\\\\?\\", 0) == 0) {
-            return absolutePath;
-        }
-        if (nativePath.rfind(L"\\\\", 0) == 0) {
-            return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
-        }
-        return fs::path(L"\\\\?\\" + nativePath);
-#else
-        return path;
-#endif
-    }
 
     constexpr float BUILD_PROGRESS_START = 0.6f;
     constexpr float BUILD_PROGRESS_END = 0.95f;
@@ -523,43 +510,6 @@ namespace {
         plist.replace(replaceStart, valueEnd - replaceStart, array);
     }
 
-    // Removes a top-level key holding a string, if present
-    void removePlistStringValue(std::string& plist, const std::string& key) {
-        const std::string keyTag = "\t<key>" + key + "</key>";
-        const size_t keyPos = plist.find(keyTag);
-        if (keyPos == std::string::npos) return;
-
-        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
-        if (valueStart == std::string::npos || plist.compare(valueStart, 8, "<string>") != 0) return;
-        const size_t valueEnd = plist.find("</string>", valueStart);
-        if (valueEnd == std::string::npos) return;
-
-        size_t eraseEnd = valueEnd + std::string("</string>").size();
-        if (eraseEnd < plist.size() && plist[eraseEnd] == '\n') eraseEnd++;
-        plist.erase(keyPos, eraseEnd - keyPos);
-    }
-
-    // Whether an export compiles in Google Mobile Ads for a platform. Without an App ID
-    // the SDK stops the app at launch, and Google's sample app would ship test ads, so
-    // AdMob is left out until the project has its own.
-    bool isAdMobIncluded(bool enabled, const std::string& appId, const char* platform,
-                         const char* sampleAppId, bool warn) {
-        if (!enabled) return false;
-        if (appId.empty()) {
-            if (warn) {
-                editor::Out::warning("%s AdMob is enabled but has no App ID, so the export leaves AdMob out. "
-                             "Set the App ID from the AdMob console in Project Settings (Google's test App ID %s serves test ads only)",
-                             platform, sampleAppId);
-            }
-            return false;
-        }
-        if (warn && !editor::isAdMobAppIdValid(appId)) {
-            editor::Out::warning("%s AdMob App ID \"%s\" is not an app ID like ca-app-pub-0000000000000000~0000000000 (ad unit IDs have a / instead)",
-                         platform, appId.c_str());
-        }
-        return true;
-    }
-
     void replacePlistBoolValue(std::string& plist, const std::string& key, bool value) {
         const std::string keyTag = "\t<key>" + key + "</key>";
         const std::string boolTag = value ? "\t<true/>\n" : "\t<false/>\n";
@@ -717,7 +667,7 @@ namespace {
     void writeNativePlistEntries(std::string& plist, const std::map<std::string, editor::NativePlistValue>& entries, const std::string& rawXml) {
         for (const auto& [key, value] : entries) setPlistValue(plist, key, plistValueXml(value));
         if (rawXml.find_first_not_of(" \t\r\n") == std::string::npos) return;
-        // the fragment's keys replace the export's (one SKAdNetworkItems)
+        // the fragment's keys replace the export's (one dictionary of each key)
         for (const std::string& key : plistFragmentKeys(rawXml)) removePlistKey(plist, key);
         const size_t dictEnd = plist.rfind("</dict>");
         if (dictEnd == std::string::npos) return;
@@ -943,11 +893,164 @@ void editor::Exporter::setDetail(const std::string& line) {
     progress.detailLine = line;
 }
 
-void editor::Exporter::setError(const std::string& message) {
+void editor::Exporter::setError(const std::string& message, bool reported) {
     std::lock_guard<std::mutex> lock(progressMutex);
     progress.failed = true;
     progress.errorMessage = message;
-    Out::error("Build failed: %s", message.c_str());
+    // a failure the compiler's own error lines already reported is not one more error
+    if (reported) Out::info("Build failed: %s", message.c_str());
+    else Out::error("Build failed: %s", message.c_str());
+}
+
+bool editor::Exporter::copyOrFail(const fs::path& from, const fs::path& to) {
+    std::string error;
+    if (exportfiles::copyFile(from, to, error)) return true;
+    setError(error);
+    return false;
+}
+
+bool editor::Exporter::writeOrFail(const fs::path& path, const std::string& content) {
+    std::string error;
+    if (exportfiles::writeFile(path, content, error)) return true;
+    setError(error);
+    return false;
+}
+
+bool editor::Exporter::walkFiles(const fs::path& root, const exportfiles::DirFilter& filter, const exportfiles::Visitor& visit) {
+    bool visitorFailed = false;
+    const exportfiles::WalkResult walked = exportfiles::walk(root,
+        [&](const fs::directory_entry& entry, const fs::path& rel) {
+            if (isEarlierExport(entry)) return exportfiles::DirAction::Skip;
+            return filter ? filter(entry, rel) : exportfiles::DirAction::Descend;
+        },
+        [&](const fs::directory_entry& entry, const fs::path& rel) {
+            if (visit(entry, rel)) return true;
+            visitorFailed = true;
+            return false;
+        });
+    for (const fs::path& folder : walked.unreadable) {
+        warn("W-UNREADABLE-FOLDER", FileUtils::pathToGenericUtf8(folder) + " could not be read and was left out of the build");
+    }
+    if (!walked.ok && !visitorFailed) setError(walked.error);
+    return walked.ok;
+}
+
+bool editor::Exporter::isEarlierExport(const fs::directory_entry& entry) {
+    std::error_code ec;
+    const fs::path& dir = entry.path();
+    std::string marker;
+    for (const fs::path& own : {config.targetDir, config.destinationDir}) {
+        if (!own.empty() && fs::equivalent(dir, own, ec)) {
+            marker = "this build's output folder";
+            break;
+        }
+    }
+    if (marker.empty()) marker = exportfiles::exportFolderMarker(dir, getAppName());
+    if (marker.empty()) return false;
+    const fs::path where = project ? dir.lexically_proximate(project->getProjectPath()) : dir;
+    if (warnedExportFolders.insert(dir.lexically_normal()).second) {
+        warn("W-EXPORT-FOLDER-SKIPPED", FileUtils::pathToGenericUtf8(where) + " looks like an earlier export (" + marker +
+             ") and was left out; move it out of the project");
+    }
+    return true;
+}
+
+bool editor::Exporter::writeWebFavicon(const fs::path& target) {
+    const WebProjectSettings& web = project->getWebProjectSettings();
+    if (!web.favicon.empty()) {
+        const fs::path favicon = web.favicon.is_absolute() ? web.favicon : project->getProjectPath() / web.favicon;
+        std::string error;
+        if (exportfiles::copyFile(favicon, target, error)) return true;
+        setError("Cannot copy the web favicon: " + error);
+        return false;
+    }
+    std::error_code ec;
+    fs::path icon = project->getWindowIcon();
+    if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
+    std::string extension = FileUtils::pathToUtf8(icon.extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!icon.empty() && extension == ".png" && fs::is_regular_file(icon, ec)) return copyOrFail(icon, target);
+    // a page without one makes the browser ask for /favicon.ico (a 404 in the console), as Unity's
+    // template ships its own
+    return writeOrFail(target, std::string(reinterpret_cast<const char*>(jasperengine_logo_png), jasperengine_logo_png_len));
+}
+
+bool editor::Exporter::removeStale(const fs::path& path) {
+    std::error_code ec;
+    fs::remove(path, ec);
+    if (!ec) return true;
+    setError("Failed to remove " + FileUtils::pathToGenericUtf8(path) + ": " + ec.message());
+    return false;
+}
+
+void editor::Exporter::resetResult() {
+    std::lock_guard<std::mutex> lock(progressMutex);
+    result = ExportResult();
+    result.outputDir = config.mode == ExportMode::SourceCode ? config.targetDir : config.destinationDir;
+    warnedExportFolders.clear();
+}
+
+void editor::Exporter::failBuild(const std::string& what) {
+    const std::vector<BuildDiagnostic>& errors = buildErrors.errors();
+    if (!errors.empty()) {
+        // at the end of the log, where a long build's output leaves the reader; not errors again
+        // (the compiler's lines above count once each in the Console)
+        Out::info("Build errors (%zu):", buildErrors.errorCount());
+        for (const BuildDiagnostic& error : errors) Out::info("%s", error.text.c_str());
+        if (buildErrors.errorCount() > errors.size()) Out::info("(and %zu more)", buildErrors.errorCount() - errors.size());
+    }
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        progress.errors = errors;
+        progress.errorCount = buildErrors.errorCount();
+    }
+    setError(what + buildErrors.failureDetail(), !errors.empty());
+}
+
+std::string editor::Exporter::outputFolderRefusal(const Project* project, const fs::path& dir) {
+    if (dir.empty()) return std::string();
+    // CMake reads ';' as a list separator: the exported build would take the path apart
+    if (FileUtils::pathToUtf8(dir).find(';') != std::string::npos) {
+        return "The output folder " + FileUtils::pathToGenericUtf8(dir) + " has a ';' in its path, which CMake reads as a list "
+               "separator: choose a folder whose path has none, or rename the folder.";
+    }
+    if (!project) return std::string();
+    std::error_code ec;
+    const fs::path where = fs::weakly_canonical(fs::absolute(dir, ec), ec).lexically_normal();
+    const fs::path projectRoot = fs::weakly_canonical(project->getProjectPath(), ec).lexically_normal();
+    auto inside = [&where](const fs::path& root) -> std::optional<fs::path> {
+        if (root.empty()) return std::nullopt;
+        const fs::path rel = where.lexically_relative(root);
+        if (rel.empty() || *rel.begin() == "..") return std::nullopt;
+        return rel;
+    };
+    // below a folder the project's scans leave out: a hidden one (.jasperengine/builds, MCP's
+    // default) or the top-level build/
+    auto skippedByScans = [](const fs::path& rel) {
+        bool firstComponent = true;
+        for (const fs::path& part : rel) {
+            const std::string name = FileUtils::pathToUtf8(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+            if (firstComponent && name == "build") return true;
+            firstComponent = false;
+        }
+        return false;
+    };
+    bool refused = false;
+    if (std::optional<fs::path> rel = inside(projectRoot)) {
+        refused = !skippedByScans(*rel);
+    }
+    for (const fs::path& other : {project->getAssetsPath(), project->getLuaPath()}) {
+        if (refused || other.empty()) continue;
+        const fs::path root = fs::weakly_canonical(other.is_absolute() ? other : project->getProjectPath() / other, ec).lexically_normal();
+        if (inside(projectRoot) && inside(root)) continue;   // judged by the project rule above
+        if (std::optional<fs::path> rel = inside(root)) refused = !skippedByScans(*rel);
+    }
+    if (!refused) return std::string();
+    const std::string app = project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
+    return "The output folder " + FileUtils::pathToGenericUtf8(dir) + " is inside the project: the editor would import the "
+           "exported files as project assets. Choose a folder outside it, e.g. " +
+           FileUtils::pathToGenericUtf8(project->getProjectPath().parent_path() / (app + "-build")) + ".";
 }
 
 editor::ExportProgress editor::Exporter::getProgress() const {
@@ -983,6 +1086,7 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
         this->producedExecutable.clear();
     }
+    resetResult();
 
     // the export reads the open scenes and prefabs while the frames go on: the holes of
     // destroyed entities are closed before it starts (ComponentArray; an index read on the
@@ -1000,6 +1104,9 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
 bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
     waitForExport();
 
+    // T1 R30: an export packs the maps' files
+    TerrainMapPersistence::get().flushAll();
+
     this->project = proj;
     this->config = cfg;
     cancelRequested.store(false);
@@ -1011,6 +1118,7 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
         this->producedExecutable.clear();
     }
+    resetResult();
 
     runExport();
 
@@ -1029,6 +1137,7 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
         this->progress = ExportProgress();
         this->progress.started = true;
     }
+    resetResult();
 
     runExport();
 
@@ -1046,6 +1155,15 @@ void editor::Exporter::runExport() {
     } generatedGuard(project);
 
     if (project && !checkRootsPinned()) return;
+
+    // never into the project: the editor would import the export's files as project assets
+    if (project) {
+        const std::string refusal = outputFolderRefusal(project, config.mode == ExportMode::SourceCode ? config.targetDir : config.destinationDir);
+        if (!refusal.empty()) {
+            setError(refusal);
+            return;
+        }
+    }
 
     // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
     if (project && config.mode == ExportMode::Player) {
@@ -1145,6 +1263,17 @@ void editor::Exporter::runExport() {
     if (!copyCppScripts()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyNativePlugins()) return;
+    // a macOS build without Xcode compiles no Swift: its Swift plugins answer "unavailable"
+    if (config.mode == ExportMode::Desktop && hostBuildPlatform() == BuildPlatform::MacOS) {
+        const NativePlugins::Scan scan = NativePlugins::scan(project->getProjectPath());
+        std::vector<std::string> swift = scan.filesWith("apple", {".swift"});
+        for (const std::string& file : scan.filesWith("macos", {".swift"})) swift.push_back(file);
+        if (!swift.empty()) {
+            warn("W-NATIVE-SWIFT-CMAKE", "Swift plugins (" + swift.front() + (swift.size() > 1 ? ", +" + std::to_string(swift.size() - 1) + " more" : "") +
+                                         ") build only in the Xcode project (File > Build Settings > Export source, then Xcode): "
+                                         "this build answers them with \"unavailable\"");
+        }
+    }
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyEngine()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1212,7 +1341,10 @@ void editor::Exporter::resolveShaderKeys() {
     }
 
     std::set<ShaderKey> keys;
+    // forks whose files are gone: their saved, added or recorded variants can't be built
+    std::set<std::string> deadForks;
     if (!config.shaderKeysOverride.empty()) {
+        // an explicit --shader list is the user's word: a fork that can't build fails it
         for (ShaderKey key : config.shaderKeysOverride) {
             keys.insert(ShaderPool::normalizeKey(key));
         }
@@ -1220,9 +1352,13 @@ void editor::Exporter::resolveShaderKeys() {
         // the list every consumer shares (Project::collectBuildShaderKeys): each scene's saved
         // keys and, where it is loaded, what its objects were loaded with and what its content needs
         // now (a save writes no loaded state: Project::collectSavedShaderKeys)
-        project->collectBuildShaderKeys(keys);
+        project->collectBuildShaderKeys(keys, &deadForks);
     }
-    keys = project->finishBuildShaderKeys(keys, config.shaderAdditions, config.shaderExclusions);
+    keys = project->finishBuildShaderKeys(keys, config.shaderAdditions, config.shaderExclusions, &deadForks);
+    for (const std::string& fork : deadForks) {
+        warn("W-SHADER-FORK-MISSING", "the variants of " + (fork.empty() ? std::string("an unknown shader fork") : fork) +
+             " were left out: its files are gone");
+    }
 
     config.selectedShaderKeys = std::move(keys);
 }
@@ -1455,6 +1591,12 @@ bool editor::Exporter::prepareCacheTarget() {
             Out::info("Another build uses the shared compile tree; building in the project's own");
         }
     }
+    // the compile tree is the project's own when the shared one is busy: CMake splits a path at ';'
+    if (FileUtils::pathToUtf8(config.targetDir).find(';') != std::string::npos) {
+        setError("The build folder " + FileUtils::pathToGenericUtf8(config.targetDir) + " has a ';' in its path, which CMake reads as "
+                 "a list separator: move or rename the project folder so its path has none.");
+        return false;
+    }
     ec.clear();
     fs::create_directories(config.targetDir, ec);
     if (ec) {
@@ -1465,7 +1607,7 @@ bool editor::Exporter::prepareCacheTarget() {
     // Stale generated sources from renamed/deleted scenes would be picked up by
     // the exported CMake's recursive glob and break the link, so the (small)
     // project tree is wiped and fully re-copied every export. The engine tree is
-    // kept and synced with copyTreeIfChanged() so the build stays incremental.
+    // kept and synced with exportfiles::mirrorTree() so the build stays incremental.
     removeAllNoFollow(getExportProjectRoot(), ec);
     if (ec) {
         setError("Failed to clear cached project sources: " + ec.message());
@@ -1602,11 +1744,13 @@ bool editor::Exporter::configureBuild() {
 
     Out::info("Configuring export build (%zu args)...", argv.size());
     bool incompatiblePython = false;
+    buildErrors.clear();
     auto onConfigure = [this, &incompatiblePython](const std::string& line) {
         if (line.find("TypeError: 'type' object is not subscriptable") != std::string::npos) {
             incompatiblePython = true;
         }
         Out::build("%s", line.c_str());
+        buildErrors.add(line);
         setDetail(line);
     };
     bool ok = commandRunner.run(argv, config.targetDir, onConfigure, toolEnv.empty() ? nullptr : &toolEnv);
@@ -1617,13 +1761,13 @@ bool editor::Exporter::configureBuild() {
         } else if (config.mode == ExportMode::Web && incompatiblePython) {
             setError("Emscripten failed with an incompatible Python interpreter. Activate the SDK environment and restart the editor from that terminal. Check EMSDK_PYTHON and use a Python version supported by your installed SDK. See Output for the traceback.");
         } else {
-            setError("Build configuration failed. See the Console for details.");
+            failBuild("CMake configuration failed");
         }
         return false;
     }
 
     fs::create_directories(buildDir, ec);
-    FileUtils::writeFile(kitMarker, kitId);
+    if (!writeOrFail(kitMarker, kitId)) return false;
 
     return true;
 }
@@ -1665,8 +1809,10 @@ bool editor::Exporter::runBuild() {
     MsBuildProgress msBuildProgress(buildDir, config.buildType);
 
     Out::info("Building export with %u parallel jobs...", jobs);
+    buildErrors.clear();
     auto onBuild = [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
+        buildErrors.add(line);
         float fraction = 0.0f;
         bool hasProgress = parseBuildProgress(line, fraction);
         float buildEnd = BUILD_PROGRESS_END;
@@ -1689,7 +1835,7 @@ bool editor::Exporter::runBuild() {
         if (isCancelled()) {
             setError("Build cancelled");
         } else {
-            setError("Build failed. See the Console for details.");
+            failBuild("Compiling failed");
         }
         return false;
     }
@@ -1780,9 +1926,10 @@ bool editor::Exporter::collectDesktopArtifacts() {
         for (const char* dir : {"assets", "lua"}) {
             fs::path src = projectRoot / dir;
             if (!fs::exists(src, ec)) continue;
-            copyTree(src, config.destinationDir / dir, ec);
-            if (ec) {
-                setError(std::string("Failed to copy ") + dir + ": " + ec.message());
+            const fs::path dst = config.destinationDir / dir;
+            if (!walkFiles(src, nullptr, [&](const fs::directory_entry& entry, const fs::path& rel) {
+                    return copyOrFail(entry.path(), dst / rel);
+                })) {
                 return false;
             }
         }
@@ -2069,39 +2216,40 @@ bool editor::Exporter::collectWebArtifacts() {
         return false;
     }
 
+    // the page is index.html, as web hosts (itch.io) and the prebuilt web player have it
     for (const char* ext : {".html", ".js", ".wasm"}) {
-        fs::path src = buildDir / (appName + (std::string(ext) == ".html" ? ".export.html" : ext));
+        const bool page = std::string(ext) == ".html";
+        const fs::path src = buildDir / (appName + (page ? ".export.html" : ext));
         if (!fs::exists(src, ec)) {
             setError("Built web output not found: " + src.string());
             return false;
         }
-        fs::copy_file(src, config.destinationDir / (appName + ext), fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            setError("Failed to copy " + src.filename().string() + ": " + ec.message());
-            return false;
-        }
+        if (!copyOrFail(src, config.destinationDir / (page ? std::string("index.html") : appName + ext))) return false;
     }
+    // an earlier export's page (before index.html), which would load this build's player as if current
+    std::string lowerName = appName;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lowerName != "index" && !removeStale(config.destinationDir / (appName + ".html"))) return false;
 
     if (!copyLicenses()) {
         return false;
     }
 
+    // export-settings/apply.cmake always links one (writeWebFavicon)
     const fs::path favicon = buildDir / "favicon.png";
     if (fs::exists(favicon, ec)) {
-        fs::copy_file(favicon, config.destinationDir / "favicon.png", fs::copy_options::overwrite_existing, ec);
-    } else {
-        fs::remove(config.destinationDir / "favicon.png", ec);
+        if (!copyOrFail(favicon, config.destinationDir / "favicon.png")) return false;
+    } else if (!removeStale(config.destinationDir / "favicon.png")) {
+        return false;
     }
-    if (ec) { setError("Failed to update web favicon: " + ec.message()); return false; }
 
-    // The .data preload bundle exists only when the project has assets or lua.
-    fs::path dataSrc = buildDir / (appName + ".data");
+    // The .data preload bundle exists only when the project has assets or lua; an earlier
+    // build's would be loaded by this one's page
+    const fs::path dataSrc = buildDir / (appName + ".data");
     if (fs::exists(dataSrc, ec)) {
-        fs::copy_file(dataSrc, config.destinationDir / (appName + ".data"), fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            setError("Failed to copy " + dataSrc.filename().string() + ": " + ec.message());
-            return false;
-        }
+        if (!copyOrFail(dataSrc, config.destinationDir / (appName + ".data"))) return false;
+    } else if (!removeStale(config.destinationDir / (appName + ".data"))) {
+        return false;
     }
 
     return true;
@@ -2167,11 +2315,11 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
         }
     }
     // what hosts that read a _headers file (and the dev server) send for isolation
-    FileUtils::writeIfChanged(config.destinationDir / "_headers",
-        "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n");
+    if (!writeOrFail(config.destinationDir / "_headers",
+        "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n")) return false;
 
     // the page loads the player through the loader instead of its own <script src>
-    const fs::path page = config.destinationDir / (appName + ".html");
+    const fs::path page = config.destinationDir / "index.html";
     std::string html;
     {
         std::ifstream in(page, std::ios::binary);
@@ -2301,6 +2449,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            // never-saved scenes: their sources from what the editor holds (the cooked path below
+            // ships them alike), and every scene main.cpp names has its source
+            std::vector<std::string> unsavedWritten, unsavedNotOpen, withoutSource;
+            if (imported && notSaved.empty() && degraded.empty()) {
+                project->writeUnsavedSceneSources(unsavedWritten, unsavedNotOpen);
+                // (a prebuilt player loads cooked scenes, not generated sources)
+                if (unsavedNotOpen.empty() && config.mode != ExportMode::Player) withoutSource = project->scenesWithoutSource();
+            }
+            for (const std::string& name : unsavedWritten) {
+                warn("W-SCENE-NOT-SAVED", "Scene '" + name + "' has never been saved; it ships as it is in the editor. Save it to keep it.");
+            }
+
             // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
             // loaded now (the same GameObjects the generated sources describe)
             cookedFiles.clear();
@@ -2414,6 +2574,12 @@ bool editor::Exporter::loadAndSaveAllScenes() {
 
             if (!notSaved.empty()) {
                 throw std::runtime_error("scene " + notSaved + " could not be saved (see the console)");
+            }
+            if (!unsavedNotOpen.empty()) {
+                throw std::runtime_error("scene '" + unsavedNotOpen.front() + "' has never been saved and is not open: save it or remove it from the project");
+            }
+            if (!withoutSource.empty()) {
+                throw std::runtime_error("scene '" + withoutSource.front() + "' has no generated source, and the game's main.cpp loads it");
             }
             if (!degraded.empty()) {
                 throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
@@ -2580,6 +2746,10 @@ bool editor::Exporter::copyGenerated() {
 
     std::error_code ec;
     fs::create_directories(generatedDst, ec);
+    if (ec) {
+        setError("Failed to create " + FileUtils::pathToGenericUtf8(generatedDst) + ": " + ec.message());
+        return false;
+    }
 
     // main.cpp is handled separately below. PlatformEditor.* is the GLFW host
     // the editor used to emit into every project; projects created before it
@@ -2590,22 +2760,13 @@ bool editor::Exporter::copyGenerated() {
     };
 
     if (fs::exists(generatedSrc, ec)) {
-        for (auto& entry : fs::recursive_directory_iterator(generatedSrc, fs::directory_options::skip_permission_denied, ec)) {
-            fs::path relativePath = fs::relative(entry.path(), generatedSrc, ec);
-
-            if (entry.is_regular_file() && excludedFiles.count(relativePath.filename().string())) {
-                continue;
-            }
-
-            fs::path destPath = generatedDst / relativePath;
-            if (entry.is_directory()) {
-                fs::create_directories(destPath, ec);
-            } else if (entry.is_regular_file()) {
-                fs::create_directories(destPath.parent_path(), ec);
-                fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-                if (!ec) cppExportedPaths.insert(relativePath);
-            }
-        }
+        const bool copied = walkFiles(generatedSrc, nullptr, [&](const fs::directory_entry& entry, const fs::path& relativePath) {
+            if (excludedFiles.count(FileUtils::pathToUtf8(relativePath.filename()))) return true;
+            if (!copyOrFail(entry.path(), generatedDst / relativePath)) return false;
+            cppExportedPaths.insert(relativePath);
+            return true;
+        });
+        if (!copied) return false;
     }
 
     // Process main.cpp: copy from Generator output but strip editor-specific parts
@@ -2646,17 +2807,18 @@ bool editor::Exporter::copyGenerated() {
             if (!startSceneName.empty()) {
                 std::string loadPrefix = "SceneManager::loadScene(\"";
                 pos = content.find(loadPrefix);
-                if (pos != std::string::npos) {
-                    size_t nameStart = pos + loadPrefix.size();
-                    size_t nameEnd = content.find("\")", nameStart);
-                    if (nameEnd != std::string::npos) {
-                        content.replace(nameStart, nameEnd - nameStart, startSceneName);
-                    }
+                const size_t nameStart = pos == std::string::npos ? pos : pos + loadPrefix.size();
+                const size_t nameEnd = pos == std::string::npos ? pos : content.find("\")", nameStart);
+                if (nameEnd == std::string::npos) {
+                    // the default start would ship instead of the chosen one
+                    setError("The generated main.cpp has no start scene to replace with '" + startSceneName + "'");
+                    return false;
                 }
+                content.replace(nameStart, nameEnd - nameStart, startSceneName);
             }
         }
 
-        FileUtils::writeIfChanged(generatedDst / "main.cpp", content);
+        if (!writeOrFail(generatedDst / "main.cpp", content)) return false;
     }
 
     // Also copy scene_scripts.cpp
@@ -2676,7 +2838,7 @@ bool editor::Exporter::copyGenerated() {
             content.replace(commentPos, editorOnlyComment.size(), exportComment);
         }
 
-        FileUtils::writeIfChanged(generatedDst / "scene_scripts.cpp", content);
+        if (!writeOrFail(generatedDst / "scene_scripts.cpp", content)) return false;
         cppExportedPaths.insert("scene_scripts.cpp");
     }
 
@@ -2949,17 +3111,26 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
     // while it is walked would be shipped into itself without end
     const fs::path realOutput = config.targetDir.empty() ? fs::path() : safewrite::resolvedPath(config.targetDir);
     bool stopped = false;
+    treeListFailure.clear();
     std::function<void(const fs::path&, const fs::path&)> walk = [&](const fs::path& dir, const fs::path& relDir) {
         std::error_code listError;
-        for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, listError), end;
-             !listError && it != end && !stopped; it.increment(listError)) {
+        // listed in the long form (past MAX_PATH on Windows); `dir` stays the plain path
+        fs::directory_iterator it(exportfiles::longPath(dir), listError);
+        if (listError && exportfiles::isSkippableOpenError(listError) && !relDir.empty()) {
+            // a folder this user may not read (export-pipeline Deviation 9): left out, said so
+            warn("W-UNREADABLE-FOLDER", FileUtils::pathToGenericUtf8(relDir) + " could not be read and was left out of the build");
+            return;
+        }
+        for (fs::directory_iterator end; !listError && it != end && !stopped; it.increment(listError)) {
             const fs::directory_entry& entry = *it;
             const fs::path name = entry.path().filename();
             const fs::path relPath = relDir / name;
             const bool link = watch::isLink(entry);
-            const fs::path real = link ? safewrite::resolvedPath(entry.path()) : branch.back() / name;
+            const fs::path real = link ? safewrite::resolvedPath(dir / name) : branch.back() / name;
             std::error_code typeError;
             const bool isDirectory = entry.is_directory(typeError);
+            // an earlier export left in the project ships nothing (W-EXPORT-FOLDER-SKIPPED)
+            if (isDirectory && isEarlierExport(entry)) continue;
             const TreeStep step = visit(entry, relPath, isDirectory, real);
             if (step == TreeStep::Stop) {
                 stopped = true;
@@ -2991,10 +3162,15 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
                 }
             }
             branch.push_back(real);
-            walk(entry.path(), relPath);
+            walk(dir / name, relPath);
             branch.pop_back();
         }
-        if (relDir.empty() && listError) ec = listError;
+        // a folder listed only in part would ship without what was left: the export fails
+        if (listError && !stopped) {
+            ec = listError;
+            treeListFailure = dir;
+            stopped = true;
+        }
     };
     walk(root, fs::path());
 }
@@ -3023,6 +3199,10 @@ bool editor::Exporter::copyAssets() {
 
     fs::path assetsDst = getExportProjectRoot() / "assets";
     fs::create_directories(assetsDst, ec);
+    if (ec) {
+        setError("Failed to create " + FileUtils::pathToGenericUtf8(assetsDst) + ": " + ec.message());
+        return false;
+    }
     const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
 
     // References are relative to this directory, so its contents become the export root, linked
@@ -3072,16 +3252,15 @@ bool editor::Exporter::copyAssets() {
 
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
-            fs::remove(assetsDst / relPath, ec);
-            return TreeStep::Enter;
+            return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
         // and a model's as assets/je-cooked/models/ (an FBX's import too, S53)
         if (cookedModelSources.count(relPath.generic_string())) {
-            fs::remove(assetsDst / relPath, ec);
+            if (!removeStale(assetsDst / relPath)) return stop();
             if (FbxImporter::isFbxFile(entry.path())) {
                 fs::path importRelPath = relPath;
                 importRelPath += ".glb";
-                fs::remove(assetsDst / importRelPath, ec);
+                if (!removeStale(assetsDst / importRelPath)) return stop();
             }
             return TreeStep::Enter;
         }
@@ -3116,13 +3295,7 @@ bool editor::Exporter::copyAssets() {
                 setError("Cannot export: " + relPath.generic_string() + " could not be imported");
                 return stop();
             }
-            const fs::path importPath = assetsDst / importRelPath;
-            fs::create_directories(importPath.parent_path(), ec);
-            fs::copy_file(glbPath, importPath, fs::copy_options::overwrite_existing, ec);
-            if (ec) {
-                setError("Failed to copy the import of " + relPath.generic_string() + ": " + ec.message());
-                return stop();
-            }
+            if (!copyOrFail(glbPath, assetsDst / importRelPath)) return stop();
             return TreeStep::Skip;
         }
 
@@ -3176,11 +3349,14 @@ bool editor::Exporter::copyAssets() {
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
         if (copyPngWithoutEditorChunks(entry.path(), destPath)) return TreeStep::Skip;
-        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-        return TreeStep::Skip;
+        return copyOrFail(entry.path(), destPath) ? TreeStep::Skip : stop();
     }, ec);
-
-    return !failed;
+    if (failed) return false;
+    if (ec) {
+        setError("Failed to list the assets: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
+        return false;
+    }
+    return true;
 }
 
 bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {
@@ -3265,16 +3441,7 @@ bool editor::Exporter::copyCustomShaderSources() {
         if (ext != ".vert" && ext != ".frag" && ext != ".glsl") return TreeStep::Skip;
         if (!runtimeShaders && ext == ".glsl") return TreeStep::Skip;
 
-        const fs::path destination = assetsDst / relPath;
-        fs::create_directories(destination.parent_path(), fileError);
-        if (fileError) {
-            setError("Failed to create " + destination.parent_path().string() + ": " + fileError.message());
-            failed = true;
-            return TreeStep::Stop;
-        }
-        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, fileError);
-        if (fileError) {
-            setError("Failed to copy shader source " + relPath.generic_string() + ": " + fileError.message());
+        if (!copyOrFail(entry.path(), assetsDst / relPath)) {
             failed = true;
             return TreeStep::Stop;
         }
@@ -3282,7 +3449,7 @@ bool editor::Exporter::copyCustomShaderSources() {
     }, ec);
     if (failed) return false;
     if (ec) {
-        setError("Failed to list the project's shader sources: " + ec.message());
+        setError("Failed to list the project's shader sources: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
         return false;
     }
 
@@ -3325,6 +3492,7 @@ bool editor::Exporter::copyLua() {
     // same path; Android merges both trees into one and fails the build on duplicates.
     const bool luaRootIsAssetsRoot = (luaSrc == getAssetsSourceDir());
 
+    bool failed = false;
     walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
@@ -3343,16 +3511,19 @@ bool editor::Exporter::copyLua() {
         // editor scripts (Editor/ with ---@menu annotations) never ship
         if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
 
-        fs::path destPath = luaDst / relPath;
-        fs::create_directories(destPath.parent_path(), ec);
-        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-        if (!ec) {
-            luaCopiedSources.insert(real);
-            luaExportedPaths.insert(relPath.lexically_normal());
+        if (!copyOrFail(entry.path(), luaDst / relPath)) {
+            failed = true;
+            return TreeStep::Stop;
         }
+        luaCopiedSources.insert(real);
+        luaExportedPaths.insert(relPath.lexically_normal());
         return TreeStep::Skip;
     }, ec);
-
+    if (failed) return false;
+    if (ec) {
+        setError("Failed to list the Lua scripts: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
+        return false;
+    }
     return true;
 }
 
@@ -3376,81 +3547,37 @@ bool editor::Exporter::copyCppScripts() {
 
     // the scenes' scripts and those of the prefabs scripts instantiate
     const std::vector<SceneScriptSource> buildScripts = project->getBuildCppScripts();
-    {
-        for (const auto& script : buildScripts) {
-            // Copy source file
-            if (!script.path.empty()) {
-                fs::path srcPath = script.path;
-                if (srcPath.is_relative()) {
-                    srcPath = project->getProjectPath() / srcPath;
-                }
-                std::string pathKey = srcPath.string();
-                if (copiedPaths.count(pathKey)) continue;
-                copiedPaths.insert(pathKey);
-
-                if (fs::exists(srcPath, ec)) {
-                    const fs::path relPath = projectRelativePath(srcPath);
-                    if (!relPath.empty()) {
-                        fs::path dstPath = scriptsDst / relPath;
-                        fs::create_directories(dstPath.parent_path(), ec);
-                        fs::copy_file(srcPath, dstPath, fs::copy_options::overwrite_existing, ec);
-                        if (!ec) cppExportedPaths.insert(fs::path("scripts") / relPath);
-                    }
-                }
-            }
-
-            // Copy header file
-            if (!script.headerPath.empty()) {
-                fs::path hdrPath = script.headerPath;
-                if (hdrPath.is_relative()) {
-                    hdrPath = project->getProjectPath() / hdrPath;
-                }
-                std::string pathKey = hdrPath.string();
-                if (copiedPaths.count(pathKey)) continue;
-                copiedPaths.insert(pathKey);
-
-                if (fs::exists(hdrPath, ec)) {
-                    const fs::path relPath = projectRelativePath(hdrPath);
-                    if (!relPath.empty()) {
-                        fs::path dstPath = scriptsDst / relPath;
-                        fs::create_directories(dstPath.parent_path(), ec);
-                        fs::copy_file(hdrPath, dstPath, fs::copy_options::overwrite_existing, ec);
-                    }
-                }
-            }
-        }
+    // a registered script's file, at its project-relative place under scripts/
+    auto copyScriptFile = [&](const fs::path& file, bool source) {
+        fs::path path = file;
+        if (path.is_relative()) path = project->getProjectPath() / path;
+        if (!copiedPaths.insert(path.string()).second) return true;
+        if (!fs::exists(path, ec)) return true;
+        const fs::path relPath = projectRelativePath(path);
+        if (relPath.empty()) return true;
+        if (!copyOrFail(path, scriptsDst / relPath)) return false;
+        if (source) cppExportedPaths.insert(fs::path("scripts") / relPath);
+        return true;
+    };
+    for (const auto& script : buildScripts) {
+        if (!script.path.empty() && !copyScriptFile(script.path, true)) return false;
+        if (!script.headerPath.empty() && !copyScriptFile(script.headerPath, false)) return false;
     }
 
     // Preserve unregistered support headers for project-root-relative includes.
-    try {
-        for (auto it = fs::recursive_directory_iterator(projectRoot, fs::directory_options::skip_permission_denied);
-             it != fs::recursive_directory_iterator(); ++it) {
-            const auto& entry = *it;
-            const fs::path relPath = projectRelativePath(entry.path());
-            if (relPath.empty()) {
-                if (entry.is_directory()) it.disable_recursion_pending();
-                continue;
-            }
-            const std::string firstComponent = relPath.begin()->string();
-
-            if (entry.is_directory() && !firstComponent.empty()
-                && Project::isNonAssetTopLevelDir(firstComponent)) {
-                it.disable_recursion_pending();
-                continue;
-            }
-            if (!entry.is_regular_file() || !isCppHeaderFile(entry.path())
-                || !copiedPaths.insert(entry.path().string()).second) {
-                continue;
-            }
-
-            const fs::path dstPath = scriptsDst / relPath;
-            fs::create_directories(dstPath.parent_path());
-            fs::copy_file(entry.path(), dstPath, fs::copy_options::overwrite_existing);
-        }
-    } catch (const fs::filesystem_error& e) {
-        setError("Failed to copy project headers: " + std::string(e.what()));
-        return false;
-    }
+    const bool headersCopied = walkFiles(projectRoot,
+        [](const fs::directory_entry&, const fs::path& relPath) {
+            return Project::isNonAssetTopLevelDir(FileUtils::pathToUtf8(*relPath.begin())) ? exportfiles::DirAction::Skip
+                                                                                            : exportfiles::DirAction::Descend;
+        },
+        [&](const fs::directory_entry& entry, const fs::path& relPath) {
+            // (entry's path is the walk's long form on Windows: names are compared by the plain one)
+            const fs::path path = normalizedProjectRoot / relPath;
+            if (!isCppHeaderFile(path)) return true;
+            if (!copiedPaths.insert(path.string()).second) return true;
+            return copyOrFail(entry.path(), scriptsDst / relPath);
+        });
+    if (!headersCopied) return false;
 
     // Sources under a script root are compiled without a script component
     // referencing them, so they ship even when nothing registered pulls them in.
@@ -3467,43 +3594,35 @@ bool editor::Exporter::copyCppScripts() {
         std::error_code sameEc;
         const bool atProjectRoot = fs::equivalent(rootPath, normalizedProjectRoot, sameEc);
 
-        try {
-            for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied);
-                 it != fs::recursive_directory_iterator(); ++it) {
-                const std::string name = it->path().filename().string();
-                if (it->is_directory() && (name.empty() || name[0] == '.' || name == "build" ||
-                                           (atProjectRoot && it.depth() == 0 && Project::isNonAssetTopLevelDir(name)))) {
-                    it.disable_recursion_pending();
-                    continue;
+        const bool sourcesCopied = walkFiles(rootPath,
+            [atProjectRoot](const fs::directory_entry& entry, const fs::path& rel) {
+                const std::string name = FileUtils::pathToUtf8(entry.path().filename());
+                const bool topLevel = std::distance(rel.begin(), rel.end()) == 1;
+                if (name.empty() || name[0] == '.' || name == "build" ||
+                        (atProjectRoot && topLevel && Project::isNonAssetTopLevelDir(name))) {
+                    return exportfiles::DirAction::Skip;
                 }
-                if (!it->is_regular_file() || !isCppSourceFile(it->path())) continue;
+                return exportfiles::DirAction::Descend;
+            },
+            [&](const fs::directory_entry& entry, const fs::path& rel) {
+                const fs::path path = rootPath / rel;
+                if (!isCppSourceFile(path)) return true;
                 // the C++ editor scripts are the editor's, never a game's
-                if (EditorScripts::isEditorOnlyScript(it->path(), projectRoot)) continue;
-
-                const fs::path relPath = projectRelativePath(it->path());
-                if (relPath.empty() || !copiedPaths.insert(it->path().string()).second) continue;
-
-                const fs::path dstPath = scriptsDst / relPath;
-                fs::create_directories(dstPath.parent_path(), ec);
-                fs::copy_file(it->path(), dstPath, fs::copy_options::overwrite_existing, ec);
-                if (!ec) cppExportedPaths.insert(fs::path("scripts") / relPath);
-            }
-        } catch (const fs::filesystem_error& e) {
-            setError("Failed to copy script directory: " + std::string(e.what()));
-            return false;
-        }
+                if (EditorScripts::isEditorOnlyScript(path, projectRoot)) return true;
+                const fs::path relPath = (relDir / rel).lexically_normal();
+                if (!copiedPaths.insert(path.string()).second) return true;
+                if (!copyOrFail(entry.path(), scriptsDst / relPath)) return false;
+                cppExportedPaths.insert(fs::path("scripts") / relPath);
+                return true;
+            });
+        if (!sourcesCopied) return false;
     }
 
     // Goes to the project root, not scripts/, because that is where the exported
     // CMakeLists includes it from.
     const fs::path userBuildFile = projectRoot / "ProjectBuild.cmake";
-    if (fs::is_regular_file(userBuildFile, ec)) {
-        fs::copy_file(userBuildFile, getExportProjectRoot() / "ProjectBuild.cmake",
-                      fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            setError("Failed to copy ProjectBuild.cmake: " + ec.message());
-            return false;
-        }
+    if (fs::is_regular_file(userBuildFile, ec) && !copyOrFail(userBuildFile, getExportProjectRoot() / "ProjectBuild.cmake")) {
+        return false;
     }
 
     return true;
@@ -3566,7 +3685,12 @@ namespace {
                 if (fs::is_directory(resolved, ec)) {
                     if (!mirrorNoFollow(root, resolved, to, error)) return false;
                 } else {
-                    fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, ec);
+                    std::error_code copyError;
+                    fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, copyError);
+                    if (copyError) {
+                        error = "cannot copy " + genericUtf8Path(resolved) + ": " + copyError.message();
+                        return false;
+                    }
                 }
                 continue;
             }
@@ -3595,12 +3719,18 @@ namespace {
 }
 
 bool editor::Exporter::copyNativePlugins() {
-    const fs::path source = NativePlugins::root(project->getProjectPath());
-    const fs::path destination = getExportProjectRoot() / NativePlugins::relativeRoot();
-    std::error_code ec;
+    std::vector<std::string> platforms;
+    // C++ plugins are a script root: copyCppScripts ships them under scripts/
     for (const std::string& platform : NativePlugins::platformNames()) {
-        // C++ plugins are a script root: copyCppScripts ships them under scripts/
-        if (platform == "cpp") continue;
+        if (platform != "cpp") platforms.push_back(platform);
+    }
+    return copyNativePluginFolders(getExportProjectRoot() / NativePlugins::relativeRoot(), platforms);
+}
+
+bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, const std::vector<std::string>& platforms) {
+    const fs::path source = NativePlugins::root(project->getProjectPath());
+    std::error_code ec;
+    for (const std::string& platform : platforms) {
         const fs::path from = source / platform;
         const fs::path to = destination / platform;
         // a real folder only (a link to one is not followed)
@@ -3616,76 +3746,6 @@ bool editor::Exporter::copyNativePlugins() {
         }
     }
     return true;
-}
-
-void editor::Exporter::copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec) {
-    fs::copy(copyPath(src), copyPath(dst),
-             fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-}
-
-void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec) {
-    auto filesEqual = [](const fs::path& a, const fs::path& b) -> bool {
-        std::ifstream fa(a, std::ios::binary);
-        std::ifstream fb(b, std::ios::binary);
-        if (!fa || !fb) return false;
-        constexpr size_t BUFFER_SIZE = 1 << 16;
-        std::vector<char> bufA(BUFFER_SIZE), bufB(BUFFER_SIZE);
-        while (true) {
-            fa.read(bufA.data(), BUFFER_SIZE);
-            fb.read(bufB.data(), BUFFER_SIZE);
-            std::streamsize readA = fa.gcount();
-            std::streamsize readB = fb.gcount();
-            if (readA != readB) return false;
-            if (readA == 0) return true;
-            if (std::memcmp(bufA.data(), bufB.data(), (size_t)readA) != 0) return false;
-        }
-    };
-
-    // Unlike copyTree, unchanged destination files are left untouched so they
-    // keep their mtime and incremental builds over the tree skip recompiling.
-    ec.clear();
-    const fs::path srcAdj = copyPath(src);
-    const fs::path dstAdj = copyPath(dst);
-    try {
-        fs::create_directories(dstAdj);
-        for (const auto& entry : fs::recursive_directory_iterator(srcAdj)) {
-            const fs::path target = dstAdj / fs::relative(entry.path(), srcAdj);
-            if (entry.is_directory()) {
-                fs::create_directories(target);
-            } else if (entry.is_regular_file()) {
-                if (fs::exists(target)
-                    && fs::file_size(target) == entry.file_size()
-                    && filesEqual(entry.path(), target)) {
-#ifndef _WIN32
-                    // an older export (or one from an editor that lost the modes) gets the
-                    // source's: an executable script stays executable
-                    const fs::perms sourcePerms = entry.status().permissions();
-                    if (fs::status(target).permissions() != sourcePerms) {
-                        fs::permissions(target, sourcePerms, fs::perm_options::replace);
-                    }
-#endif
-                    continue;
-                }
-                fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing);
-            }
-        }
-
-        // Mirror semantics for the build cache: drop destination entries the
-        // source no longer has, or files removed/renamed in an SDK update
-        // would keep being compiled by the exported build's recursive globs.
-        std::vector<fs::path> stale;
-        for (const auto& entry : fs::recursive_directory_iterator(dstAdj)) {
-            if (!fs::exists(srcAdj / fs::relative(entry.path(), dstAdj))) {
-                stale.push_back(entry.path());
-            }
-        }
-        for (const fs::path& path : stale) {
-            // No-op for children of an already-removed directory.
-            { std::error_code removeError; removeAllNoFollow(path, removeError); }
-        }
-    } catch (const fs::filesystem_error& e) {
-        ec = e.code();
-    }
 }
 
 bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {
@@ -3740,10 +3800,11 @@ bool editor::Exporter::copyEngine() {
             return false;
         }
         // Content-compare copy: unchanged files keep their mtime so the
-        // Desktop/Web build cache stays incremental across exports.
-        copyTreeIfChanged(src, dst, ec);
-        if (ec) {
-            setError("Failed to copy " + name + " directory: " + ec.message());
+        // Desktop/Web build cache stays incremental across exports. The workspaces are opened in
+        // IDEs: their output is never copied from the SDK, nor removed from an exported workspace
+        std::string error;
+        if (!exportfiles::mirrorTree(src, dst, name == "workspaces", error)) {
+            setError("Failed to copy " + name + " directory: " + error);
             return false;
         }
         return true;
@@ -3810,12 +3871,12 @@ bool editor::Exporter::copyEngine() {
         {
             const auto& manifests = ShaderManifests::getLibraryManifestSources();
             const std::map<std::string, std::string> sorted(manifests.begin(), manifests.end());
-            FileUtils::writeIfChanged(dst / "shaderlib_manifests.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted, "shaderlib_manifests"));
+            if (!writeOrFail(dst / "shaderlib_manifests.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted, "shaderlib_manifests"))) return false;
         }
         if (project->isRuntimeShadersEnabled()) {
             const auto& library = ShaderVariantCompiler::getLibrarySources();
             const std::map<std::string, std::string> sorted(library.begin(), library.end());
-            FileUtils::writeIfChanged(dst / "shaderlib.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted));
+            if (!writeOrFail(dst / "shaderlib.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted))) return false;
         } else {
             fs::copy_file(src / "shaderlib.h", dst / "shaderlib.h", fs::copy_options::overwrite_existing, ec);
             if (ec) {
@@ -3825,9 +3886,9 @@ bool editor::Exporter::copyEngine() {
         }
 
         // Same for the HTML UI's user-agent stylesheet and its SVGs (engine/core/htmlui/compat/ua)
-        FileUtils::writeIfChanged(dst / "htmlui_ua.h", htmlui::compat::UserAgentStyle::buildEmbeddedHeader());
+        if (!writeOrFail(dst / "htmlui_ua.h", htmlui::compat::UserAgentStyle::buildEmbeddedHeader())) return false;
         // and the built-in Lucide icon pack (engine/libs/lucide)
-        FileUtils::writeIfChanged(dst / "htmlui_lucide.h", htmlui::compat::LucideIcons::buildEmbeddedHeader());
+        if (!writeOrFail(dst / "htmlui_lucide.h", htmlui::compat::LucideIcons::buildEmbeddedHeader())) return false;
     }
 
     fs::path cmakeSrc = sdkRoot / "CMakeLists.txt";
@@ -3938,10 +3999,6 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANG_WATCHDOG ") + (crash.hangWatchdog ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_CRASH_HANG_MS " + std::to_string(crash.hangSeconds * 1000) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_WEB_OVERLAY ") + (crash.webCrashOverlay ? "ON" : "OFF") + ")";
-        // iOS only: the Android Gradle build is switched in writeAndroidProjectSettings()
-        const IOSProjectSettings& ios = project->getIOSProjectSettings();
-        const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
-        projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
         // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
         projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
                            (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
@@ -3959,9 +4016,39 @@ bool editor::Exporter::copyEngine() {
     }
 
     if (!writeExportSettingsScript(cmakeContent)) return false;
-    FileUtils::writeIfChanged(cmakeDst, cmakeContent);
+    if (!writeOrFail(cmakeDst, cmakeContent)) return false;
 
     return true;
+}
+
+const char* editor::Exporter::webNativeStub() {
+    return "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
+           "register: function(n, o) { this._pending.push([n, o]); }, "
+           "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>";
+}
+
+std::vector<std::string> editor::Exporter::webNativePluginFiles(const fs::path& webPluginsDir) {
+    std::vector<std::string> files;
+    std::error_code ec;
+    if (!fs::is_directory(webPluginsDir, ec)) return files;
+    for (const auto& entry : fs::directory_iterator(webPluginsDir, ec)) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const std::string name = entry.path().filename().string();
+        if (entry.is_regular_file(ec) && ext == ".js" && !name.empty() && name[0] != '.') files.push_back(genericUtf8Path(entry.path().filename()));
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+std::string editor::Exporter::webNativeScripts(const std::vector<std::string>& scriptUrls, const std::vector<std::string>& files) {
+    std::string scripts;
+    for (const std::string& url : scriptUrls) {
+        if (url.find_first_not_of(" \t") == std::string::npos) continue;
+        scripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
+    }
+    for (const std::string& file : files) scripts += "<script src=\"plugins/" + escapeXmlAttribute(file) + "\"></script>\n";
+    return scripts;
 }
 
 bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
@@ -3985,7 +4072,7 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
         return true;
     };
     if (config.mode != ExportMode::Desktop
-            && (!copySettingFile(web.favicon, "favicon.png") || !copySettingFile(web.customHtmlShell, "shell.html"))) return false;
+            && (!writeWebFavicon(settingsDir / "favicon.png") || !copySettingFile(web.customHtmlShell, "shell.html"))) return false;
     std::string script;
     auto value = [&](const char* name, const std::string& text) {
         script += "set(" + std::string(name) + " " + literal(text) + ")\n";
@@ -4000,38 +4087,13 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
     value("categories", stripDesktopEntryControlChars(linuxSettings.categories));
     // native plugins (web): the JasperNative stub first (plugin scripts register before the
     // engine starts), the SDK URLs of web.script_urls, then plugins/native/web/*.js in name order
-    std::string nativeScripts;
-    std::vector<std::string> nativeFiles;
-    {
-        const fs::path webPlugins = getExportProjectRoot() / NativePlugins::relativeRoot() / "web";
-        if (fs::is_directory(webPlugins, ec)) {
-            for (const auto& entry : fs::directory_iterator(webPlugins, ec)) {
-                std::string ext = entry.path().extension().string();
-                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                const std::string name = entry.path().filename().string();
-                // a CMake list holds the names: no ';'
-                if (entry.is_regular_file(ec) && ext == ".js" && name[0] != '.' && name.find(';') == std::string::npos) {
-                    nativeFiles.push_back(genericUtf8Path(entry.path().filename()));
-                }
-            }
-            std::sort(nativeFiles.begin(), nativeFiles.end());
-        }
-        {
-            for (const std::string& url : web.scriptUrls) {
-                if (url.find_first_not_of(" \t") == std::string::npos) continue;
-                nativeScripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
-            }
-            for (const std::string& file : nativeFiles) {
-                nativeScripts += "<script src=\"plugins/" + escapeXmlAttribute(file) + "\"></script>\n";
-            }
-        }
-    }
-    value("native_scripts", nativeScripts);
+    // (a CMake list holds the file names: none with ';')
+    std::vector<std::string> nativeFiles = webNativePluginFiles(getExportProjectRoot() / NativePlugins::relativeRoot() / "web");
+    std::erase_if(nativeFiles, [](const std::string& file) { return file.find(';') != std::string::npos; });
+    value("native_scripts", webNativeScripts(web.scriptUrls, nativeFiles));
     // first in <head>, always: web.head_include snippets and plugin scripts may register before
     // the engine starts (it adopts what they queued)
-    value("native_stub", "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
-                         "register: function(n, o) { this._pending.push([n, o]); }, "
-                         "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>");
+    value("native_stub", webNativeStub());
     {
         std::string files;
         for (const std::string& file : nativeFiles) files += (files.empty() ? "" : ";") + file;
@@ -4103,6 +4165,11 @@ if(WEB)
         string(REPLACE "{{JASPERENGINE_HEAD_INCLUDE}}" "${extra}" html "${html}")
     endif()
     file(WRITE "${output}/${app}.export.html" "${html}")
+    # the page web hosts open; an app named index has its linker output there
+    string(TOLOWER "${app}" app_lower)
+    if(NOT app_lower STREQUAL "index")
+        file(WRITE "${output}/index.html" "${html}")
+    endif()
 else()
     set(executable "${APP_FILE}")
     foreach(character IN ITEMS "\\" "\"" "`" "$")
@@ -4118,7 +4185,7 @@ else()
     file(WRITE "${output}/${app}.desktop" "${entry}")
 endif()
 )cmake";
-    FileUtils::writeIfChanged(settingsDir / "apply.cmake", script);
+    if (!writeOrFail(settingsDir / "apply.cmake", script)) return false;
     cmakeContent += R"cmake(
 if(TARGET ${APP_NAME} AND (EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     add_custom_target(jasperengine-export-settings ALL
@@ -4357,30 +4424,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         "                abiFilters \"x86_64\"",
         abiLine);
 
-    // Matched without versions, so SDK updates in the template keep working
-    auto removeGradleLine = [&](const std::string& needle) -> bool {
-        const size_t match = gradle.find(needle);
-        if (match == std::string::npos) {
-            setError("Incompatible Android Gradle export template: missing " + needle);
-            return false;
-        }
-        const size_t lineStart = gradle.rfind('\n', match);
-        const size_t eraseStart = (lineStart == std::string::npos) ? 0 : lineStart + 1;
-        const size_t lineEnd = gradle.find('\n', match);
-        const size_t eraseEnd = (lineEnd == std::string::npos) ? gradle.size() : lineEnd + 1;
-        gradle.erase(eraseStart, eraseEnd - eraseStart);
-        return true;
-    };
-
-    // MainActivity creates the AdMob wrapper by name, so its source goes with the SDK
-    const bool admob = isAdMobIncluded(android.admobEnabled, android.admobAppId, "Android", androidSampleAdMobAppId, true);
-    if (!admob) {
-        if (!removeGradleLine("// the editor export drops this and the ads SDK below")
-                || !removeGradleLine("/platform/android/java-admob'")
-                || !removeGradleLine("\"com.google.android.gms:play-services-ads:")) {
-            return false;
-        }
-    }
     // native plugins: the bridge and nativeplugins modules, repositories, gradle.properties,
     // and the manifest additions below
     NativeExportAndroid::Result nativeExport;
@@ -4392,7 +4435,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             return false;
         }
     }
-    FileUtils::writeIfChanged(buildGradlePath, gradle);
+    if (!writeOrFail(buildGradlePath, gradle)) return false;
 
     const bool hasLauncherIcon = !android.launcherIcon.empty();
     const bool hasAdaptiveIcon = !android.adaptiveIconForeground.empty() && !android.adaptiveIconBackground.empty();
@@ -4424,7 +4467,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         adaptiveIcon += "    <background android:drawable=\"@drawable/ic_launcher_background\" />\n";
         adaptiveIcon += "    <foreground android:drawable=\"@drawable/ic_launcher_foreground\" />\n";
         adaptiveIcon += "</adaptive-icon>\n";
-        FileUtils::writeIfChanged(adaptiveIconDir / "ic_launcher.xml", adaptiveIcon);
+        if (!writeOrFail(adaptiveIconDir / "ic_launcher.xml", adaptiveIcon)) return false;
         iconReference = "@mipmap/ic_launcher";
     }
 
@@ -4511,11 +4554,6 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     // plain http:// (cleartext): Project Settings > Player > Allow Insecure HTTP; localhost always
     manifest += "        android:networkSecurityConfig=\"@xml/network_security_config\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
-    if (admob) {
-        manifest += "        <meta-data\n";
-        manifest += "            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n";
-        manifest += "            android:value=\"" + escapeXmlAttribute(android.admobAppId) + "\"/>\n\n";
-    }
     manifest += "        <activity android:name=\".MainActivity\"\n";
     manifest += "            android:label=\"@string/app_name\"\n";
     // rotations, locale and display changes reach the running game, which never restarts
@@ -4552,7 +4590,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     }
     manifest += "\n";
     manifest += "</manifest>";
-    FileUtils::writeIfChanged(manifestPath, manifest);
+    if (!writeOrFail(manifestPath, manifest)) return false;
 
     // The cleartext policy Http enforces itself (player.allow_insecure_http), declared to Android
     // too: localhost / 127.0.0.1 always, other hosts only when insecure HTTP is allowed
@@ -4572,7 +4610,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         const fs::path xmlDir = androidAppDir / "src" / "main" / "res" / "xml";
         std::error_code xmlError;
         fs::create_directories(xmlDir, xmlError);
-        FileUtils::writeIfChanged(xmlDir / "network_security_config.xml", config);
+        if (!writeOrFail(xmlDir / "network_security_config.xml", config)) return false;
     }
 
     std::string strings;
@@ -4580,7 +4618,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     strings += "<resources>\n";
     strings += "    <string name=\"app_name\" formatted=\"false\">" + escapeAndroidStringResource(appName) + "</string>\n";
     strings += "</resources>";
-    FileUtils::writeIfChanged(stringsPath, strings);
+    if (!writeOrFail(stringsPath, strings)) return false;
 
     std::string styles;
     styles += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n";
@@ -4589,7 +4627,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     styles += std::string("        <item name=\"android:windowFullscreen\">") + (android.fullscreen ? "true" : "false") + "</item>\n";
     styles += "    </style>\n";
     styles += "</resources>";
-    FileUtils::writeIfChanged(stylesPath, styles);
+    if (!writeOrFail(stylesPath, styles)) return false;
 
     std::string activity;
     if (!readText(mainActivityPath, activity)) return false;
@@ -4612,7 +4650,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         replaceAll(activity, "public boolean isFullscreenGame() {\n\t\treturn true;", "public boolean isFullscreenGame() {\n\t\treturn false;");
     }
     // the screen stays on through Screen.sleepTimeout (Player > Keep Screen On), not a patch here
-    FileUtils::writeIfChanged(mainActivityPath, activity);
+    if (!writeOrFail(mainActivityPath, activity)) return false;
 
     return true;
 }
@@ -4709,7 +4747,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
         // Project Settings > Native Plugins > macOS (macos.plist_entries)
         writeNativePlistEntries(macOSPlist, macOS.plistEntries, std::string());
         writeAppTransportSecurity(macOSPlist, project->getApplicationSettings().allowInsecureHttp);
-        FileUtils::writeIfChanged(macOSPlistPath, macOSPlist);
+        if (!writeOrFail(macOSPlistPath, macOSPlist)) return false;
     }
 
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
@@ -4852,25 +4890,6 @@ bool editor::Exporter::writeAppleProjectSettings() {
         if (!unlinkBackend("shadercompiler")) return false;
     }
 
-    // Without AdMob the iOS app neither links Google Mobile Ads nor compiles its adapter
-    const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, true);
-    if (!iosAdMob) {
-        removeProjectLinesContaining("JASPERENGINE_ADMOB,");
-        for (const char* buildFile : {"AdMobAdapter.m in Sources",
-                "GoogleMobileAds.xcframework in Frameworks", "UserMessagingPlatform.xcframework in Frameworks",
-                "GoogleAppMeasurement.xcframework in Frameworks", "GoogleAppMeasurementIdentitySupport.xcframework in Frameworks",
-                "GoogleUtilities.xcframework in Frameworks", "FBLPromises.xcframework in Frameworks",
-                "nanopb.xcframework in Frameworks"}) {
-            const size_t match = xcodeProject.find(std::string("/* ") + buildFile + " */ = {isa = PBXBuildFile;");
-            if (match == std::string::npos) {
-                setError(std::string("Apple export template has no ") + buildFile + " entry to remove");
-                return false;
-            }
-            const size_t lineStart = xcodeProject.rfind('\n', match) + 1;
-            if (!removeProjectEntriesWithId(leadingObjectId(xcodeProject.substr(lineStart, match - lineStart)))) return false;
-        }
-    }
-
     // The noise module's files compile to nothing without it (T2 R42); its bindings test the macro's value
     const bool noiseNeeded = !moduleUsageKnown || moduleUsage.needs("noise");
     replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n",
@@ -4937,9 +4956,29 @@ bool editor::Exporter::writeAppleProjectSettings() {
         setError("Apple export template has no CLANG_CXX_LANGUAGE_STANDARD setting");
         return false;
     }
-    if (!addXcodeProjectSources(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) || !addNativePluginsToXcode(xcodeProject)) return false;
+    XcodeNativeLayout layout;
+    layout.nativeRoot = getExportProjectRoot() / NativePlugins::relativeRoot();
+    layout.pluginsPath = "$(SRCROOT)/../../project/plugins/native";
+    layout.engineHeaders = "$(SRCROOT)/../../platform/apple";
+    layout.entitlements = "ios/JasperEngine.entitlements";
+    if (!addXcodeProjectSources(xcodeProject) || !writeXcodeBuildSettings(xcodeProject) || !addNativePluginsToXcode(xcodeProject, layout)) return false;
     if (!writeNativeAppleFiles()) return false;
-    FileUtils::writeIfChanged(projectFile, xcodeProject);
+    // the privacy manifests (the template's resources): the engine's, the project's and the plugins'
+    for (const char* platform : {"ios", "macos"}) {
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), platform,
+                                                                      iosDeclaresTrackingUsage());
+        warnPrivacy(std::string(platform) == "ios" ? "iOS" : "macOS", composed.warnings);
+        const fs::path manifest = config.targetDir / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy";
+        // unchanged files keep their time, so Xcode does not rebuild; a failed write fails the export naming the file
+        if (!FileUtils::writeIfChanged(manifest, ApplePrivacy::toXml(composed.manifest))) {
+            setError("Failed to write " + manifest.string());
+            return false;
+        }
+    }
+    if (!FileUtils::writeIfChanged(projectFile, xcodeProject)) {
+        setError("Failed to write " + projectFile.string());
+        return false;
+    }
     std::string iosPlist;
     if (!readText(iosPlistPath, iosPlist)) {
         return false;
@@ -4973,11 +5012,6 @@ bool editor::Exporter::writeAppleProjectSettings() {
         }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
         writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
-        if (iosAdMob) {
-            replacePlistStringValue(iosPlist, "GADApplicationIdentifier", ios.admobAppId);
-        } else {
-            removePlistStringValue(iosPlist, "GADApplicationIdentifier");
-        }
         // Project Settings > Native Plugins > iOS (ios.plist_entries, ios.plist_xml)
         const std::string plistError = NativePlugins::xmlFragmentError(ios.plistXml);
         if (!plistError.empty()) {
@@ -4985,7 +5019,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
             return false;
         }
         writeNativePlistEntries(iosPlist, ios.plistEntries, ios.plistXml);
-        FileUtils::writeIfChanged(iosPlistPath, iosPlist);
+        if (!writeOrFail(iosPlistPath, iosPlist)) return false;
     }
 
     const fs::path iosViewControllerPath = config.targetDir / "platform" / "apple" / "ios" / "ViewController.m";
@@ -5000,12 +5034,12 @@ bool editor::Exporter::writeAppleProjectSettings() {
             const size_t endPos = viewController.rfind("@end");
             if (endPos != std::string::npos) {
                 viewController.insert(endPos, method);
-                FileUtils::writeIfChanged(iosViewControllerPath, viewController);
+                if (!writeOrFail(iosViewControllerPath, viewController)) return false;
             }
         } else {
             replaceAll(viewController, "return YES;\n}\n\n@end", std::string("return ") + (ios.hideHomeIndicator ? "YES" : "NO") + ";\n}\n\n@end");
             replaceAll(viewController, "return NO;\n}\n\n@end", std::string("return ") + (ios.hideHomeIndicator ? "YES" : "NO") + ";\n}\n\n@end");
-            FileUtils::writeIfChanged(iosViewControllerPath, viewController);
+            if (!writeOrFail(iosViewControllerPath, viewController)) return false;
         }
     }
 
@@ -5058,7 +5092,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
         contents += "    \"version\" : 1\n";
         contents += "  }\n";
         contents += "}\n";
-        FileUtils::writeIfChanged(appIconSetDir / "Contents.json", contents);
+        if (!writeOrFail(appIconSetDir / "Contents.json", contents)) return false;
     }
 
     return true;
@@ -5228,74 +5262,10 @@ bool editor::Exporter::addXcodeProjectSources(std::string& xcodeProject) {
 
 namespace {
 
-    // The system frameworks the engine's own code calls into, per app target: sokol and the
-    // renderer (Metal, MetalKit, QuartzCore), miniaudio (AVFoundation's AVAudioSession and
-    // AudioToolbox on iOS; CoreAudio and AudioToolbox on macOS, also loaded at run time),
-    // vibration (AudioToolbox), video decoding (AVFoundation, CoreMedia, CoreVideo), haptics and
-    // the view (UIKit / AppKit), the display (CoreGraphics), gamepads (GameController); the native
-    // bridge needs Foundation and UIKit / AppKit. What the template's phase links already is kept.
-    const std::vector<std::string>& appleEngineFrameworksIOS() {
-        static const std::vector<std::string> frameworks = {"AVFoundation", "AudioToolbox", "CoreGraphics", "CoreMedia", "CoreVideo", "Foundation",
-                                                            "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"};
-        return frameworks;
-    }
-
-    const std::vector<std::string>& appleEngineFrameworksMacOS() {
-        static const std::vector<std::string> frameworks = {"AVFoundation", "AppKit", "AudioToolbox", "CoreAudio", "CoreGraphics", "CoreMedia", "CoreVideo",
-                                                            "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore"};
-        return frameworks;
-    }
-
     std::string lowerExtension(const fs::path& path) {
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
-    }
-
-    // An SDK bundle or archive's binary is a static archive ("!<arch>\n"): linked, not embedded
-    bool isStaticArchive(const fs::path& binary) {
-        std::ifstream in(binary, std::ios::binary);
-        char magic[8] = {0};
-        in.read(magic, 8);
-        return in.gcount() == 8 && std::memcmp(magic, "!<arch>\n", 8) == 0;
-    }
-
-    // The binary of a .framework (X.framework/X, or Versions/Current/X on macOS)
-    fs::path frameworkBinary(const fs::path& framework) {
-        const std::string name = framework.stem().string();
-        std::error_code ec;
-        for (const fs::path& candidate : {framework / name, framework / "Versions" / "Current" / name, framework / "Versions" / "A" / name}) {
-            if (fs::is_regular_file(candidate, ec)) return candidate;
-        }
-        return {};
-    }
-
-    // The binary of an .xcframework's first library (its Info.plist AvailableLibraries[0])
-    fs::path xcframeworkBinary(const fs::path& xcframework) {
-        tinyxml2::XMLDocument doc;
-        if (doc.LoadFile(genericUtf8Path(xcframework / "Info.plist").c_str()) != tinyxml2::XML_SUCCESS) return {};
-        const tinyxml2::XMLElement* dict = doc.FirstChildElement("plist") ? doc.FirstChildElement("plist")->FirstChildElement("dict") : nullptr;
-        auto valueOf = [](const tinyxml2::XMLElement* d, const char* key) -> const tinyxml2::XMLElement* {
-            for (const tinyxml2::XMLElement* e = d ? d->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")) {
-                if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
-            }
-            return nullptr;
-        };
-        const tinyxml2::XMLElement* libraries = valueOf(dict, "AvailableLibraries");
-        const tinyxml2::XMLElement* first = libraries ? libraries->FirstChildElement("dict") : nullptr;
-        if (!first) return {};
-        auto text = [&](const char* key) {
-            const tinyxml2::XMLElement* e = valueOf(first, key);
-            return e && e->GetText() ? std::string(e->GetText()) : std::string();
-        };
-        const std::string identifier = text("LibraryIdentifier");
-        const std::string library = text("LibraryPath");
-        const std::string binary = text("BinaryPath");
-        if (identifier.empty() || library.empty()) return {};
-        const fs::path base = xcframework / identifier;
-        if (!binary.empty()) return base / binary;
-        if (fs::path(library).extension() == ".framework") return frameworkBinary(base / library);
-        return base / library;
     }
 
     // Sets the scalar build setting `key` in a buildSettings range (added when missing)
@@ -5352,15 +5322,35 @@ namespace {
 
 }
 
-bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
+// The system frameworks the engine's own code calls into, per app target: sokol and the renderer
+// (Metal, MetalKit, QuartzCore), miniaudio (AVFoundation's AVAudioSession and AudioToolbox on iOS;
+// CoreAudio and AudioToolbox on macOS, also loaded at run time), vibration (AudioToolbox), video
+// decoding (AVFoundation, CoreMedia, CoreVideo), haptics and the view (UIKit / AppKit), the
+// display (CoreGraphics), gamepads (GameController); the native bridge needs Foundation and
+// UIKit / AppKit. What the template's phase links already is kept.
+void editor::Exporter::applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
+                                               const std::string& rawXml) {
+    writeNativePlistEntries(plist, entries, rawXml);
+}
+
+const std::vector<std::string>& editor::Exporter::appleEngineFrameworks(bool ios) {
+    static const std::vector<std::string> iosFrameworks = {"AVFoundation", "AudioToolbox", "CoreGraphics", "CoreMedia", "CoreVideo", "Foundation",
+                                                           "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"};
+    static const std::vector<std::string> macosFrameworks = {"AVFoundation", "AppKit", "AudioToolbox", "CoreAudio", "CoreGraphics", "CoreMedia",
+                                                             "CoreVideo", "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore"};
+    return ios ? iosFrameworks : macosFrameworks;
+}
+
+bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const XcodeNativeLayout& layout) {
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
     const MacOSProjectSettings& macOS = project->getMacOSProjectSettings();
-    const fs::path nativeRoot = getExportProjectRoot() / NativePlugins::relativeRoot();
+    const fs::path& nativeRoot = layout.nativeRoot;
     std::error_code ec;
 
     // the files of each Apple folder, relative to plugins/native, sorted; bundles are one entry
     std::map<std::string, std::vector<std::string>> folderFiles;
     for (const char* folder : {"apple", "ios", "macos"}) {
+        if (layout.player && std::string(folder) == "macos") continue;
         const fs::path dir = nativeRoot / folder;
         if (!fs::is_directory(dir, ec)) continue;
         std::vector<std::string>& list = folderFiles[folder];
@@ -5373,7 +5363,8 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 continue;
             }
             const std::string ext = lowerExtension(it->path());
-            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework");
+            // an SDK's resource bundle (Foo_Privacy.bundle) is copied into the app whole
+            const bool bundle = directory && (ext == ".framework" || ext == ".xcframework" || ext == ".bundle");
             if (bundle) it.disable_recursion_pending();
             if (bundle || (!directory && it->is_regular_file(ec))) {
                 list.push_back(std::string(folder) + "/" + genericUtf8Path(it->path().lexically_relative(dir)));
@@ -5398,25 +5389,32 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
 
     struct AppTarget {
         std::string name;
-        std::string sourcesPhaseId, frameworksPhaseId;
+        std::string sourcesPhaseId, frameworksPhaseId, resourcesPhaseId;
         std::vector<std::string> configurationIds;
         std::vector<std::string> folders;         // its plugin folders
         const std::vector<std::string>* systemFrameworks = nullptr;
-        std::vector<std::string> sources, frameworks, embedded;
+        std::vector<std::string> sources, frameworks, embedded, resources;
         std::set<std::string> frameworkDirs, libraryDirs, headerDirs;
         bool swift = false;
+        bool ios = true;
         std::string runpath;
         std::string bridgingHeader;
     };
-    AppTarget targets[2] = {{"JasperEngine iOS"}, {"JasperEngine macOS"}};
+    // the source export's two app targets, or the prebuilt iOS template's one (the iOS target first)
+    std::vector<AppTarget> targets(layout.player ? 1 : 2);
+    targets[0].name = layout.player ? "JasperEnginePlayer" : "JasperEngine iOS";
     targets[0].folders = {"apple", "ios"};
     targets[0].systemFrameworks = &ios.frameworks;
     targets[0].runpath = "\"@executable_path/Frameworks\"";
     targets[0].bridgingHeader = "JasperNative-Bridging-Header-iOS.h";
-    targets[1].folders = {"apple", "macos"};
-    targets[1].systemFrameworks = &macOS.frameworks;
-    targets[1].runpath = "\"@executable_path/../Frameworks\"";
-    targets[1].bridgingHeader = "JasperNative-Bridging-Header-macOS.h";
+    if (!layout.player) {
+        targets[1].name = "JasperEngine macOS";
+        targets[1].ios = false;
+        targets[1].folders = {"apple", "macos"};
+        targets[1].systemFrameworks = &macOS.frameworks;
+        targets[1].runpath = "\"@executable_path/../Frameworks\"";
+        targets[1].bridgingHeader = "JasperNative-Bridging-Header-macOS.h";
+    }
     for (AppTarget& target : targets) {
         if (!findXcodeTarget(xcodeProject, target.name, target.sourcesPhaseId, target.configurationIds)) {
             setError("Apple export template has no \"" + target.name + "\" target");
@@ -5426,6 +5424,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         for (const std::string& phaseId : pbxListIds(xcodeProject, object, "buildPhases")) {
             const PbxRange phase = findPbxObject(xcodeProject, phaseId);
             if (phase.found() && xcodeProject.find("\t\t\tisa = PBXFrameworksBuildPhase;\n", phase.start) < phase.end) target.frameworksPhaseId = phaseId;
+            if (phase.found() && xcodeProject.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) target.resourcesPhaseId = phaseId;
         }
         if (target.frameworksPhaseId.empty()) {
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
@@ -5470,7 +5469,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             const std::string name = baseName(path);
             const std::string ext = lowerExtension(FileUtils::pathFromUtf8(name));
             std::string type;
-            bool source = true, linked = false;
+            bool source = true, linked = false, resource = false;
             if (ext == ".m") type = "sourcecode.c.objc";
             else if (ext == ".mm") type = "sourcecode.cpp.objcpp";
             else if (ext == ".swift") type = "sourcecode.swift";
@@ -5482,7 +5481,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 // the engine's.
                 for (AppTarget& target : targets) {
                     if (std::find(target.folders.begin(), target.folders.end(), folder) != target.folders.end()) {
-                        target.headerDirs.insert(pbxPath("$(SRCROOT)/../../project/plugins/native/" + parentDir(path)));
+                        target.headerDirs.insert(pbxPath(layout.pluginsPath + "/" + parentDir(path)));
                     }
                 }
                 continue;
@@ -5490,9 +5489,10 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             else if (ext == ".framework") { type = "wrapper.framework"; source = false; linked = true; }
             else if (ext == ".xcframework") { type = "wrapper.xcframework"; source = false; linked = true; }
             else if (ext == ".a") { type = "archive.ar"; source = false; linked = true; }
+            else if (ext == ".bundle") { type = "wrapper.plug-in"; source = false; resource = true; }
             else continue;
             const std::string fileId = addObject("file:" + path, fileReferences, [&](const std::string& id) {
-                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked ? "" : "fileEncoding = 4; ") +
+                return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; " + (linked || resource ? "" : "fileEncoding = 4; ") +
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
@@ -5500,22 +5500,26 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             bool embed = false;
             if (linked && ext != ".a") {
                 const fs::path bundle = nativeRoot / FileUtils::pathFromUtf8(path);
-                const fs::path binary = ext == ".framework" ? frameworkBinary(bundle) : xcframeworkBinary(bundle);
-                embed = !binary.empty() && !isStaticArchive(binary);
+                const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(bundle) : NativePlugins::xcframeworkBinary(bundle);
+                embed = !binary.empty() && !NativePlugins::isStaticArchive(binary);
             }
             for (AppTarget& target : targets) {
                 if (std::find(target.folders.begin(), target.folders.end(), folder) == target.folders.end()) continue;
-                const std::string phase = source ? "Sources" : "Frameworks";
+                const std::string phase = resource ? "Resources" : source ? "Sources" : "Frameworks";
                 const std::string buildId = addObject("build:" + target.name + ":" + path, buildFiles, [&](const std::string& id) {
                     return "\t\t" + id + " /* " + name + " in " + phase + " */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " + name + " */; };\n";
                 });
+                if (resource) {
+                    target.resources.push_back(buildId + " /* " + name + " in Resources */");
+                    continue;
+                }
                 if (source) {
                     target.sources.push_back(buildId + " /* " + name + " in Sources */");
                     if (ext == ".swift") target.swift = true;
                     continue;
                 }
                 target.frameworks.push_back(buildId + " /* " + name + " in Frameworks */");
-                const std::string dir = "\"$(SRCROOT)/../../project/plugins/native/" + parentDir(path) + "\"";
+                const std::string dir = "\"" + layout.pluginsPath + "/" + parentDir(path) + "\"";
                 if (ext == ".a") target.libraryDirs.insert(dir);
                 else target.frameworkDirs.insert(dir);
                 if (embed) {
@@ -5531,14 +5535,15 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
 
     // system frameworks: the engine's own (linked explicitly: its C++ and Objective-C++ files
     // import no modules, so clang autolinks nothing for them; miniaudio's AVAudioSession symbols
-    // came only through the AdMob SDK's module, and an iOS export without AdMob failed to link),
+    // once came only through an ads SDK's module, and an iOS export without it failed to link),
     // then ios.frameworks / macos.frameworks: "StoreKit", "AppTrackingTransparency?" (weak). One
     // entry per name (strong wins), none for what the template's phase links already.
     std::vector<std::string> systemFrameworkRefs;
     for (AppTarget& target : targets) {
-        const bool iosTarget = &target == &targets[0];
         std::vector<std::pair<std::string, bool>> wanted;
-        for (const std::string& framework : iosTarget ? appleEngineFrameworksIOS() : appleEngineFrameworksMacOS()) wanted.push_back({framework, false});
+        if (layout.engineFrameworks) {
+            for (const std::string& framework : appleEngineFrameworks(target.ios)) wanted.push_back({framework, false});
+        }
         for (std::string framework : *target.systemFrameworks) {
             framework.erase(0, framework.find_first_not_of(" \t"));
             framework.erase(framework.find_last_not_of(" \t") + 1);
@@ -5555,7 +5560,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         for (const auto& [framework, weak] : wanted) {
             const std::string name = framework + ".framework";
             if (phaseText.find("/* " + name + " in Frameworks */") != std::string::npos) continue;
-            const std::string sdk = target.name == "JasperEngine iOS" ? "ios" : "macos";
+            const std::string sdk = target.ios ? "ios" : "macos";
             const std::string fileId = addObject("system:" + sdk + ":" + name, fileReferences, [&](const std::string& id) {
                 return "\t\t" + id + " /* " + name + " */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = " + pbxString(name) +
                     "; path = " + pbxString("System/Library/Frameworks/" + name) + "; sourceTree = SDKROOT; };\n";
@@ -5677,7 +5682,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         return false;
     }
     if (!nativeGroupId.empty()) {
-        const PbxRange projectGroup = findPbxObjectContaining(xcodeProject, "PBXGroup", "\n\t\t\tpath = ../../project;\n");
+        // the source export's project group; the template's main group
+        const PbxRange projectGroup = layout.player
+            ? findPbxObject(xcodeProject, pbxValueId(xcodeProject, findPbxObject(xcodeProject, pbxValueId(xcodeProject, {0, xcodeProject.size()}, "rootObject")),
+                                                     "mainGroup"))
+            : findPbxObjectContaining(xcodeProject, "PBXGroup", "\n\t\t\tpath = ../../project;\n");
         if (!addPbxListEntries(xcodeProject, projectGroup, "children", {nativeGroupId + " /* native plugins */"})) {
             setError("Apple export template has no project group");
             return false;
@@ -5713,6 +5722,11 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             setError("Apple export template has no Frameworks phase in \"" + target.name + "\"");
             return false;
         }
+        if (!target.resources.empty() &&
+            (target.resourcesPhaseId.empty() || !addPbxListEntries(xcodeProject, findPbxObject(xcodeProject, target.resourcesPhaseId), "files", target.resources))) {
+            setError("Apple export template has no Resources phase in \"" + target.name + "\"");
+            return false;
+        }
         if (!target.embedded.empty()) {
             addPbxListEntries(xcodeProject, findPbxObjectContaining(xcodeProject, "PBXNativeTarget", "\n\t\t\tname = " + pbxString(target.name) + ";\n"),
                               "buildPhases", target.embedded);
@@ -5724,7 +5738,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             auto settings = [&]() { return findPbxBuildSettings(xcodeProject, configurationId); };
             if (hasSources) {
                 // plugin code imports "JasperNative.h"
-                addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {pbxPath("$(SRCROOT)/../../platform/apple")});
+                addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {pbxPath(layout.engineHeaders)});
             }
             addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {target.headerDirs.begin(), target.headerDirs.end()});
             addPbxBuildSettingList(xcodeProject, settings(), "FRAMEWORK_SEARCH_PATHS", {target.frameworkDirs.begin(), target.frameworkDirs.end()});
@@ -5733,13 +5747,13 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 setPbxBuildSetting(xcodeProject, settings(), "SWIFT_VERSION", "5.0");
                 setPbxBuildSetting(xcodeProject, settings(), "CLANG_ENABLE_MODULES", "YES");
                 setPbxBuildSetting(xcodeProject, settings(), "SWIFT_OBJC_BRIDGING_HEADER",
-                                   pbxString("$(SRCROOT)/../../project/plugins/native/" + target.bridgingHeader));
+                                   pbxString(layout.pluginsPath + "/" + target.bridgingHeader));
             }
             if (target.swift || !target.embedded.empty() || (&target == &targets[0] && !productDeps.empty())) {
                 addPbxBuildSettingList(xcodeProject, settings(), "LD_RUNPATH_SEARCH_PATHS", {target.runpath});
             }
             if (&target == &targets[0] && ios.entitlementsXml.find_first_not_of(" \t\r\n") != std::string::npos) {
-                setPbxBuildSetting(xcodeProject, settings(), "CODE_SIGN_ENTITLEMENTS", "ios/JasperEngine.entitlements");
+                setPbxBuildSetting(xcodeProject, settings(), "CODE_SIGN_ENTITLEMENTS", pbxString(layout.entitlements));
             }
         }
         // the Swift bridging header: JasperNative.h and every plugin header of the target
@@ -5754,21 +5768,105 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                     if (lowerExtension(FileUtils::pathFromUtf8(path)) == ".h") header += "#import \"" + path + "\"\n";
                 }
             }
-            FileUtils::writeIfChanged(bridgingPath, header);
-        } else if (fs::exists(bridgingPath, ec)) {
-            fs::remove(bridgingPath, ec);
+            if (!writeOrFail(bridgingPath, header)) return false;
+        } else if (fs::exists(bridgingPath, ec) && !removeStale(bridgingPath)) {
+            return false;
         }
     }
     return true;
 }
 
-bool editor::Exporter::writeNativeAppleFiles() {
+bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
     const IOSProjectSettings& ios = project->getIOSProjectSettings();
-    const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
-    std::error_code ec;
+    // the plugins next to the project, as the source export has them next to its workspace
+    const fs::path nativeRoot = projectDir / NativePlugins::relativeRoot();
+    if (!copyNativePluginFolders(nativeRoot, {"apple", "ios"})) return false;
 
-    // entitlements
-    const fs::path entitlementsPath = xcodeDir / "ios" / "JasperEngine.entitlements";
+    const fs::path pbxFile = projectDir / "JasperEnginePlayer.xcodeproj" / "project.pbxproj";
+    std::string pbx;
+    {
+        std::ifstream in(pbxFile, std::ios::binary);
+        if (!in) {
+            setError("Cannot read the iOS player's " + pbxFile.string());
+            return false;
+        }
+        pbx.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    XcodeNativeLayout layout;
+    layout.nativeRoot = nativeRoot;
+    layout.pluginsPath = "$(SRCROOT)/plugins/native";
+    layout.engineHeaders = "$(SRCROOT)/include";
+    layout.entitlements = "JasperEnginePlayer.entitlements";
+    layout.player = true;
+    layout.engineFrameworks = false;
+    if (!addNativePluginsToXcode(pbx, layout)) return false;
+
+    // the privacy manifest's resource: a runtime packaged before privacy manifests lacks it
+    if (pbx.find("/* PrivacyInfo.xcprivacy in Resources */") == std::string::npos) {
+        const std::string refId = xcodeObjectId("privacy:ref");
+        const std::string buildId = xcodeObjectId("privacy:build");
+        const PbxRange target = findPbxObjectContaining(pbx, "PBXNativeTarget", "\n\t\t\tname = JasperEnginePlayer;\n");
+        std::string resourcesId;
+        for (const std::string& phaseId : pbxListIds(pbx, target, "buildPhases")) {
+            const PbxRange phase = findPbxObject(pbx, phaseId);
+            if (phase.found() && pbx.find("\t\t\tisa = PBXResourcesBuildPhase;\n", phase.start) < phase.end) resourcesId = phaseId;
+        }
+        const size_t buildFiles = pbx.find("/* End PBXBuildFile section */");
+        const size_t fileRefs = pbx.find("/* End PBXFileReference section */");
+        if (resourcesId.empty() || buildFiles == std::string::npos || fileRefs == std::string::npos) {
+            setError("The iOS player template has no Resources phase for PrivacyInfo.xcprivacy");
+            return false;
+        }
+        pbx.insert(fileRefs, "\t\t" + refId + " /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; "
+                             "path = PrivacyInfo.xcprivacy; sourceTree = \"<group>\"; };\n");
+        pbx.insert(pbx.find("/* End PBXBuildFile section */"), "\t\t" + buildId + " /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; "
+                                                                 "fileRef = " + refId + " /* PrivacyInfo.xcprivacy */; };\n");
+        const PbxRange mainGroup = findPbxObject(pbx, pbxValueId(pbx, findPbxObject(pbx, pbxValueId(pbx, {0, pbx.size()}, "rootObject")), "mainGroup"));
+        addPbxListEntries(pbx, mainGroup, "children", {refId + " /* PrivacyInfo.xcprivacy */"});
+        addPbxListEntries(pbx, findPbxObject(pbx, resourcesId), "files", {buildId + " /* PrivacyInfo.xcprivacy in Resources */"});
+        warn("W-IOS-PRIVACY-RUNTIME", "the iOS player runtime predates privacy manifests (its template has no PrivacyInfo.xcprivacy): "
+                                      "the build adds one; reinstall the runtime");
+    }
+    if (FileUtils::writeFile(pbxFile, pbx) == FileUtils::WriteResult::Failed) {
+        setError("Cannot write " + pbxFile.string());
+        return false;
+    }
+    if (!writeEntitlements(projectDir / "JasperEnginePlayer.entitlements")) return false;
+
+    // Info.plist: Project Settings > Native Plugins > iOS (ios.plist_entries, ios.plist_xml)
+    const fs::path plistFile = projectDir / "Info.plist";
+    std::string plist;
+    {
+        std::ifstream in(plistFile, std::ios::binary);
+        plist.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string plistError = NativePlugins::xmlFragmentError(ios.plistXml);
+    if (!plistError.empty()) {
+        setError("Project Settings > Native Plugins > iOS > Info.plist XML (ios.plist_xml) is " + plistError);
+        return false;
+    }
+    if (!plist.empty()) {
+        writeNativePlistEntries(plist, ios.plistEntries, ios.plistXml);
+        if (FileUtils::writeFile(plistFile, plist) == FileUtils::WriteResult::Failed) {
+            setError("Cannot write " + plistFile.string());
+            return false;
+        }
+    }
+
+    // the privacy manifest: the engine's, the project's and the plugins'
+    const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "ios",
+                                                                  iosDeclaresTrackingUsage());
+    warnPrivacy("iOS", composed.warnings);
+    if (FileUtils::writeFile(projectDir / "PrivacyInfo.xcprivacy", ApplePrivacy::toXml(composed.manifest)) == FileUtils::WriteResult::Failed) {
+        setError("Cannot write the iOS privacy manifest");
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeEntitlements(const fs::path& entitlementsPath) {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    std::error_code ec;
     const std::string entitlementsError = NativePlugins::xmlFragmentError(ios.entitlementsXml);
     if (!entitlementsError.empty()) {
         setError("Project Settings > Native Plugins > iOS > Entitlements (ios.entitlements_xml) is " + entitlementsError);
@@ -5781,10 +5879,18 @@ bool editor::Exporter::writeNativeAppleFiles() {
         std::string text = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
                            "<plist version=\"1.0\">\n<dict>\n" + body + "</dict>\n</plist>\n";
-        FileUtils::writeIfChanged(entitlementsPath, text);
-    } else if (fs::exists(entitlementsPath, ec)) {
-        fs::remove(entitlementsPath, ec);
+        if (!writeOrFail(entitlementsPath, text)) return false;
+    } else if (fs::exists(entitlementsPath, ec) && !removeStale(entitlementsPath)) {
+        return false;
     }
+    return true;
+}
+
+bool editor::Exporter::writeNativeAppleFiles() {
+    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
+    std::error_code ec;
+    if (!writeEntitlements(xcodeDir / "ios" / "JasperEngine.entitlements")) return false;
 
     // CocoaPods
     const fs::path podfilePath = xcodeDir / "Podfile";
@@ -5794,9 +5900,8 @@ bool editor::Exporter::writeNativeAppleFiles() {
         if (!pod.name.empty()) pods.push_back(pod);
     }
     if (pods.empty()) {
-        fs::remove(podfilePath, ec);
-        fs::remove(readmePath, ec);
-        return true;
+        // an earlier export's: a Podfile left there would make the next pod install add the old pods
+        return removeStale(podfilePath) && removeStale(readmePath);
     }
     auto rubyString = [](const std::string& value) {
         std::string out = "'";
@@ -5829,13 +5934,13 @@ bool editor::Exporter::writeNativeAppleFiles() {
         podfile += "\n";
     }
     podfile += "end\n";
-    FileUtils::writeIfChanged(podfilePath, podfile);
-    FileUtils::writeIfChanged(readmePath,
+    if (!writeOrFail(podfilePath, podfile)) return false;
+    if (!writeOrFail(readmePath,
         "This iOS project uses CocoaPods (Project Settings > Native Plugins > iOS > CocoaPods).\n\n"
         "1. Install CocoaPods once: sudo gem install cocoapods (or brew install cocoapods)\n"
         "2. In this folder (workspaces/xcode): pod install\n"
         "3. Open JasperEngine.xcworkspace, not JasperEngine.xcodeproj, and build \"JasperEngine iOS\".\n\n"
-        "Run pod install again after every export that changes the pods.\n");
+        "Run pod install again after every export that changes the pods.\n")) return false;
     Out::info("iOS: %zu CocoaPods in workspaces/xcode/Podfile: run `pod install` there, then open JasperEngine.xcworkspace", pods.size());
     return true;
 }
@@ -6104,7 +6209,19 @@ bool editor::Exporter::buildAndSaveShaders() {
 
     int total = (int)config.selectedShaderKeys.size() * backends.size();
     int current = 0;
-    bool hadFailure = false;
+    // each shader that failed, named with its language and the builder's reason
+    std::vector<BuildDiagnostic> failures;
+    auto fail = [&](const std::string& shader, const std::string& reason) {
+        Out::warning("Failed to build shader %s: %s", shader.c_str(), reason.c_str());
+        BuildDiagnostic failure;
+        failure.severity = "error";
+        failure.code = "shader";
+        failure.message = shader + ": " + reason;
+        failure.text = failure.message;
+        failures.push_back(std::move(failure));
+    };
+    // D3D11: bytecode where this computer can compile it (Windows), else the HLSL source the game compiles
+    bool d3d11Source = false;
     std::map<std::string, std::vector<ShaderHeaderBuilder::HeaderShader>> headerShaders;
 
     for (const ShaderKey& shaderKey : config.selectedShaderKeys) {
@@ -6129,6 +6246,10 @@ bool editor::Exporter::buildAndSaveShaders() {
             try {
                 // Synchronous build without cache
                 ShaderData resultData = shaderBuilder.buildShaderForExport(shaderKey, project, backend);
+                if (backend == ShaderBackend::D3D11 && config.shaderOutputFormat != ShaderOutputFormat::Json &&
+                        !ShaderBuilder::compileHlslBytecode(resultData)) {
+                    d3d11Source = true;
+                }
 
                 std::string basename = shaderStr + "_" + fmtStr;
                 std::string err;
@@ -6140,8 +6261,7 @@ bool editor::Exporter::buildAndSaveShaders() {
                 if (config.shaderOutputFormat == ShaderOutputFormat::Header) {
                     std::vector<unsigned char> sdatBytes;
                     if (!ShaderDataSerializer::writeToBytes(sdatBytes, storageKey, resultData, &err)) {
-                        Out::warning("Failed to encode shader %s: %s", basename.c_str(), err.c_str());
-                        hadFailure = true;
+                        fail(basename, "encoding: " + err);
                     } else {
                         headerShaders[fmtStr].push_back({basename, Base64::encode(sdatBytes.data(), sdatBytes.size())});
                     }
@@ -6149,20 +6269,17 @@ bool editor::Exporter::buildAndSaveShaders() {
                     std::string filename = basename + ".json";
                     fs::path outputPath = shadersDst / filename;
                     if (!ShaderDataSerializer::writeJsonToFile(outputPath.string(), storageKey, resultData, &err)) {
-                        Out::warning("Failed to save shader %s: %s", filename.c_str(), err.c_str());
-                        hadFailure = true;
+                        fail(filename, "saving: " + err);
                     }
                 } else {
                     std::string filename = basename + ".sdat";
                     fs::path outputPath = shadersDst / filename;
                     if (!ShaderDataSerializer::writeToFile(outputPath.string(), storageKey, resultData, &err)) {
-                        Out::warning("Failed to save shader %s: %s", filename.c_str(), err.c_str());
-                        hadFailure = true;
+                        fail(filename, "saving: " + err);
                     }
                 }
             } catch (const std::exception& e) {
-                Out::warning("Failed to build shader %s (%s): %s", shaderStr.c_str(), fmtStr.c_str(), e.what());
-                hadFailure = true;
+                fail(shaderStr + " (" + fmtStr + ")", e.what());
             }
 
             current++;
@@ -6197,15 +6314,23 @@ bool editor::Exporter::buildAndSaveShaders() {
             const std::vector<ShaderHeaderBuilder::HeaderShader> emptyShaders;
             const std::vector<ShaderHeaderBuilder::HeaderShader>& shaders = it == headerShaders.end() ? emptyShaders : it->second;
             if (!ShaderHeaderBuilder::writeShaderHeader(shadersDst / (fmtStr + ".h"), fmtStr, shaders, err)) {
-                Out::warning("Failed to write shader header %s.h: %s", fmtStr.c_str(), err.c_str());
-                hadFailure = true;
+                fail(fmtStr + ".h", "writing the header: " + err);
             }
         }
     }
 
-    if (hadFailure) {
-        setError("One or more shaders failed to build or save");
+    if (!failures.empty()) {
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            progress.errorCount = failures.size();
+            progress.errors.assign(failures.begin(), failures.begin() + std::min(failures.size(), BuildErrorLog::kMaxKept));
+        }
+        setError(std::to_string(failures.size()) + " shader(s) failed to build. First: " + failures.front().message);
         return false;
+    }
+    if (d3d11Source) {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.notes.push_back("D3D11 shaders ship as HLSL source: the game compiles each when first used. Build on Windows to ship bytecode.");
     }
 
     return true;

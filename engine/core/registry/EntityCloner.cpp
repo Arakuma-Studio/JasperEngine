@@ -214,7 +214,8 @@ void prepare<Transform>(Transform& transform, Entity sourceEntity, CloneContext&
     // the copy of the root starts at the top of the hierarchy
     transform.parent = sourceEntity == ctx.sourceRoot ? NULL_ENTITY : ctx.remap(transform.parent);
     transform.needUpdate = true;
-    transform.needUpdateChildVisibility = true;
+    // needUpdateChildVisibility keeps the source's value: copying is no visibility change, so
+    // each copied child keeps its own visible flag (only a cascade pending on the source goes on)
 }
 
 template<>
@@ -468,6 +469,8 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.needUpdateFoliage = true;
     // a hold belongs to the volume attached to the original (T3 R29)
     terrain.holeMapHolds = 0;
+    terrain.surfaceRevision = 0;
+    terrain.editState.reset();
 }
 
 template<>
@@ -796,16 +799,30 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
 
 template<>
 void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx) {
-    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled}) {
+    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled,
+                             &button.textureSelected}) {
         remapFramebufferTexture(*texture, ctx);
     }
     button.label = ctx.remap(button.label);
+    // Explicit navigation follows the copy (another GameObject of the source stays, or means nothing elsewhere)
+    button.selectOnUp = ctx.remap(button.selectOnUp);
+    button.selectOnDown = ctx.remap(button.selectOnDown);
+    button.selectOnLeft = ctx.remap(button.selectOnLeft);
+    button.selectOnRight = ctx.remap(button.selectOnRight);
     button.pressed = false;
     button.hovered = false;
+    // the runtime state starts over: not selected, no hold, no fade (appliedScale is kept: the
+    // copied Transform holds that factor, which the copy's next look takes back)
+    button.selected = false;
+    button.submitPressed = false;
+    button.wasLive = false;
+    button.fading = false;
+    button.state = SelectionState::NORMAL;
     button.needUpdateButton = true;
     if (!ctx.move) {
         button.onPress.clear();
         button.onRelease.clear();
+        button.onClick.clear();
     }
 }
 
@@ -1463,6 +1480,7 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, En
     if (ButtonComponent* button = componentOf<ButtonComponent>(source, entity, signature)) {
         button->onPress.clear();
         button->onRelease.clear();
+        button->onClick.clear();
     }
     if (PanelComponent* panel = componentOf<PanelComponent>(source, entity, signature)) {
         panel->onMove.clear();

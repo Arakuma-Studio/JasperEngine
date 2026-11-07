@@ -4,7 +4,7 @@
 #ifndef TERRAIN_PLACEMENT_H
 #define TERRAIN_PLACEMENT_H
 
-// S53 R21: where a placement brush puts objects, as pure data the editor turns into commands. The
+// T1 R21: where a placement brush puts objects, as pure data the editor turns into commands. The
 // same seed and inputs give the same plan on every platform (PCG32, no std distribution).
 
 #include "Export.h"
@@ -45,7 +45,7 @@ namespace jasperengine::terrain {
     // Whether a candidate may land here (the op's shape and filter)
     using PlacementAccept = bool (*)(void* user, float x, float z);
 
-    // One random attempt per stamp, scattered inside it and clamped to bounds (S53 R21: a drag makes
+    // One random attempt per stamp, scattered inside it and clamped to bounds (T1 R21: a drag makes
     // one attempt per spaced stamp, not per event)
     JASPERENGINE_API PlacementPlan planPlacement(std::span<const PlacementStamp> stamps, const PlacementParams& params, std::span<const Vector2> existing,
                                                  Vector2 boundsMin, Vector2 boundsMax, PlacementAccept accept = nullptr, void* acceptUser = nullptr);

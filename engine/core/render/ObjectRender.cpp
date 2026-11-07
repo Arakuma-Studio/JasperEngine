@@ -54,6 +54,22 @@ void ObjectRender::resetIndexBuffer(){
     backend.resetIndexBuffer();
 }
 
+void ObjectRender::retargetVertexBuffer(uint32_t originalId, BufferRender* replacement){
+    backend.retargetVertexBuffer(originalId, replacement->backend.get());
+}
+
+void ObjectRender::retargetIndexBuffer(uint32_t originalId, BufferRender* replacement){
+    backend.retargetIndexBuffer(originalId, replacement->backend.get());
+}
+
+size_t ObjectRender::getVertexBindSlotCount() const{
+    return backend.getVertexBindSlotCount();
+}
+
+void ObjectRender::getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const{
+    backend.getTextureBinding(slot, view, sampler);
+}
+
 void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture){
     backend.addTexture(slot, stage, texture);
 }

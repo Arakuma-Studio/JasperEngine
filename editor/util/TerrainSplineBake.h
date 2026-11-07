@@ -11,15 +11,18 @@
 #include "Project.h"
 #include "component/SplineComponent.h"
 #include "spline/SplineStation.h"
+#include "terrain/EditorTerrainStore.h"
+#include "terrain/OverlayMapStore.h"
 #include "util/TerrainMapUtils.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace jasperengine::editor{
 
-    // A map's pixels as the bake reads and writes them, in place
+    // A map's pixels as the pure bake takes them (tests): it writes them through a store (T1 R20)
     struct TerrainBakeMap{
         unsigned char* pixels = nullptr;
         int width = 0;
@@ -54,9 +57,9 @@ namespace jasperengine::editor{
 
     // The spline -> terrain bake (S18 R11, R12, D8): flattens the road bed (cut and fill), paints
     // a surface layer and clears foliage along a spline path, or over the inside of a closed
-    // spline. It is destructive: a bake rewrites texels of the terrain's maps, one undoable step
-    // ("Apply Spline to Terrain") of TerrainMapPatchCmds grouped with mark()/groupSince(), each
-    // only the changed rect of its map, so undo restores the maps bit-exactly.
+    // spline. It is destructive: a bake rewrites texels of the terrain's maps through applyField,
+    // one undoable step ("Apply Spline to Terrain"), a TerrainMapDeltaCmd of the tiles it changed in
+    // each map, so undo restores the maps bit-exactly (T1 R20).
     class TerrainSplineBake{
     public:
         // stations closer than this along the route are not resampled further (OpenEngine
@@ -87,48 +90,38 @@ namespace jasperengine::editor{
         // Bakes the spline's settings into its terrain as one undo step (false and an error when
         // nothing could be baked: no terrain, no spline, no data)
         static bool apply(Project* project, uint32_t sceneId, Entity splineEntity, TerrainBakeChanges& changes, std::string& error);
-        // The same into the maps without commands: the live session's re-bakes
+        // The same into the maps without commands
         static bool bakeInPlace(Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
                                 TerrainBakeChanges& changes, std::string& error);
+        // The same into a store: an overlay over the terrain's maps is a step or a live session
+        static bool bakeInto(terrain::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
+                             TerrainBakeChanges& changes, std::string& error);
         // whether the terrain's heightmap is 8-bit (the bake warns: the bed steps visibly)
         static bool isHeightMap8Bit(Scene* scene, Entity terrainEntity);
     };
 
-    // Live Terrain (S18 R12): while it is on during an Edit Spline session, the spline's bake
-    // starts from a snapshot of the terrain taken when the session started; each spline change
-    // restores the snapshot inside the old and new footprints and bakes again, and the session
-    // commits one grouped patch when it ends. A later bake works on the terrain as it then is.
+    // Live Terrain (S18 R12): while it is on during an Edit Spline session, the spline's bake runs on
+    // an overlay over the terrain as the session found it (T1 R20): each spline change rewinds what
+    // it touched and bakes again, so it holds only the tiles it has been over, and the session commits
+    // one step when it ends. A later bake works on the terrain as it then is.
     class TerrainSplineLiveSession{
     private:
-        struct MapCopy{
-            TerrainMapRef ref;
-            std::string path;
-            int width = 0;
-            int height = 0;
-            int bytesPerTexel = 0;
-            std::vector<unsigned char> start;   // the whole map when the session started
-            TerrainMapRegion touched;           // every texel a re-bake wrote
-        };
-
         Project* project = nullptr;
         uint32_t sceneId = 0;
         Entity spline = NULL_ENTITY;
         Entity terrain = NULL_ENTITY;
-        std::vector<MapCopy> maps;
+        std::unique_ptr<EditorTerrainStore> store;
+        std::unique_ptr<terrain::OverlayMapStore> overlay;
         uint64_t bakedVersion = 0;
         bool active = false;
-
-        MapCopy* findMap(const TerrainMapRef& ref);
-        // the start snapshot over every texel a re-bake wrote
-        void restore();
 
     public:
         bool begin(Project* project, uint32_t sceneId, Entity splineEntity, std::string& error);
         // re-bakes when the spline changed since the last bake; true when it did
         bool update(std::string& error);
-        // one grouped patch of everything the session changed ("Apply Spline to Terrain")
+        // one step of everything the session changed ("Apply Spline to Terrain")
         void end();
-        // puts the start snapshot back and records nothing
+        // puts the terrain back as the session found it and records nothing
         void cancel();
         bool isActive() const { return active; }
         Entity getSpline() const { return spline; }

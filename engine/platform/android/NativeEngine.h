@@ -21,14 +21,9 @@ struct JniData{
     jclass gameActivityClsRef;
 
     jmethodID getUserSettingsRef;
-    jmethodID getAdMobWrapperRef;
 
     jobject userSettingsObjRef;
     jclass userSettingsClsRef;
-
-    // null when the export leaves AdMob out
-    jobject adMobWrapperObjRef;
-    jclass adMobWrapperClsRef;
 
     jmethodID getBoolForKeyRef;
     jmethodID getIntegerForKeyRef;
@@ -48,12 +43,6 @@ struct JniData{
     jmethodID hasKeyRef;
     jmethodID removeAllKeysRef;
     jmethodID saveUserSettingsRef;
-
-    jmethodID initializeAdMob;
-    jmethodID setMaxAdContentRating;
-    jmethodID loadInterstitialAd;
-    jmethodID isInterstitialAdLoaded;
-    jmethodID showInterstitialAd;
 
     // null when the activity does not provide them (the System base clipboard is used)
     jmethodID setClipboardText;

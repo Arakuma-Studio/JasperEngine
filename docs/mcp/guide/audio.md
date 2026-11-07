@@ -225,7 +225,8 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
   player run with `--headless` or `--silent-audio` mixes on the deterministic driver, by the frames'
   game time: its sounds play, end and fire their events as in a normal run, the same on every run
   with the same `--fixed-fps`.
-- The Web needs a user gesture before sound starts (browsers); mixing and meters run before it.
+- The Web needs a user gesture before sound starts (browsers): the first key press, click or touch
+  starts it (a key the browser does not count, Escape, waits for the next); mixing and meters run before it.
 
 ## 9. Recipes
 

@@ -32,6 +32,12 @@ namespace testsupport {
     // every allocation of the process so far
     uint64_t totalAllocations();
 
+    // the bytes every allocation of the process asked for so far, and the largest one since the
+    // last reset: what a "no whole-map buffer" test looks at (a realloc counts what it asks for)
+    uint64_t totalAllocatedBytes();
+    uint64_t largestAllocation();
+    void resetLargestAllocation();
+
     // false where the test binary cannot count (no GNU ld --wrap): the zero-allocation tests skip
     bool countsAllocations();
 

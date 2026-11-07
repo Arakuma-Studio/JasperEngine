@@ -32,6 +32,8 @@ namespace jasperengine{
 
 namespace jasperengine::editor{
 
+    struct TerrainOverlayLegendStop;
+
     constexpr int SCENE_DRAW_MODE_COUNT = 5;
 
     // "shaded", "wireframe", "shaded_wireframe", "lod_level", "overdraw" (saved, MCP)
@@ -72,6 +74,10 @@ namespace jasperengine::editor{
 
     // the LOD Level legend in a view's corner: LOD 0..3 in their colours
     void drawLodLegend(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax);
+    // T1 R65: the terrain overlay's colour stops, a column in the view's lower left corner, above
+    // the LOD legend when that shows
+    void drawTerrainOverlayLegend(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::string& title,
+                                  const std::vector<TerrainOverlayLegendStop>& stops, bool aboveLodLegend);
     // a Stats box in the top right corner of an image
     void drawStatsBox(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::vector<std::string>& lines);
     // "Verts: ...", "LOD 0: 120, 1: 40, 2: 8, 3: 2", "Fading: 3  Culled by size: 2", "Mesh memory: 86.0 MB"

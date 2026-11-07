@@ -144,7 +144,14 @@ namespace jasperengine::editor {
         AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
-        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
+        AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
+        AssetsCreateCppSource,
+        AssetsCreateCppHeader,
+        AssetsCreatePhysicsMaterial,
+        AssetsCreatePhysicsMaterial2D,
+        AssetsDuplicate,
+        ToggleMaximizeOnPlay
     };
 
 }

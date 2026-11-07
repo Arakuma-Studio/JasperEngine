@@ -504,7 +504,7 @@ async def test_scatter_batch_undo(ed: Editor):
 
 async def test_snap_lands_on_surface(ed: Editor):
     # a Scene view pixel: the centre of a view looking straight down at the table
-    await ed.call("set_scene_camera", position=[-10, 25, -9.999], target=[-10, 0, -10])
+    await ed.call("set_scene_camera", position=[-10, 25, -10], target=[-10, 0, -10])
     shot = await ed.screenshot("scene", max_width=0)
     w, h, _, _ = decode_png(shot)
     r = await place(ed, entities=["Snapper"], mode="snap", ray={"screen": [w / 2, h / 2]}, screenshot=True)

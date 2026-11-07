@@ -133,6 +133,11 @@ namespace jasperengine{
         FunctionSubscribe<void(const std::string&, bool)> onMontageEnded;
         // (delta position world, delta rotation world): when set, root motion is not applied
         FunctionSubscribe<void(Vector3, Quaternion)> onAnimatorMove;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onEvent); f(onStateEnter); f(onStateExit); f(onMontageEnded); f(onAnimatorMove);
+        }
     };
 
 }

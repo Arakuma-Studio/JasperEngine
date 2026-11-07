@@ -1,5 +1,5 @@
 {
-  "description": "tools/test-projects/terrain-edit (WEB_PROJECT=terrain-edit tools/build.sh web): S53 AC5, TerrainGolden's op sequences on a fixed seed map, hashed in wasm. The digest below is pinned from the native core suite (TerrainGolden.Hashes checks it matches golden/op_hashes.json), so this gate fails when a kernel's bytes differ from x86-64. The canvas only says the engine ran that far.",
+  "description": "tools/test-projects/terrain-edit (WEB_PROJECT=terrain-edit tools/build.sh web): T1 AC5, TerrainGolden's op sequences on a fixed seed map, hashed in wasm. The digest below is pinned from the native core suite (TerrainGolden.Hashes checks it matches golden/op_hashes.json), so this gate fails when a kernel's bytes differ from x86-64. The canvas only says the engine ran that far.",
   "rgb": [
     40,
     200,

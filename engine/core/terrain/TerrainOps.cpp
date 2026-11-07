@@ -551,11 +551,12 @@ namespace {
 
         // Runs texel over every sample of the shape, by blocks. margin: what the kernel reads around a
         // texel. gain multiplies the weight. forced: one texel to hit whatever the shape says (a brush
-        // smaller than a texel). useFalloff: weigh by the falloff alone (stamp reads the mask itself).
-        // prepare: called with each block before its rows run.
+        // smaller than a texel), weighed by what the shape gives at its centre. useFalloff: weigh by
+        // the falloff alone (stamp reads the mask itself). prepare: called with each block before its
+        // rows run.
         template<typename Prepare, typename Texel>
         Counters forEachSample(const Op& op, MapId map, const ShapeEvaluator& shape, float gain, int margin, bool useFalloff,
-                               const TexelRect* forced, Prepare&& prepare, Texel&& texel);
+                               const TexelRect* forced, const ShapeSample& forcedSample, Prepare&& prepare, Texel&& texel);
 
         // One application of a scalar or blend kernel on its map, with the fallback for a sub-texel brush
         template<typename Texel>
@@ -670,7 +671,7 @@ namespace {
 
     template<typename Prepare, typename Texel>
     Counters Run::forEachSample(const Op& op, MapId map, const ShapeEvaluator& shape, float gain, int margin, bool useFalloff,
-                                const TexelRect* forced, Prepare&& prepare, Texel&& texel) {
+                                const TexelRect* forced, const ShapeSample& forcedSample, Prepare&& prepare, Texel&& texel) {
         Counters counters;
         const MapFormat format = target.format(map);
         if (!format.exists) return counters;
@@ -736,14 +737,7 @@ namespace {
                             next[c] = current[c];
                         }
 
-                        ShapeSample sample;
-                        if (forced) {
-                            sample.falloff = 1.0f;
-                            sample.weight = 1.0f;
-                            sample.inside = true;
-                        } else {
-                            sample = shape.sample(lattice.x(x), z);
-                        }
+                        const ShapeSample sample = forced ? forcedSample : shape.sample(lattice.x(x), z);
                         const float base = useFalloff ? sample.falloff : sample.weight;
                         if (base <= 0.0f) continue;
                         rowCount.touched++;
@@ -791,22 +785,21 @@ namespace {
     void Run::applyKernel(const Op& op, MapId map, const Shape& shapeValue, float gain, int margin, bool useFalloff, OpEntry& entry, Texel&& texel) {
         const ShapeEvaluator shape(shapeValue);
         auto noPreparation = [](const Block&) {};
-        Counters counters = forEachSample(op, map, shape, gain, margin, useFalloff, nullptr, noPreparation, texel);
+        Counters counters = forEachSample(op, map, shape, gain, margin, useFalloff, nullptr, ShapeSample{}, noPreparation, texel);
 
-        // A brush smaller than a texel can miss every sample: the nearest texel still gets the stamp,
-        // so tiny brushes keep working (TEW:1908-1916)
-        const bool round = shapeValue.type == ShapeType::Circle || shapeValue.type == ShapeType::Stroke;
+        // A brush smaller than a texel can miss every sample: the texel nearest its centre, inside
+        // the box it reaches, still gets the stamp, so tiny brushes keep working
+        const bool round = shapeValue.type == ShapeType::Circle || shapeValue.type == ShapeType::Stroke || shapeValue.nearestTexel;
         if (counters.touched == 0 && round && !failed()) {
             const MapFormat format = target.format(map);
-            if (format.exists) {
+            const TexelRect reach = format.exists ? shapeTexels(target, map, format, shape) : TexelRect{};
+            if (!reach.empty()) {
                 const Vector2 center = target.texelOfWorld(map, shapeValue.center.x, shapeValue.center.y);
-                const int x = static_cast<int>(std::round(center.x));
-                const int y = static_cast<int>(std::round(center.y));
-                if (format.bounds.contains(TexelRect{x, y, 1, 1})) {
-                    const TexelRect forced{x, y, 1, 1};
-                    counters = forEachSample(op, map, shape, gain, margin, useFalloff, &forced, noPreparation, texel);
-                    warn("brush_under_one_texel", "The brush is smaller than a texel: it reached only the nearest one.");
-                }
+                const TexelRect forced{std::clamp(static_cast<int>(std::round(center.x)), reach.x, reach.right() - 1),
+                                       std::clamp(static_cast<int>(std::round(center.y)), reach.y, reach.bottom() - 1), 1, 1};
+                counters = forEachSample(op, map, shape, gain, margin, useFalloff, &forced, shape.sample(shapeValue.center.x, shapeValue.center.y),
+                                         noPreparation, texel);
+                warn("brush_under_one_texel", "The brush is smaller than a texel: it reached only the nearest one.");
             }
         }
         finishEntry(counters, entry, op);
@@ -1033,7 +1026,7 @@ namespace {
                     evaluateFilter(target, op.filter, lattice, block, weights);
                 }
 
-                // The kernels work relative to the map's corner; S56's signed texels stay out of them
+                // The kernels work relative to the map's corner; T4's signed texels stay out of them
                 const int cornerX = format.bounds.x;
                 const int cornerY = format.bounds.y;
                 ErosionField field;
@@ -1110,7 +1103,7 @@ namespace {
         opaque.filter = Filter{};
         opaque.strength = 1.0f;
         const ShapeEvaluator shape(whole);
-        const Counters counters = forEachSample(opaque, HEIGHT_MAP, shape, 1.0f, 0, false, nullptr, [](const Block&) {},
+        const Counters counters = forEachSample(opaque, HEIGHT_MAP, shape, 1.0f, 0, false, nullptr, ShapeSample{}, [](const Block&) {},
             [&](const Block& block, int x, int y, const ShapeSample&, float, const float*, float* next, Counters& c) {
                 const int texelX = x - block.format.bounds.x;
                 const int texelY = y - block.format.bounds.y;
@@ -1146,7 +1139,7 @@ namespace {
         const ShapeEvaluator shape(whole);
         const float* heights = op.importedHeights.data();
         const int width = op.importedWidth;
-        const Counters counters = forEachSample(opaque, HEIGHT_MAP, shape, 1.0f, 0, false, nullptr, [](const Block&) {},
+        const Counters counters = forEachSample(opaque, HEIGHT_MAP, shape, 1.0f, 0, false, nullptr, ShapeSample{}, [](const Block&) {},
             [&](const Block& block, int x, int y, const ShapeSample&, float, const float*, float* next, Counters& c) {
                 const float value = heights[static_cast<size_t>(y - block.format.bounds.y) * width + (x - block.format.bounds.x)];
                 if (value < 0.0f) c.clippedLow++;
@@ -1236,7 +1229,7 @@ namespace {
             const float noiseSize = op.noiseSize;
             const uint32_t seed = op.seed;
             const int octaves = op.octaves;
-            const Counters counters = forEachSample(op, map, shape, op.strength, 0, false, nullptr, prepareRules,
+            const Counters counters = forEachSample(op, map, shape, op.strength, 0, false, nullptr, ShapeSample{}, prepareRules,
                 [&](const Block& block, int x, int y, const ShapeSample&, float w, const float* cur, float* next, Counters&) {
                     std::array<float, 16> small{};
                     std::vector<float> large;

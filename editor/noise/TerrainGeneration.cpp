@@ -8,6 +8,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/TerrainMapDeltaCmd.h"
+#include "terrain/EditorTerrainStore.h"
 #include "component/TerrainComponent.h"
 #include "graph/GraphRegistry.h"
 #include "mcp/TerrainMaps.h"
@@ -557,29 +558,6 @@ namespace {
         return scene && scene->scene ? scene : nullptr;
     }
 
-    // The bytes a batch may change, per map: cut before and after the write into XOR deltas
-    struct MapBefore {
-        MapId map;
-        TexelRect rect;
-        std::vector<uint8_t> bytes;
-    };
-
-    std::vector<MapId> mapsTouched(const std::vector<int>& layers, const std::vector<int>& densities, bool height, terrain::TerrainMapStore& store) {
-        std::vector<MapId> maps;
-        if (height) maps.push_back(kHeightMap);
-        // setLayerWeights rewrites every existing blend map over the rect
-        for (int map = 0; map < 16 && !layers.empty(); map++) {
-            if (!store.format(MapId{MapKind::Blend, map}).exists) break;
-            maps.push_back(MapId{MapKind::Blend, map});
-        }
-        for (int density : densities) maps.push_back(MapId{MapKind::Density, density});
-        return maps;
-    }
-
-    size_t bytesOfRect(const terrain::MapFormat& format, const TexelRect& rect) {
-        return static_cast<size_t>(rect.area()) * static_cast<size_t>(format.channels) * static_cast<size_t>(format.bitsPerChannel / 8);
-    }
-
 }
 
 std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* project, uint32_t sceneId, Entity entity, GenerationRequest request, Done done) {
@@ -731,49 +709,29 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
                 structure->addPropertyCmd<Texture>(project, sceneId, entity, ComponentType::TerrainComponent, TerrainMapUtils::getPropertyName(ref), Texture(path), changedCallback(false));
                 anyStructure = true;
             }
-            if (anyStructure) steps.push_back(std::move(structure));
-
-            auto applied = std::make_shared<bool>(false);
-            steps.push_back(std::make_unique<TerrainMapDeltaCmd>(project, sceneId, entity, result->undoName,
-                [prepared, result, project, sceneId, entity, writesHeight, applied](std::vector<TerrainMapDeltaCmd::MapDelta>& deltas) {
-                    SceneProject* sp = sceneOf(project, sceneId);
-                    TerrainComponent* t = sp ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
-                    if (!t) return false;
-                    TerrainComponentStore writeStore(sp->scene, entity, *t);
-                    std::vector<MapBefore> before;
-                    for (MapId map : mapsTouched(layersOf(*prepared), densitiesOf(*prepared), writesHeight, writeStore)) {
-                        const terrain::MapFormat format = writeStore.format(map);
-                        if (!format.exists) continue;
-                        MapBefore saved;
-                        saved.map = map;
-                        saved.rect = map.kind == MapKind::Height ? prepared->rect : scaleRect(prepared->rect, prepared->mapWidth, prepared->mapDepth, format.bounds.w, format.bounds.h);
-                        saved.bytes.resize(bytesOfRect(format, saved.rect));
-                        if (writeStore.readBytes(map, saved.rect, saved.bytes)) before.push_back(std::move(saved));
-                    }
-                    if (!TerrainGeneration::apply(*prepared, writeStore, *result)) return false;
-                    *applied = true;
-                    std::vector<uint8_t> after;
-                    for (MapBefore& saved : before) {
-                        after.resize(saved.bytes.size());
-                        if (!writeStore.readBytes(saved.map, saved.rect, after)) continue;
-                        bool any = false;
-                        for (size_t i = 0; i < after.size(); i++) {
-                            saved.bytes[i] ^= after[i];
-                            any = any || saved.bytes[i] != 0;
-                        }
-                        if (!any) continue;
-                        TerrainMapDeltaCmd::MapDelta delta;
-                        delta.map = saved.map;
-                        delta.rect = saved.rect;
-                        delta.xorBytes = std::move(saved.bytes);
-                        deltas.push_back(std::move(delta));
-                    }
-                    return true;
-                }));
-
-            // The history a project-wide map write belongs to; a step per terrain's scene
-            CommandHandle::get(sceneId)->addCommandNoMerge(new CommandGroup(std::move(steps), result->undoName, false));
-            if (!*applied) {
+            // The maps it makes are one structural step (T1's TerrainOpsUndo does the same), so the
+            // write after it finds them; the write is T1's map step, cut from an overlay, and the two
+            // fold into one undo step
+            CommandHistory* history = CommandHandle::get(sceneId);
+            const size_t mark = history->mark();
+            if (anyStructure) {
+                steps.push_back(std::move(structure));
+                history->addCommandNoMerge(new CommandGroup(std::move(steps), result->undoName, false));
+            }
+            bool applied = false;
+            SceneProject* sp = sceneOf(project, sceneId);
+            if (TerrainComponent* t = sp ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr) {
+                EditorTerrainStore writer(project, sceneId, sp->scene, entity, *t);
+                writer.setKeepsMaps(true);
+                terrain::OverlayMapStore overlay(writer);
+                if (TerrainGeneration::apply(*prepared, overlay, *result)) {
+                    auto delta = std::make_unique<TerrainMapDeltaCmd>(project, sceneId, entity, entity, overlay, false, result->undoName);
+                    applied = delta->empty() || history->addCommandNoMerge(delta.release());
+                }
+                overlay.discard();
+            }
+            if (anyStructure) history->groupSince(mark, result->undoName);
+            if (!applied) {
                 result->ok = false;
                 if (result->error.empty()) addIssue(*result, "apply-failed", "The write failed: nothing changed.");
             }

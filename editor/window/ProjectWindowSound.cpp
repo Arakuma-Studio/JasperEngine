@@ -113,8 +113,9 @@ void editor::ProjectWindow::assetsImportSoundEssentials() {
     Backend::getApp().registerAlert(title, message);
 }
 
-void editor::ProjectWindow::assetsCreatePlaceholderSound() {
+void editor::ProjectWindow::assetsCreatePlaceholderSound(const fs::path& directory) {
     placeholderDialog().error.clear();
+    placeholderSoundDirectory = directory;
     openPlaceholderSoundDialog = true;
 }
 
@@ -146,7 +147,7 @@ void editor::ProjectWindow::drawPlaceholderSoundDialog() {
     }
     if (!dialog.error.empty()) ImGui::TextWrapped("%s", dialog.error.c_str());
     if (ImGui::Button("Create")) {
-        const fs::path relative = uniqueRelativePath(currentPath, std::string(presets[(size_t)dialog.preset].name), ".wav");
+        const fs::path relative = uniqueRelativePath(placeholderSoundDirectory, std::string(presets[(size_t)dialog.preset].name), ".wav");
         if (writePlaceholder(project, (project->getProjectPath() / relative).parent_path(), relative.stem().string(), dialog, dialog.error)) {
             scanDirectory(currentPath);
             ImGui::CloseCurrentPopup();

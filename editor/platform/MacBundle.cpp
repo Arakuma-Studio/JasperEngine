@@ -89,9 +89,18 @@ bool platform::finishMacBundle(const fs::path& bundle, const MacBundleSettings& 
         return false;
     }
     fs::permissions(macos / settings.executable, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, ec);
-    if (!io::writeFileAtomic(bundle / "Contents" / "Info.plist", infoPlist(settings)).ok()) {
+    std::string plist = infoPlist(settings);
+    if (settings.customizePlist) settings.customizePlist(plist);
+    if (!io::writeFileAtomic(bundle / "Contents" / "Info.plist", plist).ok()) {
         error = "cannot write Info.plist";
         return false;
+    }
+    if (!settings.privacyManifest.empty()) {
+        fs::create_directories(bundle / "Contents" / "Resources", ec);
+        if (!io::writeFileAtomic(bundle / "Contents" / "Resources" / "PrivacyInfo.xcprivacy", settings.privacyManifest).ok()) {
+            error = "cannot write PrivacyInfo.xcprivacy";
+            return false;
+        }
     }
     if (!settings.iconPng.empty() && fs::is_regular_file(settings.iconPng, ec)) {
         std::vector<uint8_t> icns;

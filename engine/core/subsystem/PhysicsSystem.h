@@ -461,6 +461,20 @@ namespace jasperengine{
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
 
+		// every event, for the two clears above (tools/check_event_clears.py)
+		template<typename F> void forEachEvent(F&& f) {
+#ifdef JASPERENGINE_PHYSICS_2D
+			f(beginContact2D); f(endContact2D); f(beginSensorContact2D); f(endSensorContact2D); f(hitContact2D);
+			f(preSolve2D); f(shouldCollide2D); f(stayContact2D); f(staySensorContact2D);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+			f(onBodyActivated3D); f(onRagdollBeforeAnimatedRestore3D); f(onBodyDeactivated3D); f(onContactAdded3D);
+			f(onContactPersisted3D); f(onContactRemoved3D); f(shouldCollide3D); f(onContactModify3D);
+			f(onControllerColliderHit);
+#endif
+			(void)f;
+		}
+
 #ifdef JASPERENGINE_PHYSICS_2D
 		float getPointsToMeterScale2D() const;
 		// The convex pieces Box2D gets for a POLYGON collider of the entity, as the body makes

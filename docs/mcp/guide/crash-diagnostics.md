@@ -33,6 +33,20 @@ A Lua function that does not return in Play stalls the editor. After
 `script interrupted: <file>:<line> <function> ran for N s without returning (hang watchdog)`:
 a "Script crash" error in the Console (read_console), and Play goes on. Fix the loop.
 
+## A callback that fails
+
+An event callback, a timer or a coroutine that fails, by a crash (a fault), a Lua error or a C++
+exception, is one case:
+
+| Where | Lua error | C++ exception | Fault |
+|---|---|---|---|
+| event callback, timer, coroutine, editor Play | removed; Console "Script crash in scene ..."; Play pauses, then stops | the same, `Error: C++ exception <type>: <what>` | the same, `Error: SIGSEGV (...)` |
+| the same, exported game | logged, kept | logged (once a second per callback), kept | the game's crash report |
+| `init`, `start`, `onEnable`... and physics messages | logged, the script goes on | logged | as above |
+| Web | as above | the game stops (no exception catching) | the game stops |
+
+Read the Console after Play (read_console): the `Location` line names the callback (its tag).
+
 ## Testing the diagnostics
 
 `debug_crash {mode: segv|abort|terminate|stack_overflow|worker_segv|hang, hang_ms}` is refused

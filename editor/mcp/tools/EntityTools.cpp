@@ -4,6 +4,7 @@
 // W1: hierarchy and GameObjects: tree, find, create, delete, duplicate, rename, move,
 // active/tag/layer, selection, copy/cut/paste
 #include "McpTools.h"
+#include "component/PrefabComponent.h"
 #include "component/Transform.h"
 #include "LatticeShared.h"
 
@@ -815,8 +816,18 @@ void duplicateEntitiesTool(const CallPtr& call) {
     SceneProject* current = project->getScene(sceneId);
     Json created = Json::array();
     for (Entity entity : cmd->getCreatedEntities()) created.push_back(McpRefs::entityJson(current, entity));
-    call->ok("Duplicated " + std::to_string(entities.size()) + " GameObject(s) (one undo step); the copies are selected.",
-             Json{{"scene_id", sceneId}, {"created", created}});
+    std::string text = "Duplicated " + std::to_string(entities.size()) + " GameObject(s) (one undo step); the copies are selected.";
+    Json data = {{"scene_id", sceneId}, {"created", created}};
+    // copies of a plain GameObject are independent: an object placed several times is a Prefab
+    const bool plain = std::any_of(entities.begin(), entities.end(), [current](Entity entity) {
+        return current->scene->isEntityCreated(entity) && !current->scene->findComponent<PrefabComponent>(entity);
+    });
+    if (plain) {
+        data["next"] = "The copies are independent GameObjects: for an object placed more than once, make it a Prefab "
+                       "(create_prefab) and place instances (instantiate_prefab), so one edit changes every copy.";
+        text += " " + data["next"].get<std::string>();
+    }
+    call->ok(text, data);
 }
 
 void renameEntityTool(const CallPtr& call) {
@@ -919,6 +930,12 @@ void moveEntityTool(const CallPtr& call) {
             }
             siblings.erase(std::remove(siblings.begin(), siblings.end(), entity), siblings.end());
         }
+        // a GameObject with a Transform is placed among the ones with a Transform (one without
+        // keeps its own place in the list)
+        if (!entities.empty() && registry->findComponent<Transform>(entities.front())) {
+            siblings.erase(std::remove_if(siblings.begin(), siblings.end(),
+                [registry](Entity sibling) { return !registry->findComponent<Transform>(sibling); }), siblings.end());
+        }
         long index = args.contains("index") && args["index"].is_number_integer() ? args["index"].get<long>() : -1;
         if (index < 0 || index > static_cast<long>(siblings.size())) index = static_cast<long>(siblings.size());
         // place the first, then each next after the previous
@@ -936,6 +953,15 @@ void moveEntityTool(const CallPtr& call) {
                 moves.push_back({entity, NULL_ENTITY, InsertionType::AFTER});  // alone at the root: nothing to do
             }
             previous = entity;
+        }
+    }
+    // nothing moves when one of them would only reorder the list (refused by the command too)
+    for (const Move& move : moves) {
+        if (move.target == NULL_ENTITY) continue;
+        const std::string problem = MoveEntityOrderCmd::transformAnchorProblem(registry, move.source, move.target, move.type);
+        if (!problem.empty()) {
+            call->fail(problem + ": place it with parent (and index), or next to a GameObject with a Transform.");
+            return;
         }
     }
     // the Hierarchy drag keeps the world pose (the local transform adapts); false keeps the local values
