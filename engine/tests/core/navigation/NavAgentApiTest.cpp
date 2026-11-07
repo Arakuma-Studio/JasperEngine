@@ -209,7 +209,8 @@ TEST_F(NavAgentApiTest, CorridorPathAndStale){
 TEST_F(NavAgentApiTest, RootMotion){
     const Entity surface = planeSurface(20.0f, 20.0f);
     bake(surface);
-    // off the tile seams (x = 0, z = 0): a step that ends on a tile corner is Detour's degenerate case
+    // steps of 0.3 m never end exactly on a tile seam (x = 0): Detour's moveAlongSurface stops short
+    // of a target that lies on a tile border (a degenerate case of its point-in-polygon test)
     const Entity walker = agent(*scene, Vector3(-5.0f, 0.0f, 0.5f));
     NavMeshAgentComponent& component = scene->getComponent<NavMeshAgentComponent>(walker);
     component.updatePosition = false;
@@ -219,7 +220,7 @@ TEST_F(NavAgentApiTest, RootMotion){
     Vector3 next = handle.getNextPosition();
     std::string trace;
     for (int tick = 0; tick < 120; tick++) {
-        handle.setNextPosition(next + Vector3(0.2f, 0.0f, 0.0f));
+        handle.setNextPosition(next + Vector3(0.3f, 0.0f, 0.0f));
         const float moved = handle.getNextPosition().x;
         step();
         next = handle.getNextPosition();
