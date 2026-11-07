@@ -698,8 +698,21 @@ void controlTool(const CallPtr& call) {
         }
         for (Entity entity : systems) particles->step(entity, (uint32_t)ticks);
         if (overlay) overlay->pause(target.scene->id);
+    } else if (action == "trigger") {
+        const std::string name = args.value("name", std::string());
+        if (name.empty()) {
+            call->fail("name (the trigger's, as the effect's triggers or Trigger sub-emitters name it) is required for trigger.");
+            return;
+        }
+        bool playing = false;
+        for (Entity entity : systems) {
+            particles->sendTrigger(entity, name);
+            playing = playing || particles->isPlaying(entity);
+        }
+        // what the trigger left playing (a play, or sub-emitters fired from a stopped system) runs in the preview
+        if (overlay && playing) overlay->play(target.scene->id);
     } else {
-        call->fail("action must be play, pause, stop, clear, restart, emit, seek or step.");
+        call->fail("action must be play, pause, stop, clear, restart, emit, seek, step or trigger.");
         return;
     }
     target.scene->needUpdateRender = true;
@@ -1182,11 +1195,12 @@ void registerParticleTools(McpRegistry& registry) {
                {"entity", "effect"}),
         assignTool, false);
     add("control_particles", "Control Particle System",
-        "Play, pause, stop (keeps the particles), clear, restart, emit count particles, seek to time (restart and simulate) or "
-        "step ticks. In Edit mode the Scene view's Particle Effect preview runs the system. Returns its statistics.",
+        "Play, pause, stop (keeps the particles), clear, restart, emit count particles, seek to time (restart and simulate), "
+        "step ticks, or trigger name (the effect's triggers and Trigger sub-emitters). In Edit mode the Scene view's Particle "
+        "Effect preview runs the system. Returns its statistics.",
         object({{"entity", entityRef()}, {"scene", sceneRef()},
-                {"action", stringEnum("", {"play", "pause", "stop", "clear", "restart", "emit", "seek", "step"})},
-                {"count", integer("", 1, 100000)}, {"time", number("Seconds.")}, {"ticks", integer("", 1, 100000)},
+                {"action", stringEnum("", {"play", "pause", "stop", "clear", "restart", "emit", "seek", "step", "trigger"})},
+                {"count", integer("", 1, 100000)}, {"time", number("Seconds.")}, {"ticks", integer("", 1, 100000)}, {"name", string("")},
                 {"with_children", withDefault(boolean("Every Particle System of the subtree."), false)}},
                {"entity", "action"}),
         controlTool, false);

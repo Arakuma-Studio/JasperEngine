@@ -5702,7 +5702,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
     //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
+    // v52: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
+    //      in u_fs_customParams).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v52";
 }
 
 void editor::App::pushTabNotificationStyle(){

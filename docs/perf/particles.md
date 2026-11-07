@@ -180,3 +180,24 @@ python3 tools/perf/check_web_particles.py build/test-results/web/particles.log b
   gather of the records.
 - Trails: their strips are 2 x points vertices of 28 bytes; 10 k trails of 17 points are 9.5 MB
   a frame to upload, which is what the GPU side pays.
+
+**S91 runtime features** (Ease mode, distortion, Ring, triggers, exposed values written without
+compiling, Follow Parent, sound events), 2026-11-07, on the shared 8-core build host under other
+builds' load, the core-tests build, `--workers 3 --count-allocs`, three runs each (median, range):
+before on 2c5594c49 (with its test file's missing brace closed), after on 31414622c. A system without
+these features compiles and runs the same ops; the new channels exist only for Follow Parent
+children and the exposed slots only for effects with exposed parameters.
+
+| Metric | Before | After |
+|---|---|---|
+| Reference stack, 100 k, one tick, 1 thread | 8.83 ms (8.75-10.80) | 8.46 ms (8.38-8.61) |
+| the same, 8 workers (projected) | 1.64 ms (1.62-2.00) | 1.57 ms (1.55-1.60) |
+| Without Noise, 1 thread | 2.61 ms (2.55-2.66) | 2.44 ms (2.39-2.60) |
+| Render prep, 100 k, 1 thread | 6.65 ms (6.53-7.08) | 6.72 ms (6.56-9.51) |
+| Render prep, 8 workers (projected) | 1.23 ms (1.21-1.31) | 1.25 ms (1.21-1.76) |
+| `trails_10k`, one tick | 1.10 ms (1.09-1.16) | 1.10 ms (1.08-1.13) |
+| `trails_10k`, prep | 4.54 ms (4.40-4.65) | 4.64 ms (4.45-4.80) |
+
+Channel storage (56 B) and 100143 live are the same; steady-state allocations 0, 1, 0 before and
+0, 0, 0 after. The differences are within this host's run-to-run range; only server E can say an
+absolute budget holds.

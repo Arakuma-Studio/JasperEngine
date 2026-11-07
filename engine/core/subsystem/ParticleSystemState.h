@@ -37,6 +37,8 @@ namespace jasperengine{
             BufferRender indices;
             uint32_t indexCount = 0;
             bool created = false;
+            // what they were made from (the mesh source, or the ring's settings)
+            uint64_t source = 0;
         };
 
         // RenderSystem's objects of one particle system (RenderSystemParticles.cpp)
@@ -103,6 +105,10 @@ namespace jasperengine{
             EmitterRuntime runtime;
             // the effect it runs (the asset or the inline document, the exposed values applied)
             std::shared_ptr<const CompiledEffect> effect;
+            // its own copy of the effect once a script changed an exposed value (the values written
+            // into it, not compiled again), and the values the running effect holds
+            std::shared_ptr<CompiledEffect> ownEffect;
+            std::vector<ParticleExposedValue> exposedApplied;
             std::string effectPath;          // the asset it was read from (empty: inline)
             uint64_t effectVersion = 0;      // the asset's version it was compiled from
             // the sub-emitter files it was bound from (their paths and versions, down the tree),
@@ -137,6 +143,7 @@ namespace jasperengine{
             double renderMicros = 0.0;
             uint32_t sortedViews = 0;
             uint32_t drawnViews = 0;
+            uint64_t sortedViewKey = 0;      // the last view sortedViews counted
 
             // the editor's preview scrubbing (seek with checkpoints, R29)
             std::unique_ptr<ParticlePreview> preview;

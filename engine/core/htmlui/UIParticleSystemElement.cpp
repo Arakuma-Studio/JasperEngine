@@ -105,6 +105,9 @@ namespace {
 
     // an emitter's billboards, in the GameObject's local space
     void readEmitterQuads(Scene* scene, Entity entity, const particles::EmitterRuntime& runtime, std::vector<UIParticleQuad>& out){
+        // a runtime the view's loss unbound, whose effect cannot be read again, has nothing to draw
+        if (!runtime.effect())
+            return;
         const particles::CompiledEffect& effect = *runtime.effect();
         const particles::ParticleProgram& program = effect.program;
         const particles::RendererModule& renderer = effect.document.renderer;

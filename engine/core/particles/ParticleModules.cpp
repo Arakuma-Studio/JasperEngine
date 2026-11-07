@@ -3,6 +3,8 @@
 
 #include "ParticleModules.h"
 
+#include "action/Ease.h"
+
 #include <cstdlib>
 #include <cstring>
 
@@ -130,7 +132,7 @@ namespace {
                                        {"stretchedBillboard", "Stretched Billboard", 2}, {"horizontalBillboard", "Horizontal Billboard", 3},
                                        {"verticalBillboard", "Vertical Billboard", 4}, {"worldOriented", "World Oriented", 5},
                                        {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8},
-                                       {"velocityAligned", "Velocity Aligned", 9}};
+                                       {"velocityAligned", "Velocity Aligned", 9}, {"ring", "Ring", 10}};
     const EnumOption kVerticalLocks[] = {{"world", "World Y", 0}, {"emitter", "Emitter Y", 1}};
     const EnumOption kMeshSelections[] = {{"random", "Random", 0}, {"index", "By Spawn Index", 1}};
     const EnumOption kUntexturedShapes[] = {{"disc", "Soft Disc", 0}, {"square", "Square", 1}};
@@ -146,6 +148,8 @@ namespace {
                                          {"scale", "Scale", 7}, {"frame", "Frame", 8}};
     const EnumOption kSubEmitterTriggers[] = {{"birth", "Birth", 0}, {"death", "Death", 1}, {"collision", "Collision", 2}, {"trigger", "Trigger", 3}};
     const EnumOption kExposedTypes[] = {{"float", "Float", 0}, {"vector3", "Vector3", 1}, {"color", "Color", 2}};
+    const EnumOption kTriggerActions[] = {{"none", "Nothing", 0}, {"play", "Play", 1}, {"pause", "Pause", 2}, {"stop", "Stop", 3},
+                                          {"stopAndClear", "Stop and Clear", 4}};
 
     // ---------------------------------------------------------------- nested structs
 
@@ -167,6 +171,9 @@ namespace {
         s.fields.push_back(ranged(field("cycles", "Cycles", FieldType::Int, JE_ACC(Burst, cycles), FieldFlag_None, "0 repeats for ever"), 0, 100000));
         s.fields.push_back(ranged(field("interval", "Interval", FieldType::Float, JE_ACC(Burst, interval)), 0.0001f, 1.0e6f));
         s.fields.push_back(ranged(field("probability", "Probability", FieldType::Float, JE_ACC(Burst, probability)), 0.0f, 1.0f));
+        s.fields.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(Burst, soundEvent), FieldFlag_AssetPath,
+                                 "a .soundevent played at the emitter each time the burst fires"));
+        s.fields.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(Burst, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
         return s;
     }
     const StructDesc& burstDesc(){ static const StructDesc s = makeBurst(); return s; }
@@ -615,11 +622,20 @@ namespace {
         f.push_back(shownIf(field("freezeInView", "Freeze in View", FieldType::Bool, JE_ACC(RendererModule, freezeInView)), stretched));
         f.push_back(shownIf(enumField("verticalLock", "Vertical Lock", JE_ACC(RendererModule, verticalLock), kVerticalLocks), JE_IF(RendererModule, m.renderMode == RenderMode::VerticalBillboard)));
         auto mesh = JE_IF(RendererModule, m.renderMode == RenderMode::Mesh);
+        auto ring = JE_IF(RendererModule, m.renderMode == RenderMode::Ring);
         f.push_back(shownIf(arrayField<std::vector<MeshSource>>("meshes", "Meshes", JE_ACC(RendererModule, meshes), &meshSourceDesc(), (uint32_t)kMaxRendererMeshes), mesh));
         f.push_back(shownIf(enumField("meshSelection", "Mesh Distribution", JE_ACC(RendererModule, meshSelection), kMeshSelections), mesh));
+        f.push_back(shownIf(ranged(field("ringOuterRadius", "Outer Radius", FieldType::Float, JE_ACC(RendererModule, ringOuterRadius), FieldFlag_None,
+                                         "at a particle size of 1; the size scales it"), 0.0f, 1.0e4f), ring));
+        f.push_back(shownIf(ranged(field("ringInnerRadius", "Inner Radius", FieldType::Float, JE_ACC(RendererModule, ringInnerRadius), FieldFlag_None,
+                                         "0 makes a disc"), 0.0f, 1.0e4f), ring));
+        f.push_back(shownIf(ranged(field("ringArc", "Arc", FieldType::Float, JE_ACC(RendererModule, ringArc), FieldFlag_Degrees,
+                                         "degrees of the circle, from +X towards +Y"), 0.0f, 360.0f), ring));
+        f.push_back(shownIf(ranged(field("ringSegments", "Segments", FieldType::Int, JE_ACC(RendererModule, ringSegments), FieldFlag_None,
+                                         "around the whole circle"), 3, (float)kMaxRingSegments), ring));
         f.push_back(shownIf(enumField("meshAlignment", "Render Alignment", JE_ACC(RendererModule, meshAlignment), kMeshAlignments, FieldFlag_None,
                                       "how meshes turn: in the simulation space, to the camera plane or position, in world or emitter axes, or +Z along the velocity"),
-                            mesh));
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Mesh || m.renderMode == RenderMode::Ring)));
         f.push_back(field("pivot", "Pivot", FieldType::Vector3, JE_ACC(RendererModule, pivot)));
         f.push_back(field("flip", "Flip", FieldType::Vector3, JE_ACC(RendererModule, flip)));
         f.push_back(field("shader", "Shader", FieldType::String, JE_ACC(RendererModule, shader), FieldFlag_None, "library:particles, or a fork of it"));
@@ -725,6 +741,28 @@ namespace {
         f.push_back(ranged(field("inheritFactor", "Inherit Factor", FieldType::Float, JE_ACC(SubEmitterEntry, inheritFactor)), 0.0f, 100.0f));
         f.push_back(ranged(field("emitCount", "Emit Count", FieldType::Int, JE_ACC(SubEmitterEntry, emitCount)), 0, 10000));
         f.push_back(ranged(field("probability", "Emit Probability", FieldType::Float, JE_ACC(SubEmitterEntry, probability)), 0.0f, 1.0f));
+        f.push_back(field("followParent", "Follow Parent", FieldType::Bool, JE_ACC(SubEmitterEntry, followParent), FieldFlag_None,
+                          "the children move with the particle that spawned them while it lives (trails on a moving parent)"));
+        auto follow = JE_IF(SubEmitterEntry, m.followParent);
+        f.push_back(shownIf(field("followRotation", "Follow Rotation", FieldType::Bool, JE_ACC(SubEmitterEntry, followRotation), FieldFlag_None,
+                                  "and turn with it: its 3D rotation (mesh particles), else its roll about the Z axis"), follow));
+        f.push_back(shownIf(field("followScale", "Follow Scale", FieldType::Bool, JE_ACC(SubEmitterEntry, followScale), FieldFlag_None,
+                                  "and spread or gather as its size changes"), follow));
+        f.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(SubEmitterEntry, soundEvent), FieldFlag_AssetPath,
+                          "a .soundevent played where the entry fires"));
+        f.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(SubEmitterEntry, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
+        return s;
+    }
+
+    StructDesc makeTrigger(){
+        StructDesc s = structOf<EffectTrigger>("Trigger");
+        auto& f = s.fields;
+        f.push_back(field("name", "Name", FieldType::String, JE_ACC(EffectTrigger, name), FieldFlag_None, "what sendTrigger names"));
+        f.push_back(enumField("action", "Action", JE_ACC(EffectTrigger, action), kTriggerActions, FieldFlag_None,
+                              "what it does to this emitter; Trigger sub-emitters of the same name fire too"));
+        f.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(EffectTrigger, soundEvent), FieldFlag_AssetPath,
+                          "a .soundevent played at the emitter"));
+        f.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(EffectTrigger, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
         return s;
     }
 
@@ -845,6 +883,11 @@ const StructDesc& ParticleModules::exposedFields(){
     return s;
 }
 
+const StructDesc& ParticleModules::triggerFields(){
+    static const StructDesc s = makeTrigger();
+    return s;
+}
+
 ParticleModules::Resolved ParticleModules::resolve(ParticleEffectDocument& document, std::string_view path){
     Resolved result;
     std::vector<std::string_view> parts;
@@ -912,7 +955,35 @@ ParticleModules::Resolved ParticleModules::resolve(ParticleEffectDocument& docum
 
 const std::vector<EnumOption>& ParticleModules::curveModes(){
     static const std::vector<EnumOption> v = {{"constant", "Constant", 0}, {"twoConstants", "Random Between Two Constants", 1},
-                                              {"curve", "Curve", 2}, {"twoCurves", "Random Between Two Curves", 3}};
+                                              {"curve", "Curve", 2}, {"twoCurves", "Random Between Two Curves", 3}, {"ease", "Ease", 4}};
+    return v;
+}
+
+const std::vector<EnumOption>& ParticleModules::easeTypes(){
+    // every preset with a function of its own (CUSTOM and CURVE have none)
+    static const std::vector<EnumOption> v = {
+        {"linear", "Linear", (uint8_t)EaseType::LINEAR},
+        {"quadIn", "Quad In", (uint8_t)EaseType::QUAD_IN}, {"quadOut", "Quad Out", (uint8_t)EaseType::QUAD_OUT},
+        {"quadInOut", "Quad In Out", (uint8_t)EaseType::QUAD_IN_OUT},
+        {"cubicIn", "Cubic In", (uint8_t)EaseType::CUBIC_IN}, {"cubicOut", "Cubic Out", (uint8_t)EaseType::CUBIC_OUT},
+        {"cubicInOut", "Cubic In Out", (uint8_t)EaseType::CUBIC_IN_OUT},
+        {"quartIn", "Quart In", (uint8_t)EaseType::QUART_IN}, {"quartOut", "Quart Out", (uint8_t)EaseType::QUART_OUT},
+        {"quartInOut", "Quart In Out", (uint8_t)EaseType::QUART_IN_OUT},
+        {"quintIn", "Quint In", (uint8_t)EaseType::QUINT_IN}, {"quintOut", "Quint Out", (uint8_t)EaseType::QUINT_OUT},
+        {"quintInOut", "Quint In Out", (uint8_t)EaseType::QUINT_IN_OUT},
+        {"sineIn", "Sine In", (uint8_t)EaseType::SINE_IN}, {"sineOut", "Sine Out", (uint8_t)EaseType::SINE_OUT},
+        {"sineInOut", "Sine In Out", (uint8_t)EaseType::SINE_IN_OUT},
+        {"expoIn", "Expo In", (uint8_t)EaseType::EXPO_IN}, {"expoOut", "Expo Out", (uint8_t)EaseType::EXPO_OUT},
+        {"expoInOut", "Expo In Out", (uint8_t)EaseType::EXPO_IN_OUT},
+        {"circIn", "Circ In", (uint8_t)EaseType::CIRC_IN}, {"circOut", "Circ Out", (uint8_t)EaseType::CIRC_OUT},
+        {"circInOut", "Circ In Out", (uint8_t)EaseType::CIRC_IN_OUT},
+        {"elasticIn", "Elastic In", (uint8_t)EaseType::ELASTIC_IN}, {"elasticOut", "Elastic Out", (uint8_t)EaseType::ELASTIC_OUT},
+        {"elasticInOut", "Elastic In Out", (uint8_t)EaseType::ELASTIC_IN_OUT},
+        {"backIn", "Back In", (uint8_t)EaseType::BACK_IN}, {"backOut", "Back Out", (uint8_t)EaseType::BACK_OUT},
+        {"backInOut", "Back In Out", (uint8_t)EaseType::BACK_IN_OUT},
+        {"bounceIn", "Bounce In", (uint8_t)EaseType::BOUNCE_IN}, {"bounceOut", "Bounce Out", (uint8_t)EaseType::BOUNCE_OUT},
+        {"bounceInOut", "Bounce In Out", (uint8_t)EaseType::BOUNCE_IN_OUT},
+        {"step", "Step", (uint8_t)EaseType::STEP}};
     return v;
 }
 
@@ -1005,30 +1076,24 @@ namespace {
             }
             case FieldType::MinMaxCurve: {
                 MinMaxCurve& c = *static_cast<MinMaxCurve*>(r.storage);
+                if (write)
+                    return ParticleModules::writeExposedMember(c, m, value.x);
                 float* target = nullptr;
                 if (m == "constant") target = &c.constant;
-                else if (m == "constantMax") target = &c.constantMax;
+                else if (m == "constantMax" || (m.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
                 else if (m == "multiplier" || (m.empty() && c.usesCurve())) target = &c.multiplier;
                 else if (m.empty()) target = &c.constant;
                 if (!target) return false;
-                if (write){
-                    *target = value.x;
-                    if (m.empty() && c.mode == CurveMode::Constant) c.constantMax = value.x;
-                }else{
-                    value = Vector4(*target, 0, 0, 0);
-                }
+                value = Vector4(*target, 0, 0, 0);
                 return true;
             }
             case FieldType::MinMaxGradient: {
                 MinMaxGradient& g = *static_cast<MinMaxGradient*>(r.storage);
-                Vector4* target = m == "colorMax" ? &g.colorMax : ((m.empty() || m == "color") ? &g.color : nullptr);
+                if (write)
+                    return ParticleModules::writeExposedMember(g, m, value);
+                const Vector4* target = m == "colorMax" ? &g.colorMax : ((m.empty() || m == "color") ? &g.color : nullptr);
                 if (!target) return false;
-                if (write){
-                    *target = value;
-                    if (m.empty() && g.mode == GradientValueMode::Color) g.colorMax = value;
-                }else{
-                    value = *target;
-                }
+                value = *target;
                 return true;
             }
             default:
@@ -1036,6 +1101,29 @@ namespace {
         }
     }
 
+}
+
+bool ParticleModules::writeExposedMember(MinMaxCurve& c, const std::string& member, float value){
+    float* target = nullptr;
+    if (member == "constant") target = &c.constant;
+    // an Ease value without a member: the value it eases to (its multiplier stays as shown)
+    else if (member == "constantMax" || (member.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
+    else if (member == "multiplier" || (member.empty() && c.usesCurve())) target = &c.multiplier;
+    else if (member.empty()) target = &c.constant;
+    if (!target) return false;
+    *target = value;
+    if (member.empty() && c.mode == CurveMode::Constant) c.constantMax = value;
+    // an ease's start or end moves its curve
+    if (c.mode == CurveMode::Ease && target != &c.multiplier) c.rebuildEase();
+    return true;
+}
+
+bool ParticleModules::writeExposedMember(MinMaxGradient& g, const std::string& member, const Vector4& value){
+    Vector4* target = member == "colorMax" ? &g.colorMax : ((member.empty() || member == "color") ? &g.color : nullptr);
+    if (!target) return false;
+    *target = value;
+    if (member.empty() && g.mode == GradientValueMode::Color) g.colorMax = value;
+    return true;
 }
 
 bool ParticleModules::setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value){
@@ -1062,7 +1150,8 @@ namespace {
                 std::string none;
                 const std::string key = field.key;
                 const ParticleModules::AssetKind kind = key == "model" ? ParticleModules::AssetKind::Model
-                                                      : (key == "effect" ? ParticleModules::AssetKind::Effect : ParticleModules::AssetKind::Texture);
+                                                      : key == "effect" ? ParticleModules::AssetKind::Effect
+                                                      : key == "soundEvent" ? ParticleModules::AssetKind::SoundEvent : ParticleModules::AssetKind::Texture;
                 visit(value, guid ? *guid : none, kind, path);
             }else if (field.type == FieldType::Struct && field.element){
                 visitStruct(*field.element, field.field(owner), path, visit);
@@ -1083,4 +1172,6 @@ void ParticleModules::visitAssets(ParticleEffectDocument& document, const AssetV
         visitStruct(module.fields, module.module(document), module.key, visit);
     for (size_t i = 0; i < document.subEmitters.size(); i++)
         visitStruct(subEmitterFields(), &document.subEmitters[i], "subEmitters[" + std::to_string(i) + "]", visit);
+    for (size_t i = 0; i < document.triggers.size(); i++)
+        visitStruct(triggerFields(), &document.triggers[i], "triggers[" + std::to_string(i) + "]", visit);
 }
