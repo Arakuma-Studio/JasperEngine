@@ -96,7 +96,7 @@ bool VoxelGenerationTask::poll(VoxelGenerateResult& result) {
     VoxelGenerateUndo undo;
     if (sceneProject && sceneProject->scene) {
         result = steps->finish(sceneProject->scene, record ? &undo : nullptr);
-        if (record && result.ok && !cancelled.load()) {
+        if (record && result.ok && !result.estimate && !cancelled.load()) {
             CommandHandle::get(sceneId)->addCommandNoMerge(new VoxelGenerateCmd(project, sceneId, target, std::move(undo)));
         }
     } else {
