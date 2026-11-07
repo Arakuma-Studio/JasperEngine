@@ -219,6 +219,16 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-07: S44 review fixes are done at `5e68ac54b` (main `cbc4ee7fb` merged).
+  - Passing: `WERROR` builds; filtered unit tests (core 15, editor 252); 183 MCP tests across 20
+    files; `aseprite_compat.py` against real Aseprite (637/640 pass, 3 skipped where Aseprite's
+    own exports disagree); lints.
+  - `check-changed` was skipped, since its plan would be every test (no-full-suites rule).
+  - `test_reflection` and `test_saved_output_determinism` failed on the merged tree, with
+    differences in non-S44 fields. They're being checked on `main` `ac10792fb` to show whether
+    they already fail there.
+  - Three codec time budgets are over on this loaded host and are recorded in the spec.
+  - Scene/prefab versions are 8/9; `AsepriteSprite = 25` (`main` has `SoundEvent = 28`).
 - 2026-11-06: S41 review: 1 blocker (shader cache not bumped, so stale library shaders read a
   zero post colour) and 7 should-fix issues (shadow maps snapped, uniform size, input mapping in
   Integer Expand, test gaps, Vulkan/GLES3 not run, HiDPI, UI toggles). They were sent back to the
