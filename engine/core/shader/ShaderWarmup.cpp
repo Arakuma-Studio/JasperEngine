@@ -100,6 +100,40 @@ namespace {
         return true;
     }
 
+    // A G-buffer pipeline recorded before the SSR G-buffer took its fourth attachment (the
+    // occlusion, R8): the desc the engine asks for now, its other colours as recorded
+    void upgradeGBufferDesc(json& desc){
+        if (!desc.contains("color_count") || !desc["color_count"].is_number_integer() || desc["color_count"].get<int>() != 3)
+            return;
+        json& colors = desc["colors"];
+        if (!colors.is_array())
+            return;
+        json occlusion;
+        for (const json& color : colors){
+            if (color.is_object() && color.value("slot", -1) == 2)
+                occlusion = color;
+        }
+        if (!occlusion.is_object())
+            return;
+        occlusion["slot"] = 3;
+        occlusion["format"] = "r8";
+        // after the attachments in use (the list keeps them in slot order)
+        json upgraded = json::array();
+        bool placed = false;
+        for (const json& color : colors){
+            if (!placed && color.is_object() && color.value("slot", -1) >= 3){
+                upgraded.push_back(occlusion);
+                placed = true;
+            }
+            if (!(color.is_object() && color.value("slot", -1) == 3))
+                upgraded.push_back(color);
+        }
+        if (!placed)
+            upgraded.push_back(occlusion);
+        colors = upgraded;
+        desc["color_count"] = 4;
+    }
+
     // a list's entries added to s (true), or why the text is not a list
     bool readInto(State& s, const std::string& text, std::string* error){
         const json root = json::parse(text, nullptr, false);
@@ -118,8 +152,9 @@ namespace {
             if (error) *error = "shaders and pipelines must be arrays";
             return false;
         }
-        // the indices of this text's shaders in s
+        // the indices of this text's shaders in s, and which are G-buffer variants
         std::vector<long long> remap;
+        std::vector<bool> gbuffer;
         for (const json& entry : shaders){
             ShaderKey key;
             if (!entry.is_object() || !entry.contains("key") || !entry["key"].is_string() ||
@@ -127,9 +162,11 @@ namespace {
                     (entry.contains("custom") && !entry["custom"].is_string())){
                 s.skipped++;
                 remap.push_back(-1);
+                gbuffer.push_back(false);
                 continue;
             }
             remap.push_back((long long)addShader(s, entry["key"].get<std::string>(), entry.value("custom", std::string())));
+            gbuffer.push_back(key.type == (uint16_t)ShaderType::GBUFFER);
         }
         for (const json& entry : pipelines){
             if (!entry.is_object() || !entry.contains("shader") || !entry["shader"].is_number_unsigned() ||
@@ -143,7 +180,10 @@ namespace {
                 continue;
             }
             const std::string family = entry.value("family", std::string(currentFamily()));
-            addPipeline(s, (size_t)remap[index], family == "gl" ? "gl" : "modern", entry["desc"].dump());
+            json desc = entry["desc"];
+            if (gbuffer[index])
+                upgradeGBufferDesc(desc);
+            addPipeline(s, (size_t)remap[index], family == "gl" ? "gl" : "modern", desc.dump());
         }
         return true;
     }

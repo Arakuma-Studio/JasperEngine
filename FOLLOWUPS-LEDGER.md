@@ -53,6 +53,8 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
+| Mac checks | Clang WERROR build and unit tests of `main`, S73 goldens, iOS packaging with S38's limiter, S36 R31 timing | `fix/mac-main-1106` | M, A | Fixes being gated: Metal `preserveInvariance`, lit meshes without normals, iOS still golden |
+| Submesh drop | A many-material OBJ randomly draws without some submeshes, on `main` since `dc/mesh-memory` (suspected) | `fix/submesh-drop` | A, H | In progress (2026-11-07) |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
 | Main's MCP tests | 12-13 MCP tests fail on plain `main` since the Forge landing (FBX, exports, shader keys, saved-output determinism, scene order, sprite normals) | `fix/main-mcp-after-forge` | A, B | Done |
@@ -64,7 +66,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Done |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Done |
-| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
+| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H, B | Merged with `dc/mesh-memory` at `5d06c1fed`; full suite running on H. Blocked by a bug on `main`: a 24-submesh OBJ randomly drops submeshes (5/10 runs on `main`'s Vulkan player), see `fix/submesh-drop` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Done |

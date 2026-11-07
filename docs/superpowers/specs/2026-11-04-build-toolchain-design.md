@@ -685,3 +685,50 @@ engine/CMakeLists.txt, editor/window/dialog/ExportWindow.cpp, build.gradle, edit
 - **scene-integrity**: Save All / save callbacks touch `Project::saveProject*` near :6430-6770; my edits are two
   conditions there. Small textual merge.
 - **scripting**: C++ completion hiding Lua-only statics; no overlap beyond docs/mcp/guide/cpp-scripting.md sections.
+
+## Deviations (implementation, 2026-11-04)
+
+1. **One backend table in `ShippingTypes`, not a new `editor/export/PlatformBackends`.** `ShippingTypes.{h,cpp}`
+   already held the per-platform player backends (`platformBackends`), shared by the window, MCP and the prebuilt
+   exporter; `sourceExportBackends()` and `hostDesktopBackends()` joined it there. That table also listed Android
+   Vulkan players (`{"gles3", "vulkan"}`), and `tools/build.sh players` built an Android Vulkan player by default:
+   both are gles3 only now, with the refusals of 6.9.
+2. **Jolt and Box2D macros on the engine's own sources too.** The spec put `JPH_SHARED_LIBRARY` on the engine as
+   `INTERFACE` only. Jolt's profiler declarations differ with that macro (`Jolt/Core/Profiler.h`), so the engine's
+   own sources compile with `JPH_BUILD_SHARED_LIBRARY` + `JPH_SHARED_LIBRARY` (PUBLIC) and `box2d_EXPORTS`
+   (PRIVATE), as the libraries do; consumers get `JPH_SHARED_LIBRARY` and `BOX2D_DLL`.
+   `jasperengine_link_whole_archive` passes GNU's `--whole-archive` as one `SHELL:` item per library (CMake
+   de-duplicates repeated link options).
+3. **No CI.** `.github/workflows` was removed on `main` while this was implemented, so the planned `ci.yml` steps
+   (the Windows link check, the Python test) are gone. `tools/ci/check-script-physics-link.py <editor>` is a local
+   script (it runs on Linux too) and `tools/ci/test_jasperengine_py.py` is a tool check (`docs/testing.md`).
+   Nothing runs the Windows or MinGW paths: the export macros, `Box2DExport.h`, `JoltExport.h`, `/WHOLEARCHIVE`,
+   `/MP` and `findVisualStudioNinja` were written by reading, not compiled.
+4. **Test names and places.** Generator tests are `editor/tests/GeneratorCMakeTest.cpp`; the Visual Studio Ninja
+   case has its own file (`EmscriptenWindowsNinjaTest.cpp`, a new parameter); the headless MCP cases are
+   `tools/mcp/tests/test_tool_settings.py`; the Android preset is checked in `test_build.py::test_source_export`
+   through the exported shader headers (an agent's `platform` choice is not remembered by `get_build_info`).
+   The physics test calls `JPH::TriangleSplitterMean`, the one public Jolt class the red build's engine library
+   lacked (its dynamic symbols against `libjoltphysics.a`'s), with `b2ShapeCast`/`b2MakeProxy`,
+   `JPH::ConvexHullBuilder2D`, `JPH::StateRecorderImpl` and `JPH::Allocate`. On Linux every public Box2D function
+   was already exported (the engine pulls all of Box2D's objects): Box2D's red control is Windows only, unrun.
+5. **`Exporter::copyTreeIfChanged` and `ensureExecutable` are public statics** so the unit test reaches them.
+6. **No eval case.** No tool text or agent-guide text changed; the additions are in area guides
+   (`docs/mcp/guide/vcs.md`, `cpp-scripting.md`), which the eval surface does not carry.
+7. **Gate.** Per the lead's later rule the branch gate is `WERROR=1 tools/check-changed --base main` plus this
+   spec's tests and red controls; the full suites run at landing.
+8. **Red tree for the unit tests.** The red unit run used the base's code with this branch's tests; the tests of
+   new API (`CMakeText`, `VersionControlFiles`, `ExportCopy`, `PlatformBackends`, the Visual Studio Ninja case)
+   were left out of it (they do not compile there), and `RecentProjectsTest` without its two lines that name
+   `recordsRecentProjects()`.
+9. **`/MP` and MSBuild's project parallelism.** Under a Visual Studio generator `cmake --build --parallel N` is
+   MSBuild's `/m:N`, and each project's `cl` takes `/MP<N>`: up to N x N compilers at once while several projects
+   build. Capping that needs MSBuild's MultiToolTask scheduler (`UseMultiToolTask`, `EnforceProcessCountAcrossBuilds`),
+   which section 2 left out and which cannot be checked here (no Windows); `/MP` stays at the job count.
+10. **Review fixes.** The editor's C++ editor scripts (`EditorScripts::writeCppProject`, now a public static so a test
+    reads its CMake) and the clangd flags compile with `Generator::physicsCompileDefinitions()` too (they lacked the
+    Jolt layout macros as well); `jasperengine.py` leaves the generator to `CMAKE_GENERATOR` when it is set and
+    takes node from `EMSDK_NODE`, then the config's `NODE_JS`, then the emsdk's newest, then `PATH`; the editor runs
+    vswhere for Visual Studio's Ninja only when PATH has no generator, and reads its output as UTF-8;
+    `/WHOLEARCHIVE` is passed as is to MSVC-style drivers and through `LINKER:` for a GNU-style clang++ targeting
+    MSVC.

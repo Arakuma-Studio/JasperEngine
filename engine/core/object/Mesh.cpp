@@ -847,6 +847,35 @@ void Mesh::setFadeStart(float fadeStart){
     }
 }
 
+void Mesh::setNearFadeRange(float nearFadeStart, float nearFadeEnd){
+    setNearFadeStart(nearFadeStart);
+    setNearFadeEnd(nearFadeEnd);
+}
+
+void Mesh::setNearFadeStart(float nearFadeStart){
+    if (hasInstancedMesh()){
+        getComponent<InstancedMeshComponent>().nearFadeStart = std::max(0.0f, nearFadeStart);
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+float Mesh::getNearFadeStart() const{
+    return hasInstancedMesh() ? getComponent<InstancedMeshComponent>().nearFadeStart : 0.0f;
+}
+
+void Mesh::setNearFadeEnd(float nearFadeEnd){
+    if (hasInstancedMesh()){
+        getComponent<InstancedMeshComponent>().nearFadeEnd = std::max(0.0f, nearFadeEnd);
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+float Mesh::getNearFadeEnd() const{
+    return hasInstancedMesh() ? getComponent<InstancedMeshComponent>().nearFadeEnd : 0.0f;
+}
+
 float Mesh::getFadeStart() const{
     if (hasInstancedMesh()){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();

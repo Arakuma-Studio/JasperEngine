@@ -4,7 +4,7 @@
 // A mesh's bone palette is the skin's (mesh-memory spec 6.4): as many matrices as the skin has
 // joints, none on a mesh without a skin, and no fixed limit on the joints (a skin of 200 joints
 // loads and draws). The skin has no normals: its pipelines leave no input without a buffer, which
-// Metal and D3D11 refuse (the plate lights with its face's normal). glcore, Vulkan and Metal.
+// Metal and D3D11 refuse (the plate shades with flat normals). glcore, Vulkan and Metal.
 
 #include "Engine.h"
 #include "Scene.h"

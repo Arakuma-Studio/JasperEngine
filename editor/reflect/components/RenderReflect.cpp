@@ -135,6 +135,7 @@ namespace {
         JE_FIELD(TerrainFoliageLayer, minHeight, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, maxHeight, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, drawDistance, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainFoliageLayer, minDrawDistance, .flags = OmitIfDefault, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(TerrainFoliageLayer, seed, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, castShadows, .updateFlags = kFoliage),
     };
@@ -331,6 +332,8 @@ namespace {
         JE_FIELD(InstancedMeshComponent, fadeStart, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, cullDistance, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, fadeEnd, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(InstancedMeshComponent, nearFadeStart, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(InstancedMeshComponent, nearFadeEnd, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, instancedBillboard, .updateFlags = kMeshReload, .label = "Billboard"),
         JE_FIELD(InstancedMeshComponent, instancedCylindricalBillboard, .updateFlags = kMeshReload, .label = "Cylindrical Billboard"),
         JE_FIELD(InstancedMeshComponent, instances, .flags = ListWhole, .updateFlags = kInstances),
@@ -598,7 +601,7 @@ const ComponentDesc kLineRendererDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kInstancedMeshKnownKeys[] = {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"};
+    constexpr const char* kInstancedMeshKnownKeys[] = {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances", "nearFadeEnd", "nearFadeStart"};
 
 }
 

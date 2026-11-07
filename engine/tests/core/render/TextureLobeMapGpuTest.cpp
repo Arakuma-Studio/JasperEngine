@@ -244,7 +244,7 @@ TEST_P(TextureLobeMapGpu, AMaterialWithOnlyALobesMapBindsIt){
 }
 
 // An editor or a script gives a loaded mesh's material a lobe's map, then takes it away: the variant
-// that takes it is built while the loaded one draws (pbrVariantMatches), with its UVs and without
+// that takes it is built while the loaded one draws (RenderSystem::loadedVariantMatches), with its UVs and without
 TEST_P(TextureLobeMapGpu, AMapGivenToALoadedMaterialAndTakenAwayIsDrawnThenGone){
     JASPER_REQUIRE_GPU();
     const LobeCase& c = GetParam();

@@ -278,7 +278,8 @@ TEST_P(TextureLateBindGpu, AnImageReplacedAfterTheMaterialWasBoundIsBound){
 }
 
 // A GPU texture made again in place takes its old view away from every binding holding it: all
-// the materials sharing it take the new one, not only the one whose getRender rebuilt it
+// the materials sharing it take the new one, not only the one whose getRender rebuilt it, without
+// resolving their variants again (the same image)
 TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgain){
     JASPER_REQUIRE_GPU();
     const uint8_t white[4] = {255, 255, 255, 255};
@@ -319,6 +320,7 @@ TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgai
     ASSERT_TRUE(GpuEnvironment::runFrames(loaded));
     GpuEnvironment::drawFrames(3);
 
+    const uint64_t variantChecks = RenderSystem::getTextureVariantChecks();
     replaceImage("bf15-shared", red);
     ASSERT_FALSE(HasFatalFailure());
     GpuEnvironment::runFrames([current](){
@@ -326,6 +328,8 @@ TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgai
     }, 120);
     GpuEnvironment::drawFrames(3);
     EXPECT_LT(meanDifference(readTarget(), reference), 1.0) << "a plane draws the old image, or nothing";
+    // the same image, new pixels: bound again, not a texture edit (render-correctness spec 8)
+    EXPECT_EQ(RenderSystem::getTextureVariantChecks(), variantChecks) << "rebinding the same image resolved the variants again";
     Engine::removeScene(&scene);
     EXPECT_NO_ENGINE_ERRORS();
 }
