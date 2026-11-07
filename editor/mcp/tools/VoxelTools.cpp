@@ -1813,7 +1813,9 @@ void generateVoxelsTool(const CallPtr& call) {
     if (!parseGenerateRequest(call, target, request)) return;
     Json data = {{"entity", McpRefs::entityJson(target.sp, target.entity)}};
     if (!startGeneration(call, target, request, "Generate " + target.sp->scene->getEntityName(target.entity), 0, 0, data)) return;
-    call->ok("Generating as job " + data["job_id"].get<std::string>() + ".", std::move(data));
+    // the text first: the argument that moves data may be evaluated before it
+    const std::string text = "Generating as job " + data["job_id"].get<std::string>() + ".";
+    call->ok(text, std::move(data));
 }
 
 // ------------------------------------------------------------------ visualize_voxels
