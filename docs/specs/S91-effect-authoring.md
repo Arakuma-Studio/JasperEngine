@@ -308,9 +308,10 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   runtime keeps on one seed.
 - **R19's timing for MCP** is `ParticleEffectTiming::compute` and `toJson`
   (`editor/util/ParticleEffectTiming.h`). The tool that returns it, and the Filmstrip and Checks rows
-  (R24), belong to `feature/s91-preview`. The window draws that panel through
-  `ParticleEffectWindow::setChecksPanel`, in a "Filmstrip and Checks" section under Exposed
-  Parameters, and draws nothing there until the panel is registered.
+  (R24), belong to `feature/s91-preview`. The window hosts its `ParticleChecksPanel` in a
+  "Filmstrip and Checks" section under Exposed Parameters, on the file or subtree it shows and with
+  its seed (`ParticleEffectWindow::getChecksPanel`); AC15 in the window is
+  `ParticleChecksPanel.TheWindowsHostedRowsAreTheTools`.
 - **R25's sliders are drag fields.** An exposed parameter has no range in the format, so a slider
   would have to invent one. Trigger buttons list the Trigger sub-emitters' names. R9's declared
   triggers and R10's cheap updates come from `feature/s91-runtime`, and `triggerNames()` and

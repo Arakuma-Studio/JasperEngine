@@ -81,6 +81,14 @@ step, a click that changes nothing is none, and **Esc** during a drag puts the v
 **Exposed Parameters** has a slider per exposed parameter and a button per trigger name (Trigger
 sub-emitters). They drive the preview only; the effect keeps its values.
 
+## Filmstrip and Checks
+
+Under Exposed Parameters, **Filmstrip and Checks** runs the same deterministic preview and checks as the
+agents' `preview_particle_effect` on what the window shows, with the window's seed: **Preview** fills the
+filmstrip and the rows (status, measured, threshold, what limited it). A row whose fix is a single edit has a
+**Fix** button: one undo step on the file. **Record** writes a sprite sheet with an effect that plays it, or a
+PNG sequence, to the path typed there, as one undo step.
+
 ## Curve window additions
 
 When the Curve window is opened from these rows on a curve over the emitter's time (Rate over Time, a

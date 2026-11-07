@@ -416,8 +416,6 @@ TEST(ParticleEffectWindow, EveryPanelDrawsInAFrame) {
     const std::string child = writeEffect("fx/frame_flash.particles", flash());
     const std::string path = writeEffect("fx/frame_rocket.particles", fountain(child));
     ParticleEffectWindow window(project());
-    bool checksDrawn = false;
-    ParticleEffectWindow::setChecksPanel([&checksDrawn](ParticleEffectWindow&) { checksDrawn = true; });
     Frames frames;
     frames.frame(window);           // closed: nothing
     window.openEffect(path);
@@ -430,9 +428,7 @@ TEST(ParticleEffectWindow, EveryPanelDrawsInAFrame) {
     window.setHidden(1, true);
     frames.frame(window);
     frames.frame(window);
-    EXPECT_TRUE(checksDrawn);
     EXPECT_TRUE(window.isOverdraw());
-    ParticleEffectWindow::setChecksPanel(nullptr);
     window.close();
     frames.frame(window);
 }

@@ -20,6 +20,7 @@
 #include "util/UIProbe.h"
 #include "widget/ColorField.h"
 #include "widget/CurveField.h"
+#include "window/widget/ParticleChecksPanel.h"
 
 #include "imgui.h"
 
@@ -42,11 +43,6 @@ namespace {
     constexpr double kOneShotRest = 0.5;
     // the Overdraw view: each particle adds this heat (linear), as the Scene view's Overdraw does
     const Vector4 kOverdrawHeat(0.10f, 0.035f, 0.01f, 1.0f);
-
-    ParticleEffectWindow::ChecksPanel& registeredChecksPanel() {
-        static ParticleEffectWindow::ChecksPanel panel;
-        return panel;
-    }
 
     uint64_t mixHash(uint64_t h, uint64_t value) {
         return (h ^ value) * 1099511628211ull;
@@ -101,11 +97,15 @@ namespace {
 
 }
 
-void ParticleEffectWindow::setChecksPanel(ChecksPanel panel) {
-    registeredChecksPanel() = std::move(panel);
+ParticleEffectWindow::ParticleEffectWindow(Project* project): project(project), checks(std::make_unique<ParticleChecksPanel>()) {
 }
 
-ParticleEffectWindow::ParticleEffectWindow(Project* project): project(project) {
+ParticleChecksPanel& ParticleEffectWindow::getChecksPanel() {
+    // the panel checks what the window shows, with the window's seed
+    if (subtreeRoot != NULL_ENTITY) checks->setSubtree(subtreeScene, subtreeRoot);
+    else if (!effectPath.empty()) checks->setAsset(effectPath);
+    checks->setSeed(seed);
+    return *checks;
 }
 
 ParticleEffectWindow::~ParticleEffectWindow() = default;
@@ -748,10 +748,8 @@ void ParticleEffectWindow::show() {
     if (ImGui::BeginChild("##particle_effect_right", ImVec2(0.0f, 0.0f))) {
         drawInspector();
         drawExposed();
-        // the slot of the Filmstrip and Checks panel (R24): another branch registers it
-        if (const ChecksPanel& panel = registeredChecksPanel()) {
-            if (ImGui::CollapsingHeader("Filmstrip and Checks", ImGuiTreeNodeFlags_DefaultOpen)) panel(*this);
-        }
+        // Filmstrip and Checks (R24): preview_particle_effect's run and rows on this effect
+        if (ImGui::CollapsingHeader("Filmstrip and Checks", ImGuiTreeNodeFlags_DefaultOpen)) getChecksPanel().draw(project);
     }
     ImGui::EndChild();
     ImGui::End();

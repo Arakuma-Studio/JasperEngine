@@ -33,9 +33,10 @@
 // no-op makes none, and Esc during a drag puts the file back with no step (App's interactive
 // edits). The window's own settings (the eye, the clock, the stage) are not undo steps.
 //
-// The Filmstrip and Checks panel (R24) is another branch's: it registers itself through
-// setChecksPanel() and the window draws it in its slot, a "Filmstrip and Checks" section under
-// the Exposed Parameters. Without one registered the slot draws nothing.
+// Filmstrip and Checks (R24, AC15): the window hosts ParticleChecksPanel in a section under the
+// Exposed Parameters, on what it shows (the file or the subtree) and with its seed, so its rows are
+// preview_particle_effect's; its Fix applies a single-edit fix_hint as one ParticleEffectAssetCmd
+// and its Record bakes the sprite sheet (or a PNG sequence) as one undo step.
 
 #include "ecs/Entity.h"
 #include "particles/ParticleEffect.h"
@@ -44,6 +45,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -52,6 +54,7 @@ namespace jasperengine::editor {
 
     class Command;
     class CommandHistory;
+    class ParticleChecksPanel;
     class Project;
 
     class ParticleEffectWindow {
@@ -75,9 +78,6 @@ namespace jasperengine::editor {
             bool missing = false;          // a child whose file does not read
         };
 
-        // The slot of the Filmstrip and Checks panel (R24): drawn with the window, in its section
-        using ChecksPanel = std::function<void(ParticleEffectWindow& window)>;
-        static void setChecksPanel(ChecksPanel panel);
 
         explicit ParticleEffectWindow(Project* project);
         ~ParticleEffectWindow();
@@ -174,6 +174,9 @@ namespace jasperengine::editor {
         // the clock and the stage's re-simulation for a frame of `dt` seconds (show() calls it)
         void update(double dt);
 
+        // the hosted Filmstrip and Checks, on what the window shows and with its seed
+        ParticleChecksPanel& getChecksPanel();
+
         // what editor_status shows of it (MCP tests read the clock and the eye through it)
         struct UiState {
             bool open = false;
@@ -212,6 +215,7 @@ namespace jasperengine::editor {
         std::set<std::string> hidden;
 
         ParticlePreviewRender stage;
+        std::unique_ptr<ParticleChecksPanel> checks;
         // what the stage copies were made of: the files' versions, the inline effects' text, the eye
         uint64_t stagedSignature = 0;
         bool staged = false;
