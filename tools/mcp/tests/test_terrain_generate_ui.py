@@ -96,7 +96,9 @@ async def wait_status(ed: Editor, ui: Ui, frames: int = 600) -> str:
         for key in items:
             if key.startswith("terrain.generate.status: "):
                 return key.split(": ", 1)[1]
-    ed.fail(f"no status: {sorted(k for k in ed.ui_items() if 'generate' in k)}")
+    stats = await ed.call("get_job_system_stats")
+    ed.fail(f"no status: {sorted(k for k in ed.ui_items() if 'generate' in k)}; jobs: workers {stats.get('workers')}, "
+            f"lanes {stats.get('lanes')}, gate {stats.get('gate')}")
 
 
 async def test_preview_does_not_write(ed: Editor):
