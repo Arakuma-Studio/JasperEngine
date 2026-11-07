@@ -113,6 +113,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Particles](#libraryparticles) `library:particles` | particles | Particles | none | alpha (Auto) |
 | [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
 | [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
@@ -124,6 +125,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Sprite](#librarysprite) `library:sprite` | mesh | 2D | none | alpha |
 | [Sprite mask](#librarysprite_mask) `library:sprite_mask` | mesh | 2D | none | opaque |
 | [Stencil mask](#librarystencil_mask) `library:stencil_mask` | mesh | Outline and stencil | none | opaque |
+| [Title FX](#librarytitle_fx) `library:title_fx` | ui | 2D | none | alpha (Auto) |
+| [Title FX (Sprite)](#librarytitle_fx_sprite) `library:title_fx_sprite` | mesh | 2D | none | alpha |
 | [Toon](#librarytoon) `library:toon` | mesh | Stylized | pixel, mixed, vertex | opaque |
 | [Triplanar](#librarytriplanar) `library:triplanar` | mesh | Stylized | none, pixel, vertex | opaque |
 | [UI Effects](#libraryui_fx) `library:ui_fx` | ui | 2D | none | alpha (Auto) |
@@ -162,7 +165,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white; built-in particle with `PARTICLE_TEXTURE` | Base map |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -171,6 +174,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 | `STOCHASTIC` | off | Stochastic Tiling |
+| `PARTICLE_TEXTURE` | off | Built-in soft particle texture (when no base map is set) |
 
 ## Lit
 
@@ -1074,6 +1078,89 @@ Unity-style Sprite Mask: writes stencil 16 (bits 0xF0) in the shape of the sprit
 |---|---|---|---|
 | `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
 
+<a id="librarytitle_fx"></a>
+### Title FX (`library:title_fx`)
+
+The Title Art Renderer's live layers on its Image: a keyable sweep band, a glow pulse from the title's glow output, a tint, glint stars at the title's highlight anchors and the crossfade between two renders. Driven by the component (its Live Time, never engine time); not for hand use.
+
+- **Type**: UI (a UI component's custom shader); category 2D.
+- **Default state**: the engine's (alpha blend).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `sweepParams` | vector4 | (0, 0.15, 25, 0.6) | Sweep: position 0..1, width (fraction of the frame), angle (degrees clockwise), softness (with `SWEEP`) |
+| `sweepColor` | HDR colour | (1, 1, 1, 0.8) | Sweep colour (alpha: strength) (with `SWEEP`) |
+| `glowColor` | HDR colour | (1, 0.85, 0.4, 1) | Glow colour (with `GLOW`) |
+| `glowParams` | vector4 | (0, 0, 0, 0) | Glow: pulse (with `GLOW`) |
+| `tintColor` | colour | (1, 1, 1, 1) | Tint colour (overlay blend) (with `TINT`) |
+| `tintParams` | vector4 | (0, 0, 0, 0) | Tint: amount (with `TINT`) |
+| `glintColor` | HDR colour | (1, 1, 1, 1) | Glint colour (with `GLINTS`) |
+| `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
+| `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
+| `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: affine row 0, opacity (with `ANIM`) |
+| `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
+| `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
+| `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
+| `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_glowTexture` | black | The title's glow output (with `GLOW`) |
+| `u_prevTexture` | black | The previous render (crossfade) (with `CROSSFADE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `SWEEP` | off | Sweep |
+| `GLOW` | off | Glow Pulse |
+| `TINT` | off | Tint |
+| `GLINTS` | off | Glints |
+| `CROSSFADE` | off | Crossfade |
+| `ANIM` | off | Animation |
+
+<a id="librarytitle_fx_sprite"></a>
+### Title FX (Sprite) (`library:title_fx_sprite`)
+
+The Title Art Renderer's live layers on its Sprite: a keyable sweep band, a glow pulse from the title's glow output, a tint, glint stars at the title's highlight anchors and the crossfade between two renders. Unlit, alpha blended, both faces. Driven by the component (its Live Time, never engine time); not for hand use.
+
+- **Type**: mesh (a material's shader); category 2D.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend alpha, cull off (both faces), depth write off, shadows off.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `sweepParams` | vector4 | (0, 0.15, 25, 0.6) | Sweep: position 0..1, width (fraction of the frame), angle (degrees clockwise), softness (with `SWEEP`) |
+| `sweepColor` | HDR colour | (1, 1, 1, 0.8) | Sweep colour (alpha: strength) (with `SWEEP`) |
+| `glowColor` | HDR colour | (1, 0.85, 0.4, 1) | Glow colour (with `GLOW`) |
+| `glowParams` | vector4 | (0, 0, 0, 0) | Glow: pulse (with `GLOW`) |
+| `tintColor` | colour | (1, 1, 1, 1) | Tint colour (overlay blend) (with `TINT`) |
+| `tintParams` | vector4 | (0, 0, 0, 0) | Tint: amount (with `TINT`) |
+| `glintColor` | HDR colour | (1, 1, 1, 1) | Glint colour (with `GLINTS`) |
+| `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
+| `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
+| `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: affine row 0, opacity (with `ANIM`) |
+| `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
+| `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
+| `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
+| `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_glowTexture` | black | The title's glow output (with `GLOW`) |
+| `u_prevTexture` | black | The previous render (crossfade) (with `CROSSFADE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `SWEEP` | off | Sweep |
+| `GLOW` | off | Glow Pulse |
+| `TINT` | off | Tint |
+| `GLINTS` | off | Glints |
+| `CROSSFADE` | off | Crossfade |
+| `ANIM` | off | Animation |
+
 <a id="libraryui_fx"></a>
 ### UI Effects (`library:ui_fx`)
 
@@ -1111,6 +1198,38 @@ Image and Text effects: grayscale, hue shift, tint overlay and a moving diagonal
 Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
 
 - **Type**: points (a Points component's custom shader); category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `glowColor` | HDR colour | (2, 1.3, 0.6, 1) | Glow colour (HDR) (with `GLOW`) |
+| `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
+| `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
+| `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
+| `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `GLOW` | off | Glow (alpha as light) |
+| `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
+
+<a id="libraryparticles"></a>
+### Particles (`library:particles`)
+
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+
+- **Type**: particles; category Particles.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
 - **Default state**: depth write off.
 

@@ -380,7 +380,7 @@ bool TitleArtLive::runStep(const TitleJobFactory& factory, double platformFactor
     return report.steps > 0;
 }
 
-void TitleArtLive::failJob(const std::string& error, bool allocation, bool floatTarget){
+void TitleArtLive::failJob(std::string error, bool allocation, bool floatTarget){
     running = Running();
     if (floatTarget && !titleArtForceRgba8()){
         // R19: the caps said a float target would work and it did not: RGBA8 for the session,
@@ -390,7 +390,7 @@ void TitleArtLive::failJob(const std::string& error, bool allocation, bool float
         return;
     }
     failedState = true;
-    failure = error;
+    failure = std::move(error);
     failedHash = wantedHash;
     if (allocation && retries < 3){
         // R19: retry after 2, 4 and 8 s (FluidSimulator's policy)

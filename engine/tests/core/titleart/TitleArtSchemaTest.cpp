@@ -250,7 +250,11 @@ TEST_F(TitleArtSchemaTest, SparseKind) {
 TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
     const TitleArtSchema& schema = TitleArtSchema::get();
     EXPECT_EQ(schema.reservedOwner("document", "animation"), "S85");
-    EXPECT_EQ(schema.reservedOwner("document", "runtime"), "S81");
+    // S81 registered `runtime`: the member names its owner, the reservation is gone
+    EXPECT_EQ(schema.reservedOwner("document", "runtime"), "");
+    const SchemaMember* runtime = schema.member(*schema.kind("document"), "runtime");
+    ASSERT_NE(runtime, nullptr);
+    EXPECT_EQ(runtime->owner, "S81");
     EXPECT_EQ(schema.reservedOwner("document", "scene_3d"), "S86");
     EXPECT_EQ(schema.reservedOwner("document", "color_schemes"), "S84");
     EXPECT_EQ(schema.reservedOwner("document", "languages"), "S87");

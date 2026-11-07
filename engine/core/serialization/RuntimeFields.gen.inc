@@ -276,6 +276,13 @@ template<> struct Codec<CapsuleShadowShape> {
 template<> struct TextureVisit<CapsuleShadowShape> {
     static void visit(CapsuleShadowShape& value, const TextureVisitor& f);
 };
+template<> struct Codec<TitleArtOverride> {
+    static void write(Writer& w, const TitleArtOverride& value);
+    static void read(Reader& r, TitleArtOverride& value);
+};
+template<> struct TextureVisit<TitleArtOverride> {
+    static void visit(TitleArtOverride& value, const TextureVisitor& f);
+};
 
 }
 
@@ -561,6 +568,7 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minHeight, 0xa922f6d3u, Float),
     JE_RF(TerrainFoliageLayer, maxHeight, 0x1dc468f1u, Float),
     JE_RF(TerrainFoliageLayer, drawDistance, 0xbd8cf49du, Float),
+    JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
 };
@@ -864,6 +872,17 @@ const StructTable kStruct_CapsuleShadowShape{"CapsuleShadowShape", kStruct_Capsu
 void Codec<CapsuleShadowShape>::write(Writer& w, const CapsuleShadowShape& value) { writeStruct(w, kStruct_CapsuleShadowShape, &value); }
 void Codec<CapsuleShadowShape>::read(Reader& r, CapsuleShadowShape& value) { readStruct(r, kStruct_CapsuleShadowShape, &value); }
 void TextureVisit<CapsuleShadowShape>::visit(CapsuleShadowShape& value, const TextureVisitor& f) { visitStructTextures(kStruct_CapsuleShadowShape, &value, f); }
+
+const FieldEntry kStruct_TitleArtOverride_fields[] = {
+    JE_RF(TitleArtOverride, name, 0x1f0cbcd3u, String),
+    JE_RF(TitleArtOverride, type, 0x7384e358u, String),
+    JE_RF(TitleArtOverride, value, 0x85e07201u, Vector4),
+    JE_RF(TitleArtOverride, text, 0x69016c27u, String),
+};
+const StructTable kStruct_TitleArtOverride{"TitleArtOverride", kStruct_TitleArtOverride_fields, std::size(kStruct_TitleArtOverride_fields)};
+void Codec<TitleArtOverride>::write(Writer& w, const TitleArtOverride& value) { writeStruct(w, kStruct_TitleArtOverride, &value); }
+void Codec<TitleArtOverride>::read(Reader& r, TitleArtOverride& value) { readStruct(r, kStruct_TitleArtOverride, &value); }
+void TextureVisit<TitleArtOverride>::visit(TitleArtOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_TitleArtOverride, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -1311,6 +1330,8 @@ const FieldEntry kBody_InstancedMeshComponent_fields[] = {
     JE_RF(InstancedMeshComponent, fadeStart, 0x538dcdd3u, Float),
     JE_RF(InstancedMeshComponent, cullDistance, 0xd41385ecu, Float),
     JE_RF(InstancedMeshComponent, fadeEnd, 0x3edf6206u, Float),
+    JE_RF(InstancedMeshComponent, nearFadeStart, 0xf6452e8du, Float),
+    JE_RF(InstancedMeshComponent, nearFadeEnd, 0x50cc90f4u, Float),
     JE_RF(InstancedMeshComponent, instancedBillboard, 0x9acf0bdbu, Bool),
     JE_RF(InstancedMeshComponent, instancedCylindricalBillboard, 0x50bfb9e3u, Bool),
     JE_RF(InstancedMeshComponent, instances, 0xdb94d2bdu, Array),
@@ -2371,6 +2392,51 @@ const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
 };
 const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
+const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
+    JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
+    JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
+    JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
+    JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
+    JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
+    JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
+    JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),
+    JE_RF(TitleArtRendererComponent, resolutionScale, 0x678e8488u, Float),
+    JE_RF(TitleArtRendererComponent, priority, 0x563a6d68u, Int),
+    JE_RF(TitleArtRendererComponent, renderWhenHidden, 0x8f5afbccu, Bool),
+    JE_RF(TitleArtRendererComponent, prebakeInitialState, 0xd0114565u, Bool),
+    JE_RF(TitleArtRendererComponent, transition, 0x94135a73u, Enum),
+    JE_RF(TitleArtRendererComponent, transitionDuration, 0xe5c04ac7u, Float),
+    JE_RF(TitleArtRendererComponent, additionalCharacters, 0x41e10ba1u, String),
+    JE_RF(TitleArtRendererComponent, atlasPageSize, 0x6f83f7c5u, Int),
+    JE_RF(TitleArtRendererComponent, atlasMaxPages, 0xc2052205u, Int),
+    JE_RF(TitleArtRendererComponent, qualityTier, 0x4068c6e5u, String),
+    JE_RF(TitleArtRendererComponent, runtimeEnvironments, 0xe2b2abf2u, Array),
+    JE_RF(TitleArtRendererComponent, liveTime, 0x6bc5ba13u, Float),
+    JE_RF(TitleArtRendererComponent, liveUnscaledTime, 0x85bfbd8au, Bool),
+    JE_RF(TitleArtRendererComponent, sweepEnabled, 0x27274359u, Bool),
+    JE_RF(TitleArtRendererComponent, sweepPosition, 0xe589397bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepWidth, 0x11436d24u, Float),
+    JE_RF(TitleArtRendererComponent, sweepAngle, 0xb532596bu, Float),
+    JE_RF(TitleArtRendererComponent, sweepSoftness, 0x084a67ebu, Float),
+    JE_RF(TitleArtRendererComponent, sweepColor, 0x93319b9fu, Vector4),
+    JE_RF(TitleArtRendererComponent, sweepAuto, 0x5f89e1dfu, Bool),
+    JE_RF(TitleArtRendererComponent, sweepSpeed, 0x335a0863u, Float),
+    JE_RF(TitleArtRendererComponent, sweepInterval, 0x94dac011u, Float),
+    JE_RF(TitleArtRendererComponent, glowEnabled, 0x7b24955au, Bool),
+    JE_RF(TitleArtRendererComponent, glowPulse, 0xc56d714au, Float),
+    JE_RF(TitleArtRendererComponent, glowColor, 0xcc286034u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintEnabled, 0x03ba7ceeu, Bool),
+    JE_RF(TitleArtRendererComponent, tintColor, 0xfd588c88u, Vector4),
+    JE_RF(TitleArtRendererComponent, tintAmount, 0x47c1b439u, Float),
+    JE_RF(TitleArtRendererComponent, glintsEnabled, 0x7295f1beu, Bool),
+    JE_RF(TitleArtRendererComponent, glintAmount, 0xf520f618u, Float),
+    JE_RF(TitleArtRendererComponent, glintSize, 0xa1be8c4du, Float),
+    JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
+    JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
+    JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
+};
+const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2478,6 +2544,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
+    JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENTS_END
 };
 

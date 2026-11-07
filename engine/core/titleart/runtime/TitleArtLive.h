@@ -239,7 +239,8 @@ namespace jasperengine::titleart {
         void queueWanted();
         void startJob(const TitleJobFactory& factory, uint32_t budgetUs, double platformFactor);
         void finishJob(TitleLiveLimits& limits, size_t& cacheBytesInUse);
-        void failJob(const std::string& error, bool allocation, bool floatTarget);
+        // the error by value: it is often the failed job's own, and the job goes first
+        void failJob(std::string error, bool allocation, bool floatTarget);
         void pushToCache(TitleDisplayImage image);
         bool takeFromCache(uint64_t hash, TitleDisplayImage& out);
     };
