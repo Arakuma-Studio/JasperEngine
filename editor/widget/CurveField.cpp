@@ -289,7 +289,9 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
             const float spacing = ImGui::GetStyle().ItemSpacing.x;
             const bool scaled = value.multiplier != 1.0f;
             const float multiplierWidth = scaled ? Theme::dpi(48.0f) + spacing : 0.0f;
-            const float third = std::max(4.0f, (avail - multiplierWidth - 2.0f * spacing) / 3.0f);
+            // the preset's names are long ("Elastic In Out"): it gets the most room
+            const float row = avail - multiplierWidth - 2.0f * spacing;
+            const float third = std::max(4.0f, row * 0.27f);
             ImGui::SetNextItemWidth(third);
             bool edited = ImGui::DragFloat("##start", &value.constant, 0.01f, 0.0f, 0.0f, "%.3f");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Start");
@@ -301,7 +303,7 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
             inline_(endEdited);
             edited = edited || endEdited;
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(third);
+            ImGui::SetNextItemWidth(std::max(4.0f, row - 2.0f * third));
             const std::vector<particles::EnumOption>& presets = particles::ParticleModules::easeTypes();
             const char* current = presets.front().label;
             for (const particles::EnumOption& preset : presets) {
