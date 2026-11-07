@@ -17,6 +17,8 @@
 #include "Buoyancy.h"
 #endif
 #include "WaterVolume.h"
+#include "WaterExcluder.h"
+#include "WaterWake.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
@@ -37,6 +39,8 @@ namespace jasperengine{
     class CharacterController;
     class Buoyancy;
     class WaterVolume;
+    class WaterExcluder;
+    class WaterWake;
     class Spline;
     class SplineExtrude;
     class SplineInstantiate;
@@ -165,6 +169,9 @@ namespace jasperengine{
 #endif
         // the GameObject's Water Volume, added with its defaults when it has none
         WaterVolume getWaterVolume();
+        // the GameObject's Water Excluder and Water Wake, each added with its defaults when it has none
+        WaterExcluder getWaterExcluder();
+        WaterWake getWaterWake();
         // the GameObject's Spline, Spline Extrude (with a Mesh), Spline Instantiate and Spline
         // Animate, each added with its defaults when it has none
         Spline getSpline();

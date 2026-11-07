@@ -1750,6 +1750,55 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_water_inside_boat",
+        "kind": "bad",
+        "what_happened": "An open boat floating on library:water showed the water's surface inside its hull; hiding it "
+                         "takes a Water Excluder on the boat (its mesh's convex hull by default), not a stencil mask, a "
+                         "forked water shader or a second mesh.",
+        "text_at_issue": "component Water Excluder 'Keeps water out of a boat or a dry space: no surface inside, no "
+                         "underwater fade, cargo stays dry'",
+        "source": "water-boats spec (Doriax 1ecdb8b41)",
+        "prompt": "The Rowboat floats on the Lake, but the lake's water shows inside the boat, above its floor. Make the "
+                  "inside of the boat dry.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("Rowboat [21] (mesh, rigidbody, buoyancy), Lake [12] (mesh, watervolume)",
+                                                   {"entities": [{"id": 21, "name": "Rowboat"}, {"id": 12, "name": "Lake"}]})},
+            {"tool": "get_entity", "result": ok("Rowboat [21] components: transform mesh rigidbody buoyancy", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Water Volume (watervolume): A body of water: what has a Buoyancy floats in it; Water Excluder "
+                "(waterexcluder): Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo "
+                "stays dry; Water Wake (waterwake): Foam and waves behind it while it moves through water ...",
+                {"components": [{"key": "waterexcluder", "name": "Water Excluder"}, {"key": "waterwake", "name": "Water Wake"}]})},
+            {"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}, "result": ok(
+                "Added Water Excluder to GameObject 21 \"Rowboat\" (shape convex_hull).", {"entity": {"id": 21}})},
+            {"tool": "sample_water", "result": ok("(0, -0.2, 0): dry (Water Excluder Rowboat), surface 0.01",
+                                                  {"samples": [{"in_water": False, "excluded_by": {"id": 21}}]})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_water_wake_check",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "Whether a moving boat leaves a wake (and whether its cargo is dry) is read from sample_water's "
+                         "per-point wake and excluded_by, not guessed from a screenshot.",
+        "text_at_issue": "sample_water description: 'the Water Excluder keeping it dry and the Water Wakes there. report: "
+                         "the excluders' hulls, the wakes and which waters draw them'",
+        "source": "water-boats spec (Doriax 755e7d723)",
+        "prompt": "The game is playing and the Speedboat is moving along +Z on the Lake. Is it leaving foam behind it? "
+                  "It is at about (0, 0, 10) now.",
+        "mocks": [
+            {"tool": "sample_water", "result": ok(
+                "(0, 0, 6): in water, surface 0.02\nwake Speedboat: emitting, 6.10 m/s\nwake map: active",
+                {"samples": [{"point": [0, 0, 6], "in_water": True, "wake": {"foam": 0.62, "height": 0.08}}],
+                 "wakes": [{"entity": {"id": 30}, "emitting": True, "speed": 6.1}], "wake_map": {"active": True}})},
+        ],
+        "checks": {"calls": [{"tool": "sample_water"}]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "

@@ -29,6 +29,8 @@ namespace jasperengine{
     struct ReflectionProbeComponent;
     struct TranslateTracksComponent;
     struct WaterVolumeComponent;
+    struct WaterExcluderComponent;
+    struct WaterWakeComponent;
 }
 
 namespace jasperengine::editor{
@@ -73,6 +75,8 @@ namespace jasperengine::editor{
         std::map<Entity, LineRenderer*> fogVolumeLines;
         std::map<Entity, LineRenderer*> controllerLines;
         std::map<Entity, LineRenderer*> waterVolumeLines;
+        std::map<Entity, LineRenderer*> waterExcluderLines;
+        std::map<Entity, LineRenderer*> waterWakeLines;
         std::map<Entity, LineRenderer*> buoyancyLines;
         // a selected Particle System's emitter shape, bounds and collision planes; a Force
         // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
@@ -109,6 +113,8 @@ namespace jasperengine::editor{
         void createOrUpdateReflectionProbeLines(Entity entity, const Transform& transform, const ReflectionProbeComponent& probe, bool visible);
         void createOrUpdateFogVolumeLines(Entity entity, const Transform& transform, const LocalVolumetricFogComponent& volume, bool visible);
         void createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted);
+        void createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted);
+        void createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible);
         void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
         void createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster, bool visible, bool selected);

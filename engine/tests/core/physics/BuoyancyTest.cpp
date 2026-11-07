@@ -13,11 +13,13 @@
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "object/physics/Rigidbody.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/WaterSystem.h"
+#include "object/environment/Water.h"
 #include "util/WaterWaves.h"
 #include "../ecs/EcsTestUtil.h"
 
@@ -131,6 +133,19 @@ namespace {
             return scene->getComponent<Transform>(entity).worldPosition.y - 0.5f;
         }
 
+        // a Water Excluder box at a place (its own GameObject, under `parent` when given)
+        Entity excluder(const Vector3& position, const Vector3& size, Entity parent = NULL_ENTITY){
+            const Entity entity = test::makeTransformEntity(*scene, parent);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            transform.position = position;
+            transform.needUpdate = true;
+            WaterExcluderComponent component;
+            component.shape = WaterExcluderShape::BOX;
+            component.size = size;
+            scene->addComponent<WaterExcluderComponent>(entity, component);
+            return entity;
+        }
+
         float verticalSpeed(Entity entity){
             return Rigidbody(scene.get(), entity).getLinearVelocity().y;
         }
@@ -214,4 +229,72 @@ TEST_F(BuoyancyTest, SampleMatchesTheWaveTwin){
     // outside the volume: no water
     EXPECT_TRUE(std::isnan(physics->sampleWaterHeight(100.0f, 0.0f)));
     EXPECT_FALSE(physics->sampleWater(Vector3(100.0f, -1.0f, 0.0f)).inWater);
+}
+
+// Water Excluders (docs/superpowers/specs/2026-11-04-water-boats-design.md): a body inside one it
+// does not own is dry, whichever way it floats; the one a body owns never dries it
+
+TEST_F(BuoyancyTest, CargoKeptDryInExcluder){
+    water();
+    // a dry room 4 m wide reaching 3 m under the surface (a hold below the waterline)
+    excluder(Vector3(0.0f, -1.0f, 0.0f), Vector3(4.0f, 4.0f, 4.0f));
+    const Entity inside = box(500.0f, -1.5f, 0.0f);
+    const Entity outside = box(500.0f, -1.5f, 10.0f);
+    steps(300);
+    // the one outside floats half under; the one inside falls through the dry room (no floor) to
+    // its bottom, where the water takes it again
+    EXPECT_NEAR(-bottom(outside), 0.50f, 0.05f);
+    EXPECT_LT(bottom(inside), -2.5f);
+}
+
+TEST_F(BuoyancyTest, RigidbodyBuoyancyKeptDry){
+    // a library:water mesh without a Water Volume: the Rigidbody buoyancy factor floats on it
+    const Entity lake = test::makeTransformEntity(*scene);
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.submeshes[0].material.shader = "library:water";
+    mesh.aabb = AABB(-20.0f, 0.0f, -20.0f, 20.0f, 0.0f, 20.0f);
+    scene->addComponent<MeshComponent>(lake, mesh);
+    excluder(Vector3(0.0f, -1.0f, 0.0f), Vector3(4.0f, 4.0f, 4.0f));
+    auto floater = [&](float x){
+        const Entity entity = box(500.0f, -1.5f, x);
+        scene->removeComponent<BuoyancyComponent>(entity);
+        scene->getComponent<RigidbodyComponent>(entity).buoyancy = 1.5f;
+        return entity;
+    };
+    const Entity inside = floater(0.0f);
+    const Entity outside = floater(10.0f);
+    steps(240);
+    EXPECT_GT(bottom(outside), -1.0f);
+    EXPECT_LT(bottom(inside), -2.5f);
+}
+
+TEST_F(BuoyancyTest, OwnExcluderStillFloats){
+    water();
+    // a boat with its hold as its own excluder (a child of the body): it floats as without it
+    const Entity boat = box(500.0f, -0.4f, 0.0f);
+    // (larger than the box, so its columns' bottoms are inside: it would sink if it dried its owner)
+    excluder(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.4f, 1.4f, 1.4f), boat);
+    const Entity plain = box(500.0f, -0.4f, 10.0f);
+    steps(600);
+    EXPECT_NEAR(bottom(boat), bottom(plain), 0.02f);
+    EXPECT_NEAR(-bottom(boat), 0.50f, 0.02f);
+}
+
+TEST_F(BuoyancyTest, SampleReportsExcluder){
+    water();
+    const Entity dry = excluder(Vector3(0.0f, -1.0f, 0.0f), Vector3(2.0f, 2.0f, 2.0f));
+    step();
+    const WaterSample inside = physics->sampleWater(Vector3(0.0f, -1.0f, 0.0f));
+    EXPECT_FALSE(inside.inWater);
+    EXPECT_EQ(inside.excluder, dry);
+    EXPECT_TRUE(inside.isExcluded());
+    // the surface is still there (the waterline outside the hull)
+    EXPECT_TRUE(inside.hasWater());
+    EXPECT_FLOAT_EQ(inside.surfaceHeight, 0.0f);
+    EXPECT_FALSE(Water::isUnderwater(scene.get(), Vector3(0.0f, -1.0f, 0.0f)));
+
+    const WaterSample wet = physics->sampleWater(Vector3(5.0f, -1.0f, 0.0f));
+    EXPECT_TRUE(wet.inWater);
+    EXPECT_EQ(wet.excluder, NULL_ENTITY);
 }

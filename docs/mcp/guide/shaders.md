@@ -526,6 +526,12 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   before including it; a shader that passes its own normals (from `getNormal2D()`, a texture of
   its own, real 3D normals) must `#define LIGHT2D_SURFACE_NORMALS` first, otherwise its normal is
   ignored and the light falls as from height 0 (`mesh.frag`'s lit path does this).
+  `waterexclusion` and `waterwake` (mesh shaders; they bring `position`): the Water Excluders
+  over the draw and the scene's Water Wake map, through `includes/water_interaction.glsl` (put
+  `WATER_INTERACTION_PARAMS`, from `includes/water_interaction_params.glsl`, last in your
+  `u_fs_customParams`: the engine writes their values there; `waterExcluded(worldPosition)`: discard after every derivative read; `waterWake(worldXZ)`:
+  foam and the wake waves' slope). The variant takes them ('Wex', 'Wwk') only while the scene
+  has such components, so a scene without them compiles the shader as if it never asked.
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
   `finalizeColor` fogs by it (additive fades to black, multiply to white);
@@ -696,6 +702,22 @@ the material's `buoyancy` (on) and `buoyancyDepth` (0: no bottom) decide per wat
 whose bottom is highest wins where they overlap. Lua: `Water.getHeight(scene, x, z)`,
 `Water.getNormal(scene, x, z)` (nil where no water covers the point),
 `Water.isUnderwater(scene, point)`.
+
+**Boats.** A **Water Excluder** (Unity HDRP's name; `add_component component=WaterExcluder`)
+keeps water out of a boat, a cabin or a dry tunnel: a Convex Hull of the GameObject's mesh (the
+default; or of its model's mesh nodes, not its children), a Box or a Sphere (`center`, `size`,
+local). Inside it no surface is drawn, a camera sees no underwater fade, `Water.isUnderwater` is
+false and nothing floats but the Rigidbody it belongs to (the nearest Rigidbody on its
+GameObject or above), so cargo in a boat stays put while the boat floats. Disabled, inactive or
+hidden, it keeps nothing out. A water draw cuts at most the 8 excluders over it in the camera's
+view, nearest first. A **Water Wake** leaves foam (stern churn, hull spray) and Kelvin waves on
+the water while its GameObject moves through the surface (a running scene; frozen while paused):
+`foam`, `waves` (0..2), `width` and `length` (0: the excluder's or the mesh's footprint). The
+wakes live in one map around the main camera, scene settings `water_wake_resolution` (`auto`:
+256, 128 on mobile and web), `water_wake_area` (64 m), `water_wake_fade` (8 s), and stay on the
+water they were made on. Neither costs anything in a scene without them. Check with
+`sample_water` (`excluded_by`, `wake` per point; `report: true` lists the hulls, the emitters and
+which waters draw with them).
 
 **Forks.** The engine treats a shader as water by its manifest's `// @role water` (and as the
 underwater pass by `// @role underwater`), not by its name. Fork a library shader with

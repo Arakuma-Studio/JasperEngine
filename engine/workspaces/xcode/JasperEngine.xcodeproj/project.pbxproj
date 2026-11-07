@@ -4485,6 +4485,23 @@
 		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
 		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
 		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */; };
+		4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F9098224B2B02009 /* WaterWakeComponent.h */; };
+		4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */; };
+		4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EEAEA234128B30D2 /* WaterWake.h */; };
+		4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */; };
+		4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */; };
+		4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8764,6 +8781,18 @@
 		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
 		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
 		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExcluder.cpp; sourceTree = "<group>"; };
+		4A534E47C812977268010C9B /* WaterWake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWake.cpp; sourceTree = "<group>"; };
+		4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterInteractionSystem.cpp; sourceTree = "<group>"; };
+		4A534E477609E88E6C406D11 /* WaterExclusion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExclusion.cpp; sourceTree = "<group>"; };
+		4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWakeMap.cpp; sourceTree = "<group>"; };
+		4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluderComponent.h; sourceTree = "<group>"; };
+		4A534E47F9098224B2B02009 /* WaterWakeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeComponent.h; sourceTree = "<group>"; };
+		4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluder.h; sourceTree = "<group>"; };
+		4A534E47EEAEA234128B30D2 /* WaterWake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWake.h; sourceTree = "<group>"; };
+		4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterInteractionSystem.h; sourceTree = "<group>"; };
+		4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExclusion.h; sourceTree = "<group>"; };
+		4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeMap.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10768,6 +10797,10 @@
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
 				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
 				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
+				4A534E477609E88E6C406D11 /* WaterExclusion.cpp */,
+				4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */,
+				4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */,
+				4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10968,6 +11001,8 @@
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 				4A534E47B4E493A883DC863A /* UISelectable.h */,
+				4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */,
+				4A534E47F9098224B2B02009 /* WaterWakeComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11248,6 +11283,8 @@
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
+				4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */,
+				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11501,6 +11538,10 @@
 				434F4D505D19875CF883CFC3 /* WaterVolume.cpp */,
 				4A534E472E658AD463ED1A16 /* LocalVolumetricFog.h */,
 				4A534E47252827BC13C6F95F /* VolumetricClouds.h */,
+				4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */,
+				4A534E47C812977268010C9B /* WaterWake.cpp */,
+				4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */,
+				4A534E47EEAEA234128B30D2 /* WaterWake.h */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -15578,6 +15619,13 @@
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
 				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */,
+				4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */,
+				4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */,
+				4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */,
+				4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */,
+				4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */,
+				4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18110,6 +18158,11 @@
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
+				4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */,
+				4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */,
+				4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */,
+				4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18933,6 +18986,11 @@
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
+				4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */,
+				4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */,
+				4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */,
+				4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -56,6 +56,9 @@
 #include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "particles/ParticleRender.h"
 #include "subsystem/ParticleSystemState.h"
@@ -862,6 +865,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     declareHookType(scene->getComponentId<ParticleSystemComponent>());
     declareHookType(scene->getComponentId<ReflectionProbeComponent>());
     declareHookType(scene->getComponentId<SkyboxComponent>());
+    declareHookType(scene->getComponentId<WaterExcluderComponent>());
+    declareHookType(scene->getComponentId<WaterWakeComponent>());
     declareHookType(scene->getComponentId<UIComponent>());
 #ifdef JASPERENGINE_EDITOR
     declareHookType(scene->getComponentId<Transform>());
@@ -981,6 +986,8 @@ void RenderSystem::load(){
 void RenderSystem::destroy(){
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
+
+    destroyWaterInteraction();
 
     // the FLATTEN Canvas Group layers and their composite (made again on use)
     destroyCanvasLayers();
@@ -3326,6 +3333,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.capsuleShadows = lighting.capsuleShadows;
     environment.contactShadows = lighting.contactShadows;
     environment.oit = lighting.oit;
+    environment.waterExclusion = hasWaterExcluders;
+    environment.waterWake = hasWaterWakes;
     return environment;
 }
 
@@ -4144,6 +4153,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // whose tiles list the scene's lights as they come)
     if (environment.directionalLightsOnly && inputs.builtinLit && !manifest && (p_punctual || p_vertexLights) && !p_tiledLights)
         variant.properties |= ShaderPool::getDirectionalOnlyProperty();
+    // Water Excluders and Water Wakes: only for a shader asking for them, in a scene that has them
+    if ((manifestRequire & ShaderRequire_WaterExclusion) && environment.waterExclusion)
+        variant.properties |= ShaderPool::getWaterExclusionProperty();
+    if ((manifestRequire & ShaderRequire_WaterWake) && environment.waterWake)
+        variant.properties |= ShaderPool::getWaterWakeProperty();
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -4301,6 +4315,17 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotPlanarReflection = shaderData.getTextureIndexByName("u_planarReflectionTexture");
     if (bindings.slotPlanarReflection.first != -1)
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the Water Excluders and the wake map (includes/water_interaction.glsl): no hull and no wake
+    // until a draw binds its own (a white hull map holds no column)
+    bindings.slotWaterExclusionMaps = shaderData.getTextureIndexByName("u_waterExclusionMaps");
+    if (bindings.slotWaterExclusionMaps.first != -1)
+        render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT, &emptyArrayWhite);
+    bindings.slotWaterExclusionData = shaderData.getTextureIndexByName("u_waterExclusionData");
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
+    bindings.slotWaterWake = shaderData.getTextureIndexByName("u_waterWakeTexture");
+    if (bindings.slotWaterWake.first != -1)
+        render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, &emptyBlack);
     // the frame's blurred scene (includes/blurred_scene.glsl), black until a draw binds it
     bindings.slotFSBlurredScene = shaderData.getUniformBlockIndexByName("u_fs_blurredScene");
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
@@ -8377,6 +8402,10 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     resolveSubmeshRenderState(mesh, submesh, inputs.manifest.get(), blended, transparentQueue);
     if (transparentQueue)
         return batch;
+    // the Water Excluders and the wake tag are chosen per mesh (applyWaterInteraction): a variant
+    // reading them ('Wex', 'Wwk': only while the scene has the component) draws alone
+    if (variant.properties & (ShaderPool::getWaterExclusionProperty() | ShaderPool::getWaterWakeProperty()))
+        return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
     const bool builtinShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc);
@@ -9083,6 +9112,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     applySceneInputs(render, extra.libraryBindings);
     applyEnvironment(render, extra.libraryBindings, mesh, transform);
     applyPlanarReflection(render, extra.libraryBindings, entity);
+    applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material, extra.customFSParams);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -10302,6 +10332,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applySceneInputs(render, libraryBindings);
             applyEnvironment(render, libraryBindings, mesh, transform);
             applyPlanarReflection(render, libraryBindings, entity);
+            applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material, mesh.submeshes[i].customFSParams);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -14974,6 +15005,185 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
         render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
 }
 
+void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
+                                         const Material& material, CustomUniformBlock& customParams){
+    if (customParams.waterInteractionOffset < 0)
+        return;
+    // (every member zero: Vector4's default)
+    fs_water_interaction_t block;
+    std::shared_ptr<WaterInteractionSystem> water = scene->findSystem<WaterInteractionSystem>();
+
+    // the excluders over the mesh (its surface within the waves' reach) in the pass camera's
+    // view, nearest first: the cap is reached only with more than 8 of them in view
+    if (water && hasWaterExcluders && bindings.slotWaterExclusionMaps.first != -1){
+        AABB bounds = mesh.worldAABB;
+        if (!bounds.isNull() && !bounds.isInfinite()){
+            WaterWaveParams waves;
+            const float reach = std::max(1.0f, Water::readWaves(material, waves) ? 2.0f * waves.getBand() : 0.0f);
+            bounds.setMinimumY(bounds.getMinimum().y - reach);
+            bounds.setMaximumY(bounds.getMaximum().y + reach);
+            const std::vector<WaterInteractionSystem::Excluder>& excluders = water->getExcluders();
+            std::vector<std::pair<float, size_t>> nearest;
+            for (size_t e = 0; e < excluders.size(); e++){
+                const WaterInteractionSystem::Excluder& excluder = excluders[e];
+                // a hull waits for its map in the array
+                if (excluder.hullMap && (excluder.hullLayer < 0 || excluder.hullLayer >= waterExclusionMapLayers))
+                    continue;
+                if (!bounds.intersects(excluder.worldBounds))
+                    continue;
+                if (passCamera && !isInsideCamera(passCamera->farClip, passCamera->frustumPlanes, excluder.worldBounds))
+                    continue;
+                const Vector3 closest(std::clamp(passEye.x, excluder.worldBounds.getMinimum().x, excluder.worldBounds.getMaximum().x),
+                                      std::clamp(passEye.y, excluder.worldBounds.getMinimum().y, excluder.worldBounds.getMaximum().y),
+                                      std::clamp(passEye.z, excluder.worldBounds.getMinimum().z, excluder.worldBounds.getMaximum().z));
+                nearest.push_back({(closest - passEye).squaredLength(), e});
+            }
+            std::sort(nearest.begin(), nearest.end());
+            if (nearest.size() > (size_t)WATER_EXCLUDERS_PER_DRAW && !waterExcluderCapWarned){
+                waterExcluderCapWarned = true;
+                Log::warn("More than %d Water Excluders in view over one water mesh (entity %u): the farthest keep no water out",
+                          WATER_EXCLUDERS_PER_DRAW, (unsigned int)entity);
+            }
+            // their rows in the frame's data texture (syncWaterInteraction), three bytes to a float
+            int count = 0;
+            uint32_t packed[3] = {0, 0, 0};
+            for (const auto& candidate : nearest){
+                if (count == WATER_EXCLUDERS_PER_DRAW)
+                    break;
+                if (candidate.second >= waterExclusionRows)
+                    continue;
+                packed[count / 3] |= (uint32_t)candidate.second << (8 * (count % 3));
+                count++;
+            }
+            block.exclusion = Vector4((float)count, (float)packed[0], (float)packed[1], (float)packed[2]);
+        }
+    }
+
+    // the wake map, with the tag of the water body this mesh is part of
+    const bool wake = water && hasWaterWakes && water->isWakeActive() && waterWakeTexture.isCreated();
+    if (wake){
+        const WaterWakeMap& map = water->getWakeMap();
+        const float texel = map.getTexel();
+        const Vector2 corner = map.getCorner();
+        block.wakeArea = Vector4(corner.x, corner.y, 1.0f / ((float)map.getSize() * texel), 1.0f);
+        // a full crest's height, its slope taken over one texel
+        block.wakeParams = Vector4(WATER_WAKE_CREST_HEIGHT / texel, 1.0f / (float)map.getSize(), (float)water->getBodyTag(entity) / 255.0f, 0.0f);
+    }
+
+    // into the shader's custom block, which the draw uploads next (applyCustomUniforms)
+    customParams.writeWaterInteraction(&block, sizeof(block));
+    if (bindings.slotWaterExclusionMaps.first != -1)
+        render.addTexture(bindings.slotWaterExclusionMaps, ShaderStageType::FRAGMENT,
+                          waterExclusionMapLayers > 0 ? &waterExclusionMaps : &emptyArrayWhite);
+    if (bindings.slotWaterExclusionData.first != -1 && ensureWaterExclusionData(1))
+        render.addTexture(bindings.slotWaterExclusionData, ShaderStageType::FRAGMENT, &waterExclusionData);
+    if (bindings.slotWaterWake.first != -1)
+        render.addTexture(bindings.slotWaterWake, ShaderStageType::FRAGMENT, wake ? &waterWakeTexture : &emptyBlack);
+}
+
+void RenderSystem::syncWaterInteraction(){
+    std::shared_ptr<WaterInteractionSystem> water = scene->findSystem<WaterInteractionSystem>();
+    if (!water || !Engine::isViewLoaded())
+        return;
+
+    // the hull maps, one layer each, made again when a hull or the layer list changes
+    if (water->getHullMapsVersion() != waterExclusionMapsVersion){
+        waterExclusionMapsVersion = water->getHullMapsVersion();
+        if (waterExclusionMapLayers > 0 || waterExclusionMaps.isCreated()){
+            waterExclusionMaps.destroyTexture();
+            waterExclusionMapLayers = 0;
+        }
+        std::vector<void*> data;
+        std::vector<size_t> sizes;
+        for (Entity layer : water->getHullLayers()){
+            const std::vector<uint8_t>* map = water->getHullMap(layer);
+            if (!map)
+                break;
+            data.push_back(const_cast<uint8_t*>(map->data()));
+            sizes.push_back(map->size());
+        }
+        if (!data.empty() && data.size() == water->getHullLayers().size()){
+            if (waterExclusionMaps.createTexture("water|exclusion|maps", WATER_EXCLUDER_HULL_MAP_SIZE, WATER_EXCLUDER_HULL_MAP_SIZE,
+                                                 ColorFormat::RGBA, TextureType::TEXTURE_ARRAY, (int)data.size(), data.data(), sizes.data(),
+                                                 TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+                waterExclusionMapLayers = (int)data.size();
+            }else{
+                waterExclusionMaps.destroyTexture();
+            }
+        }
+    }
+
+    // the frame's excluders, a row each (at most 256: a draw names its rows in bytes), uploaded
+    // once a frame (sokol's one update per image per frame)
+    const uint64_t dataFrame = SystemRender::getFrameCount();
+    if (hasWaterExcluders && dataFrame != waterExclusionDataFrame){
+        const std::vector<WaterInteractionSystem::Excluder>& excluders = water->getExcluders();
+        const size_t rows = std::min(excluders.size(), (size_t)256);
+        if (ensureWaterExclusionData(rows)){
+            waterExclusionTexels.assign((size_t)waterExclusionData.getHeight() * 4, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+            for (size_t e = 0; e < rows; e++){
+                const WaterInteractionSystem::Excluder& excluder = excluders[e];
+                for (int r = 0; r < 3; r++)
+                    waterExclusionTexels[e * 4 + (size_t)r] = excluder.worldToUnit.row((unsigned int)r);
+                const float shape = excluder.hullMap ? 2.0f : (excluder.shape == WaterExcluderShape::SPHERE ? 1.0f : 0.0f);
+                waterExclusionTexels[e * 4 + 3] = Vector4(shape, (float)std::max(excluder.hullLayer, 0), 0.0f, 0.0f);
+            }
+            if (waterExclusionData.updateTexture(waterExclusionTexels.data(), waterExclusionTexels.size() * sizeof(Vector4))){
+                waterExclusionRows = rows;
+                waterExclusionDataFrame = dataFrame;
+            }
+        }
+    }
+
+    // the wake map: made with the map, uploaded at most once a frame (sokol's one update per
+    // image per frame; Doriax c5b7a99dc), freed when no wake is left
+    if (water->isWakeActive()){
+        const WaterWakeMap& map = water->getWakeMap();
+        if (waterWakeTexture.isCreated() && waterWakeTexture.getWidth() != map.getSize())
+            waterWakeTexture.destroyTexture();
+        if (!waterWakeTexture.isCreated() &&
+                !waterWakeTexture.createDynamicTexture("water|wake", map.getSize(), map.getSize(), ColorFormat::RGBA,
+                                                       TextureFilter::LINEAR, TextureWrap::REPEAT))
+            return;
+        // (a scene drawn by two views in a frame uploads in the first)
+        const uint64_t frame = SystemRender::getFrameCount();
+        if (water->isWakeDirty() && frame != waterWakeUploadFrame &&
+                waterWakeTexture.updateTexture(map.getTexels().data(), map.getTexels().size())){
+            waterWakeUploadFrame = frame;
+            water->markWakeUploaded();
+        }
+    }else if (waterWakeTexture.isCreated()){
+        waterWakeTexture.destroyTexture();
+    }
+}
+
+bool RenderSystem::ensureWaterExclusionData(size_t rows){
+    int height = 1;
+    while ((size_t)height < rows)
+        height <<= 1;
+    if (waterExclusionData.isCreated() && waterExclusionData.getHeight() >= height)
+        return true;
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
+    return waterExclusionData.createDynamicTexture("water|exclusion|data", 4, height);
+}
+
+void RenderSystem::destroyWaterInteraction(){
+    if (waterExclusionMaps.isCreated())
+        waterExclusionMaps.destroyTexture();
+    if (waterExclusionData.isCreated())
+        waterExclusionData.destroyTexture();
+    waterExclusionRows = 0;
+    waterExclusionDataFrame = UINT64_MAX;
+    waterExclusionMapLayers = 0;
+    // made again from the system's maps on the next draw
+    waterExclusionMapsVersion = 0;
+    if (waterWakeTexture.isCreated())
+        waterWakeTexture.destroyTexture();
+}
+
 // Drives each mirror's reflection camera: its view = mainView * reflect(plane),
 // so the reflected scene is rendered into that camera's framebuffer. Runs after
 // the main camera is updated and before the draw pass. The handedness flip from
@@ -15356,6 +15566,31 @@ void RenderSystem::needReloadMeshes() {
     for (int i = 0; i < meshes->size(); i++) {
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
         mesh.needReload = true;
+    }
+}
+
+void RenderSystem::needReloadWaterVariants() {
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    auto readsWater = [](const std::string& shader){
+        if (shader.empty() || ShaderReference::isBuiltin(shader))
+            return false;
+        const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        return manifest && (manifest->getPossibleRequire() & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)) != 0;
+    };
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        bool water = false;
+        for (unsigned int s = 0; s < mesh.numSubmeshes && !water; s++){
+            const Material& material = mesh.submeshes[s].material;
+            water = readsWater(getSubmeshShader(mesh, mesh.submeshes[s], sceneMeshShader)) || readsWater(material.extraPass->shader);
+        }
+        if (!water)
+            continue;
+        if (mesh.loaded && !mesh.needReload)
+            mesh.needVariantReload = true;
+        else
+            mesh.needReload = true;
     }
 }
 
@@ -16645,6 +16880,16 @@ void RenderSystem::update(double dt){
     // library:underwater passes on while the main camera is under a water (Water.h)
     Water::updateUnderwater(scene);
 
+    // the water variants follow the scene's Water Excluders and Wakes ('Wex', 'Wwk'), enabled or
+    // not (a script switches them on without a variant change); the last one gone drops the bit
+    const bool waterExcluders = scene->getComponentArray<WaterExcluderComponent>()->size() > 0;
+    const bool waterWakes = scene->getComponentArray<WaterWakeComponent>()->size() > 0;
+    if (waterExcluders != hasWaterExcluders || waterWakes != hasWaterWakes){
+        hasWaterExcluders = waterExcluders;
+        hasWaterWakes = waterWakes;
+        needReloadWaterVariants();
+    }
+
     // a new device tier, thermal step or project LOD bias (QualityResolver): the post-processing
     // tiers resolve again, the instance views pick their LODs again, and SSAO's mesh variant
     // follows a tier that turns it off
@@ -17784,6 +18029,8 @@ void RenderSystem::draw(){
     // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
     // synced it): their render points again, so this frame shows it
     refreshGroupFadedPoints();
+    // the Water Excluders' hull maps and the Water Wakes' map, before any pass draws a water
+    syncWaterInteraction();
     beginBatchFrame();
     drawFramePasses();
     drawCameras(true);
@@ -17955,6 +18202,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     Transform& cameraTransform = *pass.cameraTransform;
     const bool isMainCamera = pass.isMain;
     passCamera = &camera;
+    passEye = cameraTransform.worldPosition;
     const int terrainView = pass.terrainView;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
@@ -19583,6 +19831,13 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<ReflectionProbeComponent>()) {
         hasReflectionProbes = true;
         needReloadMeshVariants();
+    } else if (componentId == scene->getComponentId<WaterExcluderComponent>() && !hasWaterExcluders) {
+        // the water variants take 'Wex' (includes/water_interaction.glsl)
+        hasWaterExcluders = true;
+        needReloadWaterVariants();
+    } else if (componentId == scene->getComponentId<WaterWakeComponent>() && !hasWaterWakes) {
+        hasWaterWakes = true;
+        needReloadWaterVariants();
     }
 }
 

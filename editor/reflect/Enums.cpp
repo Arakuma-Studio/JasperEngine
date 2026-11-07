@@ -32,6 +32,7 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/LineRendererComponent.h"
 #include "render/LodFade.h"
@@ -438,6 +439,12 @@ namespace {
         {v(AnimatorIKType::FootLock), "foot_lock", "Foot Lock", "AnimatorIKType::FootLock"},
     };
 
+    constexpr EnumItem kWaterExcluderShapeItems[] = {
+        {v(WaterExcluderShape::BOX), "box", "Box", "WaterExcluderShape::BOX"},
+        {v(WaterExcluderShape::SPHERE), "sphere", "Sphere", "WaterExcluderShape::SPHERE"},
+        {v(WaterExcluderShape::CONVEX_HULL), "convex_hull", "Convex Hull", "WaterExcluderShape::CONVEX_HULL"},
+    };
+
     constexpr EnumItem kBuoyancyColumnsItems[] = {
         {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
         {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
@@ -766,6 +773,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
     const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
     const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
     const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};

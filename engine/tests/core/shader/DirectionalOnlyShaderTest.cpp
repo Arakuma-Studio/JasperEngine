@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The built-in Lit's directional-only variant (MESH bit 42 'Dlo', draw-perf spec 6.5): named, given
+// The built-in Lit's directional-only variant (MESH bit 44 'Dlo', draw-perf spec 6.5): named, given
 // up first when a build lacks it (the general variant draws the same scene), and compiled without
 // the spot mask atlas, the point shadow block and the point shadow atlas (two textures and a block
 // fewer to bind). A lit variant without the bit is untouched (ShaderZeroCost holds its hashes).
@@ -19,7 +19,7 @@ using namespace jasperengine;
 namespace {
 
     // MESH 'Dlo', by its number
-    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 42;
+    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 44;
 
     // a lit, shadowed built-in Lit variant
     uint64_t litShadowed(){
@@ -43,9 +43,9 @@ namespace {
 
 }
 
-TEST(DirectionalOnlyShader, IsMeshBit42){
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 42), "Dlo");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 42, false), "Directional Lights Only");
+TEST(DirectionalOnlyShader, IsMeshBit44){
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 44), "Dlo");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 44, false), "Directional Lights Only");
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, DIRECTIONAL_ONLY_BIT | 8u)).properties,
               DIRECTIONAL_ONLY_BIT | 8u) << "the bit is a property a key keeps";
 }

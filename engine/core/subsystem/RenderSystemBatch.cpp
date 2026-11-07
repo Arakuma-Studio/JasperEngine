@@ -61,7 +61,7 @@ namespace{
         30, // L16
         31, // Pcl
         33, // Shq
-        42  // Dlo (the lights' types a constant of the variant: nothing per object)
+        44  // Dlo (the lights' types a constant of the variant: nothing per object)
     };
 
     uint64_t batchMeshPropertyMask(){

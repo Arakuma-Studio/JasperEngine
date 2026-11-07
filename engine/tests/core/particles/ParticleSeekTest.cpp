@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <vector>
 
 using namespace particletest;
 
@@ -230,4 +231,33 @@ TEST(ParticleSeek, SendTriggerRaisesTheTriggerSubEmitters){
     ASSERT_NE(state, nullptr);
     EXPECT_GE(state->runtime.subEmitEvents().size(), (size_t)std::min<uint32_t>(parents, 64u));
     ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSeek, AutoRandomSeedsAreTheScenesOwnSequence){
+    // Auto Random Seed (seed 0): every play in a scene draws its next seed, and a new scene starts
+    // the sequence over, whatever other scenes played before it
+    auto playSeeds = [](){
+        Scene scene;
+        ParticleSystem system(&scene);
+        system.setPlayOnAwake(false);
+        EXPECT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 1, "maxParticles": 100,
+            "modules": [{"type": "main", "startLifetime": 0.1, "startSpeed": 0}, {"type": "emission", "rateOverTime": 60}]})"));
+        std::vector<uint32_t> seeds;
+        ParticleSubsystem* subsystem = scene.getSystem<ParticleSubsystem>().get();
+        for (int play = 0; play < 2; play++){
+            system.play();
+            system.step(10);
+            const particles::ParticleSystemState* state = subsystem->getState(system.getEntity());
+            EXPECT_NE(state, nullptr);
+            seeds.push_back(state ? state->seed : 0u);
+            system.stop(true);
+        }
+        return seeds;
+    };
+    const std::vector<uint32_t> first = playSeeds();
+    const std::vector<uint32_t> second = playSeeds();
+    ASSERT_EQ(first.size(), 2u);
+    EXPECT_NE(first[0], 0u);
+    EXPECT_NE(first[0], first[1]) << "each play draws a new seed";
+    EXPECT_EQ(second, first) << "a new scene starts its own sequence";
 }

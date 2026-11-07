@@ -641,7 +641,7 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
 }
 
 bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height,
-            ColorFormat colorFormat, TextureFilter filter){
+            ColorFormat colorFormat, TextureFilter filter, TextureWrap wrap){
     sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     size_t bytesPerPixel;
     if (colorFormat == ColorFormat::RGBA){
@@ -670,8 +670,8 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     sg_sampler_desc samplerDesc = {};
     samplerDesc.min_filter = getFilter(filter);
     samplerDesc.mag_filter = getFilter(filter);
-    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_u = getWrap(wrap);
+    samplerDesc.wrap_v = getWrap(wrap);
 
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(imageDesc);

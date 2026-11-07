@@ -41,7 +41,7 @@ using namespace jasperengine::test;
 namespace {
 
     // MESH 'Dlo' (ShaderPool::getDirectionalOnlyProperty), by its number: older engines have no name for it
-    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 42;
+    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 44;
 
     std::vector<uint8_t> readTarget(){
         Framebuffer& target = GpuEnvironment::target();
@@ -220,7 +220,7 @@ TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     settle();
     const Submesh& submesh = made.getComponent<MeshComponent>().submeshes[0];
     EXPECT_NE(submesh.shaderProperties & DIRECTIONAL_ONLY_BIT, 0u) << "a sun-only scene's Lit is not 'Dlo'";
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 42), "Dlo");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 44), "Dlo");
 
     // a point light, even switched off, takes the general variant
     lights.push_back(std::make_unique<Light>(&scene));

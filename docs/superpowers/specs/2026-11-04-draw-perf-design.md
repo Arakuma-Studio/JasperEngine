@@ -633,7 +633,8 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   no longer scans 128 matrices. The `hasSkinning` gate still fixes the inflated bounds of a rigid
   mesh that holds palette entries (a script's write, a posed palette in a file); its regression
   test writes one.
-- **`Dlo` is MESH bit 42** (36-41 went to S57's `Til`/`Cap`/`Cts`/`Oit`, S54's `Lfd`, S55's `Aui`).
+- **`Dlo` is MESH bit 44** (36-41 went to S57's `Til`/`Cap`/`Cts`/`Oit`, S54's `Lfd`, S55's `Aui`; 42-43 to
+  water-boats' `Wex`/`Wwk`).
   It is not combined with Light Mode Tiled (the tiles list the scene's lights as they come). The
   object lights of a `Dlo` variant leave non-directional lights out in `orderObjectLights`; the
   cached light bits keep their `uint32_t` and take `Dlo` as bit 1 (UV1's, never in the mask)
@@ -665,7 +666,7 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   the render thread and `computeWorldTransform` the parent's affine matrix in debug builds.
   `TransformPropagation.WorldValuesMatchTheGeneralProducts` lives in `engine/tests/core/ecs` (beside
   its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
-  v52 (v51 is water-reflections').
+  v53 (v51 is water-reflections', v52 water-boats').
 - **D8 is withdrawn.** Skipping the swapchain pipelines while `Engine::getFramebuffer()` is set lost
   draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` run alone, a sprite turned
   alpha-masked never drew in its batched single run (one draw counted for two runs) while it drew with

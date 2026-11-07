@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The directional-only Lit variant (MESH bit 42 'Dlo', draw-perf spec 6.5):
+// The directional-only Lit variant (MESH bit 44 'Dlo', draw-perf spec 6.5):
 // - it compiles for every backend an export targets within the resource budget, without the spot
 //   mask atlas, the point shadow atlas and their block;
 // - an export of a scene whose lights are all directional ships each 'Dlo' variant with its
@@ -33,7 +33,7 @@ using namespace jasperengine::editor;
 namespace {
 
     // MESH 'Dlo', by its number
-    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 42;
+    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 44;
 
 }
 
