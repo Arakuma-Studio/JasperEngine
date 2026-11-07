@@ -82,6 +82,8 @@ struct NavCrowd::Impl {
     // the area masks of the 16 query filters (0: unused)
     std::vector<uint16_t> filterMasks;
     std::vector<dtCrowdAgent*> active;
+    // the mesh revision the corridors were last checked against
+    uint64_t meshRevision = 0;
 
     ~Impl() { release(); }
 
@@ -178,6 +180,7 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
         return false;
     }
     impl->mesh = &mesh;
+    impl->meshRevision = mesh.getRevision();
     impl->capacity = std::max(1, maxAgents);
     impl->params.assign((size_t)impl->capacity, NavCrowdAgentParams());
     impl->onLink.assign((size_t)impl->capacity, 0);
@@ -305,6 +308,28 @@ Vector3 NavCrowd::getTargetPosition(int agent) const {
 void NavCrowd::update(float dt) {
     if (!impl->crowd || impl->count == 0)
         return;
+    // Tiles changed (a cut, a rebuilt or patched tile): dtCrowd checks only the next 10 polygons
+    // of a corridor, so a change further along would leave the path, and its status, stale until
+    // the agent got there. A corridor holding a polygon that is gone is planned again now, so
+    // pathStatus follows the mesh (spec S53 R6).
+    const uint64_t revision = impl->mesh->getRevision();
+    if (revision != impl->meshRevision) {
+        impl->meshRevision = revision;
+        for (int index = 0; index < impl->capacity; index++) {
+            dtCrowdAgent* ag = impl->editable(index);
+            if (!ag->active || impl->params[(size_t)index].obstacle || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+                ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+                continue;
+            const dtQueryFilter* filter = impl->filterOf(ag);
+            // a target that is gone dtCrowd moves itself, and plans again from there
+            if (!impl->query()->isValidPolyRef(ag->targetRef, filter) ||
+                ag->corridor.isValid(ag->corridor.getPathCount(), impl->editableQuery(), filter))
+                continue;
+            float target[3];
+            dtVcopy(target, ag->targetPos);
+            impl->crowd->requestMoveTarget(index, ag->targetRef, target);
+        }
+    }
     impl->crowd->update(dt, nullptr);
 
     // obstacles stand where their transforms put them
