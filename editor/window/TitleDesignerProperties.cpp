@@ -190,7 +190,11 @@ void TitleDesignerWindow::drawSearchResults() {
         }
         ctx.stepPrefix = prefix;
         const uint64_t before = doc.changeCount();
-        if (entry.link) {
+        if (entry.kind == "font") {
+            std::vector<std::string> layers;
+            for (const FieldRef& target : entry.targets) layers.push_back(target.layer);
+            drawFontRow(layers, ctx.readOnly);
+        } else if (entry.link) {
             ui::DocRowOptions options;
             options.label = entry.label.c_str();
             options.fieldPath = entry.fieldPath;

@@ -43,7 +43,7 @@ namespace jasperengine::editor::titledesigner {
         std::string nodeLabel;                // "Title" (the layer's name), for "Search every layer" grouping
         std::vector<FieldRef> targets;        // what the live control edits
         std::string fieldPath;                // "style.rims[1].width" (tooltip, Copy Property Path)
-        std::string kind;                     // "number", "integer", "bool", "enum", "color", "gradient", "curve", "asset", "text", "vec2"
+        std::string kind;                     // "number", "integer", "bool", "enum", "color", "gradient", "curve", "asset", "text", "vec2", "font" (the window's font row)
         std::vector<std::string> enumLabels;  // labels of enum values ("Ring" finds Gloss = Ring)
         bool link = false;                    // works only on its page: shown as a link
     };

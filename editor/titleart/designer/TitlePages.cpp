@@ -352,8 +352,7 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
                     entry.nodeLabel = ctx.nodeLabel;
                     entry.targets = refs(layers, "font");
                     entry.fieldPath = "font";
-                    entry.kind = "asset";
-                    entry.link = true;
+                    entry.kind = "font";  // its live control is the window's font row (PropertyHost::drawFontRow)
                     ctx.sink->add(std::move(entry));
                 }
                 endSection(ctx);
