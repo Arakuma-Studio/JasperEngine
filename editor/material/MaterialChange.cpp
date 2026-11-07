@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MaterialChange.h"
+#include "component/MeshComponent.h"
 
 #include "MaterialPresets.h"
 #include "command/type/MultiPropertyCmd.h"

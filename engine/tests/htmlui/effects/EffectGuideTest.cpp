@@ -83,8 +83,9 @@ TEST(EffectGuideTest, EveryExampleRenders){
         GTEST_SKIP() << "no GPU";
     // the built-in effects the examples use, compiled
     for (const EffectManifest* m : EffectRegistry::get().builtins()){
-        if (section.find("effect(" + m->name + ",") != std::string::npos || section.find("effect(" + m->name + ")") != std::string::npos)
+        if (section.find("effect(" + m->name + ",") != std::string::npos || section.find("effect(" + m->name + ")") != std::string::npos){
             ASSERT_TRUE(warmUpEffect(*m)) << m->name;
+        }
     }
     for (size_t index = 0; index < css.size(); index++){
         std::string sheet = css[index];
@@ -108,8 +109,9 @@ TEST(EffectGuideTest, EveryExampleRenders){
         std::string error;
         ASSERT_TRUE(scene.loadHtml(html, &error)) << error;
         for (const EffectManifest* m : EffectRegistry::get().all()){
-            if (!m->builtin)
+            if (!m->builtin){
                 ASSERT_TRUE(warmUpEffect(*m)) << m->name << " does not compile";
+            }
         }
         TestImage image;
         {

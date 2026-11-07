@@ -17,6 +17,7 @@
 #include <map>
 #include <sstream>
 #include <thread>
+#include "htmlui/HttpClient.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN

@@ -5,7 +5,10 @@
 // .scene file of editor/tests/fixtures/scenes (copies of the tools/fixtures projects' scenes),
 // which must load without an engine error and save back to the same YAML.
 
+#include "component/MeshComponent.h"
 #include "Project.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 #include "Stream.h"
 
 #include "LogCapture.h"
@@ -144,6 +147,7 @@ TEST(StreamScene, SnapshotDecodesAMeshWithKeysItDoesNotEncode){
     played.restore(true);
     EXPECT_TRUE(played.scene.getComponent<MeshComponent>(played.entity).needReload);
     EXPECT_TRUE(Stream::encodeEntity(played.entity, &played.scene)["components"]["mesh"]["fromALaterEditor"]);
+    EXPECT_EQ(Stream::encodeEntity(played.entity, &played.scene)["components"]["mesh"]["fromALaterEditor"].as<int>(), 1);
 }
 
 // undo, prefab propagation and every other decode over a live Mesh: as ever

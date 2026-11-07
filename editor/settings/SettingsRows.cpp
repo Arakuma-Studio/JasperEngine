@@ -21,6 +21,8 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/DeviceSettingsCmd.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -29,7 +31,9 @@
 #include "input/InputActions.h"
 #include "players/PlayerRuntimes.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "texture/TextureImportSettings.h"
+#include "model/ModelImportSettings.h"
 #include "log/Logger.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpValues.h"
@@ -38,6 +42,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
+#include "util/SystemFonts.h"
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
@@ -88,6 +93,8 @@ const EnumMap<Scaling> scalingModes[] = {
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<LightMode> lightModes[] = {
+    {"automatic", LightMode::AUTOMATIC}, {"per_object", LightMode::PER_OBJECT}, {"tiled", LightMode::TILED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -192,6 +199,8 @@ bool readProjectFile(SettingsContext& ctx, const Json& value, fs::path& out, std
         out.clear();
         return true;
     }
+    // a backslash is a separator on every platform (Stream::portablePath)
+    text = FileUtils::portablePath(text);
     fs::path absolute;
     if (!mcp::McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
     out = FileUtils::pathFromUtf8(text).lexically_normal();
@@ -596,6 +605,167 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
         return true;
     };
     return s;
+}
+
+// GPU Instancing (spec S55): DrawSubmissionSettings changed, applied as one undoable step (undo
+// scope project)
+bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmissionSettings&)>& change, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    DrawSubmissionSettings changed = p->getDrawSubmissionSettings();
+    change(changed);
+    if (apply && changed != p->getDrawSubmissionSettings()) {
+        auto* command = new DrawSubmissionSettingsCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
+}
+
+// One key of the device settings (spec S56), applied as one undoable step (undo scope project):
+// `set` changes a copy, which a DeviceSettingsCmd applies when it differs
+Setting deviceSetting(const std::string& key, const std::string& type, const std::string& description,
+                      std::function<Json(const DeviceSettings&)> get, std::function<bool(DeviceSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getDeviceSettings()); };
+    s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        DeviceSettings changed = p->getDeviceSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getDeviceSettings()) {
+            auto* command = new DeviceSettingsCmd(p, changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the device settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+// a tier's cells as JSON: every field, null where it inherits; enumerated cells by name
+Json deviceTierJson(const DeviceTierOverrides& tier) {
+    Json out = Json::object();
+    for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) {
+        const DeviceOverride field = (DeviceOverride)f;
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        const std::optional<float>& cell = tier.get(field);
+        if (!cell) {
+            out[info.key] = nullptr;
+        } else if (info.kind == DeviceOverrideInfo::Kind::Off) {
+            out[info.key] = false;
+        } else if (info.names) {
+            out[info.key] = lowerText(DeviceOverrides::format(field, *cell));
+        } else if (info.integer) {
+            out[info.key] = (int)*cell;
+        } else {
+            out[info.key] = *cell;
+        }
+    }
+    return out;
+}
+
+// merges {field: value | null} into a tier: a listed field is replaced, null inherits again
+bool mergeDeviceTier(DeviceTierOverrides& tier, const Json& value, std::string& error) {
+    if (!value.is_object()) {
+        error = "must be an object of cells ({\"render_scale\": 0.6, \"ssao\": false, \"msaa_samples\": null}); null inherits";
+        return false;
+    }
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        DeviceOverride field;
+        if (!DeviceOverrides::fromKey(it.key(), field)) {
+            std::string keys;
+            for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) keys += std::string(f ? ", " : "") + DeviceOverrides::info((DeviceOverride)f).key;
+            error = "\"" + it.key() + "\" is not a cell (" + keys + ")";
+            return false;
+        }
+        const Json& cell = it.value();
+        float number = 0.0f;
+        if (cell.is_null()) {
+            tier.set(field, std::nullopt);
+            continue;
+        }
+        if (cell.is_boolean()) {
+            if (DeviceOverrides::info(field).kind != DeviceOverrideInfo::Kind::Off || cell.get<bool>()) {
+                error = it.key() + (DeviceOverrides::info(field).kind == DeviceOverrideInfo::Kind::Off
+                                    ? ": a tier only turns it off (false); null inherits" : ": must be a number");
+                return false;
+            }
+        } else if (cell.is_string()) {
+            if (!DeviceOverrides::parse(field, cell.get<std::string>(), number, error)) return false;
+        } else if (cell.is_number()) {
+            number = cell.get<float>();
+            if (!DeviceOverrides::validate(field, number, error)) return false;
+        } else {
+            error = it.key() + ": must be a number, a name or null";
+            return false;
+        }
+        tier.set(field, number);
+    }
+    return true;
+}
+
+// Project Settings > Quality > Device Tiers and the rest of the device settings (spec S56)
+void addDeviceSettings(const std::function<void(Setting)>& add) {
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+        const DevicePlatformGroup group = (DevicePlatformGroup)g;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+            const DeviceTier tier = (DeviceTier)t;
+            add(deviceSetting(std::string("quality.device_tiers.") + DeviceNames::group(group) + "." + DeviceNames::tier(tier), "object",
+                std::string("The ") + DeviceNames::tierLabel(tier) + " tier's overrides on " + DeviceNames::groupLabel(group) +
+                " (docs/device-tiers.md): an object of cells merged in, null inherits the project's value; caps lower, never raise "
+                "(render_scale, msaa_samples, shadow_quality, shadow_distance, lit_quality, target_frame_rate, max_pixel_lights, "
+                "particle_budget), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
+                "shadow_lod_bias multiply.",
+                [group, tier](const DeviceSettings& d) { return deviceTierJson(d.tier(group, tier)); },
+                [group, tier](DeviceSettings& d, const Json& v, std::string& e) { return mergeDeviceTier(d.tier(group, tier), v, e); }));
+        }
+        add(deviceSetting(std::string("quality.thermal_response.") + DeviceNames::group(group), "bool",
+            std::string("On ") + DeviceNames::groupLabel(group) + ", a Serious thermal state lowers the render scale by 20% and caps the "
+            "frame rate at 30; Critical also takes the tier below's shadows and post-processing; recovery after 30 s.",
+            [g](const DeviceSettings& d) { return Json((bool)d.thermalResponse[g]); },
+            [g](DeviceSettings& d, const Json& v, std::string& e) {
+                bool on;
+                if (!readBool(v, on, e)) return false;
+                d.thermalResponse[g] = on;
+                return true;
+            }));
+        add(deviceSetting(std::string("graphics.upload_budget_mb.") + DeviceNames::group(group), "int",
+            std::string("MB of queued texture and buffer uploads a ") + DeviceNames::groupLabel(group) +
+            " frame runs at most (a larger one goes alone); the rest waits for the next frames.",
+            [g](const DeviceSettings& d) { return Json(d.uploadBudgetMB[g]); },
+            [g](DeviceSettings& d, const Json& v, std::string& e) {
+                long long mb;
+                if (!readInt(v, DeviceSettings::MIN_UPLOAD_BUDGET_MB, DeviceSettings::MAX_UPLOAD_BUDGET_MB, mb, e)) return false;
+                d.uploadBudgetMB[g] = (int)mb;
+                return true;
+            }));
+    }
+    add(deviceSetting("quality.lod_bias", "number",
+        "Multiplies every mesh's LOD Bias (below 1 switches to coarser LODs nearer); a Device Tier's lod_bias multiplies it again.",
+        [](const DeviceSettings& d) { return Json(d.lodBias); },
+        [](DeviceSettings& d, const Json& v, std::string& e) {
+            double bias;
+            if (!readNumber(v, 0.05, 8.0, bias, e)) return false;
+            d.lodBias = (float)bias;
+            return true;
+        }));
+    add(deviceSetting("quality.shadow_lod_bias", "number",
+        "Multiplies the LOD bias of what shadow maps draw; a Device Tier's shadow_lod_bias multiplies it again.",
+        [](const DeviceSettings& d) { return Json(d.shadowLodBias); },
+        [](DeviceSettings& d, const Json& v, std::string& e) {
+            double bias;
+            if (!readNumber(v, 0.05, 8.0, bias, e)) return false;
+            d.shadowLodBias = (float)bias;
+            return true;
+        }));
 }
 
 // "mainThreadBudgetMs" -> "main_thread_budget_ms"
@@ -1456,6 +1626,23 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        {
+            Setting s;
+            s.key = "graphics.light_mode";
+            s.type = "enum";
+            s.values = enumNames(lightModes);
+            s.description = "How lit meshes find their point and spot lights. Tiled lights every point and spot light per pixel from "
+                            "screen tiles (Forward+, up to 32 a tile; a per-frame CPU job and one data texture); Per Object caps each "
+                            "object's lights at Max Lights Per Object; Automatic (default) is Tiled on Medium tiers and above.";
+            s.get = [](SettingsContext& ctx) { return Json(enumName(lightModes, ctx.project()->getLightMode())); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                LightMode v;
+                if (!parseEnum(lightModes, value, v, error)) return false;
+                if (apply) ctx.project()->setLightMode(v);
+                return true;
+            };
+            add(s);
+        }
         // ---- texture (Project Settings > Texture, S14 R24)
         {
             auto textureSetting = [&](const std::string& key, const std::string& type, const std::string& description,
@@ -1552,6 +1739,139 @@ std::vector<Setting> mcpSettingsTable() {
             textureSetting("texture.global_cache_dir", "string", "A cooked texture cache every project shares (\"\" = the project's own).",
                            [](const TextureProjectSettings& t) { return Json(t.globalCacheDir); },
                            [](TextureProjectSettings& t, const Json& v, std::string& e) { return readString(v, t.globalCacheDir, e); });
+        }
+        // ---- mesh (Project Settings > Mesh, S53 R19) and the render budgets (Quality, R25)
+        {
+            auto meshSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                   std::function<Json(const ModelProjectSettings&)> get,
+                                   std::function<bool(ModelProjectSettings&, const Json&, std::string&)> set,
+                                   std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.description = description;
+                s.values = std::move(values);
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getModelSettings()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    ModelProjectSettings next = ctx.project()->getModelSettings();
+                    if (!set(next, value, error)) return false;
+                    if (apply) ctx.project()->setModelSettings(next);
+                    return true;
+                };
+                add(s);
+            };
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const std::string family = modelFamilyName((ModelFamily)f);
+                // each R8 setting's default for models that do not set it ("" = the built-in default)
+                for (const std::string& metaKey : modelSettingKeys()) {
+                    const std::vector<std::string>& choices = modelEnumValues(metaKey);
+                    const bool isBool = metaKey == "weldVertices" || metaKey == "shipSource";
+                    std::vector<std::string> values;
+                    if (!choices.empty()) {
+                        values = choices;
+                        values.insert(values.begin(), "");
+                    }
+                    std::string snake;
+                    for (char c : metaKey) snake += std::isupper((unsigned char)c) ? std::string("_") + (char)std::tolower((unsigned char)c) : std::string(1, c);
+                    meshSetting("mesh.defaults." + family + "." + snake, !choices.empty() ? "enum" : isBool ? "bool" : metaKey == "lodCount" ? "int" : "float",
+                                "Default " + snake + " of " + family + " cooks for models that do not set it.",
+                                [f, metaKey](const ModelProjectSettings& m) {
+                                    ModelProjectSettings one;
+                                    one.defaults[f] = m.defaults[f];
+                                    const YAML::Node encoded = encodeModelProjectSettings(one);
+                                    const YAML::Node value = encoded["defaults"] ? encoded["defaults"][modelFamilyName((ModelFamily)f)][metaKey] : YAML::Node();
+                                    if (!value) return Json(nullptr);
+                                    const std::string text = value.Scalar();
+                                    if (text == "true" || text == "false") return Json(text == "true");
+                                    if (metaKey == "lodCount") return Json(std::atoi(text.c_str()));
+                                    if (metaKey == "smoothingAngle") return Json(std::atof(text.c_str()));
+                                    return Json(text);
+                                },
+                                [f, metaKey](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                    ModelProjectSettings one;
+                                    one.defaults[f] = m.defaults[f];
+                                    YAML::Node encoded = encodeModelProjectSettings(one);
+                                    const std::string family = modelFamilyName((ModelFamily)f);
+                                    if (!encoded["defaults"]) encoded["defaults"] = YAML::Node(YAML::NodeType::Map);
+                                    if (!encoded["defaults"][family]) encoded["defaults"][family] = YAML::Node(YAML::NodeType::Map);
+                                    YAML::Node block = encoded["defaults"][family];
+                                    if (v.is_null() || (v.is_string() && v.get<std::string>().empty())) {
+                                        block.remove(metaKey);
+                                    } else {
+                                        YAML::Node value = v.is_boolean() ? YAML::Node(v.get<bool>()) : v.is_number_integer() ? YAML::Node(v.get<long long>())
+                                                         : v.is_number() ? YAML::Node(v.get<double>()) : v.is_string() ? YAML::Node(v.get<std::string>()) : YAML::Node();
+                                        if (!value || !validateModelSettingsField(metaKey, value, e)) {
+                                            if (e.empty()) e = "expected a boolean, number or string";
+                                            return false;
+                                        }
+                                        block[metaKey] = value;
+                                    }
+                                    ModelProjectSettings decoded;
+                                    decodeModelProjectSettings(encoded, decoded);
+                                    m.defaults[f] = decoded.defaults[f];
+                                    return true;
+                                }, values);
+                }
+                meshSetting("quality.render_budgets." + family + ".triangles", "int",
+                            "Triangles a " + family + " scene may draw (check_render_budgets; 0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].triangles); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                long long n;
+                                if (!readInt(v, 0, 1LL << 40, n, e)) return false;
+                                m.renderBudgets[f].triangles = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".draw_calls", "int",
+                            "Draw calls a " + family + " scene may make (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].drawCalls); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                long long n;
+                                if (!readInt(v, 0, 1LL << 32, n, e)) return false;
+                                m.renderBudgets[f].drawCalls = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".mesh_memory_mb", "float",
+                            "MB of mesh data a " + family + " scene's models may hold on the GPU (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].meshMemoryMB); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                double n;
+                                if (!readNumber(v, 0.0, 1e9, n, e)) return false;
+                                m.renderBudgets[f].meshMemoryMB = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".download_mb", "float",
+                            "MB a " + family + " scene's cooked model files may download (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].downloadMB); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                double n;
+                                if (!readNumber(v, 0.0, 1e9, n, e)) return false;
+                                m.renderBudgets[f].downloadMB = n;
+                                return true;
+                            });
+            }
+            meshSetting("mesh.cache_size_mb", "int", "MB the cooked model cache keeps (least recently used first).",
+                        [](const ModelProjectSettings& m) { return Json(m.cacheSizeMB); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            long long mb;
+                            if (!readInt(v, 64, 1 << 20, mb, e)) return false;
+                            m.cacheSizeMB = (int)mb;
+                            return true;
+                        });
+            meshSetting("mesh.keep_cpu_data_for_scripts", "enum",
+                        "Whether models keep their CPU mesh data for scripts: automatic (when a script calls a mesh-reading API), keep or release.",
+                        [](const ModelProjectSettings& m) { return Json(scriptMeshDataName(m.scriptMeshData)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (ScriptMeshData d : {ScriptMeshData::Automatic, ScriptMeshData::Keep, ScriptMeshData::Release}) {
+                                if (name == scriptMeshDataName(d)) {
+                                    m.scriptMeshData = d;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of automatic, keep, release";
+                            return false;
+                        }, {"automatic", "keep", "release"});
         }
         {
             Setting s;
@@ -1711,6 +2031,22 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
+        // GPU Instancing (S55): draws of one mesh, material and shader drawn as one
+        {
+            Setting s;
+            s.key = "graphics.gpu_instancing";
+            s.type = "bool";
+            s.description = "GPU Instancing: opaque Mesh draws of the same mesh, material and shader are drawn as one instanced draw "
+                            "(the image is the same), constant uniforms are applied once, and passes sort their draws by state. "
+                            "A Mesh opts out with Allow GPU Instancing. Off submits every draw alone, as before. Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getDrawSubmissionSettings().gpuInstancing); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                return setDrawSubmission(ctx, [b](DrawSubmissionSettings& settings) { settings.gpuInstancing = b; }, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -1730,6 +2066,28 @@ std::vector<Setting> mcpSettingsTable() {
                     std::array<AtmosphereQuality, 3> all = ctx.project()->getAtmosphereQuality();
                     all[group] = quality;
                     ctx.project()->setAtmosphereQuality(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+        // the foliage distance scale per platform group (Engine::setFoliageDistanceScaleDefaults)
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "number";
+            s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+            s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 10.0, v, error)) return false;
+                if (apply) {
+                    std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
+                    all[group] = static_cast<float>(v);
+                    ctx.project()->setFoliageDistanceScale(all);
                 }
                 return true;
             };
@@ -2017,6 +2375,74 @@ std::vector<Setting> mcpSettingsTable() {
             };
         }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
+        audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
+        audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
+        audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
+        for (const AudioQaField& field : audioQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const AudioQaSettings& qa = ctx.project()->getAudioSettings().qa;
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    if (field.real) settings.qa.*field.real = value.get<float>();
+                    else settings.qa.*field.whole = value.get<int>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "audio.qa.music_group";
+            s.type = "string";
+            s.description = "The mixer group of the game's music, for the silence check.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().qa.musicGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a group name";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.qa.musicGroup = value.get<std::string>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "audio.capture_stems";
+            s.type = "bool";
+            s.description = "A capture also writes each mixer group's audio to its own WAV file.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().captureStems); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.captureStems = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "audio.sample_rate";
@@ -2072,6 +2498,102 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+
+        {
+            Setting s;
+            s.key = "audio.music_group";
+            s.type = "string";
+            s.description = "The mixer group music plays through when neither Audio.playMusic nor its Sound Event names one (\"\" = Master).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().musicGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error, 64)) return false;
+                if (!text.empty() && !AudioMixer::hasGroup(text)) {
+                    error = "no mixer group '" + text + "' (audio_mixer get lists them)";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.musicGroup = text;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        {
+            Setting s;
+            s.key = "audio.credits_file";
+            s.type = "bool";
+            s.description = "Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().creditsFile); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.creditsFile = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        auto audioNumber = [&add](const char* key, const char* description, float minimum, float maximum, float AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "number";
+            s.description = description;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < minimum || value.get<double>() > maximum) {
+                    char text[64];
+                    snprintf(text, sizeof(text), "must be a number from %g to %g", minimum, maximum);
+                    error = text;
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = value.get<float>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioNumber("audio.loudness_target_lufs", "Loudness target in LUFS (default -18). Measurement only: it changes no sound.", -40.0f, -6.0f, &AudioSettings::loudnessTargetLufs);
+        audioNumber("audio.loudness_tolerance_lu", "How far from the target still passes, in LU (default 2). Measurement only.", 0.5f, 10.0f, &AudioSettings::loudnessToleranceLu);
+        audioNumber("audio.true_peak_ceiling_dbtp", "True-peak ceiling the checks read against, in dBTP (default -1). Measurement only: a Master limiter's threshold is what holds it.", -12.0f, 0.0f, &AudioSettings::truePeakCeilingDbtp);
+        auto audioEnum = [&add](const char* key, const char* description, std::vector<std::string> names, std::string AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "enum";
+            s.description = description;
+            s.values = names;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, names](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || std::find(names.begin(), names.end(), value.get<std::string>()) == names.end()) {
+                    error = "must be one of:";
+                    for (const std::string& name : names) error += " " + name;
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = value.get<std::string>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioEnum("audio.output_stage", "What the output does to the mix: roundoff (a soft clipper, -1.66 dB) or linear (unchanged, hard clip at 0 dBFS).",
+                  {"roundoff", "linear"}, &AudioSettings::outputStage);
+        audioEnum("audio.ios_session_category", "The iOS audio session: default (miniaudio's: ignores the silent switch, stops the player's music), ambient, solo_ambient, playback.",
+                  {"default", "ambient", "solo_ambient", "playback"}, &AudioSettings::iosSessionCategory);
 
         // ---- scripting
         {
@@ -2558,6 +3080,28 @@ std::vector<Setting> mcpSettingsTable() {
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
                          [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
+        for (const auto& [key, description, getter, setter] : std::initializer_list<std::tuple<const char*, const char*, bool (*)(), void (*)(bool)>>{
+                 {"preferences.sound_browser_autoplay", "Sound Browser: selecting a sound plays it.", &AppSettings::getSoundBrowserAutoplay, &AppSettings::setSoundBrowserAutoplay},
+                 {"preferences.sound_browser_match_loudness", "Sound Browser: auditions play at -20 LUFS-M, so sounds compare by character.", &AppSettings::getSoundBrowserMatchLoudness, &AppSettings::setSoundBrowserMatchLoudness}}) {
+            Setting s;
+            s.key = key;
+            s.type = "bool";
+            s.preference = true;
+            s.description = description;
+            s.get = [getter = getter](SettingsContext&) { return Json(getter()); };
+            s.set = [setter = setter](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    setter(value.get<bool>());
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
         {
             Setting s;
             s.key = "preferences.project_hub_at_startup";
@@ -2573,6 +3117,28 @@ std::vector<Setting> mcpSettingsTable() {
                 }
                 if (apply) {
                     AppSettings::setProjectHubAlways(value.get<std::string>() == "always");
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "preferences.cjk_font_language";
+            s.type = "enum";
+            s.values = {"auto", "japanese", "korean", "simplified_chinese", "traditional_chinese"};
+            s.preference = true;
+            s.description = "General: which language's glyph forms the editor uses for Chinese characters, from the "
+                            "system's fonts (auto: the system language). Applies at the next start.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getCjkFontLanguage()); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || !SystemFonts::isLanguageSetting(value.get<std::string>())) {
+                    error = "must be auto, japanese, korean, simplified_chinese or traditional_chinese";
+                    return false;
+                }
+                if (apply) {
+                    AppSettings::setCjkFontLanguage(value.get<std::string>());
                     AppSettings::saveSettings();
                 }
                 return true;
@@ -2665,6 +3231,8 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
+        // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
+        addDeviceSettings(add);
         return t;
     }();
 }
@@ -2775,6 +3343,7 @@ const Placement placements[] = {
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
+    {"graphics.light_mode", "Graphics", "", "Light Mode", "forward+ forward plus tiled clustered per object pixel lights max lights"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
@@ -2786,10 +3355,16 @@ const Placement placements[] = {
     {"graphics.shadow_tier.android", "Graphics", "Shadows", "Android Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
+    {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},
+    {"quality.lod_bias", "Quality", "", "LOD Bias", "lod level of detail bias meshes distance"},
+    {"quality.shadow_lod_bias", "Quality", "", "Shadow LOD Bias", "lod level of detail shadows casters bias"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
@@ -2807,9 +3382,34 @@ const Placement placements[] = {
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
+    {"audio.music_group", "Audio", "", "Music Group", "mixer group music track playlist playMusic stinger"},
     {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
+    {"audio.seed", "Audio", "", "Random Seed", "seed sound event random shuffle deterministic repeat"},
+    {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},
+    {"audio.capture_keep", "Audio", "Capture and QA", "Capture Keep", "capture sessions kept delete oldest"},
+    {"audio.capture_stems", "Audio", "Capture and QA", "Capture Stems", "capture stems groups wav"},
+    {"audio.qa.head_silence_max_ms", "Audio", "Capture and QA", "Head Silence Max (ms)", "check sync head silence"},
+    {"audio.qa.sync_tolerance_ms", "Audio", "Capture and QA", "Sync Tolerance (ms)", "check coverage sync"},
+    {"audio.qa.audibility_margin_db", "Audio", "Capture and QA", "Audibility Margin (dB)", "check masking"},
+    {"audio.qa.voice_budget_warn", "Audio", "Capture and QA", "Voice Budget Warning", "check voices"},
+    {"audio.qa.important_priority", "Audio", "Capture and QA", "Important Priority", "check voices stolen"},
+    {"audio.qa.voice_over_music_db", "Audio", "Capture and QA", "Voice Over Music (dB)", "check duck"},
+    {"audio.qa.max_silence_seconds", "Audio", "Capture and QA", "Max Silence (s)", "check gap music"},
+    {"audio.qa.music_group", "Audio", "Capture and QA", "Music Group", "check music silence"},
+    {"audio.qa.loudness_min_seconds", "Audio", "Capture and QA", "Loudness Min Seconds", "check lufs"},
+    {"audio.qa.limiter_warn_db", "Audio", "Capture and QA", "Limiter Warning (dB)", "check limiter hot"},
+    {"audio.qa.fix_rounds", "Audio", "Capture and QA", "Fix Rounds", "check agent stop report"},
+    {"audio.qa.repeat_min_plays", "Audio", "Capture and QA", "Repeat Min Plays", "check repetition"},
+    {"audio.qa.repeat_window_s", "Audio", "Capture and QA", "Repeat Window (s)", "check repetition"},
+    {"audio.qa.regression_timing_ms", "Audio", "Capture and QA", "Regression Timing (ms)", "check baseline"},
+    {"audio.qa.regression_band_db", "Audio", "Capture and QA", "Regression Band (dB)", "check baseline"},
+    {"audio.loudness_target_lufs", "Audio", "Loudness and Output", "Loudness Target", "lufs loudness level r128 target"},
+    {"audio.loudness_tolerance_lu", "Audio", "Loudness and Output", "Loudness Tolerance", "lu lufs loudness tolerance"},
+    {"audio.true_peak_ceiling_dbtp", "Audio", "Loudness and Output", "True Peak Ceiling", "dbtp true peak ceiling limiter"},
+    {"audio.output_stage", "Audio", "Loudness and Output", "Output Stage", "roundoff linear clip clipper output limiter"},
+    {"audio.ios_session_category", "Audio", "Loudness and Output", "iOS Audio Session", "ios ambient silent switch session category music"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},
@@ -2848,7 +3448,10 @@ const Placement placements[] = {
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
+    {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
+    {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
     {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
+    {"preferences.cjk_font_language", "General", "Editor Font", "CJK Font Language", "cjk chinese japanese korean kanji hanja han font language glyphs"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},
     {"preferences.build_cxx_compiler", "External Tools", "Desktop Build", "C++ Compiler", "compiler kit cpp"},
@@ -2885,6 +3488,44 @@ void shaderCreationRowPlacement(const std::string& key, SettingRow& row) {
     }
 }
 
+// Quality > Device Tiers (quality.device_tiers.<group>.<tier>), Quality > Thermal Response
+// (quality.thermal_response.<group>), Graphics > Upload Budget (graphics.upload_budget_mb.<group>)
+bool deviceRowPlacement(const std::string& key, SettingRow& row) {
+    auto groupLabel = [](const std::string& name) {
+        DevicePlatformGroup group;
+        return DeviceNames::groupFromName(name.c_str(), group) ? std::string(DeviceNames::groupLabel(group)) : name;
+    };
+    static const std::string tiers = "quality.device_tiers.";
+    static const std::string thermal = "quality.thermal_response.";
+    static const std::string upload = "graphics.upload_budget_mb.";
+    if (key.rfind(tiers, 0) == 0) {
+        const std::string rest = key.substr(tiers.size());
+        const size_t dot = rest.find('.');
+        DeviceTier tier = DeviceTier::High;
+        DeviceNames::tierFromName(rest.substr(dot + 1).c_str(), tier);
+        row.page = "Quality";
+        row.section = "Device Tiers";
+        row.label = std::string(DeviceNames::tierLabel(tier)) + " (" + groupLabel(rest.substr(0, dot)) + ")";
+        row.keywords = "device tier gpu low medium high ultra render scale msaa shadows lod bias texture bloom ssao volumetrics frame rate lights particles";
+        return true;
+    }
+    if (key.rfind(thermal, 0) == 0) {
+        row.page = "Quality";
+        row.section = "Thermal Response";
+        row.label = "Thermal Response (" + groupLabel(key.substr(thermal.size())) + ")";
+        row.keywords = "thermal throttling heat battery render scale frame rate";
+        return true;
+    }
+    if (key.rfind(upload, 0) == 0) {
+        row.page = "Graphics";
+        row.section = "Upload Budget";
+        row.label = "Upload Budget MB (" + groupLabel(key.substr(upload.size())) + ")";
+        row.keywords = "upload budget streaming textures buffers hitch megabytes per frame";
+        return true;
+    }
+    return false;
+}
+
 void textureRowPlacement(const std::string& key, SettingRow& row) {
     static const std::map<std::string, std::pair<const char*, const char*>> settings = {
         {"android_etc2_fallback", {"Android", "ETC2 Fallback"}},
@@ -2915,6 +3556,34 @@ void textureRowPlacement(const std::string& key, SettingRow& row) {
         auto t = targets.find(target);
         row.label += std::string(" (") + (t != targets.end() ? t->second : target.c_str()) + ")";
         row.keywords += " " + target;
+    }
+}
+
+// mesh.defaults.<platform>.<setting>, mesh.*, quality.render_budgets.<platform>.<metric> (S53)
+void meshRowPlacement(const std::string& key, SettingRow& row) {
+    static const std::map<std::string, const char*> labels = {
+        {"optimize_mesh", "Optimize Mesh"}, {"mesh_compression", "Mesh Compression"}, {"weld_vertices", "Weld Vertices"},
+        {"index_format", "Index Format"}, {"read_write", "Read/Write"}, {"normals", "Normals"}, {"smoothing_angle", "Smoothing Angle"},
+        {"generate_lods", "Generate LODs"}, {"lod_count", "LOD Count"}, {"lod_reduction", "Reduction"}, {"ship_source", "Ship Source Files"},
+        {"cache_size_mb", "Cache Size (MB)"}, {"keep_cpu_data_for_scripts", "Keep CPU Data for Scripts"},
+        {"triangles", "Triangle Budget"}, {"draw_calls", "Draw Call Budget"}, {"mesh_memory_mb", "Mesh Memory Budget (MB)"},
+        {"download_mb", "Download Budget (MB)"}};
+    static const std::map<std::string, const char*> platforms = {{"desktop", "Desktop"}, {"mobile", "Mobile"}, {"web", "Web"}};
+    const std::string leaf = key.substr(key.rfind('.') + 1);
+    auto label = labels.find(leaf);
+    row.label = label != labels.end() ? label->second : titleCase(key);
+    std::string platform;
+    for (const auto& [name, title] : platforms)
+        if (key.find("." + name + ".") != std::string::npos) platform = title;
+    if (!platform.empty()) row.label += " (" + platform + ")";
+    if (key.rfind("quality.", 0) == 0) {
+        row.page = "Quality";
+        row.section = "Render Budgets";
+        row.keywords = "render budget triangles draw calls memory download check_render_budgets";
+    } else {
+        row.page = "Mesh";
+        row.section = key.rfind("mesh.defaults.", 0) == 0 ? "Defaults" : "Cache";
+        row.keywords = "mesh model import cook";
     }
 }
 
@@ -2986,6 +3655,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
                                                        "pods swift packages spm entitlements deployment target script urls sdk"},
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
+        {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -3027,11 +3697,13 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             row.keywords = placement->keywords;
         } else if (setting.key.rfind("texture.", 0) == 0) {
             textureRowPlacement(setting.key, row);
+        } else if (setting.key.rfind("mesh.", 0) == 0 || setting.key.rfind("quality.render_budgets.", 0) == 0) {
+            meshRowPlacement(setting.key, row);
         } else if (setting.key.rfind("shader_creation.", 0) == 0) {
             shaderCreationRowPlacement(setting.key, row);
         } else if (setting.key.rfind("debug.", 0) == 0) {
             debugRowPlacement(setting.key, row);
-        } else {
+        } else if (!deviceRowPlacement(setting.key, row)) {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);
         }
@@ -3076,6 +3748,11 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
+    addOrAbort(registry, uiRow("mesh.clear_cache", "Mesh", "Cache", "Mesh Cache", "clear cooked models cache size audit",
+        [](SettingsContext& ctx) {
+            ModelCookQueue& cooks = ModelCookQueue::get();
+            return cooks.getProject() == ctx.project() ? Json(cooks.getCache().totalBytes()) : Json(nullptr);
+        }, "The cooked model cache's size, Clear Mesh Cache (reimport_models cooks again) and the Mesh Optimization Audit."));
     addOrAbort(registry, uiRow("texture.clear_cache", "Texture", "Cache", "Texture Cache", "clear cooked textures cache size",
         [](SettingsContext& ctx) {
             TextureCookQueue& cooks = TextureCookQueue::get();

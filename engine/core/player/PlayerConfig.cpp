@@ -80,6 +80,7 @@ json PlayerConfig::toJson() const {
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
@@ -97,9 +98,11 @@ json PlayerConfig::toJson() const {
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
+    out["lightMode"] = LightingTiers::getModeName(lightMode);
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
+    out["device"] = json::parse(device.toJson());
     out["terrainQualityTiers"] = terrainQualityTiers;
     out["terrainShippedTiers"] = terrainShippedTiers;
     out["tags"] = tags;
@@ -110,7 +113,8 @@ json PlayerConfig::toJson() const {
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
-                    {"sampleRate", audioSampleRate}};
+                    {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
+                    {"musicGroup", audioMusicGroup}};
     return out;
 }
 
@@ -184,6 +188,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
         }
+        if (const auto foliage = in.find("foliageDistanceScale"); foliage != in.end() && foliage->is_array()) {
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++){
+                if ((*foliage)[i].is_number()) config.foliageDistanceScale[i] = (*foliage)[i].get<float>();
+            }
+        }
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
@@ -229,9 +238,19 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
+        // absent (a config written before it) or unknown: Automatic
+        const std::string lightMode = in.value("lightMode", "automatic");
+        if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;
         if (const auto tiers = in.find("shadowTiers"); tiers != in.end() && tiers->is_array()) {
             for (size_t i = 0; i < config.shadowTiers.size() && i < tiers->size(); i++)
                 valueOf(kShadowTier, (*tiers)[i].get<std::string>(), config.shadowTiers[i]);
+        }
+        if (const auto device = in.find("device"); device != in.end()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(device->dump(), config.device, deviceError)) {
+                error = "game.json: device: " + deviceError;
+                return false;
+            }
         }
         if (const auto terrainTiers = in.find("terrainQualityTiers"); terrainTiers != in.end() && terrainTiers->is_array()) {
             for (size_t i = 0; i < config.terrainQualityTiers.size() && i < terrainTiers->size(); i++)
@@ -263,6 +282,10 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioMaxRealVoices = audio->value("maxRealVoices", config.audioMaxRealVoices);
             config.audioMaxVoices = audio->value("maxVoices", config.audioMaxVoices);
             config.audioSampleRate = audio->value("sampleRate", config.audioSampleRate);
+            config.audioSeed = audio->value("seed", config.audioSeed);
+            config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
+            config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
+            config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
@@ -285,9 +308,13 @@ bool PlayerConfig::parse(const std::string& text, PlayerConfig& out, std::string
 
 void jasperengine::player::applyAudio(const PlayerConfig& game) {
     const AudioConfig defaults;
+    const AudioOutputStage stage = AudioSystem::outputStageFromName(game.audioOutputStage);
+    const IosAudioSession session = AudioSystem::iosSessionFromName(game.audioIosSession);
     if (game.audioMaxRealVoices != defaults.maxRealVoices || game.audioMaxVoices != defaults.maxVoices ||
-        game.audioSampleRate != defaults.sampleRate) {
-        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate});
+        game.audioSampleRate != defaults.sampleRate || stage != defaults.outputStage || session != defaults.iosSession ||
+        game.audioSeed != (int)defaults.seed || game.audioMusicGroup != defaults.musicGroup) {
+        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session, (uint32_t)game.audioSeed,
+                                game.audioMusicGroup});
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);

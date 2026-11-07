@@ -17,6 +17,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/TextureImporterView.h"
+#include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
 #include "vcs/scene/SceneDiff.h"
@@ -35,6 +36,17 @@
 #include <map>
 #include <memory>
 #include <set>
+#include "render/preview/MaterialRender.h"
+#include "component/AudioSourceComponent.h"
+#include "component/TextComponent.h"
+#include "io/watch/FileIdentity.h"
+#include "render/ShaderRender.h"
+#include "subsystem/MeshSystem.h"
+
+namespace jasperengine{
+    struct ImageComponent;
+    struct MeshComponent;
+}
 
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
@@ -190,11 +202,16 @@ namespace jasperengine::editor{
     private:
         // the Project window's texture files: their import settings (S14)
         std::unique_ptr<TextureImporterView> textureImporter;
+        // and its model files (S53)
+        std::unique_ptr<ModelImporterView> modelImporter;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
         // the split bar drag's undo step, merged while the handle is held
         Command* splitBarCmd = nullptr;
+        // why the last Fit To Skeleton failed, and on which GameObject (cleared by the next fit)
+        std::string capsuleFitError;
+        Entity capsuleFitErrorEntity = NULL_ENTITY;
         // Commands that can run scripts at once while playing (a GameObject's Active and a
         // script's enabled checkbox: onEnable / onDisable, which may instantiate or destroy and
         // move the component arrays): run at the start of the next show(), when the Inspector
@@ -418,6 +435,12 @@ namespace jasperengine::editor{
         void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
+        void drawSoundEventAsset(const std::filesystem::path& asset);
+        // AudioSource: the Event, Play On, impact and Variation rows and their warnings
+        void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // an audio file: its measurements, import settings, provenance and audition (InspectorAudioClip.cpp)
+        void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
@@ -693,10 +716,18 @@ namespace jasperengine::editor{
         // codes, Compiling/Ready, extension maps n / 3, the maps left out)
         void drawMaterialAdvancedSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                              unsigned int submesh, const RowSettings& settingsMaterial);
+        // the value and map rows of one extended lobe under prefix ("submeshes[N].material.pbr."), into the current table
+        void drawMaterialPbrLobeRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                     const std::string& prefix, PbrLobe lobe, const RowSettings& settingsMaterial);
+        // the built-in Lit's Shading Model row (Standard / Hair: the hair lobe's enabled flag, one
+        // undo step) and the hair rows while it is Hair, into the current table
+        void drawMaterialShadingModelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                          unsigned int submesh, const RowSettings& settingsMaterial);
         // A submesh material's Surface (blend, cull, depth write and test, depth offset, sort
         // priority) and Lighting rows; Auto shows what it resolves to
+        // (and, with litRows, the built-in Lit's Shading Model)
         void drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                                     unsigned int submesh, const RowSettings& settingsMaterial);
+                                     unsigned int submesh, const RowSettings& settingsMaterial, bool litRows);
         // UI/Points/LineRenderer blend mode, depth write, stencil and colour write rows, into the current table
         void drawComponentStateRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
@@ -822,6 +853,7 @@ namespace jasperengine::editor{
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -834,6 +866,8 @@ namespace jasperengine::editor{
         // the scene's Shadows settings (Quality, distance, fade, blend, the effective tier)
         void drawSceneShadows(SceneProject* sceneProject);
         void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Cast Shadows, the capsule list (up to 8) and Fit To Skeleton, each an undo step
+        void drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
@@ -950,6 +984,14 @@ namespace jasperengine::editor{
         static std::vector<EnumEntry>* enumEntries(const reflect::EnumDesc& desc, uint64_t mask = 0);
         // the power-of-two sizes of a size slider (shadow maps, probes)
         static std::vector<int> powerOfTwoSizes;
+
+        // the commands soundEvent.audition and soundEvent.matchLevels, on the inspected .soundevent
+        void requestSoundEventAudition();
+        void requestSoundEventMatchLevels();
+        // soundEvent.playAsMusic: the inspected event through the music system (S39 R18), or stops it
+        void requestSoundEventPlayAsMusic();
+        // the command audioClip.detectTempo, on the inspected audio file (InspectorAudioClip.cpp)
+        void requestAudioClipDetectTempo();
 
         static constexpr const char* WINDOW_NAME = "Inspector";
 

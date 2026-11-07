@@ -100,9 +100,32 @@ namespace jasperengine{
             float contrast = 0.6f;  // 0..1, how hard the copies blend (by luminance)
             bool operator == (const Hex& o) const;
         } hex;
+        // the Hair shading model (Material > Shading Model > Hair, spec S57 R5): Kajiya-Kay
+        // strands with two highlights along tangents shifted towards the normal, for hair cards.
+        // The strands run along the mesh's tangent turned by rotation, or the flow map's direction
+        struct Hair{
+            bool enabled = false;
+            Vector3 primaryColor = Vector3(0.5f, 0.5f, 0.5f);   // the light's highlight (linear)
+            float primaryShift = 0.1f;                          // -1..1, towards the root
+            float primaryWidth = 0.15f;                         // 0..1, the highlight's spread
+            Vector3 secondaryColor = Vector3(0.5f, 0.5f, 0.5f); // tinted by the albedo (linear)
+            float secondaryShift = -0.1f;                       // -1..1, towards the tip
+            float secondaryWidth = 0.35f;
+            float rotation = 0.0f;  // radians, from the tangent towards the bitangent
+            Texture flowMap;        // RG the strands' tangent-space direction ([-1, 1] as [0, 1])
+            int flowMapTexCoord = 0;
+            bool operator == (const Hair& o) const;
+        } hair;
 
         bool operator == (const MaterialPbrExtensions& o) const;
         bool operator != (const MaterialPbrExtensions& o) const { return !(*this == o); }
+    };
+
+    // The Lit material's Shading Model (spec S57 R5): the Hair lobe's enabled flag, as the editor,
+    // MCP and Lua show it. Stored as ints: append only
+    enum class ShadingModel{
+        STANDARD,
+        HAIR
     };
 
     // What the mobile and web exports leave out of the lobes (project export setting): REDUCED
@@ -122,6 +145,7 @@ namespace jasperengine{
         ANISOTROPY,
         IRIDESCENCE,
         CLEARCOAT_NORMAL,
+        HAIR_FLOW,
         COUNT
     };
 
@@ -135,6 +159,7 @@ namespace jasperengine{
         VOLUME,
         SPECULAR,
         HEX,
+        HAIR,
         COUNT
     };
 
@@ -238,9 +263,16 @@ namespace jasperengine{
 
         // u_fs_pbrExt as uploaded (UNIFORM_FLOATS floats, includes/pbr_ext.glsl)
         static void getUniformBlock(const MaterialPbrExtensions& pbr, float out[UNIFORM_FLOATS]);
+        // the Hair shading model's three vec4 (hair0..2 of mesh.frag's u_fs_pbrParams)
+        static const int HAIR_UNIFORM_FLOATS = 12;
+        static void getHairUniformBlock(const MaterialPbrExtensions& pbr, float out[HAIR_UNIFORM_FLOATS]);
+        // a Width (0..1) as the highlight's exponent: 2 / width^2 - 2, at least 1
+        static float hairExponent(float width);
+        static ShadingModel getShadingModel(const MaterialPbrExtensions& pbr);
+        static void setShadingModel(MaterialPbrExtensions& pbr, ShadingModel model);
 
         // "lit_" + two letters per define of a builtin:lit reference (Cc Cm Cn Sh Sm An Am Ir Im
-        // Tr Tm Vo Sp Sq Hx Th Lq Ts), the basename its compiled shaders are stored under
+        // Tr Tm Vo Sp Sq Hx Th Lq Ts Hr Hf), the basename its compiled shaders are stored under
         static std::string getVariantBasename(const std::vector<std::string>& defines);
         // the defines of a basename made by getVariantBasename (false: not one)
         static bool parseVariantBasename(const std::string& basename, std::vector<std::string>& defines);
@@ -251,7 +283,7 @@ namespace jasperengine{
         static uint64_t getDefineBits(const std::vector<std::string>& defines);
         static uint64_t getDefineBit(const std::string& define);
         static std::vector<std::string> getDefinesFromBits(uint64_t bits);
-        // T3 D2: every define the terrain's own state decides, the one mask pbrVariantMatches and the
+        // T3 D2: every define the terrain's own state decides, the one mask the
         // terrain's reload hook compare
         static uint64_t getTerrainDefineBits();
 

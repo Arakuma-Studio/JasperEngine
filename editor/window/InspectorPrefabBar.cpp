@@ -8,6 +8,7 @@
 // badge, removed ones as "(Removed)" entries, and the Apply / Revert context menus.
 
 #include "InspectorWindow.h"
+#include "component/PrefabComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "external/IconsFontAwesome6.h"

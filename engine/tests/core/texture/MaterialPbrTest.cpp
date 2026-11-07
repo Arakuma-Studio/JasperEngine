@@ -299,12 +299,8 @@ TEST(PbrVariant, ALobesMapAsksForTheMeshsUVs){
         const PbrMap kind = (PbrMap)m;
         Material material;
         MaterialPbrExtensions& pbr = material.pbr.edit();
-        pbr.clearcoat.enabled = kind == PbrMap::CLEARCOAT || kind == PbrMap::CLEARCOAT_NORMAL;
-        pbr.specular.enabled = kind == PbrMap::SPECULAR;
-        pbr.transmission.enabled = kind == PbrMap::TRANSMISSION;
-        pbr.sheen.enabled = kind == PbrMap::SHEEN;
-        pbr.anisotropy.enabled = kind == PbrMap::ANISOTROPY;
-        pbr.iridescence.enabled = kind == PbrMap::IRIDESCENCE;
+        // the map's own lobe, so a lobe added later (S57's Hair) is covered too
+        MaterialPbr::lobeEnabled(pbr, MaterialPbr::getMapLobe(kind)) = true;
         MaterialPbr::getMap(pbr, kind) = map;
 
         SubmeshShaderInputs inputs;

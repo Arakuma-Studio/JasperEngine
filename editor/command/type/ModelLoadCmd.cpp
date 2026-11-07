@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelLoadCmd.h"
+#include "component/BoneComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
 
 #include "Stream.h"
@@ -596,7 +599,7 @@ bool editor::ModelLoadCmd::execute(){
 
     if (hasMergeStaticMeshesOverride && mergeStaticMeshesOverride) {
         std::string reason;
-        if (!scene->getSystem<MeshSystem>()->canMergeStaticModel(model, mesh, &reason)) {
+        if (!scene->getSystem<MeshSystem>()->canMergeStaticModel(model, &reason)) {
             Log::warn("Cannot merge static model '%s': %s", model.filename.c_str(), reason.c_str());
             return false;
         }

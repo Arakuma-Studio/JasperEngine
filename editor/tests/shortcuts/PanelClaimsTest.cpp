@@ -240,4 +240,5 @@ TEST(PanelClaims, CatalogListsTheNewCommandsWithTheOldDefaults) {
     EXPECT_EQ(dispatcher.resolve(chordOf("I"), state), nullptr) << "only while the window has focus";
     EXPECT_EQ(parseShortcutContext("color_picker"), ShortcutContext::ColorPicker);
     EXPECT_EQ(parseShortcutContext("Curve"), ShortcutContext::Curve);
+    EXPECT_EQ(parseShortcutContext("sound_browser"), ShortcutContext::SoundBrowser);
 }

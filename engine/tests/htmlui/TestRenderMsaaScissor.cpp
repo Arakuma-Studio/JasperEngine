@@ -80,8 +80,9 @@ div { display: block; }
         bool mesaPattern = false;
         const std::vector<std::string> leaks = unexpectedLeaks(rgba, 64, 10, 10, 30, 20, mesaPattern);
         EXPECT_TRUE(leaks.empty()) << leaks.size() << " pixels, first " << (leaks.empty() ? "" : leaks[0]);
-        if (samples == 1)
+        if (samples == 1){
             EXPECT_FALSE(mesaPattern) << "without MSAA the clip edge is exact";
+        }
         std::cout << "[ MSAA     ] HTML UI, " << samples << " sample(s): " << (mesaPattern ? "Mesa's half-covered edges" : "exact") << "\n";
     }
 }

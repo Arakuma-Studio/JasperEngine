@@ -2,6 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "component/ActionComponent.h"
+#include "component/TweenComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1358,7 +1377,7 @@ void UISystem::setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, Te
     inputfield.needUpdateInputField = true;
 }
 
-bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint){
+bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint){
     if (inputfield.disabled){
         return false;
     }
@@ -1492,11 +1511,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
         ui.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = ui.buffer.getAttribute(AttributeType::POSITION);
 
@@ -2628,13 +2648,18 @@ Rect UISystem::fitOnPanel(Rect uiRect, Entity parentPanel){
 }
 
 void UISystem::calculateUIAABB(UIComponent& ui){
-    ui.aabb = AABB::ZERO;
+    // seeded empty: AABB::ZERO is a finite box at the origin that every merge would keep
+    ui.aabb.setNull();
     Attribute* vertexAttr = ui.buffer.getAttribute(AttributeType::POSITION);
-    for (int i = 0; i < ui.buffer.getCount(); i++){
-        Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
+    if (vertexAttr){
+        for (int i = 0; i < ui.buffer.getCount(); i++){
+            Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
 
-        ui.aabb.merge(vertice);
+            ui.aabb.merge(vertice);
+        }
     }
+    if (ui.aabb.isNull())
+        ui.aabb = AABB::ZERO;
 
     ui.needUpdateAABB = true;
 }
@@ -3262,7 +3287,7 @@ bool UISystem::isInputFieldFocused(){
     return false;
 }
 
-bool UISystem::eventOnCharInput(wchar_t codepoint){
+bool UISystem::eventOnCharInput(char32_t codepoint){
     // what the event handlers destroy goes when the dispatch is over
     StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();

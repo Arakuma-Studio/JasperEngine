@@ -108,7 +108,7 @@ namespace {
 
 }
 
-FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error) {
+FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view path, PathError* error, bool append) {
     if (error) *error = PathError::None;
     if (!owner || path.empty()) return fail(error, PathError::Syntax);
     const StructDesc* current = &desc;
@@ -132,7 +132,12 @@ FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view 
             if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return fail(error, PathError::Syntax);
             pos++;
             if (element || field->kind != Kind::Array || !field->arrayOps) return fail(error, PathError::NotIndexable);
-            if (index >= field->arrayOps->size(ref)) return fail(error, PathError::IndexOutOfRange);
+            // one past the last element appends to an array that grows by index when the caller
+            // writes (the Inspector's Add buttons, an agent adding a frame); never further, nor
+            // past ARRAY_INDEX_LIMIT
+            const size_t count = field->arrayOps->size(ref);
+            const bool appends = append && field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+            if (index >= count && !appends) return fail(error, PathError::IndexOutOfRange);
             ref = field->arrayOps->at(ref, index);
             ops = field->elementOps;
             element = true;
@@ -157,8 +162,8 @@ FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view 
     }
 }
 
-FieldRef reflect::resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error) {
-    return resolve(desc.body, comp, path, error);
+FieldRef reflect::resolve(const ComponentDesc& desc, void* comp, std::string_view path, PathError* error, bool append) {
+    return resolve(desc.body, comp, path, error, append);
 }
 
 std::string reflect::canonicalPath(const ComponentDesc& desc, void* comp, std::string_view path) {
@@ -237,20 +242,20 @@ const FieldDesc* reflect::findField(const ComponentDesc& desc, std::string_view 
 
 // ---------------------------------------------------------------- asset references
 
+AssetKind reflect::assetKindOf(const FieldDesc& field, const TypeOps* ops) {
+    if (field.asset != AssetKind::None) return field.asset;
+    if (ops->propertyType == PropertyType::Texture) return AssetKind::Texture;
+    if (ops->propertyType == PropertyType::Shader) return AssetKind::Shader;
+    if (ops->propertyType == PropertyType::Font) return AssetKind::Font;
+    if (ops->propertyType == PropertyType::Asset) return AssetKind::Any;
+    return AssetKind::None;
+}
+
+bool reflect::holdsAsset(const TypeOps* ops) {
+    return ops->propertyType == PropertyType::Texture || ops->propertyType == PropertyType::Shader || ops->propertyType == PropertyType::Asset || ops->propertyType == PropertyType::Font;
+}
+
 namespace {
-
-    AssetKind fieldAssetKind(const FieldDesc& field, const TypeOps* ops) {
-        if (field.asset != AssetKind::None) return field.asset;
-        if (ops->propertyType == PropertyType::Texture) return AssetKind::Texture;
-        if (ops->propertyType == PropertyType::Shader) return AssetKind::Shader;
-        if (ops->propertyType == PropertyType::Font) return AssetKind::Font;
-        if (ops->propertyType == PropertyType::Asset) return AssetKind::Any;
-        return AssetKind::None;
-    }
-
-    bool isAssetOps(const TypeOps* ops) {
-        return ops->propertyType == PropertyType::Texture || ops->propertyType == PropertyType::Shader || ops->propertyType == PropertyType::Asset || ops->propertyType == PropertyType::Font;
-    }
 
     void visitStruct(const StructDesc& desc, void* owner, const std::string& prefix, AssetVisitor visitor, void* user) {
         for (const FieldDesc& field : desc.fields) {
@@ -266,8 +271,8 @@ namespace {
                     const std::string elementPath = path + "[" + std::to_string(i) + "]";
                     if (field.structDesc) {
                         visitStruct(*field.structDesc, element, elementPath + ".", visitor, user);
-                    } else if (isAssetOps(field.elementOps)) {
-                        visitor(user, elementPath, fieldAssetKind(field, field.elementOps), element, field);
+                    } else if (holdsAsset(field.elementOps)) {
+                        visitor(user, elementPath, assetKindOf(field, field.elementOps), element, field);
                     }
                 }
             } else if (field.ops->propertyType == PropertyType::Font) {
@@ -276,8 +281,8 @@ namespace {
                     if (!fonts[i].isSet()) continue;
                     visitor(user, path + "[" + std::to_string(i) + "]", AssetKind::Font, &fonts[i], field);
                 }
-            } else if (isAssetOps(field.ops)) {
-                visitor(user, path, fieldAssetKind(field, field.ops), ref, field);
+            } else if (holdsAsset(field.ops)) {
+                visitor(user, path, assetKindOf(field, field.ops), ref, field);
             }
         }
     }

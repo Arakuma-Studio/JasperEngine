@@ -180,7 +180,10 @@ namespace jasperengine{
         VOLUMETRIC_COMPOSITE, // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
         PASS_PREVIEW,         // the Frame Debugger's pass output preview (S15, SokolPassPreview; editor only)
         PARTICLES,            // particle systems (docs/specs/S20-particles.md): instanced quads, meshes and trails
-        HTMLUI_PRIM           // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
+        // resolve (oit_resolve.frag)
+        LIGHTING_PASS
     };
 
     enum class AttributeType{
@@ -244,7 +247,22 @@ namespace jasperengine{
         // width, role and fan parameter (a_lineParams)
         LINETANGENTIN,
         LINETANGENTOUT,
-        LINEPARAMS
+        LINEPARAMS,
+        // an automatically instanced batch's per-instance object block (spec S55,
+        // includes/object_params.glsl, object_depth_params.glsl): the model matrix's rows, the
+        // normal matrix's columns, the model-view-projection's columns, the depth layout's extra
+        // vector (i_objectModel0..2, i_objectNormal0..2, i_objectMvp0..3, i_objectExtra)
+        OBJECTMODEL0,
+        OBJECTMODEL1,
+        OBJECTMODEL2,
+        OBJECTNORMAL0,
+        OBJECTNORMAL1,
+        OBJECTNORMAL2,
+        OBJECTMVP0,
+        OBJECTMVP1,
+        OBJECTMVP2,
+        OBJECTMVP3,
+        OBJECTEXTRA
     };
 
     enum class AttributeDataType{
@@ -341,7 +359,7 @@ namespace jasperengine{
         SCENECOLORTEXTURE,
         SSRTEXTURE,
         GBUFFERTEXTURE,      // view-space normal (rg, octahedral) + roughness (b) + metallic (a)
-        GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
+        GBUFFERALBEDOTEXTURE, // linear base color (rgb) + SSR reflection source code (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
         BONES,
@@ -427,7 +445,7 @@ namespace jasperengine{
         PIP_RTT         = 1 << 1,
         PIP_DEPTH       = 1 << 2,
         PIP_RTT_INVERT  = 1 << 3, // render-to-texture with reversed winding (planar reflection)
-        PIP_GBUFFER     = 1 << 4, // geometry pass with 3 color attachments
+        PIP_GBUFFER     = 1 << 4, // geometry pass with 4 color attachments
         PIP_SHADOW_DEPTH = 1 << 5, // depth-only projective shadow atlas
         PIP_DEFAULT_NODEPTH = 1 << 6, // no depth test or write, submission order
         PIP_RTT_NODEPTH = 1 << 7,

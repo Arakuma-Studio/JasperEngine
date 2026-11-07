@@ -19,6 +19,7 @@
 #include "component/Transform.h"
 #include "component/RectTransformComponent.h"
 #include "component/ScriptComponent.h"
+#include "audio/AudioMarkers.h"
 
 #include <algorithm>
 #include <set>
@@ -250,6 +251,9 @@ Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, Entit
         }
         attachRoot(scene, root, parent, created);
     }
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::spawn(scene, root, prefab.getPath(), prefab.getGuid());
+#endif
     initializeScripts(scene, created);
     return root;
 }
@@ -263,6 +267,9 @@ Entity ObjectManager::instantiate(const PrefabAsset& prefab, Scene* scene, const
     }
     setWorldPlacement(scene, root, parent, position, rotation, nullptr);
     attachRoot(scene, root, parent, created);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::spawn(scene, root, prefab.getPath(), prefab.getGuid());
+#endif
     initializeScripts(scene, created);
     return root;
 }
@@ -284,6 +291,9 @@ Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetSc
         }
     }
     attachRoot(target, root, parent, created);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::spawn(target, root, "", "");
+#endif
     initializeScripts(target, created);
     return root;
 }
@@ -297,6 +307,9 @@ Entity ObjectManager::instantiate(Scene* scene, Entity original, Scene* targetSc
     }
     setWorldPlacement(target, root, parent, position, rotation, nullptr);
     attachRoot(target, root, parent, created);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::spawn(target, root, "", "");
+#endif
     initializeScripts(target, created);
     return root;
 }
@@ -362,6 +375,14 @@ void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
     if (entities.empty()) {
         return;
     }
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) {
+        std::unordered_set<Entity> marked;
+        for (Entity root : roots) {
+            if (seen.count(root) && marked.insert(root).second) AudioMarkers::destroy(scene, root);
+        }
+    }
+#endif
     for (Entity entity : entities) {
         destroying.insert({scene, entity});
     }
