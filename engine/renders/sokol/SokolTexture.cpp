@@ -71,6 +71,7 @@ namespace {
                 SokolCmdQueue::add_command_destroy_sampler(sampler);
             }else{
                 sg_destroy_sampler(sampler);
+                SokolSystem::forgetAppliedBindings();
             }
         }
     };
@@ -960,6 +961,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     if (image.id != SG_INVALID_ID && !aliasImage)
@@ -969,6 +971,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
             sg_destroy_image(image);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     // the data textures' sampler is let go (destroyed with its last holder), another destroyed
@@ -979,6 +982,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_sampler(sampler);
         }else{
             sg_destroy_sampler(sampler);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 

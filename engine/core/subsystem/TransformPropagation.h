@@ -8,6 +8,8 @@
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
 
+#include <cassert>
+
 namespace jasperengine {
 
     // The transform pass of RenderSystem::update: one linear walk of the Transform array,
@@ -65,12 +67,15 @@ namespace jasperengine {
             origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
         }
 
-        transform.localMatrix = Matrix4::translateMatrix(origin) * transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale);
+        // every Transform matrix is affine (made here from T * R * S and products of such): the
+        // affine forms compute the general products' non-zero terms in their order
+        transform.localMatrix = Matrix4::composeTRS(origin, transform.rotation, transform.scale);
 
         const Transform* transformParent = transform.parent != NULL_ENTITY ? registry.findComponent<Transform>(transform.parent) : nullptr;
         if (transformParent){
-            transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
-            transform.worldPosition = transformParent->modelMatrix * origin;
+            assert(transformParent->modelMatrix.isAffine() && "a Transform's matrices are made affine here");
+            transform.modelMatrix = transformParent->modelMatrix.affineMultiply(transform.localMatrix);
+            transform.worldPosition = transformParent->modelMatrix.transformAffine(origin);
             transform.worldScale = transformParent->worldScale * transform.scale;
             transform.worldRotation = transformParent->worldRotation * transform.rotation;
         }else{
@@ -81,7 +86,7 @@ namespace jasperengine {
         }
 
         if (normals){
-            transform.normalMatrix = transform.modelMatrix.inverse().transpose();
+            transform.normalMatrix = transform.modelMatrix.affineInverse().transpose();
         }
     }
 

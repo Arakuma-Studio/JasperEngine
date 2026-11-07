@@ -88,7 +88,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
-| 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
+| 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | merged |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | merged |
@@ -268,3 +268,16 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   unit 77 + 107 incl. ShaderNeutralApi/ReflectParity/RuntimeFields/CookedScene/particles, MCP 48 + the determinism
   file 5/5 after a test race fix (the project copy skips .je-tmp files). Open: the 256-texel wake bench (600 us vs
   300 us on a shared box; 128 is within budget).
+- 2026-11-07 09:xx: **draw-perf merged**, the last of the 19, after an independent review (lights arriving mid-game
+  keep the general variant instead of being dropped; the Dlo twin covers Tiled; the tracker covers batched sprites
+  and S55 held draws; the engine-framebuffer pipeline skip withdrawn after it broke a batched sprite on Vulkan;
+  dropped tests added). Dlo is MESH bit 44, shader cache v53. Checks: WERROR editor, editor units 108 (shared-data
+  suites included), core GL 138, Vulkan 111 (incl. SpriteBatchGpu, InstancingGoldenGpu), MCP 49 + reflection /
+  determinism / docs 47 (3 fixture-only skipped) on main with the follow-ups' latest, web and Android compiles.
+
+## Result
+
+All 19 features are merged and pushed. Main stayed green at each landing for the suites the landing checks ran;
+breakages the checks did not cover (MCP goldens, editor units pinning shared data) were fixed on main as they were
+reported, and the brief now makes every landing check run those suites. Not built anywhere in this program:
+Windows, macOS and iOS (checked by reading; the follow-ups program runs Mac checks of main).
