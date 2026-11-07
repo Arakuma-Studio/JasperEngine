@@ -441,6 +441,11 @@ string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_
 file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
 configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
 
+# Built-in Noise Graphs (editor/resources/noisegraphs/*.noisegraph) embedded in the editor (T2 R34;
+# editor/noise/TerrainPresets.cpp, the only includer)
+include(tools/noise/golden/EmbedPresets.cmake)
+jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/noisegraphs" "${GENERATED_DIR}/noise_presets.gen.h")
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -877,6 +882,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainGenerationTools.cpp
+    ${EDITOR_DIR}/noise/TerrainGeneration.cpp
+    ${EDITOR_DIR}/noise/TerrainPresets.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
