@@ -231,6 +231,8 @@ namespace {
         // upstream (physics-2d / physics-contacts): its .physicsmaterial and its callbacks' receiver
         JE_FIELD(Collider2D, material, .updateFlags = kBody2D),
         JE_FIELD(Collider2D, receiver, .ops = &ops::Entity, .updateFlags = kBody2D),
+        // S44: the box of a slice of the GameObject's sheet sprite on every frame ("" = its own shape)
+        JE_FIELD(Collider2D, slice, .updateFlags = kBody2D, .tooltip = "A slice of the Sprite's sheet: the collider is its box on every frame."),
     };
 
     constexpr uint64_t kBody3D = UpdateFlags_Rigidbody;

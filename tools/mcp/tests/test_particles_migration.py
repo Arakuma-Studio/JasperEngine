@@ -65,7 +65,7 @@ async def test_migrate_save_reload(ed: Editor):
 
     await ed.call("save_scene", scene=sid)
     saved = (ed.project / SCENE).read_text()
-    ed.check("formatVersion: 7" in saved, "saved in the current format (7)")
+    ed.check("formatVersion: 8" in saved, "saved in the current format (8)")
     ed.check("inlineEffect" in saved, "the inline effects are saved")
     # another scene stays open: the last open one cannot close
     await ed.call("create_scene", name="Holder", type="3D", path="Holder")
