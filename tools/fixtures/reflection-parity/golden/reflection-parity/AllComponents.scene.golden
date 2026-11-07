@@ -1329,6 +1329,8 @@ entities:
         fakeBillboard: false
         cylindricalBillboard: false
       sprite:
+        pixelsPerUnit: 6.6
+        pixelRotation: on_grid
         enabled: false
         width: 0
         height: 0
@@ -1400,6 +1402,7 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
+        pixelsPerUnit: 5.6
       tilemap:
         enabled: false
         width: 0
@@ -2685,6 +2688,29 @@ entities:
         billboardRotation: [1, 0, 0, 0]
         billboard: false
         fakeBillboard: false
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      pixelperfectcamera:
+        enabled: false
+        referenceWidth: 7
+        referenceHeight: 2
+        upscaleMode: stretch_fill
+        upscaleRenderTexture: false
+        pixelSnapping: false
+        rotationMode: on_grid
+        subpixelSmoothing: true
+        letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]
         cylindricalBillboard: false
       waterwake:
         enabled: false
