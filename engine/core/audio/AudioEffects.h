@@ -30,8 +30,8 @@ namespace jasperengine {
     };
 
     // How a parameter moves in a transition (spec A7): dB and plain values linearly, frequencies
-    // along log2(Hz)
-    enum class AudioParamCurve { Linear, Decibel, Frequency };
+    // along log2(Hz). A Switch moves linearly too and counts as on from 0.5; the editor draws a checkbox.
+    enum class AudioParamCurve { Linear, Decibel, Frequency, Switch };
 
     struct AudioEffectParamInfo {
         const char* name;        // the file / Lua / MCP name ("cutoff")

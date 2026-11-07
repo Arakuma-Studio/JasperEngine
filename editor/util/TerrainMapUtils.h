@@ -10,6 +10,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine{
+    struct TerrainComponent;
+}
+
 namespace jasperengine::editor{
 
     enum class TerrainMapTarget{

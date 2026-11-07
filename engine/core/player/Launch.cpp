@@ -5,6 +5,7 @@
 
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "device/Device.h"
 
 #include <cstdio>
 
@@ -59,7 +60,10 @@ int jasperengine::player::launch(const std::vector<std::string>& args, ParseMode
         // a fullscreen or maximized window would take the screen's size, not the run's
         config.windowMode = 0;
     }
-    if (options.headless || options.silentAudio)
+    if (options.headless || options.silentAudio || !options.audioCapture.empty())
         config.silentAudio = true;
+    DeviceTier tier;
+    if (!options.deviceTier.empty() && DeviceNames::tierFromName(options.deviceTier.c_str(), tier))
+        Device::setTier(tier);
     return -1;
 }

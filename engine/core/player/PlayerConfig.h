@@ -14,8 +14,10 @@
 #include "navigation/NavTypes.h"
 #include "registry/PhysicsLayers.h"
 #include "render/AtmosphereQuality.h"
+#include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
+#include "device/DeviceSettings.h"
 
 #include "json.hpp"
 
@@ -75,6 +77,8 @@ namespace jasperengine::player {
 
         ThreadingSettings threading;
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
+        // Quality > Foliage Distance (desktop, mobile, web)
+        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
         nav::NavigationSettings navigation;
@@ -84,8 +88,13 @@ namespace jasperengine::player {
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;
+        // Project Settings > Graphics > Light Mode
+        LightMode lightMode = LightMode::AUTOMATIC;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
+        // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
+        // upload budget (spec S56): "device", what differs from the defaults
+        DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         std::array<uint32_t, MAX_LAYERS> collision3D{};
@@ -107,7 +116,12 @@ namespace jasperengine::player {
         std::string audioMixer;
         int audioMaxRealVoices = 32;
         int audioMaxVoices = 256;
+        int audioSeed = 1;
         int audioSampleRate = 0;
+        std::string audioOutputStage = "roundoff";
+        std::string audioIosSession = "default";
+        // the group music plays through when nothing names one ("" = Master)
+        std::string audioMusicGroup;
 
         PlayerConfig();
 

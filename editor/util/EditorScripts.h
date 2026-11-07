@@ -101,6 +101,11 @@ namespace jasperengine::editor {
         // The annotations of a Lua editor script / the JE_MENU_ITEMs of a C++ file
         static std::vector<EditorMenuItem> parseLua(const std::string& code, const std::string& file);
         static std::vector<EditorMenuItem> parseCpp(const std::string& code, const std::string& file);
+        // <internal>/editor-scripts of the C++ editor scripts `sources`: one generated source per
+        // Editor .cpp (it includes the file, so the item functions, static in it, can be registered
+        // after it) and the CMake project; libName is the library it builds
+        static bool writeCppProject(Project* project, const std::vector<std::filesystem::path>& sources, const std::filesystem::path& dir,
+                                    std::string& libName);
 
         // Runs an item. Editor.call goes through MCP tools nested in `parent` (the
         // run_editor_menu call; a menu click makes one), and the edits of the whole run become

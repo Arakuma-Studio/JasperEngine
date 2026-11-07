@@ -19,6 +19,8 @@ namespace jasperengine {
     protected:
         std::string name;
         std::vector<unsigned char> ownedData;
+        int modelBuffer = -1;
+        size_t modelOffset = 0;
 
     public:
         ExternalBuffer();
@@ -37,6 +39,15 @@ namespace jasperengine {
         // ... bytes of `owner` that never change (a pooled model's file data, a pooled level
         // set), which other buffers may show too: they share one GPU buffer (setShareSource)
         void setData(unsigned char* data, size_t size, const std::shared_ptr<const void>& owner);
+        // ... bytes `offset` of buffer `modelBuffer` of a model's parse, identified by those two (the
+        // same GPU buffer when the bytes come back at another address: ModelCpuData)
+        void setModelData(unsigned char* data, size_t size, const std::shared_ptr<const void>& owner, int modelBuffer, size_t offset);
+        int getModelBuffer() const;
+        size_t getModelOffset() const;
+        // their owner frees them: no bytes to show, the size, attributes and GPU buffer stay
+        void releaseData();
+        // the same bytes back, at `data`
+        void restoreData(unsigned char* data);
 
         bool ownsData() const;
         // Keeps a copy of the bytes it points at as its own, for when their owner goes (the

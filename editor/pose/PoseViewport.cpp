@@ -2,6 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 #include "PoseViewport.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/UIDocumentComponent.h"
 
 #include "Engine.h"
 #include "Project.h"
@@ -127,7 +155,7 @@ namespace {
     }
 
     void setGhostMaterial(MeshComponent& mesh, const Vector4& tint){
-        for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++){
+        for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
             Material& material = mesh.submeshes[i].material;
             material.shader = "library:hologram";
             material.shaderFeatures = {"BLEND_MODE_ALPHA"};
@@ -863,7 +891,7 @@ void editor::PoseViewport::colorGhost(Ghost& ghost, const Vector4& color){
             if (!ghost.colorSet){
                 setGhostMaterial(*mesh, color);
             }else{
-                for (unsigned int i = 0; i < mesh->numSubmeshes && i < mesh->submeshes.size(); i++){
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++){
                     ShaderUniforms::set(mesh->submeshes[i].material.shaderParams, "tint", color);
                 }
                 mesh->needUpdateShaderUniforms = true;

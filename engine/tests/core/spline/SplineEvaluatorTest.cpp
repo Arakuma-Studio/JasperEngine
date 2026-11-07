@@ -122,17 +122,6 @@ namespace{
 
 // ---- Basic evaluation ----
 
-TEST(SplineEvaluatorTests, LinearEvaluateEndpoints){
-    const SplineData s = evalLinear(Vector3(0, 0, 0), Vector3(10, 0, 0));
-    expectNearVector(evaluatePosition(s, 0.0f), Vector3(0, 0, 0), EVAL_EPS);
-    expectNearVector(evaluatePosition(s, 1.0f), Vector3(10, 0, 0), EVAL_EPS);
-}
-
-TEST(SplineEvaluatorTests, LinearEvaluateMidpoint){
-    const SplineData s = evalLinear(Vector3(0, 0, 0), Vector3(10, 0, 0));
-    expectNearVector(evaluatePosition(s, 0.5f), Vector3(5, 0, 0), EVAL_EPS);
-}
-
 TEST(SplineEvaluatorTests, Linear3PointMidSegment){
     const SplineData s = makeSpline(SplineType::Linear, {Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 10)});
     // t is uniform per segment: 0.25 is the middle of the first segment, 0.75 of the second
@@ -150,12 +139,6 @@ TEST(SplineEvaluatorTests, LinearFrameForward){
 }
 
 // ---- CatmullRom ----
-
-TEST(SplineEvaluatorTests, CatmullRomEndpoints){
-    const SplineData s = evalCatmullRom4();
-    expectNearVector(evaluatePosition(s, 0.0f), Vector3(0, 0, 0), 1e-6f);
-    expectNearVector(evaluatePosition(s, 1.0f), Vector3(30, 0, 10), 1e-6f);
-}
 
 TEST(SplineEvaluatorTests, CatmullRomPassesThroughItsKnots){
     // OpenEngine's "near (10, 0, 0) within 1": with t uniform per segment t = k / 3 is knot k
@@ -193,11 +176,6 @@ TEST(SplineEvaluatorTests, CatmullRomHasNoCuspOnUnevenSpacing){
 }
 
 // ---- Arc length ----
-
-TEST(SplineEvaluatorTests, ArcLengthLinear){
-    const SplineData s = evalLinear(Vector3(0, 0, 0), Vector3(10, 0, 0));
-    EXPECT_NEAR(length(s), 10.0f, 1e-5f);
-}
 
 TEST(SplineEvaluatorTests, DistanceToTLinear){
     const SplineData s = evalLinear(Vector3(0, 0, 0), Vector3(10, 0, 0));

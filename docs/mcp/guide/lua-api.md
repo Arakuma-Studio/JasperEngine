@@ -184,7 +184,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
-`Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
+`Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
@@ -253,10 +253,10 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
 | `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
-| `onLowMemory` | none | the system is short of memory (Android, iOS) |
+| `onLowMemory` | none | the system is short of memory (Android, iOS); `Device.onLowMemory` follows at the next frame, after the engine cleared its caches |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
-| `onCharInput` | `codepoint` | text char typed |
+| `onCharInput` | `char` | a character was typed: a one-character UTF-8 string, one call per character (an emoji is one call on every platform) |
 | `onMouseDown`, `onMouseUp` | `button, x, y, mods` | mouse button (`Input.MOUSE_BUTTON_*`) |
 | `onMouseMove` | `x, y, mods` | mouse moved |
 | `onMouseScroll` | `xoffset, yoffset, mods` | wheel |
@@ -925,6 +925,28 @@ Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.
 `require("folder.module")` loads `folder/module.lua` from the Lua directory (or its `lua/`
 subfolder). Use it for shared helper modules.
 
+### 2.5.2 Device (static): Device Tier, thermal state, memory warnings
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Device.tier` | ro | `DeviceTier.Low`, `Medium`, `High`, `Ultra`: the tier in effect (set, simulated or detected) |
+| `Device.gpuName`, `Device.tierReason` | ro | the renderer name, and why it got its tier |
+| `Device.tierApplied` | ro | false in the editor until the Game view simulates a tier or a script sets one |
+| `Device.thermalState` | ro | `ThermalState.Nominal`, `Fair`, `Serious`, `Critical` (desktops and the web: Nominal) |
+| `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
+| `Device.onThermalStateChanged` | event | `function(state)` |
+| `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+
+```lua
+Device.onThermalStateChanged = function(state)
+    if state == ThermalState.Critical then
+        Device.setTier(DeviceTier.Low)
+    end
+end
+```
+
+Details: jasper://docs/device.
+
 ### 2.6 GameObject.instantiate / destroy (static, Unity-style)
 
 ```lua
@@ -1108,7 +1130,7 @@ Entities are plain integers (`0` = none).
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
 | `getChangeTick()` | -> integer: the scene's change tick; a change made after the call is stamped with a newer one |
@@ -1128,6 +1150,66 @@ bus holds, as in the app pause but apart from it; a source a script paused stays
 = `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
 `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.
+
+`Audio` (static, free voices with no AudioSource): `Audio.play(eventOrClip [, opts])` -> `SoundHandle`
+(a Sound Event by GUID or `.soundevent` path, or a clip path; `opts = {target = GameObject (3D, follows
+it, stops when it is destroyed), position = Vector3 (3D, fixed), scene = Scene (the owner: it holds
+and stops with it; default the target's, else the main scene), volume = 1, pitch = 1, group = "SFX"
+(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time)}`; an unknown
+name gives an invalid handle and one warning per name per Play), `Audio.stopAll([group])` -> integer
+(the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
+`AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
+the frame's audio update: the handle is valid at once, `stopAll` answers 0.
+`Audio.mark(label)` writes a marker line (at most 200 bytes) at this sample of an audio capture and does
+nothing without one; `Audio.isCapturing()` -> boolean. Both exist in every build (a release player: no-op
+and false), so a script behaves the same everywhere.
+
+```lua run
+Audio.mark("doc test")
+assert(type(Audio.isCapturing()) == "boolean")
+```
+
+The music (one track that survives scene loads; `jasper://docs/sound` Music): `Audio.playMusic(eventOrClip [, opts])`
+-> bool (a clip, or a Sound Event played as a playlist; `opts = {crossfade = 0 (s, equal power), sync = "now" | "beat"
+| "bar" | "section_end" (the playing track's next one), snapshot = "Combat" (reached at the switch), snapshotSeconds
+(default the crossfade), group (default the event's output, else `audio.music_group`), volume = 1,
+ignoreListenerPause = false}`; the playing track again does nothing; false for a `layer` event),
+`Audio.stopMusic([fade [, {sync}]])`, `Audio.advanceMusic()` -> bool (the section ends at its next loop end),
+`Audio.playStinger(eventOrClip [, sync = "beat"])` -> `SoundHandle` (on the next beat or bar, owned by the music),
+`Audio.getMusic()` -> string, `Audio.getMusicTime()` -> seconds, `Audio.getMusicPosition()` -> `{section, bar, beat,
+beatFraction, bpm, beatsPerBar}` or nil (no music or no tempo). `Audio.onMusicBeat` (bar, beat) and
+`Audio.onMusicSection` (section, clip) are called in the frame whose mix holds them: frame-accurate; a stinger or a
+synced switch is the sample-exact way. A time that is negative or not a number, or an unknown `sync`, is refused
+with one warning.
+
+```lua run
+assert(Audio.getMusic() == "")
+assert(Audio.getMusicPosition() == nil)
+assert(Audio.advanceMusic() == false)
+Audio.onMusicBeat:add("doc", function(bar, beat) end)
+Audio.onMusicBeat:remove("doc")
+```
+
+`SoundHandle` (a value naming one play): `isValid()`, `isPlaying()`, `stop()`, `pause()`, `resume()`,
+`fadeOut(seconds [, opts])` (`opts.pause`, `opts.unscaled`, as `AudioSource:fadeOut`),
+`fadeTo(volume, seconds [, opts])`; properties `volume`, `pitch`, `pan`, `position` (rw; setting it
+stops following), `time`, `voiceCount` (ro). Getters of an invalid handle give 0 or the zero vector,
+setters do nothing; a value that is not a number is refused with a warning.
+
+`AudioPlayOn` (flags, add them): `UIClick` 1, `UIPress` 2, `UIHover` 4, `Collision2D` 8, `Collision3D`
+16, `Sensor2D` 32, `Sensor3D` 64: what plays an AudioSource by itself (`AudioSource.playOn`).
+
+```lua
+-- a footstep that follows this object, a fade of one play, and a Button that clicks by itself
+local step = Audio.play("events/footstep.soundevent", {target = self, volume = 0.8, group = "SFX"})
+if step:isValid() then
+    step:fadeOut(0.2)
+end
+local sound = AudioSource(self.scene, self.entity)
+sound.event = "events/click.soundevent"
+sound.playOn = AudioPlayOn.UIClick + AudioPlayOn.UIHover
+Audio.stopAll("SFX")
+```
 
 `AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
 holds; a pause menu), `volume` (rw, 0..1, everything).
@@ -1304,6 +1386,7 @@ local path = Profiler.sample("Pathfind", function() return self:findPath() end) 
 Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
 Profiler.enabled = true                      -- start recording (read it to know whether it records)
 local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDrawCalls, mainTriangles, instancedDraws...
 ```
 
 - Samples nest. An `endSample` without its `beginSample` is ignored (logged once). An error in
@@ -1714,6 +1797,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
 | `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
+| `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
@@ -1763,7 +1847,10 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularFactor`, `specularColor`, `ior`; `hexTilingEnabled`, `hexTilingRotation`,
 `hexTilingContrast`. Their maps read only: `clearcoatTexture`, `clearcoatNormalTexture`,
 `sheenTexture`, `anisotropyTexture`, `iridescenceTexture`, `transmissionTexture`,
-`specularTexture`. E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
+`specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
+hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
+`hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
@@ -1877,6 +1964,8 @@ missing; `GameObject:getAnimationPlayer()` returns `nil` without one. Players ru
 and in games (edit mode previews clips in the Animation window). Calls made before the clips load
 are kept. Clip tracks bind by path below the player's GameObject; renames and reparents rebind
 on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs/animation`.
+A clip's audio cues play by themselves (no Lua API; author them with `edit_animation {clip, audio}`):
+to play a sound from code use `Audio.play`, and react to clip events as below.
 
 | Member | Notes |
 |---|---|
@@ -2134,7 +2223,9 @@ end
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
 `bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
-`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`.
+`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
+(`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
+`oitWeightScale` (`jasper://docs/lighting`).
 Methods: `activate()`, `setOrtho(l, r, b, t, near, far)`, `setPerspective(yfov, aspect, near,
 far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`, `setUp(x,y,z)`,
 `getDirection()`, `getRight()`, `getUp()`, `getWorldDirection()`, `getWorldTarget()`,
@@ -2243,7 +2334,9 @@ Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`)
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
 distance), `shadowDistance` (metres, 0: the scene's or the tier's), `shadowAngularDiameter`
 (degrees), `shadowSourceRadius` (metres), `shadowUpdateMode` (`ShadowUpdateMode.AUTO/EVERY_FRAME/ON_DEMAND`);
-`requestShadowUpdate()` redraws an On Demand light's maps.
+`requestShadowUpdate()` redraws an On Demand light's maps. Contact shadows (directional and spot
+lights with shadows): `contactShadows`, `contactShadowLength` (metres), `contactShadowThickness`
+(metres), `contactShadowSampleCount` (8..16; `jasper://docs/lighting`).
 
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
@@ -2325,6 +2418,8 @@ end
 
 ### 4.12 AudioSource (EntityHandle)
 
+Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
+
 Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
@@ -2335,7 +2430,14 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`.
-Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, Unity's
+Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
+set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
+`minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
+second the volume scales with the speed, 0 = no scaling), `pitchRandomSemitones` (0..24),
+`volumeRandomDb` (0..60): clip mode's variation of each start.
+
+Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, a clip or a
+Sound Event's pick by its `.soundevent` path or GUID, Unity's
 PlayOneShot; the oldest one-shot is stolen past `maxVoices`), `fadeIn(seconds [, opts])`,
 `fadeOut(seconds [, opts])` (`opts.pause` pauses instead of stopping; the volume comes back for
 the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount()`,
@@ -2494,7 +2596,8 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`Contact3D` (global events): `getApproachSpeed()` (how fast the bodies came together along the
+normal before the solver), `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
 `numContactPoints`, `snapshot` (true after the step: setters apply from the next step), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
@@ -2598,6 +2701,12 @@ tw:setAction(Vector3(0, 0, 0), Vector3(200, 0, 0), 1.0, false)
 tw:setFunctionType(EaseType.QUAD_OUT)
 tw:start()
 ```
+
+Audio actions (an action GameObject with an `AudioSourceComponent`) and Mixer Snapshot actions start
+and stop with the Action API above (their sound follows; a standalone audio action stops itself when its
+sound ends, so `onStop` fires). `GameObject:getAudioSnapshotComponent()` (nil without one) gives the
+`AudioSnapshotComponent`: rw `snapshot` (a mixer snapshot name), `seconds`, `unscaled`, `revert` (back to
+the previous snapshot on stop, while the mixer still shows this one), `revertSeconds` (-1: `seconds`).
 
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
@@ -2778,6 +2887,12 @@ makes a GameObject with one.
   `wrapCellWidth`, `wrapCellHeight`; ro `contentWidth`, `contentHeight`; `resize()`.
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
+- `CapsuleShadowCaster` (capsule shadows, `jasper://docs/lighting`): rw `enabled`, `castShadows`
+  (`CapsuleCastShadows.ON` / `CAPSULES_ONLY`); ro `capsuleCount`; `addCapsule(bone, radius, length)`
+  (its index, -1 past 8), `removeCapsule(i)`, `clearCapsules()`, `get/setCapsuleBone(i)`,
+  `get/setCapsuleRadius(i)`, `get/setCapsuleLength(i)`, `get/setCapsuleOffset(i)`,
+  `get/setCapsuleDirection(i)` (`CapsuleDirection.X_AXIS/Y_AXIS/Z_AXIS`), `fitToSkeleton()` (false:
+  no humanoid bones under the GameObject).
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
@@ -3069,6 +3184,11 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `MaterialStencilOp` | `KEEP`, `ZERO`, `REPLACE`, `INCR_CLAMP`, `DECR_CLAMP`, `INVERT`, `INCR_WRAP`, `DECR_WRAP` |
 | `MaterialColorWrite` | `AUTO` (-1), `NONE` (0), `R` (1), `G` (2), `B` (4), `A` (8), `RGB` (7), `ALL` (15); any sum of `R`, `G`, `B`, `A` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
+| `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
+| `ShadingModel` | `STANDARD`, `HAIR` |
+| `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
+| `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
+| `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
 | `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |

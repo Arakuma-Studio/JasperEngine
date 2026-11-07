@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsDebugLines.h"
+#include "model/ModelCpuData.h"
 
 #include "Scene.h"
 #include "buffer/Buffer.h"
@@ -500,6 +501,7 @@ void PhysicsDebugLines::bodyEdges(Scene* scene, Entity entity, const Transform& 
         for (Entity sourceEntity : sources) {
             MeshComponent* mesh = scene->findComponent<MeshComponent>(sourceEntity);
             if (!mesh) continue;
+            ModelCpuData::ensure(*mesh, "physics debug lines");
 
             std::map<std::string, Buffer*> buffers;
             if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;

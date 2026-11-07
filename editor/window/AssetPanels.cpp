@@ -18,6 +18,7 @@
 #include "window/ProjectWindow.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -191,9 +192,11 @@ void MissingAssetsWindow::drawPicker() {
         pickerOpen = false;
     }
     ImGui::SetNextWindowSize(Theme::dpi(ImVec2(480.0f, 360.0f)), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal("Choose Asset##missing_assets_picker", nullptr)) {
+    if (!EditorModal::begin("Choose Asset##missing_assets_picker", nullptr)) {
         return;
     }
+    EditorModal::message(std::string("Choose a ") + assetTypeName(pickerType) + " asset: values.path picks it.");
+    EditorModal::error(pickerMiss);
     char filter[256];
     snprintf(filter, sizeof(filter), "%s", pickerFilter.c_str());
     ImGui::SetNextItemWidth(-1.0f);
@@ -210,19 +213,25 @@ void MissingAssetsWindow::drawPicker() {
         std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (needle.empty() || lower.find(needle) != std::string::npos) candidates.push_back(info);
     });
+    // the list is what a human clicks; an agent names the row, as the values of a field
+    std::string typed;
+    const bool named = EditorModal::pathField("path", typed);
+    if (named) pickerMiss.clear();
     ImGui::BeginChild("##candidates", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_Borders);
     for (const AssetDatabase::AssetInfo& info : candidates) {
-        if (ImGui::Selectable(info.path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) && pickerDone) {
+        const bool clicked = ImGui::Selectable(info.path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick);
+        if ((clicked || (named && info.path == typed)) && pickerDone) {
             pickerDone(info);
             pickerDone = nullptr;
             ImGui::CloseCurrentPopup();
         }
     }
+    if (named && pickerDone) pickerMiss = "No " + std::string(assetTypeName(pickerType)) + " asset is at " + typed + ".";
     if (candidates.empty()) {
         ImGui::TextDisabled("No %s asset matches", assetTypeName(pickerType));
     }
     ImGui::EndChild();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pickerDone = nullptr;
         ImGui::CloseCurrentPopup();
     }
@@ -317,7 +326,8 @@ void MissingAssetsWindow::show() {
     MissingAssetTracker& tracker = project->getMissingAssets();
     tracker.update(project->getAssetDatabase(), project->getAssetIndex(), ImGui::GetFrameCount() % 30 == 0);
 
-    if (tracker.getGroups().empty() && tracker.getResolvedByPath().empty() && tracker.getOrphanMetas().empty()) {
+    if (tracker.getGroups().empty() && tracker.getResolvedByPath().empty() && tracker.getOrphanMetas().empty() &&
+        tracker.getReadOnlyLinked().empty()) {
         ImGui::TextDisabled(ICON_FA_CIRCLE_CHECK " Every asset reference of the project resolves.");
         ImGui::End();
         drawPicker();
@@ -388,6 +398,14 @@ void MissingAssetsWindow::show() {
                 panelRunProjectCommand(project, new DeleteOrphanMetaCmd(project, orphan.metaPath), "Delete Meta");
             }
             ImGui::PopID();
+        }
+    }
+    if (!tracker.getReadOnlyLinked().empty()) {
+        ImGui::SeparatorText("Read-only linked files");
+        ImGui::TextDisabled("A linked folder cannot be written: these assets work, and keep their GUIDs in the editor only.");
+        for (const std::string& path : tracker.getReadOnlyLinked()) {
+            ImGui::TextDisabled(ICON_FA_LOCK " %s", path.c_str());
+            ImGui::SetItemTooltip("Its identity (its .meta or GUID line) cannot be written beside the file. Give the folder write access, or copy it into the project, so the GUID is saved with it.");
         }
     }
     ImGui::EndChild();

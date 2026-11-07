@@ -96,7 +96,8 @@ namespace jasperengine::editor::recorder {
     bool hasProRes(const std::vector<std::string>& encoders);
 
     // The arguments (argv after the executable) streaming raw RGBA frames from stdin into
-    // `output`: BT.709 tagged, yuv420p H.264 with +faststart, or yuv422p10le ProRes 422 HQ
+    // `output`, which may be a temporary name (the container is named, not taken from it): BT.709
+    // tagged, yuv420p H.264 with +faststart, or yuv422p10le ProRes 422 HQ
     std::vector<std::string> movieArguments(const std::string& encoder, Format format, Quality quality, int width, int height,
                                             int frameRate, const std::filesystem::path& output);
     // the second pass muxing `audio` (16-bit WAV) into `video`: AAC 192 kb/s (MP4) or PCM (MOV)
@@ -104,5 +105,44 @@ namespace jasperengine::editor::recorder {
                                           const std::filesystem::path& output);
     // the audio sample frames of game frame k: round((k+1) rate / fps) - round(k rate / fps)
     uint32_t audioFramesOf(int64_t frame, int frameRate, int sampleRate = kAudioRate);
+
+    // ---- integrity (docs/specs/S62-recorder-integrity.md)
+
+    // The arguments decoding a movie's video to nowhere, its frames counted on stdout
+    std::vector<std::string> decodeCheckArguments(const std::filesystem::path& movie);
+    // the last "frame=N" of that output (-1: none)
+    int64_t parseDecodedFrames(const std::string& progressOutput);
+
+    // "x.mp4" -> "x.partial.mp4"
+    std::filesystem::path partialPath(const std::filesystem::path& output);
+
+    // The disk a recording of these frames needs at its peak, roughly (frames < 0: a recording with
+    // no set end, its first minute): the free-space warning's estimate. A movie with audio holds
+    // the video, the WAV and the muxed copy at once before the temporaries go.
+    uint64_t estimateRecordingBytes(const Settings& settings, int width, int height, int64_t frames);
+    // "950 KB", "340 MB", "1.2 GB"
+    std::string formatSize(uint64_t bytes);
+    // "disk full, 3 MB free"
+    std::string diskFullReason(uint64_t freeBytes);
+    // FFmpeg's words for a full disk, on any platform's C library
+    bool isDiskFullMessage(const std::string& line);
+
+    // JASPER_TEST_RECORDER_FAIL: failures forced at chosen writes, for tests (docs/testing.md). A
+    // comma-separated list of: audio@N (the N-th audio chunk's write), audio-header, video@N (the
+    // N-th frame to the encoder), encoder-kill@N (the encoder killed there, so its file has no end),
+    // mux, png@N, publish, hold-limit=<ms> (the wait for loads), free=<MB> (the free space seen).
+    // Numbers count from 0. A forced write failure reads as a full disk.
+    struct TestFaults {
+        int64_t audioWrite = -1;
+        bool audioHeader = false;
+        int64_t videoWrite = -1;
+        int64_t encoderKill = -1;
+        bool mux = false;
+        int64_t pngWrite = -1;
+        bool publish = false;
+        int64_t holdLimitMs = -1;
+        int64_t freeBytes = -1;
+    };
+    TestFaults parseTestFaults(const char* text);
 
 }

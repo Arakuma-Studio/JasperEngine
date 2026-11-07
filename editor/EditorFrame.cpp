@@ -13,6 +13,8 @@
 #include "Log.h"
 #include "Platform.h"
 
+#include "window/EditorModal.h"
+
 #include "imgui.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
@@ -180,6 +182,8 @@ bool EditorFrame::run(EditorFrameState& state){
 
     renderer->newFrame();
     platformNewFrame();
+    // the system's CJK and emoji fonts join the editor's fonts between frames, once found
+    app->applySystemFonts();
     ImGui::NewFrame();
 
     if (frameReady){
@@ -195,6 +199,9 @@ bool EditorFrame::run(EditorFrameState& state){
         JE_PROFILE_SCOPE("Editor UI");
         app->show();
     }
+    // the windows are still active: the top-most modal is what MCP sees until the next frame
+    EditorModal::endFrame();
+    if (EditorModal::wantsFrame()) app->requestRedraw();
 
     const bool activity = detectActivity(state.redrawRequested);
     if (activity){

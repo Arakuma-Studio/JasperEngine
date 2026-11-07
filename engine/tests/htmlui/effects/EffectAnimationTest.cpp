@@ -175,8 +175,9 @@ TEST_F(EffectAnimationTest, DifferentEffectSwitchesDiscretely){
         ASSERT_EQ(now.list.size(), 1u) << "at " << (i + 1) * 0.1 << " s: never two effects at once";
         seen.insert(now.list[0].name);
         // the effect shown has its own parameters, never a blend with the other's
-        if (now.list[0].name == "stripes")
+        if (now.list[0].name == "stripes"){
             EXPECT_EQ(now.param(0, "density"), "4");
+        }
         else
             EXPECT_EQ(now.param(0, "intensity"), "1");
     }

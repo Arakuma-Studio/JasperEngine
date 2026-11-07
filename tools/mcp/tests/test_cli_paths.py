@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -158,6 +159,93 @@ async def test_export_dotdot_project_yaml_and_out():
     check_export(out, work / UNICODE_DIR, "parent-relative Unicode export")
     check(not (work / "sub" / "exports").exists() and not (work / UNICODE_DIR / "exports").exists(),
           "--out is relative to the working directory")
+
+
+async def test_export_leaves_recent_projects_alone():
+    """A command-line export saves the project, which records nothing in the person's editor
+    settings: their last project and recent projects stay (an editor opened later reopens theirs)"""
+    work = layout()
+    cwd = work / "sub" / "deep"
+    other = work / "Other"
+    other.mkdir()
+    settings = cwd / "settings.yaml"
+    settings.write_text(yaml.safe_dump({"last_project_path": str(other), "recent_projects": [str(other)]}))
+    # the temporary folder elsewhere: a project inside it is the editor's temporary project, never recorded
+    temp = S["tmp"] / "systemp"
+    temp.mkdir()
+    ok(run(cwd, "export", "--project", "../../proj", "--out", "../../exports/recent", "--backend", "opengl",
+           extra_env={"TMPDIR": str(temp)}),
+       "export with the person's settings in the working directory")
+    data = yaml.safe_load(settings.read_text()) or {}
+    recent = [entry["path"] if isinstance(entry, dict) else entry for entry in data.get("recent_projects") or []]
+    check(Path(data.get("last_project_path", "")).resolve() == other.resolve(), f"the last project is still theirs: {data}")
+    check([Path(p).resolve() for p in recent] == [other.resolve()], f"the recent projects are unchanged: {data}")
+
+
+TITLE = 'Pirates; Revenge #2 "Gold" \\ $HOME ${X} 100% & | ^ < > , \u30b2\u30fc\u30e0 \U0001F3AE'
+
+
+def c_literal_bytes(literal: str) -> bytes:
+    """The bytes of a C string literal as the preprocessor prints it (escapes \\ooo \\x \\\\ \\" \\')"""
+    raw = literal.strip().encode("utf-8")
+    check(raw[:1] == b'"' and raw[-1:] == b'"', f"a string literal: {literal!r}")
+    raw, out, i = raw[1:-1], bytearray(), 0
+    while i < len(raw):
+        if raw[i:i + 1] == b"\\":
+            digits = raw[i + 1:i + 4]
+            if len(digits) == 3 and all(48 <= d <= 55 for d in digits):
+                out.append(int(digits, 8))
+                i += 4
+                continue
+            out += raw[i + 1:i + 2]
+            i += 2
+        else:
+            out += raw[i:i + 1]
+            i += 1
+    return bytes(out)
+
+
+async def test_window_title_with_every_awkward_character():
+    """The window title reaches the game's compile as a C string of exactly its bytes, whatever it
+    holds: CMake splits a definition at ; and drops one holding #, and several build tools break on
+    % & | ^ < > , and quotes, so the export carries them as escapes"""
+    work = layout()
+    project = work / "proj"
+    data = yaml.safe_load((project / "project.yaml").read_text(encoding="utf-8"))
+    data["windowTitle"] = TITLE
+    (project / "project.yaml").write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    out = work / "exports" / "title"
+    ok(run(work, "export", "--project", "proj", "--out", "exports/title", "--backend", "opengl"), "export a project with an awkward title")
+    configured = out / "configure"
+    result = subprocess.run(["cmake", "-S", str(out), "-B", str(configured), "-DCMAKE_BUILD_TYPE=Release",
+                             "-DGRAPHIC_BACKEND=glcore", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
+                            env=env(), capture_output=True, text=True, timeout=300)
+    check(result.returncode == 0, f"the export configures: {result.stdout[-2000:]}{result.stderr[-2000:]}")
+    commands = json.loads((configured / "compile_commands.json").read_text())
+    game = [c for c in commands if "JASPERENGINE_WINDOW_TITLE" in c.get("command", " ".join(c.get("arguments", [])))]
+    check(game, "a compile of the game has the title macro (CMake drops a definition holding #)")
+    entry = game[0]
+    argv = entry["arguments"] if "arguments" in entry else shlex.split(entry["command"])
+    # the same compiler and flags, preprocessing a probe instead of compiling the source
+    probe = work / "title_probe.cpp"
+    probe.write_text("JASPERENGINE_WINDOW_TITLE\n")
+    kept, skip_next = [], False
+    for arg in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        # (-include: a precompiled header that is not built yet)
+        if arg in ("-o", "-c", "-include"):
+            skip_next = True
+            continue
+        if arg == entry["file"] or arg.endswith(".cpp"):
+            continue
+        kept.append(arg)
+    result = subprocess.run(kept + ["-E", "-P", "-x", "c++", str(probe)], cwd=entry["directory"], env=env(),
+                            capture_output=True, text=True, timeout=120)
+    check(result.returncode == 0, f"the probe preprocesses: {result.stderr[-2000:]}")
+    printed = [line for line in result.stdout.splitlines() if line.strip()][-1]
+    check(c_literal_bytes(printed) == TITLE.encode("utf-8"), f"the title's bytes: {printed!r}, want {TITLE!r}")
 
 
 # ---------------------------------------------------------------------------- scene-dump

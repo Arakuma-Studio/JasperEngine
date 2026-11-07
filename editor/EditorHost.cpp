@@ -46,6 +46,10 @@ bool EditorHost::shouldSyncEngineApi() const {
     return false;
 }
 
+bool EditorHost::recordsRecentProjects() const {
+    return false;
+}
+
 void EditorHost::updateResourcesPath() {
 }
 
@@ -106,6 +110,15 @@ void EditorHost::openInputActions(const std::filesystem::path& path) {
 
 void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, uint32_t, bool) {
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
+}
+
+void EditorHost::openBuildReport(const std::filesystem::path&) {
+}
+
+void EditorHost::openMeshAudit() {
+}
+
+void EditorHost::openConsole() {
 }
 
 void EditorHost::openAudioMixerWindow(const std::filesystem::path&) {

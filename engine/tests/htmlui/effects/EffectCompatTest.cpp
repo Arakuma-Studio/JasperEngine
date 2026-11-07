@@ -240,11 +240,13 @@ TEST_F(EffectCompatTest, DiagnosticsWithPositions){
         EXPECT_NE(unknown->suggestion.find("jasper://docs/html-ui-effects"), std::string::npos);
     }
     const Diagnostic* param = at(codes::EffectUnknownParam, 2, 40, Severity::Warning);
-    if (param)
+    if (param){
         EXPECT_EQ(param->suggestion, "speed");
+    }
     const Diagnostic* wrong = at(codes::EffectWrongContext, 3, 13, Severity::Error);
-    if (wrong)
+    if (wrong){
         EXPECT_NE(wrong->suggestion.find("background-image"), std::string::npos);
+    }
     at(codes::EffectPositionalArg, 4, 40, Severity::Error);
     at(codes::EffectBadValue, 5, 48, Severity::Warning);
     at(codes::EffectOutOfRange, 6, 48, Severity::Warning);
@@ -253,8 +255,9 @@ TEST_F(EffectCompatTest, DiagnosticsWithPositions){
     at(codes::EffectIgnoredBackgroundProp, 9, 31, Severity::Warning);
     at(codes::EffectWrongContext, 10, 31, Severity::Error);
     // the text format (check --ui, the Console)
-    if (param)
+    if (param){
         EXPECT_EQ(toText(*param), "effects/menu.css:2:40: warning: 'stripes' has no parameter 'speeed'; it is ignored (fix: speed) [HTMLUI-FX-0004]");
+    }
 }
 
 TEST_F(EffectCompatTest, WrongContextNamesTheCounterpart){

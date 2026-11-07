@@ -14,28 +14,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "component/RectTransformComponent.h"
-#include "component/LayoutGroupComponent.h"
-#include "component/SafeAreaComponent.h"
-#include "component/TextComponent.h"
-#include "component/TextEffectComponent.h"
-#include "component/ImageComponent.h"
-#include "component/UIComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "util/STBText.h"
-#include "component/ButtonComponent.h"
-#include "component/PanelComponent.h"
-#include "component/ScrollbarComponent.h"
-#include "component/ProgressbarComponent.h"
-#include "component/PolygonComponent.h"
-#include "component/InputFieldComponent.h"
-#include "component/Transform.h"
-#include "component/CameraComponent.h"
-#include "component/OnScreenControlComponents.h"
 #include "PointerEventData.h"
 #include "Input.h"
 
-#include "component/CanvasGroupComponent.h"
-#include "component/PointsComponent.h"
 
 namespace jasperengine{
 
@@ -224,7 +207,7 @@ namespace jasperengine{
         //InputField
         void updateInputField(Entity entity, InputFieldComponent& inputfield, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
         void blinkCursorInputField(double dt, InputFieldComponent& inputfield, UIComponent& ui);
-        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint);
+        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint);
         bool handleInputFieldKeyDown(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods);
         void setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, TextComponent& text, ImageComponent& img, float localX, bool extendSelection);
         bool inputFieldHasSelection(const InputFieldComponent& inputfield) const;
@@ -364,7 +347,8 @@ namespace jasperengine{
         // unpress, the on-screen controls release and clear their input sources
         void resetButtonStates();
 
-        bool eventOnCharInput(wchar_t codepoint);
+        // one whole character (Engine::systemCharInput combines UTF-16 pairs)
+        bool eventOnCharInput(char32_t codepoint);
         bool eventOnKeyDown(int key, bool repeat, int mods);
 
         // ---- pointers (ui-multitouch spec 7.1). pointerId: the mouse -1 / -2 / -3 (its left,

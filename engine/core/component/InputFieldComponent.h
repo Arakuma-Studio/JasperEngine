@@ -4,6 +4,8 @@
 #ifndef INPUT_FIELD_COMPONENT_H
 #define INPUT_FIELD_COMPONENT_H
 
+#include "Export.h"
+#include "ecs/Entity.h"
 #include "util/FunctionSubscribe.h"
 
 namespace jasperengine{

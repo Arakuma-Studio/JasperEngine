@@ -3,6 +3,8 @@
 
 #include "LaunchOptions.h"
 
+#include "device/DeviceTypes.h"
+
 #include <cctype>
 #include <cerrno>
 #include <cmath>
@@ -80,7 +82,9 @@ std::string jasperengine::player::usage() {
         "  --screenshot-frame K    the frame of the screenshot (default: the last; K <= --quit-after)\n"
         "  --resolution WxH        the window size\n"
         "  --scene NAME|ID         start in this scene\n"
+        "  --device-tier TIER      low, medium, high or ultra instead of the GPU's detected tier\n"
         "  --silent-audio          open no audio output\n"
+        "  --audio-capture <dir>   a development player: write an audio capture session into <dir>\n"
         "  --content DIR           read the game's content from DIR\n"
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
@@ -186,6 +190,16 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             const std::string text = std::get<std::string>(taken);
             if (!parseDouble(text, options.readyTimeout) || !std::isfinite(options.readyTimeout) || options.readyTimeout <= 0.0)
                 return fail("--ready-timeout needs a finite number of seconds above 0, for example --ready-timeout 120 (got \"" + text + "\")");
+        } else if (name == "--audio-capture") {
+            auto taken = takeValue("captures");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+#if JASPERENGINE_AUDIO_CAPTURE
+            const std::string text = std::get<std::string>(taken);
+            if (text.empty()) return fail("--audio-capture needs a directory, for example --audio-capture captures");
+            options.audioCapture = text;
+#else
+            return fail("--audio-capture needs a development player");
+#endif
         } else if (name == "--screenshot") {
             auto taken = takeValue("game.png");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;
@@ -211,6 +225,14 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;
             options.scene = std::get<std::string>(taken);
             if (options.scene.empty()) return fail("--scene needs a scene name or id, for example --scene Main");
+        } else if (name == "--device-tier") {
+            auto taken = takeValue("low");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string text = std::get<std::string>(taken);
+            DeviceTier tier;
+            if (!DeviceNames::tierFromName(text.c_str(), tier))
+                return fail("--device-tier needs low, medium, high or ultra, for example --device-tier=low (got \"" + text + "\")");
+            options.deviceTier = DeviceNames::tier(tier);
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;
