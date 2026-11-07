@@ -97,6 +97,8 @@ async def wait_status(ed: Editor, ui: Ui, frames: int = 600) -> str:
             if key.startswith("terrain.generate.status: "):
                 return key.split(": ", 1)[1]
     stats = await ed.call("get_job_system_stats")
+    # the progress bar's figure tells a job that never ran (5 %) from a result that never came back (90 %)
+    await save_shot(ed, "terrain-generate-stuck.png")
     ed.fail(f"no status: {sorted(k for k in ed.ui_items() if 'generate' in k)}; jobs: workers {stats.get('workers')}, "
             f"lanes {stats.get('lanes')}, gate {stats.get('gate')}")
 
