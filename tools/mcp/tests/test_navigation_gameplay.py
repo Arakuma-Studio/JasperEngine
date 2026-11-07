@@ -108,9 +108,10 @@ async def check_queries(ed: Editor, scene=None):
     blocked = await ed.call("query_navigation", op="move_along", **q, **{"from": [17, 0, -10]}, to=[25, 0, -10])
     ed.check(blocked["found"] and blocked["blocked"], f"{blocked}")
     ed.check(abs(blocked["position"][0] - EDGE) < CELL and abs(blocked["distance"] - (EDGE - 17)) < CELL, f"{blocked}")
-    opened = await ed.call("query_navigation", op="move_along", **q, **{"from": [0, 0, -10]}, to=[1.5, 0, -9])
+    # from the floor into the mud strip (x in [-1, 1])
+    opened = await ed.call("query_navigation", op="move_along", **q, **{"from": [-2, 0, -10]}, to=[0.5, 0, -9])
     ed.check(opened["found"] and not opened["blocked"], f"{opened}")
-    ed.check(flat_distance(opened["position"], [1.5, 0, -9]) < 0.01, f"{opened}")
+    ed.check(flat_distance(opened["position"], [0.5, 0, -9]) < 0.01, f"{opened}")
     ed.check_eq(opened["area"], 3, f"it ends in the mud: {opened}")
 
     # closest_edge within max_distance: the edge is 2.5 m away

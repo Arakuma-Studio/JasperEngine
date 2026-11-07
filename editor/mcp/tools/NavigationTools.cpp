@@ -806,6 +806,10 @@ void queryGrid(const CallPtr& call, SceneProject* scene, NavigationSystem* syste
         call->ok("Cell (" + std::to_string(a.x) + ", " + std::to_string(a.y) + ")" + (map->contains(a) ? "" : " is outside the grid"), data);
         return;
     }
+    if (op != "path" && op != "reachable") {
+        call->fail("op " + op + " is for navmeshes; a grid takes path, sample or reachable.");
+        return;
+    }
     nav::GridQuery query;
     query.allowPartial = args.value("allow_partial", true);
     if (args.contains("area_mask")) query.areaMask = (uint16_t)(args["area_mask"].get<int>() & nav::ALL_AREAS);
@@ -994,10 +998,10 @@ void queryNavigationTool(const CallPtr& call) {
         call->fail("op: path, sample, raycast, closest_edge, reachable, locate, random or move_along.");
         return;
     }
-    // every op needs from but random (without it: anywhere)
+    // random without from: anywhere
     NavPoint from;
     const bool hasFrom = args.contains("from") && !args["from"].is_null();
-    if ((op != "random" || hasFrom) && !parseNavPointArg(scene, args, "from", from, error)) {
+    if ((hasFrom || op != "random") && !parseNavPointArg(scene, args, "from", from, error)) {
         call->fail(error);
         return;
     }
@@ -1034,7 +1038,8 @@ void queryNavigationTool(const CallPtr& call) {
             data["position"] = vec3Json(hit.position);
             data["area"] = hit.area;
         }
-        call->ok(found ? "Random point " + vec3Json(hit.position).dump() : std::string("No navmesh point found."), data);
+        call->ok(found ? "Random point " + vec3Json(hit.position).dump()
+                       : std::string(hasFrom ? "No navmesh point found around from." : "No navmesh point found."), data);
         return;
     }
     if (op == "sample") {
@@ -1058,6 +1063,43 @@ void queryNavigationTool(const CallPtr& call) {
                                        : std::string("No navmesh at from."), data);
         return;
     }
+    labelIslandsOf(scene->scene, system, filter.agentType, targetEntity);
+    // one target's answer: whole (full) or a summary (a list of targets)
+    auto answer = [&](const NavPoint& to, bool full) {
+        Json item = full ? Json::object() : Json{{"to", navPointJson(scene, to)}};
+        if (op == "raycast") {
+            const bool blocked = targetEntity != NULL_ENTITY ? system->raycastOn(targetEntity, from.position, to.position, hit, filter)
+                                                             : system->raycast(from.position, to.position, hit, filter);
+            if (full) {
+                item.update(hitJson(hit));
+                item["cost"] = rounded(hit.cost);
+            } else {
+                item.update({{"position", vec3Json(hit.position)}, {"distance", rounded(hit.distance)}});
+            }
+            item["blocked"] = blocked;
+            item["cost"] = rounded(hit.cost);
+            return item;
+        }
+        const nav::NavPath path = targetEntity != NULL_ENTITY ? system->calculatePathOn(targetEntity, from.position, to.position, filter)
+                                                              : system->calculatePath(from.position, to.position, filter);
+        if (op == "path") {
+            item.update(navPathJson(scene, path, full));
+            if (full)
+                addPathCosts(item, path);
+            return item;
+        }
+        // reachable: the O(1) island answer of isReachable (S54 R6); the path says where it stops
+        nav::PathFailure why = nav::PathFailure::None;
+        const bool reachable = targetEntity != NULL_ENTITY ? path.status == nav::PathStatus::Complete
+                                                           : system->isReachable(from.position, to.position, filter, &why);
+        if (targetEntity != NULL_ENTITY) why = path.failure;
+        item["reachable"] = reachable;
+        if (!reachable) {
+            addFailureJson(scene, item, why, path.surface, path.closestPoint, path.gap);
+            if (!full) item.erase("next");
+        }
+        return item;
+    };
     if (op == "move_along") {
         NavPoint to;
         if (!parseNavPointArg(scene, args, "to", to, error)) {
@@ -1076,39 +1118,6 @@ void queryNavigationTool(const CallPtr& call) {
                            : "Reached " + vec3Json(hit.position).dump(), data);
         return;
     }
-    labelIslandsOf(scene->scene, system, filter.agentType, targetEntity);
-    // one target's answer: whole (full) or a summary (a list of targets)
-    auto answer = [&](const NavPoint& to, bool full) {
-        Json item = full ? Json::object() : Json{{"to", navPointJson(scene, to)}};
-        if (op == "raycast") {
-            const bool blocked = targetEntity != NULL_ENTITY ? system->raycastOn(targetEntity, from.position, to.position, hit, filter)
-                                                             : system->raycast(from.position, to.position, hit, filter);
-            if (full) item.update(hitJson(hit));
-            else item.update({{"position", vec3Json(hit.position)}, {"distance", rounded(hit.distance)}});
-            item["blocked"] = blocked;
-            item["cost"] = rounded(hit.cost);
-            return item;
-        }
-        const nav::NavPath path = targetEntity != NULL_ENTITY ? system->calculatePathOn(targetEntity, from.position, to.position, filter)
-                                                              : system->calculatePath(from.position, to.position, filter);
-        if (op == "path") {
-            item.update(navPathJson(scene, path, full));
-            if (full) addPathCosts(item, path);
-            else item["cost"] = rounded(path.cost);
-            return item;
-        }
-        // reachable: the O(1) island answer of isReachable (S54 R6); the path says where it stops
-        nav::PathFailure why = nav::PathFailure::None;
-        const bool reachable = targetEntity != NULL_ENTITY ? path.status == nav::PathStatus::Complete
-                                                           : system->isReachable(from.position, to.position, filter, &why);
-        if (targetEntity != NULL_ENTITY) why = path.failure;
-        item["reachable"] = reachable;
-        if (!reachable) {
-            addFailureJson(scene, item, why, path.surface, path.closestPoint, path.gap);
-            if (!full) item.erase("next");
-        }
-        return item;
-    };
     if (args.contains("to") && isTargetList(args["to"])) {
         const Json& list = args["to"];
         if (list.empty() || list.size() > MAX_TARGETS) {
@@ -1622,14 +1631,14 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Query Navigation";
         tool.description =
             "A navmesh or Nav Grid query in world space, in edit or play: path, sample (nearest point), raycast, closest_edge, "
-            "reachable, locate (is a point on the navmesh; if not, why), random, move_along. A failed path says why and what to "
-            "do. from/to: a point or a GameObject (an agent: its feet, type and mask). target: navmesh (by agent_type), grid or a "
+            "reachable, locate (is a point on the navmesh; if not, why), random, move_along. A failed path says why and what to do. "
+            "from/to: a point or a GameObject (an agent: its feet, type and mask). target: navmesh (by agent_type), grid or a "
             "surface/grid GameObject. area_mask: a bit per area.";
         tool.inputSchema = object({
             {"op", withDefault(stringEnum("", {"path", "sample", "raycast", "closest_edge", "reachable", "locate", "random", "move_along"}), "path")},
-            {"from", navPointSchema("")},
+            {"from", navPointSchema("Optional for random.")},
             {"to", navPointSchema("Or a list of up to 64.", MAX_TARGETS)},
-            {"max_distance", number("Default: sample 2, locate 5; closest_edge, random.", 0.0, 1e6)},
+            {"max_distance", number("Default: sample 2, locate 5. closest_edge, random.", 0.0, 1e6)},
             {"seed", integer("random.", 0, 4294967295LL)},
             {"agent_type", agentTypeRef()},
             {"area_mask", integer("", 0, 65535)},

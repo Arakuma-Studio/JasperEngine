@@ -49,9 +49,9 @@ Bake and check a level:
 - `query_navigation` works in edit mode and in play (the running scene). `op`: `path`, `sample`
   (nearest navmesh point within `max_distance`, default 2), `raycast` (`blocked`, hit point, `cost`),
   `closest_edge` (within `max_distance` when given: `found: false` and `distance` = the limit when
-  no wall is that close), `reachable`, `locate` (below), `random`, `move_along`. `agent_type` by name
-  or id, `area_mask` a bit mask, `target` `navmesh`, `grid` or a surface/grid GameObject. Every op
-  but `random` needs `from`.
+  no wall is that close), `reachable`, `locate` (below), `random`, `move_along`. `agent_type` by
+  name or id, `area_mask` a bit mask, `target` `navmesh`, `grid` or a surface/grid GameObject.
+  Every op but `random` needs `from`.
 - `from` / `to` take `[x, y, z]` or a GameObject: its position, or for a NavMesh Agent its feet
   (the base offset below it), and then its agent type and area mask unless `agent_type` /
   `area_mask` are given. A `target` surface of another agent type is an error naming both.

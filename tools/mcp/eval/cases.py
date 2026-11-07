@@ -835,50 +835,6 @@ CASES = [
                    "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
         "max_turns": 12,
     },
-    {
-        "id": "guard_navigation_random_point",
-        "kind": "guard",
-        "what_happened": "S55 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
-                         "agents use it instead of sampling guessed points or writing Lua.",
-        "text_at_issue": "query_navigation: 'path (corners, length, status, cost), sample, raycast, closest_edge, reachable, "
-                         "random, move_along'; max_distance: 'sample (2), closest_edge, random.'; seed: 'random.'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
-        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
-                  "agent standing there can walk to. Make it repeatable (seed 3).",
-        "mocks": [
-            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
-                "Random point [6.12,0,-4.3]",
-                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
-                 "position": [6.12, 0, -4.3], "area": 0})},
-            {"tool": "query_navigation", "result": ok(
-                "Nearest navmesh point [4,0,-2], 0 away",
-                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
-        ],
-        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
-                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
-        "max_turns": 12,
-    },
-    {
-        "id": "guard_navigation_move_along",
-        "kind": "guard",
-        "what_happened": "S55 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
-                         "guards that agents use it rather than a raycast or a path for a one-step move.",
-        "text_at_issue": "query_navigation: '... random, move_along'; to: 'path, raycast, reachable, move_along.'",
-        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
-        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
-                  "does it end up on the navmesh surface, and does a wall stop it?",
-        "mocks": [
-            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
-                "Stopped at [19.5,0,3] after 1.5",
-                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
-                 "distance": 1.5, "area": 0})},
-            {"tool": "query_navigation", "result": ok(
-                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
-        ],
-        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
-                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
-        "max_turns": 12,
-    },
 
     # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
     {
@@ -993,5 +949,51 @@ CASES = [
         "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "reachable"}}], "max_calls": {"query_navigation": 2},
                    "reply_must": [r"0,\s*0,\s*15"]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_random_point",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S55 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
+                         "agents use it instead of sampling guessed points or writing Lua.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'; from: 'Optional for random.'; max_distance: "
+                         "'Default: sample 2, locate 5. closest_edge, random.'; seed: 'random.'",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
+                  "agent standing there can walk to. Make it repeatable (seed 3).",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
+                "Random point [6.12,0,-4.3]",
+                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
+                 "position": [6.12, 0, -4.3], "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Nearest navmesh point [4,0,-2], 0 away",
+                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_move_along",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S55 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
+                         "guards that agents use it rather than a raycast or a path for a one-step move.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'",
+        "source": "docs/specs/S55-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
+                  "does it end up on the navmesh surface, and does a wall stop it?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
+                "Stopped at [19.5,0,3] after 1.5",
+                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
+                 "distance": 1.5, "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
+        "max_turns": 12,
     },
 ]

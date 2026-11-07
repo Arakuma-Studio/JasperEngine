@@ -1744,19 +1744,38 @@ bool NavMesh::findRandomPointAround(const Vector3& center, float radius, const N
     bool found = false;
     dtPolyRef ref = 0;
     float point[3];
-    // Detour picks a polygon the search reached within the radius, then any point of it: a point
-    // past the radius is drawn again
+    const dtMeshTile* tile = nullptr;
+    const dtPoly* poly = nullptr;
+    // Detour picks a polygon the search reached within the radius, then any point of it. A
+    // polygon much larger than the circle puts most of those points past the radius: the point is
+    // then drawn in the circle until it falls in that polygon, and only then is a polygon picked
+    // again
     for (int attempt = 0; attempt < RANDOM_AROUND_TRIES && !found; attempt++) {
         if (dtStatusFailed(impl->query->findRandomPointAroundCircle(startRef, startPoint, radius, &f, drawActiveRandom, &ref, point)))
             break;
+        if (island >= 0 && impl->islandOf(ref) != island)
+            continue;
         const float dx = point[0] - center.x, dz = point[2] - center.z;
-        found = dx * dx + dz * dz <= radius * radius && (island < 0 || impl->islandOf(ref) == island);
+        found = dx * dx + dz * dz <= radius * radius;
+        if (found)
+            break;
+        impl->navMesh->getTileAndPolyByRefUnsafe(ref, &tile, &poly);
+        float verts[3 * DT_VERTS_PER_POLYGON];
+        for (int v = 0; v < poly->vertCount; v++)
+            dtVcopy(&verts[v * 3], &tile->verts[poly->verts[v] * 3]);
+        for (int inCircle = 0; inCircle < RANDOM_AROUND_TRIES && !found; inCircle++) {
+            const float r = radius * std::sqrt(random.nextFloat());
+            const float angle = 6.28318531f * random.nextFloat();
+            const float candidate[3] = {center.x + r * std::cos(angle), startPoint[1], center.z + r * std::sin(angle)};
+            if (dtPointInPolygon(candidate, verts, poly->vertCount)) {
+                impl->query->closestPointOnPoly(ref, candidate, point, nullptr);
+                found = true;
+            }
+        }
     }
     activeRandom = nullptr;
     if (!found)
         return false;
-    const dtMeshTile* tile = nullptr;
-    const dtPoly* poly = nullptr;
     impl->navMesh->getTileAndPolyByRefUnsafe(ref, &tile, &poly);
     out.hit = true;
     out.position = Vector3(point[0], point[1], point[2]);
