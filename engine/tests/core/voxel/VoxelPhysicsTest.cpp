@@ -353,6 +353,9 @@ namespace {
     struct TunnelResult {
         int lost = 0;
         int rescues = 0;
+        int lostBelow = 0;     // under the volume's ground: fell through
+        int lostInside = 0;    // deep in solid
+        int lostSlow = 0;      // of those, thrown under 20 m/s
     };
 
 }
@@ -437,11 +440,19 @@ protected:
         TunnelResult result;
         result.rescues = system->getStats(owner).rescues;
         Store& store = *system->getStore(owner);
+        std::mt19937 replay(33);
         for (Entity body : thrown) {
+            const float speed = 5.0f + static_cast<float>(replay() % 195);
             const Vector3 p = scene->getComponent<Transform>(body).worldPosition;
             const double value = valueAt(store, toLocal(p));
-            if (p.y < 28.0f || value < -1.5) result.lost++;
+            if (p.y < 28.0f || value < -1.5) {
+                result.lost++;
+                if (p.y < 28.0f) result.lostBelow++; else result.lostInside++;
+                if (speed < 20.0f) result.lostSlow++;
+            }
         }
+        std::printf("[bench] tunnelling (rescue %s): %d lost (%d below, %d inside, %d under 20 m/s), %d rescues\n", rescue ? "on" : "off",
+                    result.lost, result.lostBelow, result.lostInside, result.lostSlow, result.rescues);
         return result;
     }
 };

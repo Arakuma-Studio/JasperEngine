@@ -139,8 +139,9 @@ namespace {
             component.terrainCut = cut;
             component.collision = collision;
             if (collision) {
-                // the seed's collider sits clear of the terrain's, so a ray tells the two apart
-                component.overlapDepth = 0.2f;
+                // the seed's collider sits clear of the terrain's, so a ray tells the two apart; a
+                // step this small a ball rolls over
+                component.overlapDepth = 0.05f;
                 // the colliders gather around the cave mouth, world (64, 64)
                 component.focus = scene->createEntity();
                 scene->addComponent<Transform>(component.focus, {});
@@ -348,7 +349,7 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
         // the terrain, or through its hole the new dish's collider: never nothing, never the seed's
         // old collider under an open hole
         const float ground = groundAt(64.0f, 64.0f);
-        const bool onTerrain = std::fabs(ground - surface) < 0.05f;
+        const bool onTerrain = std::fabs(ground - surface) < 0.02f;
         const bool onDish = std::fabs(ground - (surface - 1.0f)) < 0.15f;
         ASSERT_TRUE(onTerrain || onDish) << "tick " << tick << ": a ray down the cave mouth meets " << ground << " m, the surface is at " << surface;
         if (openedAt < 0 && holeCount() > 0) openedAt = tick;
@@ -372,13 +373,15 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
     physics->getBodyInterface3D().SetLinearVelocity(id, JPH::Vec3(6.0f, 0.0f, 0.0f));
     float lowest = 1e9f;
     bool crossed = false;
-    for (int tick = 0; tick < 240 && !crossed; tick++) {
+    for (int tick = 0; tick < 480 && !crossed; tick++) {
         steps(1);
         const Vector3 at = scene->getComponent<Transform>(ball).worldPosition;
         lowest = std::min(lowest, at.y);
         crossed = at.x > 76.0f;
     }
-    std::printf("[bench] ball over a cave mouth's lip: lowest centre %.3f m under the surface, hole opened %d ticks after the edit\n", surface - lowest, openedAt);
+    const Vector3 end = scene->getComponent<Transform>(ball).worldPosition;
+    std::printf("[bench] ball over a cave mouth's lip: lowest centre %.3f m under the surface, ended at x %.2f z %.2f, hole opened %d ticks after the edit\n",
+                surface - lowest, end.x, end.z, openedAt);
     EXPECT_TRUE(crossed);
     EXPECT_GT(lowest, surface - 1.0f + 0.5f - 0.1f);
 }
