@@ -16,6 +16,7 @@
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/GraphEditorWindow.h"
+#include "window/ProceduralMaterialWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -245,6 +246,7 @@ editor::App::App(){
     particleEffectWindow = new ParticleEffectWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
     graphEditorWindow = new GraphEditorWindow(&project);
+    proceduralMaterialWindow = new ProceduralMaterialWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
@@ -1238,6 +1240,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
             break;
+        case AppMenuCommand::AssetsCreateProceduralMaterial:
+            projectWindow->createAsset(AssetCreateKind::ProceduralMaterial, projectWindow->createTargetDirectory());
+            break;
         case AppMenuCommand::AssetsCreatePhysicsMaterial:
             projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
             break;
@@ -2199,6 +2204,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
     // a graph wants the width of the views
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2449,6 +2455,7 @@ void editor::App::setup() {
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
     ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
 
     // Initialize application settings
     initializeSettings();
@@ -4228,6 +4235,10 @@ void editor::App::engineRender(){
     // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
     // private scenes step and draw here, whether a view shows or not
     ParticleEffectPreview::processFrame();
+    // the Procedural Material windows' previews and node images: passes of their own, drawn here
+    if (ProceduralMaterialWindow::processFrame()) {
+        requestRedraw();
+    }
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -5083,6 +5094,7 @@ void editor::App::shutdownBackgroundWork() {
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
     ParticleEffectPreview::setFrameRequester(nullptr);
+    ProceduralMaterialWindow::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -5096,6 +5108,7 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
+    ProceduralMaterialWindow::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -5908,7 +5921,7 @@ namespace {
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
                       editor::AudioMixerWindow* audioMixer, editor::ParticleEffectWindow* particleEffect,
-                      editor::GraphEditorWindow* graphEditor) {
+                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5934,6 +5947,7 @@ namespace {
         visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
         visit(editor::ParticleEffectWindow::WINDOW_NAME, particleEffect);
         visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
+        visit(editor::ProceduralMaterialWindow::WINDOW_NAME, proceduralMaterial);
     }
 
 }
@@ -5952,7 +5966,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
     return panels;
 }
 
@@ -5965,7 +5979,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
-                 audioMixerWindow, particleEffectWindow, graphEditorWindow);
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5981,6 +5995,7 @@ void editor::App::applyDefaultLayout(){
     audioMixerWindow->setOpen(false);
     particleEffectWindow->setOpen(false);
     graphEditorWindow->setOpen(false);
+    proceduralMaterialWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);

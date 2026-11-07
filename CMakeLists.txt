@@ -1282,6 +1282,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/GraphEditorWindow.cpp
+    ${EDITOR_DIR}/window/ProceduralMaterialWindow.cpp
     ${EDITOR_DIR}/graph/GraphDocument.cpp
     ${EDITOR_DIR}/graph/GraphParamValues.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp

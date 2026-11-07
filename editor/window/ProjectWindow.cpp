@@ -6,6 +6,7 @@
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "graph/GraphEditorHooks.h"
+#include "procmat/ProceduralMaterialKind.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
@@ -4666,6 +4667,22 @@ void editor::ProjectWindow::assetsCreateShakePreset(const fs::path& directory) {
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreateProceduralMaterial(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Procedural Material", procmat::PROCEDURAL_MATERIAL_EXTENSION);
+    const std::string text = graph::save(procmat::starterProceduralMaterial(anim::generateClipGuid()));
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, text}}, error)) {
+        Backend::getApp().registerAlert("Create Procedural Material", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateAnimationClip(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5108,6 +5125,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
         case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::ProceduralMaterial: assetsCreateProceduralMaterial(directory); break;
         default: break;
     }
 }

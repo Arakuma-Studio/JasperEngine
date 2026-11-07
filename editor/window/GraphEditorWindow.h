@@ -35,6 +35,7 @@
 //                                         ProceduralSession::setGraph); the selected nodes changed
 //   frameStarted                          once a frame while the window is open, before it draws (a
 //                                         session's update(): its evaluator's slice and the debounce)
+//   drawParamMenuExtras                   items of an Inspector row's right-click menu
 //   documentClosed                        the graph goes (another one opens, the project switches; not
 //                                         from the base destructor, so a subclass's own does the same):
 //                                         cancel what was started for it and drop its images;
@@ -108,6 +109,8 @@ namespace jasperengine::editor{
         static void prepareAllForProjectSwitch();
         // the graph window with the keyboard focus; null for none
         static GraphEditorWindow* focused();
+        // the window a graph file opens in: its kind's own, else the window of any kind; null for none
+        static GraphEditorWindow* windowFor(const std::string& path);
         static bool anyInspectorShowsSelection();
 
         // the window on a graph file; false + status when it is not one of its kind or does not load
@@ -191,6 +194,16 @@ namespace jasperengine::editor{
         virtual void selectionChanged() {}
         virtual void frameStarted() {}
         virtual void documentClosed() {}
+        // items a kind's window adds to an Inspector row's right-click menu (Expose)
+        virtual void drawParamMenuExtras(const graph::Node&, const std::string&) {}
+
+        // what the edits above do: `ops` as one undo step, refused with the status when they fail
+        bool apply(const std::vector<graph::GraphOp>& ops, const std::string& undoName, std::vector<graph::GraphOp>* inverses = nullptr);
+        // the Inspector's rows of these parameters of `node`, in a table of their own; their probes
+        // are "<probe>.<param>"
+        void drawParamRows(const graph::Node& node, const std::vector<graph::ParamDesc>& params, const char* tableId, const std::string& probe);
+        // "Base Color" from "base_color"
+        static std::string paramLabel(const std::string& name);
 
         Project* project;
 
@@ -240,7 +253,6 @@ namespace jasperengine::editor{
         GraphCanvas::Node canvasNode(const graph::Node& node, const NodeFacts& facts) const;
         void setDocument(std::shared_ptr<GraphDocument> next);
         void syncToDocument();
-        bool apply(const std::vector<graph::GraphOp>& ops, const std::string& undoName, std::vector<graph::GraphOp>* inverses = nullptr);
         void setSelection(std::vector<std::string> ids, bool claim);
         void claimInspector();
         bool claimHolds();

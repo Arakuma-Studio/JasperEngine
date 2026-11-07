@@ -1575,14 +1575,19 @@ void focusWindowTool(const CallPtr& call) {
         app.getParticleEffectWindow()->setOpen(true);
         imguiName = ParticleEffectWindow::WINDOW_NAME;
     } else if (window == "graph_editor") {
-        // `path` opens that graph (as a double-click on it does); without it, the one open
+        // `path` opens that graph where a double-click on it does (its kind's window: a .procmat's is
+        // Procedural Material); without it, the one open
         GraphEditorWindow* graphs = app.getGraphEditorWindow();
-        if (args.contains("path") && !graphs->openGraph(args.value("path", std::string()))) {
-            call->fail("path: " + graphs->getStatus() + ".");
-            return;
+        if (args.contains("path")) {
+            const std::string path = args.value("path", std::string());
+            if (GraphEditorWindow* own = GraphEditorWindow::windowFor(path)) graphs = own;
+            if (!graphs->openGraph(path)) {
+                call->fail("path: " + graphs->getStatus() + ".");
+                return;
+            }
         }
         graphs->setOpen(true);
-        imguiName = GraphEditorWindow::WINDOW_NAME;
+        imguiName = graphs->windowName();
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1660,7 +1665,9 @@ void focusWindowTool(const CallPtr& call) {
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
             if (window == "graph_editor") {
-                const auto& document = call->ctx().app().getGraphEditorWindow()->getDocument();
+                const GraphEditorWindow* shownGraphs = GraphEditorWindow::focused();
+                if (!shownGraphs) shownGraphs = call->ctx().app().getGraphEditorWindow();
+                const auto& document = shownGraphs->getDocument();
                 data["graph"] = document ? Json(document->projectPath()) : Json();
                 if (!document) data["next"] = "No graph is open: focus_window {window: \"graph_editor\", path} opens one.";
             }
