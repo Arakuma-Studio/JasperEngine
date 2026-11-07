@@ -136,9 +136,9 @@ TEST_F(DrawPerfGpu, SortGroupsStatesInABand){
     JASPER_REQUIRE_GPU();
     sun(false);
     // 20 boxes along the view, alternately lit and unlit (two pipelines), nearest first alternating;
-    // all at 16 to 23 m: one distance band
+    // their nearest points 16.7 to 22.5 m from the camera: one distance band (16 to 32 m)
     for (int i = 0; i < 20; i++)
-        box(-3.0f + 0.3f * (float)i, 0.0f, 14.0f - 0.35f * (float)i, i % 2 == 0);
+        box(-3.0f + 0.3f * (float)i, 0.0f, 13.0f - 0.3f * (float)i, i % 2 == 0);
     settle();
     // the colour pass: the one that drew the boxes
     const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
