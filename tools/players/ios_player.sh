@@ -5,13 +5,13 @@
 #   JasperEnginePlayer.xcframework   the engine and the player, main() included, as one static
 #                                    library per SDK: iphoneos arm64, iphonesimulator arm64+x86_64
 #   template/                        the Xcode project a build stages the game into
-#                                    (engine/platform/apple/ios/player-template, its storyboards
-#                                    and the asset catalog)
+#                                    (engine/platform/apple/ios/player-template, its storyboards,
+#                                    the asset catalog, the engine's PrivacyInfo.xcprivacy and
+#                                    include/JasperNative.h for the game's native plugins)
 #
 #   tools/players/ios_player.sh <release|development> [OUT] [variant]
 #
 # variant: a release variant of engine/player/variants.json (default full; S34 R4).
-# No Google Mobile Ads: the template links no SDK, and a project that uses AdMob compiles from source.
 # Then tools/players/package_player.py --platform ios --arch arm64 --backend metal --ios-dir OUT.
 set -euo pipefail
 
@@ -36,7 +36,7 @@ for sdk in iphoneos iphonesimulator; do
     tree="$ROOT/build/players-build/ios-$sdk-$FLAVOUR-$VARIANT"
     cmake -S "$ROOT/engine" -B "$tree" -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$sdk" \
         -DCMAKE_OSX_ARCHITECTURES="$archs" -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=metal \
-        -DJASPERENGINE_DEVELOPMENT_BUILD="$DEV" -DJASPERENGINE_PLAYER_VARIANT="$VARIANT" -DJASPERENGINE_ADMOB=OFF
+        -DJASPERENGINE_DEVELOPMENT_BUILD="$DEV" -DJASPERENGINE_PLAYER_VARIANT="$VARIANT"
     cmake --build "$tree" --config Release --target jasperengine-player -- CODE_SIGNING_ALLOWED=NO
     # every static library of the tree (its libraries', and the engine's in Release/), merged into one;
     # nothing under build/: Xcode's intermediates hold the same objects again (per-architecture copies,
@@ -57,4 +57,7 @@ xcodebuild -create-xcframework "${LIBS[@]}" -output "$OUT/JasperEnginePlayer.xcf
 cp -R "$ROOT/engine/platform/apple/ios/player-template" "$OUT/template"
 cp "$ROOT/engine/platform/apple/ios/Main.storyboard" "$ROOT/engine/platform/apple/ios/LaunchScreen.storyboard" "$OUT/template/"
 cp -R "$ROOT/engine/workspaces/xcode/Assets.xcassets" "$OUT/template/Assets.xcassets"
+# what a game's Objective-C/Swift native plugins import (the export compiles them into the template)
+mkdir -p "$OUT/template/include"
+cp "$ROOT/engine/platform/apple/JasperNative.h" "$OUT/template/include/"
 echo "ios player: $OUT"

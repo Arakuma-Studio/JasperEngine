@@ -53,6 +53,8 @@ namespace {
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
             // Sound Events (S37): the file holds no GUID, its .meta does
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
+            // a Procedural Material's node graph (S90): the GUID in its JSON, baked in the editor, never shipped
+            {{AssetType::ProceduralMaterial, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".procmat"}},
         };
         return table;
     }

@@ -41,11 +41,13 @@ struct VersionControlSettings {
     int autoFetchMinutes = 0;       // 0 off
     bool commitAndPush = false;     // the Commit window's "Commit and Push", remembered
     bool showChanges = true;        // the Hierarchy's "Show VCS Changes"
+    bool codeEditorChanges = true;  // the code editor's change markers
 
     bool operator==(const VersionControlSettings& other) const {
         return gitPath == other.gitPath && svnPath == other.svnPath && lockOnEdit == other.lockOnEdit &&
                pollSeconds == other.pollSeconds && lockPollSeconds == other.lockPollSeconds &&
-               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges;
+               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges &&
+               codeEditorChanges == other.codeEditorChanges;
     }
     bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
 };
@@ -313,6 +315,8 @@ private:
 
     // Editor viewport settings
     static bool multiViewportEnabled;
+    // the Scene view draws the component UI's navigation arrows (a Button's Navigation > Visualize)
+    static bool uiNavigationVisualize;
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
@@ -455,6 +459,8 @@ public:
     // Multi-viewport: allow dockable windows to be dragged out into their own OS window
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
+    static bool getUINavigationVisualize();
+    static void setUINavigationVisualize(bool visualize);
 
     // The Pose Animation window grew the bottom dock once on its first open (not again)
     static bool getPoseDockGrown();

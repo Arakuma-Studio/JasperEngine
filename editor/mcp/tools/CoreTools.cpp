@@ -646,6 +646,7 @@ void reportEditorStatus(const CallPtr& call) {
     Json scenes = Json::array();
     Json unsavedScenes = Json::array();
     bool playing = false;
+    bool saving = false;
     for (SceneProject* scene : project->getScenesAndPrefabStages()) {
         Json item = McpRefs::sceneJson(project, *scene);
         item["selected"] = scene->id == project->getSelectedSceneId();
@@ -654,7 +655,9 @@ void reportEditorStatus(const CallPtr& call) {
         item["entity_count"] = scene->entities.size();
         scenes.push_back(item);
         if (scene->isModified) unsavedScenes.push_back(scene->id);
-        if (scene->playState != ScenePlayState::STOPPED) playing = true;
+        // a scene the editor is saving is not playing: calls wait for the save (McpServer::execute)
+        if (scene->playState == ScenePlayState::SAVING) saving = true;
+        else if (scene->playState != ScenePlayState::STOPPED) playing = true;
     }
 
     Json jobs = Json::array();
@@ -692,7 +695,8 @@ void reportEditorStatus(const CallPtr& call) {
         }
         ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
                                 {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
-                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu},
+                                {"clipboard", {{"files", state.clipboard}, {"cut", state.clipboardCut}}}};
     }
     if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
         Json referrers = Json::array();
@@ -750,6 +754,7 @@ void reportEditorStatus(const CallPtr& call) {
         }},
         {"scenes", scenes},
         {"playing", playing},
+        {"saving", saving},
         {"unsaved", {
             {"scene_ids", unsavedScenes},
             {"code_editor", ctx.codeEditor() && ctx.codeEditor()->hasUnsavedChanges()},
@@ -764,6 +769,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
+        {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
         {"ui", ui},
         // S25: what the layouts and the palette change

@@ -281,6 +281,7 @@ TEST(ParticleEffectCodec, MergePatchTakesTheOtherGradientForm){
     EXPECT_FALSE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
         {"gradient": {"colors": [[0, "#ff0000"], [1, "#0000ff"]], "alphsa": [[0, 1]]}}}}})"), diagnostics));
     EXPECT_EQ(ParticleEffectCodec::write(doc), before);
+}
 
 TEST(ParticleEffectCodec, GenerateLightingDataLoadsButIsNotShown){
     // BF23 F4: nothing reads it, so the Inspector does not offer it (InspectorParticles shows no

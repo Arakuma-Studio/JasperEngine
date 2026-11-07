@@ -98,7 +98,9 @@ namespace jasperengine::editor {
         // Save / Discard Changes / Cancel (Unity's dialog for leaving modified content)
         virtual void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave,
             std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr);
-        virtual void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr);
+        // The Save Scene dialog for a scene with no file; callback(true) once it saved, false for
+        // Cancel, a failed save, or a dialog dropped by a project switch (the base host: false)
+        virtual void registerSaveSceneDialog(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
         // Asked before a save that would drop data. Never through the alert defaults above:
         // the base (headless) host answers Refuse, the editor window shows "Saving Would Lose
         // Data" and answers Refuse for now, running request.saveAnyway / saveAs from its buttons.
@@ -121,7 +123,8 @@ namespace jasperengine::editor {
             uint32_t contextRoot = 0, bool inContext = true);
         // Window > Input Actions with an .inputactions asset (absolute path)
         virtual void openInputActions(const std::filesystem::path& path);
-        virtual void registerProjectSaveDialog(std::function<void()> callback = nullptr);
+        // Save Project (a temporary project): callback(true) once saved, false otherwise
+        virtual void registerProjectSaveDialog(std::function<void(bool)> callback = nullptr);
         // Window > Texture Synthesis with an image: as the example ("Synthesize Texture..."), or
         // its synthesis recipe restored (editRecipe, "Edit Synthesis...")
         virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);

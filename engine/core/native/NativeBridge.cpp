@@ -98,6 +98,10 @@ namespace jasperengine {
         // ---- messages and stats (main thread)
         std::map<std::string, std::string> platformOnly;
         std::set<std::string> warnedUnavailable;
+        // a shipped game (setMockWarnings): a mock answering for a plugin with code for other
+        // platforms only is a fake SDK there, said once per plugin
+        bool mockWarnings = false;
+        std::set<std::string> warnedMocks;
         uint64_t syncCalls = 0, asyncCalls = 0, events = 0;
         int syncCallsThisFrame = 0;
         bool warnedSyncCalls = false;
@@ -219,6 +223,13 @@ namespace jasperengine {
             if (name == "iOS" || name == "macOS") return "Objective-C/Swift class";
             if (name == "Web") return "JavaScript object";
             return "platform plugin";
+        }
+
+        void noteMockAnswer(const std::string& plugin){
+            if (!mockWarnings) return;
+            auto hint = platformOnly.find(plugin);
+            if (hint == platformOnly.end() || !warnedMocks.insert(plugin).second) return;
+            Log::warn("Native plugin \"%s\" is answered by its Lua mock in this build: %s", plugin.c_str(), hint->second.c_str());
         }
 
         NativeError notFound(const std::string& plugin){
@@ -693,6 +704,7 @@ NativeJson NativeBridge::call(const std::string& plugin, const std::string& meth
         }
     }
     if (core.mocks && core.mocks->has(plugin, "")){
+        core.noteMockAnswer(plugin);
         NativeJson result = core.mocks->call(plugin, method, args, err);
         if (err.isSet()) return nullptr;
         return result;
@@ -761,6 +773,7 @@ NativeCall NativeBridge::callAsync(const std::string& plugin, const std::string&
         }
     }
     if (core.mocks && core.mocks->has(plugin, "")){
+        core.noteMockAnswer(plugin);
         state->source = NativeCallState::Source::Mock;
         core.mocks->callAsync(call);
         return call;
@@ -861,6 +874,11 @@ void NativeBridge::setPlatformOnlyPlugins(std::map<std::string, std::string> plu
     NativeBridgeCore& core = NativeBridgeCore::instance();
     core.platformOnly = std::move(plugins);
     core.warnedUnavailable.clear();
+    core.warnedMocks.clear();
+}
+
+void NativeBridge::setMockWarnings(bool on){
+    NativeBridgeCore::instance().mockWarnings = on;
 }
 
 void NativeBridge::update(){
@@ -936,6 +954,7 @@ void NativeBridge::shutdown(){
 
     if (core.mocks) core.mocks->reset();
     core.warnedUnavailable.clear();
+    core.warnedMocks.clear();
     core.syncCalls = core.asyncCalls = core.events = 0;
     core.syncCallsThisFrame = 0;
 }

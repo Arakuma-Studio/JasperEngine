@@ -10,12 +10,17 @@ editor::DebugSettingsCmd::DebugSettingsCmd(Project* project, const DebugSettings
 }
 
 bool editor::DebugSettingsCmd::apply(const DebugSettings& settings){
+    // project.yaml is written from memory: a refused save puts the previous settings back, so memory
+    // and the file never disagree (the history drops a command whose execute failed)
+    const DebugSettings previous = project->getDebugSettings();
     project->setDebugSettings(settings);
+    if (!project->getProjectPath().empty() && !project->saveProjectFile()){
+        project->setDebugSettings(previous);
+        return false;
+    }
     // the standalone build's main.cpp bakes them in
     project->markGeneratedSourcesDirty();
-    if (project->getProjectPath().empty())
-        return true;
-    return project->saveProjectFile();
+    return true;
 }
 
 bool editor::DebugSettingsCmd::execute(){

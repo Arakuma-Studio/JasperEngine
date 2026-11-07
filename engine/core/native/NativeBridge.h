@@ -191,6 +191,10 @@ namespace jasperengine {
         // say about them ("Java plugins run only on Android"): a call here fails with
         // "unavailable" instead of "not_found", and logs once per plugin
         static void setPlatformOnlyPlugins(std::map<std::string, std::string> plugins);
+        // Shipped games (the generated main of a Compile build, the prebuilt player; never the
+        // editor's Play): a Lua mock answering for a plugin of setPlatformOnlyPlugins logs one
+        // warning per plugin, since it stands in for an SDK the platform does not have
+        static void setMockWarnings(bool on);
 
         // Engine::runFrame, every frame (paused too), the main thread: pause requests and
         // timeouts

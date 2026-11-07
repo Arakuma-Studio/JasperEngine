@@ -162,9 +162,9 @@ float editor::WaterEditorUtils::materialWaveLength(Scene* scene, Entity entity){
         return 0.0f;
     float longest = 0.0f;
     for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
-        WaterSurface surface;
-        if (Water::readMaterial(mesh->submeshes[s].material, surface) && surface.waves && surface.waveHeight != 0.0f)
-            longest = std::max(longest, surface.waveLength);
+        WaterWaveParams waves;
+        if (Water::readWaves(mesh->submeshes[s].material, waves) && waves.waves && waves.height != 0.0f)
+            longest = std::max(longest, waves.length);
     }
     return longest;
 }

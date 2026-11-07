@@ -121,9 +121,7 @@ std::string platform::fillIosTemplate(std::string text, const IosProjectSettings
     return text;
 }
 
-bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
-                               std::vector<fs::path>& artifacts, std::vector<std::string>& notes, std::vector<BuildWarning>& warnings,
-                               std::string& error) {
+bool platform::stageIosProject(const IosProjectSettings& settings, std::string& error) {
     std::error_code ec;
     const fs::path templateDir = settings.runtimeDir / "template";
     if (!fs::is_directory(templateDir, ec) || !fs::exists(settings.runtimeDir / "JasperEnginePlayer.xcframework", ec)) {
@@ -162,6 +160,13 @@ bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner
                                 "    \"version\" : 1\n  }\n}\n");
         }
     }
+    return true;
+}
+
+bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
+                               std::vector<fs::path>& artifacts, std::vector<std::string>& notes, std::vector<BuildWarning>& warnings,
+                               std::string& error) {
+    const fs::path project = settings.projectDir / "JasperEnginePlayer.xcodeproj";
     artifacts.push_back(project);
 
     const XcodeChoice xcode = findXcode();

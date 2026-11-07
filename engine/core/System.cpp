@@ -569,26 +569,6 @@ void System::removeKey(const char *key){
     if (key) UserSettingsStore::instance().remove(key);
 }
 
-void System::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
-    Log::error("Cannot initialize AdMob in this system");
-}
-
-void System::setMaxAdContentRating(AdMobRating rating){
-    Log::error("Cannot set AdMob rating in this system");
-}
-
-void System::loadInterstitialAd(const std::string& adUnitID){
-    Log::error("Cannot load InterstitialAd in this system");
-}
-
-bool System::isInterstitialAdLoaded(){
-    return false;
-}
-
-void System::showInterstitialAd(){
-    Log::error("Cannot show InterstitialAd in this system");
-}
-
 void System::initializeCrazyGamesSDK(){
     Log::error("Cannot initialize CrazyGames SDK in this system");
 }
