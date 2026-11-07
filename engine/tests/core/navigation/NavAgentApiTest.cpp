@@ -209,7 +209,8 @@ TEST_F(NavAgentApiTest, CorridorPathAndStale){
 TEST_F(NavAgentApiTest, RootMotion){
     const Entity surface = planeSurface(20.0f, 20.0f);
     bake(surface);
-    const Entity walker = agent(*scene, Vector3(-5.0f, 0.0f, 0.0f));
+    // off the tile seams (x = 0, z = 0): a step that ends on a tile corner is Detour's degenerate case
+    const Entity walker = agent(*scene, Vector3(-5.0f, 0.0f, 0.5f));
     NavMeshAgentComponent& component = scene->getComponent<NavMeshAgentComponent>(walker);
     component.updatePosition = false;
     step();
@@ -227,12 +228,12 @@ TEST_F(NavAgentApiTest, RootMotion){
     }
     // the plane's edge, less the agent's radius
     EXPECT_NEAR(handle.getNextPosition().x, 9.5f, CELL + 0.05f) << "set/after each tick:" << trace;
-    EXPECT_NEAR(handle.getNextPosition().z, 0.0f, 1e-3f);
+    EXPECT_NEAR(handle.getNextPosition().z, 0.5f, 1e-3f);
 
     // a velocity for one tick on a path
     component.updatePosition = true;
-    ASSERT_TRUE(handle.warp(Vector3(-5.0f, 0.0f, 0.0f)));
-    ASSERT_TRUE(handle.setDestination(Vector3(5.0f, 0.0f, 0.0f)));
+    ASSERT_TRUE(handle.warp(Vector3(-5.0f, 0.0f, 0.5f)));
+    ASSERT_TRUE(handle.setDestination(Vector3(5.0f, 0.0f, 0.5f)));
     steps(30);
     ASSERT_TRUE(handle.hasPath());
     const Vector3 before = handle.getNextPosition();
