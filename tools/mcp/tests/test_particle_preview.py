@@ -265,3 +265,111 @@ async def test_check_cli(ed: Editor):
     ed.check_in("assets/fx/over.particles: error: capacity_hit FAIL", output)
     passing = subprocess.run(cmd + ["--files", str(ed.project / "assets/fx/under.particles")], capture_output=True, text=True, timeout=600)
     ed.check_eq(passing.returncode, 0, (passing.stdout + passing.stderr)[-2000:])
+
+
+# -- review round 1 (each failed on the build before its fix) ------------------------------------
+
+async def test_invisible_follows_the_whole_run(ed: Editor):
+    """A visible one-shot is not invisible: with frames 0 and overdraw_map (no cell at all), and with two cells."""
+    await make_effect(ed, "assets/fx/visible.particles", burst_effect(100, 400))
+    heat_only = await ed.call("preview_particle_effect", path="assets/fx/visible.particles", frames=0, overdraw_map=True)
+    ed.check_eq(check_of(heat_only, "invisible")["status"], "PASS", f"frames 0 with overdraw_map: {check_of(heat_only, 'invisible')}")
+    two = await ed.call("preview_particle_effect", path="assets/fx/visible.particles", frames=2)
+    ed.check_eq(check_of(two, "invisible")["status"], "PASS", f"two cells: {check_of(two, 'invisible')}")
+    ed.check(all(0 < c["t"] < two["seconds"] for c in two["cells"]), f"cells inside the run: {two['cells']}")
+
+
+async def test_cut_runs_and_capacity_target(ed: Editor):
+    cut = await ed.call("preview_particle_effect", path="assets/fx/visible.particles", frames=0, seconds=0.5)
+    ed.check_eq(check_of(cut, "never_ends")["status"], "SKIP", "a run cut short by seconds says nothing about the end")
+    # a looping rate held at 50: the fix is the peak it needs (rate 100 x lifetime 2), not the births refused
+    rate = {"duration": 1, "looping": True, "seed": 4, "maxParticles": 50,
+            "modules": {"main": {"startLifetime": 2, "startSpeed": 1, "startSize": 0.1}, "emission": {"rateOverTime": 100},
+                        "shape": {"shape": "sphere", "radius": 1}}}
+    await make_effect(ed, "assets/fx/rate.particles", rate)
+    held = await ed.call("preview_particle_effect", path="assets/fx/rate.particles", frames=0, seconds=4)
+    ed.check_eq(check_of(held, "capacity_hit")["status"], "FAIL")
+    target = held["fixes"][0]["patch"]["maxParticles"]
+    ed.check(180 <= target <= 220, f"Max Particles to its peak, about 200: {target}")
+    variable = dict(rate, tickRate=0, maxParticles=1000)
+    await make_effect(ed, "assets/fx/variable.particles", variable)
+    costed = await ed.call("preview_particle_effect", path="assets/fx/variable.particles", frames=0)
+    ed.check_eq(costed["metrics"]["cost"]["ticks_per_frame"], 1.0, "a variable step ticks once a frame")
+
+
+async def test_blown_out_only_for_additive(ed: Editor):
+    white = {"duration": 1, "looping": False, "seed": 2,
+             "modules": {"main": {"startLifetime": 2, "startSpeed": 0, "startSize": 1, "startColor": [1, 1, 1, 1]},
+                         "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": 5}]}, "shape": {"enabled": False},
+                         "renderer": {"untexturedShape": "square"}}}
+    await make_effect(ed, "assets/fx/white.particles", white)
+    result = await ed.call("preview_particle_effect", path="assets/fx/white.particles", times=[0.5])
+    ed.check_eq(check_of(result, "blown_out")["status"], "PASS", f"opaque white is not additive saturation: {check_of(result, 'blown_out')}")
+
+
+async def test_long_scope_keeps_the_verdict_and_inactive_systems_are_left_out(ed: Editor):
+    made = await ed.call("create_scene", name="DeepLab", type="3D", path="scenes/DeepLab")
+    scene = made["scene"]["id"]
+    await ed.call("select_scene", scene=scene)
+    parent = None
+    for level in range(5):
+        created = await ed.call("create_entity", scene=scene, type="empty", name=f"Level{level}_" + "x" * 40,
+                                **({"parent": parent} if parent else {}))
+        parent = created["entity_id"]
+    await ed.call("create_particles", scene=scene, name="Deep", preset="sparks", parent=parent)
+    off = await ed.call("create_particles", scene=scene, name="Off", preset="smoke", parent=parent)
+    await ed.call("set_entity_state", scene=scene, entity=off["particle_system"]["id"], active=False)
+    r = await ed.call_raw("preview_particle_effect", {"scene": scene, "entity": parent, "frames": 0})
+    ed.check_in("Verdict", r.text, "a deep subtree's path does not cut the verdict off")
+    ed.check_eq(len(r.value["seeds"]), 1, f"the inactive system is not part of the effect: {r.value['seeds']}")
+
+    camera = await ed.call("create_entity", scene=scene, type="camera", name="PlayCamera")
+    await ed.call("set_main_camera", scene=scene, entity=camera["entity_id"])
+    await ed.call("play", action="start", scene=scene)
+    try:
+        await ed.call("wait", frames=10)   # play starts over frames
+        real = await ed.call("edit_particle_effect", scene=scene, entity="Deep", patch={"duration": 2}, expect_error=True)
+        ed.check_in("playing", real, "the scene plays")
+        err = await ed.call("edit_particle_effect", scene=scene, entity="Deep", patch={"duration": 2}, dry_run=True, expect_error=True)
+        ed.check_in("playing", err, "a dry run is refused where the edit is")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_bake_keeps_the_offset_and_stays_in_the_project(ed: Editor):
+    raised = {"duration": 1, "looping": False, "seed": 2,
+              "modules": {"main": {"startLifetime": 2, "startSpeed": 0, "startSize": 0.5},
+                          "emission": {"rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+                          "shape": {"shape": "sphere", "radius": 0, "position": [0, 1, 0]}}}
+    await make_effect(ed, "assets/fx/raised.particles", raised)
+    await ed.call("bake_particle_sheet", path="assets/fx/raised.particles", columns=2, rows=1, cell_size=64, output="assets/fx/raised_sheet")
+    import json
+    baked = json.loads((ed.project / "assets/fx/raised_sheet.particles").read_text())
+    shape = next(m for m in baked["modules"] if m["type"] == "shape")
+    ed.check(abs(shape.get("position", [0, 0, 0])[1] - 1.0) < 0.05, f"the flipbook is born at the framed centre: {shape}")
+
+    outside = ed.scratch.root / "outside"
+    outside.mkdir(exist_ok=True)
+    link = ed.project / "assets" / "linked"
+    if not link.exists():
+        link.symlink_to(outside, target_is_directory=True)
+    err = await ed.call("bake_particle_sheet", path="assets/fx/raised.particles", columns=2, rows=1, cell_size=64,
+                        output="assets/linked/escape", expect_error=True)
+    ed.check_in("output", err)
+    ed.check_eq(sorted(p.name for p in outside.iterdir()), [], "nothing written outside the project")
+
+
+async def test_check_cli_skips_sub_emitter_effects(ed: Editor):
+    pop = {"duration": 1, "looping": False, "modules": {"main": {"startLifetime": 0.5, "startSpeed": 1}, "emission": {"rateOverTime": 0}}}
+    await make_effect(ed, "assets/fx/pop.particles", pop)
+    parent = dict(burst_effect(20, 100))
+    parent["modules"] = dict(parent["modules"], subEmitters={})
+    parent["subEmitters"] = [{"trigger": "death", "effect": "assets/fx/pop.particles"}]
+    await make_effect(ed, "assets/fx/explode.particles", parent)
+    cmd = harness.editor_command() + ["check", "--project", str(ed.project), "--particles"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    output = r.stdout + r.stderr
+    ed.check("pop.particles: error" not in output, f"a sub-emitter's effect is not checked alone: {output[-1500:]}")
+    warn = subprocess.run(cmd + ["--files", str(ed.project / "assets/fx/visible.particles"), "--fail-on", "warn"],
+                          capture_output=True, text=True, timeout=600)
+    ed.check_eq(warn.returncode, 1, f"--fail-on warn makes its pop WARN an error: {(warn.stdout + warn.stderr)[-1500:]}")

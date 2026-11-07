@@ -75,7 +75,8 @@
         "particles": {
             "chars": 15000,
             "tools": 13,
-            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply"
+            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply",
+            "reason": "R12's Bake Sprite Sheet writes two files as one undo step and runs as a job, as bake_vertex_animation does; folding it into preview_particle_effect would make that read-only tool write, so the 13th tool is the bake"
         }
     },
     "exceptions": {

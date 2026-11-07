@@ -89,6 +89,7 @@ void ParticleChecksPanel::setSubtree(uint32_t scene, Entity entity){
 
 bool ParticleChecksPanel::buildRequest(Project* project, ParticlePreviewRequest& request, std::string& error) const{
     request = ParticlePreviewRequest();
+    std::string scope = asset;
     if (!asset.empty()){
         if (!ParticlePreviewSource::fromAsset(asset, request.systems, error)) return false;
     }else{
@@ -98,14 +99,12 @@ bool ParticleChecksPanel::buildRequest(Project* project, ParticlePreviewRequest&
             return false;
         }
         if (!ParticlePreviewSource::fromSubtree(sceneProject->scene, root, request.systems, error)) return false;
+        scope = ParticlePreviewSource::subtreeScope(*sceneProject, root);
     }
-    // the tool's arguments, as the window sets them
+    // the tool's arguments, as the window sets them, completed by the tool's own code
     qa::Json args = {{"frames", frames}, {"platform", platform}, {"overdraw_map", overdrawMap}};
     if (seed != 0) args["seed"] = seed;
-    if (!ParticlePreviewSource::applyArgs(args, request, error)) return false;
-    if (project) request.qa = project->getParticleQaSettings();
-    error = ParticleEffectPreview::validate(request);
-    return error.empty();
+    return ParticlePreviewSource::complete(project, args, scope, request, error);
 }
 
 bool ParticleChecksPanel::start(Project* project, std::string& error){
@@ -137,14 +136,21 @@ std::vector<ParticleChecksPanel::Row> ParticleChecksPanel::rowsOf(const qa::Json
     return out;
 }
 
+std::string ParticleChecksPanel::scope(Project* project) const{
+    if (!asset.empty()) return asset;
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    return sceneProject ? ParticlePreviewSource::subtreeScope(*sceneProject, root) : std::string();
+}
+
 void ParticleChecksPanel::finishRun(Project* project){
-    (void)project;
     if (run->isFailed()){
         message = run->getError();
         run.reset();
         return;
     }
     report = run->getReport();
+    // the window's runs count toward the fix rounds as the tool's do
+    ParticlePreviewSource::rounds().record(scope(project), report["checks"]);
     rows = rowsOf(report);
     message = "Verdict " + report.value("verdict", "") + ", seed " + (report["seeds"].empty() ? std::string("-") : report["seeds"][0]["seed"].dump()) +
               ", state_hash " + report.value("state_hash", "") + ". Cost is an estimate, not measured on a device.";
@@ -196,7 +202,8 @@ void ParticleChecksPanel::finishRecording(Project* project){
         }
         const PoseImage sheet = ParticleSheetBake::composeSheet(done->getCells(), columns, rowsCount);
         const particles::ParticleEffectDocument effect =
-            ParticleSheetBake::sheetEffect(std::string(), columns, rowsCount, done->getReport().value("seconds", 0.0), done->getFrameWorldSize(), looping, additive);
+            ParticleSheetBake::sheetEffect(std::string(), columns, rowsCount, done->getReport().value("seconds", 0.0), done->getFrameWorldSize(),
+                                           done->getFrameCenter(), looping, additive);
         ok = ParticleSheetBake::sheetFiles(project, recordOutput, sheet, effect, false, items, written, error);
     }else{
         const std::filesystem::path out(recordOutput);

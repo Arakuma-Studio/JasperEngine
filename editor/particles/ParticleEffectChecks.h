@@ -22,6 +22,8 @@ namespace jasperengine::editor {
         double tickSeconds = 0.0;      // the shortest tick of the run's emitters
         uint64_t ticks = 0;
         bool looping = false;          // a root system loops
+        bool runCut = false;           // seconds or times set the run's length (not one play)
+        bool additive = false;         // an emitter of the tree draws additively
         uint32_t emitters = 0;         // the systems and their sub-emitter children
         bool noise = false;            // an emitter runs the Noise module (the bench's dearer row)
         double ticksPerSecond = 30.0;  // the fastest emitter's
@@ -40,6 +42,7 @@ namespace jasperengine::editor {
         double capacityAt = -1.0;
         std::string capacityEmitter;
         uint32_t capacityMax = 0;
+        uint32_t capacityNeeded = 0;   // that emitter's peak live count with Max Particles lifted
 
         // bounds (world, the union of the run)
         bool hasBounds = false;
@@ -59,10 +62,15 @@ namespace jasperengine::editor {
         double heatAvgLayers = 0.0;
         double heatPeakLayers = 0.0;
 
-        // visibility (from the cells' pixels when there are cells, else analytic)
+        // visibility: the cells' pixels when there are cells, and always the analytic cover of every
+        // sampled tick (the quads weighted by their alpha), so cells that miss the live part of a run
+        // say nothing about whether it is visible
         bool visibilityFromImages = false;
-        std::vector<std::pair<double, double>> coverage;   // (t, % of the view covered)
-        double maxCoverage = 0.0;
+        std::vector<std::pair<double, double>> coverage;   // (t, % of the view covered): cells, else analytic
+        double maxCoverage = 0.0;                          // the cells' best (analytic without cells)
+        double analyticMaxCoverage = 0.0;
+        // per cell: (% covered in its pixels, % the analytic cover gives at its tick)
+        std::vector<std::pair<double, double>> cellCoverage;
         double clippedPercent = 0.0;   // of the covered pixels, clipped to white (cells only)
         double clippedAt = -1.0;
         double meanAlpha = 0.0;

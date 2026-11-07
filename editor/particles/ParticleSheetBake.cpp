@@ -51,7 +51,6 @@ namespace {
 ParticlePreviewRequest ParticleSheetBake::sheetRequest(ParticlePreviewRequest base, int columns, int rows, int cellSize){
     base.frames = columns * rows;
     base.times.clear();
-    base.openEnd = true;
     base.transparentCells = true;
     base.labels = false;
     base.overdrawMap = false;
@@ -79,7 +78,7 @@ PoseImage ParticleSheetBake::composeSheet(const std::vector<PoseImage>& cells, i
 }
 
 particles::ParticleEffectDocument ParticleSheetBake::sheetEffect(const std::string& texture, int columns, int rows, double seconds, float worldSize,
-                                                                bool looping, bool additive){
+                                                                const Vector3& center, bool looping, bool additive){
     particles::ParticleEffectDocument d;
     const float length = (float)std::max(seconds, 0.01);
     d.duration = length;
@@ -94,7 +93,11 @@ particles::ParticleEffectDocument ParticleSheetBake::sheetEffect(const std::stri
     burst.count = particles::MinMaxCurve(1.0f);
     burst.cycles = 1;
     d.emission.bursts.push_back(burst);
-    d.shape.enabled = false;
+    // born where the run was framed, so the flipbook sits where the effect played
+    d.shape.enabled = true;
+    d.shape.shape = particles::ShapeType::Sphere;
+    d.shape.radius = 0.0f;
+    d.shape.position = center;
     d.textureSheetAnimation.present = true;
     d.textureSheetAnimation.enabled = true;
     d.textureSheetAnimation.tilesX = columns;

@@ -18,8 +18,8 @@
 //   on a shown view and requests the frames it needs. A cell waits for loading meshes, textures
 //   and pipelines (a stand-in is never read back) and the run fails past RENDER_TIMEOUT_SECONDS.
 //   The analytic overdraw and coverage are taken every tick of pass 2 with that camera.
-// - The state hashes of pass 2 must equal pass 1's at each cell: the same request gives the same
-//   bytes on one device, and a run that did not repeat fails instead of showing something else.
+// - The state hash at pass 2's last tick must equal pass 1's: the same request gives the same bytes
+//   on one device, and a run that did not repeat fails instead of showing something else.
 //
 // frames 0 without overdraw_map draws nothing and runs anywhere, with no graphics view (tests, the
 // CLI): runCpu. Main thread only.
@@ -50,7 +50,9 @@ namespace jasperengine::editor {
         std::vector<ParticlePreviewSystem> systems;
         uint32_t seed = 0;              // 0: each system's own (its pinned seed, its effect's, else 1 + index)
         std::vector<double> times;      // the cells' times; empty: `frames` spread over the run
-        int frames = 6;                 // 0 to 24; 0: metrics only
+        // 0 to 24; 0: metrics only. Each cell is the middle of its equal part of the run (a flipbook's
+        // frames; neither the empty start nor the over end of a one-shot)
+        int frames = 6;
         double seconds = 0.0;           // 0: one play (a cycle of a looping effect, else until it is over)
         std::string view = "three_quarter";   // front, side, top, three_quarter
         std::string background = "dark";      // dark, light, checker
@@ -60,9 +62,6 @@ namespace jasperengine::editor {
         // a sheet's cells: the straight-alpha colour (Bake Sprite Sheet) instead of a background
         bool transparentCells = false;
         bool labels = true;             // time and count under each cell
-        // the cells in the middle of each of `frames` equal parts of the run (a flipbook's frames: the
-        // first is not the empty start) rather than at k / (frames - 1)
-        bool openEnd = false;
         ParticleQaSettings qa;
         std::map<std::string, int> rounds;   // consecutive FAILs before this run, by check id
         PoseImage reference;            // drawn as one more cell, labelled "reference"
@@ -105,6 +104,8 @@ namespace jasperengine::editor {
         const std::vector<PoseImage>& getCells() const { return cells; }
         // the height of the view (world units) at the framed centre: a cell's size in the world
         float getFrameWorldSize() const;
+        // the framed centre, relative to the source's origin (the subtree's root)
+        Vector3 getFrameCenter() const;
 
         // Called when the run ends (ok or not), on the main thread from processFrame
         void setOnFinished(std::function<void()> done) { onFinished = std::move(done); }

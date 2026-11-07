@@ -2175,7 +2175,8 @@ void printCheckUsage(const std::string& commandName) {
         << "      --particles          Particle effects (.particles): preview_particle_effect's checks at each\n"
         << "                           effect's default seed, metrics only (capacity_hit, overdraw_budget,\n"
         << "                           invisible, pop, never_ends, platform_budget; cost is an estimate).\n"
-        << "                           A FAIL is an error, a WARN a warning.\n"
+        << "                           A FAIL is an error, a WARN a warning. An effect used as a sub-emitter\n"
+        << "                           is checked through the effects that use it, not alone.\n"
         << "      --fail-on <verdict>  fail (default) or warn: --particles reports WARN rows as errors too.\n"
         << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos\n"
         << "                           and particle effects.\n"
@@ -3086,9 +3087,21 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     if (particlesWanted) {
         // S91 R33: each effect's checks at its default seed, metrics only (no graphics view)
         const std::vector<fs::path> files = particleFiles.empty() ? ProjectChecks::findProjectFiles(root, {".particles"}) : particleFiles;
+        // a sub-emitter's effect plays from its parent's particles (its own emission is often 0): it is
+        // checked as part of every effect naming it, never alone
+        std::set<std::string> children;
+        for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".particles"})) {
+            std::vector<ParticlePreviewSystem> systems;
+            std::string ignored;
+            if (!ParticlePreviewSource::fromAsset(project.normalizeToAssetsRelative(file).generic_string(), systems, ignored)) continue;
+            for (const particles::SubEmitterEntry& entry : systems.front().document.subEmitters) children.insert(entry.effect);
+        }
+        size_t checkedEffects = 0;
         for (const fs::path& file : files) {
             const std::string rel = ProjectChecks::projectRelative(root, file);
             const std::string asset = project.normalizeToAssetsRelative(file).generic_string();
+            if (children.count(asset)) continue;
+            checkedEffects++;
             ParticlePreviewRequest request;
             std::string error;
             qa::Json report;
@@ -3115,7 +3128,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
                 run.findings.push_back(finding);
             }
         }
-        run.checked.push_back({"particles", files.size()});
+        run.checked.push_back({"particles", checkedEffects});
     }
 
     // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)

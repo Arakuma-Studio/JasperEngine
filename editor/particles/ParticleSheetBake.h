@@ -5,6 +5,7 @@
 #define PARTICLESHEETBAKE_H
 
 #include "command/type/WriteFilesCmd.h"
+#include "math/Vector3.h"
 #include "particles/ParticleEffect.h"
 #include "particles/ParticleEffectPreview.h"
 #include "pose/PoseImage.h"
@@ -32,10 +33,11 @@ namespace jasperengine::editor {
 
         // the cells, row by row from the top left (Texture Sheet Animation's order), no gaps
         static PoseImage composeSheet(const std::vector<PoseImage>& cells, int columns, int rows);
-        // one particle the size of a cell's view, at the origin, playing the sheet over `seconds`
-        // (again every `seconds` when looping), with the source's blend when every system adds
+        // one particle the size of a cell's view, at the framed centre (relative to the source's
+        // origin), playing the sheet over `seconds` (again every `seconds` when looping), with the
+        // source's blend when every system adds
         static particles::ParticleEffectDocument sheetEffect(const std::string& texture, int columns, int rows, double seconds, float worldSize,
-                                                             bool looping, bool additive);
+                                                             const Vector3& center, bool looping, bool additive);
         // <output>.png and <output>.particles (output: project-relative, without an extension)
         static bool sheetFiles(Project* project, const std::string& output, const PoseImage& sheet, const particles::ParticleEffectDocument& effect,
                                bool overwrite, std::vector<WriteFilesCmd::Item>& items, std::vector<std::string>& written, std::string& error);

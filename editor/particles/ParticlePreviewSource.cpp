@@ -3,6 +3,7 @@
 
 #include "ParticlePreviewSource.h"
 
+#include "Project.h"
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/Transform.h"
@@ -34,6 +35,8 @@ std::vector<Entity> ParticlePreviewSource::subtreeSystems(Scene* scene, Entity r
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < systems->size(); i++){
         const Entity entity = systems->getEntity(i);
+        // a GameObject that does not play is not part of the effect
+        if (!scene->isEntityActiveInHierarchy(entity)) continue;
         std::string relative;
         if (!EntityPath::relative(scene, root, entity, relative)){
             // a name on the way that a path cannot hold: under the root all the same?
@@ -131,4 +134,23 @@ bool ParticlePreviewSource::applyArgs(const nlohmann::json& args, ParticlePrevie
     if (!text("platform", "mobile", {"mobile", "web", "desktop"}, request.platform)) return false;
     request.overdrawMap = args.value("overdraw_map", false);
     return true;
+}
+
+bool ParticlePreviewSource::complete(Project* project, const nlohmann::json& args, const std::string& scope, ParticlePreviewRequest& request,
+                                     std::string& error){
+    if (!applyArgs(args, request, error)) return false;
+    error = ParticleEffectPreview::validate(request);
+    if (!error.empty()) return false;
+    if (project) request.qa = project->getParticleQaSettings();
+    request.rounds = rounds().previous(scope);
+    return true;
+}
+
+std::string ParticlePreviewSource::subtreeScope(const SceneProject& sceneProject, Entity root){
+    return "scene " + std::to_string(sceneProject.id) + ": " + EntityPath::of(sceneProject, root);
+}
+
+qa::FailRounds& ParticlePreviewSource::rounds(){
+    static qa::FailRounds store;
+    return store;
 }

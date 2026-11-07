@@ -357,6 +357,8 @@ struct ParticleEffectPreview::Impl {
     std::vector<std::array<float, 16>> shadowTransforms;
     std::vector<uint32_t> liveCurve;
     std::vector<TreeEmitter> tree, shadowTree;
+    std::vector<uint32_t> shadowPeak;  // each lifted emitter's peak live count, depth first
+    size_t capacityIndex = 0;
     uint64_t runHash = 0;            // pass 1's state hash at its last tick
     float runMin[3] = {0, 0, 0}, runMax[3] = {0, 0, 0};
     double alphaSum = 0.0;
@@ -503,6 +505,10 @@ float ParticleEffectPreview::getFrameWorldSize() const{
     return impl->frameWorldSize;
 }
 
+Vector3 ParticleEffectPreview::getFrameCenter() const{
+    return impl->frameCenter;
+}
+
 std::string ParticleEffectPreview::getStage() const{
     switch (impl->stage){
         case Impl::Stage::Pass1: return "simulating";
@@ -564,7 +570,12 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
         for (double t : request.times) seconds = std::max(seconds, t);
         d.totalTicks = (uint64_t)std::ceil(seconds / d.master - 1e-6);
         measured.tickSeconds = d.master;
+        // a variable step (tick rate 0) steps once a frame: 60 a second at 60 fps
         measured.ticksPerSecond = 1.0 / d.master;
+        for (const ParticleEffectDocument& doc : d.documents){
+            if (doc.tickRate <= 0) measured.ticksPerSecond = std::max(measured.ticksPerSecond, 60.0);
+        }
+        measured.runCut = request.seconds > 0.0 || !request.times.empty();
 
         d.sim = std::make_unique<PreviewScene>();
         d.sim->build(request, d.documents, d.seeds, false);
@@ -683,20 +694,25 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                     measured.largestAt = t;
                 }
             }
-            if (measured.capacityAt < 0.0){
-                d.sim->emitters(d.tree);
-                d.shadowTree.clear();
-                for (size_t i = 0; i < n; i++){
-                    if (d.shadow[i]->effect()) collectTree(*d.shadow[i], d.sim->names[i], d.sim->assets[i], d.shadowTree);
+            // the lifted run: each emitter's peak (what Max Particles would have to hold), and the first
+            // emitter that refused a birth
+            d.sim->emitters(d.tree);
+            d.shadowTree.clear();
+            for (size_t i = 0; i < n; i++){
+                if (d.shadow[i]->effect()) collectTree(*d.shadow[i], d.sim->names[i], d.sim->assets[i], d.shadowTree);
+            }
+            if (d.shadowPeak.size() < d.shadowTree.size()) d.shadowPeak.resize(d.shadowTree.size(), 0);
+            for (size_t k = 0; k < d.shadowTree.size(); k++) d.shadowPeak[k] = std::max(d.shadowPeak[k], d.shadowTree[k].runtime->count());
+            for (size_t k = 0; measured.capacityAt < 0.0 && k < d.tree.size() && k < d.shadowTree.size(); k++){
+                if (d.shadowTree[k].runtime->spawnedCount() > d.tree[k].runtime->spawnedCount()){
+                    measured.capacityAt = t;
+                    measured.capacityEmitter = d.tree[k].name;
+                    measured.capacityMax = d.tree[k].runtime->program()->maxParticles;
+                    d.capacityIndex = k;
                 }
-                for (size_t k = 0; k < d.tree.size() && k < d.shadowTree.size(); k++){
-                    if (d.shadowTree[k].runtime->spawnedCount() > d.tree[k].runtime->spawnedCount()){
-                        measured.capacityAt = t;
-                        measured.capacityEmitter = d.tree[k].name;
-                        measured.capacityMax = d.tree[k].runtime->program()->maxParticles;
-                        break;
-                    }
-                }
+            }
+            for (const TreeEmitter& e : d.tree){
+                if (e.runtime->effect() && e.runtime->effect()->document.renderer.blend == particles::ParticleBlend::Additive) measured.additive = true;
             }
             if (live > 0){
                 // the run's mean alpha, sampled on a few particles a tick
@@ -754,6 +770,7 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
         for (const TreeEmitter& e : d.shadowTree) lifted += e.runtime->spawnedCount();
         measured.emitted = spawned;
         measured.neverBorn = lifted > spawned ? lifted - spawned : 0;
+        if (measured.neverBorn > 0 && d.capacityIndex < d.shadowPeak.size()) measured.capacityNeeded = d.shadowPeak[d.capacityIndex];
         if (measured.neverBorn == 0) measured.capacityAt = -1.0;
         // the count curve: about 32 samples
         const size_t samples = std::min<size_t>(32, d.liveCurve.size() - 1);
@@ -769,8 +786,7 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
         const int frames = request.times.empty() ? request.frames : (int)request.times.size();
         if (times.empty()){
             for (int k = 0; k < frames; k++){
-                if (request.openEnd) times.push_back(measured.seconds * ((double)k + 0.5) / (double)frames);
-                else times.push_back(frames == 1 ? measured.seconds * 0.5 : measured.seconds * (double)k / (double)(frames - 1));
+                times.push_back(measured.seconds * ((double)k + 0.5) / (double)frames);
             }
         }
         for (double t : times){
@@ -938,6 +954,8 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 double peak = 0.0, avg = 0.0, coverage = 0.0, area = 0.0;
                 d.projectGrid(*d.look, peak, avg, coverage, area);
                 d.cellsAnalyticPeak = std::max(d.cellsAnalyticPeak, peak);
+                measured.cellCoverage.push_back({percent, coverage});
+                measured.analyticMaxCoverage = std::max(measured.analyticMaxCoverage, coverage);
                 if (avg > 0.0){
                     d.cellsAnalyticAvgSum += avg;
                     d.cellsAnalyticCount++;
@@ -964,7 +982,8 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 }
                 // at 1080p with the frame's height 25% of the screen's
                 measured.fillMpix = std::max(measured.fillMpix, area * 270.0 * 270.0 / 1.0e6);
-                if (!needsGpu()){
+                measured.analyticMaxCoverage = std::max(measured.analyticMaxCoverage, coverage);
+                if (d.cellTicks.empty()){
                     measured.coverage.push_back({t, coverage});
                     measured.maxCoverage = std::max(measured.maxCoverage, coverage);
                 }
@@ -1086,7 +1105,7 @@ void ParticleEffectPreview::buildReport(){
         const size_t marker = measured.capacityEmitter.rfind(" > ");
         if (system < 0 && marker != std::string::npos) asset = measured.capacityEmitter.substr(marker + 3);
         fixes.push_back({{"check", "capacity_hit"}, {"system", system}, {"path", asset},
-                         {"patch", {{"maxParticles", std::min<uint64_t>(measured.capacityMax + measured.neverBorn, particles::kMaxParticlesPerEmitter)}}}});
+                         {"patch", {{"maxParticles", std::min<uint64_t>(std::max(measured.capacityNeeded, measured.capacityMax + 1), particles::kMaxParticlesPerEmitter)}}}});
     }
     report = {{"format", "jasperengine.particle-check"}, {"version", 1}, {"verdict", verdict}, {"seeds", seeds},
               {"tick_seconds", std::round(d.master * 1e6) / 1e6}, {"ticks", measured.ticks}, {"seconds", std::round(measured.seconds * 1000.0) / 1000.0},

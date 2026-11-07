@@ -106,8 +106,9 @@ nothing, and returns a filmstrip (`frames`, default 6, or `times`; one framing f
 bounds; labels `t=<seconds> <live particles>`), metrics and checks. Use `capture_particles` only to
 see the effect in its scene, from its camera.
 
-- The same request gives the same image bytes and `state_hash` on one device. Seeds: `seed`, else
-  each system's pinned one, else its effect's, else 1; the result lists them.
+- The same request gives the same image bytes and `state_hash` on one device. Seeds: `seed` (plus
+  the system's index in a subtree), else each system's pinned one, else its effect's, else 1 plus its
+  index; the result lists them. Each cell is the middle of its share of the run.
 - `frames: 0` returns the metrics and checks only (no graphics needed, and fewer tokens).
 - Checks share S35's row: `{id, kind, status, round, measured, threshold, threshold_source,
   limited_by, at, fix_hint, method}`. `capacity_hit` (FAIL: Max Particles refused births; a run

@@ -301,7 +301,16 @@ Effort in person-weeks, estimates at ±50%.
   tick at alpha 0.25 or more; `blown_out` needs cells and is SKIP with `frames: 0`; `never_ends` is
   SKIP for a looping root. `reference` is shown as the last cell, not compared.
 - **M3, AC15.** The Particle Effect window that hosts `ParticleChecksPanel` is M2's (another
-  branch), so AC15 is an editor test of the panel's request against the tool's (its source and
-  arguments) on one effect; a `ui_probe` test of the hosted panel belongs after both merge.
+  branch), and an editor test cannot call an MCP handler. The handler and the panel therefore build
+  their requests through one function (`ParticlePreviewSource::complete`: arguments, thresholds,
+  rounds, validation) and share one rounds store; AC15 is an editor test running the panel's request
+  and the handler's through the editor's frame loop on one effect (rows and rounds equal), and the
+  MCP tests cover the handler. A `ui_probe` test of the hosted panel belongs after both merge.
+- **M3, cells and checks after review.** Cells sit in the middle of their share of the run (a
+  one-shot's start and end are empty). `invisible` follows the analytic cover of every tick and fails
+  on cells only where the quads cover the view but no pixel shows. `blown_out` applies to effects with
+  an additive emitter. `never_ends` is SKIP when `seconds` or `times` set the run. capacity_hit's fix
+  is the emitter's peak with nothing refused. `check --particles` checks an effect used as a
+  sub-emitter only through its parents.
 - **M3, CLI (R33).** `check --particles` is opt-in (and part of `--all`), not in the default set: it
   starts the engine for every effect. `--fail-on warn` reports WARN rows as errors too.

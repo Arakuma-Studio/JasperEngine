@@ -89,6 +89,7 @@ namespace jasperengine::editor {
         std::string recordOutput;
 
         void finishRun(Project* project);
+        std::string scope(Project* project) const;
         void finishRecording(Project* project);
         void applyFix(Project* project, int index);
         std::string defaultRecordPath(Project* project) const;

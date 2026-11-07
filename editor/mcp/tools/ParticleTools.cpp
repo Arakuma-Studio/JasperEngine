@@ -445,7 +445,8 @@ void editEffectTool(const CallPtr& call) {
         return;
     }
     EffectTarget target;
-    if (!resolveEffectTarget(call, target, !args.value("dry_run", false))) return;
+    // a dry run predicts the edit, so it is refused where the edit is (a playing scene)
+    if (!resolveEffectTarget(call, target, true)) return;
     if (args.value("dry_run", false)) {
         // the patch on a copy: what it would do, nothing changed and no undo step
         ParticleEffectDocument document;
@@ -827,12 +828,6 @@ void migrationReportTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ preview and bake (S91)
 
-// consecutive FAILs of each check per effect (an asset, or a scene's GameObject) this session
-qa::FailRounds& previewRounds() {
-    static qa::FailRounds rounds;
-    return rounds;
-}
-
 // the runs in flight: kept alive until they end (a run is never destroyed inside its own callback)
 std::vector<std::shared_ptr<ParticleEffectPreview>>& activePreviews() {
     static std::vector<std::shared_ptr<ParticleEffectPreview>> runs;
@@ -875,13 +870,9 @@ bool previewRequest(const CallPtr& call, const Json& args, ParticlePreviewReques
             call->fail(error);
             return false;
         }
-        scope = "scene " + std::to_string(sceneProject->id) + ": " + McpRefs::entityPath(sceneProject, entity);
+        scope = ParticlePreviewSource::subtreeScope(*sceneProject, entity);
     } else {
         call->fail("Give path (a .particles asset) or entity (a GameObject: its Particle Systems and every one beneath it).");
-        return false;
-    }
-    if (!ParticlePreviewSource::applyArgs(args, request, error)) {
-        call->fail(error);
         return false;
     }
     if (args.contains("reference")) {
@@ -892,13 +883,11 @@ bool previewRequest(const CallPtr& call, const Json& args, ParticlePreviewReques
             error = "reference: " + error;
         }
     }
-    if (error.empty()) error = ParticleEffectPreview::validate(request);
-    if (!error.empty()) {
+    // the run arguments, thresholds, rounds and validation: the same code as the window's panel
+    if (!error.empty() || !ParticlePreviewSource::complete(project, args, scope, request, error)) {
         call->fail(error);
         return false;
     }
-    request.qa = project->getParticleQaSettings();
-    request.rounds = previewRounds().previous(scope);
     return true;
 }
 
@@ -957,7 +946,15 @@ void runPreviewJob(const CallPtr& call, ParticlePreviewRequest request, const st
             if (job->cancelRequested()) job->markCancelled("Cancelled; nothing was written.");
             else job->fail(r->getError());
         } else {
-            *reply = done(*r);
+            // the run ends from the editor's frame, not inside a tool call: its writes (save_path, the
+            // bake's files and their undo step) stay beneath the project as the call's own would, and
+            // whatever goes wrong ends the job (the frame loop would swallow it)
+            McpWriteScope writeScope;
+            try {
+                *reply = done(*r);
+            } catch (const std::exception& e) {
+                *reply = ToolResult::error(std::string("The preview failed, nothing was written: ") + e.what());
+            }
             Json result = reply->structured.is_object() ? reply->structured : Json::object();
             if (reply->isError) job->fail(reply->text, result);
             else job->succeed(reply->text, result);
@@ -989,11 +986,12 @@ void runPreviewJob(const CallPtr& call, ParticlePreviewRequest request, const st
 std::string previewText(const std::string& scope, const Json& report) {
     const Json& count = report["metrics"]["count"];
     char head[256];
-    std::snprintf(head, sizeof(head), "%s: %llu ticks of %.4g s (%.3g s), peak %u particles at %.3g s, emitted %llu. Verdict %s.", scope.c_str(),
+    // (the scope apart: a deep subtree's path must not cut the verdict off)
+    std::snprintf(head, sizeof(head), ": %llu ticks of %.4g s (%.3g s), peak %u particles at %.3g s, emitted %llu. Verdict %s.",
                   (unsigned long long)report.value("ticks", (uint64_t)0), report.value("tick_seconds", 0.0), report.value("seconds", 0.0),
                   count.value("peak", 0u), count.value("peak_at", 0.0), (unsigned long long)count.value("emitted", (uint64_t)0),
                   report.value("verdict", "").c_str());
-    std::string text = head;
+    std::string text = scope + head;
     text += " Seeds:";
     for (const Json& s : report["seeds"]) text += " " + s.value("system", "") + "=" + std::to_string(s.value("seed", 0u));
     text += ", state_hash " + report.value("state_hash", "") + ".";
@@ -1022,7 +1020,7 @@ void previewEffectTool(const CallPtr& call) {
     runPreviewJob(call, std::move(request), "preview_particle_effect", "Preview Particle Effect " + scope,
                   [scope, saveTarget, failOn, project](ParticleEffectPreview& run) {
         Json data = run.getReport();
-        previewRounds().record(scope, data["checks"]);
+        ParticlePreviewSource::rounds().record(scope, data["checks"]);
         std::string text = previewText(scope, data);
         data["next"] = data.value("guidance", "");
         ToolResult reply;
@@ -1068,6 +1066,14 @@ void bakeSheetTool(const CallPtr& call) {
         output = args.value("output", std::string());
         if (output.size() > 4 && (output.substr(output.size() - 4) == ".png")) output.resize(output.size() - 4);
         if (output.size() > 10 && (output.substr(output.size() - 10) == ".particles")) output.resize(output.size() - 10);
+        // refused now, not after the run: a path out of the project (a link on the way included)
+        fs::path absolute;
+        for (const char* extension : {".png", ".particles"}) {
+            if (!McpRefs::resolveProjectWritePath(call->ctx().project(), output + extension, absolute, error, false)) {
+                call->fail("output: " + error);
+                return;
+            }
+        }
     }
     const bool overwrite = args.value("overwrite", false);
     ParticlePreviewRequest request = ParticleSheetBake::sheetRequest(base, columns, rows, cellSize);
@@ -1094,7 +1100,7 @@ void bakeSheetTool(const CallPtr& call) {
         sheet.encodePng(png);
         if (write) {
             const particles::ParticleEffectDocument effect =
-                ParticleSheetBake::sheetEffect(std::string(), columns, rows, seconds, run.getFrameWorldSize(), looping, additive);
+                ParticleSheetBake::sheetEffect(std::string(), columns, rows, seconds, run.getFrameWorldSize(), run.getFrameCenter(), looping, additive);
             std::vector<WriteFilesCmd::Item> items;
             std::vector<std::string> written;
             std::string why;

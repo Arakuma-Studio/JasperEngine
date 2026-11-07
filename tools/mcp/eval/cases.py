@@ -2003,6 +2003,44 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "pick_particle_sheet_bake",
+        "kind": "guard",
+        "what_happened": "Asked for a flipbook of an effect, agents captured frames one by one and stitched them; "
+                         "bake_particle_sheet bakes the sheet and the effect playing it, and writes only with output.",
+        "text_at_issue": "bake_particle_sheet's description: 'Without output nothing is written ... With output both files'",
+        "source": "S91 R12; no failure on record",
+        "prompt": "Bake assets/fx/smoke.particles into a 4x4 sprite sheet at assets/fx/smoke_sheet, so I can use it as a cheap flipbook.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "bake_particle_sheet", "result": ok(
+                "assets/fx/smoke.particles: 4x4 frames of 128 px over 2.0 s, straight alpha. Wrote assets/fx/smoke_sheet.png and "
+                "assets/fx/smoke_sheet.particles (Texture Sheet Animation 4x4) as one undo step \"Bake Sprite Sheet\".",
+                {"written": ["assets/fx/smoke_sheet.png", "assets/fx/smoke_sheet.particles"],
+                 "next": "set_particle_effect plays assets/fx/smoke_sheet.particles on a Particle System."})},
+        ],
+        "checks": {"calls": [{"tool": "bake_particle_sheet", "args": {"output": "re:smoke_sheet"}}],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_particle_subtree_seek",
+        "kind": "guard",
+        "what_happened": "A multi-system effect (a parent GameObject with several Particle Systems) was sought one child at a "
+                         "time; with_children seeks the subtree as one.",
+        "text_at_issue": "control_particles' with_children",
+        "source": "S91 R31; no failure on record",
+        "prompt": "In the open scene, jump the Explosion effect (a GameObject with child Particle Systems) to 0.5 seconds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"with_children": True}, "result": ok(
+                "seek: 340 particles in 3 systems at 0.500000 s (Edit mode: the Scene view's preview runs it).", {"systems": []})},
+            {"tool": "control_particles", "result": err("\"Explosion\" has no Particle System (create_particles adds one).")},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "seek", "with_children": True}}],
+                   "max_calls": {"control_particles": 2}},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_graph_new_ids",
         "kind": "guard",
         "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "

@@ -107,7 +107,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |
-| `particles` | S20, upstream's `import_unity_particles` (out of core to fit the budget) |
+| `particles` | S20, upstream's `import_unity_particles` (out of core to fit the budget), S91 (`preview_particle_effect`, `bake_particle_sheet`) |
 | `animation` | S21 |
 | `gameplay` | S22 |
 | `physics` | upstream's physics-3d: `create_ragdoll`, `edit_physics_material` (out of core to fit the budget) |

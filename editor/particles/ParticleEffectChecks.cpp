@@ -79,8 +79,9 @@ namespace {
         row["measured"]["max_particles"] = m.capacityMax;
         row["limited_by"] = m.capacityEmitter + ": Max Particles " + std::to_string(m.capacityMax) + " refused " + std::to_string(m.neverBorn) +
                             " births; emission was silently limited.";
-        row["fix_hint"] = "Raise " + m.capacityEmitter + "'s Max Particles to " + std::to_string(m.capacityMax + m.neverBorn) +
-                          ", or emit fewer (lower the burst or the rate).";
+        row["measured"]["needed"] = m.capacityNeeded;
+        row["fix_hint"] = "Raise " + m.capacityEmitter + "'s Max Particles to " + std::to_string(std::max(m.capacityNeeded, m.capacityMax + 1)) +
+                          " (its peak with nothing refused), or emit fewer (lower the burst or the rate).";
         if (m.capacityAt >= 0.0) qa::addAt(row, m.capacityAt);
         return row;
     }
@@ -105,17 +106,30 @@ namespace {
 
     Json invisible(const ParticleMeasurements& m, const ParticleCheckRequest& request){
         Json row = qa::row("invisible", "content");
-        row["method"] = m.visibilityFromImages ? "pixels of the cells that differ from the background (rendered on black and on white)"
-                                               : "analytic: grid cells the particles cover, weighted by their alpha";
-        row["threshold"] = request.qa.invisiblePercent;
+        const double t = request.qa.invisiblePercent;
+        row["method"] = "analytic: grid cells the particles cover, weighted by their alpha, at every sampled tick; with cells, also their "
+                        "pixels where the analytic cover says something shows";
+        row["threshold"] = t;
         row["threshold_source"] = "particles.qa.invisible_percent";
-        row["measured"] = round3(m.maxCoverage);
-        if (m.maxCoverage >= request.qa.invisiblePercent){
+        row["measured"] = {{"analytic", round3(m.analyticMaxCoverage)}};
+        // the cells that should show something, and the best of what they show
+        int shouldShow = 0;
+        double shown = 0.0;
+        for (const auto& [pixels, analytic] : m.cellCoverage){
+            if (analytic < t) continue;
+            shouldShow++;
+            shown = std::max(shown, pixels);
+        }
+        if (request.hasImages) row["measured"]["cells"] = round3(m.maxCoverage);
+        if (m.analyticMaxCoverage >= t && (!request.hasImages || shouldShow == 0 || shown >= t)){
             row["status"] = "PASS";
             return row;
         }
         row["status"] = "FAIL";
-        if (m.peak == 0){
+        if (m.analyticMaxCoverage >= t){
+            row["limited_by"] = "The particles cover the view but the cells show nothing: the texture or the colour draws no pixel.";
+            row["fix_hint"] = "Check the Renderer's texture (its alpha) and the Start Color.";
+        }else if (m.peak == 0){
             row["limited_by"] = "No particle was alive during the run.";
             row["fix_hint"] = "Enable emission: a rate (rateOverTime) or a burst, and a Start Lifetime above 0.";
         }else if (m.meanAlpha < 0.02){
@@ -136,7 +150,12 @@ namespace {
             row["method"] = "needs cells: frames 0 renders none";
             return row;
         }
-        row["method"] = "covered pixels of the cells on black whose red, green and blue are all 250 or more";
+        if (!m.additive){
+            row["method"] = "no emitter draws additively: white is the colour drawn, not layers saturating";
+            row["status"] = "PASS";
+            return row;
+        }
+        row["method"] = "covered pixels of the cells on black whose red, green and blue are all 250 or more (additive effects)";
         row["measured"] = round2(m.clippedPercent);
         row["status"] = m.clippedPercent > request.qa.blownOutPercent ? "WARN" : "PASS";
         if (row["status"] == "WARN"){
@@ -168,6 +187,10 @@ namespace {
         row["threshold_source"] = "the run's seconds";
         if (m.looping){
             row["method"] = "skipped: a root system loops by design";
+            return row;
+        }
+        if (m.runCut){
+            row["method"] = "skipped: seconds or times set the run's length, not one play";
             return row;
         }
         row["method"] = "a one-shot run until no particle and no emission is left";
@@ -256,7 +279,7 @@ qa::Json ParticleEffectChecks::metrics(const ParticleMeasurements& m, const std:
         coverage.push_back({round3(m.coverage[k].first), round3(m.coverage[k].second)});
     }
     Json visibility = {{"method", m.visibilityFromImages ? "cells" : "analytic"}, {"coverage", coverage}, {"max_coverage", round3(m.maxCoverage)},
-                       {"mean_alpha", round3(m.meanAlpha)}};
+                       {"analytic_max_coverage", round3(m.analyticMaxCoverage)}, {"mean_alpha", round3(m.meanAlpha)}};
     if (m.visibilityFromImages) visibility["clipped_percent"] = round2(m.clippedPercent);
     Json temporal = {{"coverage_jump", round3(m.coverageJump)}, {"coverage_jump_at", round3(m.coverageJumpAt)},
                      {"pop_percent", round2(m.popPercent)}};

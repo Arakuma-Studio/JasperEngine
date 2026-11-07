@@ -177,3 +177,32 @@ TEST(ParticleEffectChecks, ChangedThresholdsAreReported){
     request.qa = qa;
     EXPECT_EQ(ParticleEffectChecks::rows(m, request)[4]["status"], "PASS");
 }
+
+TEST(ParticleEffectChecks, InvisibleFollowsTheWholeRunNotTheCells){
+    ParticleMeasurements m;
+    m.peak = 100;
+    m.meanAlpha = 1.0;
+    m.analyticMaxCoverage = 12.0;
+    // two cells that missed the live part of the run (the start and the end): blank, and blank by the analytic cover too
+    m.cellCoverage = {{0.0, 0.0}, {0.0, 0.0}};
+    ParticleCheckRequest request;
+    request.hasImages = true;
+    EXPECT_EQ(ParticleEffectChecks::rows(m, request)[2]["status"], "PASS");
+    // a cell where the quads cover the view but no pixel shows: the texture or colour draws nothing
+    m.cellCoverage = {{0.0, 9.0}};
+    const qa::Json row = ParticleEffectChecks::rows(m, request)[2];
+    EXPECT_EQ(row["status"], "FAIL");
+    EXPECT_NE(row["limited_by"].get<std::string>().find("cells show nothing"), std::string::npos);
+    // no cell at all (frames 0, with or without overdraw_map): the analytic cover decides
+    m.cellCoverage.clear();
+    request.hasImages = false;
+    EXPECT_EQ(ParticleEffectChecks::rows(m, request)[2]["status"], "PASS");
+}
+
+TEST(ParticleEffectPreview, CutRunsSkipNeverEndsAndVariableStepsCostAFrameTick){
+    ParticlePreviewRequest cut = requestOf(burst(10, 100));
+    cut.seconds = 0.5;
+    EXPECT_EQ(checkOf(reportOf(cut), "never_ends")["status"], "SKIP");
+    const qa::Json variable = reportOf(requestOf(R"({"version": 1, "duration": 1, "looping": true, "tickRate": 0, "modules": [{"type": "main"}]})"));
+    EXPECT_DOUBLE_EQ(variable["metrics"]["cost"]["ticks_per_frame"].get<double>(), 1.0);
+}
