@@ -121,7 +121,7 @@ std::shared_ptr<SceneDiffTracker::Baseline> SceneDiffTracker::baselineFor(VcsSer
     // a file the baseline has not got: every GameObject of it is added
     const VcsChange* change = service.snapshot() ? service.snapshot()->find(key) : nullptr;
     const std::string readRev = service.effectiveRevision(rev);
-    if (readRev == service.baselineRevision() && change && change->newFile()) {
+    if (readRev == service.baselineRevision() && change && !change->hasBaseline()) {
         baseline->model = emptyModel(file);
         baseline->ready = true;
         return baseline;
@@ -132,10 +132,12 @@ std::shared_ptr<SceneDiffTracker::Baseline> SceneDiffTracker::baselineFor(VcsSer
         baseline->ready = true;
         return baseline;
     }
+    // a rename, move or copy compares with the file it came from
+    const RepoPath source = change ? change->diffSource() : key;
     // a process: on a blocking channel, never the main thread (R24)
-    jobs::system().processChannel().submit([provider, key, readRev, baseline]() {
+    jobs::system().processChannel().submit([provider, key, source, readRev, baseline]() {
         std::string text;
-        const VcsResult result = provider->baseContent(key, readRev, text);
+        const VcsResult result = provider->baseContent(source, readRev, text);
         auto model = std::make_shared<scene::SceneYamlModel>();
         std::string error;
         if (!result.ok) {
