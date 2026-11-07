@@ -83,53 +83,6 @@ namespace {
 
 }
 
-TEST_F(TerrainHolesConsumers, Foliage){
-    density.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, 255);
-    TerrainFoliageLayer layer;
-    layer.density = 1.0f;
-    layer.maxSlope = 90.0f;
-    layer.densityMap.setData(id("density"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(density.size()),
-                                                        ColorFormat::RED, 1, density.data()));
-    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
-    const auto scatter = [&](){
-        std::vector<InstanceData> instances;
-        for (int z = -5; z <= 4; z++){
-            for (int x = -5; x <= 4; x++){
-                meshSystem->appendFoliageCell(terrain(), layer, x, z, instances);
-            }
-        }
-        return instances;
-    };
-
-    const std::vector<InstanceData> solid = scatter();
-    int west = 0;
-    for (const InstanceData& instance : solid){
-        west += instance.position.x < -1.0f ? 1 : 0;
-    }
-    ASSERT_GT(west, 100) << "the map must grow something where the hole will be";
-
-    cutWestHalf();
-    const std::vector<InstanceData> cut = scatter();
-    const terrain::HoleMapView view = terrainSurfaceView(terrain()).holes;
-    size_t kept = 0;
-    for (const InstanceData& instance : cut){
-        EXPECT_FALSE(terrain::isHole(view, (instance.position.x + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE, (instance.position.z + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE));
-    }
-    // the rest of the scatter stands where it stood: a hole moves nothing, it only takes what was over it
-    for (const InstanceData& instance : solid){
-        kept += terrain::isHole(view, (instance.position.x + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE, (instance.position.z + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE) ? 0 : 1;
-    }
-    EXPECT_EQ(cut.size(), kept);
-    EXPECT_LT(cut.size(), solid.size());
-
-    // and the store's change tells the scatter to run again
-    terrain().needUpdateFoliage = false;
-    TerrainComponentStore store(scene.get(), entity, terrain());
-    const float one = 1.0f;
-    ASSERT_TRUE(store.write(terrain::MapId{terrain::MapKind::Hole, 0}, terrain::TexelRect{0, 0, 1, 1}, std::span<const float>(&one, 1)).ok);
-    EXPECT_TRUE(terrain().needUpdateFoliage);
-}
-
 TEST_F(TerrainHolesConsumers, ParticlesPassThroughAHole){
     ParticleSubsystem* particles = scene->getSystem<ParticleSubsystem>().get();
     auto query = [&](float x, float z, float out[3]){

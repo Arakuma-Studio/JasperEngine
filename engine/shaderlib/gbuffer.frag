@@ -111,8 +111,12 @@ uniform u_fs_gbufferMaterial {
         StochasticTiling gbufferStochastic2;
     #endif
 #endif
+#include "includes/foliage_dither.glsl"
 
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef TERRAIN_HOLES
         terrainDiscardHole();
     #endif

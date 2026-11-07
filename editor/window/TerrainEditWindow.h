@@ -49,6 +49,8 @@ namespace jasperengine::editor{
         std::vector<Vector3> innerPoints;
         // T1 R55: the effective operation's colour (Table 4), the texel-size warning colour under one texel
         Vector4 color = Vector4(1.0f, 0.78f, 0.22f, 1.0f);
+        // T5 R46: pairs of points, the selected prototype's collision capsule at the cursor
+        std::vector<Vector3> capsuleLines;
         // T3 R41: when close, the texels a hole brush will change, one loop each
         std::vector<std::vector<Vector3>> texelLoops;
     };
@@ -83,6 +85,7 @@ namespace jasperengine::editor{
 
     struct ActiveStroke{
         bool active = false;
+        bool treeStroke = false; // T5: the panel's brush
         // The stroke as one undo step: Esc (or Ctrl+Z) before the mouse is released puts the
         // map back and drops what a placement stroke made (S24 R12)
         InteractiveEdit edit;
@@ -113,6 +116,8 @@ namespace jasperengine::editor{
         // The drag's spaced stamps (T1 R21)
         std::optional<terrain::StrokeResampler> placementPath;
     };
+
+    class TerrainFoliagePanel;
 
     class TerrainEditWindow{
     private:
@@ -167,6 +172,7 @@ namespace jasperengine::editor{
         std::string placeAssetPath;
         bool placeInstanced;
         float placeSpacing;
+        std::unique_ptr<TerrainFoliagePanel> foliagePanel;
         float placeMinScale;
         float placeMaxScale;
         float placeRotationJitter;
@@ -293,6 +299,8 @@ namespace jasperengine::editor{
         template<typename T> bool setFoliageLayerProperty(const char* field, const T& value);
 
     public:
+        // A layer with no density map gets an empty one, in memory until something paints it (T5: edit_terrain)
+        bool ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer);
         static constexpr const char* WINDOW_NAME = "Terrain";
 
         // T1 R60: the size a brush may have anywhere; each terrain narrows it (brushSizeLimits)

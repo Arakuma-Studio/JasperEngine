@@ -38,7 +38,9 @@ namespace jasperengine {
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
-        SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
+        // 30 Terrain World, 31 Voxel Volume (programme D19, D22)
+        TreeData = 29               // a .jetrees file of a Terrain's trees (T5 R22)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -65,6 +67,7 @@ namespace jasperengine {
             case AssetType::NavGrid: return "navgrid";
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::TreeData: return "tree_data";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::SoundEvent: return "sound_event";

@@ -138,6 +138,10 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+FoliageQuality Engine::foliageQualityDefaults[3] = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+bool Engine::foliageQualityUncapped = true;
+bool Engine::foliageQualityOverridden = false;
+FoliageQuality Engine::foliageQualityOverride = FoliageQuality::HIGH;
 float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
 bool Engine::foliageDistanceScaleOverridden = false;
 float Engine::foliageDistanceScaleOverride = 1.0f;
@@ -913,6 +917,42 @@ void Engine::resetAtmosphereQuality(){
 
 bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
+}
+
+void Engine::setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped){
+    foliageQualityDefaults[0] = desktop;
+    foliageQualityDefaults[1] = mobile;
+    foliageQualityDefaults[2] = web;
+    foliageQualityUncapped = uncapped;
+}
+
+FoliageQuality Engine::getFoliageQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+            return foliageQualityDefaults[1];
+        case Platform::Web:
+            return foliageQualityDefaults[2];
+        default:
+            return foliageQualityDefaults[0];
+    }
+}
+
+void Engine::setFoliageQuality(FoliageQuality quality){
+    foliageQualityOverride = quality;
+    foliageQualityOverridden = true;
+}
+
+FoliageQuality Engine::getFoliageQuality(){
+    return foliageQualityOverridden ? foliageQualityOverride : getFoliageQualityDefault(getPlatform());
+}
+
+void Engine::resetFoliageQuality(){
+    foliageQualityOverridden = false;
+}
+
+bool Engine::isFoliageQualityUncapped(){
+    return foliageQualityUncapped && !foliageQualityOverridden;
 }
 
 namespace {

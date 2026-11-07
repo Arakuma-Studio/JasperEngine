@@ -19,6 +19,7 @@
 #include "support/TestTempDir.h"
 #include "util/TerrainSplineBake.h"
 #include "pool/TextureDataPool.h"
+#include "terrain/FoliageTypes.h"
 #include "texture/TextureData.h"
 
 #include <gtest/gtest.h>
@@ -447,4 +448,28 @@ TEST_F(TerrainSplineBakeProjectTest, LiveSessionBakesFromItsSnapshotAndCommitsOn
         expected = heightPixels();
         EXPECT_EQ(live, expected);
     }
+}
+
+// T5 AC23: a bake with Clear Trees removes what its footprint covers, as one undo step with the maps
+TEST(TerrainSplineBakeTests, ClearTreesRemovesFootprint){
+    std::vector<terrain::TreeRecord> records;
+    for (int i = 0; i < 40; i++){
+        terrain::TreeRecord record{};
+        record.u = 0.5f + (static_cast<float>(i) - 20.0f) / 64.0f;
+        record.v = 0.5f;
+        record.scale = 1.0f;
+        records.push_back(record);
+    }
+    terrain::TreeStore store;
+    store.apply({}, records, {}, nullptr);
+    std::vector<uint32_t> removed = TerrainSplineBake::treesInFootprint(store, SIZE, {Vector2(0.0f, -100.0f), Vector2(0.0f, 100.0f)}, 10.0f);
+    ASSERT_FALSE(removed.empty());
+    for (uint32_t id : removed){
+        const terrain::TreeRecord* record = store.find(id);
+        ASSERT_NE(record, nullptr);
+        EXPECT_LE(std::fabs((record->u - 0.5f) * SIZE), 10.0f);
+    }
+    // outside it nothing goes
+    EXPECT_LT(removed.size(), records.size());
+    EXPECT_TRUE(TerrainSplineBake::treesInFootprint(store, SIZE, {Vector2(240.0f, -100.0f), Vector2(240.0f, 100.0f)}, 1.0f).empty());
 }

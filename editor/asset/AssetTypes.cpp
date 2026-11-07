@@ -50,6 +50,7 @@ namespace {
             // the Animator's assets (S21) keep their GUID in their JSON like clips
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
+            {{AssetType::TreeData, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".jetrees"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
             // Sound Events (S37): the file holds no GUID, its .meta does
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},

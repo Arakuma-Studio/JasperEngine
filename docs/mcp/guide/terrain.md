@@ -15,8 +15,11 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Look: where it is steep, high, painted | `visualize_terrain` with `overlay` |
 | Write the heightmap to a file | `export_terrain_heightmap` |
 | Grass, rocks, flowers scattered by density | `edit_terrain_details`, then `edit_terrain` `paint_density` |
+| Trees, or details by slope, height and layer rules | `edit_terrain` `scatter_by_rules` |
+| Foliage counts, draws and memory | `sample_terrain` `foliage: true` |
 | Place trees or rocks as GameObjects | `sculpt_terrain` `place_object` |
 | A game changing the terrain | Lua `Terrain:applyOps` (below) |
+| Material cost, tiers, holes, Macro Variation | `jasper://docs/terrain-materials` |
 
 ## The Terrain component
 
@@ -26,7 +29,9 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Heightmap | `heightMap` (16-bit image, 0-1 of `maxHeight`) | `edit_terrain`, `set_terrain_maps heightmap` |
 | Terrain Layers (Paint Texture) | `surfaceLayers` (up to 12) | `set_terrain_maps layers` |
 | Splat / control maps | `blendMaps` (up to 3) | `set_terrain_maps blendmap`, `sculpt_terrain paint_layer` |
-| Details (Paint Details: grass, rocks, flowers) | `foliageLayers` | `edit_terrain_details`, `sculpt_terrain paint_density` |
+| Details (Paint Details: grass, rocks, flowers) | `foliageLayers` | `edit_terrain_details`, `sculpt_terrain paint_density`, `edit_terrain scatter_by_rules` |
+| Trees (Paint Trees) | `treePrototypes`, the `.jetrees` file in `treeData` | `set_properties`, `edit_terrain` |
+| Terrain Settings (detail and tree distances, billboards, wind) | `detailDistance`, `detailDensity`, `treeDistance`, `billboardStart`, `fadeLength`, `maxMeshTrees`, `wind*` | `set_properties` |
 
 Maps are images under the assets folder; generated ones go to the project's terrain maps folder.
 `sample_terrain` reads everything back: size, maps, layers, details (with the instances drawn
@@ -45,8 +50,7 @@ dig and raise), `flat` at `base_height`, `random_noise`, `fractal_noise` (`ampli
 ## Terrain Layers and blend maps
 
 Blend map slot `i` (`blendMaps[i]`) weights surface layers `3i`, `3i+1` and `3i+2` through its red,
-green and blue channels: slot 0 for layers 0-2, slot 1 for 3-5, slot 2 for 6-8. Layers 9-11 weigh by
-the inverted alpha of slots 0-2.
+green and blue channels: slot 0 for layers 0-2, slot 1 for 3-5, slot 2 for 6-8.
 
 ```json
 {"blendmap": {"color": [1, 0, 0], "index": 1},
@@ -66,7 +70,7 @@ the inverted alpha of slots 0-2.
 
 A detail layer scatters instances of one model (`.obj`, `.gltf`, `.glb` or `.fbx`) over the terrain where
 its density map is painted, filtered by slope and height, with a random scale and yaw. They are
-drawn instanced in chunks around the camera.
+placed in cells around the camera and drawn instanced, a few draws a layer.
 
 ```json
 {"add": [{"mesh": "assets/models/grass.glb", "density": 4, "density_map": {"fill": 1},
@@ -81,7 +85,7 @@ layers. Every value is checked first: one bad value changes nothing.
 |---|---|---|
 | `mesh` | an `.obj`, `.gltf`, `.glb` or `.fbx` under the assets folder | required to add |
 | `density_map` | an image path, `""` (none), or `{fill: 0-1, resolution: 2-4096}` | a layer without one draws nothing |
-| `density` | 0-128 | instances per square unit where the map is full; the engine draws at most 8192 per 8 m cell |
+| `density` | 0-128 | instances per square unit where the map is full; the engine places at most 8192 per 8 m cell |
 | `min_scale`, `max_scale` | 0.01-20, min ≤ max | random scale per instance |
 | `rotation_jitter` | 0-1 | share of a full turn of random yaw |
 | `align_to_normal` | 0-1 | 0 upright, 1 along the ground |
@@ -89,6 +93,13 @@ layers. Every value is checked first: one bad value changes nothing.
 | `min_height`, `max_height` | 0-1 of `max_height`, min ≤ max | where it grows |
 | `draw_distance` | 1-500 | world units from the camera |
 | `min_draw_distance` | 0-500, at most `draw_distance` | where instances start to show (a nearer copy of the layer, with a finer mesh, ends there) |
+| `min_height_ratio`, `max_height_ratio` | 0.01-1.99, min ≤ max | height over the width scale |
+| `noise_spread` | 0-10 | noise cells per unit between the dry and healthy colours; 0 per instance |
+| `wind_bend` | 0-1 | how far the wind bends the tips; 0 draws it still |
+| `density_falloff_start`, `far_density` | 0-1 | density falls from that share of the draw distance to `far_density` |
+| `density_scale` | 0-1 | the layer's multiplier of the Terrain's `detailDensity` |
+| `seed` | 0-4294967295 | another seed reshuffles the positions |
+| `cast_shadows` | bool | off for grass-scale scatter: it skips the shadow cascades |
 | `seed` | 0-4294967295 | another seed reshuffles the positions |
 | `cast_shadows` | bool | off for grass-scale scatter: it skips the shadow cascades |
 
@@ -99,6 +110,12 @@ range loads with them clamped, and the Console says which. Paint density where i
 Check: `sample_terrain` lists `details[i].drawn`, the instances the editor holds for that layer now
 (near the Scene view camera; 0 without a density map or mesh). Budget for mobile and web: a few
 instances per square unit, `cast_shadows: false` for grass, a short `draw_distance`.
+
+## Trees
+
+**Trees** are stored one by one in the tree data, with LODs, impostors, capsules and a stable id. Add a
+prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). Project settings:
+`quality.foliage_quality_*` and `quality.foliage_distance_*` (`desktop`, `mobile`, `web`).
 
 ## The Terrain window
 
@@ -153,6 +170,35 @@ op (`changed_texels`, `clipped_low`, `clipped_high`, `filtered_out`, `outside`, 
 0 or Max Height), `filter_excluded_all`, `outside_terrain`, `no_change`, `map_created`, `rotated_terrain`.
 Act on `next`.
 
+## Foliage ops of edit_terrain
+
+Foliage ops run in a call of their own, without `create`, as a job (`wait`, `timeout_seconds`, `get_job`).
+Their keys are flat in the op; each op's result adds `instances_added`, `instances_removed`, `rejected` by
+rule and `hash` (the same on every platform), and the call adds `trees`.
+
+```json
+{"tool": "edit_terrain", "dry_run": true, "ops": [{"op": "scatter_by_rules", "seed": 42,
+  "shape": {"type": "rect", "min": [-200, -200], "max": [200, 200]},
+  "target": {"trees": [{"prototype": "Pine", "weight": 3}, {"prototype": "Birch", "weight": 1}]},
+  "density": 0.02, "mode": "replace",
+  "rules": {"slope": [0, 30], "height": [10, 140], "layer": [{"index": 1, "min": 0.5, "max": 1}],
+            "exclude": {"holes": true, "splines": ["Road"], "spline_margin": 4}, "min_spacing": 3},
+  "jitter": {"scale": [0.8, 1.3], "yaw": 1}}]}
+```
+
+- `scatter_by_rules`: `target` is `{trees: [...]}`, or `{detail_layer: i}`, which fills that layer's density
+  map (`density` in instances per square unit, absolute; it creates no layer). `count` asks for a number
+  of attempts instead of `density`. `mode`: `replace`, `add`, `remove`. Run the `dry_run` first: its
+  counts are what the real run gives.
+- `place_trees {prototype, points: [[x, z, yaw?, scale?]]}` returns `ids`.
+- `remove_trees {ids?, prototype?}` over the op's `shape`.
+- `clear_foliage {target, spline?, margin?}`: `target` is `trees`, `details`, `all`, `{trees: [...]}` or `{detail_layer: i}`.
+- `convert_placed_to_trees {host}`: an instanced child of the Terrain becomes trees.
+- `bake_impostors {prototypes?, views?, resolution?}`: alone in its call, refused in Play. Each prototype
+  gets atlases, bounds and a source hash.
+
+`rules.noise_mask` is refused until Noise Graphs land; `rules.density_map {layer}` masks by a density map.
+
 ## Import and export
 
 `import_heightmap` detects a raw file's size from its length, its depth and its byte order; the op's
@@ -163,10 +209,16 @@ Act on `next`.
 
 ## Verify
 
-`sample_terrain` with `stats: ["height", "slope", "layers", "coverage"]` (optionally a `region`) returns
-percentiles, a slope histogram, layer coverage and the hole fraction with the drawn-layer histogram; `issues: true` lists problems with a `fix`
+`sample_terrain` with `stats: ["height", "slope", "layers"]` (optionally a `region`) returns
+percentiles, a slope histogram and layer coverage; `issues: true` lists problems with a `fix`
 (`height_map_8bit`, `height_clipped_high`, `no_height_map`...); `hash: true` gives a hash per map, which
 changes exactly when the map's bytes do.
+
+## Reading foliage
+
+`sample_terrain {foliage: true, region?}` returns `foliage`: `details` per layer (`instances`, `estimated` past
+4,096 cells, `mean_density`, `drawn`), `trees` per prototype (`count`, `impostor_state`) and `totals` (counts,
+draws, bytes, `main_thread_ms`, `budget_exceeded`, `hash`). It works in Play.
 
 ## Look
 
@@ -175,7 +227,8 @@ changes exactly when the map's bytes do.
 red; `slope_range` shows one range only), `contours` (`contour_interval`, auto by default) and
 `layer_weights` (a colour per layer; `layer` shows one). `framing`: `fit` (the default, the current
 direction), `top`, `orbit` (`yaw`, `pitch`) or `keep`; `region` frames part of the terrain. The overlay
-stays on until `overlay: "none"`; it is never in the game or a camera's image.
+stays on until `overlay: "none"`; it is never in the game or a camera's image. Foliage: `density` (`layer`: a
+detail layer) and `tree_density`, per square unit. To see impostors, set `billboardStart` near the camera.
 
 ## Worked flow
 
@@ -199,46 +252,6 @@ A game edits a terrain whose Terrain component has Allow Runtime Edits on, with 
 `Terrain(scene, entity):applyOps({{op = "lower", delta = 2, shape = {type = "circle", center = {x, z}, radius = 6}}})`.
 Queries (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) work on any terrain.
 `edit_terrain` refuses while the scene plays. Details and costs: `docs/scripting/terrain.md`.
-
-## Material budget and tiers
-
-`sample_terrain` gives `info.material`: the effective `quality` and what decided it (`quality_source`),
-`blend_maps_read`, `fetches` (`flat`, `slope`, `worst`, for the tier and `by_tier`), `texture_slots` and
-`detail_array`. A point gives `layers_painted`, `layers_drawn` (after the cap) and `fetches`; a call of over 64 points gives each only `hole`.
-
-Set a tier with `set_project_settings graphics.terrainQuality.<platform>` (`high`, `medium`, `low`; absent means
-high), or per terrain with `set_properties` on `terrain.quality`. What an export ships is
-`graphics.shipped_terrain_tiers` in `get_project_settings`.
-
-| Tier | Layers per pixel | Worst reads | Plus holes | Plus Macro Normal |
-|---|---|---|---|---|
-| high | all (4 with `limitLayersPerPixel`) | 111 (51 limited) | +1 | +1 |
-| medium | 3 | 21 | 22 | 23 |
-| low | 2 | 6 | 7 | not drawn |
-
-"Why is this slow on phones": read `info.material.fetches.by_tier`, then look at where the pixels go: the Scene view's
-Terrain dropdown, View: Fetch Cost or Layer Count. Don't stop at listing the materials.
-
-## Holes end to end
-
-Holes are one R8 map (`terrain.holeMap`): 0 is a hole, 255 solid, read with no filter. Every pass draws the same texels.
-After a cut, check each reader at a point in the middle of the hole with `sample_terrain` `points`:
-
-- `hole`: the drawn surface and the query.
-- `collision_gap`: the collider. A sample opens only when all its squares are hole, so a hole under 3 collision cells across
-  can draw and still stop a ball: `collision_samples_open` and the warning `hole_no_collision` say so.
-- `nav_excluded`: the navmesh leaves the cell out at the next bake; nothing rebakes by itself.
-- `pick_at`, or a Lua ray: goes on through the hole to what lies beyond it.
-
-Filling restores the surface exactly: heights, blend and density stay under a hole. A hole takes the base material's Occlusion
-map's slot (`features` says `base_occlusion_dropped`); a custom shader that does not read `TERRAIN_HOLES` draws over the hole.
-
-## Material features
-
-On `terrain`: `macroMode` (off, noise, base_map), `resampleEnabled`, `heightBlendSharpness`, `macroNormal`, and per layer
-`surfaceLayers[i].cliffProjection` (auto, flat_only). Each is off by default and costs nothing off; on a terrain with no layer Macro Variation waits for one
-(issue `macro_without_layers`). Up to 12 layers: layers 10-12
-weigh by the inverted alpha of blend maps 1-3, so an opaque map means 0.
 
 ## Common mistakes
 

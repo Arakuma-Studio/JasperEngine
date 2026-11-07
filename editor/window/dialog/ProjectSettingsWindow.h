@@ -39,6 +39,8 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Quality > Foliage Quality as FoliageQuality values (T5 R21)
+        int m_foliageQuality[3] = {2, 2, 2};
         // Quality > Foliage Distance (desktop, mobile, web)
         float m_foliageDistanceScale[3] = {1.0f, 1.0f, 1.0f};
         // Texture (S14 R24)

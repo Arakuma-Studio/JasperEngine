@@ -861,6 +861,10 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::MORPHNORMAL3: return "AttributeType::MORPHNORMAL3";
         case AttributeType::MORPHTANGENT0: return "AttributeType::MORPHTANGENT0";
         case AttributeType::MORPHTANGENT1: return "AttributeType::MORPHTANGENT1";
+        case AttributeType::INSTANCEPACKED0: return "AttributeType::INSTANCEPACKED0";
+        case AttributeType::INSTANCEPACKED1: return "AttributeType::INSTANCEPACKED1";
+        case AttributeType::INSTANCEPACKED2: return "AttributeType::INSTANCEPACKED2";
+        case AttributeType::INSTANCEPACKED3: return "AttributeType::INSTANCEPACKED3";
         case AttributeType::INSTANCEMATRIXCOL1: return "AttributeType::INSTANCEMATRIXCOL1";
         case AttributeType::INSTANCEMATRIXCOL2: return "AttributeType::INSTANCEMATRIXCOL2";
         case AttributeType::INSTANCEMATRIXCOL3: return "AttributeType::INSTANCEMATRIXCOL3";
@@ -1796,7 +1800,56 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
             code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
+        code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
+        code << ind << var << ".minHeightRatio = " << formatFloat(layer.minHeightRatio) << ";\n";
+        code << ind << var << ".maxHeightRatio = " << formatFloat(layer.maxHeightRatio) << ";\n";
+        code << ind << var << ".healthyColor = " << formatVector4(layer.healthyColor) << ";\n";
+        code << ind << var << ".dryColor = " << formatVector4(layer.dryColor) << ";\n";
+        code << ind << var << ".noiseSpread = " << formatFloat(layer.noiseSpread) << ";\n";
+        code << ind << var << ".windBend = " << formatFloat(layer.windBend) << ";\n";
+        code << ind << var << ".densityFalloffStart = " << formatFloat(layer.densityFalloffStart) << ";\n";
+        code << ind << var << ".farDensity = " << formatFloat(layer.farDensity) << ";\n";
+        code << ind << var << ".densityScale = " << formatFloat(layer.densityScale) << ";\n";
+        code << ind << var << ".algorithmVersion = " << formatUInt(layer.algorithmVersion) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
+    }
+    code << ind << "terrain.detailDistance = " << formatFloat(terrain.detailDistance) << ";\n";
+    code << ind << "terrain.detailDensity = " << formatFloat(terrain.detailDensity) << ";\n";
+    code << ind << "terrain.treeDistance = " << formatFloat(terrain.treeDistance) << ";\n";
+    code << ind << "terrain.billboardStart = " << formatFloat(terrain.billboardStart) << ";\n";
+    code << ind << "terrain.fadeLength = " << formatFloat(terrain.fadeLength) << ";\n";
+    code << ind << "terrain.maxMeshTrees = " << terrain.maxMeshTrees << ";\n";
+    code << ind << "terrain.windDirection = " << formatVector3(terrain.windDirection) << ";\n";
+    code << ind << "terrain.windSpeed = " << formatFloat(terrain.windSpeed) << ";\n";
+    code << ind << "terrain.windSize = " << formatFloat(terrain.windSize) << ";\n";
+    code << ind << "terrain.windBending = " << formatFloat(terrain.windBending) << ";\n";
+    code << ind << "terrain.treeData = " << formatString(terrain.treeData) << ";\n";
+    for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
+        const TerrainTreePrototype& prototype = terrain.treePrototypes[i];
+        const std::string var = "treePrototype" + std::to_string(i);
+        code << ind << "TerrainTreePrototype " << var << ";\n";
+        code << ind << var << ".id = " << formatUInt(prototype.id) << ";\n";
+        code << ind << var << ".meshPath = " << formatString(prototype.meshPath) << ";\n";
+        for (const AssetRef& lod : prototype.lodMeshes) {
+            code << ind << var << ".lodMeshes.push_back(AssetRef(" << formatString(lod) << "));\n";
+        }
+        for (float distance : prototype.lodDistances) {
+            code << ind << var << ".lodDistances.push_back(" << formatFloat(distance) << ");\n";
+        }
+        code << ind << var << ".bendFactor = " << formatFloat(prototype.bendFactor) << ";\n";
+        code << ind << var << ".windMask = " << (prototype.windMask == TerrainTreeWindMask::VertexColor ? "TerrainTreeWindMask::VertexColor" : "TerrainTreeWindMask::Height") << ";\n";
+        code << ind << var << ".shadowLodMask = " << formatUInt(prototype.shadowLodMask) << ";\n";
+        code << ind << var << ".collision = " << (prototype.collision == TerrainTreeCollision::Capsule ? "TerrainTreeCollision::Capsule" : "TerrainTreeCollision::None") << ";\n";
+        code << ind << var << ".collisionRadius = " << formatFloat(prototype.collisionRadius) << ";\n";
+        code << ind << var << ".collisionHeight = " << formatFloat(prototype.collisionHeight) << ";\n";
+        code << ind << var << ".navObstacle = " << formatBool(prototype.navObstacle) << ";\n";
+        code << formatTexture(indentSpaces, prototype.impostorAlbedo, var + ".impostorAlbedo", projectPath);
+        code << formatTexture(indentSpaces, prototype.impostorNormal, var + ".impostorNormal", projectPath);
+        code << ind << var << ".impostorViews = " << prototype.impostorViews << ";\n";
+        code << ind << var << ".impostorBoundsCenter = " << formatVector3(prototype.impostorBoundsCenter) << ";\n";
+        code << ind << var << ".impostorSize = " << formatVector2(prototype.impostorSize) << ";\n";
+        code << ind << var << ".impostorSourceHash = " << formatString(prototype.impostorSourceHash) << ";\n";
+        code << ind << "terrain.treePrototypes.push_back(" << var << ");\n";
     }
     code << ind << "terrain.needUpdateTerrain = true;\n";
     code << ind << "terrain.needUpdateTexture = true;\n";

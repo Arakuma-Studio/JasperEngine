@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
@@ -3915,6 +3916,9 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
+    ImpostorBaker::update();
+    if (ImpostorBaker::isRunning()) requestFrame();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
@@ -5665,9 +5669,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
     //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    // v52: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl' on MESH, DEPTH and GBUFFER), the terrain's Lit
-    //      defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm', 'Tql', 'Txl'.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v52";
+    // v52: foliage's compact instance, wind and dither (T5: MESH 'Cin' 'Wnd' 'Dth' at 42-44, DEPTH
+    //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
+    // v53: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), the terrain's
+    //      Lit defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm' 'Tql' 'Txl' at 23-25.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
 }
 
 void editor::App::pushTabNotificationStyle(){

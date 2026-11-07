@@ -317,7 +317,12 @@ const float M_PI = 3.141592653589793;
     }
 #endif
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #if defined(TERRAIN_HOLES) && defined(TERRAIN_DEBUG_VIEW)
         ivec2 holeSize = textureSize(sampler2D(u_terrainHoles, u_terrainHoles_smp), 0);
         ivec2 holeTexel = clamp(ivec2(floor(v_terrainHoleUV * vec2(holeSize))), ivec2(0), holeSize - ivec2(1));

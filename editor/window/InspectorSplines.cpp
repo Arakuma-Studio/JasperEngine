@@ -270,6 +270,7 @@ void editor::InspectorWindow::drawSplineComponent(ComponentType cpType, ScenePro
         propertyRow(RowPropertyType::FloatPositive, cpType, "terrain.paintFalloff", "Paint Falloff", sceneProject, entities, settingsUnits);
         propertyRow(RowPropertyType::Float_0_1, cpType, "terrain.paintNoise", "Edge Noise", sceneProject, entities, settings01);
         propertyRow(RowPropertyType::Bool, cpType, "terrain.clearFoliage", "Clear Foliage", sceneProject, entities);
+        propertyRow(RowPropertyType::Bool, cpType, "terrain.clearTrees", "Clear Trees", sceneProject, entities);
         propertyRow(RowPropertyType::UInt, cpType, "terrain.foliageMask", "Foliage Layer Mask", sceneProject, entities);
         propertyRow(RowPropertyType::LocalEntity, cpType, "terrain.terrain", "Terrain", sceneProject, entities);
         endTable();

@@ -68,7 +68,12 @@ out vec4 g_finalColor;
 
 #include "includes/output.glsl"
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
     vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
 

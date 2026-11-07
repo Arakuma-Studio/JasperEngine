@@ -211,6 +211,7 @@ namespace jasperengine::editor {
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<AtmosphereQuality>& atmosphereQuality();
+        static const EnumTable<FoliageQuality>& foliageQuality();
         static const EnumTable<AtmosphereQualityOverride>& atmosphereQualityOverride();
         static const EnumTable<CloudsPreset>& cloudsPreset();
         static const EnumTable<CloudsRendering>& cloudsRendering();

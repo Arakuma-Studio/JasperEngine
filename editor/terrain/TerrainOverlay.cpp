@@ -253,6 +253,8 @@ namespace {
     TerrainOverlayBake bakeContext(Scene* scene, Entity entity, TerrainComponent& terrain, const terrain::TerrainMapStore& store,
                                    const TerrainOverlaySettings& settings, int width, int height) {
         TerrainOverlayBake context;
+        context.scene = scene;
+        context.entity = entity;
         context.terrain = &terrain;
         context.store = &store;
         context.settings = &settings;

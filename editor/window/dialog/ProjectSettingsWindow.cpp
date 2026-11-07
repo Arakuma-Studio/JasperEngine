@@ -958,8 +958,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+        m_foliageQuality[i] = (int)project->getFoliageQuality()[i];
+    }
     for (int i = 0; i < 3; i++)
         m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
@@ -2154,13 +2156,23 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // what foliage scales and caps (docs/mcp/guide/terrain.md); never written to a Terrain
+        static const char* const foliageNames[] = {"Low", "Medium", "High"};
+        static const char* const qualityRows[3] = {"Foliage Quality (Desktop)", "Foliage Quality (Mobile)", "Foliage Quality (Web)"};
+        static const char* const qualityIds[3] = {"##FoliageDesktop", "##FoliageMobile", "##FoliageWeb"};
+        static const char* const qualityKeys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+        const char* const qualityTooltip = "Detail density and fade scales, caps on visible details, trees and draws, detail shadows and impostor blending, per platform group.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(qualityKeys[i])) continue;
+            drawComboSetting(qualityRows[i], qualityIds[i], foliageNames, 3, m_foliageQuality[i], (int)Project::defaultFoliageQuality[i], qualityTooltip);
+        }
         // the scale of every terrain foliage layer's draw distances (Unity's
         // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
         static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
         static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
         static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
         static const char* const foliageTooltip =
-            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer, and Tree Distance and Billboard Start, on this platform group; "
             "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(foliageKeys[i])) continue;
@@ -5200,6 +5212,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    // Apply says what the project wants: an old project stops being uncapped only if a row changed
+    const std::array<FoliageQuality, 3> foliageChosen = {(FoliageQuality)m_foliageQuality[0], (FoliageQuality)m_foliageQuality[1], (FoliageQuality)m_foliageQuality[2]};
+    m_project->setFoliageQuality(foliageChosen, m_project->isFoliageQualityDeclared() || foliageChosen != m_project->getFoliageQuality());
     m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
