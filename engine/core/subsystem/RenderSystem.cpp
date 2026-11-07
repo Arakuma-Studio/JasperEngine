@@ -18035,6 +18035,8 @@ void RenderSystem::drawFramePasses(){
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
+    // (a face draws meshes that read the scene lights' records: this frame's, before it)
+    syncLightRecords();
     renderReflectionProbeCapture();
     // a capture finished above is prefiltered before anything samples it
     filterReflectionProbes();
@@ -18137,7 +18139,7 @@ void RenderSystem::draw(){
     refreshGroupFadedPoints();
     // the Water Excluders' hull maps and the Water Wakes' map, before any pass draws a water
     syncWaterInteraction();
-    // the scene lights' records, before any pass draws a mesh reading them
+    // the scene lights' records, before any pass draws a mesh reading them (once a frame)
     syncLightRecords();
     beginBatchFrame();
     drawFramePasses();
