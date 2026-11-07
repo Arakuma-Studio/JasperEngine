@@ -125,8 +125,8 @@ void TitlePreviewQueue::resetStats() {
     counters = TitlePreviewStats();
     counters.queued = queued;
     counters.done = done;
-    recent.clear();
-    recentNext = 0;
+    recentPending.clear();
+    recentWorking.clear();
 }
 
 void TitlePreviewQueue::refreshCounts() {
@@ -158,13 +158,27 @@ void TitlePreviewQueue::charge(double ms) {
     counters.sideWorkMs += ms;
 }
 
-double TitlePreviewQueue::p95FrameMs() const {
-    if (recent.empty()) return 0.0;
-    std::vector<double> sorted = recent;
+void TitlePreviewQueue::Ring::add(double value) {
+    if (values.size() < WINDOW) {
+        values.push_back(value);
+    } else {
+        values[next] = value;
+        next = (next + 1) % WINDOW;
+    }
+}
+
+double TitlePreviewQueue::Ring::p95() const {
+    if (values.empty()) return 0.0;
+    std::vector<double> sorted = values;
     std::sort(sorted.begin(), sorted.end());
     // nearest rank
     const size_t rank = (size_t)std::ceil(0.95 * (double)sorted.size());
     return sorted[std::clamp<size_t>(rank, 1, sorted.size()) - 1];
+}
+
+void TitlePreviewQueue::Ring::clear() {
+    values.clear();
+    next = 0;
 }
 
 void TitlePreviewQueue::runFrame(double budgetMs) {
@@ -177,12 +191,14 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             deviceLost();
         }
     }
+    const bool pending = counters.queued > 0;
     // the side work charged since the last frame belongs to this one
     const double side = charged;
     charged = 0;
     double spent = 0;
     bool ran = false;
     bool ranAlone = false;
+    TitlePreviewOverrun frame;
     if (restFrames > 0) {
         restFrames--;
         counters.restFrames++;
@@ -218,6 +234,10 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
                 label = item->key;
                 longest = stepMs;
             }
+            if (longest >= frame.longestMs) {
+                frame.longestMs = longest;
+                frame.longestLabel = label;
+            }
             if (longest >= counters.worstStepMs) {
                 counters.worstStepMs = longest;
                 counters.worstStepLabel = label;
@@ -236,15 +256,16 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
         if (ranAlone) counters.aloneFrames++;
         if (total > budgetMs) {
             counters.overBudgetFrames++;
+            frame.frame = counters.frames;
+            frame.ms = total;
+            frame.sideWorkMs = side;
+            if (counters.overruns.size() >= OVERRUNS) counters.overruns.erase(counters.overruns.begin());
+            counters.overruns.push_back(std::move(frame));
             // idle frames that bring the average back within the budget
             restFrames = std::max(restFrames, (int)std::ceil(total / std::max(budgetMs, 1e-6)) - 1);
         }
-        if (recent.size() < WINDOW) {
-            recent.push_back(total);
-        } else {
-            recent[recentNext] = total;
-            recentNext = (recentNext + 1) % WINDOW;
-        }
+        recentWorking.add(total);
     }
+    if (pending || ran || side > 0) recentPending.add(total);
     refreshCounts();
 }

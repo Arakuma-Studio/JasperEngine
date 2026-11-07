@@ -7,6 +7,7 @@
 #include "asset/Guid.h"
 #include "asset/AssetFileWrite.h"
 #include "render/FrameReadback.h"
+#include "render/SystemRender.h"
 #include "texture/TexturePrepare.h"
 #include "titleart/TitleArtHash.h"
 #include "util/AssetDatabase.h"
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -217,9 +219,20 @@ bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest reques
         ? titleart::TitleRectI{0, 0, request.doc->canvasWidth(), request.doc->canvasHeight()} : request.region;
     std::unique_ptr<titleart::TitleRenderJob> job = begin(project, std::move(request), error);
     if (!job) return false;
+    // no editor frame runs while this call does, so a program the job waits for (built in the
+    // background, created off the render thread) is published here, within a deadline
+    constexpr double PROGRAM_WAIT_MS = 60000.0;
+    const auto waitStart = std::chrono::steady_clock::now();
     while (!job->done()) {
         if (job->step(titleart::StepBudget{})) break;
         if (job->failed()) break;
+        if (!job->waiting()) continue;
+        if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count() > PROGRAM_WAIT_MS) {
+            error = "a title art program was not built within " + std::to_string(static_cast<int>(PROGRAM_WAIT_MS / 1000.0)) + " s";
+            return false;
+        }
+        SystemRender::waitGpuCreationIdle(5.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     if (job->failed() || !job->done()) {
         error = job->error().empty() ? std::string("the render did not finish") : job->error();

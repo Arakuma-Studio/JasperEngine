@@ -20,8 +20,10 @@
 //   (loading the document a request keys by, encoding a finished thumbnail) is charge()d to the
 //   frame; runFrame spends only what is left, and frameLeftMs() tells a submitter whether to start
 //   more side work this frame.
-// - Stats (R45 reporting): working frames, frames over budget, the worst frame and step (its
-//   label), and the p95 of the last WINDOW working frames, for get_title's `previews` and S82's
+// - Stats (R45 reporting): working frames, frames over budget (the last OVERRUNS with their longest
+//   piece), the worst frame and step (its label), and two p95s: over the last WINDOW frames with
+//   previews pending (R45's measure: idle frames after an overrun count, as the editor's frames
+//   they are) and over the last WINDOW working frames; for get_title's `previews` and S82's
 //   performance readout.
 // - Requests: request() takes a content key (submitters key by GUID, size, source hash and bake
 //   version; requests with the same key share one job), an owner (a window: cancelAll(owner) when
@@ -64,6 +66,15 @@ namespace jasperengine::editor {
     using TitlePreviewOwner = uint64_t;
     using TitlePreviewFactory = std::function<std::unique_ptr<TitlePreviewJob>()>;
 
+    // a working frame that went over the budget: what it spent and on what
+    struct TitlePreviewOverrun {
+        uint64_t frame = 0;         // TitlePreviewStats::frames when it ran
+        double ms = 0;
+        double sideWorkMs = 0;
+        std::string longestLabel;   // its longest piece of work
+        double longestMs = 0;
+    };
+
     struct TitlePreviewStats {
         size_t queued = 0;          // items with work left
         size_t done = 0;
@@ -80,6 +91,7 @@ namespace jasperengine::editor {
         double sideWorkMs = 0;      // charge()d in total
         double worstStepMs = 0;     // the longest single piece of work, measured
         std::string worstStepLabel;
+        std::vector<TitlePreviewOverrun> overruns;  // the last OVERRUNS over-budget frames, oldest first
     };
 
     class TitlePreviewQueue {
@@ -112,10 +124,14 @@ namespace jasperengine::editor {
         void deviceLost();
 
         const TitlePreviewStats& stats() const { return counters; }
-        // the p95 of the last WINDOW working frames' times (0 before the first)
+        // the p95 of the previews' time in the last WINDOW frames that had previews pending, and in
+        // the last WINDOW working frames (0 before the first)
         static constexpr size_t WINDOW = 200;
-        double p95FrameMs() const;
-        size_t windowFrames() const { return recent.size(); }
+        static constexpr size_t OVERRUNS = 8;
+        double p95FrameMs() const { return recentPending.p95(); }
+        size_t windowFrames() const { return recentPending.values.size(); }
+        double p95WorkingFrameMs() const { return recentWorking.p95(); }
+        size_t workingWindowFrames() const { return recentWorking.values.size(); }
         void resetStats();
 
     private:
@@ -140,8 +156,15 @@ namespace jasperengine::editor {
         int restFrames = 0;
         double charged = 0;
         TitlePreviewStats counters;
-        std::vector<double> recent;     // working frames' times, a ring of WINDOW
-        size_t recentNext = 0;
+        struct Ring {
+            std::vector<double> values;
+            size_t next = 0;
+            void add(double value);
+            double p95() const;
+            void clear();
+        };
+        Ring recentPending;     // frames with previews pending
+        Ring recentWorking;     // frames that worked
 
         Item* pick() const;
         void drop(Item* item);

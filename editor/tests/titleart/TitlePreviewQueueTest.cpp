@@ -167,11 +167,16 @@ TEST_F(TitlePreviewQueueTest, AnOverrunIsCountedAndRested) {
     EXPECT_EQ(queue.stats().overBudgetFrames, 1u);
     EXPECT_DOUBLE_EQ(queue.stats().worstStepMs, 6.0);
     EXPECT_EQ(queue.stats().worstStepLabel, "liar") << "a job that names no step: its key";
+    ASSERT_EQ(queue.stats().overruns.size(), 1u);
+    EXPECT_DOUBLE_EQ(queue.stats().overruns[0].ms, 6.0);
+    EXPECT_EQ(queue.stats().overruns[0].longestLabel, "liar");
     EXPECT_DOUBLE_EQ(frame(), 0.0);
     EXPECT_EQ(queue.stats().restFrames, 1u);
     EXPECT_GT(frame(), 0.0);
     EXPECT_EQ(queue.stats().workingFrames, 2u);
-    EXPECT_DOUBLE_EQ(queue.p95FrameMs(), 6.0);
+    EXPECT_EQ(queue.windowFrames(), 3u) << "the rest frame had previews pending";
+    EXPECT_EQ(queue.workingWindowFrames(), 2u);
+    EXPECT_DOUBLE_EQ(queue.p95WorkingFrameMs(), 6.0);
     EXPECT_DOUBLE_EQ(queue.stats().maxFrameMs, 6.0);
     queue.resetStats();
     EXPECT_EQ(queue.windowFrames(), 0u);

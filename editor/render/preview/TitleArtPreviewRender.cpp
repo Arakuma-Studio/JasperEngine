@@ -181,6 +181,11 @@ bool editor::titleArtFreshOutputImage(Project* project, const fs::path& document
     titleart::TitleArtDoc doc;
     std::string code, error;
     if (!loadTitleArtForBake(project, document, doc, code, error)) return false;
+    // an unbaked main output is not fresh: the status (which hashes every font and image the
+    // document reads) is only worth its main-thread time when the PNG is there
+    const titleart::Json& outputs = doc.root.contains("outputs") ? doc.root["outputs"] : titleart::Json::array();
+    std::error_code ec;
+    if (outputs.empty() || !fs::is_regular_file(titleArtOutputPath(document, outputs.front()), ec)) return false;
     const TitleBakeStatus status = titleArtStatusOf(project, document, doc);
     if (status.outputs.empty() || status.outputs.front().status != TitleOutputStatus::Fresh) return false;
     texsynth::Image png;

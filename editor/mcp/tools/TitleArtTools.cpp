@@ -413,6 +413,11 @@ Json previewQueueJson() {
     const TitlePreviewQueue& queue = TitlePreviewQueue::editor();
     const TitlePreviewStats& stats = queue.stats();
     const auto ms = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+    Json overruns = Json::array();
+    for (const TitlePreviewOverrun& o : stats.overruns) {
+        overruns.push_back(Json{{"frame", o.frame}, {"ms", ms(o.ms)}, {"side_work_ms", ms(o.sideWorkMs)},
+                                {"longest", Json{{"label", o.longestLabel}, {"ms", ms(o.longestMs)}}}});
+    }
     return Json{{"budget_ms", ms(stats.budgetMs)},
                 {"queued", stats.queued},
                 {"working_frames", stats.workingFrames},
@@ -420,9 +425,11 @@ Json previewQueueJson() {
                 {"alone_frames", stats.aloneFrames},
                 {"p95_ms", ms(queue.p95FrameMs())},
                 {"p95_frames", queue.windowFrames()},
+                {"p95_working_ms", ms(queue.p95WorkingFrameMs())},
                 {"worst_frame_ms", ms(stats.maxFrameMs)},
                 {"worst_step", Json{{"label", stats.worstStepLabel}, {"ms", ms(stats.worstStepMs)}}},
-                {"side_work_ms", ms(stats.sideWorkMs)}};
+                {"side_work_ms", ms(stats.sideWorkMs)},
+                {"recent_overruns", overruns}};
 }
 
 void getTitleTool(const CallPtr& call) {
