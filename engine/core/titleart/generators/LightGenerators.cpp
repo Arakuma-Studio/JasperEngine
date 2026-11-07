@@ -291,7 +291,8 @@ namespace {
         const bool inside = p.flag("inside");
         const double bx0 = box.x0 - spread, by0 = box.y0 - spread;
         const double bw = box.x1 - box.x0 + 2.0 * spread, bh = box.y1 - box.y0 + 2.0 * spread;
-        Rng r(seed * 131.0 + 7.0);
+        // glints.ts imports effects/b/common.ts rng (the 7919 seeding)
+        Rng r(seed * 131.0 + 7.0, Rng::Seeding::EffectsB);
         for (int tries = 0; (int)stars.size() < count && tries < count * 80; tries++) {
             const double cx = bx0 + r() * bw;
             const double cy = by0 + r() * bh;

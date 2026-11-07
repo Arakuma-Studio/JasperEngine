@@ -1661,18 +1661,28 @@ rest of S82 lands in 6B.
     - Backlight runs 3 passes with the noise source folded into the first radial blur; its and
       Lens Flare's "shape" centres come from the 4 px grid's ink box (within ~2 canvas px of
       Pachislop's per-pixel box). Glints' `point` is measured from the canvas centre (Pachislop).
-23. **Implementation: parity exceptions (AC4).** 63 of the 72 ported presets meet AC12's metric;
-    nine are listed in `TitleGenParityGpu`'s `PARITY_EXCEPTIONS` with their cause and held to
-    twice the histogram limit (all have histogram distance <= 3.5 % except Beta's 8.2 %; the
-    block share is what they miss): `speedLines-beta` 17.6 % (its Halftone dissolve is the effects
-    stream's `halftone`, absent on this branch), `glints-highlights` 6.2 %, `glints-rainbow` 6.4 %
-    (the picks follow S80's base title, whose highlights differ from Pachislop's, read from the
-    8-bit grid), `glints-scatter` 11.7 % (stars kept out of the ink by the 8-bit grid's distance),
-    `backlight-godRays` 8.7 % and `backlight-jackpot` 14.0 % (the shape centre from the 4 px grid
-    turns every ray slightly), `corona-tendrils` 13.1 %, `corona-auraStrong` 7.5 % and
-    `corona-auraWeakUp` 27.3 % (normals from the RGBA8-packed field gradient). They are the first
-    follow-ups for look parity. AC4's red control is a reseeded Gold Dust instead of a `glints`
-    threshold change, since `glints_highlights` is an exception.
+23. **Implementation: parity exceptions (AC4).** Diagnosed on the renders (scripts and diff maps
+    kept with the evidence); two causes were defects and are fixed, three exceptions remain:
+    - Fixed, test: Backlight god_rays and jackpot and the three Aura presets missed by 8-27 % of
+      blocks only because the trimmed render was one pixel taller or narrower than the reference
+      (a fringe pixel exactly at the trim's alpha 8) and centring cropped it on the wrong side;
+      shifted by that pixel all five are at 0 % of blocks. `alignedGen` now places a render
+      whose trimmed size differs by at most 2 px where it fits best (Pachislop's compare.ts pads
+      both images to the larger size).
+    - Fixed, port: Glints `scatter` drew its candidate stars from the generators' mulberry32
+      seeding; Pachislop's glints.ts imports effects/b/common.ts `rng` (the 7919 seeding), so
+      every star landed elsewhere (10 of 10 reference stars match the EffectsB stream, 3 of 10
+      the other).
+    - `speedLines-beta` (17.6 % / 8.2): the preset's Halftone dissolve is the effects stream's
+      `halftone`, absent on this branch; applying Pachislop's dissolve to our render on the CPU
+      gives 0.00 % / 0.06, so it is the whole difference and the exception ends at the merge.
+    - `glints-highlights` (6.2 %) and `glints-rainbow` (6.4 %): about 9 of 11 stars coincide; the
+      reference's base title has spots 25-50 levels brighter at the same seven places in all
+      three glints references (S80's title differs there; its own effect parity passes), and the
+      lower-ranked picks, decided within a 1.5 % score margin, follow them. Glints Hero and Stars,
+      on the same finder, pass. The cause is S80's base title, outside this stream.
+    AC4's red control is a reseeded Gold Dust instead of a `glints` threshold change, since
+    `glints_highlights` is an exception.
 24. **Implementation: fallback agreement of grid-driven layouts.** Lightning's bolts and
     Backlight's shape centre come from the followed layer's grid, which the RGBA8 path reads from
     its own render of that layer: a borderline cell can flip, so a few pixels (0.15-0.2 %) differ

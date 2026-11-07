@@ -260,13 +260,12 @@ namespace jasperengine::titleart::test {
         return out;
     }
 
-    // `image` centred on a transparent canvas of that size (Pachislop compare.ts `centred`)
-    inline GenImage centredGen(const GenImage& image, int width, int height) {
+    // `image` placed at (ox, oy) on a transparent canvas of that size
+    inline GenImage placedGen(const GenImage& image, int width, int height, int ox, int oy) {
         GenImage out;
         out.width = width;
         out.height = height;
         out.rgba.assign((size_t)width * height * 4, 0);
-        const int ox = (int)std::floor((width - image.width) / 2.0), oy = (int)std::floor((height - image.height) / 2.0);
         for (int y = 0; y < image.height; y++) {
             const int ty = y + oy;
             if (ty < 0 || ty >= height) continue;
@@ -277,6 +276,33 @@ namespace jasperengine::titleart::test {
             }
         }
         return out;
+    }
+
+    // `image` centred on a transparent canvas of that size (Pachislop compare.ts `centred`)
+    inline GenImage centredGen(const GenImage& image, int width, int height) {
+        return placedGen(image, width, height, (int)std::floor((width - image.width) / 2.0), (int)std::floor((height - image.height) / 2.0));
+    }
+
+    // our trimmed render placed on the reference's canvas: centred, unless the two trimmed sizes
+    // differ by a fringe of at most 2 px (a pixel just at the trim's alpha 8 on one side only), in
+    // which case the fringe may sit on either side and the placement that fits best is taken
+    // (Pachislop's compare.ts pads both images to the larger size instead of cropping one)
+    inline GenImage alignedGen(const GenImage& ref, const GenImage& image) {
+        const int dx = ref.width - image.width, dy = ref.height - image.height;
+        if (std::abs(dx) > 2 || std::abs(dy) > 2) return centredGen(image, ref.width, ref.height);
+        GenImage best;
+        double bestOver = 2.0;
+        for (int oy = std::min(0, dy); oy <= std::max(0, dy); oy++) {
+            for (int ox = std::min(0, dx); ox <= std::max(0, dx); ox++) {
+                GenImage placed = placedGen(image, ref.width, ref.height, ox, oy);
+                const double over = compareGenBlocks(ref, placed).fractionOver;
+                if (over < bestOver) {
+                    bestOver = over;
+                    best = std::move(placed);
+                }
+            }
+        }
+        return best;
     }
 
 }
