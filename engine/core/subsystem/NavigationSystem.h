@@ -61,6 +61,8 @@ namespace jasperengine{
         int polys = 0;
         double milliseconds = 0.0;
         std::vector<std::string> warnings;
+        // the engine logged the failure already (Log::error): the editor does not again (S53 R2)
+        bool logged = false;
 
         // ---- S54 bake report (R16): why it failed, what it collected, the tiles it built
         nav::NavBakeError errorCode = nav::NavBakeError::None;
@@ -89,6 +91,8 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
+        // carved tile builds left before its navmesh is complete (a bake landing in play, S53 R15)
+        int queuedBuilds = 0;
         // ---- S55 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
         int crowdFilters = 0;
         int crowdFilterOverflow = 0;
@@ -232,6 +236,9 @@ namespace jasperengine{
         void updateGridSources();
         // whether the grid holds a world point (agents find their grid by it)
         bool gridContains(Entity grid, const Vector3& world);
+        // the cells grid agents hold at the current fixed tick (their lookahead, spec R18), ascending;
+        // false when the entity has no NavGrid
+        bool getGridReservedCells(Entity grid, std::vector<int>& cells);
 
         // ---- overlays (editor, spec R33): the surface's tiles in world space that `visible`
         // accepts (world bounds), at most maxTriangles; tileBounds holds 8 world corners per
@@ -332,6 +339,13 @@ namespace jasperengine{
         // fixed ticks that did navigation work (zero-cost proof: an empty scene leaves it alone)
         uint64_t getWorkingTicks() const { return workingTicks; }
         uint32_t getFixedTick() const { return fixedTick; }
+        // path searches run on the main thread (calculatePath*, isReachable); crowd agents never
+        // add to it (S53 R6)
+        uint64_t getPathQueryCount() const { return pathQueryCount; }
+        // the wall-clock ceiling of a tick's carving builds, ms (S53 R14); 0 turns it off
+        void setCarveTimeCeiling(double ms) { carveTimeCeilingMs = ms; }
+        // the tile-cache builds of the last fixed tick, every surface together
+        int getCarveTileBuilds() const { return carveTileBuilds; }
         // the longest main-thread slice of a time-sliced (web, no threads) bake since the reset
         double getMaxBakeSliceMs() const { return maxBakeSliceMs; }
         void resetBakeSliceStats() { maxBakeSliceMs = 0.0; slowestBakeStepMs = 0.0; slowestBakeStep.clear(); bakeStageMaxMs.clear(); }
@@ -353,6 +367,9 @@ namespace jasperengine{
         bool bakeInBackground = false;
         uint64_t workingTicks = 0;
         uint32_t fixedTick = 0;
+        uint64_t pathQueryCount = 0;
+        double carveTimeCeilingMs = 4.0;
+        int carveTileBuilds = 0;
         double maxBakeSliceMs = 0.0;
         double slowestBakeStepMs = 0.0;
         std::string slowestBakeStep;

@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <set>
@@ -46,6 +47,8 @@ using namespace jasperengine::nav;
 namespace {
 
     constexpr float PI = 3.14159265358979323846f;
+    // the voxels a tile heightfield spans clamp at (Recast's RC_SPAN_MAX_HEIGHT)
+    constexpr int SPAN_MAX_HEIGHT = 8191;
     // the largest terrain lattice a bake samples per side
     constexpr int MAX_TERRAIN_SAMPLES = 4097;
     // tessellation of round colliders
@@ -1159,6 +1162,20 @@ namespace {
         collectLinks();
         if (input->linkAreaCosts.size() > (size_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA))
             input->linkAreaCosts.resize((size_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA));
+
+        // a tile's heightfield spans the surface's whole height, in at most 8191 voxels: above
+        // that Recast clamps, so the geometry there is lost (spec S53 R5; a warning, since the
+        // clamped part may well not be walkable)
+        const float voxel = input->config.cellHeight;
+        if (voxel > 0.0f && (input->bmax[1] - input->bmin[1]) / voxel + 2.0f > (float)SPAN_MAX_HEIGHT) {
+            char text[320];
+            std::snprintf(text, sizeof(text),
+                          "the surface spans %.1f m of height, more than the %d voxels (%.1f m at this voxel height) a tile holds: "
+                          "geometry above %.1f m is cut off; increase the voxel size or split the surface",
+                          input->bmax[1] - input->bmin[1], SPAN_MAX_HEIGHT, (float)SPAN_MAX_HEIGHT * voxel,
+                          input->bmin[1] + (float)(SPAN_MAX_HEIGHT - 1) * voxel);
+            stats.warnings.push_back(text);
+        }
 
         // the 32-bit reference limit, before any tile is bucketed or built (spec R6)
         input->computeTileGrid();

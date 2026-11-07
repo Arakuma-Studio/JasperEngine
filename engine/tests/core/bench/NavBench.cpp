@@ -396,7 +396,9 @@ int main(int argc, char** argv) {
     }
     nav::setSettings(nav::NavigationSettings::defaults());
 
-    // ---- carving: one obstacle moved on a carving surface; tile-cache work per tick, ticks to land
+    // ---- carving: one obstacle moved on a carving surface; tile-cache work per tick at Carve
+    // Tiles Per Tick Auto (desktop: 4) with the wall-clock ceiling off, ticks to land
+    // (S19 R28, S53 R14, R19)
     {
         Scene carveScene;
         test::disableSubSystems(carveScene);
@@ -407,6 +409,7 @@ int main(int argc, char** argv) {
         resolveTransforms(carveScene);
         NavigationSystem* system = carveScene.getSystem<NavigationSystem>().get();
         system->bakeNow(surface, NavBakeMode::FULL);
+        system->setCarveTimeCeiling(0.0);
         const Entity obstacle = transformEntity(carveScene, Vector3(-10.0f, 0.5f, 0.0f));
         NavMeshObstacleComponent component;
         component.carve = true;

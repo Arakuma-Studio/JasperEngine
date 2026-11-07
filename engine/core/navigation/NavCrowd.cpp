@@ -94,6 +94,8 @@ struct NavCrowd::Impl {
     std::vector<uint8_t> agentFallback;
     int fallbackCount = 0;
     std::vector<dtCrowdAgent*> active;
+    // the mesh revision the corridors were last checked against
+    uint64_t meshRevision = 0;
 
     ~Impl() { release(); }
 
@@ -257,6 +259,7 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
         return false;
     }
     impl->mesh = &mesh;
+    impl->meshRevision = mesh.getRevision();
     impl->capacity = std::max(1, maxAgents);
     impl->params.assign((size_t)impl->capacity, NavCrowdAgentParams());
     impl->onLink.assign((size_t)impl->capacity, 0);
@@ -387,6 +390,20 @@ bool NavCrowd::isPathPartial(int agent) const {
     return impl->agent(agent)->partial;
 }
 
+NavCrowdPath NavCrowd::getPathState(int agent) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    if (ag->partial)
+        return NavCrowdPath::Partial;
+    // not partial, so the search reached the target (DT_PARTIAL_RESULT unset): a corridor
+    // ending elsewhere holds the path's first polygons only (spec S53 D5)
+    return ag->corridor.getPathCount() > 0 && ag->corridor.getLastPoly() == ag->targetRef ? NavCrowdPath::Complete
+                                                                                          : NavCrowdPath::Truncated;
+}
+
+int NavCrowd::getCorridorSize(int agent) const {
+    return impl->agent(agent)->corridor.getPathCount();
+}
+
 Vector3 NavCrowd::getTargetPosition(int agent) const {
     return vec(impl->agent(agent)->targetPos);
 }
@@ -394,6 +411,28 @@ Vector3 NavCrowd::getTargetPosition(int agent) const {
 void NavCrowd::update(float dt) {
     if (!impl->crowd || impl->count == 0)
         return;
+    // Tiles changed (a cut, a rebuilt or patched tile): dtCrowd checks only the next 10 polygons
+    // of a corridor, so a change further along would leave the path, and its status, stale until
+    // the agent got there. A corridor holding a polygon that is gone is planned again now, so
+    // pathStatus follows the mesh (spec S53 R6).
+    const uint64_t revision = impl->mesh->getRevision();
+    if (revision != impl->meshRevision) {
+        impl->meshRevision = revision;
+        for (int index = 0; index < impl->capacity; index++) {
+            dtCrowdAgent* ag = impl->editable(index);
+            if (!ag->active || impl->params[(size_t)index].obstacle || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+                ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+                continue;
+            const dtQueryFilter* filter = impl->filterOf(ag);
+            // a target that is gone dtCrowd moves itself, and plans again from there
+            if (!impl->query()->isValidPolyRef(ag->targetRef, filter) ||
+                ag->corridor.isValid(ag->corridor.getPathCount(), impl->editableQuery(), filter))
+                continue;
+            float target[3];
+            dtVcopy(target, ag->targetPos);
+            impl->crowd->requestMoveTarget(index, ag->targetRef, target);
+        }
+    }
     impl->crowd->update(dt, nullptr);
 
     // obstacles stand where their transforms put them
@@ -608,11 +647,19 @@ float NavCrowd::getSteeringRemaining(int agent, bool& reachedEnd) const {
     reachedEnd = false;
     if (!ag->active || ag->corridor.getPathCount() == 0)
         return 0.0f;
-    if (ag->ncorners == 0)
-        return dtVdist(ag->npos, ag->corridor.getTarget());
-    float distance = getSteeringDistance(agent, reachedEnd);
-    if (!reachedEnd)
-        distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    float distance = 0.0f;
+    if (ag->ncorners == 0) {
+        distance = dtVdist(ag->npos, ag->corridor.getTarget());
+    } else {
+        distance = getSteeringDistance(agent, reachedEnd);
+        if (!reachedEnd)
+            distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    }
+    // a truncated corridor: on to the target as the crow flies (a lower bound, spec S53 R7)
+    if (getPathState(agent) == NavCrowdPath::Truncated) {
+        distance += dtVdist(ag->corridor.getTarget(), ag->targetPos);
+        reachedEnd = false;
+    }
     return distance;
 }
 
@@ -794,6 +841,8 @@ bool NavCrowd::requestMoveTarget(int, const Vector3&) { return false; }
 void NavCrowd::resetMoveTarget(int) {}
 NavCrowdTarget NavCrowd::getTargetState(int) const { return NavCrowdTarget::Failed; }
 bool NavCrowd::isPathPartial(int) const { return false; }
+NavCrowdPath NavCrowd::getPathState(int) const { return NavCrowdPath::Partial; }
+int NavCrowd::getCorridorSize(int) const { return 0; }
 Vector3 NavCrowd::getTargetPosition(int) const { return Vector3(); }
 void NavCrowd::update(float) {}
 Vector3 NavCrowd::getPosition(int) const { return Vector3(); }

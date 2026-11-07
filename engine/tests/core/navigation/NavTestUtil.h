@@ -11,6 +11,7 @@
 #include "Input.h"
 #include "Scene.h"
 #include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
 #include "navigation/NavTypes.h"
 #include "subsystem/NavigationSystem.h"
 #include "../ecs/EcsTestUtil.h"
@@ -18,12 +19,25 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 
 namespace jasperengine::navtest {
 
     constexpr float DT = 1.0f / 60.0f;
+
+    // a box NavMeshObstacle (carving at once when `carve`)
+    inline Entity obstacleBox(Scene& scene, const Vector3& center, const Vector3& size, bool carve) {
+        const Entity entity = transformEntity(scene, center);
+        NavMeshObstacleComponent obstacle;
+        obstacle.shape = NavObstacleShape::BOX;
+        obstacle.size = size;
+        obstacle.carve = carve;
+        obstacle.carveOnlyStationary = false;
+        scene.addComponent<NavMeshObstacleComponent>(entity, obstacle);
+        return entity;
+    }
 
     class NavSceneTest : public ::testing::Test {
     protected:
@@ -72,6 +86,12 @@ namespace jasperengine::navtest {
                 step(scripts);
         }
 
+        // A bake's tiles build on the job system, in wall-clock time, while a test steps as fast as
+        // it can: wait for the bake to land (within a generous minute), not for a tick count
+        bool bakeRunning(Entity surface, std::chrono::steady_clock::time_point since) {
+            return nav->isBaking(surface) && std::chrono::steady_clock::now() - since < std::chrono::seconds(60);
+        }
+
         Vector3 position(Entity entity) {
             return scene->getComponent<Transform>(entity).worldPosition;
         }
@@ -94,6 +114,34 @@ namespace jasperengine::navtest {
             plane(*scene, Vector3(), width, depth);
             const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
             addSurface(*scene, surface, cellSize, 32);
+            return surface;
+        }
+
+        // a 600 x 3 m strip along x on tiles of 16 cells of 0.1 m: a path end to end crosses more
+        // polygons than a crowd corridor holds (256, spec S53 AC1)
+        Entity stripSurface() {
+            plane(*scene, Vector3(), 600.0f, 3.0f);
+            const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Strip");
+            addSurface(*scene, surface, 0.1f, 16);
+            return surface;
+        }
+
+        // two 8 x 6 m islands at x = -6 and x = 6, with nothing between them (a 4 m gap)
+        Entity islandsSurface(bool carving = false) {
+            plane(*scene, Vector3(-6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
+            plane(*scene, Vector3(6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
+            const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+            addSurface(*scene, surface, 0.2f, 32).runtimeCarving = carving;
+            return surface;
+        }
+
+        // a 30 x 10 m plane walled at x = 0 but for a 2 m gap at z in [-1, 1], on a carving surface
+        Entity gapSurface() {
+            plane(*scene, Vector3(), 30.0f, 10.0f);
+            box(*scene, Vector3(0.0f, 1.0f, -3.25f), Vector3(1.0f, 2.0f, 3.5f));
+            box(*scene, Vector3(0.0f, 1.0f, 3.25f), Vector3(1.0f, 2.0f, 3.5f));
+            const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+            addSurface(*scene, surface, 0.2f, 32).runtimeCarving = true;
             return surface;
         }
     };

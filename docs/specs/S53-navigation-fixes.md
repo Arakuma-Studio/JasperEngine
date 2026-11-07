@@ -674,4 +674,58 @@ P2 order:
 
 ## Deviations
 
+- S53 P1: R15, a full bake landing in play: the staged mesh adopts the obstacles when the bake
+  lands, not at the swap. Its tiles are then built with their cuts and the swap leaves no tick
+  without them; until the swap, obstacle changes reach the staged mesh and the mesh in service
+  keeps the cuts it had. The swap waits for the adopted cuts (`NavMesh::isComplete`).
+- S53 P1: R15, `replaceTiles`' pool-growth fallback (a new Detour mesh inside the same `NavMesh`)
+  builds every tile at once even in play: no old Detour tile survives it to stay in service.
+- S53 P1: R14, a deferred build is one tile (x, y) with all its layers, counted as one build, so
+  a tile never serves half old and half new layers.
+- S53 P1: R11, an add whose obstacle touches no tile-cache layer is not handed to Detour (it would
+  cut nothing, and Detour never frees the slot of such an obstacle); it is handed over when
+  `replaceTiles` adds layers under it. Detour's slots are Max Carving Obstacles + 8 (the removals
+  of one batch in flight).
+- S53 P1: R6, `onPathFailed` and `pathStatus` read dtCrowd's corridor; `cancelBake` cannot cancel
+  a bake that landed and is building its carved tiles (`isBaking` stays true until they are done).
+- S53 P1: R6, after a tile change (the mesh revision) the crowd checks whole corridors, not only
+  dtCrowd's next 10 polygons, and plans a corridor holding a polygon that is gone again: a cut
+  far ahead otherwise left a stale Complete status until the agent reached it (AC9). A status is
+  also read again whenever the corridor's state changes, not only after a Pending tick (dtCrowd's
+  quick search can land a plan within one step).
+- S53 P1: R4, a tile keeps at most 64 Recast messages, then `... and N more Recast messages`.
+- S53 P1: interface additions beyond §6, used by the tests and the editor: `NavMesh::hasObstacle`,
+  `getTileCacheObstacleCount`, `getFailedCarveBuilds`, `getLinkConnections`,
+  `setDeferCarvedBuilds`; `NavCrowd::getCorridorSize`; `NavSurfaceStatus::queuedBuilds`;
+  `NavigationSystem::getCarveTileBuilds`; `detail::NavRecastLog` in `NavDetourSupport.h`.
+- S53 P1: R19 needed `GridReservations::reserve` (`GridPathfinder.cpp`) to reuse an agent's cell
+  list: it allocated on every reservation.
+- S53 P1: AC7, a stack of slabs alone never overflows Recast's layer set (a column keeps at most
+  63 regions, each overlapping at most 62 others): the carving case adds a ground plate under the
+  stack and 10 slabs beside it, so the plate overlaps more than 63 platforms.
+- S53 P1: AC14 RemoveNeverLost, 70 boxes disabled the tick after they appear do not lose a cut
+  (the removals follow the adds' tile order); the test disables 60 cut boxes while it enables 10
+  others, 70 requests in one tick, which is what loses cuts in the S19 code.
+- S53 P1: R1, a fifth local patch: dtProximityGrid's spatial hash overflowed `int` (UBSan) for
+  the AC1 strip's crowd 300 m from the origin; it now wraps in `unsigned int` (same buckets).
+  NOTICE.md and README.jasper.md count five patches.
+- S53 P1: AC21's carving fixture lives in `tools/test-projects/navigation` (the web gate's and the
+  Android test's project), with two gate lines.
+
 ## Progress
+
+- S53 P1 (branch `nav/s41-p1`): interface commit `nav: S53 interfaces`; then R1 (patches 2-5),
+  R4-R19 and R25-R26 (runtime docs). Red controls, all recorded under `/tmp/je-logs/s41-p1/`:
+  the release run of the tests against the interface commit (19 of them fail, among them AC1's
+  remaining distance, AC7-AC9, AC11, AC13-AC20, AC22), `MergeCorridorStartMovedBounds` crashes
+  (release) and reports ASan's negative-size `memmove` before patch 3, `RemoveNeverLost` loses
+  its cuts in the S19 code, and UBSan stops the AC1 strip's crowd before patch 5.
+- AC3: no red control could be built: the 100 km slopes bake without the assert before patch 4
+  too (sanitizer run); the patch is upstream's one line.
+- AC10: the S19 code did not fire `onDestinationReached` at the partial end in that run either;
+  the test pins the new rule (arrival needs a corridor ending in the destination's polygon).
+- AC12: the S19 code passed `CrowdRebuiltOnNewMesh` on this allocator (the new `dtNavMesh` got
+  another address); the generation check no longer depends on it.
+- AC25: `NavGridTest.ReservedCellsReported` (P1's `getGridReservedCells`); the overlay tint is P2's.
+- Not run by P1 at the integrator's request (light gate only): the web and Android builds and the
+  navigation web gate (AC21), and je-bench-nav's thresholds on the timing server (AC22, second half).

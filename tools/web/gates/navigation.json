@@ -1,5 +1,5 @@
 {
-  "description": "tools/test-projects/navigation, a Release build (BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web, gated with GATE=navigation; WEB_THREADS=1 for both steps gives the pthreads build): a reduced bench_nav_city and nav_2d_topdown baked at runtime. Single-threaded, the tiles are time-sliced on the main thread and no slice exceeds the web bake budget + 2 ms (R23, release budgets); both builds log the same navmesh hashes (byte-identical bakes, AC20); a grid path is found and an agent walks the city and arrives. The slice check is a timing check: run it on the timing server (E), a loaded build host preempts the page. No pixel check.",
+  "description": "tools/test-projects/navigation, a Release build (BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web, gated with GATE=navigation; WEB_THREADS=1 for both steps gives the pthreads build): a reduced bench_nav_city and nav_2d_topdown baked at runtime. Single-threaded, the tiles are time-sliced on the main thread and no slice exceeds the web bake budget + 2 ms (R23, release budgets); both builds log the same navmesh hashes (byte-identical bakes, AC20); a grid path is found, an agent walks the city and arrives, and a carving box closes a walled gap and opens it again (S53 AC21). The slice check is a timing check: run it on the timing server (E), a loaded build host preempts the page. No pixel check.",
   "isolated": true,
   "seconds": 45,
   "console": [
@@ -17,6 +17,14 @@
     },
     {
       "text": "[gate] nav agent arrived",
+      "level": "log"
+    },
+    {
+      "text": "[gate] nav carving cut",
+      "level": "log"
+    },
+    {
+      "text": "[gate] nav carving restored",
       "level": "log"
     }
   ],

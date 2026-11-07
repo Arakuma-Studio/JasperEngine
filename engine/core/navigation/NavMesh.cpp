@@ -17,8 +17,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <map>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::nav;
@@ -402,8 +404,15 @@ namespace {
     constexpr int MAX_PATH_POLYS = 2048;
     constexpr int MAX_CORNERS = 2048;
     constexpr int QUERY_NODES = 2048;
+    // dtTileCache's request and update lists hold 64 entries, and an obstacle touches at most
+    // DT_MAX_TOUCHED_TILES (8) layers: 8 requests at a time never overflow either (spec S53 R11)
+    constexpr int TILE_CACHE_LIST = 64;
+    constexpr int OBSTACLE_BATCH = TILE_CACHE_LIST / DT_MAX_TOUCHED_TILES;
+    // the tile-cache layers of one tile (buildNavMeshTilesAt's own limit)
+    constexpr int MAX_TILE_LAYERS = 32;
 
     std::atomic<uint64_t> revisions{1};
+    std::atomic<uint64_t> generations{1};
 
     // ---- S55 queries
     // the most tries findRandomPointAround makes for a point within the radius (and island)
@@ -597,6 +606,37 @@ struct NavMesh::Impl {
     // carving: the links of each tile (the mesh process adds them to the tiles it builds)
     std::map<TileKey, std::vector<NavLinkInput>> links;
     uint64_t revision = 0;
+    uint64_t generation = 0;
+
+    // ---- carving obstacles (spec S53 R11-R17): the registry, its request FIFO, the tile-cache
+    // builds Detour's update list holds (mirrored, in its order: each update() builds the first),
+    // and the tiles whose build is deferred (R15)
+    struct Obstacle {
+        NavObstacleDesc desc;
+        // 0 until its add reaches the tile cache
+        dtObstacleRef ref = 0;
+        bool addQueued = false;
+    };
+    struct Request {
+        bool add = true;
+        uint32_t id = 0;
+        dtObstacleRef ref = 0;
+        uint64_t serial = 0;
+    };
+    std::map<uint32_t, Obstacle> obstacles;
+    uint32_t nextObstacle = 1;
+    std::deque<Request> requests;
+    std::vector<dtCompressedTileRef> pending;
+    std::deque<TileKey> deferred;
+    bool deferBuilds = false;
+    // request serials: the last queued, the last whose builds are done, and the one isComplete()
+    // waits for (an adoption's, a re-request's)
+    uint64_t requestSerial = 0;
+    uint64_t batchSerial = 0;
+    uint64_t doneSerial = 0;
+    uint64_t barrierSerial = 0;
+    int failedBuilds = 0;
+    std::set<std::pair<int, int>> failedTiles;
     // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
     mutable uint64_t linksRevision = UINT64_MAX;
     mutable bool hasLinks = false;
@@ -657,9 +697,213 @@ struct NavMesh::Impl {
         valid = false;
         links.clear();
         randomTables.clear();
+        requests.clear();
+        pending.clear();
+        deferred.clear();
+        failedTiles.clear();
+        failedBuilds = 0;
+        doneSerial = batchSerial = barrierSerial = requestSerial;
+        // the registry outlives its tile cache: a new one cuts every obstacle again
+        for (auto& entry : obstacles) {
+            entry.second.ref = 0;
+            entry.second.addQueued = false;
+        }
+    }
+
+    // ---- carving
+
+    void queueAdd(uint32_t id, Obstacle& obstacle) {
+        if (obstacle.addQueued)
+            return;
+        obstacle.addQueued = true;
+        requests.push_back(Request{true, id, 0, ++requestSerial});
+    }
+
+    void queueRemove(Obstacle& obstacle) {
+        if (obstacle.ref == 0)
+            return;
+        requests.push_back(Request{false, 0, obstacle.ref, ++requestSerial});
+        obstacle.ref = 0;
+    }
+
+    // every obstacle cut again from its description (a new tile cache, replaced layers)
+    void requeueObstacles(const std::function<bool(const Obstacle&)>& which) {
+        for (auto& entry : obstacles) {
+            if (!which(entry.second))
+                continue;
+            queueRemove(entry.second);
+            queueAdd(entry.first, entry.second);
+        }
+        barrierSerial = requestSerial;
+    }
+
+    // Detour's bounds of an obstacle (dtTileCache::getObstacleBounds)
+    void obstacleBounds(const NavObstacleDesc& desc, float* bmin, float* bmax) const {
+        if (desc.shape == NavObstacleDesc::Shape::Box) {
+            const float r = 1.41f * std::max(desc.halfExtents.x, desc.halfExtents.z);
+            bmin[0] = desc.position.x - r;
+            bmin[1] = desc.position.y - desc.halfExtents.y;
+            bmin[2] = desc.position.z - r;
+            bmax[0] = desc.position.x + r;
+            bmax[1] = desc.position.y + desc.halfExtents.y;
+            bmax[2] = desc.position.z + r;
+        } else {
+            bmin[0] = desc.position.x - desc.radius;
+            bmin[1] = desc.position.y;
+            bmin[2] = desc.position.z - desc.radius;
+            bmax[0] = desc.position.x + desc.radius;
+            bmax[1] = desc.position.y + desc.height;
+            bmax[2] = desc.position.z + desc.radius;
+        }
+    }
+
+    // the tile-cache layers whose bounds the obstacle's meet (dtTileCache::queryTiles, unbounded)
+    int countLayers(const NavObstacleDesc& desc) const {
+        float bmin[3], bmax[3];
+        obstacleBounds(desc, bmin, bmax);
+        const float size = header.config.tileWorldSize();
+        const int x0 = (int)std::floor(bmin[0] / size), x1 = (int)std::floor(bmax[0] / size);
+        const int y0 = (int)std::floor(bmin[2] / size), y1 = (int)std::floor(bmax[2] / size);
+        int count = 0;
+        dtCompressedTileRef refs[MAX_TILE_LAYERS];
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
+                const int n = tileCache->getTilesAt(x, y, refs, MAX_TILE_LAYERS);
+                for (int i = 0; i < n; i++) {
+                    float tmin[3], tmax[3];
+                    tileCache->calcTightTileBounds(tileCache->getTileByRef(refs[i])->header, tmin, tmax);
+                    if (dtOverlapBounds(bmin, bmax, tmin, tmax))
+                        count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    void expect(const dtCompressedTileRef* refs, int count) {
+        for (int i = 0; i < count; i++) {
+            if ((int)pending.size() < TILE_CACHE_LIST && std::find(pending.begin(), pending.end(), refs[i]) == pending.end())
+                pending.push_back(refs[i]);
+        }
+    }
+
+    // Hands up to OBSTACLE_BATCH requests to the idle tile cache and mirrors the builds they cause.
+    // False when nothing could be submitted (a request Detour refused stays first, for later).
+    bool submitBatch() {
+        int submitted = 0;
+        uint64_t last = 0;
+        while (!requests.empty() && submitted < OBSTACLE_BATCH) {
+            const Request request = requests.front();
+            if (request.add) {
+                auto found = obstacles.find(request.id);
+                if (found == obstacles.end() || !found->second.addQueued) {
+                    // removed (or added again) since it was queued
+                    last = request.serial;
+                    requests.pop_front();
+                    continue;
+                }
+                Obstacle& obstacle = found->second;
+                // no layer under it: nothing to cut (and Detour would never free its slot)
+                if (countLayers(obstacle.desc) == 0) {
+                    obstacle.addQueued = false;
+                    last = request.serial;
+                    requests.pop_front();
+                    continue;
+                }
+                const dtObstacleRef ref = submit(obstacle.desc);
+                if (!ref)
+                    break;
+                obstacle.ref = ref;
+                obstacle.addQueued = false;
+                // the layers Detour's add will touch: its own query, as update() runs it next
+                const dtTileCacheObstacle* added = tileCache->getObstacleByRef(ref);
+                float bmin[3], bmax[3];
+                tileCache->getObstacleBounds(added, bmin, bmax);
+                dtCompressedTileRef touched[DT_MAX_TOUCHED_TILES];
+                int count = 0;
+                tileCache->queryTiles(bmin, bmax, touched, &count, DT_MAX_TOUCHED_TILES);
+                expect(touched, count);
+            } else {
+                const dtTileCacheObstacle* removed = tileCache->getObstacleByRef(request.ref);
+                if (dtStatusFailed(tileCache->removeObstacle(request.ref)))
+                    break;
+                if (removed)
+                    expect(removed->touched, removed->ntouched);
+            }
+            last = request.serial;
+            requests.pop_front();
+            submitted++;
+        }
+        if (last != 0)
+            batchSerial = last;
+        if (submitted == 0) {
+            doneSerial = batchSerial;
+            return false;
+        }
+        if (pending.empty()) {
+            // requests without a build: the tile cache takes them now
+            bool upToDate = false;
+            tileCache->update(0.0f, navMesh, &upToDate);
+            doneSerial = batchSerial;
+        }
+        return true;
+    }
+
+    void buildFailed(int x, int y, int layer, dtStatus status) {
+        failedBuilds++;
+        if (failedTiles.insert({x, y}).second)
+            Log::error("Navigation: the tile cache could not rebuild tile (%d, %d) layer %d (Detour status 0x%x); it keeps its "
+                       "previous polygons", x, y, layer, (unsigned)status);
+    }
+
+    // the carved Detour tiles of (x, y) from their layers, and none for a layer that is gone
+    void buildTile(const TileKey& key) {
+        dtCompressedTileRef refs[MAX_TILE_LAYERS];
+        const int count = tileCache->getTilesAt(key.x, key.y, refs, MAX_TILE_LAYERS);
+        const dtMeshTile* tiles[MAX_TILE_LAYERS * 2];
+        const int built = navMesh->getTilesAt(key.x, key.y, tiles, MAX_TILE_LAYERS * 2);
+        std::vector<dtTileRef> gone;
+        for (int t = 0; t < built; t++) {
+            bool kept = false;
+            for (int i = 0; i < count && !kept; i++)
+                kept = tileCache->getTileByRef(refs[i])->header->tlayer == tiles[t]->header->layer;
+            if (!kept)
+                gone.push_back(navMesh->getTileRef(tiles[t]));
+        }
+        for (dtTileRef ref : gone)
+            navMesh->removeTile(ref, nullptr, nullptr);
+        for (int i = 0; i < count; i++) {
+            const dtStatus status = tileCache->buildNavMeshTile(refs[i], navMesh);
+            if (dtStatusFailed(status))
+                buildFailed(key.x, key.y, tileCache->getTileByRef(refs[i])->header->tlayer, status);
+        }
+    }
+
+    void deferTile(const TileKey& key) {
+        for (const TileKey& queued : deferred) {
+            if (queued.x == key.x && queued.y == key.y)
+                return;
+        }
+        deferred.push_back(key);
     }
 
     void bump() { revision = revisions.fetch_add(1, std::memory_order_relaxed) + 1; }
+    void newGeneration() { generation = generations.fetch_add(1, std::memory_order_relaxed) + 1; }
+
+    dtObstacleRef submit(const NavObstacleDesc& desc) {
+        dtObstacleRef ref = 0;
+        if (desc.shape == NavObstacleDesc::Shape::Box) {
+            const float c[3] = {desc.position.x, desc.position.y, desc.position.z};
+            const float h[3] = {desc.halfExtents.x, desc.halfExtents.y, desc.halfExtents.z};
+            if (dtStatusFailed(tileCache->addBoxObstacle(c, h, desc.yRadians, &ref)))
+                return 0;
+        } else {
+            const float p[3] = {desc.position.x, desc.position.y, desc.position.z};
+            if (dtStatusFailed(tileCache->addObstacle(p, desc.radius, desc.height, &ref)))
+                return 0;
+        }
+        return ref;
+    }
 
     void fillFilter(const NavFilter& filter, dtQueryFilter& out) const {
         out.setIncludeFlags(filter.areaMask);
@@ -708,7 +952,9 @@ struct NavMesh::Impl {
         params.walkableClimb = (float)c.walkableClimb * c.cellHeight;
         params.maxSimplificationError = c.maxSimplificationError;
         params.maxTiles = maxTiles;
-        params.maxObstacles = std::max(1, header.maxObstacles);
+        // room for the removals in flight beside Max Carving Obstacles (a batch removes at most
+        // OBSTACLE_BATCH, freed once their tiles are built): an add never runs out of slots
+        params.maxObstacles = std::max(1, header.maxObstacles) + OBSTACLE_BATCH;
         meshProcess.linksAt = [this](int x, int y) -> const std::vector<NavLinkInput>* {
             auto found = links.find(TileKey{x, y});
             return found != links.end() ? &found->second : nullptr;
@@ -932,10 +1178,14 @@ struct NavMesh::Impl {
 NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
 NavMesh::~NavMesh() = default;
 
-bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
+bool NavMesh::create(NavMeshData data, bool keepData, std::string& error, const NavMeshCreateOptions& options) {
     impl->release();
+    impl->newGeneration();
+    impl->deferBuilds = options.deferCarvedBuilds;
     impl->data = NavMeshData();
     impl->header = data.header;
+    if (options.maxObstacles >= 0)
+        impl->header.maxObstacles = options.maxObstacles;
     impl->keepData = keepData;
     data.sortTiles();
 
@@ -962,10 +1212,17 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
             if (keys.empty() || keys.back().x != blob.x || keys.back().y != blob.y)
                 keys.push_back(TileKey{blob.x, blob.y});
         }
-        if (!impl->buildCarvedTiles(keys, error)) {
+        if (impl->deferBuilds) {
+            // built by updateCarving, within the carving budget (spec S53 R15)
+            for (const TileKey& key : keys)
+                impl->deferTile(key);
+        } else if (!impl->buildCarvedTiles(keys, error)) {
             impl->release();
             return false;
         }
+        // a new tile cache: the obstacles kept from before (the pool-growth fallback) cut again
+        // (spec S53 R12)
+        impl->requeueObstacles([](const Impl::Obstacle&) { return true; });
     } else {
         for (const NavTileBlob& blob : data.tiles) {
             if (!impl->addStaticTile(blob, error)) {
@@ -985,6 +1242,8 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
 
 void NavMesh::clear() {
     impl->release();
+    impl->newGeneration();
+    impl->obstacles.clear();
     impl->data = NavMeshData();
     impl->header = NavMeshHeader();
     impl->bump();
@@ -992,6 +1251,18 @@ void NavMesh::clear() {
 
 bool NavMesh::isValid() const {
     return impl->valid;
+}
+
+bool NavMesh::isComplete() const {
+    return impl->deferred.empty() && impl->doneSerial >= impl->barrierSerial;
+}
+
+int NavMesh::getQueuedBuilds() const {
+    return (int)(impl->deferred.size() + impl->pending.size() + impl->requests.size());
+}
+
+uint64_t NavMesh::getGeneration() const {
+    return impl->generation;
 }
 
 const NavMeshHeader& NavMesh::getHeader() const {
@@ -1026,29 +1297,57 @@ bool NavMesh::replaceTiles(const std::vector<NavTileCoord>& coords, std::vector<
         next.tiles.push_back(std::move(blob));
     next.sortTiles();
 
-    // a pool too small for the new count, or a failed swap: rebuild the whole mesh
+    // A pool too small for the new count, or a failed swap: the whole mesh again, in a new
+    // Detour mesh. It builds at once even where builds are deferred: no old tile survives it.
+    const auto rebuild = [&]() {
+        NavMeshCreateOptions options;
+        options.maxObstacles = impl->header.maxObstacles;
+        const bool defer = impl->deferBuilds;
+        const bool ok = create(std::move(next), true, error, options);
+        impl->deferBuilds = defer;
+        return ok;
+    };
     if ((int)next.tiles.size() > impl->header.maxTiles) {
         next.header.maxTiles = (int)nextPow2((unsigned int)next.tiles.size());
-        return create(std::move(next), true, error);
+        return rebuild();
     }
 
     if (impl->header.config.carving) {
         for (const TileKey& key : keys) {
             impl->removeLayersAt(key.x, key.y);
-            impl->removeNavTilesAt(key.x, key.y);
+            // deferred: the old Detour tile serves until its rebuild replaces it (spec S53 R15)
+            if (!impl->deferBuilds)
+                impl->removeNavTilesAt(key.x, key.y);
         }
         for (const NavTileBlob& blob : next.tiles) {
             if (replaced(blob) && !impl->addLayer(blob, error))
-                return create(std::move(next), true, error);
+                return rebuild();
         }
-        if (!impl->buildCarvedTiles(keys, error))
-            return create(std::move(next), true, error);
+        if (impl->deferBuilds) {
+            for (const TileKey& key : keys)
+                impl->deferTile(key);
+        } else if (!impl->buildCarvedTiles(keys, error)) {
+            return rebuild();
+        }
+        // the new layers have new refs, which no obstacle touches yet: the obstacles over them cut
+        // again (spec S53 R12)
+        const float size = impl->header.config.tileWorldSize();
+        impl->requeueObstacles([&](const Impl::Obstacle& obstacle) {
+            float bmin[3], bmax[3];
+            impl->obstacleBounds(obstacle.desc, bmin, bmax);
+            for (const TileKey& key : keys) {
+                if (bmax[0] >= (float)key.x * size && bmin[0] < (float)(key.x + 1) * size && bmax[2] >= (float)key.y * size &&
+                    bmin[2] < (float)(key.y + 1) * size)
+                    return true;
+            }
+            return false;
+        });
     } else {
         for (const TileKey& key : keys)
             impl->removeNavTilesAt(key.x, key.y);
         for (const NavTileBlob& blob : next.tiles) {
             if (replaced(blob) && !impl->addStaticTile(blob, error))
-                return create(std::move(next), true, error);
+                return rebuild();
         }
     }
     impl->data = std::move(next);
@@ -1529,62 +1828,185 @@ bool NavMesh::getHeight(const Vector3& point, const NavFilter& filter, const Vec
     return dtStatusSucceed(impl->query->getPolyHeight(ref, p, &height));
 }
 
-uint32_t NavMesh::addCylinderObstacle(const Vector3& position, float radius, float height) {
+uint32_t NavMesh::addObstacle(const NavObstacleDesc& desc) {
     if (!impl->valid || !impl->tileCache)
         return 0;
-    const float p[3] = {position.x, position.y, position.z};
-    dtObstacleRef ref = 0;
-    if (dtStatusFailed(impl->tileCache->addObstacle(p, radius, height, &ref)))
+    // queued adds count: Detour's slots never run out (spec S53 R11, R17)
+    if ((int)impl->obstacles.size() >= impl->header.maxObstacles)
         return 0;
-    return ref;
+    const uint32_t id = impl->nextObstacle++;
+    Impl::Obstacle& obstacle = impl->obstacles[id];
+    obstacle.desc = desc;
+    impl->queueAdd(id, obstacle);
+    return id;
 }
 
-uint32_t NavMesh::addBoxObstacle(const Vector3& center, const Vector3& halfExtents, float yRadians) {
+void NavMesh::moveObstacle(uint32_t id, const NavObstacleDesc& desc) {
+    auto found = impl->obstacles.find(id);
+    if (found == impl->obstacles.end())
+        return;
+    found->second.desc = desc;
+    // a queued add takes the new description when it is submitted
+    impl->queueRemove(found->second);
+    impl->queueAdd(id, found->second);
+}
+
+void NavMesh::removeObstacle(uint32_t id) {
+    auto found = impl->obstacles.find(id);
+    if (found == impl->obstacles.end())
+        return;
+    impl->queueRemove(found->second);
+    impl->obstacles.erase(found);
+}
+
+bool NavMesh::hasObstacle(uint32_t id) const {
+    return impl->obstacles.count(id) != 0;
+}
+
+void NavMesh::adoptObstacles(NavMesh& previous) {
+    if (&previous == this)
+        return;
+    std::map<uint32_t, Impl::Obstacle> adopted = std::move(previous.impl->obstacles);
+    previous.impl->obstacles.clear();
+    previous.impl->requests.clear();
+    impl->nextObstacle = std::max(impl->nextObstacle, previous.impl->nextObstacle);
+    if (!impl->valid || !impl->tileCache)
+        return;
+    // the same ids, in their order, as far as Max Carving Obstacles allows
+    for (auto& entry : adopted) {
+        if ((int)impl->obstacles.size() >= impl->header.maxObstacles)
+            break;
+        Impl::Obstacle& obstacle = impl->obstacles[entry.first];
+        obstacle.desc = entry.second.desc;
+        impl->queueAdd(entry.first, obstacle);
+    }
+    impl->barrierSerial = impl->requestSerial;
+}
+
+int NavMesh::countTileLayers(const NavObstacleDesc& desc) const {
     if (!impl->valid || !impl->tileCache)
         return 0;
-    const float c[3] = {center.x, center.y, center.z};
-    const float h[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
-    dtObstacleRef ref = 0;
-    if (dtStatusFailed(impl->tileCache->addBoxObstacle(c, h, yRadians, &ref)))
-        return 0;
-    return ref;
+    return impl->countLayers(desc);
 }
 
-bool NavMesh::removeObstacle(uint32_t obstacle) {
-    if (!impl->valid || !impl->tileCache || obstacle == 0)
-        return false;
-    return dtStatusSucceed(impl->tileCache->removeObstacle(obstacle));
-}
-
-bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) {
+bool NavMesh::updateCarving(const NavCarveBudget& budget, bool& upToDate, int& tilesRebuilt) {
     upToDate = true;
     tilesRebuilt = 0;
     if (!impl->valid || !impl->tileCache)
         return false;
+    Impl& m = *impl;
     const auto begin = std::chrono::steady_clock::now();
+    // the wall-clock ceiling stops a tick after at least one build (spec S53 R14)
+    const auto spent = [&]() {
+        return budget.ceilingMs > 0.0 && tilesRebuilt > 0 &&
+               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() >= budget.ceilingMs;
+    };
     bool changed = false;
-    // each update handles the queued obstacle requests and then rebuilds one touched tile
-    for (;;) {
-        bool done = false;
-        if (dtStatusFailed(impl->tileCache->update(0.0f, impl->navMesh, &done)))
-            break;
-        if (done) {
-            upToDate = true;
-            break;
+    while (tilesRebuilt < budget.maxTileBuilds && !spent()) {
+        // deferred tiles first (spec S53 R15)
+        if (!m.deferred.empty()) {
+            const TileKey key = m.deferred.front();
+            m.deferred.pop_front();
+            m.buildTile(key);
+            tilesRebuilt++;
+            changed = true;
+            continue;
         }
-        upToDate = false;
-        changed = true;
+        // then the obstacle requests, handed over only while the tile cache is idle
+        if (m.pending.empty()) {
+            if (m.requests.empty())
+                break;
+            if (!m.submitBatch())
+                break;
+            changed = true;
+            if (m.pending.empty())
+                continue;
+        }
+        // each update() builds the first tile of Detour's update list (the requests were taken
+        // by the first)
+        const dtCompressedTileRef ref = m.pending.front();
+        m.pending.erase(m.pending.begin());
+        const dtCompressedTile* tile = m.tileCache->getTileByRef(ref);
+        bool idle = false;
+        const dtStatus status = m.tileCache->update(0.0f, m.navMesh, &idle);
+        if (m.pending.empty())
+            m.doneSerial = m.batchSerial;
+        // a layer replaced since the obstacle touched it: Detour skips it, no work was done
+        if (!tile)
+            continue;
         tilesRebuilt++;
-        const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-        if (elapsed >= budgetMs)
-            break;
+        changed = true;
+        if (dtStatusFailed(status))
+            m.buildFailed(tile->header->tx, tile->header->ty, tile->header->tlayer, status);
     }
-    // S55 R14: Detour reports the cache up to date in the call that builds its last touched tile,
-    // which the loop does not count: the overrides check every tile's reference instead
-    const bool overridden = impl->tilesChanged();
+    upToDate = m.deferred.empty() && m.pending.empty() && m.requests.empty();
+    // S55 R14: the overrides check every tile's reference, so tiles Detour's update replaced and
+    // deferred tiles built above both get their runtime areas and link states again
+    const bool overridden = m.tilesChanged();
     if (changed || overridden)
-        impl->bump();
+        m.bump();
     return true;
+}
+
+void NavMesh::setDeferCarvedBuilds(bool defer) {
+    impl->deferBuilds = defer;
+}
+
+int NavMesh::getTileCacheObstacleCount() const {
+    if (!impl->valid || !impl->tileCache)
+        return 0;
+    int count = 0;
+    for (int i = 0; i < impl->tileCache->getObstacleCount(); i++) {
+        if (impl->tileCache->getObstacle(i)->state != DT_OBSTACLE_EMPTY)
+            count++;
+    }
+    return count;
+}
+
+int NavMesh::getFailedCarveBuilds() const {
+    return impl->failedBuilds;
+}
+
+bool NavMesh::getLinkConnections(uint32_t userId, std::vector<NavLinkInput>& out) const {
+    out.clear();
+    if (!impl->valid)
+        return false;
+    if (impl->tileCache) {
+        for (const auto& entry : impl->links) {
+            for (const NavLinkInput& link : entry.second) {
+                if (link.userId == userId)
+                    out.push_back(link);
+            }
+        }
+        return !out.empty();
+    }
+    // static tiles: the connections as Detour holds them, in tile order (updateLink's)
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (!tile || !tile->header)
+            continue;
+        for (int c = 0; c < tile->header->offMeshConCount; c++) {
+            const dtOffMeshConnection& con = tile->offMeshCons[c];
+            if (con.userId != userId)
+                continue;
+            const dtPoly& poly = tile->polys[con.poly];
+            NavLinkInput link;
+            dtVcopy(link.start, &con.pos[0]);
+            dtVcopy(link.end, &con.pos[3]);
+            link.radius = con.rad;
+            link.bidirectional = (con.flags & DT_OFFMESH_CON_BIDIR) != 0;
+            link.area = AREA_JUMP;
+            for (int a = 0; a < AREA_COUNT; a++) {
+                if (poly.flags == (1u << a))
+                    link.area = (uint8_t)a;
+            }
+            link.polyArea = poly.getArea();
+            link.userId = con.userId;
+            out.push_back(link);
+        }
+    }
+    return !out.empty();
 }
 
 bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error) {
@@ -1618,8 +2040,13 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
                 blob.links = found != impl->links.end() ? found->second : std::vector<NavLinkInput>();
             }
         }
-        if (!impl->buildCarvedTiles(touched, error))
+        if (impl->deferBuilds) {
+            // rebuilt within the carving budget; the tiles keep their layers, so their cuts stay
+            for (const TileKey& key : touched)
+                impl->deferTile(key);
+        } else if (!impl->buildCarvedTiles(touched, error)) {
             return false;
+        }
         impl->tilesChanged();
         impl->bump();
         return true;
@@ -2142,13 +2569,16 @@ struct NavMesh::Impl {
 NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
 NavMesh::~NavMesh() = default;
 
-bool NavMesh::create(NavMeshData, bool, std::string& error) {
+bool NavMesh::create(NavMeshData, bool, std::string& error, const NavMeshCreateOptions&) {
     logUnavailable();
     error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
     return false;
 }
 void NavMesh::clear() {}
 bool NavMesh::isValid() const { return false; }
+bool NavMesh::isComplete() const { return true; }
+int NavMesh::getQueuedBuilds() const { return 0; }
+uint64_t NavMesh::getGeneration() const { return 0; }
 const NavMeshHeader& NavMesh::getHeader() const { return impl->header; }
 const NavMeshData* NavMesh::getData() const { return nullptr; }
 bool NavMesh::replaceTiles(const std::vector<NavTileCoord>&, std::vector<NavTileBlob>, std::string& error) {
@@ -2184,10 +2614,17 @@ bool NavMesh::moveAlongSurface(const Vector3&, const Vector3&, const NavFilter&,
     return false;
 }
 bool NavMesh::getHeight(const Vector3&, const NavFilter&, const Vector3&, float&) const { logUnavailable(); return false; }
-uint32_t NavMesh::addCylinderObstacle(const Vector3&, float, float) { logUnavailable(); return 0; }
-uint32_t NavMesh::addBoxObstacle(const Vector3&, const Vector3&, float) { logUnavailable(); return 0; }
-bool NavMesh::removeObstacle(uint32_t) { return false; }
-bool NavMesh::updateCarving(double, bool& upToDate, int& tilesRebuilt) { upToDate = true; tilesRebuilt = 0; return false; }
+uint32_t NavMesh::addObstacle(const NavObstacleDesc&) { logUnavailable(); return 0; }
+void NavMesh::moveObstacle(uint32_t, const NavObstacleDesc&) {}
+void NavMesh::removeObstacle(uint32_t) {}
+bool NavMesh::hasObstacle(uint32_t) const { return false; }
+void NavMesh::adoptObstacles(NavMesh&) {}
+int NavMesh::countTileLayers(const NavObstacleDesc&) const { return 0; }
+bool NavMesh::updateCarving(const NavCarveBudget&, bool& upToDate, int& tilesRebuilt) { upToDate = true; tilesRebuilt = 0; return false; }
+void NavMesh::setDeferCarvedBuilds(bool) {}
+int NavMesh::getTileCacheObstacleCount() const { return 0; }
+int NavMesh::getFailedCarveBuilds() const { return 0; }
+bool NavMesh::getLinkConnections(uint32_t, std::vector<NavLinkInput>& out) const { out.clear(); return false; }
 bool NavMesh::updateLink(uint32_t, const std::vector<NavLinkInput>&, std::string& error) {
     error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
     return false;

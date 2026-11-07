@@ -60,18 +60,55 @@ frame by default). The same inputs give byte-identical `.navmesh` files whatever
 A surface too large for Detour's 32-bit polygon references is refused before anything runs:
 "Surface too large: N tiles x M polys; increase cell/tile size or split the surface".
 
+### Bake warnings
+
+A bake reports Recast's own warnings next to its result (the editor's Console, MCP
+`bake_navigation`), one line per tile, `tile (x, y): message`; equal lines are merged with a count
+and at most 32 are kept (`... and N more`). A failed tile's error ends with Recast's reason, for
+example `Recast could not build the tile-cache layers: rcBuildHeightfieldLayers: layer overflow`.
+Two warnings come from the bake's own checks:
+
+- A tile's heightfield holds 8191 voxels of height. A surface taller than that (about 682 m at the
+  default voxel height) warns `the surface spans H m of height, more than the 8191 voxels ...`:
+  geometry above the limit is cut off. Increase the voxel size or split the surface.
+- A carving tile keeps at most 32 walkable layers: `tile (x, y): N walkable layers, the lowest 32
+  kept`.
+
 ### Runtime rebakes
 
 `NavMeshSurface:bakeAsync()` rebakes from what the scene holds now, and `updateTiles(aabb)`
 rebuilds only the tiles touching a box (procedural levels). Agents keep moving on the previous
-navmesh until the new tiles land; `onBakeCompleted` fires then.
+navmesh until the new tiles land; `onBakeCompleted` fires then. On a surface with Runtime
+Carving the new tiles are built within the carving budget (below): the surface keeps its current
+navmesh in service until every tile of the new one is built, so a full rebake of 400 tiles lands
+about 100 fixed ticks (1.7 s at 4 tiles a tick) after its jobs finish. `isBaking` stays true and
+`onBakeCompleted` waits until then.
 
 ### Runtime carving
 
 Turn on **Runtime Carving** on a surface to keep tile-cache layers (about 30 % more memory):
-NavMesh Obstacles with **Carve** then cut holes into it (re-cut when they move more than
-*Move Threshold*, optionally only once stationary). Carving updates are budgeted (1 ms per fixed
-tick). Without carving, obstacles are avoided like agents.
+NavMesh Obstacles with **Carve** then cut holes into it. Without carving, obstacles are avoided
+like agents.
+
+- **Thresholds** (Unity's): an obstacle is cut again once it is more than *Move Threshold* from
+  where it was cut. A box also re-cuts when it turned about the vertical by more than
+  *Move Threshold* / r radians, r being half the diagonal of its footprint (the distance its
+  farthest corner travels). Turning a capsule, and tilting either shape, never re-cuts: Detour cuts
+  upright shapes. Changing its shape, centre, size, radius, height or scale re-cuts.
+- **Carve Only Stationary**: the cut is made once the obstacle has stayed within *Move Threshold*
+  of one point for *Time To Stationary* seconds, so a resting physics body's jitter still counts as
+  stationary; while it moves it is avoided.
+- **Budget**: each fixed tick a surface rebuilds at most **Project Settings > Navigation > Carve
+  Tiles Per Tick** tile-cache tiles (Auto: 4 on desktop, 2 on Android, iOS and the web). The count,
+  not the machine's speed, decides on which tick a cut lands, so replays are identical. A safety
+  ceiling of 4 ms of wall clock stops a tick early (after at least one tile). Requests wait in a
+  queue of their own, so many obstacles appearing at once are all cut, a few tiles a tick.
+- **Max Carving Obstacles** (the surface's Advanced section, 128 by default, 1-4096): the cuts a
+  surface holds at once. An obstacle beyond it is avoided instead, with a warning.
+- Detour cuts an obstacle into at most 8 tile-cache layers. A larger one warns
+  `NavMeshObstacle '...' covers N tile layers of '...' and is cut in 8`: make it smaller or the
+  tiles larger.
+- Cuts survive rebakes, reloads and `updateTiles` of the surface.
 
 ### Doors and bridges
 
@@ -153,12 +190,33 @@ any navigation function.
 An agent spawned off the navmesh reports `isOnNavMesh == false` and logs one warning; `warp(p)`
 puts it on. In play, its Inspector shows Path Status, Remaining Distance and Is On NavMesh.
 
+**Paths and arrival.** Paths come from the crowd's own search (Detour's path queue, time-sliced
+across agents); no extra search runs when one arrives or is planned again.
+
+- `pathStatus` is Complete when the path reaches the destination, Partial when no path does (an
+  unreachable destination, or one further than the search's 4096 nodes): the agent then walks to
+  the nearest reachable point and stops there, and `onPathFailed` fires once per destination.
+- A crowd agent's corridor holds 256 polygons. A longer path is still Complete: the crowd extends
+  the corridor as the agent nears its end, which is not a repath (it happens with Auto Repath
+  off too). Until then `remainingDistance` is the distance along the corridor plus the straight
+  line from its end to the destination, a lower bound.
+- `onDestinationReached` fires only at the destination, within the stopping distance, never at
+  the end of a Partial path.
+
 ### Links
 
 A NavMesh Link joins two points (in its GameObject's space; drag the handles in the Scene view).
 An agent reaching it traverses it at its speed (`onOffMeshLinkStart` / `End`), or, with
 **Auto Traverse Off Mesh Link** off, waits there until a script calls `completeOffMeshLink()`.
 One-way links are only crossed from the start.
+
+With **Auto Update Positions** on, a link that moves in play moves its connections (each fixed
+tick, once an end moved more than half a voxel or its settings changed). On a surface with Runtime
+Carving it may move anywhere, its tiles rebuilt within the carving budget, cuts kept. On a static
+surface its start must stay in the tile it was baked in, with as many connections: otherwise it
+keeps where it was and warns once (`... left its baked tile ...: turn on Runtime Carving or
+rebake`). A cost override the surface was not baked with uses the area's cost until a rebake.
+With Auto Update Positions off, a moved link stays where it was baked, as in Unity.
 
 ### Crowds
 
@@ -416,3 +474,9 @@ metres; the scene's points per metre convert them.
 ## Performance
 
 Budgets and measured numbers: [perf/navigation.md](perf/navigation.md).
+
+## Changes
+
+- S53: `onDestinationReached` no longer fires at the end of a Partial path (S19 R12 says "of the
+  destination"); a script that relied on it reacts to `onPathFailed` instead. Carving cuts land
+  on a tick count (Carve Tiles Per Tick) rather than 1 ms of wall clock.
