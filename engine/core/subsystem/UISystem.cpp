@@ -1511,11 +1511,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
         ui.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = ui.buffer.getAttribute(AttributeType::POSITION);
 
@@ -1553,8 +1554,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
 bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout){
     if (polygon.needUpdatePolygon){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         createUIPolygon(polygon, ui, layout);
@@ -1568,8 +1573,12 @@ bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui,
 bool UISystem::createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (img.needUpdatePatches){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (createImagePatches(img, ui, layout)){
@@ -1625,8 +1634,12 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
 
     if (text.needUpdateText){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (!text.loaded){
@@ -2647,13 +2660,18 @@ Rect UISystem::fitOnPanel(Rect uiRect, Entity parentPanel){
 }
 
 void UISystem::calculateUIAABB(UIComponent& ui){
-    ui.aabb = AABB::ZERO;
+    // seeded empty: AABB::ZERO is a finite box at the origin that every merge would keep
+    ui.aabb.setNull();
     Attribute* vertexAttr = ui.buffer.getAttribute(AttributeType::POSITION);
-    for (int i = 0; i < ui.buffer.getCount(); i++){
-        Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
+    if (vertexAttr){
+        for (int i = 0; i < ui.buffer.getCount(); i++){
+            Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
 
-        ui.aabb.merge(vertice);
+            ui.aabb.merge(vertice);
+        }
     }
+    if (ui.aabb.isNull())
+        ui.aabb = AABB::ZERO;
 
     ui.needUpdateAABB = true;
 }

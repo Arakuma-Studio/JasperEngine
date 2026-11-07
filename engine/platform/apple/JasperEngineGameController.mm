@@ -22,6 +22,7 @@ static bool  _buttonState[JASPERENGINE_MAX_GAMEPADS][D_GAMEPAD_BUTTON_LAST + 1];
 static float _axisState[JASPERENGINE_MAX_GAMEPADS][D_GAMEPAD_AXIS_LAST + 1];
 static bool  _swapFaceButtons[JASPERENGINE_MAX_GAMEPADS];
 static bool  _started = false;
+static bool  _suspended = false;
 
 // GameController reports Nintendo pads by the labels printed on them (A on the
 // right, B at the bottom), while every other backend reports face buttons by
@@ -135,6 +136,10 @@ static void processAxis(int slot, int axis, float value) {
 }
 
 + (void)handleState:(GCExtendedGamepad*)gp slot:(int)slot {
+    // read again on resume
+    if (_suspended)
+        return;
+
     // A is the bottom button and X the left one, whatever the pad prints there
     bool swap = _swapFaceButtons[slot];
     processButton(slot, D_GAMEPAD_BUTTON_A, (swap ? gp.buttonB : gp.buttonA).pressed);
@@ -177,6 +182,31 @@ static void processAxis(int slot, int axis, float value) {
     // Triggers: GameController reports 0..1; the engine uses [-1, 1] resting at -1.
     processAxis(slot, D_GAMEPAD_AXIS_LEFT_TRIGGER, gp.leftTrigger.value * 2.0f - 1.0f);
     processAxis(slot, D_GAMEPAD_AXIS_RIGHT_TRIGGER, gp.rightTrigger.value * 2.0f - 1.0f);
+}
+
++ (void)setSuspended:(BOOL)suspended {
+    if ((suspended == YES) == _suspended)
+        return;
+    _suspended = suspended == YES;
+    // not started (a headless run): no slots, no pads
+    if (!_slots)
+        return;
+
+    for (int slot = 0; slot < JASPERENGINE_MAX_GAMEPADS; slot++) {
+        if (_slots[slot] == [NSNull null])
+            continue;
+
+        if (_suspended) {
+            for (int button = 0; button <= D_GAMEPAD_BUTTON_LAST; button++)
+                processButton(slot, button, false);
+            // triggers rest at -1
+            for (int axis = 0; axis <= D_GAMEPAD_AXIS_LAST; axis++)
+                processAxis(slot, axis, axis == D_GAMEPAD_AXIS_LEFT_TRIGGER || axis == D_GAMEPAD_AXIS_RIGHT_TRIGGER ? -1.0f : 0.0f);
+        } else {
+            GCController* controller = _slots[slot];
+            [self handleState:controller.extendedGamepad slot:slot];
+        }
+    }
 }
 
 @end

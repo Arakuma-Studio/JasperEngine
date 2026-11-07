@@ -27,9 +27,9 @@ namespace {
     // MESH: Dlo (draw-perf: the general Lit draws a directional-only scene the same) Sao Fog S2d
     // Shw Mir Ibl Nmp Tan Uv2 Uv1
     const uint64_t meshDroppable = bits({42, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1});
-    // DEPTH: Ams Tex; GBUFFER: Mrt Bct
+    // DEPTH: Ams Tex; GBUFFER: Occ Uv2 Mrt Bct
     const uint64_t depthDroppable = bits({7, 0});
-    const uint64_t gbufferDroppable = bits({8, 0});
+    const uint64_t gbufferDroppable = bits({16, 17, 8, 0});
 
     // every candidate a subset of properties, the bits outside droppable kept, none repeated,
     // one per non-empty subset of the droppable bits present
@@ -127,6 +127,17 @@ TEST(ShaderFallback, DepthAndGBufferGiveUpTheirTextures) {
     EXPECT_EQ(gbufferCandidates[1], bits({1, 8, 10}));
     EXPECT_EQ(gbufferCandidates[2], bits({1, 10}));
     expectWellFormed(ShaderType::GBUFFER, ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), gbufferDroppable);
+}
+
+TEST(ShaderFallback, GBufferGivesUpOcclusionFirst) {
+    // Bct Nor Occ: the SSR occlusion map goes before the base colour
+    const uint64_t gbuffer = bits({0, 1, 16});
+    const std::vector<uint64_t> candidates = ShaderPool::getFallbackProperties(ShaderType::GBUFFER, gbuffer);
+    ASSERT_EQ(candidates.size(), 3u);
+    EXPECT_EQ(candidates[0], bits({0, 1}));
+    EXPECT_EQ(candidates[1], bits({1, 16}));
+    EXPECT_EQ(candidates[2], bits({1}));
+    expectWellFormed(ShaderType::GBUFFER, bits({0, 1, 8, 16, 17}), gbufferDroppable);
 }
 
 TEST(ShaderFallback, OtherTypesHaveNone) {

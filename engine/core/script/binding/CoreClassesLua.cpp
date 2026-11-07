@@ -2248,6 +2248,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
+        .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)
@@ -2284,6 +2286,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // false while the window can't be seen: the game updates without drawing (desktops)
+        .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -2307,6 +2311,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
         .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
@@ -3322,6 +3327,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)
         .addProperty("defaultPointsShader", &Scene::getDefaultPointsShader, &Scene::setDefaultPointsShader)
         .addProperty("defaultLinesShader", &Scene::getDefaultLinesShader, &Scene::setDefaultLinesShader)
+        // property values of a default shader, inherited by the objects that use it
+        .addFunction("setDefaultShaderUniform",
+            luabridge::overload<ShaderType, const std::string&, const Vector4&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector3&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector2&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, float>(&Scene::setDefaultShaderUniform))
+        .addFunction("getDefaultShaderUniform", &Scene::getDefaultShaderUniform)
+        .addFunction("hasDefaultShaderUniform", &Scene::hasDefaultShaderUniform)
+        .addFunction("removeDefaultShaderUniform", &Scene::removeDefaultShaderUniform)
         .addProperty("postProcessPasses", &Scene::getPostProcessPasses, &Scene::setPostProcessPasses)
         .addFunction("setPostProcessUniform",
             luabridge::overload<unsigned int, const std::string&, const Vector4&>(&Scene::setPostProcessUniform),

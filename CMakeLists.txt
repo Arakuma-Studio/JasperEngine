@@ -259,6 +259,7 @@ if(API_BACKEND STREQUAL "linux")
     list(APPEND BACKEND_SOURCES
         ${EDITOR_DIR}/backend/BackendLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
         ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
         ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
     )
@@ -573,6 +574,10 @@ elseif(API_BACKEND STREQUAL "mac")
 endif()
 include_directories (${JASPERENGINE_ROOT}/renders)
 
+# cl's /MP for the engine's and the editor's targets under Visual Studio generators
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
+
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -756,6 +761,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/SceneFileIdentity.cpp
     ${EDITOR_DIR}/project/ProjectShaderLists.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
@@ -907,9 +913,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
+    ${EDITOR_DIR}/util/EntityPayload.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/ExportFeatureScan.cpp
     ${EDITOR_DIR}/util/NativeExportAndroid.cpp
+    ${EDITOR_DIR}/util/CMakeText.cpp
+    ${EDITOR_DIR}/util/VersionControlFiles.cpp
     ${EDITOR_DIR}/util/NativePlugins.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
@@ -953,6 +962,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
     ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
+    ${EDITOR_DIR}/util/LineDiff.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
@@ -1013,6 +1023,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ActionPreviewSnapshot.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1059,6 +1070,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vcs/scene/SceneCli.cpp
     ${EDITOR_DIR}/vcs/VcsEditorOps.cpp
     ${EDITOR_DIR}/vcs/SceneDiffTracker.cpp
+    ${EDITOR_DIR}/vcs/TextBaselines.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -1251,6 +1263,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/EditorModal.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
+    ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
@@ -1260,6 +1273,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
     ${EDITOR_DIR}/render/SceneRender.cpp
+    ${EDITOR_DIR}/render/ViewCameraMirror.cpp
     ${EDITOR_DIR}/render/SceneRender2D.cpp
     ${EDITOR_DIR}/render/SceneRender3D.cpp
     ${EDITOR_DIR}/render/gizmo/TranslateGizmo.cpp
@@ -1607,7 +1621,8 @@ function(configure_jasperengine_editor_target target_name)
         REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
                 ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
-                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
+                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
+                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)
@@ -1872,8 +1887,10 @@ else()
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
+    # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
+            USE_SOURCE_PERMISSIONS
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE

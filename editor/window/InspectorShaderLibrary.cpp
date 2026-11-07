@@ -14,6 +14,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/PointsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -272,8 +274,18 @@ namespace {
         std::shared_ptr<const ShaderManifest> manifest =
             presentManifest(editor::Catalog::getShaderReferenceForProperty(scene, entity, cpType, "customShader"));
         const std::vector<std::string>* features = editor::Catalog::getPropertyRef<std::vector<std::string>>(scene, entity, cpType, "shaderFeatures");
-        return RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
-                                                         features ? *features : noFeatures, false);
+        RenderState state = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
+                                                                      features ? *features : noFeatures, false);
+        // Points: Auto writes depth when opaque only (RenderSystem::resolvePointsRenderState)
+        if (cpType == editor::ComponentType::PointsComponent){
+            if (const PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
+                const MaterialDepthWrite manifestDepthWrite = manifest ?
+                    manifest->resolveState(manifest->resolveFeatures(features ? *features : noFeatures)).depthWrite : MaterialDepthWrite::AUTO;
+                if (manifestDepthWrite == MaterialDepthWrite::AUTO)
+                    state.depthWrite = !points->isTransparent();
+            }
+        }
+        return state;
     }
 
 }
@@ -651,12 +663,31 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, bindingsProperty, value, onValueChanged));
     };
 
+    // what an unset parameter renders with: a mesh's value under its material's, the scene's
+    // default-shader value, the manifest default (ShaderUniforms::resolve, as the render system)
+    Catalog::UniformChainRefs chain;
+    bool chained = false;
+    if (paramsProperty == "shaderUniforms") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType);
+        chained = true;
+    } else if (unsigned int submesh = 0; std::sscanf(paramsProperty.c_str(), "submeshes[%u].material.shaderParams", &submesh) == 1 &&
+                                         paramsProperty == "submeshes[" + std::to_string(submesh) + "].material.shaderParams") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType, static_cast<int>(submesh));
+        chained = true;
+    }
+    chain.chain.values = &params;
+    chain.chain.manifest = manifest.get();
+
     // ---- parameters
     for (const ShaderManifestProperty& property : manifest->properties) {
         if (!featureOn(property.feature))
             continue;
         const bool hasValue = ShaderUniforms::has(params, property.member);
-        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member) : property.defaultValue;
+        UniformSource source = UniformSource::ShaderDefault;
+        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member)
+                            : chained ? ShaderUniforms::resolve(chain.chain, property.member, &source) : property.defaultValue;
+        // an own value over the scene's default shows "Revert to Scene Default"
+        const bool overScene = chain.chain.sceneDefault && ShaderUniforms::has(*chain.chain.sceneDefault, property.member);
         const bool color = property.kind == ShaderPropertyKind::COLOR || property.kind == ShaderPropertyKind::HDRCOLOR;
         const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
                              : property.kind == ShaderPropertyKind::VECTOR3 ? 3
@@ -674,8 +705,11 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             continue;
         }
         prefabRowProperty = paramsProperty;
-        if (propertyHeader(rowLabel(property.label, property.member), -1, hasValue)) {
-            // back to the manifest default
+        const bool revert = propertyHeader(rowLabel(property.label, property.member), -1, hasValue);
+        if (hasValue && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", overScene ? "Revert to Scene Default" : "Reset to the shader's default");
+        if (revert) {
+            // back to what it inherits (the scene's default-shader value, the manifest default)
             ShaderUniformValues changed = params;
             ShaderUniforms::remove(changed, property.member);
             setParams(changed, false);
@@ -693,8 +727,12 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             setParams(newParams, continuous);
         }
         finishDrag();
-        if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
-            ImGui::SetTooltip("%s", property.member.c_str());
+        if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) {
+            if (!hasValue && source == UniformSource::SceneDefault)
+                ImGui::SetTooltip("%s\nFrom the scene's default shader values (Scene > Default Shaders)", property.member.c_str());
+            else
+                ImGui::SetTooltip("%s", property.member.c_str());
+        }
         if (bindingsRef)
             drawGlobalLinkButton(property.member, components, bindings, setBindings);
         ImGui::PopID();
@@ -1013,7 +1051,9 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     settings.help = "How the colour mixes with what is behind. Auto: the shader's @state, else alpha blending.";
     propertyRow(RowPropertyType::Enum, cpType, "blendMode", "Blend Mode", sceneProject, entities, settings);
     settings.enumEntries = &depthWriteEntries.entries;
-    settings.help = "Whether it writes depth. Auto: the shader's @state, else on.";
+    settings.help = cpType == ComponentType::PointsComponent ?
+        "Whether it writes depth. Auto: the shader's @state, else on when opaque and off when Transparent (or when Auto Transparency finds alpha in the texture)." :
+        "Whether it writes depth. Auto: the shader's @state, else on.";
     propertyRow(RowPropertyType::Enum, cpType, "depthWrite", "Depth Write", sceneProject, entities, settings);
 
     // stencil and colour write (phase 2): Auto names the shader's rule

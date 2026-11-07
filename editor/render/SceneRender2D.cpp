@@ -902,6 +902,26 @@ void editor::SceneRender2D::hideAllGizmos(){
     }
 }
 
+void editor::SceneRender2D::hideEntityGizmos(Entity entity){
+    SceneRender::hideEntityGizmos(entity);
+
+    for (auto* lines : {&containerLines, &bodyLines, &jointLines, &controllerLines, &light2DLines, &stickLines,
+                        &shadowCaster2DLines, &linePointLines, &polygonPointLines, &trackLines}) {
+        auto it = lines->find(entity);
+        if (it != lines->end()) it->second->setVisible(false);
+    }
+    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
+        cameraObject->second.icon->setVisible(false);
+        cameraObject->second.lines->setVisible(false);
+    }
+    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
+        sound->second.icon->setVisible(false);
+    }
+    if (auto light = light2DObjects.find(entity); light != light2DObjects.end()) {
+        light->second.icon->setVisible(false);
+    }
+}
+
 void editor::SceneRender2D::activate(){
     SceneRender::activate();
 }
@@ -978,6 +998,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentSounds;
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
+        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
+        const bool active = gizmoActive(entity);
         if (signature.test(scene->getComponentId<LayoutGroupComponent>()) && 
             signature.test(scene->getComponentId<Transform>()) && 
             signature.test(scene->getComponentId<RectTransformComponent>())){
@@ -1200,7 +1222,8 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                     co.lines->setVisible(true);
 
                     bool isMainCam = (mainCamera == entity);
-                    updateCameraFrustum(co, cameraComp, isMainCam);
+                    // a selected camera shows its whole frustum, near to far (Unity)
+                    updateCameraFrustum(co, cameraComp, isMainCam, selectedEntities.find(entity) != selectedEntities.end());
                 }else{
                     co.icon->setVisible(false);
                     co.lines->clearLines();
@@ -1235,6 +1258,10 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             if (displaySettings.hideSoundIcons) {
                 so.icon->setVisible(false);
             }
+        }
+
+        if (!active) {
+            hideEntityGizmos(entity);
         }
     }
 

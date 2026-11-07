@@ -1614,7 +1614,7 @@ bool VertexAnimationBakerWindow::sourceField(const char* id, std::string& text, 
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             if (payload->DataSize >= (int)sizeof(EntityPayload)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
-                const uint32_t sceneId = entityPayload->entitySceneId != 0 ? entityPayload->entitySceneId : project->getSelectedSceneId();
+                const uint32_t sceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
                 applied = playOn ? setPlayOnEntity(sceneId, entityPayload->entity, error) : setSourceEntity(sceneId, entityPayload->entity, error);
                 if (!applied) setStatus(error, true);
             }

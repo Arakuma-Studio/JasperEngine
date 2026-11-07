@@ -603,6 +603,29 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_app_hide",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "A minimized window was untestable from MCP: agents asked for a real minimize (xdotool) or paused the "
+                         "game, which stops its updates, where a minimized desktop game keeps updating without drawing.",
+        "text_at_issue": "send_input description: 'app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation'",
+        "source": "platform-lifecycle spec (2026-11-04), D7",
+        "prompt": "The game is playing. Check how it behaves while its window is minimized: minimize it for two seconds, "
+                  "then restore it. Do not pause the game.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}, "result": ok(
+                "Sent 3 events over 121 frames; playing.", {"frames": 121, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "show"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"visible": True, "focused": True,
+                                                                                        "paused": False}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
+                   "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "
@@ -1116,6 +1139,172 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_random_start_for_copies",
+        "kind": "guard",
+        "what_happened": "Copies of a looping entity Animation moved in lockstep; edit_animation's random_start (an "
+                         "Action's Random Start) desyncs them without a script.",
+        "text_at_issue": "edit_animation schema: random_start (a bare parameter)",
+        "source": "runtime-core spec 6.7 (Doriax 45966b13a: action start offset / random start)",
+        "prompt": "The 40 coins are copies of the Coin prefab and its CoinSpin animation makes them all spin in sync. "
+                  "Make each coin start its spin at a different point so they look natural.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "Animation \"CoinSpin\" [21]: loop true, duration -1, 1 action(s): 0 rotation tween on Coin (1 s, spin).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "loop": True, "duration": -1, "speed": 1, "start_offset": 0,
+                 "random_start": False, "actions": [{"index": 0, "kind": "rotation_tween"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoinSpin [21] action animation",
+                                                  {"entities": [{"id": 21, "path": "Coin/CoinSpin"}]})},
+            {"tool": "edit_animation", "result": ok(
+                "Updated animation \"CoinSpin\": 1 action(s); 0 track(s) created, 0 rewritten, 0 tween(s) added (one undo step).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "random_start": True})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_animation", "args": {"random_start": True}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"action": {"randomStart": True}}}}]}],
+                   "must_not_call": ["create_script", "write_file"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_scene_default_shader_values",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): a look shared by every object on the scene's default shader is one "
+                         "scene-level value (set_shader_uniform shader_type), not the same value set on each object.",
+        "text_at_issue": "set_shader_uniform: '... pass_index or shader_type (the scene's default shader)'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; Doriax e3243c29b",
+        "prompt": "Every mesh in the Main scene is drawn with the scene's default mesh shader (library:toon). Make their rim "
+                  "colour orange, all of them at once.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": default_mesh_shader library:toon, default_mesh_shader_uniforms {} ...",
+                {"settings": {"default_mesh_shader": "library:toon", "default_mesh_shader_uniforms": {}}})},
+            {"tool": "get_shader_uniforms", "args": {"shader_type": "mesh"}, "result": ok(
+                "Scene default mesh shader library:toon: used by 3 object(s), 3 member(s), 0 value(s) set.",
+                {"shader_type": "mesh", "default_shader": "library:toon", "used_by": 3, "values": {},
+                 "parameters": [{"member": "rimColor", "kind": "color", "default": [1, 1, 1, 1]},
+                                {"member": "shadeSteps", "kind": "range", "default": [3, 0, 0, 0]}]})},
+            {"tool": "list_shaders", "result": ok(
+                "library:toon (mesh): parameters shadeSteps, rimColor (colour), rimPower",
+                {"shaders": [{"name": "library:toon", "type": "mesh"}]})},
+            {"tool": "set_shader_uniform", "args": {"shader_type": "mesh"}, "result": ok(
+                "Set rimColor on the scene's default mesh shader (inherited by 3 object(s)).",
+                {"shader_type": "mesh", "property": "default_mesh_shader_uniforms", "name": "rimColor", "declared": True,
+                 "used_by": 3, "value": [1, 0.216, 0, 1]})},
+            {"tool": "set_scene_settings", "result": ok("Set 1 scene setting(s) (one undo step).", {"scene_id": 1})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_shader_uniform", "args": {"shader_type": "mesh", "name": "rimColor"}}]},
+                              {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"default_mesh_shader_uniforms": "*"}}}]}],
+                   "must_not_call": ["fork_shader"], "max_calls": {"set_properties": 0}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_code_editor_unsaved_diff",
+        "kind": "guard",
+        "what_happened": "New text (code-editor-git): what the user changed in a script they have open with unsaved edits is "
+                         "the code editor's buffer (diff_file source editor, the default), which git diff on disk cannot see.",
+        "text_at_issue": "diff_file: 'the code editor's unsaved buffer when it has one (source editor), else the file on disk'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I have scripts/player.lua open in the editor's code editor with edits I haven't saved yet. What have I "
+                  "changed in it since the last commit? Don't modify anything.",
+        "mocks": [
+            {"tool": "code_editor", "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12,
+                              "vcs": {"state": "ready", "revision": "HEAD",
+                                      "changes": [{"kind": "modified", "lines": [12, 12], "base_lines": [12, 12]}]}}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n--- a/scripts/player.lua\n"
+                "+++ b/scripts/player.lua\n@@ -10,5 +10,5 @@\n ...\n-    self.speed = 5\n+    self.speed = 9\n ...\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+            {"tool": "get_vcs_status", "result": ok("git main: 0 entries", {"state": "active", "provider": "git", "entries": []})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": ["diff_file"], "must_not_call": [{"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)speed|\b9\b"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_code_editor_reload_drops_edits",
+        "kind": "guard",
+        "what_happened": "code_editor reload throws away the human's unsaved buffer edits; an agent asked to pick up a change on "
+                         "disk must say so before reloading a buffer with unsaved edits.",
+        "text_at_issue": "code_editor: '... save, reload (drops unsaved edits), close ...'",
+        "source": "docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.8; lead review of the trimmed text",
+        "files": GAME_FILES,
+        "groups_enabled": ["vcs"],
+        "prompt": "I just ran git checkout on scripts/player.lua. Refresh it in the editor's code editor so it shows the "
+                  "checked-out version.",
+        "mocks": [
+            {"tool": "code_editor", "args": {"action": "status"}, "result": ok(
+                "1 open file(s), 1 with unsaved edits.",
+                {"buffers": [{"path": "scripts/player.lua", "unsaved": True, "cursor_line": 12}]})},
+            {"tool": "code_editor", "args": {"action": "reload"}, "result": ok(
+                "Reloaded scripts/player.lua from disk.", {"buffers": [{"path": "scripts/player.lua", "unsaved": False}]})},
+            {"tool": "diff_file", "result": ok(
+                "scripts/player.lua (the code editor's unsaved buffer) against HEAD:\n-    self.speed = 5\n+    self.speed = 9\n",
+                {"path": "scripts/player.lua", "rev": "HEAD", "source": "editor", "unsaved": True,
+                 "diff": "-    self.speed = 5\n+    self.speed = 9\n", "truncated": False})},
+        ],
+        "shell": [{"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"must_not_call": [{"tool": "code_editor", "args": {"action": "reload"}},
+                                     {"tool": "code_editor", "args": {"action": "save"}}, "write_file"],
+                   "reply_must": [r"(?i)unsaved"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniforms_read",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameters are read with get_shader_uniforms pass_index; the scene settings "
+                         "list the pass but not its shader's parameters.",
+        "text_at_issue": "get_shader_uniforms pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "The Main scene has a vignette post-process pass. Which parameters does its shader take, and what are they set "
+                  "to now? Don't change anything.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "args": {"pass_index": 0}, "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0], "effective": [0.4, 0, 0, 0],
+                              "source": "pass"},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0], "effective": [0.75, 0, 0, 0],
+                              "source": "pass"}]})},
+        ],
+        "checks": {"calls": [{"tool": "get_shader_uniforms", "args": {"pass_index": 0}}],
+                   "must_not_call": ["set_shader_uniform", "set_scene_settings"],
+                   "reply_must": [r"(?i)strength", r"(?i)radius"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_post_process_pass_uniform_set",
+        "kind": "guard",
+        "what_happened": "A post-process pass's parameter is set with set_shader_uniform pass_index, not by forking the shader or "
+                         "rewriting the pass list.",
+        "text_at_issue": "set_shader_uniform pass_index: 'A post-process pass instead.'",
+        "source": "lead review of the trimmed text (code-editor-git)",
+        "prompt": "In the Main scene, make the vignette post-process pass stronger: set its strength to 0.8.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\": post_process [0: shaders/Vignette (enabled)] ...",
+                {"settings": {"post_process": [{"shader": "shaders/Vignette", "enabled": True}]}})},
+            {"tool": "get_shader_uniforms", "result": ok(
+                "Post-process pass 0 (shaders/Vignette): 2 member(s).",
+                {"pass_index": 0, "shader": "shaders/Vignette", "enabled": True, "build_failed": False,
+                 "members": [{"member": "strength", "type": "float", "value": [0.4, 0, 0, 0]},
+                             {"member": "radius", "type": "float", "value": [0.75, 0, 0, 0]}]})},
+            {"tool": "set_shader_uniform", "args": {"pass_index": 0}, "result": ok(
+                "Set strength on post-process pass 0.", {"pass_index": 0, "name": "strength", "declared": True})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"pass_index": 0, "name": "strength"}}],
+                   "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
+        "max_turns": 10,
+    },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {
         "id": "dialog_fills_a_name_prompt",
@@ -1425,6 +1614,91 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_ssr_reflection_source",
+        "kind": "guard",
+        "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
+                         "Reflection Source (ssr_debug_mode 7), which the guide's Other areas and the setting's help name.",
+        "text_at_issue": "Guide 'Other areas': 'reflections (SSR replaces probe reflections; check with ssr_debug_mode 7)'; "
+                         "set_scene_settings ssr_debug_mode help '... 7 reflection source, 8 occlusion'",
+        "source": "doriax catch-up ssr-probes (spec 2026-11-04); no failure on record",
+        "prompt": "SSR is on in the current scene and the marble floor inside the Reflection Probe looks too shiny. Show me in "
+                  "the Game view what reflection SSR swaps on that floor.",
+        "mocks": [
+            {"tool": "get_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nssr_enabled = true\nssr_intensity = 1.0\nssr_debug_mode = 0",
+                {"scene_id": 1, "settings": {"ssr_enabled": True, "ssr_intensity": 1.0, "ssr_debug_mode": 0},
+                 "schema": {"ssr_debug_mode": {"type": "int", "default": 0, "help":
+                     "SSR debug view: 0 off, 1 reflection, 2 normal, 3 roughness, 4 metallic, 5 albedo, 6 environment "
+                     "specular, 7 reflection source, 8 occlusion"}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["ssr_debug_mode"]})},
+            {"tool": "screenshot", "result": ok("Game view screenshot (640x360).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (Game view): 41 draws, 9 passes, CPU 1.20 ms, SSR: 1/1 probes with slots",
+                {"ssr": {"probe_slots": 4, "probes_in_view": 1, "probes_without_slot": 0, "meshes_drawn": 6,
+                         "probes": [{"entity": 22, "name": "Reflection Probe", "slot": 0, "coverage": 0.41}]}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ssr_debug_mode": 7}}}],
+                   "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_child_scene_on_closed_parent",
+        "kind": "bad",
+        "what_happened": "set_child_scene on a closed parent reported success and the attachment was lost when the scene opened "
+                         "(Doriax 385cff970); it now fails and names open_scene.",
+        "text_at_issue": "set_child_scene: 'Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open "
+                         "scene).'",
+        "source": "scene-integrity spec 4.10 (Doriax 385cff970)",
+        "prompt": "Make scenes/Hud.scene a child scene of scenes/Level2.scene, so it loads with it.",
+        "mocks": [
+            {"tool": "list_scenes", "result": ok(
+                "3 scene(s):\n1 \"Main\" 3D scenes/Main.scene open selected start\n2 \"Hud\" 2D scenes/Hud.scene open\n"
+                "3 \"Level2\" 3D scenes/Level2.scene",
+                {"scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True, "selected": True},
+                            {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "opened": True},
+                            {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": False}]})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "after": "open_scene", "result": ok(
+                "Scene 2 is a child scene of 3.", {"scene": {"id": 3, "name": "Level2", "child_scenes": [{"id": 2}]}})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "result": err(
+                "Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open scene).")},
+            {"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}, "result": ok(
+                "Opened scene 3 \"Level2\" (scenes/Level2.scene), selected.",
+                {"scene": {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": True, "selected": True}})},
+            {"tool": "save_scene", "result": ok("Saved scene 3 \"Level2\" to scenes/Level2.scene.", {"scene": {"id": 3}})},
+        ],
+        # opened first, or retried once the error named open_scene
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}},
+                             {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$", "child": "re:Hud|^2$"}}],
+                   "any_of": [{"order": [["open_scene", "set_child_scene"]]}, {"min_calls": {"set_child_scene": 2}}],
+                   "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_move_next_to_skybox",
+        "kind": "bad",
+        "what_happened": "move_entity after=Skybox for a GameObject with a Transform reported 'Moved' while only the list changed, "
+                         "and the next sort put it back; it now fails and says to use parent/index.",
+        "text_at_issue": "move_entity: 'Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the "
+                         "hierarchy; one without (a Skybox) keeps its own place: place it with parent (and index), or next to a "
+                         "GameObject with a Transform.'",
+        "source": "scene-integrity spec 4.16 (Doriax 2eea20daa, narrowed)",
+        "prompt": "In the Main scene, put the Crate first among the root GameObjects (it is listed after the Skybox now).",
+        "mocks": [
+            {"tool": "move_entity", "args": {"after": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "args": {"before": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "result": ok("Moved 1 GameObject(s) (one undo step); world poses kept (local transforms "
+                                                 "adapted).", {"scene_id": 1, "moved": [{"id": 13, "path": "Crate", "parent": None}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" to scenes/Main.scene.", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_typing_utf16_units",
         "playing": True,
         "kind": "guard",
@@ -1664,5 +1938,62 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_copied_scene_ids",
+        "kind": "guard",
+        "what_happened": "A copied .scene used to keep its original's scene id; copies get their own now, and the result says "
+                         "which (copied_scenes): an agent wiring the copy as a child scene needs that id.",
+        "text_at_issue": "move_asset result: copied_scenes [{path, scene_id, name}]",
+        "source": "scene-integrity spec (Doriax e0a38fe33)",
+        "prompt": "Copy the folder levels to levels_v2 with the editor, then tell me the scene id and the scene name the copied "
+                  "Forest scene got.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"copy": True}, "result": ok(
+                "Copied levels to levels_v2 (new GUIDs).",
+                {"from": "levels", "to": "levels_v2", "copy": True, "files_written": ["levels_v2/Forest.scene"],
+                 "copied_scenes": [{"path": "levels_v2/Forest.scene", "scene_id": 2718281828, "name": "Forest 1"}]})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"copy": True}}], "reply_must": [r"2718281828", r"Forest 1"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_scene_view_after_load",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "After the game loads another scene, the Scene view draws that scene (from the editor camera); "
+                         "get_play_state says which scene it draws (scene_view_scene_id).",
+        "text_at_issue": "get_play_state result: scene_view_scene_id",
+        "source": "scene-integrity spec (Doriax 1e6ef8baa)",
+        "prompt": "The game is playing and just loaded another level. Which scene does the editor's Scene view show now? Answer "
+                  "with the scene's name.",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Menu\"). Session: 12 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Menu"},
+                 "running_scenes": [{"id": 3001, "name": "Menu", "main": False}, {"id": 3002, "name": "Arena", "main": True}],
+                 "scene_view_scene_id": 3002})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"Arena"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_game_cursor_released",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "A game that captures the cursor gives it back to the editor on Escape in the Game view; "
+                         "get_play_state says whether it did (input.cursor).",
+        "text_at_issue": "get_play_state result: input.cursor {mode, released_to_editor}",
+        "source": "scene-integrity spec (Doriax e5d7aad14)",
+        "prompt": "The game is playing. Does the game hold the mouse cursor right now, or has it been given back to the editor?",
+        "mocks": [
+            {"tool": "get_play_state", "result": ok(
+                "Play state: playing (\"Main\"). Session: 30 s, 0 error(s) logged. Script coroutines: 0, timers: 0.",
+                {"state": "playing", "scene": {"id": 1, "name": "Main"},
+                 "input": {"actions": {}, "touches": 0, "keys_held": [],
+                           "cursor": {"mode": "captured", "released_to_editor": True}}})},
+        ],
+        "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
+        "max_turns": 6,
     },
 ]

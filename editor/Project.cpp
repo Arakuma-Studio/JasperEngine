@@ -51,6 +51,7 @@
 #include "vcs/SceneDiffTracker.h"
 #include <cstdlib>
 #include "util/SafeWrite.h"
+#include "util/VersionControlFiles.h"
 #include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
@@ -60,6 +61,7 @@
 #include <cmath>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <system_error>
 #include <chrono>
@@ -136,6 +138,9 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "project/SceneFileIdentity.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
@@ -1677,6 +1682,16 @@ void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3
 
 const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
     return atmosphereQuality;
+}
+
+void editor::Project::setFoliageDistanceScale(const std::array<float, 3>& scale){
+    for (size_t i = 0; i < scale.size(); i++)
+        foliageDistanceScale[i] = std::isfinite(scale[i]) ? std::clamp(scale[i], 0.0f, 10.0f) : defaultFoliageDistanceScale[i];
+    Engine::setFoliageDistanceScaleDefaults(foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]);
+}
+
+const std::array<float, 3>& editor::Project::getFoliageDistanceScale() const{
+    return foliageDistanceScale;
 }
 
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
@@ -4102,7 +4117,9 @@ void editor::Project::invalidateCustomShaders(const std::function<bool(const std
 }
 
 Entity editor::Project::getSceneCamera(const SceneProject* sceneProject) const {
-    if (sceneProject->mainCamera != NULL_ENTITY && sceneProject->scene->isEntityCreated(sceneProject->mainCamera)) {
+    // a main camera whose Camera component was removed is none (undo brings it back)
+    if (sceneProject->mainCamera != NULL_ENTITY && sceneProject->scene->isEntityCreated(sceneProject->mainCamera) &&
+        sceneProject->scene->findComponent<CameraComponent>(sceneProject->mainCamera)) {
         return sceneProject->mainCamera;
     } else if (sceneProject->defaultCamera != NULL_ENTITY) {
         return sceneProject->defaultCamera;
@@ -4145,8 +4162,15 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     runtime->scene->getSystem<MeshSystem>()->setFoliagePreviewEntity(NULL_ENTITY);
 
+    // a 3D scene without a camera draws through the engine's default one, in the export too
+    // (Unity's "No cameras rendering"): said once, not set to nothing
     Entity camera = getSceneCamera(runtime);
-    runtime->scene->setCamera(camera);
+    if (camera != NULL_ENTITY) {
+        runtime->scene->setCamera(camera);
+    } else if (runtime->sceneType == SceneType::SCENE_3D) {
+        Out::warning("Scene \"%s\" has no camera: add a Camera or set its main camera (the game draws it through the default camera)",
+                     runtime->name.c_str());
+    }
 
     // play reuses the edit-time Scene without a reload, so re-arm reflection
     // probes: "On Load" (and static capture-once) probes should capture the
@@ -4220,7 +4244,7 @@ void editor::Project::cleanupPlaySession(const std::shared_ptr<PlaySession>& ses
     }
 }
 
-bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene, bool loadSceneData){
+bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene, bool loadSceneData, bool allowOutside){
     // Both outside the try so a failure can undo exactly what was built. The file is
     // parsed before anything is appended, so only this call's own entry may be popped.
     SceneProject* targetScene = nullptr;
@@ -4259,6 +4283,19 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                 Out::error("Scene filepath must be relative to project path: %s", fullPath.string().c_str());
                 return false;
             }
+            if (*relPath.begin() == "..") {
+                if (!allowOutside) {
+                    scenes.pop_back();
+                    appendedScene = false;
+                    const std::string message = FileUtils::pathToGenericUtf8(fullPath) + " is outside the project folder. Copy it into "
+                        "the project (drag it into the Project window) and open the copy.";
+                    Out::error(message);
+                    alertUser("Scene Outside the Project", message);
+                    return false;
+                }
+                Out::warning("Scene file %s is outside the project folder: it is saved in place; move it into the project to keep "
+                             "the project self-contained.", relPath.generic_string().c_str());
+            }
             targetScene->filepath = relPath;
         } else {
             auto it = std::find_if(scenes.begin(), scenes.end(),
@@ -4277,8 +4314,15 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             }
         }
 
+        // a listed scene keeps the id the project knows it by, whatever its file says
+        const uint32_t knownId = isNewScene ? NULL_PROJECT_SCENE : targetScene->id;
         Stream::decodeSceneProject(targetScene, sceneNode, loadSceneData);
         targetScene->diskSha1 = diskSha1;
+        // before anything files the scene under its id (selection, dock, linked materials)
+        if (knownId != NULL_PROJECT_SCENE) {
+            targetScene->id = knownId;
+        }
+        giveSceneFileItsOwnId(*targetScene, fullPath);
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -4367,19 +4411,6 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
 
         if (opened) {
             addTab(TabType::SCENE, targetScene->filepath.string());
-        }
-
-        // Random ids make this unlikely, but a project merged under the old counter
-        // can still arrive with two scenes claiming one id
-        SceneProject* existing = getScene(targetScene->id);
-        if (targetScene->id == NULL_PROJECT_SCENE || (existing && existing != targetScene)) {
-            uint32_t oldId = targetScene->id;
-            targetScene->id = allocateSceneId();
-            if (oldId != NULL_PROJECT_SCENE) {
-                Out::warning("Scene with ID '%u' already exists, using ID %u. References to the old id may need to be set again.", oldId, targetScene->id);
-            } else {
-                Out::warning("Scene has no ID, assigning ID %u", targetScene->id);
-            }
         }
 
         for (LoadIssue& issue : targetScene->loadReport.issues) {
@@ -4780,18 +4811,120 @@ std::vector<std::filesystem::path> editor::Project::findSceneFiles() const {
 }
 
 uint32_t editor::Project::findSceneByPath(const std::filesystem::path& filepath) const {
-    const fs::path normalized = normalizeToProjectRelative(filepath);
-    if (normalized.empty()) {
+    return findOtherSceneUsingFile(filepath, NULL_PROJECT_SCENE);
+}
+
+void editor::Project::giveSceneFileItsOwnId(SceneProject& sceneProject, const fs::path& fullPath) {
+    const SceneProject* holder = getScene(sceneProject.id);
+    if (sceneProject.id != NULL_PROJECT_SCENE && (!holder || holder == &sceneProject)) {
+        return;
+    }
+    // A file copied outside the editor, a merge or an old project can bring two files claiming one
+    // id. As Unity regenerates a duplicate GUID, the scene listed first keeps it and this one gets a
+    // fresh id, written into its file now: a reference made to it from here on survives every load.
+    const uint32_t oldId = sceneProject.id;
+    sceneProject.id = allocateSceneId();
+    const std::string file = FileUtils::pathToGenericUtf8(normalizeToProjectRelative(fullPath));
+    std::string error;
+    if (sceneid::rewriteSceneHeader(fullPath, sceneProject.id, std::nullopt, &error)) {
+        FileUtils::reportWritten(fullPath);
+        std::string text;
+        if (assetio::readFile(fullPath, text)) {
+            sceneProject.diskSha1 = DocumentFiles::sha1(text);
+        }
+        if (oldId != NULL_PROJECT_SCENE) {
+            Out::warning("Scene file \"%s\" carried id %u, which \"%s\" uses: its id is now %u (written into the file)",
+                         file.c_str(), oldId, holder ? holder->filepath.generic_string().c_str() : "", sceneProject.id);
+        } else {
+            Out::warning("Scene file \"%s\" had no id: its id is now %u (written into the file)", file.c_str(), sceneProject.id);
+        }
+    } else {
+        // read only (a version control lock): the next save writes it
+        sceneProject.isModified = sceneProject.scene != nullptr;
+        Out::warning("Scene file \"%s\" carries id %u, which another scene uses: its id is now %u, not written (%s); save it to "
+                     "keep it", file.c_str(), oldId, sceneProject.id, error.c_str());
+    }
+}
+
+std::string editor::Project::sceneFileKeyOf(const fs::path& relative, bool caseInsensitive) {
+    std::string key = relative.lexically_normal().generic_string();
+    if (caseInsensitive) {
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    }
+    return key;
+}
+
+std::string editor::Project::sceneFileKey(const fs::path& path) const {
+    const fs::path relative = normalizeToProjectRelative(path);
+    if (relative.empty()) {
+        return {};
+    }
+    return sceneFileKeyOf(relative, assetDatabase.isCaseInsensitive());
+}
+
+uint32_t editor::Project::findOtherSceneUsingFile(const fs::path& path, uint32_t exceptSceneId) const {
+    const std::string key = sceneFileKey(path);
+    if (key.empty()) {
         return NULL_PROJECT_SCENE;
     }
+    const fs::path full = path.is_relative() ? projectPath / path : path;
+    std::error_code ec;
+    const bool exists = !projectPath.empty() && fs::exists(full, ec);
 
     for (const SceneProject& sceneProject : scenes) {
-        if (sceneProject.filepath.lexically_normal() == normalized) {
+        if (sceneProject.id == exceptSceneId || sceneProject.filepath.empty() || isPlayRuntimeScene(sceneProject.id)) {
+            continue;
+        }
+        if (sceneFileKey(sceneProject.filepath) == key) {
             return sceneProject.id;
+        }
+        // one file under two names (a link, another spelling the volume folds)
+        if (exists) {
+            const fs::path other = sceneProject.filepath.is_relative() ? projectPath / sceneProject.filepath : sceneProject.filepath;
+            if (fs::exists(other, ec) && fs::equivalent(full, other, ec)) {
+                return sceneProject.id;
+            }
         }
     }
 
     return NULL_PROJECT_SCENE;
+}
+
+std::string editor::Project::sceneSavePathProblem(uint32_t sceneId, const fs::path& path) const {
+    if (path.empty()) {
+        return "No scene path given";
+    }
+    const fs::path full = (path.is_relative() ? projectPath / path : path).lexically_normal();
+    const fs::path relative = normalizeToProjectRelative(full);
+    const SceneProject* sceneProject = getScene(sceneId);
+    const bool ownFile = sceneProject && !sceneProject->filepath.empty() && sceneFileKey(sceneProject->filepath) == sceneFileKey(full);
+
+    // a scene an old project lists outside is saved where it is (decision 7)
+    if (!ownFile && (relative.empty() || relative.is_absolute() || *relative.begin() == ".." || relative == ".")) {
+        return "Scenes are saved inside the project folder: " + FileUtils::pathToGenericUtf8(full) + " is outside it";
+    }
+    if (!Util::isSceneFile(FileUtils::pathToUtf8(full))) {
+        return FileUtils::pathToGenericUtf8(relative) + " is not a .scene file";
+    }
+    const uint32_t owner = findOtherSceneUsingFile(full, sceneId);
+    if (owner != NULL_PROJECT_SCENE) {
+        const SceneProject* other = getScene(owner);
+        return FileUtils::pathToGenericUtf8(relative) + " is the file of scene \"" + (other ? other->name : std::to_string(owner)) +
+               "\": choose another name";
+    }
+    // a scene project.yaml lists that did not load (a merge conflict in it) still owns its file
+    const std::string key = sceneFileKey(full);
+    for (const auto& [position, unresolved] : unresolvedScenes) {
+        if (sceneFileKey(unresolved) == key) {
+            return FileUtils::pathToGenericUtf8(relative) + " is the file of a scene of the project that did not load: choose "
+                   "another name";
+        }
+    }
+    std::error_code ec;
+    if (fs::is_directory(full, ec)) {
+        return FileUtils::pathToGenericUtf8(relative) + " is a folder";
+    }
+    return {};
 }
 
 //=== Non-interactive scene and project APIs ===
@@ -5289,12 +5422,19 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
             DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Scene);
             YAML::Node sceneNode = document.root;
 
+            // the id the project knows it by, whatever its file says
+            const uint32_t knownId = childScene->id;
             Stream::decodeSceneProject(childScene, sceneNode, true);
+            childScene->id = knownId;
             loadSceneProjectData(childScene, sceneNode);
             childScene->diskSha1 = document.sha1;
         }
         childScene->loadReport = std::move(loadReport);
         logLoadReport(childScene->loadReport);
+
+        // Ready to draw now, as SceneRender::activate() makes a layer: beside a running game no
+        // activation comes, and an update without its camera would throw (MeshSystem, UISystem)
+        prepareInlineChildForView(childScene->scene);
 
         childScene->expandedInline = true;
         childScene->needUpdateRender = true;
@@ -5313,6 +5453,12 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
     } catch (const std::exception& e) {
         Out::error("Failed to load child scene inline: %s", e.what());
         return false;
+    }
+}
+
+void editor::Project::prepareInlineChildForView(Scene* scene) {
+    if (scene && scene->getCamera() == NULL_ENTITY && Engine::isViewLoaded()) {
+        scene->load();
     }
 }
 
@@ -5461,6 +5607,34 @@ void editor::Project::setChildSceneStartActive(uint32_t sceneId, uint32_t childS
     sceneProject->isModified = true;
 }
 
+std::vector<uint32_t> editor::Project::getRelatedScenes(uint32_t sceneId) const {
+    if (!getScene(sceneId)) {
+        return {};
+    }
+    // the scene, then its ancestors nearest first (a breadth-first walk up the child-scene links)
+    std::vector<uint32_t> ancestors = {sceneId};
+    for (size_t i = 0; i < ancestors.size(); i++) {
+        for (const SceneProject& candidate : scenes) {
+            if (findChildScene(candidate.childScenes, ancestors[i]) != candidate.childScenes.end() &&
+                std::find(ancestors.begin(), ancestors.end(), candidate.id) == ancestors.end()) {
+                ancestors.push_back(candidate.id);
+            }
+        }
+    }
+    std::vector<uint32_t> related = ancestors;
+    // then every descendant of each of them (siblings, cousins), cycle-safe
+    for (size_t i = 0; i < related.size(); i++) {
+        const SceneProject* sceneProject = getScene(related[i]);
+        if (!sceneProject) continue;
+        for (const ChildSceneRef& child : sceneProject->childScenes) {
+            if (getScene(child.id) && std::find(related.begin(), related.end(), child.id) == related.end()) {
+                related.push_back(child.id);
+            }
+        }
+    }
+    return related;
+}
+
 std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
     const SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
@@ -5524,8 +5698,9 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
-    // a game (or the MCP server) may have changed the game clock
+    // a game (or the MCP server) may have changed the game clock and the foliage distance
     Engine::setTimeScale(1.0f);
+    Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
     Engine::setSimulationHeld(false);
     // a game may have turned it off
@@ -5593,6 +5768,7 @@ void editor::Project::resetConfigs() {
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
+    setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
@@ -6293,8 +6469,10 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         resetConfigs();
 
         // Clear the last project path in settings when creating a new temp project (a
-        // project elsewhere becomes it when saved below)
-        AppSettings::setLastProjectPath(std::filesystem::path());
+        // project elsewhere becomes it when saved below); a tool's process leaves the user's alone
+        if (editor::getEditorHost().recordsRecentProjects()) {
+            AppSettings::setLastProjectPath(std::filesystem::path());
+        }
 
         projectPath = path;
         refreshTrustedRoots();
@@ -6389,7 +6567,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
 bool editor::Project::saveProject(bool userCalled, std::function<void()> callback) {
     if (isTempProject() && userCalled) {
-        editor::getEditorHost().registerProjectSaveDialog(callback);
+        editor::getEditorHost().registerProjectSaveDialog([callback](bool saved) {
+            if (saved && callback) callback();
+        });
         return true;
     }
 
@@ -6424,8 +6604,10 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
     // project.yaml is about to point to the asset an older editor's Input Manager actions became:
     // it exists first
     if (inputMigration.pending && !writeInputActionsMigration()) {
-        Out::error("Project not saved: the actions asset project.yaml would point to (%s) could not be written",
-                   inputMigration.asset.generic_string().c_str());
+        const std::string message = "Project not saved: the actions asset project.yaml would point to (" +
+            FileUtils::pathToGenericUtf8(inputMigration.asset) + ") could not be written.";
+        Out::error(message);
+        alertUser("Error", message);
         return false;
     }
 
@@ -6433,8 +6615,10 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
         // encodeProject() no longer emits the per-user keys, so while project.yaml
         // still holds the only copy of them, writing it now would discard them
         if (workspaceMigrationPending) {
-            Out::error("Project not saved: its editor state has not reached \"%s\" yet",
-                       Workspace::getUserDirectory(projectPath).string().c_str());
+            const std::string message = "Project not saved: its editor state has not reached \"" +
+                FileUtils::pathToGenericUtf8(Workspace::getUserDirectory(projectPath)) + "\" yet.";
+            Out::error(message);
+            alertUser("Error", message);
             return false;
         }
         Out::warning("Editor workspace could not be written, saving the project anyway. This session's tab layout and viewport cameras are lost.");
@@ -6470,7 +6654,9 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
         }
         return true;
     } catch (const std::exception& e) {
-        Out::error("Failed to save project file: \"%s\"", e.what());
+        const std::string message = std::string("Couldn't save project.yaml: ") + e.what();
+        Out::error(message);
+        alertUser("Error", message);
         return false;
     }
 }
@@ -6498,117 +6684,37 @@ bool editor::Project::saveWorkspaceFile() {
     return true;
 }
 
-namespace {
-
-const char* versionControlMarker = "# Generated by JasperEngine Editor.";
-
-// What the editor regenerates, and what belongs to one machine or one developer
-const char* versionControlIgnore =
-    "# Generated by JasperEngine Editor.\n"
-    "\n"
-    "# Engine API snapshot, generated C++, build trees, this machine's build\n"
-    "# settings and this user's editor workspace.\n"
-    ".jasperengine/\n"
-    "\n"
-    "# Regenerated on every build.\n"
-    "/CMakeLists.txt\n"
-    "\n"
-    "# Deleted assets, until the trash is emptied.\n"
-    ".trash/\n"
-    "\n"
-    "# Build output.\n"
-    "build/\n"
-    "\n"
-    "# The Recorder's movies and image sequences.\n"
-    "Recordings/\n"
-    "\n"
-    "# Per-developer IDE configuration.\n"
-    ".vscode/\n"
-    ".idea/\n"
-    "*.user\n"
-    "\n"
-    "# Written by the game while it runs, Play mode included.\n"
-    "UserSettings.xml\n"
-    "\n"
-    "# The editor's own settings and layout, left here by an editor started in this\n"
-    "# folder (older versions; they now go to the user's config directory).\n"
-    "/settings.yaml\n"
-    "/editor_layout_v2.ini\n"
-    "\n"
-    "*.log\n"
-    ".DS_Store\n"
-    "Thumbs.db\n"
-    "\n"
-    "# What a conflicted merge leaves next to a file.\n"
-    "*.orig\n";
-
-// Scenes and project.yaml only diff and merge while every checkout agrees on the
-// line ending, so it is not left to core.autocrlf. Scenes and prefabs merge with the editor's
-// scene merge driver once it is set up (git config, "Set Up Smart Merge"); without it git's text
-// merge runs. With LFS the binaries are LFS objects and lockable (git lfs lock); scenes, prefabs
-// and meta files never are LFS objects (docs/specs/S29-version-control.md R21).
-const char* const versionControlBinaryPatterns[] = {
-    "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj",
-    "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf"
-};
-// binaries LFS adds (art sources, HDR images, cooked textures, video)
-const char* const versionControlLfsOnlyPatterns[] = {
-    "*.psd", "*.exr", "*.hdr", "*.ktx2", "*.basis", "*.blend", "*.mp4", "*.webm"
-};
-
-std::string versionControlAttributes(bool lfs, bool lockScenes) {
-    auto line = [](const char* pattern, const std::string& attributes) {
-        std::string text = pattern;
-        text.append(text.size() < 10 ? 10 - text.size() : 1, ' ');
-        return text + attributes + "\n";
-    };
-    const std::string sceneLock = lockScenes ? " lockable" : "";
-    std::string text =
-        "# Generated by JasperEngine Editor.\n"
-        "\n"
-        "* text=auto eol=lf\n"
-        "\n";
-    text += line("*.scene", "text eol=lf merge=jasperengine-scene" + sceneLock);
-    text += line("*.prefab", "text eol=lf merge=jasperengine-scene" + sceneLock);
-    text += line("*.meta", "text eol=lf");
-    for (const char* pattern : {"*.yaml", "*.lua", "*.cmake", "*.h", "*.cpp"}) text += line(pattern, "text eol=lf");
-    text += "\n";
-    const std::string binary = lfs ? "filter=lfs diff=lfs merge=lfs -text lockable" : "binary";
-    for (const char* pattern : versionControlBinaryPatterns) text += line(pattern, binary);
-    if (lfs) {
-        for (const char* pattern : versionControlLfsOnlyPatterns) text += line(pattern, binary);
-    }
-    return text;
-}
-
-} // namespace
-
 bool editor::Project::writeVersionControlMetadata() {
     if (projectPath.empty()) {
         return false;
     }
 
-    const std::string attributes = versionControlAttributes(vcsProjectSettings.lfs, vcsProjectSettings.lockScenes);
-    const std::pair<const char*, const char*> files[] = {
-        {".gitignore", versionControlIgnore},
-        {".gitattributes", attributes.c_str()},
+    const std::pair<const char*, std::pair<vcsfiles::FileKind, std::string>> files[] = {
+        {".gitignore", {vcsfiles::FileKind::Ignore, vcsfiles::ignoreBlock()}},
+        {".gitattributes", {vcsfiles::FileKind::Attributes, vcsfiles::attributesBlock(vcsProjectSettings.lfs, vcsProjectSettings.lockScenes)}},
     };
 
     bool success = true;
-    for (const auto& [name, content] : files) {
+    for (const auto& [name, file] : files) {
         const fs::path target = projectPath / name;
 
-        // Rules the project wrote itself are worth more than the editor's, so only a
-        // file carrying the marker is refreshed
-        std::ifstream fin(target);
-        if (fin) {
-            std::string firstLine;
-            std::getline(fin, firstLine);
-            if (firstLine.rfind(versionControlMarker, 0) != 0) {
+        // Rules the project wrote itself are worth more than the editor's: only a file carrying
+        // the marker is refreshed, and only down to its end marker (the lines below it are kept)
+        std::optional<std::string> existing;
+        std::error_code ec;
+        if (fs::exists(target, ec)) {
+            std::ifstream fin(target, std::ios::binary);
+            if (!fin) {
+                Out::error("Failed to read %s", target.string().c_str());
+                success = false;
                 continue;
             }
+            existing = std::string(std::istreambuf_iterator<char>(fin), std::istreambuf_iterator<char>());
         }
-        fin.close();
+        std::string content;
+        if (vcsfiles::refresh(existing, file.second, file.first, content) == vcsfiles::Refresh::LeaveAlone) {
+            continue;
+        }
 
         // the editor's own .gitignore / .gitattributes at the project root (dot-files the guard
         // refuses to agents): named so the editor's own refresh goes through
@@ -6722,7 +6828,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
         return false;
     }
 
-    if (!isTempProject()){
+    if (!isTempProject() && editor::getEditorHost().recordsRecentProjects()){
         AppSettings::addToRecentProjects(path, false, getName());
         AppSettings::setLastProjectPath(path);
     }
@@ -6857,7 +6963,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         editor::getEditorHost().updateResourcesPath();
 
         // Save this as the last opened project (the Project Hub's record gets its name, S27 R21)
-        if (updateLastOpened && !isTempProject()) {
+        if (updateLastOpened && !isTempProject() && editor::getEditorHost().recordsRecentProjects()) {
             AppSettings::addToRecentProjects(projectPath, false, getName());
             AppSettings::setLastProjectPath(projectPath);
         }
@@ -7040,13 +7146,12 @@ void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> call
         }
         saveSceneToPathAsync(sceneId, sceneProject->filepath, finishWithChildren);
     } else {
-        editor::getEditorHost().registerSaveSceneDialog(sceneId, [finishWithChildren]() {
-            finishWithChildren(true);
-        });
+        editor::getEditorHost().registerSaveSceneDialog(sceneId, finishWithChildren);
     }
 }
 
-void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<void(bool)> callback) {
+void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<bool(uint32_t)> needsSave,
+        std::function<void(bool)> callback) {
     auto ids = std::make_shared<std::vector<uint32_t>>(std::move(sceneIds));
     auto index = std::make_shared<size_t>(0);
     auto anyRefused = std::make_shared<bool>(false);
@@ -7054,7 +7159,7 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
     // (it holds itself weakly: the save in flight holds it, a capture of itself was a cycle
     // that leaked every chain, LeakSanitizer)
     std::weak_ptr<std::function<void(bool)>> weakNext = saveNext;
-    *saveNext = [this, ids, index, anyRefused, callback, weakNext](bool previousSuccess) {
+    *saveNext = [this, ids, index, anyRefused, needsSave, callback, weakNext](bool previousSuccess) {
         if (!previousSuccess) {
             // a document the save gate refused does not stop the others (Save All asks about
             // each degraded one, after saving the clean ones)
@@ -7068,7 +7173,7 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
 
         while (*index < ids->size()) {
             uint32_t id = (*ids)[(*index)++];
-            if (hasSceneUnsavedChanges(id)) {
+            if (needsSave(id)) {
                 if (auto next = weakNext.lock()) {
                     saveScene(id, [next](bool ok) { (*next)(ok); });
                 }
@@ -7095,7 +7200,7 @@ void editor::Project::saveModifiedChildScenes(uint32_t sceneId, std::function<vo
         }
     }
 
-    saveSceneListSequentially(std::move(childIds), std::move(callback));
+    saveSceneListSequentially(std::move(childIds), [this](uint32_t id) { return hasSceneUnsavedChanges(id); }, std::move(callback));
 }
 
 bool editor::Project::isSceneSaveGated(const SceneProject* sceneProject, const fs::path& path) const {
@@ -7141,10 +7246,23 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         fullPath = getProjectPath() / fullPath;
     }
 
+    // one file per scene, inside the project: every save route comes through here
+    if (const std::string problem = sceneSavePathProblem(sceneProject->id, fullPath); !problem.empty()) {
+        reportSceneSaveFailure("Couldn't save scene \"" + sceneProject->name + "\": " + problem + ".");
+        return false;
+    }
     std::error_code ec;
     fs::path relPath = fs::relative(fullPath, getProjectPath(), ec);
     if (ec || relPath.empty()) {
-        Out::error("Scene filepath must be relative to project path: %s", path.string().c_str());
+        reportSceneSaveFailure("Couldn't save scene \"" + sceneProject->name + "\": " + FileUtils::pathToGenericUtf8(fullPath) +
+                               " has no path relative to the project.");
+        return false;
+    }
+    // the folder of a new file (the Save dialog names one inside the project)
+    FileUtils::createDirectories(fullPath.parent_path(), ec);
+    if (ec) {
+        reportSceneSaveFailure("Couldn't save scene \"" + sceneProject->name + "\": cannot create " +
+                               FileUtils::pathToGenericUtf8(fullPath.parent_path()) + ": " + ec.message() + ".");
         return false;
     }
     const fs::path previousPath = sceneProject->filepath;
@@ -7258,7 +7376,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         });
         return false;
     } catch (const std::exception& e) {
-        Out::error("Failed to save scene file: %s", e.what());
+        reportSceneSaveFailure("Couldn't save \"" + FileUtils::pathToUtf8(relPath) + "\": " + e.what() +
+                               ". Your changes are still in the editor.");
         return false;
     }
 
@@ -7266,6 +7385,18 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         *outcome = SaveResult::Saved;
     }
     return true;
+}
+
+void editor::Project::reportSceneSaveFailure(const std::string& message) {
+    Out::error(message);
+    // the alert is the main thread's (a background save reports from its worker)
+    if (editor::getEditorHost().isMainThread()) {
+        alertUser("Error", message);
+    } else {
+        editor::getEditorHost().enqueueMainThreadTask([this, message]() {
+            alertUser("Error", message);
+        });
+    }
 }
 
 void editor::Project::markSceneSaved(SceneProject* sceneProject) {
@@ -7291,7 +7422,23 @@ bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::p
         return false;
     }
 
+    ensureStartScene();
     return saveProject();
+}
+
+void editor::Project::ensureStartScene() {
+    const SceneProject* start = getScene(startSceneId);
+    if (start && !start->filepath.empty()) {
+        return;
+    }
+    // the first scene with a file, as Project Settings and the export fall back to
+    for (const SceneProject& sceneProject : scenes) {
+        if (!sceneProject.filepath.empty() && !isPlayRuntimeScene(sceneProject.id)) {
+            startSceneId = sceneProject.id;
+            Out::info("Start scene set to \"%s\" (the first saved scene)", sceneProject.name.c_str());
+            return;
+        }
+    }
 }
 
 bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
@@ -7411,6 +7558,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
@@ -7487,7 +7635,13 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     if (sceneProject->playState != ScenePlayState::STOPPED) {
-        Out::warning("Cannot save scene '%s' while it is busy.", sceneProject->name.c_str());
+        reportSceneSaveFailure("Couldn't save scene \"" + sceneProject->name + "\" now: it is saving or Play is starting. Save it again when that is done.");
+        if (callback) callback(false);
+        return;
+    }
+    // refused here, before the worker, so a dialog hears of it at once
+    if (const std::string problem = sceneSavePathProblem(sceneId, path); !problem.empty()) {
+        reportSceneSaveFailure("Couldn't save scene \"" + sceneProject->name + "\": " + problem + ".");
         if (callback) callback(false);
         return;
     }
@@ -7521,11 +7675,12 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
         try {
             success = writeSceneToPath(sceneId, savePath, false, policy);
         } catch (const std::exception& e) {
-            Out::error("Failed to save scene in background: %s", e.what());
+            reportSceneSaveFailure(std::string("Couldn't save the scene: ") + e.what() + ". Your changes are still in the editor.");
         }
 
         editor::getEditorHost().enqueueMainThreadTask([this, sceneId, success, callback = std::move(callback)]() mutable {
             if (success) {
+                ensureStartScene();
                 success = saveProject();
             }
 
@@ -7540,7 +7695,16 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }, saveOptions);
 }
 
-void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
+bool editor::Project::sceneNeedsSave(uint32_t sceneId) const {
+    if (hasSceneUnsavedChanges(sceneId)) {
+        return true;
+    }
+    const SceneProject* sceneProject = getScene(sceneId);
+    return sceneProject && sceneProject->scene && sceneProject->filepath.empty() && !isPlayRuntimeScene(sceneId) &&
+           !isPrefabStage(sceneId);
+}
+
+void editor::Project::saveAllScenes(std::function<void(bool)> callback, bool includeUntitled) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
@@ -7558,8 +7722,21 @@ void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
             sceneIds.push_back(sceneProject.id);
         }
     }
+    // then the scenes never saved, unchanged ones too: each asks for its file (Unity's Save on an
+    // Untitled scene), or nothing would ever keep them
+    if (includeUntitled) {
+        for (auto& sceneProject : scenes) {
+            if (sceneNeedsSave(sceneProject.id) && std::find(sceneIds.begin(), sceneIds.end(), sceneProject.id) == sceneIds.end()) {
+                sceneIds.push_back(sceneProject.id);
+            }
+        }
+    }
 
-    saveSceneListSequentially(std::move(sceneIds), std::move(callback));
+    if (includeUntitled) {
+        saveSceneListSequentially(std::move(sceneIds), [this](uint32_t id) { return sceneNeedsSave(id); }, std::move(callback));
+    } else {
+        saveSceneListSequentially(std::move(sceneIds), [this](uint32_t id) { return hasSceneUnsavedChanges(id); }, std::move(callback));
+    }
 }
 
 void editor::Project::saveLastSelectedScene(std::function<void(bool)> callback){
@@ -7839,17 +8016,38 @@ std::vector<editor::Project::SceneViewLayer> editor::Project::getSceneViewLayers
         return layers;
     }
 
-    SceneViewLayer base;
-    base.sceneId = sceneId;
-    base.sceneProject = sceneProject;
-    base.base = true;
-    base.running = sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED;
-    layers.push_back(base);
+    // after a game load replaced the played scene, the view draws the loaded scene in its place
+    // (App::renderRunningScene), through the editor camera's mirror there
+    SceneProject* replacing = getPlaySessionSceneId() == sceneId ? getReplacingMainScene(sceneId) : nullptr;
+    if (replacing && (!replacing->scene || replacing->sceneViewMirror == NULL_ENTITY ||
+                      !replacing->scene->findComponent<CameraComponent>(replacing->sceneViewMirror))){
+        replacing = nullptr;
+    }
+
+    if (!replacing){
+        SceneViewLayer base;
+        base.sceneId = sceneId;
+        base.sceneProject = sceneProject;
+        base.base = true;
+        base.running = sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED;
+        layers.push_back(base);
+    }
 
     const float width = (float)sceneProject->sceneRender->getViewWidth();
     const float height = (float)sceneProject->sceneRender->getViewHeight();
     if (width <= 0.0f || height <= 0.0f){
         return layers;
+    }
+
+    if (replacing){
+        SceneViewLayer loaded;
+        loaded.sceneId = replacing->id;
+        loaded.sceneProject = replacing;
+        loaded.running = true;
+        loaded.view = makeLayerView(replacing->scene->getComponent<CameraComponent>(replacing->sceneViewMirror),
+                                    replacing->scene->getComponent<Transform>(replacing->sceneViewMirror),
+                                    Rect(0.0f, 0.0f, width, height), width, height, width, height);
+        layers.push_back(loaded);
     }
 
     // as SceneRender draws them: through the layer scene's camera, over rect
@@ -7885,7 +8083,9 @@ std::vector<editor::Project::SceneViewLayer> editor::Project::getSceneViewLayers
         // the running game's layer scenes over its canvas, their cameras as the game has them
         const Rect gameRect = sceneProject->sceneRender->getGameLayerRect((int)width, (int)height);
         for (SceneProject* runtime : getRunningRuntimeLayerScenes(sceneId)){
-            addLayer(runtime->id, runtime, gameRect, 0.0f, 0.0f, true);
+            if (runtime != replacing){
+                addLayer(runtime->id, runtime, gameRect, 0.0f, 0.0f, true);
+            }
         }
     }
 
@@ -9505,6 +9705,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
@@ -10619,6 +10820,22 @@ bool editor::Project::isPlayedSceneReplaced(uint32_t sceneId) {
         }
     }
     return false;
+}
+
+editor::SceneProject* editor::Project::getReplacingMainScene(uint32_t sceneId) {
+    if (!isPlayedSceneReplaced(sceneId)) {
+        return nullptr;
+    }
+    Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+    if (!loadedMain) {
+        return nullptr;
+    }
+    for (SceneProject* runtime : getRunningRuntimeLayerScenes(sceneId)) {
+        if (runtime->scene == loadedMain) {
+            return runtime;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> editor::Project::getRunningRuntimeLayers(uint32_t sceneId) {

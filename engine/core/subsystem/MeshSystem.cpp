@@ -3,6 +3,7 @@
 
 #include "MeshSystem.h"
 #include "component/ActionComponent.h"
+#include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/BoneComponent.h"
@@ -997,11 +998,12 @@ bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent&
         mesh.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
 
@@ -3412,7 +3414,9 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
         }
     }
 
-    mesh.verticesAABB = AABB::ZERO;
+    // Seeded empty, not with AABB::ZERO: that is a finite box at the origin, so merging into it
+    // stretched every mesh back to its own origin
+    mesh.verticesAABB.setNull();
     mesh.bonesAABB.clear();
     mesh.skinnedAABB.setNull(); // reposed on the next RenderSystem update
 
@@ -3467,6 +3471,10 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             }
         }
     }
+
+    // no float positions: AABB::ZERO, the "not computed" value its users test for
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
 
     mesh.aabb = mesh.verticesAABB;
 
@@ -3929,8 +3937,8 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     float rootNodeSize = terrain.terrainSize / terrain.rootGridSize;
 
     if (terrain.autoSetRanges){
-        CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-        if (camera.farClip < (rootNodeSize * 2)){
+        const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (camera && camera->farClip < (rootNodeSize * 2)){
             Log::warn("Terrain quadtree root is not in camera field of view. Increase terrain root grid.");
         }
     }
@@ -3997,11 +4005,12 @@ static unsigned int foliageCellAttempts(const TerrainFoliageLayer& layer){
     return static_cast<unsigned int>(std::ceil(std::clamp(estimate, 0.0f, static_cast<float>(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES))));
 }
 
-// Wraps coordinates onto the grid: a ring sliding by one column reassigns only the column that left it.
-static size_t foliageSlotIndex(int chunkX, int chunkZ, int columns, int rows){
-    const int slotX = ((chunkX % columns) + columns) % columns;
-    const int slotZ = ((chunkZ % rows) + rows) % rows;
-    return static_cast<size_t>(slotZ) * columns + slotX;
+// Wraps coordinates onto the ring, a square sized for the widest view span: a ring sliding by
+// one column reassigns only the column that left it, and walking never resizes it (Doriax de70fa31c)
+static size_t foliageSlotIndex(int chunkX, int chunkZ, int side){
+    const int slotX = ((chunkX % side) + side) % side;
+    const int slotZ = ((chunkZ % side) + side) % side;
+    return static_cast<size_t>(slotZ) * side + slotX;
 }
 
 static unsigned int hashFoliage(unsigned int seed, unsigned int chunkX, unsigned int chunkZ, unsigned int index){
@@ -4270,7 +4279,17 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     const int placementRadius = std::max(1, static_cast<int>(std::ceil(terrain.terrainSize * 0.5f / TERRAIN_FOLIAGE_CELL_SIZE)));
     const int maxBatchSide = static_cast<int>(std::sqrt(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES / attempts));
     const int previewRadius = (placementRadius + maxBatchSide - 1) / maxBatchSide;
-    const float drawDistance = std::max(0.0f, layer.drawDistance);
+    // the quality scale (Engine::getFoliageDistanceScale) is a game's; the preview shows the layer
+    const float distanceScale = preview ? 1.0f : Engine::getFoliageDistanceScale();
+    const float drawDistance = std::max(0.0f, layer.drawDistance * distanceScale);
+    // nothing to draw (a scale of 0): an empty fade range would draw the camera's chunk at full size
+    if (!preview && !(drawDistance > 0.0f)){
+        destroyFoliageInstances(instances);
+        return;
+    }
+    // nearer instances grow in over the band a nearer layer whose Draw Distance equals it fades out over
+    const float nearFadeEnd = preview ? 0.0f : std::clamp(layer.minDrawDistance * distanceScale, 0.0f, drawDistance);
+    const float nearFadeStart = nearFadeEnd * TERRAIN_FOLIAGE_FADE_START;
     const int batchSide = preview ? (placementRadius + previewRadius - 1) / previewRadius :
         static_cast<int>(std::clamp(std::ceil(drawDistance / (TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_TARGET_BATCH_RADIUS)), 1.0f, static_cast<float>(maxBatchSide)));
     const float chunkSize = TERRAIN_FOLIAGE_CELL_SIZE * batchSide;
@@ -4289,18 +4308,25 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     const int startZ = firstChunk(viewLocal.z);
     const int columns = std::max(0, lastChunk(viewLocal.x) - startX + 1);
     const int rows = std::max(0, lastChunk(viewLocal.z) - startZ + 1);
+    const int ringSide = preview ? 2 * terrainRadius :
+        std::max(1, std::min(static_cast<int>(std::ceil(2.0f * drawDistance / chunkSize)) + 1, 2 * terrainRadius));
     const unsigned int capacity = attempts * batchSide * batchSide;
     const float fadeEnd = preview ? 0.0f : drawDistance;
     const float fadeStart = fadeEnd * TERRAIN_FOLIAGE_FADE_START;
     instances.pending = false;
 
-    const size_t chunkCount = static_cast<size_t>(columns) * rows;
+    const size_t chunkCount = static_cast<size_t>(ringSide) * ringSide;
     if (instances.chunks.size() != chunkCount){
         while (instances.chunks.size() > chunkCount){
             destroyFoliageEntity(instances.chunks.back());
             instances.chunks.pop_back();
         }
         instances.chunks.resize(chunkCount);
+        instances.needUpdate = true;
+    }
+    if (instances.appliedDrawDistance != drawDistance || instances.appliedNearFadeEnd != nearFadeEnd){
+        instances.appliedDrawDistance = drawDistance;
+        instances.appliedNearFadeEnd = nearFadeEnd;
         instances.needUpdate = true;
     }
 
@@ -4338,12 +4364,44 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     // Each chunk entity parses the mesh for itself, so a new grid spreads its loads over frames.
     int meshLoadBudget = 2;
 
-    for (int offsetZ = 0; offsetZ < rows; offsetZ++){
-        for (int offsetX = 0; offsetX < columns; offsetX++){
+    // a chunk with nothing to draw keeps its entity and mesh for the next chunk the ring moves onto it
+    auto emptyChunk = [this](TerrainFoliageChunk& chunk){
+        if (chunk.entity != NULL_ENTITY){
+            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(chunk.entity);
+            if (!instmesh.instances.empty()){
+                instmesh.instances.clear();
+                instmesh.needUpdateInstances = true;
+            }
+        }
+        chunk.assigned = false;
+    };
+
+    for (int offsetZ = 0; offsetZ < ringSide; offsetZ++){
+        for (int offsetX = 0; offsetX < ringSide; offsetX++){
             const int chunkX = startX + offsetX;
             const int chunkZ = startZ + offsetZ;
 
-            TerrainFoliageChunk& chunk = instances.chunks[foliageSlotIndex(chunkX, chunkZ, columns, rows)];
+            TerrainFoliageChunk& chunk = instances.chunks[foliageSlotIndex(chunkX, chunkZ, ringSide)];
+
+            // Past the span: every such slot holds a chunk beyond the draw distance, which the fade
+            // and the render's cut already hide, so it stays as it is (the edge column comes back
+            // without a refill when the span grows again), or empties when the layer changes
+            if (offsetX >= columns || offsetZ >= rows){
+                if (refillAll){
+                    emptyChunk(chunk);
+                }
+                continue;
+            }
+
+            // Inside the near fade: nothing of it shows (a far detail layer's inner hole)
+            if (nearFadeStart > 0.0f){
+                const float farX = std::max(std::abs(chunkX * chunkSize - viewLocal.x), std::abs((chunkX + 1) * chunkSize - viewLocal.x));
+                const float farZ = std::max(std::abs(chunkZ * chunkSize - viewLocal.z), std::abs((chunkZ + 1) * chunkSize - viewLocal.z));
+                if (farX * farX + farZ * farZ < nearFadeStart * nearFadeStart){
+                    emptyChunk(chunk);
+                    continue;
+                }
+            }
 
             if (chunk.entity == NULL_ENTITY){
                 if (instances.loadFailed || meshLoadBudget == 0){
@@ -4392,6 +4450,8 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             instmesh.distanceFade = true;
             instmesh.fadeStart = fadeStart;
             instmesh.fadeEnd = fadeEnd;
+            instmesh.nearFadeStart = nearFadeStart;
+            instmesh.nearFadeEnd = nearFadeEnd;
             mesh.castShadows = layer.castShadows;
 
             // Grows with headroom and never shrinks, so a draw distance drag rebuilds little.
@@ -4519,11 +4579,12 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
         return;
     }
 
-    if (scene->getCamera() == NULL_ENTITY){
+    // a scene not loaded yet (an inline child scene) has no camera: the ranges wait for it
+    const CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+    if (!cameraPtr){
         return;
     }
-
-    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    const CameraComponent& camera = *cameraPtr;
 
     // Each level doubles the node size, so its range doubles too and every level keeps
     // the same detail on screen. Halving the far clip down instead leaves every range
@@ -7204,7 +7265,12 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
     }
 
     if (sprite.needUpdateSprite){
-        CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
+        // no camera yet (a scene drawn before it was loaded): built once it has one
+        CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (!cameraPtr){
+            return false;
+        }
+        CameraComponent& camera = *cameraPtr;
         if (sprite.automaticFlipY){
             changeFlipY(sprite.flipY, camera, mesh);
         }
@@ -7286,8 +7352,11 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
 bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
     if (polygon.needUpdatePolygon){
         if (polygon.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(polygon.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(polygon.flipY, *camera, mesh);
         }
 
         if (createMeshPolygon(polygon, mesh)){
@@ -7303,8 +7372,11 @@ bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshCo
 bool MeshSystem::createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     if (tilemap.needUpdateTilemap){
         if (tilemap.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(tilemap.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(tilemap.flipY, *camera, mesh);
         }
 
         if (createTilemap(tilemap, mesh)){

@@ -702,6 +702,9 @@ Json platformJson() {
     Json out = {
         {"focused", Engine::isFocused()},
         {"paused", Engine::isPaused()},
+        // false: the game updates without drawing (the editor hidden, or send_input app hide)
+        {"visible", Engine::isVisible()},
+        {"hidden_update_fps", Engine::getHiddenUpdateFps()},
         {"orientation", PlatformRules::orientationName(Screen::getOrientation())},
         {"requested_orientation", PlatformRules::orientationName(Screen::getRequestedOrientation())},
         {"target_frame_rate", Engine::getTargetFrameRate()},
@@ -744,6 +747,9 @@ Json playStateJson(McpContext& ctx) {
     if (playId != NULL_PROJECT_SCENE) {
         if (SceneProject* sp = project->getScene(playId)) out["scene"] = McpRefs::sceneJson(project, *sp);
         out["running_scenes"] = runningScenesJson(project);
+        // what the Scene view draws as its scene: the played one, or the one a game load put in its place
+        SceneProject* replacing = project->getReplacingMainScene(playId);
+        out["scene_view_scene_id"] = replacing ? replacing->id : playId;
         if (s.current.active) out["session"] = sessionJson(s.current);
     } else if (SceneProject* sp = defaultPlayScene(project)) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
@@ -763,6 +769,11 @@ Json playStateJson(McpContext& ctx) {
     // what the game's input reads (the Input Manager's actions, touches, keys)
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
         out["input"] = playInputJson();
+        // a cursor the game holds, and whether the editor took it back (Escape, Release Game Cursor)
+        static const char* const mouseModes[] = {"normal", "hidden", "captured", "confined"};
+        const int mode = static_cast<int>(Engine::getMouseMode());
+        out["input"]["cursor"] = {{"mode", mode >= 0 && mode < 4 ? mouseModes[mode] : "normal"},
+                                  {"released_to_editor", ctx.playInput() && ctx.playInput()->isCursorReleased()}};
         // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
         static const char* const statsModes[] = {"off", "fps", "full"};
         const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
@@ -3512,6 +3523,14 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
     // systemFocus / systemLowMemory), or the simulated device turned (configure_game_view device)
     if (type == "app") {
         const std::string action = lowerCopy(event.value("action", ""));
+        // the window hidden (minimized) and shown again: the game updates without drawing meanwhile
+        if (action == "hide" || action == "show") {
+            add([action]() {
+                Platform::setGameHiddenSimulated(action == "hide");
+                return std::string();
+            }, gapFrames, 0, "app " + action);
+            return true;
+        }
         if (action == "pause" || action == "resume" || action == "focus_lost" || action == "focus_gained" ||
             action == "low_memory") {
             add([action]() {
@@ -3549,7 +3568,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "app orientation");
             return true;
         }
-        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory or orientation";
+        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
         return false;
     }
 
@@ -4444,7 +4463,7 @@ void registerPlayTools(McpRegistry& registry) {
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
             "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
-            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|orientation "
+            "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
             "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
             "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
             "frames_after only).";

@@ -11,6 +11,7 @@
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
 #include "component/CameraComponent.h"
+#include "object/GameObject.h"
 
 #include <algorithm>
 #include <cstring>
@@ -631,6 +632,59 @@ TEST_F(ScriptLifecycleTest, ErrorsAndInstantiate) {
     EXPECT_EQ(takeLog(), "start init enable") << "the copy's init and onEnable run inside instantiate";
     frame();
     EXPECT_EQ(takeLog(), "start init enable") << "the copy starts at the next frame (and copies itself)";
+}
+
+// instantiate never returns a dead root (runtime-core spec 6.2): a copy whose init destroys it at
+// once gives nil (Unity's fake null); a deferred destroy keeps it for the rest of the frame
+TEST_F(ScriptLifecycleTest, InstantiateReturnsNilWhenInitDestroysTheCopy) {
+    writeScript("Doomed",
+        "local M = {}\n"
+        "function M:init() if self.gameObject.name ~= 'X' then log[#log + 1] = 'init'; GameObject.destroyImmediate(self.gameObject) end end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    entity(scene, "XChild", x);
+    addScript(scene, x, "Doomed");
+    LuaBinding::initializeLuaScripts(scene);
+    setScene("testScene", scene);
+
+    EXPECT_EQ(lua("local copy = GameObject.instantiate(GameObject(testScene, " + std::to_string(x) + "))\n"
+                  "return tostring(copy)"), "nil") << "the copy destroyed itself in init";
+    EXPECT_EQ(takeLog(), "init");
+    EXPECT_TRUE(scene->isEntityCreated(x)) << "the original stays";
+}
+
+TEST_F(ScriptLifecycleTest, InstantiateKeepsARootDestroyedLater) {
+    writeScript("Fading",
+        "local M = {}\n"
+        "function M:init() if self.gameObject.name ~= 'X' then GameObject.destroy(self.gameObject) end end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Fading");
+    LuaBinding::initializeLuaScripts(scene);
+    setScene("testScene", scene);
+
+    EXPECT_EQ(lua("local copy = GameObject.instantiate(GameObject(testScene, " + std::to_string(x) + "))\n"
+                  "return tostring(copy ~= nil and copy.name)"), "X(Clone)")
+        << "a deferred destroy keeps the copy until the end of the frame";
+}
+
+TEST_F(ScriptLifecycleTest, CppInstantiateOfADestroyedCopyIsEmpty) {
+    writeScript("Doomed",
+        "local M = {}\n"
+        "function M:init() if self.gameObject.name ~= 'X' then GameObject.destroyImmediate(self.gameObject) end end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    const Entity x = entity(scene, "X");
+    addScript(scene, x, "Doomed");
+    LuaBinding::initializeLuaScripts(scene);
+
+    const GameObject copy = GameObject::instantiate(GameObject(scene, x));
+    EXPECT_EQ(copy.getEntity(), NULL_ENTITY);
+    EXPECT_FALSE(static_cast<bool>(copy)) << "the C++ handle tests false (Unity's null)";
+    EXPECT_TRUE(static_cast<bool>(GameObject(scene, x)));
+    EXPECT_FALSE(static_cast<bool>(GameObject(scene, NULL_ENTITY)));
 }
 
 // animation events (sendNamed) still go to enabled Lua scripts only

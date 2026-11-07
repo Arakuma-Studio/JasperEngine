@@ -213,7 +213,8 @@ void prepare<Transform>(Transform& transform, Entity sourceEntity, CloneContext&
     // the copy of the root starts at the top of the hierarchy
     transform.parent = sourceEntity == ctx.sourceRoot ? NULL_ENTITY : ctx.remap(transform.parent);
     transform.needUpdate = true;
-    transform.needUpdateChildVisibility = true;
+    // needUpdateChildVisibility keeps the source's value: copying is no visibility change, so
+    // each copied child keeps its own visible flag (only a cascade pending on the source goes on)
 }
 
 template<>
@@ -353,6 +354,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
     points.uiGroupAlpha = 1.0f;
+    points.loadedTransparent = false;
 }
 
 template<>
@@ -434,6 +436,8 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
         view = InstanceViewRange();
     }
     instmesh.lastFadeCullEnd = -1;
+    instmesh.lastFadeCullNear = 0;
+    instmesh.lastCullSlack = 0;
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 }

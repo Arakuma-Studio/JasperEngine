@@ -59,3 +59,25 @@ endfunction()
 macro(jasperengine_select_linker shipped)
     _jasperengine_choose_linker(${shipped})
 endmacro()
+
+# jasperengine_link_whole_archive(<target> <static library>...): every member of each library is
+# linked into <target>, not only those its code references (the editor's shared engine carries all of
+# Box2D and Jolt for C++ scripts). The libraries stay in <target>'s link libraries for ordering.
+function(jasperengine_link_whole_archive target)
+    foreach(lib IN LISTS ARGN)
+        # MSVC-style drivers (cl, clang-cl) take link.exe's option as is; a GNU-style clang++
+        # targeting MSVC passes it to its link.exe-style linker
+        if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+            target_link_options(${target} PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:${lib}>")
+        elseif(CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+            target_link_options(${target} PRIVATE "LINKER:/WHOLEARCHIVE:$<TARGET_FILE:${lib}>")
+        elseif(APPLE)
+            target_link_options(${target} PRIVATE "LINKER:-force_load,$<TARGET_FILE:${lib}>")
+        else()
+            # one SHELL: item per library: CMake de-duplicates repeated options, which would drop
+            # the second library's --whole-archive
+            target_link_options(${target} PRIVATE "SHELL:-Wl,--whole-archive \"$<TARGET_FILE:${lib}>\" -Wl,--no-whole-archive")
+        endif()
+        add_dependencies(${target} ${lib})
+    endforeach()
+endfunction()

@@ -12,6 +12,12 @@ description is `docs/data-safety.md`.
 - Unsaved scenes are lost when the editor closes. Save after each working step (`save_scene`,
   `save_project`); Auto Save only makes crash backups and never writes the scene file.
 
+## Scene files and identity
+
+- A copied folder's scenes are new scenes, each with its own id and name; references between the
+  copies still point at the originals.
+- A scene file that claims another scene's id when it loads gets a fresh id written into it.
+
 ## Files the editor cannot fully read
 
 A scene, prefab, material or `project.yaml` written by a newer editor, a plugin or a hand edit

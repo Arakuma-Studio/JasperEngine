@@ -214,3 +214,18 @@ extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, bool bi
     return true;
 #endif
 }
+
+// Returns once the GPU has finished every command buffer committed so far (Metal; nothing on the
+// other backends). Engine::systemUpdate calls it between frames: Metal frees what a frame released
+// SG_NUM_INFLIGHT_FRAMES + 1 commits later and only a frame with a pass waits for the GPU, so
+// frames without passes (a hidden window's) would free what the GPU still reads. Vulkan frees
+// behind its frame fences, D3D11 and GL through the driver.
+extern "C" void jasperengine_sg_wait_gpu_idle(void){
+#if defined(SOKOL_METAL)
+    if (!_sg.valid || _sg.mtl.cmd_queue == nil)
+        return;
+    id<MTLCommandBuffer> commandBuffer = [_sg.mtl.cmd_queue commandBuffer];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+#endif
+}

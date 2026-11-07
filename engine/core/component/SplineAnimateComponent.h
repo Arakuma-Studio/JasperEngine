@@ -63,6 +63,9 @@ namespace jasperengine{
         float distance = 0.0f;              // world units along the curve now
         bool completed = false;             // Once: reached the end
         FunctionSubscribe<void()> onComplete;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onComplete); }
     };
 
 }

@@ -684,7 +684,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 43;
         case ShaderType::DEPTH:  return 19;
-        case ShaderType::GBUFFER: return 16;
+        case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -836,6 +836,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            // the material's occlusion map, which the SSR composite weighs its swap by (color[3])
+            case 16: return shortName ? "Occ" : "Occlusion Texture";
+            // a map read on the second UV set, as the material names it (u_fs_gbufferMaterial.texCoordSets)
+            case 17: return shortName ? "Uv2" : "UV Set 2";
+            // the Instanced Mesh distance fade (includes/instance_fade.glsl), as MESH 26 and DEPTH 8
+            case 18: return shortName ? "Ifd" : "Instance Fade";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1186,7 +1192,7 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // and spot resources it binds by reflection
     static const int meshBits[] = {42, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
-    static const int gbufferBits[] = {8, 0};                             // Mrt Bct
+    static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
     const int* bits = nullptr;
     size_t bitCount = 0;
@@ -1758,6 +1764,12 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     // the high-quality shadow filters only exist in a variant that receives shadows
     if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
         key.properties &= ~getShadowsHQProperty();
+    // the built-in Lit's unlit 2D light variant took 'Tan' without 'Nmp' until November 2026;
+    // the 2D lights read tangents only for a normal map. A shader with a custom id keeps it: a
+    // library shader may @require tangents on that path
+    if (type == ShaderType::MESH && key.customId == 0 && (key.properties & shaderPropertyBit(0)) &&
+            (key.properties & shaderPropertyBit(22)) && !(key.properties & shaderPropertyBit(7)))
+        key.properties &= ~shaderPropertyBit(8);
     return key;
 }
 
@@ -1843,7 +1855,7 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
                                               bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4,
-                                              bool vat, bool vatBones){
+                                              bool vat, bool vatBones, bool occlusionTexture, bool uvSet2, bool instanceFade){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1862,6 +1874,9 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
     prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
     prop |= vatBones                ? shaderPropertyBit(15) : 0;
+    prop |= occlusionTexture        ? shaderPropertyBit(16) : 0;
+    prop |= uvSet2                  ? shaderPropertyBit(17) : 0;
+    prop |= instanceFade            ? shaderPropertyBit(18) : 0;
 
     return prop;
 }

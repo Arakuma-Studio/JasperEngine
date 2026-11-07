@@ -78,7 +78,8 @@ void Spinner::onUpdate() {
     }
     if (Input::isKeyPressed(D_KEY_SPACE) && bullet.isValid()) {
         GameObject go = GameObject::instantiate(bullet, Vector3(0, 5, 0), Quaternion());
-        Log::print("spawned %s", go.getName().c_str());
+        // false when there is none: the prefab missing, or its init destroyed it at once
+        if (go) Log::print("spawned %s", go.getName().c_str());
     }
 }
 ```
@@ -178,8 +179,10 @@ bool pending = isInvoking();   // or isInvoking(id)
 The timers belong to the script: they keep running while it is disabled or its GameObject is
 inactive and are cancelled when the script is deleted (`~ScriptBase`: GameObject destroyed,
 scene unloaded, Play stop). Callbacks run on the main thread after `onUpdate` (with the Lua
-timers, in creation order, at most once a frame; a late repeat is rescheduled from now);
-exceptions are not caught. Code that is not a script: `#include "Timer.h"`,
+timers, in creation order, at most once a frame; a late repeat is rescheduled from now). A C++
+exception a callback (timer or event) throws is caught: in the editor's Play it stops Play like a
+Lua error ("Script crash ... C++ exception <type>: <what>"), in a game it is logged and the game
+goes on (jasper://docs/crash-diagnostics, "A callback that fails"); on the Web it ends the game. Code that is not a script: `#include "Timer.h"`,
 `jasperengine::Timer::after(2.0, fn)`, `Timer::every(0.5, fn, TimeMode::Scaled, owner, count)`,
 `Timer::cancel(id)` (or `ScriptScheduler::after/every` from `"ScriptScheduler.h"`; an `owner`
 pointer makes `ScriptScheduler::cancelOwner(owner)` end them, unowned ones end at Play stop).
@@ -244,6 +247,11 @@ or keep the handles in a `TimerGroup` member. Logging with a category and the ca
   `Rigidbody::setPosition/setRotation` or `Rigidbody2D::setPosition/setAngle`, never by
   writing the GameObject's transform from `onFixedUpdate`. See `jasper://docs/physics`.
 - `Rigidbody::setMass` only writes the live Jolt body and is lost on reload: author density.
+- Box2D and Jolt directly, where the engine's classes stop: `#include "box2d/box2d.h"`, and
+  `<Jolt/Jolt.h>` before any other Jolt header. The handles: `Rigidbody2D::getBox2DBody()`,
+  `getBox2DShape(i)`, the scene's `PhysicsSystem::getWorld2D()`, `Rigidbody::getJoltBody()`. Every
+  public Box2D and Jolt function links, in Play and in builds (the editor's engine library
+  exports all of both); the generated `CMakeLists.txt` passes the macros Jolt's headers need.
 
 ## Where sources go and how they build
 
@@ -257,7 +265,10 @@ or keep the handles in a `TimerGroup` member. Logging with a category and the ca
   and directories named `build`.
 - The editor runs a C++ build only when a C++ script (enabled or not) is attached to some
   GameObject: in a Lua-only project helper sources are first compiled by an export.
-- **Never edit the generated `CMakeLists.txt`** (regenerated every build). Custom settings go
+- **Never edit the generated `CMakeLists.txt`** (regenerated every build). It can also build the
+  project as a standalone executable against the editor's engine library (`cmake -S <project>`;
+  `-DJASPERENGINE_LIB_DIR=<the editor's folder>` names another editor's): it always compiles with
+  that library's layouts and stops when the folder holds a static engine build. Custom settings go
   in `ProjectBuild.cmake` at the project root, attached to `${JASPERENGINE_TARGET}` with paths
   from `${JASPERENGINE_SCRIPTS_DIR}`:
   ```cmake
