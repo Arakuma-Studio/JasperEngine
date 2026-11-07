@@ -45,6 +45,7 @@ CORE = [
     ("navigation/NavMesh.h", "subsystem/MeshSystem.h"),
     ("navigation/NavMeshBuilder.cpp", "subsystem/MeshSystem.cpp"),
     ("navigation/NavMeshBuilder.h", "subsystem/MeshSystem.h"),
+    ("navigation/NavRandom.h", "subsystem/MeshSystem.h"),
     ("navigation/NavTypes.cpp", "subsystem/MeshSystem.cpp"),
     ("navigation/NavTypes.h", "subsystem/MeshSystem.h"),
     ("subsystem/NavigationSystem.cpp", "subsystem/MeshSystem.cpp"),

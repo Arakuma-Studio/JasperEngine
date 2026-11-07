@@ -46,6 +46,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -129,6 +130,8 @@ struct NavigationSystem::Runtime {
         void* crowdMesh = nullptr;
         int crowdCapacity = 0;
         bool crowdGrow = false;
+        // ---- S55 queries: the crowd ran out of query filters once (one warning per crowd)
+        bool warnedFilterFallback = false;
     };
 
     struct Agent {
@@ -168,6 +171,8 @@ struct NavigationSystem::Runtime {
         Vector3 gridVelocity;
         uint64_t gridRevision = 0;
         GridCell gridGoal;
+        // ---- S55 queries: its own area costs (0: the project's), runtime only
+        float areaCosts[AREA_COUNT] = {};
     };
 
     struct Obstacle {
@@ -227,6 +232,8 @@ struct NavigationSystem::Runtime {
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
     void dispatch(Scene* scene);
     std::vector<Entity> sortedAgents(Scene* scene) const;
+    // ---- S55 queries: an agent whose area mask and costs found no free crowd filter
+    void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
 };
 
 NavigationSystem::NavigationSystem(Scene* scene): SubSystem(scene) {
@@ -484,6 +491,8 @@ NavSurfaceStatus NavigationSystem::getSurfaceStatus(Entity surface) {
     if (state.crowd) {
         status.crowdAgents = state.crowd->getAgentCount();
         status.crowdCapacity = state.crowd->getCapacity();
+        status.crowdFilters = state.crowd->getFilterCount();
+        status.crowdFilterOverflow = state.crowd->getFilterOverflowCount();
     }
     return status;
 }
@@ -1031,12 +1040,19 @@ namespace {
 }
 
 NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return calculatePathOn(surface, from, to, filter);
+}
+
+NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, const QueryFilter& filter,
+                                          const PathOptions& options) {
     SurfaceQuery q;
     PathFailure why = PathFailure::NoSurface;
     if (!makeQuery(*this, scene, surface, q, &why))
         return unanswered(why, from, to);
     JE_PROFILE_SCOPE("Nav.Query");
-    NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
+    NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents, options);
     const float planeZ = q.frame.planeZOf(from);
     path.length = 0.0f;
     for (size_t i = 0; i < path.corners.size(); i++) {
@@ -1067,32 +1083,44 @@ bool NavigationSystem::samplePositionOn(Entity surface, const Vector3& point, fl
 }
 
 bool NavigationSystem::raycastOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return raycastOn(surface, from, to, out, filter);
+}
+
+bool NavigationSystem::raycastOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
     SurfaceQuery q;
     out = NavHit();
     if (!makeQuery(*this, scene, surface, q))
         return false;
-    const NavHit hit = q.mesh->raycast(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
+    const NavHit hit = q.mesh->raycast(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents);
     out = hitToWorld(hit, q.frame, q.frame.planeZOf(from));
     return hit.hit;
 }
 
 bool NavigationSystem::findClosestEdgeOn(Entity surface, const Vector3& point, NavHit& out, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return findClosestEdgeOn(surface, point, out, filter);
+}
+
+bool NavigationSystem::findClosestEdgeOn(Entity surface, const Vector3& point, NavHit& out, const QueryFilter& filter, float maxDistance) {
     SurfaceQuery q;
     out = NavHit();
     if (!makeQuery(*this, scene, surface, q))
         return false;
-    const NavHit hit = q.mesh->findClosestEdge(q.frame.toNav(point), NavFilter::fromSettings(areaMask), q.halfExtents);
-    if (!hit.hit)
-        return false;
-    out = hitToWorld(hit, q.frame, q.frame.planeZOf(point));
-    return true;
+    const NavHit hit = q.mesh->findClosestEdge(q.frame.toNav(point), NavFilter::fromQuery(filter), q.halfExtents, maxDistance);
+    // on the mesh without a wall within maxDistance: the distance says how far it looked
+    if (hit.hit || hit.distance > 0.0f)
+        out = hitToWorld(hit, q.frame, q.frame.planeZOf(point));
+    return hit.hit;
 }
 
-NavPath NavigationSystem::calculatePath(const Vector3& from, const Vector3& to, const QueryFilter& filter) {
+NavPath NavigationSystem::calculatePath(const Vector3& from, const Vector3& to, const QueryFilter& filter, const PathOptions& options) {
     // the first Complete answer (entity order), else the best ranked one (R5)
     NavPath best = unanswered(PathFailure::NoSurface, from, to);
     for (Entity surface : surfacesOf(scene, filter.agentType)) {
-        NavPath path = calculatePathOn(surface, from, to, filter.areaMask);
+        NavPath path = calculatePathOn(surface, from, to, filter, options);
         if (path.status == PathStatus::Complete)
             return path;
         if (betterAnswer(path, best))
@@ -1121,21 +1149,24 @@ bool NavigationSystem::raycast(const Vector3& from, const Vector3& to, NavHit& o
         // the surface the ray starts on answers
         if (!samplePositionOn(surface, from, 1.0f, start, filter.areaMask))
             continue;
-        return raycastOn(surface, from, to, out, filter.areaMask);
+        return raycastOn(surface, from, to, out, filter);
     }
     out.hit = true;
     out.position = from;
     return true;
 }
 
-bool NavigationSystem::findClosestEdge(const Vector3& point, NavHit& out, const QueryFilter& filter) {
+bool NavigationSystem::findClosestEdge(const Vector3& point, NavHit& out, const QueryFilter& filter, float maxDistance) {
     out = NavHit();
     bool found = false;
     for (Entity surface : surfacesOf(scene, filter.agentType)) {
         NavHit hit;
-        if (findClosestEdgeOn(surface, point, hit, filter.areaMask) && (!found || hit.distance < out.distance)) {
+        const bool wall = findClosestEdgeOn(surface, point, hit, filter, maxDistance);
+        if (wall && (!found || hit.distance < out.distance)) {
             out = hit;
             found = true;
+        } else if (!wall && !found && hit.distance > 0.0f) {
+            out = hit;
         }
     }
     return found;
@@ -1160,6 +1191,93 @@ bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const
     }
     if (why)
         *why = best;
+    return false;
+}
+
+// ---- S55 queries
+
+namespace {
+
+    // Random points need the surface's mesh and frame (makeQuery), the stream to draw from, and the
+    // island to stay on (S54's labels; -1: any)
+    bool randomPointWith(NavigationSystem& system, Scene* scene, Entity surface, NavHit& out, const QueryFilter& filter,
+                         const RandomPointQuery& query, NavRandom& stream) {
+        SurfaceQuery q;
+        out = NavHit();
+        if (!makeQuery(system, scene, surface, q))
+            return false;
+        const NavFilter navFilter = NavFilter::fromQuery(filter);
+        int island = -1;
+        if (query.sameIsland) {
+            // an explicit island use: locate labels a stale navmesh first (S54 R8)
+            const NavLocation under = q.mesh->locate(q.frame.toNav(query.islandOf), navFilter, q.halfExtents, 0.0f);
+            if (!under.onMesh || under.island < 0)
+                return false;
+            island = under.island;
+        }
+        NavHit hit;
+        float planeZ = 0.0f;
+        bool found = false;
+        if (query.around && query.radius > 0.0f) {
+            planeZ = q.frame.planeZOf(query.center);
+            found = q.mesh->findRandomPointAround(q.frame.toNav(query.center), query.radius, navFilter, q.halfExtents, stream, island, hit);
+        } else {
+            found = q.mesh->findRandomPoint(navFilter, stream, island, hit);
+        }
+        if (!found)
+            return false;
+        out = hitToWorld(hit, q.frame, planeZ);
+        return true;
+    }
+
+}
+
+bool NavigationSystem::randomPointOn(Entity surface, NavHit& out, const QueryFilter& filter, const RandomPointQuery& query) {
+    if (query.seeded) {
+        NavRandom stream(query.seed);
+        return randomPointWith(*this, scene, surface, out, filter, query, stream);
+    }
+    return randomPointWith(*this, scene, surface, out, filter, query, randomStream);
+}
+
+bool NavigationSystem::randomPoint(NavHit& out, const QueryFilter& filter, const RandomPointQuery& query) {
+    out = NavHit();
+    NavRandom seeded(query.seed);
+    NavRandom& stream = query.seeded ? seeded : randomStream;
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        if (randomPointWith(*this, scene, surface, out, filter, query, stream))
+            return true;
+    }
+    return false;
+}
+
+void NavigationSystem::setRandomSeed(uint64_t seed) {
+    randomStream = NavRandom(seed);
+    randomSeed = seed;
+}
+
+uint64_t NavigationSystem::getRandomSeed() const {
+    return randomSeed;
+}
+
+bool NavigationSystem::moveAlongSurfaceOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
+    SurfaceQuery q;
+    out = NavHit();
+    if (!makeQuery(*this, scene, surface, q))
+        return false;
+    NavHit hit;
+    if (!q.mesh->moveAlongSurface(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents, hit))
+        return false;
+    out = hitToWorld(hit, q.frame, q.frame.planeZOf(from));
+    return true;
+}
+
+bool NavigationSystem::moveAlongSurface(const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
+    out = NavHit();
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        if (moveAlongSurfaceOn(surface, from, to, out, filter))
+            return true;
+    }
     return false;
 }
 
@@ -2054,7 +2172,8 @@ namespace {
     }
 
     // the agent's crowd parameters (its lengths and speeds in metres, scaled to the surface's units)
-    NavCrowdAgentParams agentParams(const NavMeshAgentComponent& agent, float scale) {
+    // with its own area costs
+    NavCrowdAgentParams agentParams(const NavMeshAgentComponent& agent, float scale, const float (&areaCosts)[AREA_COUNT]) {
         NavCrowdAgentParams params;
         params.radius = std::max(agent.radius, 1e-3f) * scale;
         params.height = std::max(agent.height, 1e-3f) * scale;
@@ -2063,12 +2182,14 @@ namespace {
         params.quality = agent.obstacleAvoidance;
         params.priority = (uint8_t)std::clamp(agent.avoidancePriority, 0, 99);
         params.areaMask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        std::memcpy(params.areaCosts, areaCosts, sizeof(params.areaCosts));
         return params;
     }
 
     bool sameParams(const NavCrowdAgentParams& a, const NavCrowdAgentParams& b) {
         return a.radius == b.radius && a.height == b.height && a.maxSpeed == b.maxSpeed && a.maxAcceleration == b.maxAcceleration &&
-               a.quality == b.quality && a.priority == b.priority && a.areaMask == b.areaMask && a.obstacle == b.obstacle;
+               a.quality == b.quality && a.priority == b.priority && a.areaMask == b.areaMask && a.obstacle == b.obstacle &&
+               std::memcmp(a.areaCosts, b.areaCosts, sizeof(a.areaCosts)) == 0;
     }
 
 }
@@ -2078,6 +2199,55 @@ Entity NavigationSystem::getAgentSurface(Entity agent) {
         return NULL_ENTITY;
     auto found = runtime->agents.find(agent);
     return found != runtime->agents.end() ? found->second.surface : NULL_ENTITY;
+}
+
+// ---- S55 queries: an agent's own area costs
+
+void NavigationSystem::setAgentAreaCost(Entity agent, int area, float cost) {
+    if (area < 0 || area >= AREA_COUNT || !scene->findComponent<NavMeshAgentComponent>(agent))
+        return;
+    Runtime::Agent& state = rt().agents[agent];
+    state.entity = agent;
+    // the next fixed tick hands the crowd the agent's new filter (syncAgents)
+    state.areaCosts[area] = clampAreaCost(cost);
+}
+
+float NavigationSystem::getAgentAreaCost(Entity agent, int area) const {
+    if (area < 0 || area >= AREA_COUNT)
+        return 0.0f;
+    if (runtime) {
+        auto found = runtime->agents.find(agent);
+        if (found != runtime->agents.end() && found->second.areaCosts[area] > 0.0f)
+            return found->second.areaCosts[area];
+    }
+    return getSettings().areas[(size_t)area].cost;
+}
+
+void NavigationSystem::resetAgentAreaCost(Entity agent, int area) {
+    if (area < 0 || area >= AREA_COUNT || !runtime)
+        return;
+    auto found = runtime->agents.find(agent);
+    if (found != runtime->agents.end())
+        found->second.areaCosts[area] = 0.0f;
+}
+
+QueryFilter NavigationSystem::getAgentQueryFilter(Entity agent) const {
+    QueryFilter filter;
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(agent);
+    if (!component)
+        return filter;
+    filter.agentType = component->agentType;
+    filter.areaMask = (uint16_t)(component->areaMask & ALL_AREAS);
+    if (runtime) {
+        auto found = runtime->agents.find(agent);
+        if (found != runtime->agents.end()) {
+            for (int area = 0; area < AREA_COUNT; area++) {
+                if (found->second.areaCosts[area] > 0.0f)
+                    filter.setAreaCost(area, found->second.areaCosts[area]);
+            }
+        }
+    }
+    return filter;
 }
 
 bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
@@ -2373,6 +2543,7 @@ bool NavigationSystem::Runtime::ensureCrowd(Scene* scene, Surface& surface) {
     if (!crowd->init(*surface.mesh, capacity, maxRadius))
         return false;
     surface.crowd = std::move(crowd);
+    surface.warnedFilterFallback = false;
     surface.crowdMesh = surface.mesh->detourNavMesh();
     surface.crowdCapacity = capacity;
     surface.crowdGrow = false;
@@ -2425,6 +2596,15 @@ Entity NavigationSystem::Runtime::pickSurface(NavigationSystem& system, Scene* s
             return grid;
     }
     return NULL_ENTITY;
+}
+
+void NavigationSystem::Runtime::warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex) {
+    if (surface.warnedFilterFallback || !surface.crowd->isFilterFallback(crowdIndex))
+        return;
+    surface.warnedFilterFallback = true;
+    Log::warn("Navigation: the crowd of '%s' has no free query filter (16, one per area mask and costs) for NavMeshAgent '%s': it "
+              "uses one with its area mask and other costs, or every area",
+              scene->getEntityName(surface.entity).c_str(), scene->getEntityName(entity).c_str());
 }
 
 void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scene) {
@@ -2531,7 +2711,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
         const NavFrame& frame = surface.frame;
         const float scale = unitScaleOfSurface(scene, agent.surface);
         const Vector3 offset = frame.up() * (component.baseOffset * scale);
-        const NavCrowdAgentParams params = agentParams(component, scale);
+        const NavCrowdAgentParams params = agentParams(component, scale, agent.areaCosts);
         if (params.radius > surface.mesh->getHeader().config.agentRadius * 1.0001f && params.radius > agent.params.radius && agent.placed) {
             // a larger agent than the crowd was sized for: the crowd is made again next tick
             surface.crowdGrow = true;
@@ -2545,6 +2725,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
             agent.placed = true;
             agent.crowdIndex = index;
             agent.params = params;
+            warnFilterFallback(scene, surface, entity, index);
             agent.planeZ = frame.planeZOf(transform->worldPosition);
             agent.previousPosition = agent.currentPosition = agent.writtenPosition = transform->worldPosition;
             agent.previousRotation = agent.currentRotation = agent.writtenRotation = transform->worldRotation;
@@ -2563,6 +2744,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
         if (!sameParams(params, agent.params)) {
             surface.crowd->setParams(agent.crowdIndex, params);
             agent.params = params;
+            warnFilterFallback(scene, surface, entity, agent.crowdIndex);
         }
         if (agent.onLink)
             continue;

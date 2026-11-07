@@ -2934,11 +2934,6 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
 # S54 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
-OVERRIDES[('NavigationSystem', 'calculatePath')] = {
-    'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, and when it',
-            'is not Complete why (`reason`, "disconnected", ...), the answering surface, the closest point and',
-            'the gap left to the end.'],
-    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'NavMeshPath')]}
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
             'when their islands differ.'],
@@ -2955,6 +2950,30 @@ OVERRIDES[('NavigationSystem', 'getIslands')] = {
     'doc': ['The connected parts of a surface\'s navmesh (links included): id, area (m\u00b2), polygons, world bounds.'],
     'overloads': [([('surface', 'integer')], 'NavIsland[]')]}
 PROPERTY_OVERRIDES[('NavMeshSurface', 'lastBakeResult')] = ('NavBakeReport|nil', True)
+
+# S55 navigation queries: random points, surface moves, the closest edge within a distance, path
+# options (docs/specs/S55-navigation-gameplay-api.md R1-R5, R42)
+OVERRIDES[('NavigationSystem', 'calculatePath')] = {
+    'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, cost, cornerAreas,',
+            'cornerFlags, areaLengths and the corridor NavMeshAgent:setPath takes; when it is not Complete why',
+            '(`reason`, "disconnected", ...), the answering surface, the closest point and the gap left to the end.',
+            '`options.areaCrossings` adds a corner wherever the path changes area.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER), ('options?', 'NavMeshPathOptions')], 'NavMeshPath')]}
+OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
+    'doc': ['The navmesh boundary point closest to `point` (Unity\'s NavMesh.FindClosestEdge): found, then',
+            'the hit (position, normal from the wall towards the point, distance). With maxDistance only walls',
+            'that close count: none gives false with hit.distance = maxDistance.'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER), ('maxDistance?', 'number')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'randomPoint')] = {
+    'doc': ['A random navmesh point: anywhere (uniform by area), around `options.center` within `options.radius`',
+            '(reachable from it, not uniform) and/or on the island of `options.sameIslandAs`. Draws come from the',
+            'system\'s stream (randomSeed), or from `options.seed`\'s own. Found, then the hit.'],
+    'overloads': [([('filter?', _NAV_FILTER + '|nil'), ('options?', 'NavRandomPointOptions')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'moveAlongSurface')] = {
+    'doc': ['A controller step along the navmesh from `from` towards `to` (at most 64 polygons): moved, then the',
+            'hit (position on the surface, hit = stopped short of `to` by a wall, distance moved, area). False when',
+            '`from` is off the mesh.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)

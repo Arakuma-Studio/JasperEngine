@@ -169,3 +169,61 @@ TEST_F(NavQueryTest, MovedSurfaceMovesItsNavmesh){
     ASSERT_TRUE(nav->samplePosition(Vector3(100.0f, 0.0f, 0.0f), 0.5f, hit));
     EXPECT_NEAR(hit.position.x, 100.0f, CELL);
 }
+
+// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R3, R4)
+
+// AC5: a wall 3 m away: within 2 m none (the distance says how far it looked), within 5 m found
+TEST_F(NavQueryTest, ClosestEdgeMaxDistance){
+    const Entity surface = planeSurface();
+    bake(surface);
+    const Vector3 point(6.5f, 0.0f, 0.0f);
+    nav::NavHit hit;
+    EXPECT_FALSE(nav->findClosestEdge(point, hit, {}, 2.0f));
+    EXPECT_FALSE(hit.hit);
+    EXPECT_FLOAT_EQ(hit.distance, 2.0f);
+    ASSERT_TRUE(nav->findClosestEdge(point, hit, {}, 5.0f));
+    EXPECT_TRUE(hit.hit);
+    EXPECT_NEAR(hit.distance, 3.0f, CELL);
+    EXPECT_NEAR(hit.position.x, 9.5f, CELL);
+    // the normal points from the wall towards the point
+    EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
+    EXPECT_EQ(hit.area, nav::AREA_WALKABLE);
+    // on one surface the same
+    EXPECT_FALSE(nav->findClosestEdgeOn(surface, point, hit, nav::QueryFilter(), 2.0f));
+    EXPECT_FLOAT_EQ(hit.distance, 2.0f);
+    // no limit: S19's reach
+    ASSERT_TRUE(nav->findClosestEdge(point, hit));
+    EXPECT_NEAR(hit.distance, 3.0f, CELL);
+    // off the mesh: nothing, no distance
+    EXPECT_FALSE(nav->findClosestEdge(Vector3(40.0f, 0.0f, 0.0f), hit, {}, 5.0f));
+    EXPECT_FLOAT_EQ(hit.distance, 0.0f);
+}
+
+// AC6: a move into the mesh's edge stops on it; an open move reaches its end; off the mesh, none
+TEST_F(NavQueryTest, MoveAlongSurfaceClampsAtWall){
+    const Entity surface = planeSurface();
+    box(*scene, Vector3(0.0f, 1.0f, 5.0f), Vector3(2.0f, 2.0f, 2.0f));
+    bake(surface);
+    nav::NavHit move;
+    // through the edge at 9.5, from a point above the floor: the height is the polygon's
+    ASSERT_TRUE(nav->moveAlongSurface(Vector3(8.0f, 0.4f, 0.0f), Vector3(12.0f, 0.4f, 0.0f), move));
+    EXPECT_TRUE(move.hit);
+    EXPECT_NEAR(move.position.x, 9.5f, CELL);
+    EXPECT_NEAR(move.position.y, 0.0f, 0.15f);
+    EXPECT_NEAR(move.distance, 1.5f, CELL);
+    EXPECT_EQ(move.area, nav::AREA_WALKABLE);
+    // into the box's footprint (eroded to 1.5 m around its centre): stopped at its side
+    ASSERT_TRUE(nav->moveAlongSurface(Vector3(0.0f, 0.0f, 1.0f), Vector3(0.0f, 0.0f, 5.0f), move));
+    EXPECT_TRUE(move.hit);
+    EXPECT_NEAR(move.position.z, 3.5f, CELL);
+    // an open move reaches `to`
+    ASSERT_TRUE(nav->moveAlongSurface(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 0.0f, -1.0f), move));
+    EXPECT_FALSE(move.hit);
+    EXPECT_NEAR(move.position.x, 1.0f, 1e-3f);
+    EXPECT_NEAR(move.position.z, -1.0f, 1e-3f);
+    EXPECT_NEAR(move.distance, std::sqrt(2.0f), 1e-3f);
+    // from off the mesh: nothing moves
+    EXPECT_FALSE(nav->moveAlongSurface(Vector3(30.0f, 0.0f, 0.0f), Vector3(31.0f, 0.0f, 0.0f), move));
+    EXPECT_FALSE(move.hit);
+    EXPECT_FLOAT_EQ(move.distance, 0.0f);
+}

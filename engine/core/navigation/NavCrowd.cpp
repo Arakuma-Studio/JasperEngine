@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::nav;
@@ -79,8 +80,19 @@ struct NavCrowd::Impl {
     std::vector<const dtCrowdAgent*> obstacleScratch;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
-    // the area masks of the 16 query filters (0: unused)
-    std::vector<uint16_t> filterMasks;
+    // ---- S55 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
+    // project's), reference-counted; filter 0 (every area, the project's costs) is never freed
+    struct FilterSlot {
+        uint16_t mask = 0;
+        float costs[AREA_COUNT] = {};
+        int refs = 0;
+        bool used = false;
+    };
+    std::vector<FilterSlot> filters;
+    // each agent's filter (-1: none) and whether it is a fallback (no filter of its own was free)
+    std::vector<int> agentFilter;
+    std::vector<uint8_t> agentFallback;
+    int fallbackCount = 0;
     std::vector<dtCrowdAgent*> active;
 
     ~Impl() { release(); }
@@ -95,45 +107,108 @@ struct NavCrowd::Impl {
         params.clear();
         onLink.clear();
         detourLink.clear();
-        filterMasks.clear();
+        filters.clear();
+        agentFilter.clear();
+        agentFallback.clear();
+        fallbackCount = 0;
     }
 
     const dtNavMeshQuery* query() const { return crowd->getNavMeshQuery(); }
     dtNavMeshQuery* editableQuery() const { return const_cast<dtNavMeshQuery*>(crowd->getNavMeshQuery()); }
 
-    unsigned char filterFor(uint16_t mask) {
-        for (size_t i = 0; i < filterMasks.size(); i++) {
-            if (filterMasks[i] == mask)
-                return (unsigned char)i;
+    static bool sameKey(const FilterSlot& slot, const NavCrowdAgentParams& p) {
+        return slot.mask == p.areaMask && std::memcmp(slot.costs, p.areaCosts, sizeof(slot.costs)) == 0;
+    }
+
+    // The filter of an agent's mask and costs: its own (shared with the same key), else a free
+    // one, else (a fallback) one with its mask (its areas kept, other costs), else every area
+    int acquireFilter(const NavCrowdAgentParams& p, bool& fallback) {
+        fallback = false;
+        int chosen = -1;
+        for (size_t i = 0; i < filters.size() && chosen < 0; i++) {
+            if (filters[i].used && sameKey(filters[i], p))
+                chosen = (int)i;
         }
-        for (size_t i = 0; i < filterMasks.size(); i++) {
-            if (filterMasks[i] == 0) {
-                filterMasks[i] = mask;
+        for (size_t i = 1; i < filters.size() && chosen < 0; i++) {
+            if (!filters[i].used) {
+                FilterSlot& slot = filters[i];
+                slot.used = true;
+                slot.mask = p.areaMask;
+                std::memcpy(slot.costs, p.areaCosts, sizeof(slot.costs));
+                slot.refs = 0;
                 fillFilter((int)i);
-                return (unsigned char)i;
+                chosen = (int)i;
             }
         }
-        // Detour holds 16 filters per crowd: an extra mask shares the all-areas filter
-        static std::atomic<bool> warned{false};
-        if (!warned.exchange(true))
-            Log::warn("Navigation: more than %d distinct area masks in one crowd; the extra agents walk every area",
-                      DT_CROWD_MAX_QUERY_FILTER_TYPE);
-        return 0;
+        for (size_t i = 0; i < filters.size() && chosen < 0; i++) {
+            if (filters[i].used && filters[i].mask == p.areaMask) {
+                chosen = (int)i;
+                fallback = true;
+            }
+        }
+        if (chosen < 0) {
+            chosen = 0;
+            fallback = true;
+        }
+        filters[(size_t)chosen].refs++;
+        return chosen;
+    }
+
+    void assignFilter(int agent, int slot, bool fallback) {
+        agentFilter[(size_t)agent] = slot;
+        agentFallback[(size_t)agent] = fallback ? 1 : 0;
+        if (fallback)
+            fallbackCount++;
+    }
+
+    // drops the agent's hold on its filter; true when that freed the filter
+    bool releaseFilter(int agent) {
+        const int slot = agentFilter[(size_t)agent];
+        if (slot < 0)
+            return false;
+        if (agentFallback[(size_t)agent])
+            fallbackCount--;
+        agentFilter[(size_t)agent] = -1;
+        agentFallback[(size_t)agent] = 0;
+        FilterSlot& filter = filters[(size_t)slot];
+        filter.refs--;
+        if (filter.refs > 0 || slot == 0)
+            return false;
+        filter = FilterSlot();
+        return true;
+    }
+
+    // a freed filter goes to the agents on a fallback (ascending index: the same every run)
+    void promoteFallbacks() {
+        for (int i = 0; i < capacity && fallbackCount > 0; i++) {
+            if (!agentFallback[(size_t)i] || !agent(i)->active)
+                continue;
+            bool fallback = false;
+            const int previous = agentFilter[(size_t)i];
+            releaseFilter(i);
+            const int slot = acquireFilter(params[(size_t)i], fallback);
+            assignFilter(i, slot, fallback);
+            if (slot != previous) {
+                dtCrowdAgentParams detourParams = toDetour(params[(size_t)i], slot);
+                crowd->updateAgentParameters(i, &detourParams);
+            }
+        }
     }
 
     void fillFilter(int index) {
         dtQueryFilter* filter = crowd->getEditableFilter(index);
-        const NavFilter source = NavFilter::fromSettings(filterMasks[(size_t)index]);
+        const FilterSlot& slot = filters[(size_t)index];
+        const NavFilter source = NavFilter::fromSettings(slot.mask);
         filter->setIncludeFlags(source.areaMask);
         filter->setExcludeFlags(0);
         for (int a = 0; a < AREA_COUNT; a++)
-            filter->setAreaCost(a, source.areaCosts[a]);
+            filter->setAreaCost(a, slot.costs[a] > 0.0f ? std::max(1.0f, slot.costs[a]) : source.areaCosts[a]);
         const std::vector<float>& linkCosts = mesh->getHeader().linkAreaCosts;
         for (size_t i = 0; i < linkCosts.size() && FIRST_LINK_COST_AREA + (int)i < MAX_POLY_AREAS; i++)
             filter->setAreaCost(FIRST_LINK_COST_AREA + (int)i, std::max(0.0f, linkCosts[i]));
     }
 
-    dtCrowdAgentParams toDetour(const NavCrowdAgentParams& p) {
+    dtCrowdAgentParams toDetour(const NavCrowdAgentParams& p, int filter) {
         dtCrowdAgentParams out;
         std::memset(&out, 0, sizeof(out));
         out.radius = std::max(p.radius, 1e-4f);
@@ -144,13 +219,17 @@ struct NavCrowd::Impl {
         out.pathOptimizationRange = out.radius * 30.0f;
         out.separationWeight = 2.0f;
         out.avoidancePriority = p.obstacle ? 0 : std::min<uint8_t>(p.priority, 99);
-        out.queryFilterType = filterFor(p.areaMask);
+        out.queryFilterType = (unsigned char)filter;
         if (p.obstacle) {
             out.updateFlags = 0;
             out.maxSpeed = 0.0f;
             out.maxAcceleration = 0.0f;
         } else {
-            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO;
+            out.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OPTIMIZE_TOPO;
+            // Detour's visibility shortcut raycasts without costs: it would cut an agent's own
+            // costly areas (spec S55 R9) straight through, so agents with costs of their own skip it
+            if (std::none_of(std::begin(p.areaCosts), std::end(p.areaCosts), [](float cost) { return cost > 0.0f; }))
+                out.updateFlags |= DT_CROWD_OPTIMIZE_VIS;
             if (p.quality != AvoidanceQuality::None) {
                 out.updateFlags |= DT_CROWD_OBSTACLE_AVOIDANCE | DT_CROWD_SEPARATION;
                 out.obstacleAvoidanceType = (unsigned char)((int)p.quality - 1);
@@ -184,9 +263,13 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
     impl->pinned.assign((size_t)impl->capacity, std::array<float, 3>{0.0f, 0.0f, 0.0f});
     impl->obstacleScratch.reserve((size_t)impl->capacity);
     impl->detourLink.assign((size_t)impl->capacity, 0);
-    impl->filterMasks.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, 0);
-    impl->filterMasks[0] = ALL_AREAS;
+    impl->filters.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, Impl::FilterSlot());
+    impl->filters[0].used = true;
+    impl->filters[0].mask = ALL_AREAS;
     impl->fillFilter(0);
+    impl->agentFilter.assign((size_t)impl->capacity, -1);
+    impl->agentFallback.assign((size_t)impl->capacity, 0);
+    impl->fallbackCount = 0;
     impl->active.resize((size_t)impl->capacity);
     setAvoidancePresets(impl->crowd);
     return true;
@@ -215,11 +298,19 @@ const NavMesh* NavCrowd::getMesh() const {
 int NavCrowd::addAgent(const Vector3& position, const NavCrowdAgentParams& params) {
     if (!impl->crowd)
         return -1;
-    const dtCrowdAgentParams detourParams = impl->toDetour(params);
+    bool fallback = false;
+    const int filter = impl->acquireFilter(params, fallback);
+    const dtCrowdAgentParams detourParams = impl->toDetour(params, filter);
     const float p[3] = {position.x, position.y, position.z};
     const int index = impl->crowd->addAgent(p, &detourParams);
-    if (index < 0)
+    if (index < 0) {
+        // the filter's hold goes back (a filter made for it alone is freed)
+        Impl::FilterSlot& slot = impl->filters[(size_t)filter];
+        if (--slot.refs <= 0 && filter != 0)
+            slot = Impl::FilterSlot();
         return -1;
+    }
+    impl->assignFilter(index, filter, fallback);
     impl->params[(size_t)index] = params;
     impl->onLink[(size_t)index] = 0;
     impl->detourLink[(size_t)index] = 0;
@@ -234,14 +325,26 @@ void NavCrowd::removeAgent(int agent) {
     impl->onLink[(size_t)agent] = 0;
     impl->detourLink[(size_t)agent] = 0;
     impl->count--;
+    if (impl->releaseFilter(agent))
+        impl->promoteFallbacks();
 }
 
 void NavCrowd::setParams(int agent, const NavCrowdAgentParams& params) {
     if (!impl->crowd || agent < 0 || agent >= impl->capacity)
         return;
-    const dtCrowdAgentParams detourParams = impl->toDetour(params);
+    int filter = impl->agentFilter[(size_t)agent];
+    bool freed = false;
+    if (filter < 0 || impl->agentFallback[(size_t)agent] || !Impl::sameKey(impl->filters[(size_t)filter], params)) {
+        freed = impl->releaseFilter(agent);
+        bool fallback = false;
+        filter = impl->acquireFilter(params, fallback);
+        impl->assignFilter(agent, filter, fallback);
+    }
+    const dtCrowdAgentParams detourParams = impl->toDetour(params, filter);
     impl->crowd->updateAgentParameters(agent, &detourParams);
     impl->params[(size_t)agent] = params;
+    if (freed)
+        impl->promoteFallbacks();
 }
 
 const NavCrowdAgentParams& NavCrowd::getParams(int agent) const {
@@ -611,10 +714,25 @@ void NavCrowd::completeOffMeshLink(int agent, const Vector3& end) {
 void NavCrowd::refreshFilters() {
     if (!impl->crowd)
         return;
-    for (size_t i = 0; i < impl->filterMasks.size(); i++) {
-        if (impl->filterMasks[i] != 0 || i == 0)
+    for (size_t i = 0; i < impl->filters.size(); i++) {
+        if (impl->filters[i].used)
             impl->fillFilter((int)i);
     }
+}
+
+int NavCrowd::getFilterCount() const {
+    int count = 0;
+    for (const Impl::FilterSlot& slot : impl->filters)
+        count += slot.used ? 1 : 0;
+    return count;
+}
+
+int NavCrowd::getFilterOverflowCount() const {
+    return impl->fallbackCount;
+}
+
+bool NavCrowd::isFilterFallback(int agent) const {
+    return impl->crowd && agent >= 0 && agent < impl->capacity && impl->agentFallback[(size_t)agent] != 0;
 }
 
 size_t NavCrowd::getMemoryBytes() const {
@@ -676,6 +794,9 @@ bool NavCrowd::isTraversingLink(int) const { return false; }
 void NavCrowd::setLinkPosition(int, const Vector3&, const Vector3&) {}
 void NavCrowd::completeOffMeshLink(int, const Vector3&) {}
 void NavCrowd::refreshFilters() {}
+int NavCrowd::getFilterCount() const { return 0; }
+int NavCrowd::getFilterOverflowCount() const { return 0; }
+bool NavCrowd::isFilterFallback(int) const { return false; }
 size_t NavCrowd::getMemoryBytes() const { return 0; }
 
 #endif // JASPERENGINE_NAVIGATION

@@ -138,6 +138,65 @@ local found, edge = nav:findClosestEdge(point)
 local reachable, why = nav:isReachable(a, b)                -- why: "none" when reachable
 ```
 
+Every path also carries `cost` (each stretch's length times its area's cost, a link at its own
+cost), `cornerAreas` and `cornerFlags` (one per corner: the area of the stretch that starts there,
+and `NavCornerFlags.START` / `END` / `OFF_MESH_LINK`), `areaLengths` (area index to the length
+walked in it, only areas walked) and `corridor`, what `NavMeshAgent:setPath` takes (nil on a path a
+script built). `{areaCrossings = true}` as the fourth argument adds a corner wherever the area
+changes. A raycast's hit has `cost`, the cost of the part it travelled. Lengths are in scene units
+(metres in 3D). `NavAreas.getAreaName(3)` names an area.
+
+```lua
+local path = nav:calculatePath(a, b, nil, {areaCrossings = true})
+print(path.cost, path.areaLengths[NavAreas.getAreaFromName("Mud")], path.cornerFlags[1] == NavCornerFlags.START)
+local found, edge = nav:findClosestEdge(p, nil, 5.0)       -- false (edge.distance == 5) when no wall is that close
+local ok, move = nav:moveAlongSurface(position, position + step)   -- a player controller's step
+-- move.position (on the navmesh), move.hit (a wall stopped it), move.distance, move.area
+```
+
+`moveAlongSurface` follows the surface from the polygon under `from` (false when `from` is off the
+navmesh) and crosses at most 64 polygons: use it for one step per tick, not for long moves.
+
+### Random points
+
+```lua
+nav.randomSeed = 1234                                              -- restarts the stream
+local found, hit = nav:randomPoint()                               -- anywhere, uniform by area
+local found, hit = nav:randomPoint(filter, {center = p, radius = 10})   -- reachable from p within 10 m
+local found, hit = nav:randomPoint(filter, {sameIslandAs = p, seed = 7}) -- on p's island, its own stream
+```
+
+- *Anywhere* is uniform by area over the polygons the filter lets in (never Not Walkable, never a
+  link). The first call on a navmesh builds an area table (8 bytes per polygon, kept until the
+  navmesh changes).
+- *Around* (`center` with `radius`) picks among the polygons reachable from the centre through the
+  filter, then a point of that polygon within the radius (8 polygon picks, then false). It is
+  **not** uniform: use it for wandering, not for statistics.
+- *Same island* keeps to the part of the navmesh connected to `sameIslandAs` (false when nothing is
+  under it); it combines with *around*.
+- Draws come from the system's stream: a scene and Play start it at `0x5EED`, `randomSeed` restarts
+  it, and the same seed, navmesh and calls give the same points on one platform. `seed` draws from
+  a stream of its own and leaves the system's alone.
+
+### Area costs
+
+A **NavMesh Query Filter** has its own area costs for the queries it is passed to; the areas it
+does not set cost the project's. A NavMesh Agent has its own too (Unity's `SetAreaCost`): runtime
+only, gone at Stop, used by its crowd's planning and its own queries.
+
+```lua
+local filter = NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All}
+filter:setAreaCost(NavAreas.getAreaFromName("Mud"), 5) ; print(filter:getAreaCost(3)) ; filter:resetAreaCost(3)
+local agent = NavMeshAgent(scene, self.entity)
+agent:setAreaCost(3, 10) ; print(agent:getAreaCost(3)) ; agent:resetAreaCost(3)
+```
+
+Costs are clamped to at least 1 (A*'s estimate needs it; a lower cost logs one warning). To keep a
+query or an agent out of an area, clear the area's bit in its `areaMask`. A crowd has 16 query
+filters, one per area mask and costs, shared by the agents with the same ones and freed when no
+agent uses them; a 17th combination uses a filter with the agent's mask (its areas kept, other
+costs) or, with none, every area, with one warning per crowd.
+
 ## Why navigation fails
 
 Every path that is not Complete says why in `reason` (Lua, MCP; `NavPath::failure` in C++), with

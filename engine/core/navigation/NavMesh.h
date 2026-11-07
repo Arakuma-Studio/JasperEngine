@@ -19,6 +19,7 @@
 #include "Export.h"
 #include "navigation/NavDiagnostics.h"
 #include "navigation/NavMeshBuilder.h"
+#include "navigation/NavRandom.h"
 #include "navigation/NavTypes.h"
 
 #include <cstdint>
@@ -72,6 +73,8 @@ namespace jasperengine::nav {
         NavFilter();
         // the mask with the project's area costs
         static NavFilter fromSettings(uint16_t areaMask);
+        // the query filter's mask and costs (the project's where it sets none)
+        static NavFilter fromQuery(const QueryFilter& filter);
     };
 
     // The geometry the editor's overlays draw (spec R33, D8), in nav space
@@ -157,13 +160,32 @@ namespace jasperengine::nav {
         bool isCarving() const;
 
         // ---- queries (nav space)
-        // the query searches at most 2048 nodes (spec R26)
-        NavPath findPath(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents) const;
+        // the query searches at most 2048 nodes (spec R26); the path keeps its polygon corridor,
+        // per-corner areas and flags, its cost and the length per area (S55 R5)
+        NavPath findPath(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents,
+                         const PathOptions& options = {}) const;
         // the nearest point within maxDistance
         NavHit samplePosition(const Vector3& point, float maxDistance, const NavFilter& filter) const;
-        // hit == true when the ray leaves the mesh (or meets a wall) before `to`
+        // hit == true when the ray leaves the mesh (or meets a wall) before `to`; cost: the
+        // travelled part's
         NavHit raycast(const Vector3& from, const Vector3& to, const NavFilter& filter, const Vector3& halfExtents) const;
-        NavHit findClosestEdge(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const;
+        // the nearest wall within maxDistance (<= 0: 64 tiles); hit false with distance
+        // maxDistance when there is none
+        NavHit findClosestEdge(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float maxDistance = -1.0f) const;
+        // ---- S55 queries
+        // A point uniform by area over the polygons the filter passes (of island `island`, -1:
+        // any): three draws of `random`. False when no polygon passes.
+        bool findRandomPoint(const NavFilter& filter, NavRandom& random, int island, NavHit& out) const;
+        // A point reachable from `center` through the filter within `radius` (in the XZ plane),
+        // Detour's findRandomPointAroundCircle: not uniform. At most 8 tries; island >= 0 keeps
+        // only points of that island.
+        bool findRandomPointAround(const Vector3& center, float radius, const NavFilter& filter, const Vector3& halfExtents,
+                                   NavRandom& random, int island, NavHit& out) const;
+        // Moves from the polygon under `from` towards `to` along the surface (at most 64 polygons):
+        // position (on the polygon), hit (stopped more than 1 mm short of `to`), distance (moved,
+        // XZ), area. False when `from` is off the mesh.
+        bool moveAlongSurface(const Vector3& from, const Vector3& to, const NavFilter& filter, const Vector3& halfExtents,
+                              NavHit& out) const;
         // the polygon height under a point (false off the mesh)
         bool getHeight(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float& height) const;
 

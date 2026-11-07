@@ -28,6 +28,7 @@
 #include "navigation/NavDiagnostics.h"
 #include "navigation/NavGridMap.h"
 #include "navigation/NavMesh.h"
+#include "navigation/NavRandom.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "subsystem/NavigationSystem.h"
 
@@ -193,6 +194,53 @@ int main(int argc, char** argv) {
         results.add("query_path_unreachable_p95_ms", unreachable.empty() ? 0.0 : bench::percentile(unreachable, 0.95), "ms");
         results.add("query_sample_p95_ms", bench::percentile(samples, 0.95), "ms");
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
+    }
+
+    // ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R36): random points (the area
+    // table's first build, then cached), around a point, the closest wall within 5 m, 2 m steps
+    {
+        const Vector3 extents(1.0f, 2.0f, 1.0f);
+        nav::NavRandom random(11);
+        nav::NavHit hit;
+        // each mask has a table of its own: five first calls
+        std::vector<double> firsts;
+        for (int area = 3; area < 8; area++) {
+            const nav::NavFilter masked = nav::NavFilter::fromSettings((uint16_t)(nav::ALL_AREAS & ~(1u << area)));
+            const auto t = bench::Clock::now();
+            runtime.findRandomPoint(masked, random, -1, hit);
+            firsts.push_back(msSince(t));
+        }
+        results.add("query_random_first_ms", bench::percentile(firsts, 0.5), "ms");
+        const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
+        runtime.findRandomPoint(filter, random, -1, hit);
+        std::vector<double> anywhere, around, walls, moves;
+        std::vector<Vector3> points;
+        for (int i = 0; i < 1000; i++) {
+            auto t = bench::Clock::now();
+            runtime.findRandomPoint(filter, random, -1, hit);
+            anywhere.push_back(msSince(t));
+            if (hit.hit)
+                points.push_back(hit.position);
+        }
+        std::mt19937 direction(5);
+        std::uniform_real_distribution<float> angle(0.0f, 6.2831853f);
+        for (const Vector3& p : points) {
+            auto t = bench::Clock::now();
+            runtime.findRandomPointAround(p, 10.0f, filter, extents, random, -1, hit);
+            around.push_back(msSince(t));
+            t = bench::Clock::now();
+            runtime.findClosestEdge(p, filter, extents, 5.0f);
+            walls.push_back(msSince(t));
+            const float a = angle(direction);
+            const Vector3 to = p + Vector3(std::cos(a) * 2.0f, 0.0f, std::sin(a) * 2.0f);
+            t = bench::Clock::now();
+            runtime.moveAlongSurface(p, to, filter, extents, hit);
+            moves.push_back(msSince(t));
+        }
+        results.add("query_random_p95_ms", bench::percentile(anywhere, 0.95), "ms");
+        results.add("query_random_circle_p95_ms", bench::percentile(around, 0.95), "ms");
+        results.add("query_wall_p95_ms", bench::percentile(walls, 0.95), "ms");
+        results.add("query_move_along_p95_ms", bench::percentile(moves, 0.95), "ms");
     }
 
     // ---- S54 diagnostics: island labelling, a disconnected reject, locate (islands current)

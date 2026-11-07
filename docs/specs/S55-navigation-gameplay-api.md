@@ -683,4 +683,61 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 
 ## Deviations
 
+- S55 P1: `NavMesh::findRandomPoint` and `findRandomPointAround` take `int island` (-1: any)
+  instead of `uint32_t island` (0: any): S54's island ids start at 0. `findRandomPointAround` takes
+  the island too, so *around* combines with *same island* inside the 8 tries. Engine-internal (only
+  `NavigationSystem` calls them).
+- S55 P1: `findClosestEdge(point, out, filter, maxDistance)` and `calculatePath(from, to, filter,
+  options)` are the S19 functions with defaulted trailing parameters, not extra overloads. Added
+  next to §6: `QueryFilter` overloads of `calculatePathOn`, `raycastOn`, `findClosestEdgeOn`,
+  `moveAlongSurfaceOn` (a filter's costs on one surface; S54 R27's `calculatePathOn(surface, ...,
+  filter)` and P3's agent queries use them), `getAgentQueryFilter(agent)` (the agent's type, mask
+  and own costs, what P3's agent queries pass), `nav::clampAreaCost`, `NavCrowd::getFilterCount` /
+  `isFilterFallback` and `NavSurfaceStatus::crowdFilters` / `crowdFilterOverflow` (the tests and
+  S54's `crowd_filter_overflow` finding read them).
+- S55 P1: `NavCrowdAgentParams::areaCosts` holds the agent's own costs with 0 for "the project's"
+  rather than fully resolved costs. A crowd filter's key is (mask, these costs); `refreshFilters`
+  refills the filters with the project's current costs, so areas without an override follow project
+  edits (R9) without re-keying any agent.
+- S55 P1: `query_navigation` `random` always draws from a stream of its own (`seed`, default
+  `DEFAULT_RANDOM_SEED` = 24301): the tool is read-only and idempotent, so it never advances the
+  game's stream. The result echoes the seed.
+- S55 P1: `areaLengths` (and `area_lengths`) are in scene units like `length` (metres in 3D, points
+  on a 2D surface).
+- S55 P1: AC10's red control. A same-mask fallback cannot differ from S19, which keys filters by
+  mask alone (the 16 cost variants of one mask shared one filter there). The red run is the
+  freeing part: after the first agents leave, 15 new masks fit (S19 kept the old mask's filter, so
+  the 15th new mask fell back to every area and walked the masked strip).
+- S55 P1: an agent with area costs of its own steers without Detour's visibility shortcut
+  (`DT_CROWD_OPTIMIZE_VIS`): `dtPathCorridor::optimizePathVisibility` raycasts without costs and cut
+  the agent straight through the area it pays 10 for (the first `NavCrowdTest.PerAgentAreaCosts`
+  run). The topology optimisation, which searches with the filter's costs, stays on. Agents without
+  costs of their own keep S19's flags (and S19's behaviour with project costs).
+- S55 P1: AC8 compares the raycast's cost with length x cost to 1e-3 *relative*: Detour prices the
+  polygons' 3D segments (their detail heights), while `distance` stays S19's planar length.
+- S55 P1: *around* keeps Detour's polygon pick, but when its point lands past the radius (a
+  polygon much larger than the circle: one polygon covers an open 40 m floor) the point is drawn
+  again in the circle until it falls in that polygon (8 draws) before another polygon is picked
+  (8 picks). Detour's draw alone missed a 3 m circle on such a floor for most seeds
+  (`test_navigation_gameplay.py::test_query_ops`, the first run).
+- S55 P1: R5's three new vectors (corner areas, corner flags, the corridor) are three more
+  allocations per path: S54's `NavIslandTest.QueriesNeverRelabel` now expects four per path.
+- S55 P1: AC2's red control is a run with `findRandomPoint` temporarily calling Detour's
+  `dtNavMeshQuery::findRandomPoint` (the unit tests cannot include Detour's headers); the log is
+  kept with the package's evidence.
+- S55 P1: AC4's "door closed by R11" (P2) is S54's `NavMesh::setPolyFlags(ref, 0)` on the doorway's
+  polygons, which is what R11 does underneath.
+
 ## Progress (implementation notes, keep updated)
+
+- S55 P1: interfaces (§6 P1 block) and the queries, filters, crowd filter slots, Lua and
+  `query_navigation` implemented; tests in `NavGameplayQueryTest.cpp`, `NavQueryTest.cpp`,
+  `NavCrowdTest.cpp`, `NavStubTest.cpp`, `test_navigation_gameplay.py::test_query_ops`; NavBench
+  query lines and their thresholds.
+- S55 P1: merged all of S54 (labels, locate, reasons): *same island* random points use S54's
+  `locate` and labels (AC4); `query_navigation` keeps S54's references, target lists and `next`
+  hints and adds `random`, `move_along`, `seed`, `closest_edge`'s `max_distance` and the costs
+  (measured offline at about 1480 of 1500 characters, description 397 of 400). Eval cases
+  `guard_navigation_random_point` and `guard_navigation_move_along` (not run live: the integrator
+  decides). `NavStubTest` (the JASPERENGINE_NAVIGATION=OFF build) has no build preset on this
+  host and was not run.

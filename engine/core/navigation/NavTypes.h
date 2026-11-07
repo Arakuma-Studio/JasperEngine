@@ -89,20 +89,43 @@ namespace jasperengine::nav {
         XY
     };
 
-    // What a query may walk on: the agent type whose navmesh it reads and the areas it may enter
-    // (Unity's NavMeshQueryFilter)
-    struct QueryFilter {
-        int agentType = 0;
-        uint16_t areaMask = ALL_AREAS;
+    // ---- S55 queries
+
+    // A path corner's flags (Detour's DT_STRAIGHTPATH_* values)
+    enum CornerFlag : uint8_t {
+        CORNER_START = 1,
+        CORNER_END = 2,
+        // the corner where an off-mesh link starts
+        CORNER_OFF_MESH_LINK = 4
     };
 
-    // samplePosition / raycast / findClosestEdge (Unity's NavMeshHit)
+    // What a query may walk on: the agent type whose navmesh it reads, the areas it may enter and
+    // its own area costs (Unity's NavMeshQueryFilter). Excluding an area is clearing its mask bit.
+    struct JASPERENGINE_API QueryFilter {
+        int agentType = 0;
+        uint16_t areaMask = ALL_AREAS;
+        // the areas whose cost this filter sets (a bit per area); the others cost the project's
+        uint16_t costMask = 0;
+        std::array<float, AREA_COUNT> areaCosts{};
+
+        // the cost per metre of an area for this filter's queries, clamped to >= 1 (A*'s estimate
+        // needs it; one warning per process)
+        void setAreaCost(int area, float cost);
+        // the filter's cost, else the project's (0 for an area outside 0-15)
+        float getAreaCost(int area) const;
+        // back to the project's cost
+        void resetAreaCost(int area);
+    };
+
+    // samplePosition / raycast / findClosestEdge / randomPoint / moveAlongSurface (Unity's NavMeshHit)
     struct NavHit {
         Vector3 position;
         Vector3 normal;
         float distance = 0.0f;
         uint8_t area = 0;
         bool hit = false;
+        // raycast: the cost of the travelled part (metres x the filter's area costs)
+        float cost = 0.0f;
     };
 
     // calculatePath (Unity's NavMeshPath)
@@ -128,7 +151,35 @@ namespace jasperengine::nav {
         // has no corners: the snapped start (else the requested one) and its distance to the end.
         Vector3 closestPoint;
         float gap = 0.0f;
-        // ---- S55: cost, per-corner areas
+        // ---- S55 queries
+        // per corner: the area of the stretch that starts there (the last: the area at the end)
+        std::vector<uint8_t> cornerAreas;
+        // per corner: CornerFlag bits
+        std::vector<uint8_t> cornerFlags;
+        // the sum of each stretch's length x its area cost (a link at its own cost per unit)
+        float cost = 0.0f;
+        // the length walked in each area
+        std::array<float, AREA_COUNT> areaLengths{};
+        // engine: the polygon corridor (Detour refs) and the navmesh revision it was planned on
+        std::vector<uint32_t> polys;
+        uint64_t meshRevision = 0;
+    };
+
+    // calculatePath options: areaCrossings adds a corner wherever the path changes area
+    struct PathOptions {
+        bool areaCrossings = false;
+    };
+
+    // randomPoint (spec S55 R1): anywhere (uniform by area), around a point (reachable from it
+    // within radius, not uniform) and/or on the island of a point; seeded: a private stream
+    struct RandomPointQuery {
+        bool around = false;
+        Vector3 center;
+        float radius = 0.0f;
+        bool sameIsland = false;
+        Vector3 islandOf;
+        bool seeded = false;
+        uint64_t seed = 0;
     };
 
     // ---- S54 diagnostics (R7-R10)
@@ -249,6 +300,10 @@ namespace jasperengine::nav {
     JASPERENGINE_API uint64_t hashAreaTable(const NavigationSettings& settings);
 
     JASPERENGINE_API const char* pathStatusName(PathStatus status);
+
+    // ---- S55 queries
+    // an area cost as queries use it: >= 1 (a lower or non-finite cost warns, once per process)
+    JASPERENGINE_API float clampAreaCost(float cost);
 
 }
 

@@ -87,6 +87,9 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
+        // ---- S55 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
+        int crowdFilters = 0;
+        int crowdFilterOverflow = 0;
     };
 
     class JASPERENGINE_API NavigationSystem : public SubSystem{
@@ -103,12 +106,15 @@ namespace jasperengine{
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
 
         // ---- queries (world positions); without a surface, the first surface of the agent type
-        // that answers (entity order)
-        nav::NavPath calculatePath(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {});
+        // that answers (entity order). Every query honours the filter's area costs (S55 R8).
+        nav::NavPath calculatePath(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {},
+                                   const nav::PathOptions& options = {});
         bool samplePosition(const Vector3& point, float maxDistance, nav::NavHit& out, const nav::QueryFilter& filter = {});
         // true when the ray is blocked before `to` (Unity's NavMesh.Raycast)
         bool raycast(const Vector3& from, const Vector3& to, nav::NavHit& out, const nav::QueryFilter& filter = {});
-        bool findClosestEdge(const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter = {});
+        // the nearest wall within maxDistance (<= 0: S19's reach); false with out.distance =
+        // maxDistance when none is that close
+        bool findClosestEdge(const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter = {}, float maxDistance = -1.0f);
         // S54 R6: false without a search when the ends' islands are current and differ; why: the
         // failure of the answering surface (None when reachable)
         bool isReachable(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {}, nav::PathFailure* why = nullptr);
@@ -117,6 +123,35 @@ namespace jasperengine{
         bool samplePositionOn(Entity surface, const Vector3& point, float maxDistance, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
         bool raycastOn(Entity surface, const Vector3& from, const Vector3& to, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
         bool findClosestEdgeOn(Entity surface, const Vector3& point, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
+
+        // ---- S55 queries (spec S55 R1-R9)
+        static constexpr uint64_t DEFAULT_RANDOM_SEED = 0x5EED;
+        // A random navmesh point of the filter's agent type: anywhere (uniform by area), around
+        // query.center (reachable within query.radius, not uniform) and/or on the island of
+        // query.islandOf. Draws come from the system's stream, or from query.seed's own.
+        bool randomPoint(nav::NavHit& out, const nav::QueryFilter& filter = {}, const nav::RandomPointQuery& query = {});
+        bool randomPointOn(Entity surface, nav::NavHit& out, const nav::QueryFilter& filter = {}, const nav::RandomPointQuery& query = {});
+        // restarts the system's stream (a new scene, and Play, start at DEFAULT_RANDOM_SEED)
+        void setRandomSeed(uint64_t seed);
+        uint64_t getRandomSeed() const;
+        // A controller step: from the polygon under `from` along the surface towards `to` (at most
+        // 64 polygons). out.hit: stopped short of `to`. False when `from` is off the mesh.
+        bool moveAlongSurface(const Vector3& from, const Vector3& to, nav::NavHit& out, const nav::QueryFilter& filter = {});
+        // on one surface with a filter's mask and costs (its agent type is the surface's)
+        nav::NavPath calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, const nav::QueryFilter& filter,
+                                     const nav::PathOptions& options = {});
+        bool raycastOn(Entity surface, const Vector3& from, const Vector3& to, nav::NavHit& out, const nav::QueryFilter& filter);
+        bool findClosestEdgeOn(Entity surface, const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter,
+                               float maxDistance = -1.0f);
+        bool moveAlongSurfaceOn(Entity surface, const Vector3& from, const Vector3& to, nav::NavHit& out, const nav::QueryFilter& filter = {});
+        // A NavMeshAgent's own area costs (Unity's SetAreaCost): runtime only, gone at Stop; the
+        // areas it does not set follow the project's costs. They apply to its crowd planning and
+        // to the queries made with getAgentQueryFilter.
+        void setAgentAreaCost(Entity agent, int area, float cost);
+        float getAgentAreaCost(Entity agent, int area) const;
+        void resetAgentAreaCost(Entity agent, int area);
+        // the agent's agent type, area mask and own costs
+        nav::QueryFilter getAgentQueryFilter(Entity agent) const;
 
         // ---- bakes (spec R4, R10)
         // Starts a bake: the inputs are collected now (main thread), the tiles build on the job
@@ -276,6 +311,10 @@ namespace jasperengine{
         double slowestBakeStepMs = 0.0;
         std::string slowestBakeStep;
         std::map<std::string, double> bakeStageMaxMs;
+
+        // ---- S55 queries: the random point stream (R2)
+        nav::NavRandom randomStream{DEFAULT_RANDOM_SEED};
+        uint64_t randomSeed = DEFAULT_RANDOM_SEED;
 
         bool hasNavigationComponents() const;
         Runtime& rt();

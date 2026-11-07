@@ -34,6 +34,13 @@ TEST_F(NavStubTest, QueriesFail){
     nav::NavHit hit;
     EXPECT_FALSE(nav->samplePosition(Vector3(), 2.0f, hit));
     EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit));
+    // S55's queries fail the same way
+    EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit, {}, 5.0f));
+    EXPECT_FALSE(nav->randomPoint(hit));
+    EXPECT_FALSE(nav->moveAlongSurface(Vector3(), Vector3(1, 0, 0), hit));
+    nav::PathOptions crossings;
+    crossings.areaCrossings = true;
+    EXPECT_EQ(nav->calculatePath(Vector3(-5, 0, 0), Vector3(5, 0, 0), {}, crossings).status, nav::PathStatus::Invalid);
 
     nav::NavMesh mesh;
     nav::NavMeshData data;
@@ -80,8 +87,14 @@ TEST_F(NavStubTest, DiagnosticsStubs){
 TEST_F(NavStubTest, LogsOnce){
     test::LogCapture log;
     nav::NavMesh mesh;
-    for (int i = 0; i < 5; i++)
+    nav::NavRandom random;
+    nav::NavHit hit;
+    for (int i = 0; i < 5; i++) {
         mesh.findPath(Vector3(), Vector3(1, 0, 0), nav::NavFilter(), Vector3(1, 1, 1));
+        mesh.findRandomPoint(nav::NavFilter(), random, -1, hit);
+        mesh.findRandomPointAround(Vector3(), 2.0f, nav::NavFilter(), Vector3(1, 1, 1), random, -1, hit);
+        mesh.moveAlongSurface(Vector3(), Vector3(1, 0, 0), nav::NavFilter(), Vector3(1, 1, 1), hit);
+    }
     EXPECT_LE(log.count(D_LOG_ERROR, "JASPERENGINE_NAVIGATION is off"), 1u);
 }
 

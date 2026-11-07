@@ -47,14 +47,30 @@ Bake and check a level:
 - After moving static geometry, `get_navigation_info` shows `dirty_tiles` > 0 (the Inspector's
   stale-bake warning); bake again.
 - `query_navigation` works in edit mode and in play (the running scene). `op`: `path`, `sample`
-  (nearest navmesh point within `max_distance`, default 2), `raycast` (`blocked`, hit point),
-  `closest_edge`, `reachable`, `locate` (below). `agent_type` by name or id, `area_mask` a bit
-  mask, `target` `navmesh`, `grid` or a surface/grid GameObject.
+  (nearest navmesh point within `max_distance`, default 2), `raycast` (`blocked`, hit point, `cost`),
+  `closest_edge` (within `max_distance` when given: `found: false` and `distance` = the limit when
+  no wall is that close), `reachable`, `locate` (below), `random`, `move_along`. `agent_type` by
+  name or id, `area_mask` a bit mask, `target` `navmesh`, `grid` or a surface/grid GameObject.
+  Every op but `random` needs `from`.
 - `from` / `to` take `[x, y, z]` or a GameObject: its position, or for a NavMesh Agent its feet
   (the base offset below it), and then its agent type and area mask unless `agent_type` /
   `area_mask` are given. A `target` surface of another agent type is an error naming both.
 - `to` takes a list of up to 64 targets for `path`, `reachable` and `raycast`: `results[]` holds
   one summary per target (`to`, `status`, `length`, `corner_count`, `reason`; no corners).
+- Paths carry `cost` (length times area cost), `corner_areas` and `corner_flags` (per corner; flags
+  1 start, 2 end, 4 link start) and `area_lengths` (by area name).
+- `random`: without `from` anywhere on the navmesh (uniform by area); with `from` and
+  `max_distance` a point reachable from `from` within it; with `from` alone a point on `from`'s
+  island (`found: false` off the navmesh). `seed` (default 24301) picks the stream: the same seed
+  gives the same point, and the game's own stream is never drawn from.
+- `move_along` steps from `from` towards `to` along the surface (64 polygons at most): `position`,
+  `blocked` (a wall stopped it), `distance`, `area`. Per-query area costs are a Lua feature
+  (`NavMeshQueryFilter:setAreaCost` through `eval_lua`).
+
+```json
+{"tool": "query_navigation", "args": {"op": "random", "from": [0, 0, 0], "max_distance": 10, "seed": 3}}
+{"tool": "query_navigation", "args": {"op": "move_along", "from": [0, 0, 0], "to": [2, 0, 0]}}
+```
 
 ## Why it does not work
 
@@ -164,7 +180,11 @@ Grids (2D, tilemaps, strategy):
 local nav = scene:getNavigationSystem()
 local path = nav:calculatePath(a, b, NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All})
 -- path.status (NavMeshPathStatus.Complete/Partial/Invalid), path.corners {Vector3}, path.length
--- NavAreas.All / Walkable / NotWalkable / Jump are masks; NavAreas.maskOf(area), getAreaFromName(name)
+-- path.cost, path.cornerAreas, path.cornerFlags (NavCornerFlags), path.areaLengths[area], path.corridor
+-- NavAreas.All / Walkable / NotWalkable / Jump are masks; NavAreas.maskOf(area), getAreaFromName(name), getAreaName(area)
+local f = NavMeshQueryFilter{areaMask = NavAreas.All} ; f:setAreaCost(3, 5)   -- per-query costs (>= 1)
+local found, pt = nav:randomPoint(f, {center = p, radius = 10, seed = 7})   -- or {} anywhere, {sameIslandAs = p}
+local moved, step = nav:moveAlongSurface(a, b) ; local near, edge = nav:findClosestEdge(p, nil, 5.0)
 local ok, hit = nav:samplePosition(p, 2.0, NavAreas.All) -- hit.position, hit.normal, hit.area, hit.distance
 local blocked, hit2 = nav:raycast(a, b)
 -- a path that is not Complete: path.reason ("disconnected"...), path.surface, path.closestPoint, path.gap
@@ -178,7 +198,8 @@ local grid = NavGrid(scene, e) ; local p = grid:findPath(GridCell(0, 0), GridCel
 grid:setCellArea(GridCell(3, 3), 1) ; grid:fillRect(c0, c1, 3) ; grid:isReachable(c0, c1) -- areas by index (1 Not Walkable)
 ```
 
-Agent members: `setDestination`, `resetPath`, `warp`, `move`, `completeOffMeshLink`; r/w `speed`,
+Agent members: `setDestination`, `resetPath`, `warp`, `move`, `completeOffMeshLink`,
+`setAreaCost` / `getAreaCost` / `resetAreaCost` (runtime only); r/w `speed`,
 `stoppingDistance`, `isStopped`, `avoidancePriority`, `areaMask`; read `remainingDistance`,
 `pathPending`, `pathStatus`, `velocity`, `desiredVelocity`, `isOnNavMesh`, `isOnOffMeshLink`;
 events `onDestinationReached`, `onPathFailed`, `onOffMeshLinkStart`, `onOffMeshLinkEnd`.
