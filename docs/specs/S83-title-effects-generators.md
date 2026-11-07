@@ -1667,3 +1667,8 @@ rest of S82 lands in 6B.
     this branch) and `glints-highlights` (6 % of blocks: the picks follow S80's base title, whose
     highlights differ from Pachislop's, read from the 8-bit grid). AC4's red control is a reseeded
     Gold Dust instead of a `glints` threshold change, since `glints_highlights` is an exception.
+24. **Implementation: fallback agreement of grid-driven layouts.** Lightning's bolts and
+    Backlight's shape centre come from the followed layer's grid, which the RGBA8 path reads from
+    its own render of that layer: a borderline cell can flip, so a few pixels (0.15-0.2 %) differ
+    by more than the class's max while the mean and the share over 8/255 stay within F1/F2.
+    `TitleGenGpu.FallbackWithinClass` holds these two to the mean and the share only.

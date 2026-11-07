@@ -288,6 +288,8 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         const int r[4] = {rect.x, rect.y, rect.width, rect.height};
         where = hashCombine(where, fnv1a64(std::string_view(reinterpret_cast<const char*>(r), sizeof(r))));
         where = hashCombine(where, fnv1a64(svc.caps.pathName()));
+        // the request's forced fallbacks change the followed pixels without changing the path name
+        where = hashCombine(where, (uint64_t)svc.testFlags + 1);
         const TitlePx source = layerSource(followed, "follow_cycle", id);
         if (source.valid()) {
             TitlePx cut = clearedLike(rect, id);

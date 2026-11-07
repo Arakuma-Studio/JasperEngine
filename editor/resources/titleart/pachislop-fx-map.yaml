@@ -1,0 +1,282 @@
+{
+  "rules": [
+    "camelCase keys become snake_case",
+    "x/y pairs become one Vec2; rx/ry become radius",
+    "generator angles are counter-clockwise (y-up) and negated (D16)",
+    "a generator follow param becomes the layer follow member; companionOf groups become a visible Group \"<layer> FX\"",
+    "preset ids become snake_case"
+  ],
+  "generators": [
+    {
+      "pachislop": "particles",
+      "type": "particles",
+      "presets": {
+        "goldDust": "gold_dust",
+        "embers": "embers",
+        "lightMotes": "light_motes",
+        "confetti": "confetti",
+        "sakura": "sakura",
+        "starShower": "star_shower",
+        "bokeh": "bokeh",
+        "rain": "rain",
+        "fireworks": "fireworks"
+      },
+      "renames": {
+        "rx/ry": "radius",
+        "x/y": "point",
+        "rotation": "rotation_random"
+      },
+      "negated": [
+        "angle",
+        "heading"
+      ]
+    },
+    {
+      "pachislop": "inkSplatter",
+      "type": "ink_splatter",
+      "presets": {
+        "black": "ink_behind",
+        "red": "red_ink",
+        "over": "ink_over",
+        "swept": "swept"
+      },
+      "renames": {},
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "speedLines",
+      "type": "speed_lines",
+      "presets": {
+        "focus": "focus",
+        "focusRed": "focus_red",
+        "flowH": "flow_h",
+        "flowDiag": "flow_diag",
+        "flash": "flash",
+        "beta": "beta",
+        "spiky": "spiky",
+        "rainbow": "rainbow"
+      },
+      "renames": {
+        "x/y": "center",
+        "rx/ry": "radius",
+        "layer": "follow (layer member)"
+      },
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "lightStreaks",
+      "type": "light_streaks",
+      "presets": {
+        "anamorphic": "anamorphic",
+        "bundle": "bundle",
+        "spears": "spears",
+        "cyan": "cyan"
+      },
+      "renames": {
+        "x/y": "origin"
+      },
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "sunburst",
+      "type": "sunburst",
+      "presets": {
+        "redGold": "red_gold",
+        "blue": "blue",
+        "rainbowHalo": "rainbow_halo",
+        "purple": "purple",
+        "blackGold": "black_gold",
+        "focusLines": "focus_lines",
+        "twoColourWedges": "two_colour_wedges"
+      },
+      "renames": {
+        "centre": "center_mode",
+        "onLayer": "on_layer",
+        "colorA": "color_a",
+        "colorB": "color_b"
+      },
+      "negated": [
+        "rotation",
+        "twist"
+      ]
+    },
+    {
+      "pachislop": "shockwave",
+      "type": "shockwave",
+      "presets": {
+        "white": "white",
+        "red": "red",
+        "neon": "neon",
+        "halo": "halo",
+        "ground": "ground"
+      },
+      "renames": {
+        "cx/cy": "center"
+      },
+      "negated": [
+        "tilt"
+      ]
+    },
+    {
+      "pachislop": "magicCircle",
+      "type": "magic_circle",
+      "presets": {
+        "gold": "gold",
+        "blue": "blue",
+        "hud": "hud",
+        "hologram": "hologram",
+        "radar": "radar",
+        "bagua": "bagua"
+      },
+      "renames": {
+        "cx/cy": "center",
+        "text": "glyphs",
+        "row{n}*": "rows[n-1].*"
+      },
+      "negated": [
+        "rotation",
+        "rows[].angle"
+      ],
+      "values": {
+        "glyphs": {
+          "eto": "zodiac",
+          "bagua": "trigrams"
+        }
+      }
+    },
+    {
+      "pachislop": "brushSwirl",
+      "type": "brush_swirl",
+      "presets": {
+        "ink": "ink",
+        "gold": "gold",
+        "red": "red",
+        "slash": "slash"
+      },
+      "renames": {
+        "cx/cy": "center"
+      },
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "glints",
+      "type": "glints",
+      "presets": {
+        "highlights": "highlights",
+        "hero": "hero",
+        "stars": "stars",
+        "rainbow": "rainbow",
+        "scatter": "scatter"
+      },
+      "renames": {
+        "x/y": "position"
+      },
+      "negated": [
+        "rotation",
+        "hero_angle"
+      ],
+      "values": {
+        "rays": {
+          "4": "four",
+          "8": "eight"
+        }
+      }
+    },
+    {
+      "pachislop": "lensFlare",
+      "type": "lens_flare",
+      "presets": {
+        "blue": "blue",
+        "gold": "gold",
+        "streak": "streak"
+      },
+      "renames": {
+        "x/y": "position"
+      },
+      "negated": [
+        "rotation"
+      ]
+    },
+    {
+      "pachislop": "backlight",
+      "type": "backlight",
+      "presets": {
+        "godRays": "god_rays",
+        "jackpot": "jackpot",
+        "blue": "blue"
+      },
+      "renames": {
+        "centreMode": "center_mode",
+        "x/y": "center"
+      },
+      "negated": [
+        "rotation"
+      ]
+    },
+    {
+      "pachislop": "fire",
+      "type": "fire",
+      "presets": {
+        "behind": "behind",
+        "overEdges": "over_edges",
+        "red": "hot",
+        "blaze": "blaze"
+      },
+      "renames": {},
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "smoke",
+      "type": "smoke",
+      "presets": {
+        "grey": "grey",
+        "steam": "steam",
+        "black": "black"
+      },
+      "renames": {},
+      "negated": [
+        "angle"
+      ]
+    },
+    {
+      "pachislop": "corona",
+      "type": "aura",
+      "presets": {
+        "tendrils": "tendrils",
+        "purple": "purple",
+        "auraStrong": "strong",
+        "auraWeakUp": "rising_weak"
+      },
+      "renames": {
+        "aura": "strength"
+      },
+      "negated": [],
+      "values": {
+        "mode": {
+          "aura": "rising"
+        }
+      }
+    },
+    {
+      "pachislop": "lightning",
+      "type": "lightning",
+      "presets": {
+        "bolts": "bolts",
+        "electricBlue": "electric_blue",
+        "electrify": "electrify"
+      },
+      "renames": {},
+      "negated": []
+    }
+  ]
+}
