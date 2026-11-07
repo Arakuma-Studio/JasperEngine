@@ -204,6 +204,20 @@ namespace {
         bool isGridOnly() const { return compiled->isGridOnly(); }
     };
 
+    // Methods that return several values or none are lua_CFunctions: a (self, lua_State*) -> int form
+    // would have LuaBridge push the int as the result. self is argument 1 (called with ':').
+    NoiseGraphHandle& graphSelf(lua_State* L) {
+        auto self = luabridge::get<NoiseGraphHandle*>(L, 1);
+        if (!self || !*self) luaL_argerror(L, 1, "a NoiseGraph (call it with ':')");
+        return **self;
+    }
+
+    NoiseGridTask& taskSelf(lua_State* L) {
+        auto self = luabridge::get<NoiseGridTask*>(L, 1);
+        if (!self || !*self) luaL_argerror(L, 1, "a NoiseGridTask (call it with ':')");
+        return **self;
+    }
+
     int outputArg(lua_State* L, const NoiseGraphHandle& handle, int index) {
         const std::vector<noise::OutputInfo>& outputs = handle.compiled->outputs();
         if (lua_isnoneornil(L, index)) {
@@ -374,7 +388,8 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
         .addProperty("done", &NoiseGridTask::isDone)
         .addProperty("progress", &NoiseGridTask::getProgress)
         .addFunction("cancel", &NoiseGridTask::cancel)
-        .addFunction("result", +[](NoiseGridTask* self, lua_State* state) -> int {
+        .addFunction("result", +[](lua_State* state) -> int {
+            NoiseGridTask* self = &taskSelf(state);
             if (!self->isDone() || self->state->cancelled.load()) {
                 lua_pushnil(state);
                 return 1;
@@ -405,24 +420,28 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
             }
             self->variables->emplace_back(name, value);
         })
-        .addFunction("rangeOf", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("rangeOf", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const int output = outputArg(state, *self, 2);
             const noise::Interval range = self->compiled->rangeOf(output);
             lua_pushnumber(state, range.min);
             lua_pushnumber(state, range.max);
             return 2;
         })
-        .addFunction("sample", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sample", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const uint32_t seed = lua_isnoneornil(state, 4) ? 1u : seedArg(state, 4);
             lua_pushnumber(state, samplePoint(state, *self, floatArg(state, 2), 0.0f, floatArg(state, 3), seed, outputArg(state, *self, 5)));
             return 1;
         })
-        .addFunction("sample3", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sample3", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const uint32_t seed = lua_isnoneornil(state, 5) ? 1u : seedArg(state, 5);
             lua_pushnumber(state, samplePoint(state, *self, floatArg(state, 2), floatArg(state, 3), floatArg(state, 4), seed, outputArg(state, *self, 6)));
             return 1;
         })
-        .addFunction("sampleGrid", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sampleGrid", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const GridRequest request = gridArgs(state, *self, 2);
             noise::EvalContext context;
             context.seed = request.seed;
@@ -435,7 +454,8 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
             if (!luabridge::push(state, grid)) lua_pushnil(state);
             return 1;
         })
-        .addFunction("sampleGridAsync", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sampleGridAsync", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             refuseGridOnly(state, *self);
             auto task = std::make_shared<TaskState>();
             task->graph = self->compiled;

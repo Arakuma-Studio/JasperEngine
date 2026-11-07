@@ -162,6 +162,9 @@ async def test_an_edit_undoes(ed: Editor):
     before = target.read_text()
     x, y = canvas[0] + 12, canvas[3] - 12
     await ui.click(ui.at([x, y, x, y]), button="3")
+    await wait_probe(ed, ui, "noisegraph.search")
+    # the list is longer than the popup: the filter field has the focus, and a name brings the row into view
+    await ui.type("simplex")
     item = await wait_probe(ed, ui, "noisegraph.search.simplex")
     await ui.click(mid(ui, item[1]))
     await ui.frames(6)
@@ -202,7 +205,14 @@ async def test_closed_costs_nothing(ed: Editor):
     opened = await ed.call("get_memory_stats", prefix="Texture", residency="Gpu")
     tab = await ui.find(WINDOW)
     ed.check(tab is not None, "the window's tab")
-    await ui.click(ui.centre(tab.get("rect", tab)), button="2")     # a middle click closes a tab
+    tab_rect = tab.get("rect", tab)
+    # its tab's close button, as a person closes it (test_undo_ui.py's dock_close_button finds them the same way)
+    buttons = [i["rect"] for i in (await ed.call("find_ui_item", label="#CLOSE"))["items"] if i.get("visible", True)]
+    on_tab = [b for b in buttons
+              if tab_rect["y"] <= b["y"] + b["height"] / 2 <= tab_rect["y"] + tab_rect["height"]
+              and tab_rect["x"] <= b["x"] + b["width"] / 2 <= tab_rect["x"] + tab_rect["width"] + b["width"]]
+    ed.check(on_tab, f"a close button on the {WINDOW} tab {tab_rect}: {buttons}")
+    await ui.click(ui.centre(on_tab[0]))
     closed_items = None
     for _ in range(60):
         await ui.frames(2)
