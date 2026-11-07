@@ -46,8 +46,9 @@ async def export(ed: Editor, name: str):
 async def test_only_runtime_use_ships_graphs(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real player (the run builds its prebuilt runtime once)")
-    (ed.project / "assets" / "graphs").mkdir(parents=True, exist_ok=True)
-    shutil.copy(REPO / "editor" / "resources" / "noisegraphs" / "plains.noisegraph", ed.project / "assets" / GRAPH)
+    # a created project's assets are its root, where a game reads "graphs/..." from
+    (ed.project / "graphs").mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "editor" / "resources" / "noisegraphs" / "plains.noisegraph", ed.project / GRAPH)
     await ed.call("sync_files")
     await ed.call("create_entity", name="Holder", type="empty")
     saved = await ed.call("save_project", untitled_scene_dir="scenes")
@@ -62,7 +63,7 @@ async def test_only_runtime_use_ships_graphs(ed: Editor):
     # Used at run time: every graph ships, and the player evaluates it
     await ed.call("create_script", kind="lua", name="Sampler", content=SCRIPT, entity="Holder")
     await ed.call("save_project")
-    expected = (await ed.call("preview_noise_graph", path="assets/" + GRAPH, size=64, seed=7, images="none"))["outputs"]["height"]
+    expected = (await ed.call("preview_noise_graph", path=GRAPH, size=64, seed=7, images="none"))["outputs"]["height"]
     used, job = await export(ed, "export-used")
     ed.check("noise" in job["result"]["modules"], f"a Lua NoiseGraph user needs the module: {job['result'].get('module_reasons')}")
     ed.check(list(used.rglob("Plains.noisegraph")), "the graph a script loads ships")

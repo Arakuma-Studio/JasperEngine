@@ -45,7 +45,7 @@ return self
 
 async def test_noise_lua_in_play(ed: Editor):
     root = Path(ed.project)
-    graphs = root / "assets" / "graphs"   # what a game reads "graphs/..." from
+    graphs = root / "graphs"   # a created project's assets are its root: a game reads "graphs/..." from there
     graphs.mkdir(parents=True, exist_ok=True)
     repo = Path(__file__).resolve().parents[3] / "editor" / "resources" / "noisegraphs"
     for name, preset in (("Plains", "plains"), ("Alpine", "alpine"), ("Mountains", "mountains")):

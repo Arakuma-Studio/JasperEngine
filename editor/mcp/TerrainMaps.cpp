@@ -196,6 +196,29 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
     return result;
 }
 
+namespace {
+
+// The new map's pixels in the texture pool under its path, so whatever binds the path finds them at once:
+// a load from the file would still be running when a write right after it (T2's generation) asks the store
+// whether the map exists, and the store would answer no
+void seedTerrainMapPool(const std::string& relativePath, int resolution, int channels, ColorFormat format, const std::vector<unsigned char>& pixels) {
+    unsigned char* raw = static_cast<unsigned char*>(std::malloc(pixels.size()));
+    if (!raw) return;
+    std::memcpy(raw, pixels.data(), pixels.size());
+    TextureData seed(resolution, resolution, static_cast<unsigned int>(pixels.size()), format, channels, raw);
+    seed.setDataOwned(false);
+    std::array<TextureData, 6> faces;
+    faces[0] = seed;
+    auto entry = TextureDataPool::get(relativePath, faces);
+    if (entry && entry->at(0).getData() == raw) {
+        entry->at(0).setDataOwned(true);
+    } else {
+        std::free(raw);
+    }
+}
+
+}
+
 TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
                                                           uint32_t sceneId,
                                                           Entity entity,
@@ -249,6 +272,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
 
     fs::path rel = fs::relative(result.fullPath, project->getAssetsPath(), ec);
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
+    seedTerrainMapPool(result.relativePath, resolution, 4, ColorFormat::RGBA, pixels);
     result.success = true;
     return result;
 }
@@ -275,6 +299,7 @@ bool TerrainMaps::createDensitymap(Project* project, uint32_t sceneId, Entity en
         error = "Could not write the density map " + relativePath + ".";
         return false;
     }
+    seedTerrainMapPool(relativePath, resolution, 1, ColorFormat::RED, pixels);
     return true;
 }
 

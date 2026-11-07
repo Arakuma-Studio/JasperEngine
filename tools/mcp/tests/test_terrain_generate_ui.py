@@ -26,6 +26,11 @@ SIZE = 200
 MAX_HEIGHT = 100
 
 
+
+def mid(ui: Ui, rect) -> tuple[int, int]:
+    """the screen centre of a UI probe rect: the probe gives [x0, y0, x1, y1], Ui.centre takes [x, y, width, height]"""
+    return ui.centre([rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]])
+
 async def save_shot(ed: Editor, name: str) -> None:
     """the editor's whole window, into $JE_EVIDENCE_DIR when set (else the scratch directory)"""
     relative = f"shots/{name}"
@@ -75,7 +80,7 @@ async def open_section(ed: Editor, ui: Ui) -> None:
             continue
         if "terrain.generate.seed" not in ed.ui_items():
             await ed.call("focus_window", window="terrain")
-            await ui.click(ui.centre(ed.ui_items()["terrain.generate"]))
+            await ui.click(mid(ui, ed.ui_items()["terrain.generate"]))
     ed.check("terrain.generate.preview" in ed.ui_items(), f"the section opens: {sorted(k for k in ed.ui_items() if 'terrain' in k)}")
 
 
@@ -99,7 +104,7 @@ async def test_preview_does_not_write(ed: Editor):
     await open_section(ed, ui)
     files = map_files(ed)
     heights = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
-    await ui.click(ui.centre(ed.ui_items()["terrain.generate.preview"]))
+    await ui.click(mid(ui, ed.ui_items()["terrain.generate.preview"]))
     status = await wait_status(ed, ui)
     ed.check(status.startswith("Preview"), status)
     await ui.frames(10)
@@ -116,7 +121,7 @@ async def test_apply_is_one_undo_step(ed: Editor):
     sid, terrain = await scene_with_terrain(ed, "Apply")
     await open_section(ed, ui)
     before = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
-    await ui.click(ui.centre(ed.ui_items()["terrain.generate.apply"]))
+    await ui.click(mid(ui, ed.ui_items()["terrain.generate.apply"]))
     status = await wait_status(ed, ui)
     ed.check(status.startswith("Generate Terrain ("), status)
     applied = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
@@ -133,10 +138,10 @@ async def test_cancel_writes_nothing(ed: Editor):
     await open_section(ed, ui)
     files = map_files(ed)
     before = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
-    await ui.click(ui.centre(ed.ui_items()["terrain.generate.apply"]))
+    await ui.click(mid(ui, ed.ui_items()["terrain.generate.apply"]))
     cancel = await ed.ui_rect("terrain.generate.cancel", timeout=30.0)
     ed.check(cancel, "Cancel shows while it runs")
-    await ui.click(ui.centre(cancel))
+    await ui.click(mid(ui, cancel))
     status = await wait_status(ed, ui)
     ed.check(status.startswith("Cancelled"), status)
     ed.check_eq(map_files(ed), files, "no map file changed")
@@ -150,12 +155,12 @@ async def test_settings_persist_across_a_reload(ed: Editor):
     await scene_with_terrain(ed, "Persist")
     await open_section(ed, ui)
     # Pick another preset and set a seed through the fields
-    await ui.click(ui.centre(ed.ui_items()["terrain.generate.graph"]))
+    await ui.click(mid(ui, ed.ui_items()["terrain.generate.graph"]))
     item = await ed.ui_rect("terrain.generate.preset.plains", timeout=20.0)
     ed.check(item, "the presets are listed")
-    await ui.click(ui.centre(item))
+    await ui.click(mid(ui, item))
     seed = ed.ui_items()["terrain.generate.seed"]
-    await ui.double_click(ui.centre(seed))
+    await ui.double_click(mid(ui, seed))
     await ui.key("ctrl+a")
     await ui.type("4242")
     await ui.key("Return")

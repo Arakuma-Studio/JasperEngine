@@ -38,6 +38,11 @@ SIMPLE = {
 }
 
 
+
+def mid(ui: Ui, rect) -> tuple[int, int]:
+    """the screen centre of a UI probe rect: the probe gives [x0, y0, x1, y1], Ui.centre takes [x, y, width, height]"""
+    return ui.centre([rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]])
+
 async def save_shot(ed: Editor, name: str) -> None:
     """the editor's whole window, into $JE_EVIDENCE_DIR when set (else the scratch directory)"""
     relative = f"shots/{name}"
@@ -71,9 +76,12 @@ async def wait_probe(ed: Editor, ui: Ui, name: str, frames: int = 120, prefix: b
 async def reveal_in_project_window(ed: Editor, ref: str) -> None:
     """the Project window at ref (a folder, or a file's folder with it pinged), through a bookmark's navigate,
     which needs no scrolling or folder clicks"""
+    if not Path(ref).suffix:
+        (ed.project / ref).mkdir(parents=True, exist_ok=True)
     await ed.call("sync_files")
-    added = await ed.call("edit_bookmarks", action="add", ref=ref)
-    listed = added.get("bookmarks") or (await ed.call("edit_bookmarks", action="list"))["bookmarks"]
+    listed = (await ed.call("edit_bookmarks", action="list"))["bookmarks"]
+    if not any(str(b.get("path", "")).rstrip("/").endswith(ref.rstrip("/")) for b in listed):
+        listed = (await ed.call("edit_bookmarks", action="add", ref=ref))["bookmarks"]
     index = next(b["index"] for b in listed if str(b.get("path", "")).rstrip("/").endswith(ref.rstrip("/")))
     await ed.call("focus_window", window="project")
     await ed.call("edit_bookmarks", action="navigate", index=index)
@@ -83,7 +91,7 @@ async def open_in_project_window(ed: Editor, ui: Ui, name: str):
     """double-clicks a file of the Project window, by its probe rect"""
     await reveal_in_project_window(ed, "assets/" + str(Path(GRAPH).parent / name))
     _, rect = await wait_probe(ed, ui, "project.file." + name)
-    await ui.double_click(ui.centre(rect))
+    await ui.double_click(mid(ui, rect))
 
 
 async def test_opens_from_the_catalog(ed: Editor):
@@ -115,11 +123,11 @@ async def test_create_from_the_project_window_has_a_guid(ed: Editor):
 
     # the menu itself
     create = await wait_probe(ed, ui, "project.create")
-    await ui.click(ui.centre(create[1]))
+    await ui.click(mid(ui, create[1]))
     menu = await wait_probe(ed, ui, "project.create.noisegraph")
-    await ui.move(ui.centre(menu[1]))
+    await ui.move(mid(ui, menu[1]))
     item = await wait_probe(ed, ui, "project.create.noisegraph.mountains")
-    await ui.click(ui.centre(item[1]))
+    await ui.click(mid(ui, item[1]))
     await ui.frames(6)
     await ui.key("Escape")
     made = list(ed.project.rglob("Mountains*.noisegraph"))
@@ -155,7 +163,7 @@ async def test_an_edit_undoes(ed: Editor):
     x, y = canvas[0] + 12, canvas[3] - 12
     await ui.click(ui.at([x, y, x, y]), button="3")
     item = await wait_probe(ed, ui, "noisegraph.search.simplex")
-    await ui.click(ui.centre(item[1]))
+    await ui.click(mid(ui, item[1]))
     await ui.frames(6)
     after = json.loads(target.read_text())
     ed.check(any(n["type"] == "simplex" for n in after["nodes"]), "the node was added")
