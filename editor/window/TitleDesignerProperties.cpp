@@ -16,6 +16,7 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitlePages.h"
 #include "titleart/designer/TitleSearchTerms.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -464,24 +465,30 @@ void TitleDesignerWindow::drawExposeDialog() {
         ImGui::OpenPopup("Expose as Parameter###exposedialog");
         exposeOpen = false;
     }
-    if (!ImGui::BeginPopupModal("Expose as Parameter###exposedialog", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
-    ImGui::Text("Expose %s as a parameter instances can override", exposeLabel.c_str());
+    if (!EditorModal::begin("Expose as Parameter###exposedialog", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    const std::string question = "Expose " + exposeLabel + " as a parameter instances can override";
+    EditorModal::message(question);
+    ImGui::TextUnformatted(question.c_str());
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "%s", exposeName.c_str());
-    if (ImGui::InputText("Name", buffer, sizeof(buffer))) exposeName = buffer;
+    if (EditorModal::inputText("Name", "name", buffer, sizeof(buffer))) exposeName = buffer;
     const ta::Json* value = fieldValue(doc.committed(), exposeTarget);
     std::string type = "number";
     if (value && value->is_string()) type = exposeTarget.path == "text" ? "text" : value->get<std::string>().rfind('#', 0) == 0 ? "color" : "text";
     else if (value && value->is_boolean()) type = "bool";
     else if (value && value->is_object()) type = exposeTarget.path == "font" ? "font" : "image";
     ImGui::TextDisabled("Type: %s \xC2\xB7 path %s", type.c_str(), exposeTarget.path.c_str());
-    if (ImGui::Button("Expose") && !exposeName.empty()) {
+    if (exposeName.empty()) EditorModal::error("The parameter needs a name");
+    ImGui::BeginDisabled(exposeName.empty());
+    const bool expose = EditorModal::button("Expose", "ok");
+    ImGui::EndDisabled();
+    if (expose && !exposeName.empty()) {
         ta::Json op = {{"op", "expose"}, {"name", exposeName}, {"type", type},
                    {"targets", ta::Json::array({ta::Json{{"layer", exposeTarget.layer.empty() ? std::string() : "id:" + exposeTarget.layer}, {"field", exposeTarget.path}}})}};
         commitNamed(ta::Json::array({op}), "Expose Parameter " + exposeName);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }

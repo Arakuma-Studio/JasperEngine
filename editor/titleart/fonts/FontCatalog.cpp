@@ -11,6 +11,7 @@
 #include "htmlui/HttpClient.h"
 #include "htmlui/RemoteImporter.h"
 #include "htmlui/StylesheetImporter.h"
+#include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "util/FileUtils.h"
@@ -241,23 +242,9 @@ namespace jasperengine::editor::titlefonts {
             return true;
         }
 
+        // the catalog cache and fonts copied into the project: atomic, a failed write keeps the old file
         bool writeFileAtomic(const fs::path& path, const std::string& content) {
-            std::error_code ec;
-            fs::create_directories(path.parent_path(), ec);
-            fs::path temporary = path;
-            temporary += ".part";
-            {
-                std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-                if (!out) return false;
-                out.write(content.data(), (std::streamsize)content.size());
-                if (!out) return false;
-            }
-            fs::rename(temporary, path, ec);
-            if (ec) {
-                fs::remove(temporary, ec);
-                return false;
-            }
-            return true;
+            return io::writeFileAtomic(path, content).ok();
         }
 
         int64_t systemNow() {

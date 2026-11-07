@@ -26,6 +26,7 @@
 #include "titleart/designer/TitleCanvasView.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleTextEdit.h"
+#include "window/EditorModal.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "window/ProjectWindow.h"
 #include "window/TitleDesignerWindow.h"
@@ -55,6 +56,7 @@ namespace jasperengine::editor {
         static void drawFrame(W& w) {
             ImGui::NewFrame();
             w.show();
+            EditorModal::endFrame();
             ImGui::EndFrame();
         }
         static bool hasCanvas(W& w) { return w.canvas != nullptr; }
@@ -86,6 +88,7 @@ namespace jasperengine::editor {
         static size_t checksRun(W& w) { return w.checksRun; }
         static void setClock(W& w, std::function<double()> clock) { w.clockOverride = std::move(clock); }
         static TitleDesignerSettings& settings(W& w) { return w.settings; }
+        static void exposeField(W& w, const FieldRef& target, const std::string& label) { w.exposeField(target, label); }
     };
 
 }
@@ -350,6 +353,36 @@ TEST(TitleDesignerWindowDeathTest, LibraryPreviewEqualsApply) {
         EXPECT_EQ(history->top()->name(), "Apply Look Red Face");
         EXPECT_EQ(readAll(file), previewed) << "the committed document is the previewed one";
         setLibraryProvider(nullptr);
+    });
+}
+
+// R21, R43: the window's dialogs are EditorModals, so an agent sees and answers Expose as Parameter as a
+// person does (editor_status, respond_dialog). Red control: the raw BeginPopupModal it had is never
+// reported (topModal false).
+TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
+    IN_EDITOR("expose", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "expose");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const std::string layer = titleLayer(*window);
+        ASSERT_FALSE(layer.empty());
+        Access::exposeField(*window, FieldRef{layer, "text"}, "Text");
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        EditorDialogInfo info;
+        ASSERT_TRUE(EditorModal::topModal(info));
+        EXPECT_NE(info.title.find("Expose as Parameter"), std::string::npos) << info.title;
+        EXPECT_NE(info.message.find("Text"), std::string::npos) << info.message;
+        ASSERT_EQ(info.fields.size(), 1u);
+        EXPECT_EQ(info.fields[0].name, "name");
+        EXPECT_EQ(info.fields[0].value.text, "text") << "the label is the suggested name";
+        std::string error;
+        ASSERT_TRUE(EditorModal::answer("ok", {{"name", EditorDialogValue::ofText("headline")}}, error)) << error;
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        EXPECT_FALSE(EditorModal::topModal(info)) << "Expose closes it";
+        const ta::Json& exposed = window->designer().committed().root.value("exposed", ta::Json::array());
+        ASSERT_EQ(exposed.size(), 1u);
+        EXPECT_EQ(exposed[0].value("name", std::string()), "headline");
+        EXPECT_EQ(w.p->getProjectCommandHistory()->top()->name(), "Expose Parameter headline");
     });
 }
 

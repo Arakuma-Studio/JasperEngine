@@ -9,8 +9,12 @@
 #include "command/CommandHistory.h"
 #include "command/UndoTimeline.h"
 #include "external/IconsFontAwesome6.h"
+#include "io/AtomicFile.h"
 #include "render/SceneRender2D.h"
+#include "render/SystemRender.h"
+#include "texsynth/SynthImage.h"
 #include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/TitleArtSettings.h"
 #include "titleart/TitlePreviewQueue.h"
@@ -24,16 +28,11 @@
 #include "titleart/fonts/FontCatalog.h"
 #include "titleart/fonts/FontPreviewRaster.h"
 #include "util/FileUtils.h"
-#include "util/SafeWrite.h"
-#include "texsynth/SynthImage.h"
-#include <fstream>
 #include "util/ImePreedit.h"
+#include "util/SafeWrite.h"
 #include "util/UIProbe.h"
 #include "window/DeviceProfiles.h"
 #include "window/InspectorWindowTitleArt.h"
-
-#include "titleart/TitleArtIO.h"
-#include "render/SystemRender.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -461,10 +460,10 @@ bool TitleDesignerWindow::snapshotScene(std::string* error) {
                                      image.data = snapshotRgba;
                                      std::vector<uint8_t> png;
                                      if (texsynth::encodePng(image, png)) {
-                                         std::error_code ec;
                                          safewrite::EditorInternal token(cached.parent_path());
-                                         FileUtils::createDirectories(cached.parent_path(), ec);
-                                         std::ofstream(cached, std::ios::binary).write((const char*)png.data(), (std::streamsize)png.size());
+                                         io::AtomicWriteOptions options;
+                                         options.durability = io::Durability::Cache;
+                                         io::writeFileAtomic(cached, std::string_view((const char*)png.data(), png.size()), options);
                                      }
                                  });
     BackdropChoice b = view().backdrop;

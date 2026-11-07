@@ -91,6 +91,8 @@ SITES = {
     ("window/vcs/VcsUi.cpp", "popupId"): "not driven: needs a repository with a conflict; the vcs tools answer for agents",
     ("window/dialog/TextureSlicerToolDialog.cpp", "popupTitle"): "test_texture_slicer",
     ("window/dialog/ProjectSettingsWindow.cpp", "Project Settings##ProjectSettingsModal"): "test_project_settings_merges_edits",
+    ("window/TitleDesignerProperties.cpp", "Expose as Parameter###exposedialog"): "not driven: a Title Designer row's context menu; edit_title's expose op does the same for agents (TitleDesignerWindowDeathTest.ExposeDialogIsAnEditorModal answers it)",
+    ("window/TitleDesignerLibrary.cpp", "Replace the whole title?###replacetitle"): "not driven: a Library template applied to a document with content needs S84's provider; edit_title replaces a title for agents",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -172,7 +174,7 @@ async def test_sites_table_is_complete(ed: Editor):
         listed[rel] = listed.get(rel, 0) + 1
     listed["window/InspectorWindow.cpp"] = INSPECTOR_BOXES
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
-    ed.check_eq(sum(found.values()), 73, "the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt")
+    ed.check_eq(sum(found.values()), 75, "the spec's 71 sites, S36's Placeholder Sound, the Model Import prompt and S82's two")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

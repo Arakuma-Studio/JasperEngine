@@ -14,6 +14,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/designer/TitleSearchFold.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 
@@ -372,9 +373,10 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     if (pendingTemplate.size()) {
         ImGui::OpenPopup("Replace the whole title?###replacetitle");
     }
-    if (ImGui::BeginPopupModal("Replace the whole title?###replacetitle", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Replace the whole title?###replacetitle", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("Replace the whole title? Undo brings it back.");
         ImGui::TextUnformatted("Replace the whole title? Undo brings it back.");
-        if (ImGui::Button("Replace")) {
+        if (EditorModal::button("Replace", "yes")) {
             for (const LibraryItem& item : items) {
                 if (item.id == pendingTemplate) {
                     applyLibraryItem(LibraryTab::Templates, item, false);
@@ -385,7 +387,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (EditorModal::button("Cancel", "cancel")) {
             pendingTemplate.clear();
             ImGui::CloseCurrentPopup();
         }
