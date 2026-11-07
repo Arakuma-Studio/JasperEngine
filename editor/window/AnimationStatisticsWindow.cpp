@@ -166,6 +166,8 @@ void AnimationStatisticsWindow::show() {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
     }
+    // nine columns: room for them all the first time it opens (a narrow window clips the right ones)
+    ImGui::SetNextWindowSize(ImVec2(std::min(Theme::dpi(980.0f), ImGui::GetMainViewport()->WorkSize.x * 0.95f), Theme::dpi(440.0f)), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(WINDOW_NAME, &windowOpen)) {
         ImGui::End();
         return;
