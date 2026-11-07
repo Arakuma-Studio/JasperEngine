@@ -298,3 +298,9 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
   hold one and `.anim` must stay byte-stable through `toData()`. `Track::trailingEase` keeps it. R3's rule itself holds: a
   track with only that ease has `easings == nullptr`.
 - **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
+- **R53, `root_motion` on an `.anim` too:** `edit_animation`'s `root_motion` argument, added for model clips, also sets an
+  `.anim`'s `root_motion` block (one project undo step). One argument means the same on both clip kinds; refusing it on an
+  `.anim` would have named no fix an agent could take.
+- **R31, `Add to Animator...`:** the states go to the first layer of the controller picked from the project's list, or of a
+  new one (`New Animator Controller...`, created with its states in the same undo step). Each state plays the model clip and
+  inherits its Wrap Mode.

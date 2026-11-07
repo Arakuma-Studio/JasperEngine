@@ -103,7 +103,9 @@ With **Apply Root Motion** the clips' movement of their root bone (the clip's `r
 else the Animator's **Root Motion Bone**, the humanoid hips, or the shallowest moving bone) moves
 the GameObject instead of the bone: through its Character Controller when it has one, else its
 Transform. The pose keeps the vertical motion (a jump stays in the pose) unless the clip bakes it.
-A script setting `onAnimatorMove` takes the motion over.
+A script setting `onAnimatorMove` takes the motion over. A `.anim` keeps its Root Motion settings
+in the file; a model's clips keep theirs in the model's Inspector Animation tab (saved as
+`<model>.clips`, see `docs/animation-clips.md`), where each clip's Wrap Mode is set too.
 
 ## IK
 

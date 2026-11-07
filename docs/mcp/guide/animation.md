@@ -419,7 +419,7 @@ player beside an Animator hands over to it, so scripts written for upstream keep
 
 | scene mode refuses | why |
 |---|---|
-| `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create` | clip-file settings: pass `clip` |
+| `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create`, `root_motion` | clip-file settings: pass `clip` |
 | `tracks[].path` | clip binding: pass `clip`; scene tracks use `target` |
 | `audio[].source`, `audio[].stop`, `audio[].follow_speed` | clip cue keys: an audio action lasts its frame (`duration`) |
 
@@ -427,8 +427,9 @@ Clip mode arguments: `clip`, `create` (`{}` a new file; `{from: <entity Animatio
 its keyframe tracks into the file and gives the Animation's target, or `root`, an Animation
 Player playing it, and `remove_tracks: true` also removes the converted tracks from the
 Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
-file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
-`root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
+file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root_motion`
+(`{bone, bake_rotation, bake_position_y, bake_position_xz}`, the members given change; `bone` `""` is
+the Animator's choice), `root`, `scene` (of `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 
@@ -452,7 +453,11 @@ changed it (else the file stays and the console says so).
   (`assets/models/hero.gltf#Walk`; `#Animation <i>` for unnamed ones (`#<i>` is accepted too),
   `"Walk 2"` for a duplicate name). Reference them in `clips` like files; read them with
   `get_animation {clip}` (`get_asset_info` on the model lists the animations, each with its
-  `keys` and `runtime_bytes`). To edit one,
+  `keys`, `runtime_bytes`, `wrap` and `root_motion`).
+- A model clip's `wrap` and `root_motion` are its import settings: `edit_animation {clip:
+  "assets/models/hero.gltf#Walk", wrap: "loop"}` writes them to `hero.gltf.clips` beside the model
+  (one project undo step); Play and an exported game read that file, so a model clip loops without
+  extracting it. Any other argument on a model clip is refused. To edit its keys or events,
   extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from:
   "assets/models/hero.gltf#Walk"}, root: "Hero"}`. With `root` whose Animation Player lists the
   model clip, those entries switch to the new file (state names kept) in the same call, one
@@ -570,7 +575,8 @@ them; `get_animation` lists them as `audio[]` with their frame `index`. One scen
 - Relative scale keys of `[0, 0, 0]` for "unchanged": relative scale multiplies, use `[1, 1, 1]`.
 - Editing a key read from a result: change `euler` (it wins over `quat`), or send only one.
 - Expecting `once` clips to snap back: they hold the last pose (use `stop`, or `loop`).
-- Editing a model clip: it is read-only; extract it first.
+- Editing a model clip's keys or events: it is read-only; extract it first (`wrap` and
+  `root_motion` are its settings, no extract needed).
 - Events on a script of a child: handlers run on the scripts of the player's own GameObject.
 - `onEvent = function(name, args)`: the callback gets one `event` (`event.functionName`,
   `event.args`).
