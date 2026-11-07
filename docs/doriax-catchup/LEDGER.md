@@ -95,7 +95,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
 
@@ -191,3 +191,9 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
   rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
   red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.
+- 2026-11-07 00:xx: **code-editor-git merged** after an independent review (revert is its own undo step, editor-buffer
+  diffs match git byte for byte, renamed files diff from their old path, svn '@' paths, restored MCP warnings, core
+  budget kept at 99000 by trimming). Landing check on main + branch (box C): WERROR editor, gen_tool_docs and
+  tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
+  render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
+  water-reflections takes 1.4.
