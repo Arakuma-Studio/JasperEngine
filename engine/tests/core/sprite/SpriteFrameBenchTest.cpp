@@ -55,7 +55,7 @@ TEST(SpriteFrameBench, ThousandSpritesSwitchFramesWithoutAllocating) {
     Camera camera(&scene);
     camera.setType(CameraType::CAMERA_ORTHO);
     camera.activate();
-    MeshSystem* meshes = scene.getSystem<MeshSystem>();
+    std::shared_ptr<MeshSystem> meshes = scene.getSystem<MeshSystem>();
     ASSERT_NE(meshes, nullptr);
     std::vector<std::unique_ptr<Sprite>> sprites;
     for (int i = 0; i < 1000; i++) {
