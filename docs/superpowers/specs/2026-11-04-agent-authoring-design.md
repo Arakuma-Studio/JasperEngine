@@ -801,3 +801,25 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
     measured 6,744 bytes, 52 into the headroom. The intro's "Build scenes with tools, write code with your own
     file tools, verify by playing..." sentence went (The loop and Building scenes say it), and Building scenes
     and the pointer were shortened: 6,613 bytes, 79 under the line.
+
+## Follow-ups (2026-11-07)
+
+1. **An FBX detail layer drew 0 instances: a skinned mesh with a blend shape, not FBX and not headless.** The
+   test's `rigged_cube.fbx` has a two-bone skin and a blend shape. Its import loads fine (a static FBX layer draws),
+   but every foliage chunk asked for the Lit variant with skinning, morph targets and instancing, which needs 17
+   vertex inputs (`a_morphTarget7` at location 16; 16 is the limit of GL 3.3, GLES3/WebGL2 and the others). The
+   variant never compiled, so the chunk meshes never finished loading. A chunk builds no skeleton (`skipEntities`),
+   so its bones stay at the identity and a skinned mesh already drew at rest. `MeshSystem::loadGLTF` now loads a
+   copy a system places (`bakeSceneRoot` with `skipEntities`: foliage and spline chunks) without its skinning
+   attributes: the same image, two fewer inputs, no bone palette. Blend shapes keep their default weights.
+   `test_terrain_details.py::test_fbx_layer` checks that the layer draws again.
+2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
+   is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
+   always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version
+   `unknown`) to 4,955 (`doriax-base-7478-g17c19b941-dirty`). After: 4,373 to 4,399 bytes (4,401 with a
+   30-character version), so about 600 bytes of headroom. Wording was cut, not rules. The second CMake example line
+   went, the Source references paragraph became a link plus the formats line, and the `set_shortcut` sentence
+   moved into the list. The lines the eval cases pin stay: the sound tools and their group, `edit_sound_event`
+   for clips that vary, `set_shortcut` (tool group `editor_ux`), `inspect_models`/`check_render_budgets`, and
+   `jasperengine-editor call`. No template under `editor/resources/templates` embeds the file, so nothing was
+   regenerated.
