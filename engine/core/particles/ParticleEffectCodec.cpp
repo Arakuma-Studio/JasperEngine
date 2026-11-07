@@ -1043,11 +1043,16 @@ namespace {
             target.erase("linear");
         }
         // an Ease value (stored as its curve and preset): a patch of its preset, start or end makes
-        // the curve again, and a patch to another mode leaves the preset behind
-        if (target.contains("ease")){
-            if (!patch.contains("curve") && (patch.contains("ease") || patch.contains("constant") || patch.contains("constantMax")))
+        // the curve again; a patch to another mode, or of its curve alone, leaves Ease. A patch
+        // that makes a value Ease makes its curve too, whatever curve it had.
+        const bool toEase = (patch.contains("mode") && patch["mode"] == "ease") || (patch.contains("ease") && !patch["ease"].is_null());
+        if (toEase && !patch.contains("curve")){
+            target.erase("curve");
+            target.erase("curveMax");
+        }else if (target.contains("ease")){
+            if (!patch.contains("curve") && (patch.contains("constant") || patch.contains("constantMax")))
                 target.erase("curve");
-            if (patch.contains("mode") && !patch.contains("ease") && patch["mode"] != "ease")
+            if ((patch.contains("mode") && patch["mode"] != "ease") || patch.contains("curve"))
                 target.erase("ease");
         }
         for (auto it = patch.begin(); it != patch.end(); ++it){

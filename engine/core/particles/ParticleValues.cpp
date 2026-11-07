@@ -10,7 +10,10 @@
 #include "util/Color.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <memory>
+#include <mutex>
 
 using namespace jasperengine;
 using namespace jasperengine::particles;
@@ -30,15 +33,40 @@ float particles::remapDriver(float value, float lo, float hi, CurveWrap wrap){
     }
 }
 
-Curve MinMaxCurve::easeCurve(EaseType type, float start, float end){
-    Curve curve = Curve::fromEase(type);
-    const float span = end - start;
-    for (CurveKey& key : curve.keys){
-        key.value = start + span * key.value;
-        // a step (an infinite tangent) stays one whatever the span's sign
-        if (std::isfinite(key.inTangent)) key.inTangent *= span;
-        if (std::isfinite(key.outTangent)) key.outTangent *= span;
+namespace {
+
+    // a preset's curve over [0, 1], fitted once (Curve::fromEase fits it to a tolerance, far too
+    // slow for a value a script or a drag writes every frame)
+    const Curve& unitEase(EaseType type){
+        static std::mutex lock;
+        static std::array<std::unique_ptr<const Curve>, 64> curves;
+        const int value = static_cast<int>(type);
+        const size_t index = value >= 0 && value < (int)curves.size() ? (size_t)value : 0u;
+        std::lock_guard<std::mutex> guard(lock);
+        if (!curves[index])
+            curves[index] = std::make_unique<const Curve>(Curve::fromEase(index == (size_t)value ? type : static_cast<EaseType>(0)));
+        return *curves[index];
     }
+
+    // the unit curve from `start` to `end` (its keys reuse `out`'s storage)
+    void scaleEase(const Curve& unit, float start, float end, Curve& out){
+        out.keys.assign(unit.keys.begin(), unit.keys.end());
+        out.preWrapMode = unit.preWrapMode;
+        out.postWrapMode = unit.postWrapMode;
+        const float span = end - start;
+        for (CurveKey& key : out.keys){
+            key.value = start + span * key.value;
+            // a step (an infinite tangent) stays one whatever the span's sign
+            if (std::isfinite(key.inTangent)) key.inTangent *= span;
+            if (std::isfinite(key.outTangent)) key.outTangent *= span;
+        }
+    }
+
+}
+
+Curve MinMaxCurve::easeCurve(EaseType type, float start, float end){
+    Curve curve;
+    scaleEase(unitEase(type), start, end, curve);
     return curve;
 }
 
@@ -53,7 +81,7 @@ MinMaxCurve MinMaxCurve::fromEase(EaseType type, float start, float end){
 }
 
 void MinMaxCurve::rebuildEase(){
-    curve = easeCurve(ease, constant, constantMax);
+    scaleEase(unitEase(ease), constant, constantMax, curve);
 }
 
 bool MinMaxCurve::isZero() const{

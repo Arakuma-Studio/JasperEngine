@@ -1080,7 +1080,7 @@ namespace {
                     return ParticleModules::writeExposedMember(c, m, value.x);
                 float* target = nullptr;
                 if (m == "constant") target = &c.constant;
-                else if (m == "constantMax") target = &c.constantMax;
+                else if (m == "constantMax" || (m.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
                 else if (m == "multiplier" || (m.empty() && c.usesCurve())) target = &c.multiplier;
                 else if (m.empty()) target = &c.constant;
                 if (!target) return false;
@@ -1106,7 +1106,8 @@ namespace {
 bool ParticleModules::writeExposedMember(MinMaxCurve& c, const std::string& member, float value){
     float* target = nullptr;
     if (member == "constant") target = &c.constant;
-    else if (member == "constantMax") target = &c.constantMax;
+    // an Ease value without a member: the value it eases to (its multiplier stays as shown)
+    else if (member == "constantMax" || (member.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
     else if (member == "multiplier" || (member.empty() && c.usesCurve())) target = &c.multiplier;
     else if (member.empty()) target = &c.constant;
     if (!target) return false;

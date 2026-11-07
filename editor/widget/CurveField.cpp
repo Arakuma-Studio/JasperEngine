@@ -284,9 +284,12 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
             break;
         }
         case CurveMode::Ease: {
-            // start, end and the preset; each edit makes the curve again
+            // start, end and the preset (each edit makes the curve again), and a multiplier other
+            // than 1 (a patch's), which scales what the particles get
             const float spacing = ImGui::GetStyle().ItemSpacing.x;
-            const float third = std::max(4.0f, (avail - 2.0f * spacing) / 3.0f);
+            const bool scaled = value.multiplier != 1.0f;
+            const float multiplierWidth = scaled ? Theme::dpi(48.0f) + spacing : 0.0f;
+            const float third = std::max(4.0f, (avail - multiplierWidth - 2.0f * spacing) / 3.0f);
             ImGui::SetNextItemWidth(third);
             bool edited = ImGui::DragFloat("##start", &value.constant, 0.01f, 0.0f, 0.0f, "%.3f");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Start");
@@ -315,6 +318,11 @@ EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, co
                 ImGui::EndCombo();
             }
             if (edited) value.rebuildEase();
+            if (scaled) {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(48.0f));
+                inline_(ImGui::DragFloat("##multiplier", &value.multiplier, 0.01f, 0.0f, 0.0f, "x%.2f"));
+            }
             break;
         }
     }

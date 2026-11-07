@@ -442,8 +442,25 @@ void ParticleSubsystem::step(Entity entity, uint32_t ticks){
 }
 
 void ParticleSubsystem::sendTrigger(Entity entity, const std::string& name){
-    if (ParticleSystemState* state = getState(entity))
-        state->runtime.sendTrigger(nameHash(name));
+    ParticleSystemState* state = getState(entity);
+    if (!state)
+        return;
+    // a trigger that plays a stopped system plays it as play() does: a seedless effect draws a
+    // new seed, and the system counts as started
+    bool plays = false;
+    for (const EffectTrigger& trigger : state->effect->document.triggers)
+        plays = plays || (trigger.action == TriggerAction::Play && trigger.name == name);
+    ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
+    if (plays && state->runtime.state() == PlayState::Stopped && !state->runtime.isAlive() &&
+            particles.seed == 0 && state->effect->document.seed == 0){
+        state->seed = nextSeed();
+        state->runtime.reset(state->seed);
+    }
+    state->runtime.sendTrigger(nameHash(name));
+    if (state->runtime.state() != PlayState::Stopped){
+        state->started = true;
+        state->running = true;
+    }
 }
 
 bool ParticleSubsystem::isPlaying(Entity entity){
@@ -1067,8 +1084,10 @@ void ParticleSubsystem::update(double dt){
         task.maxTicks = maxTicks;
         state.culled = !visible;
         if (task.dt <= 0.0){
-            // paused by its culling: nothing to simulate this frame (R15: a culled emitter is nearly free)
+            // paused by its culling (or a time scale of 0): nothing to simulate this frame (R15: a
+            // culled emitter is nearly free); what a trigger asked to play plays now
             state.ticks = 0;
+            playSounds(state.runtime, transform->worldPosition);
             continue;
         }
         prepareInput(entity, particles, *transform, task.input);
@@ -1084,6 +1103,10 @@ void ParticleSubsystem::update(double dt){
     // world collisions query Jolt from the workers: never while it steps
     if (scene->getSystem<PhysicsSystem>()->isSteppingWorld3D()){
         Log::error("[Particles] the physics world is stepping: the particle simulation waits for the next frame");
+        for (size_t t = 0; t < tasks.size(); t++){
+            ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(taskEntities[t]);
+            playSounds(particles.state->runtime, scene->getComponent<Transform>(taskEntities[t]).worldPosition);
+        }
         return;
     }
 #endif

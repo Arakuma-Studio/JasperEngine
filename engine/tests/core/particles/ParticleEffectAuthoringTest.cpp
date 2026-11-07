@@ -8,6 +8,8 @@
 
 #include "ParticleTestUtil.h"
 
+#include "AllocationCounter.h"
+
 #include "Scene.h"
 #include "action/Ease.h"
 #include "component/Transform.h"
@@ -196,6 +198,65 @@ TEST(ParticleEase, AnEditOfItsPresetOrEndsMakesTheCurveAgain){
     EXPECT_NEAR(d.main.startSize.evaluate(1.0f, 0.0f), 5.0f, 1.0e-4f);
 }
 
+TEST(ParticleEase, APatchMakesACurveEaseWithItsOwnCurve){
+    // review I1: a value that was a curve, patched to Ease (as the guide writes it, or by its preset
+    // alone), takes the ease's curve, not the one it had; review M3: a patch of an Ease value's
+    // curve alone leaves Ease
+    auto patched = [](const char* patch){
+        ParticleEffectDocument d;
+        d.main.startSize = MinMaxCurve::fromCurve(Curve::linear(1.0f, 0.0f));
+        d.main.startSpeed = MinMaxCurve::fromEase(EaseType::QUAD_IN, 0.0f, 1.0f);
+        std::vector<Diagnostic> diagnostics;
+        EXPECT_TRUE(ParticleEffectCodec::applyMergePatch(d, nlohmann::ordered_json::parse(patch), diagnostics))
+            << ParticleEffectCodec::format(diagnostics);
+        return d;
+    };
+    ParticleEffectDocument d = patched(R"({"modules": {"main": {"startSize": {"mode": "ease", "ease": "quadOut", "constant": 0, "constantMax": 2}}}})");
+    EXPECT_EQ(d.main.startSize.mode, CurveMode::Ease);
+    EXPECT_EQ(d.main.startSize.curve, MinMaxCurve::easeCurve(EaseType::QUAD_OUT, 0.0f, 2.0f));
+    EXPECT_NEAR(d.main.startSize.evaluate(1.0f, 0.0f), 2.0f, 1.0e-4f);
+    d = patched(R"({"modules": {"main": {"startSize": {"ease": "sineIn"}}}})");
+    EXPECT_EQ(d.main.startSize.mode, CurveMode::Ease);
+    EXPECT_EQ(d.main.startSize.curve, MinMaxCurve::easeCurve(EaseType::SINE_IN, d.main.startSize.constant, d.main.startSize.constantMax));
+    d = patched(R"({"modules": {"main": {"startSpeed": {"curve": [[0, 0], [1, 5]]}}}})");
+    EXPECT_EQ(d.main.startSpeed.mode, CurveMode::Curve) << "a hand-made curve is no longer the ease";
+    EXPECT_NEAR(d.main.startSpeed.evaluate(1.0f, 0.0f), 5.0f, 1.0e-4f);
+}
+
+TEST(ParticleEase, WritingItsEndsDoesNotFitItAgain){
+    // review I2: a script or a drag writes an Ease value's end every frame; the preset's fit is made
+    // once, and the curve is only scaled, in the storage it has
+    ASSERT_TRUE(testsupport::countsAllocations());
+    MinMaxCurve value = MinMaxCurve::fromEase(EaseType::BOUNCE_IN_OUT, 0.0f, 1.0f);
+    ParticleEffectDocument d;
+    d.main.startSize = value;
+    d.exposed = {{"Size", "main.startSize.constantMax", ExposedType::Float}};
+    testsupport::ThreadAllocationCount allocations;
+    for (int frame = 0; frame < 30; frame++){
+        value.constantMax = 1.0f + 0.1f * (float)frame;
+        value.rebuildEase();
+        ASSERT_TRUE(ParticleModules::writeExposedMember(d.main.startSize, "constantMax", 2.0f + 0.1f * (float)frame));
+    }
+    EXPECT_EQ(allocations.count(), 0u);
+    EXPECT_EQ(value.curve, MinMaxCurve::easeCurve(EaseType::BOUNCE_IN_OUT, 0.0f, 3.9f));
+    EXPECT_NEAR(d.main.startSize.evaluate(1.0f, 0.0f), 4.9f, 1.0e-4f);
+}
+
+TEST(ParticleEase, AnExposedValueWithoutAMemberMovesItsEnd){
+    // review M2: the Inspector shows Start, End and the preset; a member-less exposed value is the
+    // end, not the multiplier it does not show
+    ParticleEffectDocument d;
+    d.main.startSize = MinMaxCurve::fromEase(EaseType::QUAD_OUT, 0.0f, 1.0f);
+    d.exposed = {{"Size", "main.startSize", ExposedType::Float}};
+    ASSERT_TRUE(ParticleModules::setExposed(d, "Size", Vector4(3.0f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_EQ(d.main.startSize.constantMax, 3.0f);
+    EXPECT_EQ(d.main.startSize.multiplier, 1.0f);
+    EXPECT_NEAR(d.main.startSize.evaluate(1.0f, 0.0f), 3.0f, 1.0e-4f);
+    Vector4 read;
+    ASSERT_TRUE(ParticleModules::getExposed(d, "Size", read));
+    EXPECT_EQ(read.x, 3.0f);
+}
+
 TEST(ParticleEase, EveryEffectOfTheRepositoryStillLoads){
     // AC6: the committed .particles files read as before (no error), and write back unchanged
     const std::filesystem::path root = std::filesystem::path(JASPER_TEST_REPO_DIR) / "tools";
@@ -221,8 +282,13 @@ TEST(ParticleEase, EveryEffectOfTheRepositoryStillLoads){
 TEST(ParticleTriggers, FireTheirSubEmittersWithNoLiveParticle){
     // AC8: a parent with no particle, stopped or playing, fires its Trigger children once at the emitter
     for (bool playing : {false, true}){
-        Sim sim(triggerParent());
-        std::shared_ptr<const CompiledEffect> child = stillChild();
+        // (the entry follows its parent: a child fired from no particle has none)
+        ParticleEffectDocument d = triggerParent();
+        d.subEmitters[0].followParent = true;
+        Sim sim(d);
+        CompileEnvironment env;
+        env.followsParent = true;
+        std::shared_ptr<const CompiledEffect> child = stillChild(env);
         sim.runtime.bindSubEmitters([child](const SubEmitterEntry&){ return child; });
         sim.runtime.reset(1);
         if (!playing) sim.runtime.stop(true);
@@ -238,6 +304,9 @@ TEST(ParticleTriggers, FireTheirSubEmittersWithNoLiveParticle){
         sim.runtime.sendTrigger(nameHash("other"));
         sim.ticks(1);
         EXPECT_EQ(sim.runtime.child(0)->count(), 5u);
+        // fired from no particle, a child has no parent to follow
+        ASSERT_TRUE(sim.runtime.child(0)->program()->has(ChParentId));
+        EXPECT_EQ(sim.runtime.child(0)->particleChannels().getU(ChParentId)[0], kNoParent);
     }
 }
 
@@ -295,6 +364,27 @@ TEST(ParticleTriggers, ActFromTheParticleSystem){
     EXPECT_GT(system.getParticleCount(), 0u);
     system.sendTrigger("freeze");
     EXPECT_TRUE(system.isPaused());
+}
+
+TEST(ParticleTriggers, APlayTriggerDrawsASeedAsPlayDoes){
+    // review M1: a seedless effect started again by its trigger gets a new seed each play, as
+    // ParticleSystem.play does (seed 0: "a new seed each play")
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "tickRate": 30, "maxParticles": 100,
+        "triggers": [{"name": "start"}],
+        "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 1}, {"type": "emission", "rateOverTime": 30}]})"));
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    ASSERT_NE(subsystem.getState(system.getEntity()), nullptr);
+    system.sendTrigger("start");
+    for (int i = 0; i < 5; i++) subsystem.update(1.0 / 30.0);
+    const uint32_t first = subsystem.getStats(system.getEntity()).seed;
+    system.stop(true);
+    system.sendTrigger("start");
+    for (int i = 0; i < 5; i++) subsystem.update(1.0 / 30.0);
+    EXPECT_NE(subsystem.getStats(system.getEntity()).seed, first);
+    EXPECT_GT(system.getParticleCount(), 0u);
 }
 
 // ---------------------------------------------------------------- R10: exposed parameters
@@ -517,6 +607,53 @@ TEST(ParticleFollowParent, RotationAndScaleTurnAndSpreadThem){
     EXPECT_NEAR(kid.z, 0.0f, 1.0e-4f);
 }
 
+TEST(ParticleFollowParent, ALocalChildFollowsAWorldParent){
+    // review M6: parent and child in different simulation spaces (the conversions of followStage)
+    ParticleEffectDocument d = followParent(Vector3(6.0f, 0.0f, 0.0f), false, false);
+    Sim parent(d);
+    parent.moveTo(5.0f, 0.0f, 0.0f);
+    CompileEnvironment env;
+    env.followsParent = true;
+    ParticleEffectDocument kid;
+    kid.tickRate = 30;
+    kid.simulationSpace = SimulationSpace::Local;
+    kid.main.startLifetime = MinMaxCurve(100.0f);
+    kid.main.startSpeed = MinMaxCurve(0.0f);
+    kid.emission.rateOverTime = MinMaxCurve(0.0f);
+    kid.shape.shape = ShapeType::Box;
+    kid.shape.scale = Vector3(0.0f, 0.0f, 0.0f);
+    kid.shape.position = Vector3(0.0f, 1.0f, 0.0f);
+    std::shared_ptr<const CompiledEffect> child = compileOrFail(kid, env);
+    parent.runtime.bindSubEmitters([child](const SubEmitterEntry&){ return child; });
+    parent.runtime.reset(1);
+    parent.runtime.play();
+    parent.ticks(31);
+    ASSERT_EQ(parent.count(), 1u);
+    ASSERT_EQ(parent.runtime.child(0)->count(), 1u);
+    const ParticleChannels& c = parent.runtime.child(0)->particleChannels();
+    // the child is in the emitter's space (at x = 5), its parent in the world's
+    EXPECT_NEAR(c.get(ChPosX)[0] + 5.0f, parent.ch(ChPosX), 1.0e-3f);
+    EXPECT_NEAR(c.get(ChPosY)[0], parent.ch(ChPosY) + 1.0f, 1.0e-3f);
+}
+
+TEST(ParticleFollowParent, AMeshParentTurnsThemByItsRotation){
+    // review M6: a parent with a 3D rotation (a mesh particle's quaternion) turning about Z
+    ParticleEffectDocument d = followParent(Vector3(0.0f, 0.0f, 0.0f), true, false);
+    d.renderer.renderMode = RenderMode::Mesh;
+    d.renderer.meshes = {MeshSource()};
+    d.rotationOverLifetime.present = true;
+    d.rotationOverLifetime.angularVelocity = MinMaxCurve(90.0f);
+    Follow f(d, d.subEmitters[0], Vector3(1.0f, 0.0f, 0.0f));
+    ASSERT_TRUE(f.parent.runtime.program()->has(ChQuatX));
+    f.parent.ticks(31);
+    ASSERT_EQ(f.kid().count(), 1u);
+    const Vector3 kid = f.kidAt();
+    // a quarter turn about Z, whichever way the quaternion turns
+    EXPECT_NEAR(kid.x, 0.0f, 0.02f);
+    EXPECT_NEAR(std::fabs(kid.y), 1.0f, 0.02f);
+    EXPECT_NEAR(kid.z, 0.0f, 0.02f);
+}
+
 TEST(ParticleFollowParent, IsStructureOfTheEntry){
     // the entry's Follow flags compile into the child's channels: changing one binds again
     ParticleEffectDocument d = followParent(Vector3(1.0f, 0.0f, 0.0f), false, false);
@@ -599,6 +736,34 @@ TEST(ParticleSoundEvents, TheSystemPlaysThem){
     EXPECT_TRUE(asked) << lines.size() << " voice lines";
 }
 
+TEST(ParticleSoundEvents, ATriggersSoundPlaysWhenTheSystemDoesNotTick){
+    // review M4: at a time scale of 0 (or culled) the system runs no tick, and the sound its trigger
+    // asked for plays all the same, not when it next ticks
+    std::vector<AudioVoiceLine> lines;
+    const AudioBackend backend = AudioSystem::getBackend();
+    AudioSystem::close();
+    AudioSystem::setBackend(AudioBackend::Null);
+    AudioSystem::setVoiceObserver([&lines](const AudioVoiceLine& line){ lines.push_back(line); });
+    {
+        Scene scene;
+        ParticleSystem system(&scene);
+        ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "tickRate": 30, "maxParticles": 10,
+            "triggers": [{"name": "ring", "action": "none", "soundEvent": "fx/missing-bell.soundevent"}],
+            "modules": [{"type": "main", "startLifetime": 1, "startSpeed": 0}, {"type": "emission", "rateOverTime": 5}]})"));
+        ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+        subsystem.update(1.0 / 30.0);
+        system.sendTrigger("ring");
+        subsystem.update(0.0);
+    }
+    AudioSystem::setVoiceObserver(nullptr);
+    AudioSystem::close();
+    AudioSystem::setBackend(backend);
+    bool asked = false;
+    for (const AudioVoiceLine& line : lines)
+        asked = asked || (std::string(line.cause) == "particles" && std::string(line.reason) == "missing_event");
+    EXPECT_TRUE(asked) << lines.size() << " voice lines";
+}
+
 // ---------------------------------------------------------------- R8: Ring
 
 TEST(ParticleRing, ItsMeshCoversTheArcBetweenTheRadii){
@@ -614,6 +779,21 @@ TEST(ParticleRing, ItsMeshCoversTheArcBetweenTheRadii){
         EXPECT_GE(p[1], -1.0e-5f) << "the upper half";
         EXPECT_EQ(p[5], 1.0f) << "facing +Z";
     }
+    // U along the arc, V from the outer edge to the inner
+    for (uint32_t v = 0; v < ring.vertexCount(); v++){
+        const float* p = &ring.vertices[(size_t)v * ParticleMeshData::kFloatsPerVertex];
+        EXPECT_NEAR(p[6], (float)(v / 2) / 8.0f, 1.0e-6f);
+        EXPECT_EQ(p[7], (v % 2) ? 1.0f : 0.0f);
+    }
+    // a whole ring closes on a seam: its last pair where its first is, at U 1
+    ParticleMeshData full;
+    ParticleMeshes::ring(1.0f, 0.5f, 360.0f, 12, full);
+    ASSERT_EQ(full.vertexCount(), 26u);
+    const float* first = &full.vertices[0];
+    const float* last = &full.vertices[(size_t)24 * ParticleMeshData::kFloatsPerVertex];
+    EXPECT_NEAR(last[0], first[0], 1.0e-5f);
+    EXPECT_NEAR(last[1], first[1], 1.0e-5f);
+    EXPECT_EQ(last[6], 1.0f);
     // a Ring draws as a mesh particle: one mesh, 3D rotations, no new channel otherwise
     ParticleEffectDocument d = singleParticle(Vector3(0.0f, 0.0f, 0.0f));
     d.renderer.renderMode = RenderMode::Ring;
