@@ -79,6 +79,7 @@ void VoxelSystem::startCollisionJob(VolumeState& state, const Int3& key, bool pa
     job->owner = state.owner;
     job->collisionKey = key;
     job->partOfSwap = partOfSwap;
+    job->collisionVersion = block.wantedVersion;
     job->view = state.store->readView(BlockKey{0, key.x, key.y, key.z}, 0);
     job->coverage = state.coverage;
     Job* raw = job.get();
@@ -103,11 +104,12 @@ void VoxelSystem::onCollisionJobDone(VolumeState& state, Job& job){
     VoxelCollisionBlock& block = found->second;
     block.building = false;
     // An edit landed while this ran: its result is stale, the swap's own job follows
-    if (block.version != block.wantedVersion){
+    if (job.collisionVersion != block.wantedVersion){
         startCollisionJob(state, job.collisionKey, true);
         return;
     }
     block.built = true;
+    block.version = job.collisionVersion;
     block.pendingShape = job.shape;
     block.pendingEmpty = job.empty;
     if (!job.partOfSwap && !block.inWorld && !job.empty) state.readyBodies.push_back(key);
@@ -128,7 +130,6 @@ void VoxelSystem::onCollisionEdited(VolumeState& state, const IntBox& changed, u
         const int x = std::get<0>(item.first), y = std::get<1>(item.first), z = std::get<2>(item.first);
         if (x < x0 || x > x1 || y < y0 || y > y1 || z < z0 || z > z1) continue;
         item.second.wantedVersion = state.collisionEdits;
-        item.second.version = state.collisionEdits;
         swap.blocks.push_back(Int3{x, y, z});
         if (!item.second.building) startCollisionJob(state, Int3{x, y, z}, true);
     }
@@ -148,7 +149,7 @@ void VoxelSystem::applyCollisionSwaps(VolumeState& state){
         bool ready = true;
         for (const Int3& key : swap.blocks){
             const auto found = state.collision.find(BlockTuple(key.x, key.y, key.z));
-            if (found != state.collision.end() && (!found->second.built || found->second.adding)) ready = false;
+            if (found != state.collision.end() && (!found->second.built || found->second.adding || found->second.version != found->second.wantedVersion)) ready = false;
         }
         if (!ready) break;
 
@@ -157,6 +158,9 @@ void VoxelSystem::applyCollisionSwaps(VolumeState& state){
             const auto found = state.collision.find(BlockTuple(key.x, key.y, key.z));
             if (found == state.collision.end()) continue;
             VoxelCollisionBlock& block = found->second;
+            // an earlier swap over this block applied its newest shape already
+            if (block.appliedVersion == block.version && !block.pendingShape) continue;
+            block.appliedVersion = block.version;
             if (block.pendingEmpty || !block.pendingShape){
                 if (block.inWorld){
                     if (block.entity != NULL_ENTITY && scene->isEntityCreated(block.entity)){
@@ -264,6 +268,7 @@ void VoxelSystem::addNewBodies(VolumeState& state){
         block.entity = entity;
         block.body = physics->createStaticBodyForShape(entity, block.pendingShape.GetPtr());
         block.pendingShape = nullptr;
+        block.appliedVersion = block.version;
         if (block.body.IsInvalid()) continue;
         block.inWorld = true;
         state.bodies++;
@@ -536,6 +541,7 @@ void VoxelSystem::buildCollisionBlocking(VolumeState& state, const VoxelVolumeCo
         block.pendingEmpty = item.empty;
         block.wantedVersion = state.collisionEdits;
         block.version = state.collisionEdits;
+        block.appliedVersion = state.collisionEdits;
         if (item.empty || block.inWorld) continue;
         const Entity entity = scene->createEntity();
         scene->addComponent<Transform>(entity);

@@ -204,6 +204,29 @@ TEST_F(VoxelPhysics, EmptiedBlockRemovesBody) {
     EXPECT_LT(system->getStats(owner).collisionBodies, before);
 }
 
+TEST_F(VoxelPhysics, TwoEditsOverOneBlockKeepItsBody) {
+    // R22: a second edit over a block whose swap has not landed yet. Both swaps apply its newest shape
+    // once; the second must not take the body away as if the block had gone empty
+    const Entity owner = ground("mem://two-edits");
+    step(5);
+    system->finishPendingWork();
+    for (int i = 0; i < 10; i++) step();
+    const RayReturn before = castRay(Vector3(58.0f, 50.0f, 58.0f), Vector3(58.0f, 10.0f, 58.0f));
+    ASSERT_TRUE(before.hit);
+    const EditOp first = digOp(sphereShape(62.0, 32.0, 62.0, 2.0));
+    const EditOp second = digOp(sphereShape(61.0, 32.0, 61.0, 2.0));
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&first, 1), EditOptions{}).ok);
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&second, 1), EditOptions{}).ok);
+    for (int i = 0; i < 120; i++) {
+        step();
+        if (i % 10 == 0) system->finishPendingWork();
+    }
+    // the same block, outside both digs: the ground is still there
+    const RayReturn after = castRay(Vector3(58.0f, 50.0f, 58.0f), Vector3(58.0f, 10.0f, 58.0f));
+    ASSERT_TRUE(after.hit);
+    EXPECT_NEAR(after.point.y, 32.0f, 0.05f);
+}
+
 TEST_F(VoxelPhysics, BubbleAroundDynamicBody) {
     ground("mem://bubble", VoxelQuality::High, 256, 256);
     setWorldPosition(focus, Vector3(16.0f, 34.0f, 16.0f));

@@ -41,6 +41,7 @@ namespace jasperengine{
         voxel::Int3 collisionKey;
         double buildMs = 0.0;
         bool partOfSwap = false;
+        uint32_t collisionVersion = 0;   // the block's wanted version when the job started
 #ifdef JASPERENGINE_PHYSICS_3D
         JPH::ShapeRefC shape;
         bool empty = false;
@@ -61,8 +62,12 @@ namespace jasperengine{
         bool built = false;          // the job finished at this version
         bool pendingEmpty = false;
         uint64_t lastNeededTick = 0;
-        uint32_t version = 0;        // of the edits; rebuilt when older than the block's dirty mark
+        // Versions of the edits: wanted is the last one reaching the block, version the one its built
+        // shape holds, applied the one in the world. Two swaps over one block apply its shape once:
+        // the second finds it applied and leaves the body be.
+        uint32_t version = 0;
         uint32_t wantedVersion = 0;
+        uint32_t appliedVersion = 0;
     };
 
     struct VoxelCollisionSwap{
