@@ -8,7 +8,8 @@
 //   - a transparent object under a refracting water is in the copy the water samples;
 //   - a transparent object under a water whose transform is farther from the camera than the
 //     object draws before the water (the water's rank), so the water tints it;
-//   - a refracting water over another one samples a copy that holds the lower one.
+//   - a refracting water over another one samples a copy that holds the lower one;
+//   - the UI (and the hierarchy loop's other overlays) is not in the copy: a HUD never refracts.
 // The shader clock is pinned, so the ripples are where they always are.
 
 #include "Engine.h"
@@ -17,6 +18,7 @@
 #include "component/MeshComponent.h"
 #include "object/Camera.h"
 #include "object/Primitive.h"
+#include "object/ui/Image.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
@@ -105,6 +107,17 @@ namespace {
         ShaderUniforms::set(material.shaderParams, "deepColor", color);
         ShaderUniforms::set(material.shaderParams, "foamAmount", Vector4(0.0f, 0.0f, 0.0f, 0.0f));
         return material;
+    }
+
+    // a 4 x 4 green image (a TextureData made from memory points at its pixels)
+    TextureData greenImage(){
+        static std::vector<uint8_t> pixels;
+        if (pixels.empty()){
+            for (int i = 0; i < 16; i++){
+                pixels.insert(pixels.end(), {0, 255, 0, 255});
+            }
+        }
+        return TextureData(4, 4, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
     }
 
     // an unlit, alpha-blended red quad
@@ -273,5 +286,83 @@ TEST_F(WaterLayeringGpu, OverlappingRefractingWatersSeeEachOther){
     printLayeringPixel("the lake beside it", lakeOnly);
     EXPECT_NEAR(throughPool.g, lakeOnly.g, 20) << "the pool's copy does not hold the lake under it";
     EXPECT_GT(throughPool.g - throughPool.r, 20);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// the UI drawn in the camera's pass (a HUD element; here one lying under the water, where the
+// water covers it) is not in the scene colour the water refracts: the copy is taken before the
+// hierarchy loop's UI, and the transparent queue takes no copy again once the UI drew (a glass
+// under the water elsewhere asks for one), including UI draws the batcher still holds
+TEST_F(WaterLayeringGpu, UIStaysOutOfTheRefraction){
+    JASPER_REQUIRE_GPU();
+    camera.setPosition(0.0f, 5.0f, 3.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+
+    Primitive floor(&scene);
+    floor.createPlane(20.0f, 20.0f);
+    floor.setPosition(0.0f, -1.0f, 0.0f);
+    floor.setColor(0.5f, 0.5f, 0.5f);
+
+    Primitive glass(&scene);
+    makeRedGlass(glass, 1.5f);
+    glass.setPosition(-2.5f, -0.5f, -1.0f);
+
+    // a 2 x 2 green image lying face up under the surface
+    Image hud(&scene);
+    hud.setTexture("water-layering-hud", greenImage());
+    hud.setSize(2, 2);
+    hud.setRotation(-90.0f, 0.0f, 0.0f);
+    hud.setPosition(0.0f, -0.5f, 0.0f);
+
+    Primitive water(&scene);
+    water.createPlane(10.0f, 10.0f);
+    water.setMaterial(refractionOnlyWater());
+
+    // where the image is drawn (the water hidden)
+    water.setVisible(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    int width = 0, height = 0;
+    const std::vector<uint8_t> drawn = readLayeringTarget(width, height);
+    long sumX = 0, sumY = 0, count = 0;
+    for (int y = 0; y < height; y++){
+        for (int x = 0; x < width; x++){
+            const uint8_t* p = &drawn[((size_t)y * width + x) * 4];
+            if (p[1] > p[0] + 80 && p[1] > p[2] + 80){
+                sumX += x;
+                sumY += y;
+                count++;
+            }
+        }
+    }
+    ASSERT_GT(count, 400) << "the image is not drawn";
+    const int cx = (int)(sumX / count);
+    const int cy = (int)(sumY / count);
+
+    water.setVisible(true);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const std::vector<uint8_t> refracted = readLayeringTarget(width, height);
+    LayeringPixel over;
+    int samples = 0;
+    for (int y = cy - 4; y <= cy + 4; y++){
+        for (int x = cx - 4; x <= cx + 4; x++){
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                continue;
+            const uint8_t* p = &refracted[((size_t)y * width + x) * 4];
+            over.r += p[0];
+            over.g += p[1];
+            over.b += p[2];
+            samples++;
+        }
+    }
+    ASSERT_GT(samples, 0);
+    over.r /= samples;
+    over.g /= samples;
+    over.b /= samples;
+    const LayeringPixel floorOnly = layeringPixelAt(scene, Vector3(3.0f, -1.0f, -1.0f));
+    printLayeringPixel("the water over the image", over);
+    printLayeringPixel("the water over the floor", floorOnly);
+    EXPECT_LT(over.g - floorOnly.g, 20) << "the water refracts the UI";
+    EXPECT_LT(over.g - over.r, 20) << "the water refracts the UI";
     EXPECT_NO_ENGINE_ERRORS();
 }
