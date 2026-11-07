@@ -56,7 +56,8 @@ namespace {
             const bool low = name.find("TERRAIN_QUALITY_LOW") != std::string::npos;
             out.medium |= medium;
             out.low |= low;
-            out.high |= !medium && !low;
+            // High is the tier that keeps a limited terrain's TERRAIN_LAYER_LIMIT
+            out.high |= name.find("TERRAIN_LAYER_LIMIT") != std::string::npos;
             out.debug |= name.find("TERRAIN_DEBUG_VIEW") != std::string::npos;
             out.holes |= (properties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0;
         }
@@ -69,7 +70,10 @@ TEST(ShaderVariantCollectorTerrain, TiersReachable){
     Scene scene;
     // the handle owns its entity: it lives as long as the collection
     Terrain terrain(&scene);
-    scene.getComponent<TerrainComponent>(terrain.getEntity()).heightMap.setPath("height.png");
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.heightMap.setPath("height.png");
+    // only High defines the layer limit, so its key has a name of its own
+    component.limitLayersPerPixel = true;
     // a project at Low on Android: Low's keys, and no High's
     const TierKeys low = collect(scene, terrain::terrainQualityBit(terrain::TerrainQuality::LOW));
     EXPECT_TRUE(low.low);
