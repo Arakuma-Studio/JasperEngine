@@ -162,10 +162,11 @@ uniform u_fs_objectLights {
     #ifdef USE_SHADOWS_HQ
         #define SHADOW_SAMPLING_HQ
     #endif
-    // PCSS reads raw depths through a second view of the atlas: a texture unit GLES3/WebGL2
-    // (16 units) and the painted terrain (at 16 textures already) cannot spare; they filter
-    // the Ultra tier with the High tier's Vogel disk
-    #if defined(USE_SHADOWS_HQ) && !defined(IS_GLES) && !defined(HAS_TERRAIN_PBR)
+    // PCSS reads raw depths through a second view of the atlas, one texture and sampler more. A
+    // variant it would take past 16 samplers (both stages) or 16 fragment textures (GLES3, WebGL2,
+    // macOS GL) is compiled again with SHADOW_RAW_VIEW_OFF (ShaderVariantCompiler::compile) and
+    // filters the Ultra tier with the High tier's Vogel disk
+    #if defined(USE_SHADOWS_HQ) && !defined(SHADOW_RAW_VIEW_OFF)
         #define SHADOW_DATA_RAW
     #endif
 #endif

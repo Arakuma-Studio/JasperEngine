@@ -61,6 +61,7 @@
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "spritenormals/SpriteNormalsCli.h"
+#include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -295,6 +296,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
@@ -3744,6 +3746,11 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

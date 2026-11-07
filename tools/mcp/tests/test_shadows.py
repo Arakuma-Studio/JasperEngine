@@ -859,6 +859,6 @@ async def test_shader_cross_compile():
                 check("sample_compare" in msl and "level(0" in msl, f"{name}: {lang} compares at level(0)")
         check("u_shadowAtlasRaw" in fragment("high", "glsl410"), "a High variant reads the raw depths (PCSS)")
         check("u_shadowAtlasRaw" not in fragment("medium", "glsl410"), "a Medium variant has no raw-depth view")
-        check("u_shadowAtlasRaw" not in fragment("high", "glsl300es"), "GLES has no texture unit for it")
+        check("u_shadowAtlasRaw" in fragment("high", "glsl300es"), "GLES3 has a texture unit left for it (PCSS)")
     finally:
         shutil.rmtree(out, ignore_errors=True)

@@ -1,0 +1,9 @@
+{
+  "description": "tools/test-projects/pcss (WEB_PROJECT=pcss tools/build.sh web): PCSS in WebGL2. A sun-only scene at the Ultra shadow tier draws the directional-only Lit, which samples the shadow atlas through its comparison view and its raw-depth view in one draw; a WebGL error or a shader that does not link fails the gate. The canvas centre is the floor beside the far half of a pole's shadow; its colour is the glcore test's Ultra pixel (ShadowPcssGlesGpu: 136 there, 143 with the High tier's Vogel disk; SwiftShader drew 135).",
+  "rgb": [136, 136, 136],
+  "tolerance": 5,
+  "isolated": true,
+  "console": [
+    {"text": "[gate] pcss", "level": "log"}
+  ]
+}
