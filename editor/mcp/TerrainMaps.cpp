@@ -272,6 +272,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
 
     fs::path rel = fs::relative(result.fullPath, project->getAssetsPath(), ec);
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
+    seedTerrainMapPool(result.relativePath, resolution, 4, ColorFormat::RGBA, pixels);
     result.success = true;
     return result;
 }
@@ -298,6 +299,7 @@ bool TerrainMaps::createDensitymap(Project* project, uint32_t sceneId, Entity en
         error = "Could not write the density map " + relativePath + ".";
         return false;
     }
+    seedTerrainMapPool(relativePath, resolution, 1, ColorFormat::RED, pixels);
     return true;
 }
 
