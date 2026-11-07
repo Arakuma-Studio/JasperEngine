@@ -22,7 +22,6 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TilemapComponent.h"
-#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
@@ -267,13 +266,17 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
         int tileSize = config.tileSize;
         int64_t wide = -1, high = -1;
         if (surface.collectObjects == NavCollectObjects::VOLUME) {
-            const Transform* transform = scene->findComponent<Transform>(entity);
-            const Vector3 scale = transform ? transform->worldScale : Vector3(1, 1, 1);
-            const float depth = surface.plane == nav::NavPlane::XY ? surface.volumeSize.y * std::fabs(scale.y) : surface.volumeSize.z * std::fabs(scale.z);
-            wide = (int64_t)std::ceil(surface.volumeSize.x * std::fabs(scale.x) / std::max(cellSize, 1e-6f));
-            high = (int64_t)std::ceil(depth / std::max(cellSize, 1e-6f));
-            wide = (wide + tileSize - 1) / tileSize * tileSize;
-            high = (high + tileSize - 1) / tileSize * tileSize;
+            // the bake's box: the volume in the surface's nav space, which its scale does not
+            // stretch (NavBakeCollector, NavFrame), on whole tiles anchored like the bake's grid
+            // (NavBakeInput::computeTileGrid)
+            const bool xy = surface.plane == nav::NavPlane::XY;
+            const float size = std::max(cellSize * (float)tileSize, 1e-6f);
+            auto tiles = [&](float center, float extent) {
+                return std::max<int64_t>(1, (int64_t)std::ceil((center + extent * 0.5f) / size) -
+                                                (int64_t)std::floor((center - extent * 0.5f) / size));
+            };
+            wide = tiles(surface.volumeCenter.x, surface.volumeSize.x) * tileSize;
+            high = (xy ? tiles(surface.volumeCenter.y, surface.volumeSize.y) : tiles(surface.volumeCenter.z, surface.volumeSize.z)) * tileSize;
         } else if (const NavigationSystem::InputReport* report = navEditor.inputReport(*sceneProject, entity)) {
             if (report->tileSize > 0) {
                 cellSize = report->cellSize;

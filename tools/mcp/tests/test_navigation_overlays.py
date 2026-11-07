@@ -17,6 +17,8 @@ with a NavMesh Agent far off both floors (finding agent_off_mesh).
 - test_inspector_summary_and_estimate: the NavMesh Surface's Inspector rows (get_inspector_layout):
   last bake, walkable area and islands, the "Voxels ... tiles" estimate, and its fewer-than-2-voxels
   warning once Voxel Size is 0.4 m for the 0.5 m agent.
+- test_inspector_estimate_volume_matches_bake: a scaled Volume surface's estimate counts the tiles its
+  bake builds (the box is not stretched by the scale).
 
 Screenshots of the UI go to $JE_EVIDENCE_DIR (else the scratch directory).
 """
@@ -272,6 +274,30 @@ async def test_window_last_bake_and_problems(ed: Editor):
 async def layout_labels(ed: Editor, sid: int, entity: int) -> dict[str, str]:
     layout = await ed.call("get_inspector_layout", scene=sid, entities=[entity])
     return {row["path"]: row["label"] for row in layout["rows"] if row.get("kind") == "Label"}
+
+
+async def test_inspector_estimate_volume_matches_bake(ed: Editor):
+    """A Volume surface's estimate is the box the bake collects: Volume Size in nav space, which the
+    surface's scale does not stretch (the estimate used to multiply by it)."""
+    ui = Ui(ed)
+    made = await ed.call("create_scene", name="NavVolumeEstimate", type="3D", path="scenes/NavVolumeEstimate")
+    sid = made["scene"]["id"]
+    floor = (await ed.call("create_entity", scene=sid, type="plane", name="Floor", scale=[4, 1, 4]))["entity_id"]
+    await ed.call("add_component", scene=sid, entity=floor, component="navmeshsurface",
+                  values={"navmeshsurface": {"collectObjects": "volume", "volumeSize": [8, 4, 8]}})
+    await ed.call("save_scene", scene=sid)
+    baked = await ed.call("bake_navigation", scene=sid, mode="full")
+    ed.check(len(baked["surfaces"]) == 1 and baked["surfaces"][0].get("ok"), f"bake: {baked}")
+    tiles = baked["surfaces"][0]["tiles_total"]
+    await ed.call("focus_window", window="inspector")
+    await ed.call("select_entities", scene=sid, entities=[floor])
+    await ui.frames(6)
+    rows = await layout_labels(ed, sid, floor)
+    found = re.match(r"Voxels \d+ × \d+, (\d+) tiles", rows.get("estimate", ""))
+    ed.check(found is not None, f"the estimate: {rows}")
+    estimated = int(found.group(1))
+    # the same box on the same whole-tile grid (the scaled box counted 9 tiles, the unaligned one 1)
+    ed.check_eq(estimated, tiles, "the estimate's tiles are the bake's")
 
 
 async def test_inspector_summary_and_estimate(ed: Editor):

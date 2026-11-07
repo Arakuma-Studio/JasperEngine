@@ -80,7 +80,7 @@ void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, ui
             continue;
         holders[(size_t)cell] = agent;
         until[(size_t)cell] = untilTick;
-        taken->push_back(cell);
+        taken.push_back(cell);
     }
 }
 

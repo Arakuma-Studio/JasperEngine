@@ -44,8 +44,9 @@ TEST_F(NavBakeReportTest, SourcesAndIslands){
     ASSERT_EQ((int)landed.tiles.size(), landed.tilesBuilt);
     for (const nav::NavTileReport& tile : landed.tiles) {
         EXPECT_GE(tile.milliseconds, 0.0);
-        if (tile.polys > 0)
+        if (tile.polys > 0) {
             EXPECT_GT(tile.bytes, 0u);
+        }
     }
     // the bake's landing labels nothing: the first read does
     EXPECT_EQ(landed.islandCount, -1);
@@ -107,8 +108,9 @@ TEST_F(NavBakeReportTest, ErrorCodes){
         NavBakeError parsed = NavBakeError::None;
         EXPECT_TRUE(nav::bakeErrorFromName(nav::bakeErrorName((NavBakeError)i), parsed));
         EXPECT_EQ(parsed, (NavBakeError)i);
-        if (i > 0)
+        if (i > 0) {
             EXPECT_GT(std::string(nav::bakeErrorHint((NavBakeError)i)).size(), 10u);
+        }
     }
 }
 

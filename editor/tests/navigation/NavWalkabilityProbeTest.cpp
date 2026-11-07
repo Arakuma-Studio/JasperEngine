@@ -195,8 +195,9 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
     const NavProbeResult wall = explain(Vector3(0.4f, 0.0f, 20.0f));
     // the three counterfactual rebuilds: each checked on its own (the red control turns them off)
     EXPECT_TRUE(hasReason(wall, "near_wall")) << reasonCodes(wall);
-    if (const NavProbeReason* reason = reasonOf(wall, "near_wall"))
+    if (const NavProbeReason* reason = reasonOf(wall, "near_wall")) {
         EXPECT_NEAR(reason->limit, 0.5f, 1e-3f);
+    }
 
     const NavProbeResult platform = explain(Vector3(-20.0f, 1.0f, 20.0f));
     EXPECT_TRUE(hasReason(platform, "small_region")) << reasonCodes(platform);
@@ -238,8 +239,9 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
     // on the 0.6 m platform, 0.2 m from its edge
     const NavProbeResult ledge = explain(Vector3(17.2f, 0.6f, 0.0f));
     EXPECT_TRUE(hasReason(ledge, "step_too_high")) << reasonCodes(ledge);
-    if (const NavProbeReason* reason = reasonOf(ledge, "step_too_high"))
+    if (const NavProbeReason* reason = reasonOf(ledge, "step_too_high")) {
         EXPECT_NEAR(reason->limit, 0.4f, 1e-3f);
+    }
 
     // on the mesh: only what still applies there
     const NavProbeResult masked = explain(Vector3(-20.0f, 0.0f, 0.0f), (uint16_t)(nav::ALL_AREAS & ~(1u << nav::AREA_JUMP)));

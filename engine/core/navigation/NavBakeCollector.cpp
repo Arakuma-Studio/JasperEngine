@@ -1228,6 +1228,27 @@ NavBuildConfig NavBakeCollector::configOf(Scene* scene, const NavMeshSurfaceComp
                                   surface.minRegionArea, surface.runtimeCarving, unitScaleOf(scene, surface));
 }
 
+Entity NavBakeCollector::areaModifierOf(Scene* scene, Entity entity) {
+    for (Entity current = entity; current != NULL_ENTITY;) {
+        if (const NavMeshModifierComponent* modifier = scene->findComponent<NavMeshModifierComponent>(current)) {
+            if (modifier->enabled && !modifier->useVolume && modifier->overrideArea && (current == entity || modifier->applyToChildren))
+                return current;
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return NULL_ENTITY;
+}
+
+bool NavBakeCollector::meshWorldBounds(Scene* scene, Entity entity, AABB& out) {
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!mesh || !transform || mesh->aabb.isNull() || mesh->aabb.isInfinite())
+        return false;
+    out = transform->modelMatrix * mesh->aabb;
+    return true;
+}
+
 bool NavBakeCollector::boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size,
                                  NavConvexVolume& out) {
     // the box's footprint in nav space (the hull of its corners) and its height range

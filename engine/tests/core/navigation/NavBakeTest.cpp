@@ -366,8 +366,9 @@ void NavBakeTest::runtimeUpdateTiles(bool carving){
         // it keeps moving
         EXPECT_GT(position(walker).distance(previous), 0.0f) << "tick " << ticks;
         previous = position(walker);
-        if (carving)
+        if (carving) {
             EXPECT_LE(nav->getCarveTileBuilds(), nav::getSettings().effectiveCarveTilesPerTick()) << "tick " << ticks;
+        }
     }
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_NE(nav->getLastBakeResult(surface), nullptr);

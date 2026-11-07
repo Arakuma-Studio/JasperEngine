@@ -22,6 +22,7 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/Transform.h"
 #include "navigation/NavGridBrush.h"
 #include "navigation/NavigationOverlay.h"
 #include "navigation/NavigationProjectSettings.h"

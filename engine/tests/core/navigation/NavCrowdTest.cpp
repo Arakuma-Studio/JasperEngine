@@ -831,8 +831,9 @@ TEST_F(NavSystemTest, SteadyStateNoAllocations){
         allocations += count.count();
     }
     // (counted where the test binary wraps malloc: Linux)
-    if (testsupport::countsAllocations())
+    if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations, 0u);
+    }
     // still walking: nothing arrived, so every tick above moved agents
     for (Entity entity : walkers)
         EXPECT_LT(position(entity).x, 20.0f);

@@ -4,10 +4,8 @@
 #include "NavWalkabilityProbe.h"
 
 #include "Scene.h"
-#include "component/MeshComponent.h"
-#include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
-#include "component/Transform.h"
+#include "math/AABB.h"
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavMesh.h"
 #include "navigation/NavMeshBuilder.h"
@@ -151,15 +149,8 @@ namespace {
 
     // the modifier that set a GameObject's area (itself or the nearest ancestor applying to it)
     Entity modifierOf(Scene* scene, Entity entity) {
-        for (Entity current = entity; current != NULL_ENTITY;) {
-            if (const NavMeshModifierComponent* modifier = scene->findComponent<NavMeshModifierComponent>(current)) {
-                if (modifier->enabled && !modifier->useVolume && modifier->overrideArea && (current == entity || modifier->applyToChildren))
-                    return current;
-            }
-            const Transform* transform = scene->findComponent<Transform>(current);
-            current = transform ? transform->parent : NULL_ENTITY;
-        }
-        return entity;
+        const Entity modifier = nav::NavBakeCollector::areaModifierOf(scene, entity);
+        return modifier != NULL_ENTITY ? modifier : entity;
     }
 
     // whether the tile under the point was built from other inputs than these
@@ -290,12 +281,9 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
     }
     // GameObjects the collection left out, where the point is
     for (const auto& excluded : input->excludedEntities) {
-        const MeshComponent* meshComponent = scene->findComponent<MeshComponent>(excluded.first);
-        const Transform* transform = scene->findComponent<Transform>(excluded.first);
-        if (!meshComponent || !transform || meshComponent->aabb.isNull() || meshComponent->aabb.isInfinite())
+        AABB box;
+        if (!nav::NavBakeCollector::meshWorldBounds(scene, excluded.first, box))
             continue;
-        // its bounds from its own (the world box follows the render, a headless editor has none)
-        const AABB box = transform->modelMatrix * meshComponent->aabb;
         Vector3 lo(std::numeric_limits<float>::max()), hi(-std::numeric_limits<float>::max());
         for (int c = 0; c < 8; c++) {
             const Vector3 corner = frame.toNav(Vector3((c & 1) ? box.getMaximum().x : box.getMinimum().x, (c & 2) ? box.getMaximum().y : box.getMinimum().y,
