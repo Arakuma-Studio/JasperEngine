@@ -71,17 +71,17 @@ shaderKeys:
   - type: mesh
     properties: 2276332667992
   - type: mesh
-    properties: 4398046512216
+    properties: 17592186045528
   - type: mesh
-    properties: 4398046642266
+    properties: 17592186175578
   - type: mesh
-    properties: 4406636446808
+    properties: 17600775980120
   - type: mesh
-    properties: 4406636576858
+    properties: 17600776110170
   - type: mesh
-    properties: 6597069767768
+    properties: 19791209301080
   - type: mesh
-    properties: 6605659702360
+    properties: 19799799235672
   - type: sky
   - type: depth
   - type: depth

@@ -60,13 +60,13 @@ shaderKeys:
   - type: mesh
     properties: 77309414490
   - type: mesh
-    properties: 4398046514266
+    properties: 17592186047578
   - type: mesh
-    properties: 4398180859994
+    properties: 17592320393306
   - type: mesh
-    properties: 4406636448858
+    properties: 17600775982170
   - type: mesh
-    properties: 4406770794586
+    properties: 17600910327898
   - type: sky
   - type: depth
   - type: depth
@@ -88,10 +88,10 @@ shaderKeys:
     properties: 77309414490
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
-    properties: 4398046514266
+    properties: 17592186047578
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
-    properties: 4406636448858
+    properties: 17600775982170
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
     properties: 134348890
@@ -100,10 +100,10 @@ shaderKeys:
     properties: 8724283482
     customShader: builtin:lit#TERRAIN_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
-    properties: 4398180859994
+    properties: 17592320393306
     customShader: builtin:lit#TERRAIN_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
-    properties: 4406770794586
+    properties: 17600910327898
     customShader: builtin:lit#TERRAIN_HEX_TILING,USE_LIT_QUALITY
 entities:
   - type: Entity
