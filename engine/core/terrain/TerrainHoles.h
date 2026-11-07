@@ -46,6 +46,9 @@ namespace jasperengine::terrain {
     // T3 R22: sample (x, y) has no collision when all its existing adjacent squares (4, 2 at an edge,
     // 1 at a corner) are open. out holds samples^2 flags, row by row, and the return is how many are set.
     JASPERENGINE_API int noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out);
+    // The same rule for one sample, read from the map: what a collider refresh of part of the lattice
+    // writes (T1 R79's JoltShapeBuilder::sampleHeightField), equal to noCollisionSamples over openSquares
+    JASPERENGINE_API bool noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y);
     // T3 R23: lattice cell (i, j) overlaps any hole texel. cells holds (samples - 1)^2 flags, row by
     // row; the return is how many are set.
     JASPERENGINE_API int navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells);

@@ -42,28 +42,43 @@ namespace {
 
 }
 
+namespace {
+
+    // Square (i, j) of a spans x spans lattice is open: every hole texel it overlaps is a hole
+    bool squareOpen(const jasperengine::terrain::HoleMapView& map, int spans, float mirrorX, float mirrorZ, int i, int j) {
+        int firstY = 0, lastY = 0, firstX = 0, lastX = 0;
+        texelSpan(mirrorZ < 0.0f ? spans - 1 - j : j, spans, map.height, firstY, lastY);
+        texelSpan(mirrorX < 0.0f ? spans - 1 - i : i, spans, map.width, firstX, lastX);
+        for (int y = firstY; y <= lastY; y++) {
+            for (int x = firstX; x <= lastX; x++) {
+                if (!holeTexel(map, x, y)) return false;
+            }
+        }
+        return true;
+    }
+
+}
+
 void jasperengine::terrain::openSquares(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open) {
     const int spans = samples - 1;
     open.assign(spans > 0 ? static_cast<size_t>(spans) * spans : 0, 0);
     if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return;
     for (int j = 0; j < spans; j++) {
-        int firstY = 0, lastY = 0;
-        texelSpan(mirrorZ < 0.0f ? spans - 1 - j : j, spans, map.height, firstY, lastY);
         for (int i = 0; i < spans; i++) {
-            int firstX = 0, lastX = 0;
-            texelSpan(mirrorX < 0.0f ? spans - 1 - i : i, spans, map.width, firstX, lastX);
-            bool allHoles = true;
-            for (int y = firstY; allHoles && y <= lastY; y++) {
-                for (int x = firstX; x <= lastX; x++) {
-                    if (!holeTexel(map, x, y)) {
-                        allHoles = false;
-                        break;
-                    }
-                }
-            }
-            open[static_cast<size_t>(j) * spans + i] = allHoles ? 1 : 0;
+            open[static_cast<size_t>(j) * spans + i] = squareOpen(map, spans, mirrorX, mirrorZ, i, j) ? 1 : 0;
         }
     }
+}
+
+bool jasperengine::terrain::noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y) {
+    const int spans = samples - 1;
+    if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return false;
+    for (int j = std::max(y - 1, 0); j <= std::min(y, spans - 1); j++) {
+        for (int i = std::max(x - 1, 0); i <= std::min(x, spans - 1); i++) {
+            if (!squareOpen(map, spans, mirrorX, mirrorZ, i, j)) return false;
+        }
+    }
+    return true;
 }
 
 int jasperengine::terrain::noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out) {

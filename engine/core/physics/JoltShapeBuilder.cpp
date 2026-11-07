@@ -271,6 +271,9 @@ void JoltShapeBuilder::sampleHeightField(Scene* scene, TerrainComponent& terrain
     const float mirrorX = scale.x < 0.0f ? -1.0f : 1.0f;
     const float mirrorZ = scale.z < 0.0f ? -1.0f : 1.0f;
 
+    // T3 R22: the collider's gap never includes drawn ground. A terrain without a map pays this test
+    const terrain::HoleMapView holes = terrain.holeMap.empty() ? terrain::HoleMapView() : terrainSurfaceView(terrain).holes;
+
     for (unsigned int y = y0; y < y0 + h; y++){
         const float localZ = mirrorZ * ((y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y));
         for (unsigned int x = x0; x < x0 + w; x++){
@@ -278,6 +281,9 @@ void JoltShapeBuilder::sampleHeightField(Scene* scene, TerrainComponent& terrain
             float height = 0.0f;
             Vector3 normal;
             meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
+            if (holes.texels && terrain::noCollisionSample(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, static_cast<int>(x), static_cast<int>(y))){
+                height = JPH::HeightFieldShapeConstants::cNoCollisionValue;
+            }
             out[(x - x0) + (y - y0) * w] = height;
         }
     }
@@ -299,22 +305,6 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
 
     std::vector<float> samples(samplesSize * samplesSize);
     sampleHeightField(scene, terrain, scale, samplesSize, 0, 0, samplesSize, samplesSize, samples.data());
-
-    // T3 R22: the collider's gap never includes drawn ground. A terrain without a map pays this test
-    if (!terrain.holeMap.empty()){
-        const terrain::HoleMapView holes = terrainSurfaceView(terrain).holes;
-        if (holes.texels){
-            std::vector<uint8_t> open;
-            std::vector<uint8_t> gaps;
-            terrain::openSquares(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, open);
-            terrain::noCollisionSamples(open, static_cast<int>(samplesSize), gaps);
-            for (size_t i = 0; i < gaps.size(); i++){
-                if (gaps[i]){
-                    samples[i] = JPH::HeightFieldShapeConstants::cNoCollisionValue;
-                }
-            }
-        }
-    }
 
     const Vector3 absEntityScale = absScale(scale);
     const JPH::Vec3 terrainOffset(-halfSize * absEntityScale.x, 0.0f, -halfSize * absEntityScale.z);
