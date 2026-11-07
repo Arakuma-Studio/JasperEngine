@@ -87,6 +87,8 @@ namespace {
         Light sun{&scene};
 
         void SetUp() override{
+            // the view the goldens and pixel positions were made at
+            GpuEnvironment::resetView();
             Engine::setPinnedShaderTime(SHADING_PINNED_TIME);
             scene.setBackgroundColor(0.1f, 0.1f, 0.12f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);

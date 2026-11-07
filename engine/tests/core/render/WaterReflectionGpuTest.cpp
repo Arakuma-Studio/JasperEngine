@@ -102,6 +102,8 @@ namespace {
         Camera camera{&scene};
 
         void SetUp() override{
+            // the view the goldens and pixel positions were made at
+            GpuEnvironment::resetView();
             Engine::setPinnedShaderTime(REFLECTION_PINNED_TIME);
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
