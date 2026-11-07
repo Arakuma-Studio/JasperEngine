@@ -4,6 +4,7 @@
 // The project's side of data safety (docs/data-safety.md, docs/specs/S03-data-safety.md):
 // the one-editor-per-project lock, the orphan sweep, scene Auto Save and crash recovery.
 
+#include "terrain/TerrainMapPersistence.h"
 #include "Project.h"
 #include "log/LogFormatCheck.h"
 
@@ -259,6 +260,8 @@ void editor::Project::tickAutosave(float deltaSeconds, bool userInteracting) {
     }
 
     const float interval = configuredAutosaveInterval();
+    // T1 R30: what a backup refers to should be on disk by the time a crash needs it
+    TerrainMapPersistence::get().handOverAll();
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.opened && sceneProject.scene) {
             autosaveDocument(sceneProject, sceneProject.filepath.empty() ? BackupKind::Untitled : BackupKind::Scene,

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Filters on any op (S53 R6, AC4)
+// Filters on any op (T1 R6, AC4)
 
 #include "TerrainTestSupport.h"
 

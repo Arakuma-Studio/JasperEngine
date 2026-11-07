@@ -179,6 +179,8 @@ namespace jasperengine{
         void resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent& mesh);
         bool createTerrain(TerrainComponent& terrain, MeshComponent& mesh);
         void createTerrainNode(TerrainComponent& terrain, float x, float y, float size, int lodDepth);
+        // T1 R23 (MeshSystemTerrainEdit.cpp): true when the node's range was computed again
+        bool refitTerrainNode(TerrainComponent& terrain, size_t nodeIndex, int rectX, int rectY, int rectW, int rectH, int mapWidth, int mapHeight);
         void updateTerrainAutoRanges(TerrainComponent& terrain);
 
         Entity createFoliageEntity(unsigned int capacity);
@@ -233,6 +235,8 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
+        // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
+        size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
@@ -367,6 +371,11 @@ namespace jasperengine{
         void resetModelToBindPose(Entity entity, ModelComponent& model);
 
         bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
+        // T1 R23, DC10: a height edit refits the node ranges over the rectangle and their ancestors
+        // instead of rebuilding the tree, and the surface revision follows (MeshSystemTerrainEdit.cpp)
+        void refitTerrainNodes(TerrainComponent& terrain, int rectX, int rectY, int rectW, int rectH);
+        // What the terrain's edit state holds for this frame; nowSeconds is any steady clock
+        void flushTerrainEdit(TerrainComponent& terrain, double nowSeconds);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         // (static and read-only: particle collisions call it from the job system's workers)
         static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
@@ -380,6 +389,11 @@ namespace jasperengine{
         static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
         // Normalized [0,1] height at a terrain-local position; 0 without pixels
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
+
+        // The part entities of a model whose geometry is on child entities (one per glTF mesh
+        // node, ModelComponent::meshNodesMapping) that exist and have a mesh, in node-index
+        // order; empty for any other entity (a model on its own mesh too)
+        std::vector<Entity> getModelParts(Entity model) const;
 
         bool hasPendingAsyncModelLoads() const;
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still

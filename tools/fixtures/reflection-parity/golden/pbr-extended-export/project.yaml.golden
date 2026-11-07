@@ -15,6 +15,7 @@ windowHeight: 720
 windowResizable: true
 luaDir: .
 runtimeShaders: false
+startSceneId: 3270106840
 scenes:
   - filepath: Lobes.scene
     filepathGuid: 9f2fe4d9b42d1eaec91693585834766b

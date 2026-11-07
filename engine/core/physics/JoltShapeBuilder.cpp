@@ -254,17 +254,8 @@ unsigned int JoltShapeBuilder::defaultHeightFieldSamples(const TerrainComponent&
     return (unsigned int)std::max(4, std::min(texels, (int)MAX_HEIGHTFIELD_SAMPLES));
 }
 
-JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
-                                                       unsigned int samplesSize, std::string* error, const JPH::PhysicsMaterial* material){
-    if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
-        setError(error, "Cannot create heightfield shape for a terrain without size");
-        return NULL;
-    }
-    if (samplesSize == 0){
-        samplesSize = defaultHeightFieldSamples(terrain);
-    }
-    samplesSize = std::max(samplesSize, 4u);
-
+void JoltShapeBuilder::sampleHeightField(Scene* scene, TerrainComponent& terrain, const Vector3& scale, unsigned int samplesSize,
+                                         unsigned int x0, unsigned int y0, unsigned int w, unsigned int h, float* out){
     // Sample i of N sits at -half + size * i / (N - 1): the first and last samples are the
     // terrain's edges. Each is read through sampleTerrainSurface, the terrain vertex shader's
     // lookup (linear filtering, texel i at (i + 0.5) / W), so every sample sits on the drawn
@@ -278,23 +269,46 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
     const float mirrorX = scale.x < 0.0f ? -1.0f : 1.0f;
     const float mirrorZ = scale.z < 0.0f ? -1.0f : 1.0f;
 
-    std::vector<float> samples(samplesSize * samplesSize);
-    for (unsigned int y = 0; y < samplesSize; y++){
+    for (unsigned int y = y0; y < y0 + h; y++){
         const float localZ = mirrorZ * ((y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y));
-        for (unsigned int x = 0; x < samplesSize; x++){
+        for (unsigned int x = x0; x < x0 + w; x++){
             const float localX = mirrorX * ((x == samplesSize - 1) ? halfSize : (-halfSize + spacing * x));
             float height = 0.0f;
             Vector3 normal;
             meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
-            samples[x + (y * samplesSize)] = height;
+            out[(x - x0) + (y - y0) * w] = height;
         }
     }
+}
+
+JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
+                                                       unsigned int samplesSize, std::string* error, const JPH::PhysicsMaterial* material){
+    if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
+        setError(error, "Cannot create heightfield shape for a terrain without size");
+        return NULL;
+    }
+    if (samplesSize == 0){
+        samplesSize = defaultHeightFieldSamples(terrain);
+    }
+    samplesSize = std::max(samplesSize, 4u);
+
+    const float halfSize = terrain.terrainSize * 0.5f;
+    const float spacing = terrain.terrainSize / float(samplesSize - 1);
+
+    std::vector<float> samples(samplesSize * samplesSize);
+    sampleHeightField(scene, terrain, scale, samplesSize, 0, 0, samplesSize, samplesSize, samples.data());
 
     const Vector3 absEntityScale = absScale(scale);
     const JPH::Vec3 terrainOffset(-halfSize * absEntityScale.x, 0.0f, -halfSize * absEntityScale.z);
     const JPH::Vec3 terrainScale(spacing * absEntityScale.x, absEntityScale.y, spacing * absEntityScale.z);
 
     JPH::HeightFieldShapeSettings shape_settings(samples.data(), terrainOffset, terrainScale, samplesSize);
+    // A terrain a game may edit reserves its whole height range, so a refresh never has to clamp
+    // or rebuild (T1 R77); other terrains keep the range of their samples, byte for byte
+    if (terrain.allowRuntimeEdits){
+        shape_settings.mMinHeightValue = std::min(0.0f, terrain.maxHeight);
+        shape_settings.mMaxHeightValue = std::max(0.0f, terrain.maxHeight);
+    }
     if (material){
         // one material: every square uses it (no index list)
         shape_settings.mMaterials.push_back(material);

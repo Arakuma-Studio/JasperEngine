@@ -98,23 +98,3 @@ TEST(TerrainMapSeed, ANewBlendMapExistsAtOnce) {
     EXPECT_TRUE(format.exists) << "the store asked before the file's load could run";
     EXPECT_EQ(format.bounds.w, 33);
 }
-
-TEST(TerrainMapSeed, ANewDensityMapExistsAtOnce) {
-    SeedProject& h = seedProject();
-    ASSERT_TRUE(h.ready);
-    PendingLoads pending;
-    Scene scene;
-    const Entity entity = scene.createEntity();
-    scene.addComponent<TerrainComponent>(entity, TerrainComponent());
-    TerrainComponent& terrain = scene.getComponent<TerrainComponent>(entity);
-    terrain.foliageLayers.resize(1);
-
-    std::string path, error;
-    ASSERT_TRUE(mcp::TerrainMaps::createDensitymap(h.project.get(), 1, entity, 0, 17, path, error)) << error;
-    terrain.foliageLayers[0].densityMap = Texture(path);
-
-    TerrainComponentStore store(&scene, entity, terrain);
-    const terrain::MapFormat format = store.format(terrain::MapId{terrain::MapKind::Density, 0});
-    EXPECT_TRUE(format.exists) << "the store asked before the file's load could run";
-    EXPECT_EQ(format.bounds.w, 17);
-}

@@ -1043,14 +1043,15 @@ class LuaEnum:
 
 
 class Sig:
-    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'problem')
+    __slots__ = ('params', 'ret', 'doc', 'cfunc', 'problem', 'defaults')
 
-    def __init__(self, params, ret, doc=None, cfunc=False, problem=None):
+    def __init__(self, params, ret, doc=None, cfunc=False, problem=None, defaults=None):
         self.params = params    # [(cpp type, name or None)], Lua-visible only
         self.ret = ret          # cpp type, '' for void, None for unknown
         self.doc = doc or []
         self.cfunc = cfunc
         self.problem = problem  # why the binding is wrong (a cast to a signature that does not exist)
+        self.defaults = defaults  # the C++ default argument of each param (None: none), a declared function only
 
     def __repr__(self):
         return f'Sig({self.params} -> {self.ret!r})'
@@ -1369,7 +1370,7 @@ class Resolver:
                 if fn.template and fn.tparams and targs:
                     subst = {pn: normalize_type(join_tokens(ta)) for pn, ta in zip(fn.tparams, targs)}
                     sig = Sig([(substitute(t, subst), n) for t, n in sig.params],
-                              substitute(sig.ret, subst) if sig.ret else sig.ret, sig.doc, sig.cfunc)
+                              substitute(sig.ret, subst) if sig.ret else sig.ret, sig.doc, sig.cfunc, defaults=sig.defaults)
                 return ('free' if fn.static else 'member'), sig
             fld = self.model.find_field(qual, name)
             if fld is not None:
@@ -1415,7 +1416,7 @@ class Resolver:
         params = [(p.type, p.name) for p in fn.params]
         cfunc = len(fn.params) == 1 and bare_type(fn.params[0].type)[0] == 'lua_State' and \
             re.sub(r'\s', '', fn.ret) in ('int',)
-        return Sig(params, fn.ret, fn.doc, cfunc=cfunc)
+        return Sig(params, fn.ret, fn.doc, cfunc=cfunc, defaults=[p.default for p in fn.params])
 
     def resolve_lambda(self, toks, member):
         e = skip_balanced(toks, 0)  # captures
@@ -2152,6 +2153,26 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    # ui-components: the selection (Unity's EventSystem.currentSelectedGameObject)
+    ('UI', 'getSelected'): {
+        'doc': ['The Button selected in `scene` (keyboard, gamepad and TV menus), nil for none.'],
+        'overloads': [([('scene', 'Scene')], 'GameObject?')]},
+    ('UI', 'setSelected'): {
+        'doc': ['Selects a Button of `scene` (Unity\'s SetSelectedGameObject); nil deselects. False when it',
+                'cannot be selected (not a Button, inactive, hidden, an on-screen control).'],
+        'overloads': [([('scene', 'Scene'), ('button', 'GameObject|integer|nil')], 'boolean')]},
+    ('Button', 'findSelectableOnUp'): {
+        'doc': ['Where the selection moves up from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnDown'): {
+        'doc': ['Where the selection moves down from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnLeft'): {
+        'doc': ['Where the selection moves left from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnRight'): {
+        'doc': ['Where the selection moves right from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
     ('UIComponent', 'getPointerEventData'): {
         'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
                 'its pointerId, button, positions; nil outside one.'],
@@ -2714,6 +2735,14 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'bodyA'): ('GameObject|nil', False),
     ('Joint3D', 'bodyB'): ('GameObject|nil', False),
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
+    # ui-components: a Button's Explicit navigation targets and the selection events' GameObjects
+    ('Button', 'selectOnUp'): ('GameObject|nil', False),
+    ('Button', 'selectOnDown'): ('GameObject|nil', False),
+    ('Button', 'selectOnLeft'): ('GameObject|nil', False),
+    ('Button', 'selectOnRight'): ('GameObject|nil', False),
+    ('Button', 'onClick'): ('FunctionSubscribe', False),
+    ('BaseEventData', 'target'): ('GameObject?', False),
+    ('BaseEventData', 'selectedObject'): ('GameObject?', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -2871,6 +2900,13 @@ OVERRIDES[('AnimationPlayer', 'addClip')] = {
                   ([('path', 'string'), ('name', 'string')], 'boolean'),
                   ([('path', 'string'), ('name', 'string|nil'),
                     ('options', '{retarget?: boolean, mirror?: boolean, footIK?: boolean, layer?: integer}')], 'boolean')]}
+OVERRIDES[('RenderSystem', 'getLoadCount')] = {
+    'doc': ['How many of the loads isAllLoaded() waits for are done, and how many there are (a loading screen\'s progress).'],
+    'overloads': [([], 'integer, integer')]}
+OVERRIDES[('Rigidbody', 'getAllowedDOFs')] = {
+    'doc': ['The degrees of freedom setAllowedDOFs set, in its order: translationX, translationY, translationZ,',
+            'rotationX, rotationY, rotationZ (all true by default).'],
+    'overloads': [([], 'boolean, boolean, boolean, boolean, boolean, boolean')]}
 OVERRIDES[('Model', 'getHumanoidInfo')] = {
     'doc': ["The model's humanoid rig (its Avatar): `humanoid` (the bone map is a valid humanoid),",
             "`animationType` (\"generic\" or \"humanoid\", the .humanoid sidecar's), `humanScale`, the unmapped",
@@ -3007,6 +3043,19 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# T1 R75: the terrain writes, raw functions taking and returning tables (docs/scripting/terrain.md)
+OVERRIDES[('Terrain', 'applyOps')] = {
+    'doc': ['Runs edit_terrain\'s op tables (world X and Z, world heights), all or nothing; needs Allow Runtime',
+            'Edits. Returns the result: changed, ops, stats, warnings. docs/scripting/terrain.md.'],
+    'overloads': [([('ops', 'table[]')], 'table')]}
+OVERRIDES[('Terrain', 'getHeights')] = {
+    'doc': ['w * h terrain-local heights of the height map\'s texel rectangle, row by row.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer')], 'number[]')]}
+OVERRIDES[('Terrain', 'setHeights')] = {
+    'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
+            'Returns the result table, as applyOps.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
@@ -3112,6 +3161,8 @@ HTML_UI_EVENT_TYPES = [
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
 # bound function that takes a callback or a parameter table belongs here.
 _PARAM_TYPE_OVERRIDES = {
+    # GameObject:setParent / parent =: a GameObject (any handle), a script or nil (the root)
+    ('GameObject', 'setParent', 'parent'): 'EntityHandle|ScriptInstance|nil',
     # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
@@ -3398,11 +3449,12 @@ class Builder:
             if override:
                 lt, desc = override, ''
             lp.append((name, lt, False, desc))
-        if optional_bools:
-            k = len(lp) - 1
-            while k >= 0 and lp[k][1] == 'boolean':
-                lp[k] = (lp[k][0], lp[k][1], True, lp[k][3])
-                k -= 1
+        # trailing booleans (nil reads false) and std::optional parameters (nil: the binding's
+        # default) may be left out
+        k = len(lp) - 1
+        while k >= 0 and ((optional_bools and lp[k][1] == 'boolean') or _OPT.match(normalize_type(params[k][0]))):
+            lp[k] = (lp[k][0], lp[k][1], True, lp[k][3])
+            k -= 1
         ret = '' if sig.ret == '' else (self.tm.lua(sig.ret, c.cpp) if sig.ret is not None else 'any')
         return LuaSig(lp, ret, list(sig.doc))
 
@@ -3439,8 +3491,12 @@ class Builder:
             drop_self = kind == 'free' and m.kind == 'Method'
             sigs.append(self.to_lua_sig(sig, c, drop_self, single, m))
             # the C++ side, for the completion details (Type name, the C++ return type)
-            cpp_params = sig.params[1:] if drop_self and sig.params else sig.params
-            m.cpp_sigs.append(([p for p in cpp_params if bare_type(p[0])[0] != 'lua_State'], sig.ret))
+            defaults = sig.defaults if sig.defaults and len(sig.defaults) == len(sig.params) else [None] * len(sig.params)
+            pairs = list(zip(sig.params, defaults))
+            if drop_self and pairs:
+                pairs = pairs[1:]
+            pairs = [(q, d) for q, d in pairs if bare_type(q[0])[0] != 'lua_State']
+            m.cpp_sigs.append(([q for q, _ in pairs], sig.ret, [d for _, d in pairs]))
         m.lua_sigs = sigs
         doc = list(m.call.doc)
         for s in sigs:
@@ -3495,6 +3551,11 @@ class Builder:
         setter = args[2] if len(args) > 2 else None
         static = m.kind == 'StaticProperty'
         m.nested_enum = None
+        # a static property C++ reaches as Class::name: a static data member of that name, or a
+        # constantCopy<T, T::NAME> of it (Engine.deltatime is Engine::getDeltatime() in C++)
+        getter_text = join_tokens(getter) if getter else ''
+        copied = re.search(r'constantCopy\s*<[^,]+,\s*[\w:]+::(\w+)\s*>', getter_text)
+        m.cpp_visible = bool(copied and copied.group(1) == m.name)
         if getter and getter[0].t == '[' and any(x.t == 'addVariable' for x in getter):
             vals = []
             for k, x in enumerate(getter):
@@ -3509,6 +3570,7 @@ class Builder:
                             v = next((cv for cn, cv, _ in ce.values if cn == vn), None)
                     vals.append((literal(a[0]), v))
             m.nested_enum = vals
+            m.cpp_visible = True  # Class::Enum
             m.lua_type = f'{c.name}.{m.name}'
             m.writable = False
             m.doc = list(m.call.doc)
@@ -3522,6 +3584,8 @@ class Builder:
             m.doc = list(m.call.doc)
             return
         kind, sig = res
+        if kind == 'data' and re.sub(r'\s', '', getter_text).split('::')[-1] == m.name:
+            m.cpp_visible = True
         if sig.problem:
             self.unresolve(c, m, 'getter: ' + sig.problem)
         if sig.cfunc:

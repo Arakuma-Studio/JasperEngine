@@ -21,6 +21,7 @@
 #include "DebugSettings.h"
 #include "registry/TagManager.h"
 #include "util/Prefab.h"
+#include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
 #include "Factory.h"
 #include "io/watch/FileIdentity.h"
@@ -254,6 +255,8 @@ namespace jasperengine::editor {
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
         bool keepScreenOn = true;
         int targetFrameRate = -1;
+        // Project Settings > Graphics > Dynamic Batching
+        bool dynamicBatching = true;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
@@ -304,6 +307,8 @@ namespace jasperengine::editor {
         std::vector<std::string> macOSFrameworks;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the compiler and linker errors of the last C++ script build, repeated at its end
+        BuildErrorLog buildErrors;
         // the project's UI Scale, emitted by configure (setUIScale before it)
         CanvasScalerSettings uiScale;
 

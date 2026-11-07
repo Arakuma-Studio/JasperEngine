@@ -2520,6 +2520,52 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // T1 R65: the terrain overlays, saved with the workspace per scene
+    if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Terrain")) {
+        TerrainOverlaySettings& overlay = sceneProject.displaySettings.terrainOverlay;
+        const std::vector<std::string> sources = TerrainOverlay::sourceNames();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(ICON_FA_MOUNTAIN " Overlay");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::BeginCombo("##terrainoverlay", overlay.source.empty() ? "None" : overlay.source.c_str())) {
+            if (ImGui::Selectable("None", overlay.source.empty())) {
+                overlay.source.clear();
+                sceneProject.needUpdateRender = true;
+                project->saveWorkspaceFile();
+            }
+            for (const std::string& name : sources) {
+                if (ImGui::Selectable(name.c_str(), overlay.source == name)) {
+                    overlay.source = name;
+                    sceneProject.needUpdateRender = true;
+                    project->saveWorkspaceFile();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::BeginDisabled(overlay.source.empty());
+        ImGui::TextUnformatted("    Opacity");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##terrainoverlayopacity", &overlay.opacity, 0.0f, 1.0f, "%.2f")) sceneProject.needUpdateRender = true;
+        if (ImGui::IsItemDeactivatedAfterEdit()) project->saveWorkspaceFile();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("    Contour Interval");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::DragFloat("##terrainoverlaycontour", &overlay.contourInterval, 0.5f, 0.0f, 10000.0f, overlay.contourInterval > 0.0f ? "%.1f m" : "Auto")) {
+            overlay.contourInterval = std::max(0.0f, overlay.contourInterval);
+            sceneProject.needUpdateRender = true;
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) project->saveWorkspaceFile();
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+
     // Physics Placement's own gizmos: per user, like its panel (every 3D Scene view)
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Physics Placement")) {
         PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
@@ -2564,6 +2610,9 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
+        drawSettingRow(ICON_FA_WATER " Animate water", sceneProject.displaySettings.animateWater);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Water and shaders on the scene clock move while the scene is stopped (Play always animates them)");
 
         ImGui::EndTable();
     }
@@ -3180,6 +3229,9 @@ void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     if (sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL)
         drawLodLegend(drawList, imageMin, imageMax);
+    if (sceneProject.sceneRender && !sceneProject.displaySettings.terrainOverlay.source.empty())
+        drawTerrainOverlayLegend(drawList, imageMin, imageMax, "Terrain: " + sceneProject.displaySettings.terrainOverlay.source,
+                                 sceneProject.sceneRender->getTerrainOverlayLegend(), sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL);
     if (!sceneProject.displaySettings.showStats)
         return;
     // in Edit mode the Scene view is the engine's frame, while playing a view of its own

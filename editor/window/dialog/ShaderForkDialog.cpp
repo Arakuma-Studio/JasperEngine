@@ -39,10 +39,11 @@ const char* ShaderForkDialog::shaderTypeName(ShaderType shaderType) {
 void ShaderForkDialog::open(
         Project* project, ShaderType shaderType, const std::string& defaultBaseName,
         std::function<void(const std::filesystem::path&, const std::string&, bool)> onCreate,
-        std::function<void()> onCancel) {
+        std::function<void()> onCancel, const std::string& librarySource) {
     m_isOpen = project != nullptr;
     m_project = project;
     m_shaderType = shaderType;
+    m_librarySource = librarySource;
     m_onCreate = std::move(onCreate);
     m_onCancel = std::move(onCancel);
     m_forkIncludes = false;
@@ -71,7 +72,7 @@ const ShaderForkDialog::ForkPreview& ShaderForkDialog::refreshPreview(const std:
     }
 
     ProjectUtils::ShaderForkPlan plan =
-        ProjectUtils::prepareShaderFork(m_project, m_shaderType, directory, name, m_forkIncludes);
+        ProjectUtils::prepareShaderFork(m_project, m_shaderType, directory, name, m_forkIncludes, m_librarySource);
 
     auto relative = [this](const std::filesystem::path& absolute) {
         std::error_code ec;
@@ -118,8 +119,11 @@ void ShaderForkDialog::show() {
         return;
     }
 
-    ImGui::Text("Fork the built-in %s shader", shaderTypeName(m_shaderType));
-    EditorModal::message(std::string("Fork the built-in ") + shaderTypeName(m_shaderType) + " shader");
+    const std::string title = m_librarySource.empty()
+        ? std::string("Fork the built-in ") + shaderTypeName(m_shaderType) + " shader"
+        : "Fork " + m_librarySource;
+    ImGui::TextUnformatted(title.c_str());
+    EditorModal::message(title);
     ImGui::Separator();
 
     if (!Util::isInsidePath(std::filesystem::path(m_selectedPath), m_projectPath))

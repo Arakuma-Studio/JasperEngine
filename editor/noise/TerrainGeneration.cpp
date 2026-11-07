@@ -5,18 +5,17 @@
 
 #include "EditorHost.h"
 #include "Project.h"
-#include "command/CommandGroup.h"
 #include "command/CommandHandle.h"
-#include "command/type/MultiPropertyCmd.h"
+#include "command/CommandHistory.h"
 #include "command/type/TerrainMapDeltaCmd.h"
 #include "component/TerrainComponent.h"
 #include "graph/GraphRegistry.h"
-#include "mcp/TerrainMaps.h"
 #include "noise/NoiseKernels.h"
 #include "object/TerrainEdit.h"
+#include "terrain/EditorTerrainStore.h"
 #include "terrain/OverlayMapStore.h"
+#include "terrain/TerrainOpsUndo.h"
 #include "terrain/TerrainLayers.h"
-#include "util/TerrainMapUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -568,27 +567,31 @@ namespace {
         return scene && scene->scene ? scene : nullptr;
     }
 
-    // The bytes a batch may change, per map: cut before and after the write into XOR deltas
-    struct MapBefore {
-        MapId map;
-        TexelRect rect;
-        std::vector<uint8_t> bytes;
-    };
-
-    std::vector<MapId> mapsTouched(const std::vector<int>& layers, const std::vector<int>& densities, bool height, terrain::TerrainMapStore& store) {
-        std::vector<MapId> maps;
-        if (height) maps.push_back(kHeightMap);
-        // setLayerWeights rewrites every existing blend map over the rect
-        for (int map = 0; map < 16 && !layers.empty(); map++) {
-            if (!store.format(MapId{MapKind::Blend, map}).exists) break;
-            maps.push_back(MapId{MapKind::Blend, map});
+    // The maps a run writes that the terrain lacks, with the size each is made at: the height map when the run
+    // replaces it, the blend maps its layers need, the density maps of its foliage layers
+    std::vector<std::pair<MapId, terrain::MapFormat>> mapsToMake(const TerrainGeneration::Prepared& prepared, const terrain::TerrainMapStore& store,
+                                                                 int densityResolution) {
+        std::vector<std::pair<MapId, terrain::MapFormat>> out;
+        const auto sized = [](int width, int depth) {
+            terrain::MapFormat format;
+            format.bounds = TexelRect{0, 0, width, depth};
+            return format;
+        };
+        const bool writesHeight = std::any_of(prepared.outputs.begin(), prepared.outputs.end(), [](const OutputPlan& plan) { return plan.kind == noise::OutputKind::Height; });
+        if (prepared.replaces && writesHeight) out.emplace_back(kHeightMap, sized(prepared.mapWidth, prepared.mapDepth));
+        const std::vector<int> layers = TerrainGeneration::layersOf(prepared);
+        if (!layers.empty()) {
+            const int needed = terrain::terrainBlendMapCount(*std::max_element(layers.begin(), layers.end()) + 1);
+            const terrain::MapFormat first = store.format(MapId{MapKind::Blend, 0});
+            const int side = first.exists ? first.bounds.w : prepared.mapWidth;
+            for (int map = 0; map < needed; map++) {
+                if (!store.format(MapId{MapKind::Blend, map}).exists) out.emplace_back(MapId{MapKind::Blend, map}, sized(side, side));
+            }
         }
-        for (int density : densities) maps.push_back(MapId{MapKind::Density, density});
-        return maps;
-    }
-
-    size_t bytesOfRect(const terrain::MapFormat& format, const TexelRect& rect) {
-        return static_cast<size_t>(rect.area()) * static_cast<size_t>(format.channels) * static_cast<size_t>(format.bitsPerChannel / 8);
+        for (int density : TerrainGeneration::densitiesOf(prepared)) {
+            if (!store.format(MapId{MapKind::Density, density}).exists) out.emplace_back(MapId{MapKind::Density, density}, sized(densityResolution, densityResolution));
+        }
+        return out;
     }
 
 }
@@ -696,129 +699,53 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
                     return;
                 }
 
-                // One undo step (R29): the structural part first, for maps that do not exist yet, then the
-                // batch. The group runs both in order on its first execute.
-                std::vector<std::unique_ptr<Command>> steps;
-                auto structure = std::make_unique<MultiPropertyCmd>();
-                bool anyStructure = false;
-                const auto changedCallback = [project, sceneId, entity](bool height) {
-                    return [project, sceneId, entity, height]() {
-                        SceneProject* sp = sceneOf(project, sceneId);
-                        TerrainComponent* t = sp ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
-                        if (!t) return;
-                        if (height) {
-                            t->heightMapLoaded = false;
-                            t->heightMap.invalidateRender();
-                            t->needUpdateTerrain = true;
-                        }
-                        t->needUpdateTexture = true;
-                    };
-                };
-                const bool writesHeight = std::any_of(prepared->outputs.begin(), prepared->outputs.end(), [](const OutputPlan& plan) { return plan.kind == noise::OutputKind::Height; });
-                if (prepared->replaces && writesHeight) {
-                    mcp::TerrainHeightmapRequest flat;
-                    flat.resolution = prepared->mapWidth;
-                    flat.mode = "flat";
-                    flat.baseHeight = 0.0f;
-                    flat.seed = prepared->request.seed;
-                    mcp::TerrainHeightmapResult created = mcp::TerrainMaps::createHeightmap(project, sceneId, entity, flat);
-                    if (!created.success) {
-                        result->ok = false;
-                        addIssue(*result, "apply-failed", created.error.empty() ? "Could not create the height map." : created.error);
-                        finish(*result);
-                        return;
-                    }
-                    structure->addPropertyCmd<Texture>(project, sceneId, entity, ComponentType::TerrainComponent, "heightMap", created.texture, changedCallback(true));
-                    anyStructure = true;
-                }
-                const std::vector<int> layers = layersOf(*prepared);
-                if (!layers.empty()) {
-                    const int needed = terrain::terrainBlendMapCount(*std::max_element(layers.begin(), layers.end()) + 1);
-                    std::vector<Texture> blendMaps = terrainNow->blendMaps;
-                    bool created = false;
-                    const int resolution = !blendMaps.empty() && !blendMaps[0].empty() && storeNow.format(MapId{MapKind::Blend, 0}).exists
-                        ? storeNow.format(MapId{MapKind::Blend, 0}).bounds.w : prepared->mapWidth;
-                    while (static_cast<int>(blendMaps.size()) < needed || std::any_of(blendMaps.begin(), blendMaps.end(), [](const Texture& t) { return t.empty(); })) {
-                        size_t slot = 0;
-                        while (slot < blendMaps.size() && !blendMaps[slot].empty()) slot++;
-                        mcp::TerrainBlendmapRequest flat;
-                        flat.resolution = resolution;
-                        mcp::TerrainBlendmapResult made = mcp::TerrainMaps::createBlendmap(project, sceneId, entity, flat);
-                        if (!made.success) {
-                            result->ok = false;
-                            addIssue(*result, "apply-failed", made.error.empty() ? "Could not create a blend map." : made.error);
-                            finish(*result);
-                            return;
-                        }
-                        if (slot >= blendMaps.size()) blendMaps.resize(slot + 1);
-                        blendMaps[slot] = Texture(made.relativePath);
-                        created = true;
-                    }
-                    if (created) {
-                        structure->addPropertyCmd<std::vector<Texture>>(project, sceneId, entity, ComponentType::TerrainComponent, "blendMaps", blendMaps, changedCallback(false));
-                        anyStructure = true;
-                    }
-                }
-                for (int density : densitiesOf(*prepared)) {
-                    if (density >= static_cast<int>(terrainNow->foliageLayers.size())) continue;
-                    if (!terrainNow->foliageLayers[static_cast<size_t>(density)].densityMap.empty()) continue;
-                    std::string path, error;
-                    if (!mcp::TerrainMaps::createDensitymap(project, sceneId, entity, density, project->getTerrainEditorSettings().densityMapResolution, path, error)) {
-                        result->ok = false;
-                        addIssue(*result, "apply-failed", error);
-                        finish(*result);
-                        return;
-                    }
-                    const TerrainMapRef ref(TerrainMapTarget::DensityMap, density);
-                    structure->addPropertyCmd<Texture>(project, sceneId, entity, ComponentType::TerrainComponent, TerrainMapUtils::getPropertyName(ref), Texture(path), changedCallback(false));
-                    anyStructure = true;
-                }
-                if (anyStructure) steps.push_back(std::move(structure));
-
-                auto applied = std::make_shared<bool>(false);
-                steps.push_back(std::make_unique<TerrainMapDeltaCmd>(project, sceneId, entity, result->undoName,
-                    [prepared, result, project, sceneId, entity, writesHeight, applied](std::vector<TerrainMapDeltaCmd::MapDelta>& deltas) {
-                        SceneProject* sp = sceneOf(project, sceneId);
-                        TerrainComponent* t = sp ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
-                        if (!t) return false;
-                        TerrainComponentStore writeStore(sp->scene, entity, *t);
-                        std::vector<MapBefore> before;
-                        for (MapId map : mapsTouched(layersOf(*prepared), densitiesOf(*prepared), writesHeight, writeStore)) {
-                            const terrain::MapFormat format = writeStore.format(map);
-                            if (!format.exists) continue;
-                            MapBefore saved;
-                            saved.map = map;
-                            saved.rect = map.kind == MapKind::Height ? prepared->rect : scaleRect(prepared->rect, prepared->mapWidth, prepared->mapDepth, format.bounds.w, format.bounds.h);
-                            saved.bytes.resize(bytesOfRect(format, saved.rect));
-                            if (writeStore.readBytes(map, saved.rect, saved.bytes)) before.push_back(std::move(saved));
-                        }
-                        if (!TerrainGeneration::apply(*prepared, writeStore, *result)) return false;
-                        *applied = true;
-                        std::vector<uint8_t> after;
-                        for (MapBefore& saved : before) {
-                            after.resize(saved.bytes.size());
-                            if (!writeStore.readBytes(saved.map, saved.rect, after)) continue;
-                            bool any = false;
-                            for (size_t i = 0; i < after.size(); i++) {
-                                saved.bytes[i] ^= after[i];
-                                any = any || saved.bytes[i] != 0;
-                            }
-                            if (!any) continue;
-                            TerrainMapDeltaCmd::MapDelta delta;
-                            delta.map = saved.map;
-                            delta.rect = saved.rect;
-                            delta.xorBytes = std::move(saved.bytes);
-                            deltas.push_back(std::move(delta));
-                        }
-                        return true;
-                    }));
-
-                // The history a project-wide map write belongs to; a step per terrain's scene
-                CommandHandle::get(sceneId)->addCommandNoMerge(new CommandGroup(std::move(steps), result->undoName, false));
-                if (!*applied) {
+                // One undo step (R29), made as T1's edit_terrain makes one: the maps the run needs and the terrain
+                // lacks, made blank and each kept by a structural step holding its final pixels, then one tile
+                // delta over the maps that were there, all grouped
+                CommandHistory* history = CommandHandle::get(sceneId);
+                const size_t mark = history->mark();
+                const auto fail = [&](const std::string& message) {
+                    while (history->position() > mark && history->canUndo() && history->undo()) {}
                     result->ok = false;
-                    if (result->error.empty()) addIssue(*result, "apply-failed", "The write failed: nothing changed.");
+                    addIssue(*result, "apply-failed", message);
+                    finish(*result);
+                };
+                std::vector<TerrainMadeMap> made;
+                std::vector<MapId> madeIds;
+                for (const auto& [map, format] : mapsToMake(*prepared, storeNow, project->getTerrainEditorSettings().densityMapResolution)) {
+                    made.emplace_back();
+                    if (!makeTerrainBlankMap(project, scene, entity, map, format, made.back())) {
+                        made.pop_back();
+                        fail(std::string("The ") + (map.kind == MapKind::Height ? "height" : map.kind == MapKind::Blend ? "blend" : "density") +
+                             " map could not be made.");
+                        return;
+                    }
+                    madeIds.push_back(map);
                 }
+                EditorTerrainStore writer(project, sceneId, scene->scene, entity, scene->scene->getComponent<TerrainComponent>(entity));
+                terrain::OverlayMapStore overlay(writer);
+                if (!apply(*prepared, overlay, *result)) {
+                    fail(result->error.empty() ? "The write failed: nothing changed." : result->error);
+                    return;
+                }
+                std::string error;
+                for (const TerrainMadeMap& map : made) {
+                    if (!keepTerrainMadeMap(project, scene, entity, map, overlay, result->undoName, error)) {
+                        fail(error);
+                        return;
+                    }
+                }
+                auto delta = std::make_unique<TerrainMapDeltaCmd>(project, sceneId, entity, entity, overlay, false, result->undoName, madeIds);
+                if (!delta->empty()) {
+                    Command* command = delta.release();
+                    command->setNoMerge();
+                    if (!history->addCommand(command)) {
+                        fail("The write failed: nothing changed.");
+                        return;
+                    }
+                }
+                overlay.discard();
+                history->groupSince(mark, result->undoName);
                 finish(*result);
             };
             try {

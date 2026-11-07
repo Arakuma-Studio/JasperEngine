@@ -173,7 +173,10 @@ class Emitters(unittest.TestCase):
     #    initializers, modifiers and colour gradient are gone (deprecated setters stay on the
     #    ParticleSystem object, S20 D9), and so is ActionSystem::particleActionReset;
     #  - the lattice merge moved setTimes/setEasings/setEasing to KeyframeTracks, where every
-    #    tracks class inherits them (a base class's member counts for the derived one).
+    #    tracks class inherits them (a base class's member counts for the derived one);
+    #  - mobile-shipping retired built-in AdMob (ads go through the native bridge).
+    ADMOB_SYSTEM_STATICS = {'initializeAdMob', 'setMaxAdContentRating', 'loadInterstitialAd', 'isInterstitialAdLoaded',
+                            'showInterstitialAd'}
     S20_LEGACY_PARTICLE_FIELDS = {
         'accelerationInitializer', 'accelerationModifier', 'alphaInitializer', 'alphaModifier', 'bursts',
         'colorGradient', 'colorInitializer', 'colorModifier', 'currentBurst', 'emitter', 'lastUsedParticle',
@@ -188,6 +191,8 @@ class Emitters(unittest.TestCase):
         if re.fullmatch(r'Particle\w*(Initializer|Modifier)|ParticleColorGradient', owner):
             return True
         if parent == 'ParticleSystemComponent' and kind == 'Property' and name in cls.S20_LEGACY_PARTICLE_FIELDS:
+            return True
+        if owner == 'AdMobRating' or (parent == 'System' and name in cls.ADMOB_SYSTEM_STATICS):
             return True
         # SYNC#4: upstream's collider vectors replaced PhysicsSystem::loadCollider2D
         return (kind, parent, name) in (('CppMethod', 'ActionSystem', 'particleActionReset'),
@@ -228,6 +233,41 @@ class Emitters(unittest.TestCase):
                     continue
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
+
+    def test_lua_only_marked(self):
+        """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static
+        property backed by an accessor or a lambda, and a method bound to a helper, are Lua only"""
+        classes = {c['name']: c for c in api()['classes']}
+
+        def prop(cls, name):
+            return next(p for p in classes[cls]['properties'] if p['name'] == name)
+
+        def method(cls, name):
+            return next(m for m in classes[cls]['methods'] if m['name'] == name)
+        self.assertTrue(prop('Engine', 'deltatime').get('luaOnly'))
+        self.assertTrue(prop('Input', 'KEY_SPACE').get('luaOnly'))
+        self.assertFalse(prop('Vector3', 'ZERO').get('luaOnly'))
+        self.assertTrue(method('GameObject', 'getParticleSystemsInChildren').get('luaOnly'))
+        self.assertFalse(method('Vector3', 'lerp').get('luaOnly'))
+        only = suggestions.lua_only(api())
+        self.assertIn(('Engine', 'deltatime', 'Constant'), only)
+        self.assertIn('{"deltatime", "Constant", "Engine.deltatime", "Engine", true}', suggestions.header_text(api()))
+
+    def test_no_bool_true_default_lost(self):
+        """LuaBridge reads a missing bool as false: a method bound straight to a C++ function whose
+        bool parameter defaults to true loses the default from Lua (actionStart's newRun, loadGLTF's
+        changeRootTransform). Such a binding takes std::optional<bool> and value_or(true)."""
+        lost = []
+        for c in api()['classes']:
+            for m in c['methods']:
+                # an overload set picks by argument count: its full form gets every argument
+                if len(m['overloads']) != 1:
+                    continue
+                cpp = m['overloads'][0].get('cpp') or {}
+                for q in cpp.get('params', []):
+                    if q['type'] == 'bool' and q.get('default') == 'true':
+                        lost.append(f"{c['name']}.{m['name']}({q['name']})")
+        self.assertEqual(lost, [])
 
     def test_suggestions_header(self):
         text = suggestions.header_text(api())

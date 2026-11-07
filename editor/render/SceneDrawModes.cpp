@@ -3,6 +3,7 @@
 
 #include "SceneDrawModes.h"
 
+#include "terrain/TerrainOverlay.h"
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
@@ -175,6 +176,29 @@ void editor::drawLodLegend(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMa
         x += swatch + Theme::dpi(4.0f);
         drawList->AddText(ImVec2(x, min.y + pad.y), IM_COL32(220, 220, 220, 255), labels[l]);
         x += ImGui::CalcTextSize(labels[l]).x + pad.x;
+    }
+}
+
+void editor::drawTerrainOverlayLegend(ImDrawList* drawList, ImVec2 imageMin, ImVec2 imageMax, const std::string& title,
+                                      const std::vector<TerrainOverlayLegendStop>& stops, bool aboveLodLegend){
+    if (stops.empty()) return;
+    const float margin = Theme::dpi(8.0f);
+    const float swatch = ImGui::GetTextLineHeight();
+    const float line = ImGui::GetTextLineHeightWithSpacing();
+    const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 6.0f));
+    float width = ImGui::CalcTextSize(title.c_str()).x;
+    for (const TerrainOverlayLegendStop& stop : stops) width = std::max(width, swatch + Theme::dpi(4.0f) + ImGui::CalcTextSize(stop.label.c_str()).x);
+    const ImVec2 size(width + pad.x * 2.0f, line * (float)(stops.size() + 1) + pad.y * 2.0f);
+    const float lift = aboveLodLegend ? swatch + pad.y * 2.0f + margin : 0.0f;
+    const ImVec2 min(imageMin.x + margin, imageMax.y - margin - lift - size.y);
+    drawList->AddRectFilled(min, ImVec2(min.x + size.x, min.y + size.y), IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
+    drawList->AddText(ImVec2(min.x + pad.x, min.y + pad.y), IM_COL32(255, 255, 255, 255), title.c_str());
+    for (size_t i = 0; i < stops.size(); i++){
+        const float y = min.y + pad.y + line * (float)(i + 1);
+        auto channel = [](float c){ return (int)std::clamp(c * 255.0f, 0.0f, 255.0f); };
+        const Vector4& c = stops[i].color;
+        drawList->AddRectFilled(ImVec2(min.x + pad.x, y), ImVec2(min.x + pad.x + swatch, y + swatch), IM_COL32(channel(c.x), channel(c.y), channel(c.z), 255));
+        drawList->AddText(ImVec2(min.x + pad.x + swatch + Theme::dpi(4.0f), y), IM_COL32(220, 220, 220, 255), stops[i].label.c_str());
     }
 }
 

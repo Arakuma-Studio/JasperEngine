@@ -176,3 +176,26 @@ TEST(CommandCatalog, DynamicCommandsTakeTheirStoredOverride) {
     catalog.add(script);
     EXPECT_EQ(catalog.markdownReference().find("Align Scripted Objects"), std::string::npos);
 }
+
+// Ctrl+D duplicates assets in the Project window (one copy per press) and F11 is Maximize On Play
+// everywhere (project-window spec D5, D14)
+TEST(CommandCatalog, ProjectDuplicateAndMaximizeOnPlayAreBound) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    const CommandDef* duplicate = catalog.find("project.duplicate");
+    ASSERT_NE(duplicate, nullptr);
+    EXPECT_EQ(duplicate->context, ShortcutContext::Project);
+    EXPECT_FALSE(duplicate->repeat) << "a held Ctrl+D makes one copy";
+    ASSERT_EQ(catalog.bindings("project.duplicate").size(), 1u);
+    EXPECT_EQ(catalog.bindings("project.duplicate")[0], chordOf("Ctrl+D"));
+    const CommandDef* maximize = catalog.find("playmode.maximizeOnPlay");
+    ASSERT_NE(maximize, nullptr);
+    EXPECT_EQ(maximize->context, ShortcutContext::Global);
+    ASSERT_EQ(catalog.bindings("playmode.maximizeOnPlay").size(), 1u);
+    EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
+    EXPECT_TRUE(maximize->menuCommand.has_value());
+    for (const char* id : {"assets.duplicate", "assets.createCppSource", "assets.createCppHeader", "assets.createPhysicsMaterial",
+                           "assets.createPhysicsMaterial2D"}) {
+        EXPECT_NE(catalog.find(id), nullptr) << id;
+    }
+}

@@ -257,7 +257,8 @@ namespace jasperengine {
     // that ignore what the UI consumes honour it)
     struct InputSuppression {
         bool keyboard = false;            // a text field has keyboard focus
-        bool gamepadNavigation = false;   // a document has gamepad focus (d-pad, left stick, A)
+        bool gamepadNavigation = false;   // a document has gamepad focus or a Button is selected (d-pad, left stick, A)
+        bool keyboardNavigation = false;  // a Button is selected (arrows, Tab, Enter, keypad Enter, Space)
     };
 
     // The edges of one control in one window (Input::getControlEdges)

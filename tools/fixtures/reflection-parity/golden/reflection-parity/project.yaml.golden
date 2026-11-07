@@ -14,6 +14,7 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+startSceneId: 2026080800
 scenes:
   - filepath: AllComponents.scene
     filepathGuid: 32bfd2ae1a9d56a8dc83ae0fc8537f39

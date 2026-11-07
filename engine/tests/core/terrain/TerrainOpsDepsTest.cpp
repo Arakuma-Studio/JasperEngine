@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// What the terrain folder may depend on, and that it is the one query (S53 R1, R8, R14; AC1, AC12), by
+// What the terrain folder may depend on, and that it is the one query (T1 R1, R8, R14; AC1, AC12), by
 // reading the sources as SokolPatchMarkers does
 
 #include <gtest/gtest.h>
@@ -79,6 +79,23 @@ TEST(TerrainOpsDeps, OneQuery) {
             for (const std::string& name : gone) {
                 EXPECT_EQ(text.find(name), std::string::npos) << generic << " still has " << name;
             }
+        }
+    }
+    EXPECT_GT(scanned, 100);
+}
+
+// AC17 (T1 R22): the writers the engine replaced have no hit left in the editor
+TEST(TerrainOpsDeps, OldWritersAreGone) {
+    const std::vector<std::string> gone = {"TerrainMapPatchCmd", "scriptedStampSeconds", "workingPixels", "beforeSnapshot", "heightReference"};
+    int scanned = 0;
+    const fs::path root = repositoryRoot() / "editor";
+    ASSERT_TRUE(fs::is_directory(root)) << root;
+    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+        if (!entry.is_regular_file() || !isSource(entry.path())) continue;
+        scanned++;
+        const std::string text = readFile(entry.path());
+        for (const std::string& name : gone) {
+            EXPECT_EQ(text.find(name), std::string::npos) << entry.path().generic_string() << " still has " << name;
         }
     }
     EXPECT_GT(scanned, 100);

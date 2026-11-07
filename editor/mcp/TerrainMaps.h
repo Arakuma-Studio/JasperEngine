@@ -45,10 +45,16 @@ struct TerrainBlendmapResult {
     std::string error;
     std::string relativePath;
     std::filesystem::path fullPath;
+    std::string encoded;    // the PNG bytes (written to fullPath unless the caller writes them)
 };
 
-// Generated terrain maps (set_terrain_maps): 16-bit heightmaps and constant RGB blend maps
-// written as PNGs into the project's terrain maps directory
+struct TerrainDensityMapRequest {
+    int resolution = 512;
+    float fill = 1.0f;      // 0-1: the share of the layer's density everywhere
+};
+
+// Generated terrain maps (set_terrain_maps, edit_terrain_details): 16-bit heightmaps, constant RGB
+// blend maps and constant detail density maps written as PNGs into the project's terrain maps directory
 class TerrainMaps {
 public:
     static TerrainHeightmapResult createHeightmap(Project* project,
@@ -61,9 +67,13 @@ public:
                                                 Entity entity,
                                                 const TerrainBlendmapRequest& request);
 
-    // An empty 8-bit density map for a foliage layer, as a file: T2's generation writes into it
-    static bool createDensitymap(Project* project, uint32_t sceneId, Entity entity, int foliageLayer, int resolution,
-                                 std::string& relativePath, std::string& error);
+    // A detail layer's density map, the same grey everywhere: encoded, not written (edit_terrain_details
+    // writes it in its undoable step); named after the layer so maps of one call never share a path
+    static TerrainBlendmapResult encodeDensityMap(Project* project,
+                                                  uint32_t sceneId,
+                                                  Entity entity,
+                                                  int layer,
+                                                  const TerrainDensityMapRequest& request);
 };
 
 } // namespace jasperengine::editor::mcp

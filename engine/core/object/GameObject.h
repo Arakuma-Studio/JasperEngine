@@ -25,6 +25,10 @@
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
 
+#include <optional>
+#include <string>
+#include <vector>
+
 namespace jasperengine{
 
     class Rigidbody2D;
@@ -80,6 +84,20 @@ namespace jasperengine{
         void removeChild(Entity child);
 
         void removeParent();
+
+        // Unity's Transform hierarchy. The parent: none for a root or a Transform-less object
+        std::optional<GameObject> getParent() const;
+        // Unity's SetParent; nullptr moves it to the root. worldPositionStays keeps its world
+        // placement (the local one changes), else its local values. A parent in another scene,
+        // itself, one of its descendants or one without a Transform is refused (logged)
+        void setParent(const EntityHandle* parent, bool worldPositionStays = true);
+        // the direct children with a Transform, in Hierarchy order
+        size_t getChildCount() const;
+        // 0-based; none out of range
+        std::optional<GameObject> getChild(size_t index) const;
+        std::vector<GameObject> getChildren() const;
+        // Unity's Transform.Find: a child by name, or a path of names below this one ("Arm/Hand")
+        std::optional<GameObject> findChild(const std::string& path) const;
 
         void moveToTop();
         void moveUp();
