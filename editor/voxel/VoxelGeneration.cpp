@@ -131,6 +131,55 @@ namespace {
 
 }
 
+namespace {
+
+    // A Noise Graph's base on the volume's lattice; the seed a generation records, plus one
+    std::shared_ptr<const BaseSource> graphBase(const std::string& json, uint64_t seed, double voxelSize, std::string& error) {
+        const std::shared_ptr<const noise::CompiledGraph> compiled = compileVoxelGraph(json, error);
+        if (!compiled) return nullptr;
+        NoiseBaseOptions options;
+        options.graph = compiled;
+        options.seed = static_cast<uint32_t>(seed) + 1;
+        options.voxelSize = voxelSize;
+        options.graphScale = 1.0;
+        return makeNoiseBase(options);
+    }
+
+    // The presets made of ops and graphs, from what a generation records (R37): caves and overhangs
+    std::shared_ptr<const BaseSource> presetBase(const std::string& preset, uint64_t seed, const VolumeDesc& desc, double sizeScale, std::string& error) {
+        const double voxelSize = desc.voxelSize;
+        const double height = desc.dimensions.y * 0.5 * voxelSize;
+        if (preset == "caves") {
+            return makeCarvedBase(makeSolidGroundBase(height, voxelSize, 0), wormTunnels(seed, desc.dimensions, sizeScale));
+        }
+        if (preset == "overhangs") {
+            std::string json = OVERHANGS_GRAPH;
+            const double amplitude = 10.0 * voxelSize * sizeScale;
+            replaceAll(json, "@NEGHEIGHT@", std::to_string(-height));
+            replaceAll(json, "@AMPLITUDE@", std::to_string(amplitude));
+            replaceAll(json, "@WARP@", std::to_string(amplitude * 0.5));
+            replaceAll(json, "@FREQUENCY@", std::to_string(0.05 / (voxelSize * sizeScale)));
+            return graphBase(json, seed, voxelSize, error);
+        }
+        return nullptr;
+    }
+
+}
+
+std::shared_ptr<const BaseSource> jasperengine::editor::resolveVoxelBase(const GeneratorDesc& generator, const VolumeDesc& desc) {
+    std::string error;
+    // what no description rebuilds is in the file's blocks, every one of them (prepare's bake)
+    if (generator.kind == "baked") return makeEmptyBase();
+    if (generator.kind == "preset") return presetBase(generator.preset, generator.seed, desc, generator.graphScale, error);
+    if (generator.kind == "noise_graph") {
+        std::string json;
+        if (generator.sourcePath.empty() || !readProjectFile(generator.sourcePath, json)) return nullptr;
+        return graphBase(json, generator.seed, desc.voxelSize, error);
+    }
+    // a Terrain's is VoxelSystem's, once the volume is attached to it
+    return nullptr;
+}
+
 struct VoxelGeneration::State {
     Entity owner = NULL_ENTITY;
     VoxelGenerateRequest request;
@@ -140,6 +189,8 @@ struct VoxelGeneration::State {
     std::unique_ptr<Store> working;
     VoxelGenerateResult result;
     std::atomic<bool> cancelled{false};
+    // the base cannot be rebuilt from the file's description: every block goes in the file
+    bool bake = false;
 };
 
 bool jasperengine::editor::isVoxelBaseStale(Scene* scene, Entity owner) {
@@ -190,16 +241,7 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
     std::shared_ptr<const BaseSource> base;
     bool nonWatertight = false;
 
-    const auto noiseBase = [&](const std::string& json, std::string& error) -> std::shared_ptr<const BaseSource> {
-        const std::shared_ptr<const noise::CompiledGraph> compiled = compileVoxelGraph(json, error);
-        if (!compiled) return nullptr;
-        NoiseBaseOptions options;
-        options.graph = compiled;
-        options.seed = static_cast<uint32_t>(request.seed) + 1;
-        options.voxelSize = voxelSize;
-        options.graphScale = 1.0;
-        return makeNoiseBase(options);
-    };
+    const auto noiseBase = [&](const std::string& json, std::string& error) { return graphBase(json, request.seed, voxelSize, error); };
     const auto terrainBase = [&](Entity terrain) { return system->makeTerrainBaseFor(owner, terrain); };
     const Entity terrain = request.terrain != NULL_ENTITY ? request.terrain : component->terrain;
 
@@ -254,18 +296,12 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
             generator.kind = "solid_ground";
             generator.height = height;
             base = makeSolidGroundBase(height, voxelSize, 0);
-        } else if (request.preset == "caves") {
-            base = makeCarvedBase(makeSolidGroundBase(height, voxelSize, 0), wormTunnels(request.seed, desc.dimensions, request.sizeScale));
-        } else if (request.preset == "overhangs") {
-            std::string json = OVERHANGS_GRAPH;
-            const double amplitude = 10.0 * voxelSize * request.sizeScale;
-            replaceAll(json, "@NEGHEIGHT@", std::to_string(-height));
-            replaceAll(json, "@AMPLITUDE@", std::to_string(amplitude));
-            replaceAll(json, "@WARP@", std::to_string(amplitude * 0.5));
-            replaceAll(json, "@FREQUENCY@", std::to_string(0.05 / (voxelSize * request.sizeScale)));
+        } else if (request.preset == "caves" || request.preset == "overhangs") {
             std::string error;
-            base = noiseBase(json, error);
+            base = presetBase(request.preset, request.seed, desc, request.sizeScale, error);
             if (!base) return fail("invalid_graph", error);
+            // what rebuilds it when the file is opened again (resolveVoxelBase)
+            generator.graphScale = request.sizeScale;
         } else if (request.preset == "cave_entrance") {
             const std::shared_ptr<const BaseSource> ground = terrainBase(terrain);
             if (!ground) return fail("missing_asset", "cave_entrance digs from a Terrain: pass terrain");
@@ -318,6 +354,15 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
     } else {
         state.working->resetToBase();
     }
+    // A GameObject's mesh, a Terrain's entrance, a blend, or a Terrain the volume is not attached to: no
+    // description makes it again, so every block goes in the file over an empty base, and the generator
+    // says so, keeping what it was made from
+    state.bake = request.source == "mesh" || request.preset == "cave_entrance" || !generator.otherKind.empty() ||
+                 (request.source == "terrain" && component->terrain != terrain);
+    if (state.bake) {
+        if (state.generator.otherKind.empty()) state.generator.otherKind = state.generator.kind;
+        state.generator.kind = "baked";
+    }
     state.result.ok = true;
     state.result.nonWatertight = nonWatertight;
     state.result.estimate = request.dryRun;
@@ -357,6 +402,7 @@ void VoxelGeneration::run(const std::function<bool()>& cancelled, const std::fun
                     const BlockKey key{level, x, y, z};
                     const BlockContent content = store.content(key);
                     if (!content.isFullyUniform()) nonUniform++;
+                    if (data.bake && !data.request.dryRun) store.setLoadedSlot(key, content, true);
                     // Triangles from the coarsest level, which is cheap and scales by area
                     if (level == lastLevel) {
                         const auto view = store.readView(key, 0);
@@ -413,7 +459,7 @@ VoxelGenerateResult VoxelGeneration::finish(Scene* scene, VoxelGenerateUndo* und
             }
         }
     }
-    target.replaceBase(data.base);
+    target.replaceBase(data.bake ? makeEmptyBase() : data.base);
     target.bumpVersion();
     data.asset->generator = data.generator;
     data.asset->baseResolved = true;

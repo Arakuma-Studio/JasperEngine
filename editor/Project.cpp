@@ -92,6 +92,7 @@
 #include "subsystem/FluidSystem.h"
 #include "subsystem/VoxelSystem.h"
 #include "voxel/VoxelAssetFile.h"
+#include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
@@ -336,6 +337,8 @@ bool editor::Project::recordSelectionInUndo = true;
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
     resetConfigs();
     installUndoHooks();
+    // a volume's file holds its base's description: presets and Noise Graphs are rebuilt from it (T6 R33)
+    VoxelAssets::setBaseResolver(&resolveVoxelBase);
 }
 
 editor::Project::~Project(){

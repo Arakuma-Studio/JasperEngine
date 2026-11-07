@@ -82,6 +82,10 @@ namespace jasperengine::editor {
     // source to compare (empty, solid ground, a preset of ops) is never stale.
     bool isVoxelBaseStale(Scene* scene, Entity owner);
 
+    // R33: the base a volume's file describes, rebuilt when the file is opened again (the editor gives it
+    // to VoxelAssets::setBaseResolver). Null when only an attached Terrain can make it.
+    std::shared_ptr<const voxel::BaseSource> resolveVoxelBase(const voxel::GeneratorDesc& generator, const voxel::VolumeDesc& desc);
+
     // R37: the presets, as editor::TerrainPresets lists T2's
     struct VoxelPresetInfo {
         std::string name;
