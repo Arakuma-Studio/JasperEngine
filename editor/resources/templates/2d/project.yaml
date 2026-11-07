@@ -5,14 +5,6 @@ canvasHeight: 720
 scalingMode: letterbox
 textureStrategy: none
 vsync: true
-foliageQuality:
-  desktop: high
-  mobile: low
-  web: low
-foliageDistance:
-  desktop: 1
-  mobile: 0.5
-  web: 0.5
 htmlUiMsaaSamples: 4
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
@@ -24,7 +16,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 1099605158
+startSceneId: 4187307485
 scenes:
   - filepath: Main.scene
-    filepathGuid: 04641458e96bada0d2e8ad2c07228df8
+    filepathGuid: 9d9749fbac47661553577b56eefa2c92

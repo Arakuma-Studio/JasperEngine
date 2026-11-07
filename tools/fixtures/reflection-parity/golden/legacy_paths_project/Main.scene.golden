@@ -45,7 +45,17 @@ shaderKeys:
     properties: 33554433
   - type: mesh
     properties: 33554504
+  - type: mesh
+    properties: 68753031240
+  - type: mesh
+    properties: 2199056809985
+  - type: mesh
+    properties: 2199056810056
+  - type: mesh
+    properties: 2267776286792
   - type: blit
+  - type: blit
+    properties: 4096
 prefabs:
   - path: prefabs/Lamp.prefab
     guid: 30aeaad93c80be96b89030fe283e7a8b

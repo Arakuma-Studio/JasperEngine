@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CanvasGroup.h"
+#include "component/Transform.h"
 
 #include "component/RectTransformComponent.h"
 #include "subsystem/UISystem.h"

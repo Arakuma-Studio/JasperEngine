@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include <cmath>
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "log/Logger.h"
@@ -48,6 +52,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/ShadowCaster2D.h"
+#include "object/CapsuleShadowCaster.h"
 #include "object/Camera.h"
 #include "object/Bone.h"
 #include "object/environment/Fog.h"
@@ -910,6 +915,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerFoliageClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
+    registerAudioClasses(L);
     registerIOClasses(L);
     registerMathClasses(L);
     // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)
@@ -1125,6 +1131,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Light, "light");
     DISPATCH_TYPE(Light2D, "light2d");
     DISPATCH_TYPE(ShadowCaster2D, "shadowcaster2d");
+    DISPATCH_TYPE(CapsuleShadowCaster, "capsuleshadowcaster");
     DISPATCH_TYPE(Mesh, "mesh");
     DISPATCH_TYPE(Primitive, "primitive");
     DISPATCH_TYPE(Lattice, "lattice");

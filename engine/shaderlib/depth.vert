@@ -14,20 +14,14 @@
 //   } customParams;
 
 // mvpMatrix is lightVPMatrix * modelMatrix computed once, so a depth prepass matches
-// mesh.vert bit for bit; a fork may still multiply the two itself
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-} depthParams;
+// mesh.vert bit for bit; a fork may still multiply the two itself (u_vs_depthParams, or per
+// instance in an automatically instanced batch: includes/object_depth_params.glsl)
+#include "includes/object_depth_params.glsl"
 
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
-    uniform u_vs_fade {
-        vec4 fadeRange; //start.x, end.y
-        vec4 fadeEye;   //camera in model space.xyz
-    } fadeParams;
+    #include "includes/instance_fade.glsl"
 #endif
 
 in vec3 a_position;
@@ -115,11 +109,11 @@ void main() {
         #endif
         vec4 pos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
         #ifdef HAS_INSTANCING
-            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             pos = instanceMatrix * pos;
         #endif
     #elif defined(HAS_INSTANCING)
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix *  getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);
@@ -145,12 +139,7 @@ void main() {
     #ifdef USE_INSTANCE_FADE
         // Matches mesh.vert exactly, so a shrinking instance shrinks its shadow in step.
         vec3 fadeOrigin = i_matrix_col4.xyz;
-        float fadeVisible = 1.0;
-        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
-            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
-            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
-                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
-        }
+        float fadeVisible = instanceFadeVisible(fadeOrigin);
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 

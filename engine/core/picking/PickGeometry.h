@@ -58,7 +58,7 @@ namespace jasperengine {
     // (same frame, main thread): posing reads the skin attributes through it, a hit reads its
     // corners' normals.
     struct PickGeometryLayout {
-        // one per submesh (a tilemap has one per tile rect, more than MAX_SUBMESHES)
+        // one per submesh (a tilemap has one per tile rect)
         std::vector<PickSubmeshSource> submeshes;
         bool complete = false;          // every triangle submesh had float positions
     };

@@ -3,8 +3,11 @@
 
 // CommandRunner.cpp
 #include "CommandRunner.h"
+#include "FileUtils.h"
+#include "TextEncoding.h"
 #include "editor/Out.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <vector>
 #include <chrono>
@@ -16,6 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <sstream>
 
 #ifdef _WIN32
     #include <io.h>
@@ -100,6 +104,15 @@ namespace {
     }
 }
 
+std::vector<std::string> editor::CommandRunner::vswhereArguments(const std::string& program, std::vector<std::string> arguments) {
+    std::vector<std::string> argv;
+    argv.reserve(arguments.size() + 2);
+    argv.push_back(program);
+    for (std::string& argument : arguments) argv.push_back(std::move(argument));
+    argv.push_back("-utf8");
+    return argv;
+}
+
 #ifdef _WIN32
 std::string editor::CommandRunner::findVswherePath() {
     auto tryEnv = [](const char* envVar) -> std::string {
@@ -114,11 +127,21 @@ std::string editor::CommandRunner::findVswherePath() {
     return result;
 }
 
-std::string editor::CommandRunner::vsInstallationPath() {
-    std::string vswhere = findVswherePath();
-    if (vswhere.empty()) return "";
+std::string editor::CommandRunner::vswhere(std::vector<std::string> arguments, int timeoutMs) {
+    const std::string program = findVswherePath();
+    if (program.empty()) return "";
     // vswhere.exe run directly with its arguments (capture: no cmd.exe, no window)
-    return capture({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+    std::string output = capture(vswhereArguments(program, std::move(arguments)), timeoutMs);
+    while (!output.empty() && std::isspace(static_cast<unsigned char>(output.back()))) output.pop_back();
+    return output;
+}
+
+bool editor::CommandRunner::hasVswhere() {
+    return !findVswherePath().empty();
+}
+
+std::string editor::CommandRunner::vsInstallationPath() {
+    return vswhere({"-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
                     "-property", "installationPath"});
 }
 
@@ -134,6 +157,19 @@ std::string editor::CommandRunner::findVcvarsall() {
     std::error_code ec;
     if (fs::exists(vcvars, ec)) return vcvars.string();
     return "";
+}
+
+fs::path editor::CommandRunner::findVisualStudioNinja() {
+    // every install (Build Tools included), newest first; vswhere writes UTF-8 (-utf8)
+    std::istringstream installs(vswhere({"-products", "*", "-sort", "-property", "installationPath"}));
+    for (std::string install; std::getline(installs, install);) {
+        while (!install.empty() && (install.back() == '\r' || install.back() == ' ')) install.pop_back();
+        if (install.empty()) continue;
+        const fs::path ninja = FileUtils::pathFromUtf8(install) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja" / "ninja.exe";
+        std::error_code ec;
+        if (fs::is_regular_file(ninja, ec)) return ninja;
+    }
+    return fs::path();
 }
 #endif
 
@@ -353,8 +389,10 @@ editor::CommandRunner::Environment editor::CommandRunner::currentEnvironment() {
     if (!block) return env;
     for (const wchar_t* entry = block; *entry; entry += std::wcslen(entry) + 1) {
         const std::string text = narrow(entry, std::wcslen(entry));
-        const size_t eq = text.find('=');
-        if (eq == std::string::npos || eq == 0) continue;   // the "=C:=C:\\..." drive entries
+        // the "=C:=C:\\..." drive entries are kept (their name starts with '='): a cmd.exe child
+        // finds each drive's current folder in them
+        const size_t eq = text.find('=', 1);
+        if (eq == std::string::npos) continue;
         setVariable(env, text.substr(0, eq), text.substr(eq + 1));
     }
     FreeEnvironmentStringsW(block);
@@ -700,7 +738,9 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
     if (argv.empty()) return false;
     cancelRequested.store(false, std::memory_order_relaxed);
 
-    auto emit = [&onLine](const std::string& line) {
+    // every line as UTF-8, whatever code page the program wrote in
+    auto emit = [&onLine](const std::string& rawLine) {
+        const std::string line = TextEncoding::consoleToUtf8(rawLine);
         if (onLine) {
             onLine(line);
         } else {
@@ -728,14 +768,13 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         PROCESS_INFORMATION pi{};
         // argv quoted per the C runtime's rules (quoteWin): CreateProcessW splits argv[0] off and
         // passes the rest to the child verbatim; no shell parses it, so a value with metacharacters
-        // is one literal argument. The arguments are in the active code page (what CreateProcessA
-        // took before); an environment (the MSVC or Emscripten one) is passed as a UTF-16 block, and
-        // argv[0] is found on its PATH.
-        std::wstring cmdLine = widen(argvToCommandLine(argv), CP_ACP);
+        // is one literal argument. The arguments are UTF-8; an environment (the MSVC or Emscripten
+        // one) is passed as a UTF-16 block, and argv[0] is found on its PATH.
+        std::wstring cmdLine = widen(argvToCommandLine(argv), CP_UTF8);
         // the program resolved here, never searched for by CreateProcessW (which would look in the
         // current folder first); a .bat / .cmd is refused (Windows would run it through cmd.exe)
         fs::path program;
-        const std::string notRunnable = resolveWindowsProgram(fs::path(widen(argv[0], CP_ACP)), windowsSearchDirs(environment), program);
+        const std::string notRunnable = resolveWindowsProgram(fs::path(widen(argv[0], CP_UTF8)), windowsSearchDirs(environment), program);
         if (!notRunnable.empty()) {
             CloseHandle(hReadPipe);
             CloseHandle(hWritePipe);
@@ -743,13 +782,20 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
             return false;
         }
         const std::wstring application = program.wstring();
-        std::wstring envBlock = environment ? environmentBlock(*environment) : std::wstring();
+        // Python children (Emscripten's emcc, jasperengine.py) print UTF-8 to the pipe, not the
+        // ANSI code page that cannot hold every path, unless the environment says otherwise
+        Environment childEnvironment = environment ? *environment : currentEnvironment();
+        for (const char* name : {"PYTHONUTF8", "PYTHONIOENCODING"}) {
+            if (variable(childEnvironment, name).empty())
+                setVariable(childEnvironment, name, std::string(name) == "PYTHONUTF8" ? "1" : "utf-8");
+        }
+        std::wstring envBlock = environmentBlock(childEnvironment);
         const std::wstring workDir = workingDir.wstring();
 
         // Track the whole child tree in a job object so cancellation can kill
         // cmake and the compilers it spawns, not only cmd.exe. KILL_ON_JOB_CLOSE
         // also reaps the tree if the editor itself exits.
-        HANDLE hJob = CreateJobObjectA(nullptr, nullptr);
+        HANDLE hJob = CreateJobObjectW(nullptr, nullptr);
         if (hJob) {
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobLimits{};
             jobLimits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -762,8 +808,8 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
                 nullptr,
                 nullptr,
                 TRUE,
-                CREATE_NO_WINDOW | CREATE_SUSPENDED | (environment ? CREATE_UNICODE_ENVIRONMENT : 0),
-                environment ? static_cast<LPVOID>(envBlock.data()) : nullptr,
+                CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+                static_cast<LPVOID>(envBlock.data()),
                 workDir.empty() ? nullptr : workDir.c_str(),
                 &si,
                 &pi))

@@ -1,0 +1,186 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest bfe45127fc890d21
+--- 0
+enabled: false
+type: camera_perspective
+cullingMask: 4294967295
+target: [60.285713, 8170.3237, 1e-45]
+up: [0, 0, 0]
+leftClip: 121.28571
+rightClip: 0.161543
+bottomClip: 4.571429
+topClip: -0.5753107
+yfov: 3281.4148
+aspect: 6628.2734
+nearClip: 545.3863
+farClip: 1968.8016
+renderToTexture: false
+transparentSort: true
+depthTest: true
+useTarget: true
+autoResize: false
+framebufferWidth: 2264
+framebufferHeight: 4565
+framebufferFilter: linear_mipmap_linear
+oitWeightScale: 46
+--- 1
+enabled: true
+type: camera_ui
+cullingMask: 512953057
+target: [101.28571, -86, -49]
+up: [8431.906, -47.142857, -15.714286]
+leftClip: -0.04423614
+rightClip: -59.42857
+bottomClip: 0.17251648
+topClip: -0.28203487
+yfov: 4577.4214
+aspect: 1
+nearClip: 4021.38
+farClip: 0
+renderToTexture: true
+transparentSort: false
+depthTest: true
+useTarget: false
+autoResize: true
+framebufferWidth: 4023
+framebufferHeight: 1158
+framebufferFilter: nearest_mipmap_nearest
+oitWeightScale: 30
+--- 2
+enabled: false
+type: camera_ortho
+cullingMask: 1452690535
+target: [0.40223765, -25.714285, 0.783]
+up: [6554.134, -0.4421922, 1e-45]
+leftClip: 5369.5073
+rightClip: 19
+bottomClip: 0.14285715
+topClip: 27.285715
+yfov: 10
+aspect: 50
+nearClip: 4504.902
+farClip: 1e-45
+renderToTexture: false
+transparentSort: false
+depthTest: false
+useTarget: true
+autoResize: true
+framebufferWidth: 208
+framebufferHeight: 3775
+framebufferFilter: linear_mipmap_nearest
+transparencyMode: order_independent
+oitWeightScale: -38.57143
+--- 3
+enabled: true
+type: camera_ui
+cullingMask: 1033510560
+target: [-0.91562945, -0.1731027, 0.0016806275]
+up: [0.774687, 6532.503, -104]
+leftClip: 1e-45
+rightClip: -0.41556278
+bottomClip: 4592.748
+topClip: 64.85714
+yfov: 0.26465705
+aspect: 4088.8057
+nearClip: -0.72155946
+farClip: 3456.096
+renderToTexture: false
+transparentSort: true
+depthTest: false
+useTarget: false
+autoResize: false
+framebufferWidth: 1977
+framebufferHeight: 662
+framebufferFilter: nearest
+--- 4
+enabled: false
+type: camera_ui
+cullingMask: 4294967295
+target: [67, -9, 7155.125]
+up: [0, 0, 0]
+leftClip: -18
+rightClip: 8354.338
+bottomClip: -94
+topClip: 62
+yfov: 130.14285
+aspect: 1
+nearClip: -79
+farClip: -3
+renderToTexture: true
+transparentSort: false
+depthTest: true
+useTarget: true
+autoResize: false
+framebufferWidth: 2293
+framebufferHeight: 3069
+framebufferFilter: linear
+oitWeightScale: -7.428571
+--- 5
+enabled: false
+type: camera_ui
+cullingMask: 2072693777
+target: [0.26628906, -119, -73.57143]
+up: [0, 0, 0]
+leftClip: 102.85714
+rightClip: 101
+bottomClip: 2845.2236
+topClip: 63.857143
+yfov: 5254.7173
+aspect: 8270.631
+nearClip: 3e+38
+farClip: -0.8852998
+renderToTexture: true
+transparentSort: false
+depthTest: true
+useTarget: false
+autoResize: false
+framebufferWidth: 2481
+framebufferHeight: 4414
+framebufferFilter: linear
+--- 6
+enabled: true
+type: camera_ui
+cullingMask: 777975434
+target: [-58.42857, 4.428571, 0.49313995]
+up: [4742.7266, 1957.8618, 0.694627]
+leftClip: -44
+rightClip: 0
+bottomClip: 3e+38
+topClip: 0
+yfov: 0.10180574
+aspect: 18
+nearClip: 3e+38
+farClip: 7272.0654
+renderToTexture: true
+transparentSort: false
+depthTest: false
+useTarget: false
+autoResize: false
+framebufferWidth: 2281
+framebufferHeight: 4294967295
+framebufferFilter: nearest
+transparencyMode: order_independent
+oitWeightScale: 0.57460064
+--- 7
+enabled: true
+type: camera_ui
+cullingMask: 4294967295
+target: [28, -100.14286, -0]
+up: [0, 0, 0]
+leftClip: 1e-45
+rightClip: 1e-45
+bottomClip: 50
+topClip: 80.42857
+yfov: 8453.815
+aspect: 3e+38
+nearClip: -50.142857
+farClip: 1e-45
+renderToTexture: false
+transparentSort: false
+depthTest: false
+useTarget: false
+autoResize: true
+framebufferWidth: 1768
+framebufferHeight: 3572
+framebufferFilter: linear_mipmap_linear
+oitWeightScale: 70

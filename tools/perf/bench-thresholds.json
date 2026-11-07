@@ -106,6 +106,11 @@
     "empty_scene_allocations": {"max": 0, "spec": "R21 no allocations without spline components (--count-allocs)"},
     "spline_animate_follower_us": {"max": 0.5, "spec": "R21 Spline Animate per follower per frame"}
   },
+  "je-bench-audio": {
+    "meter_file_3min_ms": {"max": 300, "spec": "S38 R16 file mode, a 3-minute stereo file, CPU time"},
+    "meter_stream_core_pct": {"max": 1.5, "spec": "S38 R16 stream mode, 48 kHz stereo, of one core"},
+    "limiter_true_peak_core_pct": {"max": 2.5, "spec": "S38 R17 true peak and 1.5 ms lookahead, a stereo bus at 48 kHz (the budget is Android arm64's)"}
+  },
   "je-bench-anim": {
     "crowd200_sampled": {"min": 200, "spec": "R19 every character of AnimBench.Crowd200 evaluated each frame"},
     "crowd200_parallel_p95_ms": {"max": 2.5, "spec": "R19 AnimatorSystem wall time, 200 x 65 bones, 3 workers + main, p95"},
@@ -121,5 +126,17 @@
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
     "r22_worst_over_bound": {"max": 1.0, "spec": "S32 R22: the worst frame of the toggles (edit frames apart) over max(2x the idle median, the idle median + 4 ms), driver cache warm"}
+  },
+  "mesh-bench": {
+    "_comment": "S55 R8 (tools/perf/mesh_bench.py): what the scene measured, as regression limits. They are not R9's targets, which this scene does not reach: docs/specs/S55-draw-submission.md, Results.",
+    "main_draw_calls": {"max": 230, "spec": "S55 R9: 28 grid + 200 unique + 2 terrain"},
+    "shadow_draw_calls": {"max": 380, "spec": "S55 R1: the shadow passes batch"},
+    "main_triangles": {"max": 171000, "spec": "S55 R8: the colour pass's detail levels"},
+    "shadow_triangles": {"max": 431000, "spec": "S55 R5: per-cascade terrain culling and S54's shadow detail levels"},
+    "uniform_bytes": {"max": 128000, "spec": "S55 R3: frame and pass blocks applied when they change"},
+    "batched_instances": {"min": 5200, "spec": "S55 R1: what GPU Instancing replaces"},
+    "main_draw_call_ratio": {"min": 7.0, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
+    "shadow_triangle_drop": {"min": 0.11, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
+    "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
   }
 }

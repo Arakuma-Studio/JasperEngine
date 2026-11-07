@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include <array>
 #include <functional>
@@ -19,9 +20,12 @@
 #include "Scene.h"
 #include "DebugSettings.h"
 #include "registry/TagManager.h"
-#include "Factory.h"
 #include "util/Prefab.h"
 #include "util/CommandRunner.h"
+#include "Factory.h"
+#include "io/watch/FileIdentity.h"
+#include "manager/SceneManager.h"
+#include "shader/ShaderGlobals.h"
 
 namespace fs = std::filesystem;
 
@@ -161,6 +165,17 @@ namespace jasperengine::editor {
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
 
+    // Project Settings > Graphics > GPU Instancing (spec S55): the automatic instancing of
+    // MeshComponent draws
+    struct DrawSubmissionSettings {
+        bool gpuInstancing = true;
+
+        bool operator==(const DrawSubmissionSettings& other) const{
+            return gpuInstancing == other.gpuInstancing;
+        }
+        bool operator!=(const DrawSubmissionSettings& other) const{ return !(*this == other); }
+    };
+
     // Project Settings > Audio (audio-mixer spec 9): the exported init configures the voices and
     // loads the mixer before the first scene
     struct AudioSettings {
@@ -169,10 +184,28 @@ namespace jasperengine::editor {
         int maxVoices = 256;
         int sampleRate = 0;             // 0 = the device's
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+        std::string musicGroup;         // the group music plays through when nothing names one ("" = Master)
+        int seed = 1;                   // the Sound Event generator's seed in a deterministic run
+        // Play's audio captures (docs/specs/S35-agent-audio.md): editor only, not exported
+        int captureMaxSeconds = 120;
+        int captureKeep = 3;
+        bool captureStems = false;
+        AudioQaSettings qa;
+        bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
+        // Measurement only: what the Mixer window, get_play_state and the checks read against
+        float loudnessTargetLufs = -18.0f;
+        float loudnessToleranceLu = 2.0f;
+        float truePeakCeilingDbtp = -1.0f;
+        std::string outputStage = "roundoff";        // roundoff | linear
+        std::string iosSessionCategory = "default";  // default (miniaudio's) | ambient | solo_ambient | playback
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup;
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && musicGroup == other.musicGroup &&
+                   loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
+                   truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
+                   iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile &&
+                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };
@@ -234,11 +267,14 @@ namespace jasperengine::editor {
         std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
         bool foliageQualityUncapped = true;
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
+        DrawSubmissionSettings drawSubmission;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
+        // Project Settings > Quality > Device Tiers and the rest (DeviceSettings::toJson)
+        std::string deviceSettingsJson = "{}";
         // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
         std::array<int, 3> textureQuality = {0, 0, 0};
         std::array<int, 3> textureBudgetMB = {0, 512, 384};
@@ -317,6 +353,9 @@ namespace jasperengine::editor {
         // CMake that fails a plugin configure below the compiler floors of the engine build
         // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
         static std::string getToolchainFloorCheck();
+        // The Jolt and Box2D macros the editor's engine library was built with (space-separated
+        // definitions): every C++ that links it compiles with them (scripts, editor scripts, clangd)
+        static std::string physicsCompileDefinitions();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
@@ -375,10 +414,15 @@ namespace jasperengine::editor {
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
         void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool uncapped) { foliageQuality = quality; foliageQualityUncapped = uncapped; }
         void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
+        void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
+        // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
+        // the device settings the game applies its Device Tier with (DeviceSettings::toJson); set
+        // before configure()
+        void setDeviceSettingsJson(const std::string& json) { deviceSettingsJson = json; }
         void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
             textureQuality = quality;
             textureBudgetMB = budgetMB;

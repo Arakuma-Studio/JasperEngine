@@ -3,6 +3,7 @@
 
 #include "TerrainMapUtils.h"
 #include "object/TerrainEdit.h"
+#include "component/TerrainComponent.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 

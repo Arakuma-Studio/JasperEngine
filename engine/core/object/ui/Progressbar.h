@@ -5,6 +5,7 @@
 #define PROGRESSBAR_H
 
 #include "Image.h"
+#include "component/ProgressbarComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Progressbar: public Image{

@@ -106,30 +106,6 @@ async def set_line(ed: Editor, entity, values: dict, component: str = "linerende
     return await ed.call("set_properties", entity=entity, values={component: values})
 
 
-async def test_setup(ed: Editor):
-    ed.require_tools("create_scene", "create_entity", "set_properties", "get_entity", "screenshot", "set_main_camera",
-                     "delete_entities", "get_scene_tree", "undo", "redo", "play", "eval_lua", "wait", "check_shader", "set_transform")
-    await ed.call("create_scene", name="Lines", path=SCENE)
-    # a black view: no sky, no sun
-    tree = await ed.call("get_scene_tree", format="json")
-    def walk(nodes):
-        for node in nodes or []:
-            yield node
-            yield from walk(node.get("children"))
-    nodes = find_key(tree, "entities", "roots", "children") or []
-    for node in list(walk(nodes)):
-        if node.get("name") not in ("View",):
-            await ed.call("delete_entities", entities=[str(node["id"])])
-    cam = find_key(await ed.call("create_entity", type="camera", name="View", position=[0, 0, 10]), "entity_id", "id")
-    await ed.call("set_main_camera", entity=cam)
-    S["scene"] = SCENE
-    S["camera"] = cam
-    # a red | blue texture for the texture modes
-    texture = ed.project / "assets" / "textures" / "halves.png"
-    texture.parent.mkdir(parents=True, exist_ok=True)
-    texture.write_bytes(png_rgb(2, 1, [[(255, 0, 0), (0, 0, 255)]]))
-
-
 def hairline_features(image) -> dict:
     """Where an image's hairline ends are (the mean position of its nearly pure red, green and
     blue pixels, x and y from the centre over the height: the sky or the black behind them is
@@ -158,6 +134,28 @@ def hairline_features(image) -> dict:
 
 async def test_old_hairline_matches_main(ed: Editor):
     """A Line Renderer as main wrote it: Segments, no width, two coloured segments."""
+    ed.require_tools("create_scene", "create_entity", "set_properties", "get_entity", "screenshot", "set_main_camera",
+                     "delete_entities", "get_scene_tree", "undo", "redo", "play", "eval_lua", "wait", "check_shader", "set_transform")
+    await ed.call("create_scene", name="Lines", path=SCENE)
+    # a black view: no sky, no sun
+    tree = await ed.call("get_scene_tree", format="json")
+    def walk(nodes):
+        for node in nodes or []:
+            yield node
+            yield from walk(node.get("children"))
+    nodes = find_key(tree, "entities", "roots", "children") or []
+    for node in list(walk(nodes)):
+        if node.get("name") not in ("View",):
+            await ed.call("delete_entities", entities=[str(node["id"])])
+    cam = find_key(await ed.call("create_entity", type="camera", name="View", position=[0, 0, 10]), "entity_id", "id")
+    await ed.call("set_main_camera", entity=cam)
+    S["scene"] = SCENE
+    S["camera"] = cam
+    # a red | blue texture for the texture modes
+    texture = ed.project / "assets" / "textures" / "halves.png"
+    texture.parent.mkdir(parents=True, exist_ok=True)
+    texture.write_bytes(png_rgb(2, 1, [[(255, 0, 0), (0, 0, 255)]]))
+
     made = await ed.call("create_entity", type="line_renderer", name="Hairline")
     line = find_key(made, "entity_id", "id")
     current = await props(ed, line, "linerenderer", ["*"])

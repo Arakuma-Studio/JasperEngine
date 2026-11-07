@@ -1,11 +1,11 @@
 formatVersion: 7
-guid: 2ec4200abcc70a900a766c785c8109fa
-id: 3445249014
+guid: 2b99a72e2e4e04577919276fa9922450
+id: 881594344
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
   shadowQuality: auto
-  meshLodEnabled: false
+  meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
   lightState: on
@@ -34,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 1112
@@ -200,7 +193,7 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 441cdcb8148ed0f92fbc8b2b7ded1cd6
+              nameGuid: 71fab0881240ee01d00e0379167cbe0f
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6

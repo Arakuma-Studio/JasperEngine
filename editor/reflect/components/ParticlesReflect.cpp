@@ -37,9 +37,9 @@ namespace {
 
     constexpr FieldDesc kParticleSystemFields[] = {
         JE_FIELD(ParticleSystemComponent, enabled),
-        JE_FIELD(ParticleSystemComponent, effect, .ops = &ops::AssetRef, .updateFlags = kParticles,
+        JE_FIELD(ParticleSystemComponent, effect, .ops = &ops::AssetRef, .updateFlags = kParticles, .asset = AssetKind::ParticleEffect,
                  .tooltip = "A .particles asset; empty: the inline effect."),
-        JE_FIELD(ParticleSystemComponent, inlineEffect, .ops = &kEffectDocumentOps, .flags = NoDefault, .updateFlags = kParticles),
+        JE_FIELD(ParticleSystemComponent, inlineEffect, .ops = &kEffectDocumentOps, .flags = NoDefault, .updateFlags = kParticles, .assetForm = AssetForm::InlineEffect),
         JE_FIELD(ParticleSystemComponent, playOnAwake),
         JE_FIELD(ParticleSystemComponent, seed, .updateFlags = kParticles, .tooltip = "0: a new random seed at every play."),
         JE_FIELD(ParticleSystemComponent, playbackSpeed),

@@ -8,6 +8,7 @@
 #include "command/type/TreeEditCmd.h"
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageRules.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "command/CommandHandle.h"

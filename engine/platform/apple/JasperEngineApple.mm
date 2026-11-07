@@ -270,6 +270,15 @@ void JasperEngineApple::quit(){
 #endif
 }
 
+namespace {
+    // A bundle resource's path as UTF-8: an app under a folder named "Jogos" or "ゲーム" starts
+    // (ASCII would give NULL there)
+    std::string bundlePath(NSString* path){
+        const char* utf8 = [path UTF8String];
+        return utf8 ? std::string(utf8) : std::string();
+    }
+}
+
 std::string JasperEngineApple::getAssetPath(){
     // a prebuilt player's content root (its bundle's Content/, or --content)
     if (!jasperengine::platformConfig().contentRoot.empty())
@@ -287,7 +296,7 @@ std::string JasperEngineApple::getAssetPath(){
 #endif
     }
 
-    return [path cStringUsingEncoding:NSASCIIStringEncoding];
+    return bundlePath(path);
 }
 
 std::string JasperEngineApple::getUserDataPath(){
@@ -337,7 +346,7 @@ std::string JasperEngineApple::getLuaPath(){
 #endif
     }
 
-    return [path cStringUsingEncoding:NSASCIIStringEncoding];
+    return bundlePath(path);
 }
 
 std::string JasperEngineApple::getShaderPath(){
@@ -353,7 +362,7 @@ std::string JasperEngineApple::getShaderPath(){
 #endif
     }
 
-    return [path cStringUsingEncoding:NSASCIIStringEncoding];
+    return bundlePath(path);
 }
 
 // ---- UserSettings: NSUserDefaults. Values keep their type there; one read with another type

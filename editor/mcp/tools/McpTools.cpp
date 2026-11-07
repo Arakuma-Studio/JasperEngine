@@ -37,7 +37,10 @@ const ToolModule TOOL_MODULES[] = {
     {registerShadowTools, "Shadows", "rendering_fx"},   // S10
     {registerConsoleTools, "Console", ""},
     {registerDataTools, "Saved data (PlayerPrefs)", "scripting"},   // upstream (script-data: UserSettings / PlayerPrefs)
+    {registerSoundEventTools, "Sound Events", "audio"},
     {registerAudioTools, "Audio Mixer", "audio"},   // upstream (audio-mixer): out of core to fit the budget (S31)
+    {registerSoundTools, "Sound files", "audio"},   // S36
+    {registerAudioSessionTools, "Audio captures", "audio"},   // S35
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
     {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)
@@ -45,6 +48,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerTextureTools, "Textures: import settings and cooks", "assets_pipeline"},   // S14
+    {registerMeshTools, "Meshes: model import, cooks and render budgets", "meshes"},   // S53
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerPublishTools, "Shipping: player runtimes and releases", "shipping"},   // S30
@@ -61,6 +65,8 @@ const ToolModule TOOL_MODULES[] = {
     {registerDiagnosticsTools, "Crash and hang diagnostics", "diagnostics"},   // S28
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
+    {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
+    {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22

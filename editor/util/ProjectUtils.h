@@ -23,6 +23,13 @@
 #include "render/Render.h"
 
 #include "command/Command.h"
+#include "ecs/ComponentFwd.h"
+
+namespace jasperengine{
+    struct LineRendererComponent;
+    struct ScriptEntry;
+    struct TrailRendererComponent;
+}
 
 namespace jasperengine::editor {
 

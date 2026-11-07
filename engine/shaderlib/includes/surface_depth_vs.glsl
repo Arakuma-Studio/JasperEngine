@@ -36,19 +36,13 @@
     #undef HAS_TEXTURERECT
 #endif
 
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-} depthParams;
+// depthParams: per draw, or per instance in an automatically instanced batch
+#include "includes/object_depth_params.glsl"
 
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
-    uniform u_vs_fade {
-        vec4 fadeRange; //start.x, end.y
-        vec4 fadeEye;   //camera in model space.xyz
-    } fadeParams;
+    #include "includes/instance_fade.glsl"
 #endif
 
 #ifdef HAS_TEXTURERECT
@@ -195,7 +189,7 @@ void main() {
     #endif
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
@@ -227,12 +221,7 @@ void main() {
     surfaceFadeVisible = 1.0;
     #ifdef USE_INSTANCE_FADE
         vec3 fadeOrigin = i_matrix_col4.xyz;
-        float fadeVisible = 1.0;
-        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
-            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
-            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
-                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
-        }
+        float fadeVisible = instanceFadeVisible(fadeOrigin);
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
         surfaceFadeVisible = fadeVisible;
     #endif

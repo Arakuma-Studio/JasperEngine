@@ -1,11 +1,11 @@
 formatVersion: 7
-guid: 04641458e96bada0d2e8ad2c07228df8
-id: 1099605158
+guid: 9d9749fbac47661553577b56eefa2c92
+id: 4187307485
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
   shadowQuality: auto
-  meshLodEnabled: false
+  meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
   lightState: off
@@ -34,13 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_2d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 1
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 128
 shaderKeys:
   - type: mesh
     properties: 3075

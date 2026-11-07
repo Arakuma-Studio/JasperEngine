@@ -4,6 +4,10 @@
 #include "TerrainEditWindow.h"
 #include "TerrainFoliagePanel.h"
 #include "foliage/TreeDataFile.h"
+#include "component/PrefabComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
 #include "util/FileUtils.h"
@@ -3447,10 +3451,12 @@ void editor::TerrainEditWindow::show(){
             if (ImGui::SliderFloat("##foliage_align", &alignment, 0.0f, 100.0f, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)){
                 setFoliageLayerProperty("alignToNormal", alignment / 100.0f);
             }
-            terrainPropertyRow("Draw range", "Instances show between these distances. A copy of the layer with a cheaper mesh whose Min equals this layer's Max takes over with a cross-fade. Scaled by Project Settings > Quality > Foliage Distance. Ignored while editing terrain.");
-            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 5000.0f, "%.0f", "%.0f")){
+            terrainPropertyRow("Draw range", "Instances show between these distances, in world units, fading in after Min and out before Max. "
+                               "A copy of the layer with a cheaper mesh whose Min equals this layer's Max takes over with a cross-fade. "
+                               "Scaled by Project Settings > Quality > Foliage Distance. Ignored while editing terrain; restored when editing ends or play starts.");
+            if (ImGui::DragFloatRange2("##foliage_distance", &layer.minDrawDistance, &layer.drawDistance, 1.0f, 0.0f, 500.0f, "Min %.0f", "Max %.0f")){
                 if (layer.minDrawDistance != currentLayer.minDrawDistance){
-                    setFoliageLayerProperty("minDrawDistance", std::clamp(layer.minDrawDistance, 0.0f, layer.drawDistance));
+                    setFoliageLayerProperty("minDrawDistance", std::clamp(layer.minDrawDistance, 0.0f, std::max(1.0f, layer.drawDistance)));
                 }
                 if (layer.drawDistance != currentLayer.drawDistance){
                     setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));

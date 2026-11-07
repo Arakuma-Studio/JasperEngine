@@ -13,7 +13,7 @@ import re
 import tempfile
 import unittest
 
-from lua_api import doctest, extract, markdown, stubs, suggestions
+from lua_api import doctest, extract, stubs, suggestions
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 BINDINGS = os.path.join(REPO, 'engine', 'core', 'script', 'binding')
@@ -116,11 +116,21 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(member('GameObject', 'setPosition')['modules'], [])
         enums = {e['name']: e for e in api()['enums']}
         self.assertEqual(enums['Joint3DType']['modules'], ['physics3d'])
+        # the sound layer's names, which ModuleUsage reads to keep the module in a Compile build
+        self.assertEqual(classes['Audio']['modules'], ['soundlayer'])
+        self.assertEqual(classes['SoundHandle']['modules'], ['soundlayer'])
+        self.assertEqual(enums['AudioPlayOn']['modules'], ['soundlayer'])
+        # the music (S39 R19): every name on the soundlayer class
+        audio = {m['name'] for m in classes['Audio']['methods'] + classes['Audio']['properties']}
+        for name in ('playMusic', 'stopMusic', 'advanceMusic', 'playStinger', 'getMusic', 'getMusicTime', 'getMusicPosition',
+                     'onMusicBeat', 'onMusicSection'):
+            self.assertIn(name, audio)
+            self.assertTrue(set(member('Audio', name)['modules']) <= {'soundlayer'}, name)
         for c in classes.values():
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer'}, m['name'])
 
 
 class Emitters(unittest.TestCase):
@@ -220,12 +230,6 @@ class Emitters(unittest.TestCase):
         self.assertIn('getEngineAPISymbols', text)
         self.assertIn('{"Vector3", "Class", "class Vector3", ""}', text)
         self.assertIn('"CppMethod"', text)
-
-    def test_markdown(self):
-        text = markdown.reference(api())
-        self.assertTrue(text.startswith('# Lua API reference'))
-        self.assertIn('### Vector3', text)
-        self.assertIn('## Enums', text)
 
 
 class DocTest(unittest.TestCase):

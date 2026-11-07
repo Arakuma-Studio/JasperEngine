@@ -397,9 +397,6 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & shaderPropertyBit(24)) defs.push_back({"ALPHA_MASK", "1"});                 // 'Ams'
     if (prop & shaderPropertyBit(25)) defs.push_back({"ALPHA_OPAQUE", "1"});               // 'Aop'
     if (prop & shaderPropertyBit(26)) defs.push_back({"USE_INSTANCE_FADE", "1"});          // 'Ifd'
-    if (prop & shaderPropertyBit(36)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});       // 'Cin'
-    if (prop & shaderPropertyBit(37)) defs.push_back({"USE_FOLIAGE_WIND", "1"});           // 'Wnd'
-    if (prop & shaderPropertyBit(38)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});         // 'Dth'
     if (prop & shaderPropertyBit(27)) defs.push_back({"HAS_TERRAIN_PBR", "1"});            // 'Tpb'
     if (prop & shaderPropertyBit(28)) defs.push_back({"USE_VERTEX_LIGHTS", "1"});          // 'Vtl'
     // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
@@ -411,6 +408,18 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // includes/vat.glsl: Bones mode ('Vab') wins when a key has both
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
+    if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::MESH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
+    // S57's lighting: the screen-tile lights of a pixel-lit variant, the capsule and contact
+    // shadows of a shadowed one, and the OIT accumulation (its main is wrapped, prepareVariantArgs)
+    if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)) defs.push_back({"USE_TILED_LIGHTS", "1"});       // 'Til'
+    if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS)) defs.push_back({"USE_CAPSULE_SHADOWS", "1"}); // 'Cap'
+    if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS)) defs.push_back({"USE_CONTACT_SHADOWS", "1"}); // 'Cts'
+    if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)) defs.push_back({"USE_OIT", "1"});                         // 'Oit'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -425,9 +434,6 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
     if (prop & shaderPropertyBit(7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
     if (prop & shaderPropertyBit(8))  defs.push_back({"USE_INSTANCE_FADE", "1"}); // 'Ifd'
-    if (prop & shaderPropertyBit(18)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"}); // 'Cin'
-    if (prop & shaderPropertyBit(19)) defs.push_back({"USE_FOLIAGE_WIND", "1"});     // 'Wnd'
-    if (prop & shaderPropertyBit(20)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});   // 'Dth'
     if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_NORMALS", "1"});           // 'Nor'
     if (prop & shaderPropertyBit(10)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"}); // 'Vc3'
     if (prop & shaderPropertyBit(11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
@@ -437,6 +443,11 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
+    if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -458,6 +469,13 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
     if (vat) defs.push_back({"HAS_VAT", "1"});                                                  // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(15))) defs.push_back({"HAS_VAT_BONES", "1"});          // 'Vab'
+    if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_OCCLUSION_TEXTURE", "1"});         // 'Occ'
+    if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
+    if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
+    // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
+    if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -678,6 +696,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::VOLUMETRIC_COMPOSITE){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "volumetric_composite.frag";
+    }else if (shaderType == ShaderType::LIGHTING_PASS){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = (properties & (1 << 0)) ? "oit_resolve.frag" : "contact_shadows.frag";   // 'Oir'
     }else if (shaderType == ShaderType::PASS_PREVIEW){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "pass_preview.frag";
@@ -1170,6 +1191,26 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
                     args.defines.push_back({define, "1"});
             }
         }
+    }
+
+    // S57's OIT accumulation variant ('Oit'): the shader's own main runs, then
+    // includes/oit.glsl turns its straight-alpha g_finalColor into the two accumulation targets
+    if (shaderType == ShaderType::MESH && (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT))){
+        auto source = args.fileBuffers.find(args.frag_file);
+        if (source == args.fileBuffers.end() || source->second.find("g_finalColor") == std::string::npos){
+            error = "Order Independent transparency needs a fragment shader writing g_finalColor (" + args.frag_file + ")";
+            return false;
+        }
+        std::string wrapped = source->second;
+        const size_t versionEnd = wrapped.find('\n');
+        if (wrapped.compare(0, 8, "#version") != 0 || versionEnd == std::string::npos){
+            error = "Order Independent transparency needs a fragment shader starting with #version (" + args.frag_file + ")";
+            return false;
+        }
+        // the line numbers of errors stay the file's
+        wrapped.insert(versionEnd + 1, "#define main oitShadeMain\n#line 2\n");
+        wrapped += "\n#undef main\n#include \"includes/oit.glsl\"\nvoid main(){\n    oitShadeMain();\n    g_finalColor = oitAccumulate(g_finalColor);\n}\n";
+        source->second = wrapped;
     }
 
     // phase 6: a stateful effect's passes and states, from its manifest (any form: the draw reads

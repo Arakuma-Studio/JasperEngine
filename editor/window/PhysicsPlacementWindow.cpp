@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsPlacementWindow.h"
+#include "component/Transform.h"
+#include "render/SceneRender.h"
+#include "component/MeshComponent.h"
 
 #include "App.h"
 #include "Backend.h"

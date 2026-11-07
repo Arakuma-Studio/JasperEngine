@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
@@ -26,12 +27,18 @@
 #include "manager/SceneManager.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "audio/AudioCapture.h"
+#include "audio/AudioMarkers.h"
 #include "subsystem/CameraControlSystem.h"
 #include "audio/AudioMixer.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "audio/MusicPlayer.h"
+#endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIClock.h"
 #if JASPERENGINE_HTMLUI
 #include "htmlui/anim/AnimEngine.h"
@@ -52,6 +59,8 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
+#include "device/Device.h"
+#include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
 #include "pool/ShaderPool.h"
@@ -72,6 +81,7 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "model/ModelCpuData.h"
 #include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
@@ -93,6 +103,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <functional>
 #include <optional>
@@ -129,9 +140,10 @@ FoliageQuality Engine::foliageQualityDefaults[3] = {FoliageQuality::HIGH, Foliag
 bool Engine::foliageQualityUncapped = true;
 bool Engine::foliageQualityOverridden = false;
 FoliageQuality Engine::foliageQualityOverride = FoliageQuality::HIGH;
-float Engine::foliageDistanceDefaults[3] = {1.0f, 1.0f, 1.0f};
-bool Engine::foliageDistanceOverridden = false;
-float Engine::foliageDistanceOverride = 1.0f;
+float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
+bool Engine::foliageDistanceScaleOverridden = false;
+float Engine::foliageDistanceScaleOverride = 1.0f;
+bool Engine::gpuInstancingEnabled = true;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
@@ -146,6 +158,7 @@ bool Engine::uiEventReceived = false;
 uint64_t Engine::lastTime = 0;
 double Engine::framePeriod = 0.0;
 double Engine::frameCpuTime = 0.0;
+double Engine::frameDrawCpuTime = 0.0;
 double Engine::updateTimeCount = 0;
 int Engine::fixedStepsLeft = 1;
 
@@ -189,6 +202,8 @@ bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
 int Engine::targetFrameRate = -1;
+int Engine::textureQuality = 0;
+uint32_t Engine::qualityRevision = 0;
 // the project's VSync setting (platformConfig().vsync, set in systemInit; the generated init()
 // may set it again)
 int Engine::vSyncCount = 1;
@@ -236,7 +251,7 @@ FunctionSubscribe<void()> Engine::onMouseEnter;
 FunctionSubscribe<void()> Engine::onMouseLeave;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyDown;
 FunctionSubscribe<void(int,bool,int)> Engine::onKeyUp;
-FunctionSubscribe<void(wchar_t)> Engine::onCharInput;
+FunctionSubscribe<void(char32_t)> Engine::onCharInput;
 FunctionSubscribe<void(int)> Engine::onGamepadConnect;
 FunctionSubscribe<void(int)> Engine::onGamepadDisconnect;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonDown;
@@ -580,11 +595,13 @@ TextureStrategy Engine::getTextureStrategy(){
 }
 
 void Engine::setTextureQuality(int quality){
-    TextureDataPool::setTextureQuality(quality);
+    textureQuality = std::clamp(quality, 0, 3);
+    // what the pool drops: the device tier and memory pressure may drop more (QualityResolver)
+    TextureDataPool::setTextureQuality(QualityResolver::textureQuality(textureQuality));
 }
 
 int Engine::getTextureQuality(){
-    return TextureDataPool::getTextureQuality();
+    return textureQuality;
 }
 
 void Engine::setTextureMemoryBudget(int megabytes){
@@ -844,6 +861,14 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setGpuInstancingEnabled(bool enabled){
+    gpuInstancingEnabled = enabled;
+}
+
+bool Engine::isGpuInstancingEnabled(){
+    return gpuInstancingEnabled;
+}
+
 void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
     atmosphereQualityDefaults[0] = desktop;
     atmosphereQualityDefaults[1] = mobile;
@@ -919,39 +944,51 @@ bool Engine::isFoliageQualityUncapped(){
     return foliageQualityUncapped && !foliageQualityOverridden;
 }
 
+namespace {
+    // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
+    float clampFoliageDistanceScale(float scale){
+        return std::clamp(scale, 0.0f, 10.0f);
+    }
+}
+
 void Engine::setFoliageDistanceScaleDefaults(float desktop, float mobile, float web){
-    foliageDistanceDefaults[0] = desktop;
-    foliageDistanceDefaults[1] = mobile;
-    foliageDistanceDefaults[2] = web;
+    const float scales[3] = {desktop, mobile, web};
+    for (int i = 0; i < 3; i++){
+        foliageDistanceScaleDefaults[i] = std::isfinite(scales[i]) ? clampFoliageDistanceScale(scales[i]) : 1.0f;
+    }
 }
 
 float Engine::getFoliageDistanceScaleDefault(Platform platform){
     switch (platform){
-        case Platform::Android:
         case Platform::iOS:
-            return foliageDistanceDefaults[1];
+        case Platform::Android:
+            return foliageDistanceScaleDefaults[1];
         case Platform::Web:
-            return foliageDistanceDefaults[2];
+            return foliageDistanceScaleDefaults[2];
         default:
-            return foliageDistanceDefaults[0];
+            return foliageDistanceScaleDefaults[0];
     }
+}
+
+float Engine::getFoliageDistanceScaleDefault(){
+    return getFoliageDistanceScaleDefault(getPlatform());
 }
 
 void Engine::setFoliageDistanceScale(float scale){
     if (!std::isfinite(scale)){
-        Log::warn("Engine.foliageDistanceScale ignores a value that is not finite");
+        Log::warn("Engine::setFoliageDistanceScale: non-finite value ignored");
         return;
     }
-    foliageDistanceOverride = std::clamp(scale, 0.0f, 10.0f);
-    foliageDistanceOverridden = true;
+    foliageDistanceScaleOverride = clampFoliageDistanceScale(scale);
+    foliageDistanceScaleOverridden = true;
 }
 
 float Engine::getFoliageDistanceScale(){
-    return foliageDistanceOverridden ? foliageDistanceOverride : getFoliageDistanceScaleDefault(getPlatform());
+    return foliageDistanceScaleOverridden ? foliageDistanceScaleOverride : getFoliageDistanceScaleDefault();
 }
 
 void Engine::resetFoliageDistanceScale(){
-    foliageDistanceOverridden = false;
+    foliageDistanceScaleOverridden = false;
 }
 
 GraphicBackend Engine::getGraphicBackend(){
@@ -991,6 +1028,10 @@ double Engine::getFramePeriod(){
     return framePeriod;
 }
 
+double Engine::getFrameDrawCpuTime(){
+    return frameDrawCpuTime;
+}
+
 double Engine::getFrameCpuTime(){
     return frameCpuTime;
 }
@@ -1004,10 +1045,16 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
-void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
+void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+    currentFrameStats.vertices += vertices;
+}
+
+void Engine::addVisibilityStats(uint32_t visible, uint32_t culled){
+    currentFrameStats.visible += visible;
+    currentFrameStats.culled += culled;
 }
 
 uint32_t Engine::getPendingDrawCalls(){
@@ -1423,6 +1470,7 @@ void Engine::clearPools(){
     ModelPool::clear();
     MeshLodPool::clear();
     MeshBufferPool::clear();
+    ModelCpuData::clear();
     AnimationClipPool::clear();
     AnimatorAssetPool::clear();
     ShakePresetPool::clear();
@@ -1488,6 +1536,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
+    Device::onThermalStateChanged.removeByTagSubstring(substring);
+    Device::onLowMemory.removeByTagSubstring(substring);
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1534,6 +1584,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
+    Device::onThermalStateChanged.clear();
+    Device::onLowMemory.clear();
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {
@@ -1851,7 +1903,9 @@ namespace {
         // build's macro, both through the platform configuration)
         // (the configuration lives for the whole run, so its text does)
         config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
-        config.root = system->getCrashReportPath();
+        // the platform's path is UTF-8 (a narrow fs::path would read it in the ANSI code page)
+        const std::string crashReportPath = system->getCrashReportPath();
+        config.root = std::filesystem::path(std::u8string(crashReportPath.begin(), crashReportPath.end()));
         config.includeLogTail = setting(platform.crashLogTail, platform.builtCrashLogTail);
         config.dumpKind = setting(platform.crashDumpWithHeap, platform.builtCrashDumpWithHeap) ? diag::crash::DumpKind::WithHeap
                                                                                                   : diag::crash::DumpKind::Small;
@@ -1970,6 +2024,8 @@ void Engine::systemViewLoaded(){
     // gles3 player runs on an OpenGL ES context)
     Log::print("Graphics: %s; %s; %s", SystemRender::getBackendName(), SystemRender::getApiVersion().c_str(),
               SystemRender::getDeviceName().c_str());
+    // the GPU's tier (spec S56 R2), logged with its reason; a player applies it from here
+    Device::detect();
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
@@ -2082,7 +2138,9 @@ bool Engine::areScenesLoaded(bool textures){
     // and no shader, pipeline or GL warm draw still being created (spec S32 R9), and no texture
     // still loading: a frame drawn meanwhile shows a stand-in for it
     bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty() &&
-                 (!textures || TextureDataPool::getLoadingCount() == 0);
+                 (!textures || TextureDataPool::getLoadingCount() == 0) &&
+                 // and every queued upload the frame budget left for later has run (spec S56 R8)
+                 SystemRender::getDeferredUploadCount() == 0;
     // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
     if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)
         ready = ShaderWarmup::isDone();
@@ -2102,6 +2160,8 @@ std::string Engine::describeNotLoaded(){
     auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
     if (scenes.empty()) add("no scene");
     if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    if (const size_t uploads = SystemRender::getDeferredUploadCount())
+        add(std::to_string(uploads) + " queued upload(s) waiting for the upload budget (Project Settings > Graphics > Upload Budget)");
     if (const size_t textures = TextureDataPool::getLoadingCount()){
         std::string list;
         for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
@@ -2244,6 +2304,7 @@ void Engine::runFrame(bool draw){
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
     const uint64_t frameStart = lastTime;
+    uint64_t drawStart = frameStart;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
     framePeriod = rawDelta;
     // (the stats overlay's frame times are S15's frame-time ring, FrameTimes, from systemDraw)
@@ -2271,8 +2332,10 @@ void Engine::runFrame(bool draw){
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
     // the audio mixer's snapshot transitions and timed values, once a frame before the scenes
-    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held)
-    AudioMixer::update(paused ? 0.0 : deltatime, (paused || simulationHeld) ? 0.0 : frameTime);
+    // (scaled ones hold at time scale 0; both hold while the app or the simulation is held, and on
+    // the deterministic driver while its pump holds: what a Play's pause lasted is not in the mix)
+    const bool audioHeld = paused || simulationHeld || (!onUpdate.isEnabled() && AudioSystem::getOutputMode() == AudioOutputMode::Deterministic);
+    AudioMixer::update(audioHeld ? 0.0 : deltatime, audioHeld ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
     Scheduler& scheduler = Scheduler::game();
@@ -2296,6 +2359,11 @@ void Engine::runFrame(bool draw){
 
     // native SDKs' engine pause requests and native call timeouts (paused frames too)
     NativeBridge::update();
+
+    // the platform's thermal state and memory warnings since the last frame (paused frames too:
+    // a hot device recovers while the game waits), then what a new tier or step changed
+    Device::update(rawDelta);
+    applyQualityChanges();
 
     // memory the last-but-one frame allocated per frame goes back now
     memory::frameArena().beginFrame();
@@ -2333,6 +2401,11 @@ void Engine::runFrame(bool draw){
     // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
     // callbacks, the editor's tools), at this frame's first safe point
     SceneManager::flushPersistentMoves();
+
+#if JASPERENGINE_AUDIO_CAPTURE && !defined(JASPERENGINE_EDITOR)
+    // --audio-capture: from the first frame of the start scene, before its update
+    player::RunControl::beginAudioCapture();
+#endif
 
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
@@ -2460,6 +2533,13 @@ void Engine::runFrame(bool draw){
         Input::endFrame();
     }
 
+#if JASPERENGINE_SOUND_LAYER
+    // the music's callbacks and segments for what this frame mixes (docs/specs/S39-music.md)
+    MusicPlayer::update(unscaledDeltatime);
+#endif
+    // after the scenes, so a voice, what started it and the frame's mix are on the same sample
+    AudioSystem::pumpDeterministic(unscaledDeltatime);
+
     // the debug overlay updates on its own clock: also while the time scale is 0 or the
     // editor holds the game, so it stays usable on a frozen game
     if (DebugOverlay::needsUpdate())
@@ -2475,6 +2555,7 @@ void Engine::runFrame(bool draw){
         beginCompositeFramebuffer();
 
         beginFrameStats();
+        drawStart = stm_now();
         {
             JE_PROFILE_SCOPE("Draw");
             for (int i = 0; i < scenes.size(); i++){
@@ -2497,6 +2578,7 @@ void Engine::runFrame(bool draw){
         SystemRender::commit();
     }
     frameCpuTime = stm_sec(stm_since(frameStart));
+    frameDrawCpuTime = draw ? stm_sec(stm_since(drawStart)) : 0.0;
     FrameTimes::setDrawCalls(currentFrameStats.drawCalls);
 
     // a one-shot stays until a frame draws it: loaded means its objects are made or asked for, and
@@ -2550,6 +2632,9 @@ void Engine::runFrame(bool draw){
     // desktop UserSettings: written a second after a change, not on every set
     UserSettings::tick();
 
+    if (ModelCpuData::getPendingCount() > 0)
+        ModelCpuData::update(getScenesSnapshot());
+
     frameRunning = false;
 
     if (ownFrame)
@@ -2589,6 +2674,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
+        desc.drawMode = (ViewDrawMode)layer.drawMode;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -2649,6 +2735,11 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    // a player's capture ends with the run; its voices are still in their scenes
+    AudioCapture::end();
+#endif
 
     // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
@@ -2823,6 +2914,8 @@ bool Engine::isOrientationPending(){
 
 void Engine::systemLowMemory(){
     Engine::onLowMemory.call();
+    // the response (caches, texture mips, Device.onLowMemory) runs at the next frame's start
+    Device::reportLowMemory();
 }
 
 void Engine::applySimulatedSafeArea(){
@@ -2850,6 +2943,8 @@ void Engine::resetApplicationState(){
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
+    // no tier a script set, no Game view simulation, the thermal and memory response at rest
+    Device::resetSession();
     applyFramePacing();
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
@@ -2885,10 +2980,21 @@ const FramePacing& Engine::getFramePacing(){
     return framePacing;
 }
 
+void Engine::applyQualityChanges(){
+    const uint32_t revision = QualityResolver::getRevision();
+    if (revision == qualityRevision)
+        return;
+    qualityRevision = revision;
+    applyFramePacing();
+    TextureDataPool::setTextureQuality(QualityResolver::textureQuality(textureQuality));
+    SystemRender::setUploadBudget(QualityResolver::uploadBudgetBytes());
+}
+
 void Engine::applyFramePacing(){
     if (!System::hasInstance()) return;
     System& system = System::instance();
-    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+    // the device tier's and the thermal response's cap on the game's rate (QualityResolver)
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), QualityResolver::targetFrameRate(targetFrameRate), vSyncCount,
                                                     system.getRefreshRate(), system.getMaxSwapInterval(),
                                                     system.canDisableVSync());
     system.applyFramePacing(framePacing);
@@ -3026,26 +3132,14 @@ namespace {
         return consumed;
     }
 
-    // the game's and the component UI's character input: one wchar_t unit per call, as before
-    // documents existed (two surrogates where wchar_t is 16 bits)
+    // the game's and the component UI's character input: one whole code point per call
     void sendCharacterToGame(uint32_t codepoint, bool toComponentUI, bool toGame, const std::vector<Scene*>& scenes){
-        std::vector<wchar_t> units;
-        if (sizeof(wchar_t) == 2 && codepoint > 0xFFFF){
-            const uint32_t value = codepoint - 0x10000u;
-            units.push_back((wchar_t)(0xD800u + (value >> 10)));
-            units.push_back((wchar_t)(0xDC00u + (value & 0x3FFu)));
-        }else{
-            units.push_back((wchar_t)codepoint);
-        }
-
-        for (wchar_t unit : units){
-            if (toGame)
-                Engine::onCharInput.call(unit);
-            if (toComponentUI){
-                for (Scene* scene : scenes){
-                    if (canSendUIEvents(scene))
-                        scene->getSystem<UISystem>()->eventOnCharInput(unit);
-                }
+        if (toGame)
+            Engine::onCharInput.call(static_cast<char32_t>(codepoint));
+        if (toComponentUI){
+            for (Scene* scene : scenes){
+                if (canSendUIEvents(scene))
+                    scene->getSystem<UISystem>()->eventOnCharInput(static_cast<char32_t>(codepoint));
             }
         }
     }
@@ -3207,6 +3301,9 @@ void Engine::systemTouchStart(int pointer, float x, float y){
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "down", pointer, x, y);
+#endif
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
@@ -3255,7 +3352,11 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
     DebugOverlay::handleTouch(pointer, x, y, 2);
     // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
     const bool visible = Input::isTouchVisible(pointer);
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
+#endif
+    if (!onCanvas){
         // lifted outside the canvas: no event, but the finger is not down any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::removeTouch(pointer);
@@ -3395,6 +3496,9 @@ void Engine::systemTouchCancel(int pointer){
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
     if (transformCoordPos(x, y)){
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "down", button, x, y);
+#endif
         Input::addMousePressed(button, mods);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -3439,7 +3543,11 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
-    if (!transformCoordPos(x, y)){
+    const bool onCanvas = transformCoordPos(x, y);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
+#endif
+    if (!onCanvas){
         // released outside the canvas: no event, but the button is not held any more, and the
         // documents and the component UI that tracked it let go of it without a click (D6)
         Input::releaseMousePressed(button);
@@ -3591,6 +3699,9 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (!repeat && AudioMarkers::isEnabled()) AudioMarkers::input("key", "down", key, 0.0f, 0.0f);
+#endif
     Input::addKeyPressed(key, repeat, mods);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -3619,6 +3730,9 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("key", "up", key, 0.0f, 0.0f);
+#endif
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
 
@@ -3633,48 +3747,36 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
         Engine::onKeyUp.call(key, repeat, mods);
 }
 
-void Engine::systemCharInput(wchar_t codepoint){
-    const std::vector<Scene*> scenes = getInputScenes(true);
-
+void Engine::systemCharInput(char32_t unit){
     std::vector<uint32_t> codepoints;
-    charInputCombiner.push((uint32_t)codepoint, codepoints);
-    // Input.inputString (Unity's: the text typed this frame)
-    for (uint32_t typed : codepoints)
-        Input::addInputCharacter(typed);
-
-    bool consumed;
-    if (!codepoints.empty()){
-        const std::string utf8 = toUtf8(codepoints);
-        consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-            return documents->eventOnTextInput(utf8);
-        }) != nullptr;
-    }else{
-        // half of a pair: it goes where its other half will
-        consumed = wantsTextComposition();
-    }
-
-    if (!ignoreEventsHandledByUI || !consumed)
-        onCharInput.call(codepoint);
-
-    if (!consumed){
-        for (Scene* scene : scenes){
-            if (canSendUIEvents(scene))
-                scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
-        }
-    }
+    charInputCombiner.push(static_cast<uint32_t>(unit), codepoints);
+    // half of a pair: nothing until its other half
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
 }
 
 void Engine::flushCharInput(){
     std::vector<uint32_t> codepoints;
     charInputCombiner.flush(codepoints);
-    if (codepoints.empty())
-        return;
+    // a high surrogate whose low one never came: U+FFFD, everywhere a character goes
+    if (!codepoints.empty())
+        deliverCodepoints(codepoints);
+}
 
-    // a high surrogate whose low one never came
+void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
+    const std::vector<Scene*> scenes = getInputScenes(true);
+
+    // Input.inputString (Unity's: the text typed this frame)
+    for (uint32_t typed : codepoints)
+        Input::addInputCharacter(typed);
+
     const std::string utf8 = toUtf8(codepoints);
-    dispatchToDocuments(getInputScenes(true), [&](UIDocumentSystem* documents){
+    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
-    });
+    }) != nullptr;
+
+    for (uint32_t codepoint : codepoints)
+        sendCharacterToGame(codepoint, !consumed, !ignoreEventsHandledByUI || !consumed, scenes);
 }
 
 void Engine::systemTextInput(const std::string& utf8){
@@ -3759,6 +3861,9 @@ void Engine::systemGamepadDisconnect(int gamepad){
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "down", button, 0.0f, 0.0f);
+#endif
     Input::addGamepadButtonPressed(gamepad, button);
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -3770,6 +3875,9 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "up", button, 0.0f, 0.0f);
+#endif
     Input::releaseGamepadButtonPressed(gamepad, button);
 
     // consumed iff its down was, so the game never gets an up without a down

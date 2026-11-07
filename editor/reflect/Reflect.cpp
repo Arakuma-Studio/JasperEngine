@@ -130,6 +130,11 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::VertexAnimation: return "vertex_animation";
         case AssetKind::AnimatorController: return "animator_controller";
         case AssetKind::AvatarMask: return "avatar_mask";
+        case AssetKind::SoundEvent: return "sound_event";
+        case AssetKind::NavMesh: return "navmesh";
+        case AssetKind::NavGrid: return "navgrid";
+        case AssetKind::ParticleEffect: return "particle_effect";
+        case AssetKind::ModelOrPrefab: return "model_or_prefab";
         case AssetKind::TreeData: return "tree_data";
     }
     return "";

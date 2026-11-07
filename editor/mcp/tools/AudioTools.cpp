@@ -121,7 +121,7 @@ void audioMixerTool(const CallPtr& call) {
     if (action == "get") {
         if (file.empty()) {
             // no mixer yet: the implicit Master
-            Json data = AudioMixerDocument::describe(AudioMixer::getDef(), playing);
+            Json data = AudioMixerDocument::describe(AudioMixer::getDef(), playing, project ? project->getAudioSettings().loudnessTargetLufs : -18.0f);
             data["mixer"] = nullptr;
             data["project_mixer"] = true;
             call->ok("The project has no Audio Mixer yet: sounds play through an implicit Master at 0 dB. "
@@ -135,7 +135,7 @@ void audioMixerTool(const CallPtr& call) {
             return;
         }
         const bool live = playing && projectMixer;
-        Json data = AudioMixerDocument::describe(def, live);
+        Json data = AudioMixerDocument::describe(def, live, project ? project->getAudioSettings().loudnessTargetLufs : -18.0f);
         data["mixer"] = w4::projectRelative(project, file);
         data["project_mixer"] = projectMixer;
         if (!warnings.empty()) data["warnings"] = warnings;
