@@ -79,11 +79,16 @@ void NoisePreviewService::request(NoisePreviewRequest request) {
     currentRevision = request.revision;
     submitted++;
     jobs::SubmitOptions options;
-    options.lane = jobs::Lane::Background;
+    // Interactive work, bounded by the thumbnail and image sizes: Lane::Normal, ahead of Background's Heavy
+    // compiles and cooks (the spec's Deviations). Each request cancels the one before, so no backlog builds.
+    options.lane = jobs::Lane::Normal;
     options.name = "noise-graph-preview";
     jobs::CancelToken token = currentCancel;
-    task = jobs::submit([request = std::move(request), token]() mutable {
+    std::shared_ptr<std::atomic<uint64_t>> runs = bodiesRun;
+    task = jobs::submit([request = std::move(request), token, runs]() mutable {
         NoisePreviewResult result;
+        if (token.isCancelled()) return result;
+        runs->fetch_add(1, std::memory_order_relaxed);
         evaluate(request, &token, result);
         return result;
     }, options);

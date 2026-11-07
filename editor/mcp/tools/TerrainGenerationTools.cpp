@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -444,9 +445,18 @@ void previewNoiseGraphTool(const CallPtr& call) {
     std::shared_ptr<const noise::CompiledGraph> plan = compiled.graph;
     std::vector<graph::Issue> issueList = compiled.issues;
 
+    // A newer preview of the same graph supersedes an older one still running (an agent tuning a slider)
+    static std::map<std::string, std::weak_ptr<PreviewState>> running;
+    const std::string key = args.contains("path") && args["path"].is_string() ? "path:" + args["path"].get<std::string>() : "preset:" + args.value("preset", std::string());
+    if (auto older = running[key].lock()) {
+        older->cancel.cancel();
+        older->job->requestCancel();
+    }
+    running[key] = state;
+
     jobs::SubmitOptions submit;
-    submit.lane = jobs::Lane::Background;
-    submit.gate = jobs::GateClass::Heavy;
+    // Bounded (size <= 512) work an agent waits on: Lane::Normal, ahead of Background's Heavy compiles (Deviations)
+    submit.lane = jobs::Lane::Normal;
     submit.name = "preview-noise-graph";
     // Finished from the worker (McpJob is thread-safe): a paused game's main-thread queue does not drain (N10)
     jobs::submit([state, plan, issueList, variables, seed, size, extent, space, terrainSize, maxHeight, imagesMode, maxWidth, displayName]() {

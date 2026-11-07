@@ -12,8 +12,10 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+import harness
 from harness import Editor, REPO
 from ui_input import Ui
 
@@ -61,20 +63,9 @@ async def scene_with_terrain(ed: Editor, name: str, resolution: int = 65):
     return sid, terrain
 
 
-async def background_idle(ed: Editor, ui: Ui, frames: int = 3000) -> None:
-    """the editor's start-up work (shader compiles are Heavy Background jobs, as a generation is, R28) finished, so
-    a run's time is its own: on this host's software GL they hold the Heavy slots for a minute and more"""
-    for _ in range(frames // 10):
-        lanes = (await ed.call("get_job_system_stats"))["lanes"]["Background"]
-        if lanes["queued"] == 0 and lanes["running"] == 0:
-            return
-        await ui.frames(10)
-
-
 async def open_section(ed: Editor, ui: Ui) -> None:
     """the Generate header open and its Preview button in view: the header is clicked once per attempt, then
     its inside is waited for (a second click before the first draws would close it again)"""
-    await background_idle(ed, ui)
     for _ in range(3):
         for _ in range(30):
             await ui.frames(2)
@@ -115,8 +106,12 @@ async def test_preview_does_not_write(ed: Editor):
     await open_section(ed, ui)
     files = map_files(ed)
     heights = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=8)
+    # right after start-up, as a person clicks it: the editor's shader compiles are still queued as Heavy
+    # Background work, and a Preview runs on Lane::Normal ahead of them (the spec's Deviations)
+    started = time.monotonic()
     await ui.click(mid(ui, ed.ui_items()["terrain.generate.preview"]))
     status = await wait_status(ed, ui)
+    harness.over_budget("Generate section Preview right after start-up", {"click to result": time.monotonic() - started}, 5.0)
     ed.check(status.startswith("Preview"), status)
     await ui.frames(10)
     ed.check("terrain.generate.image" in ed.ui_items(), "the hillshaded image")

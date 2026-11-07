@@ -228,6 +228,7 @@ namespace {
         request.feather = rectangle ? feather : 0.0f;
         request.applyTo = applyTo;
         request.dryRun = dryRun;
+        request.interactive = dryRun;
         runIsPreview = dryRun;
         status.clear();
         statusIsError = false;

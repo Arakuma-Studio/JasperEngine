@@ -161,6 +161,11 @@ std::shared_ptr<TerrainGeneration::Prepared> TerrainGeneration::prepare(const te
     if (width <= 0) {
         width = depth = 513;
     }
+    // A preview's cost is bounded, so it can run where the user's wait is not behind Heavy work
+    if (request.interactive && request.dryRun) {
+        width = std::min(width, kInteractiveResolution);
+        depth = std::min(depth, kInteractiveResolution);
+    }
     if (width > 4096 || depth > 4096 || width < 2 || depth < 2) {
         addIssue(result, "bad-resolution", "resolution must be 2..4096, not " + std::to_string(width));
         return nullptr;
@@ -615,9 +620,16 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
     run->done01 = 0.05f;
 
     jobs::SubmitOptions options;
-    options.lane = jobs::Lane::Background;
-    options.gate = jobs::GateClass::Heavy;
-    options.name = "generate-terrain";
+    if (prepared->request.interactive && prepared->request.dryRun) {
+        // A Preview a person waits on: ahead of the Heavy Background work (shader compiles, cooks) that holds
+        // the gate's only slot on a small machine. Bounded by kInteractiveResolution.
+        options.lane = jobs::Lane::Normal;
+        options.name = "preview-terrain";
+    } else {
+        options.lane = jobs::Lane::Background;
+        options.gate = jobs::GateClass::Heavy;
+        options.name = "generate-terrain";
+    }
     auto finish = [run, done](const GenerationResult& final) {
         run->done01 = 1.0f;
         run->done.store(true, std::memory_order_release);

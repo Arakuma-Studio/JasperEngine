@@ -131,6 +131,18 @@ async def test_preview(ed: Editor):
     preview = await ed.call("preview_noise_graph", preset="mountains", size=64, seed=7, images="none")
     ed.check_eq(preview["outputs"]["height"], dry["hash"]["height"], "the same bits through both tools")
 
+    # A newer preview of the same graph supersedes the older one still running: an erosion preset at 512 takes far
+    # longer than the next call needs to arrive, so the first is cancelled, and Normal holds no backlog (Deviations)
+    first = await ed.call("preview_noise_graph", preset="alpine", size=512, images="none", wait=False)
+    second = await ed.call("preview_noise_graph", preset="alpine", size=512, seed=2, images="none", wait=False)
+    states = {}
+    for _ in range(600):
+        states = {name: (await ed.call("get_job", job_id=job["job_id"]))["status"] for name, job in (("first", first), ("second", second))}
+        if all(state != "running" for state in states.values()):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check_eq(states, {"first": "cancelled", "second": "succeeded"}, "the newer preview supersedes the older")
+
     # Works in Play
     await ed.call("play", action="start", scene=sid)
     try:

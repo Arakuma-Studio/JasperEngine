@@ -12,7 +12,9 @@
 #include "jobs/JobSystem.h"
 #include "noise/NoiseTypes.h"
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,6 +76,8 @@ namespace jasperengine::editor {
         bool busy() const { return task.isValid() && !task.isReady(); }
         uint64_t requestedRevision() const { return currentRevision; }
         uint64_t jobsSubmitted() const { return submitted; }
+        // Bodies that started evaluating: a burst of requests runs one, the newest (a test's check)
+        uint64_t bodiesStarted() const { return bodiesRun->load(std::memory_order_relaxed); }
         // Blocks until the newest request is done (a test's frame loop; the window only polls)
         void waitForCurrent() const { task.wait(); }
 
@@ -86,6 +90,7 @@ namespace jasperengine::editor {
         jobs::CancelToken currentCancel;
         uint64_t currentRevision = 0;
         uint64_t submitted = 0;
+        std::shared_ptr<std::atomic<uint64_t>> bodiesRun = std::make_shared<std::atomic<uint64_t>>(0);
     };
 
 }

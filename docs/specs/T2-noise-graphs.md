@@ -1054,4 +1054,13 @@ Recorded by the implementer. Each names what changed and why; the spec text abov
   T2 landed, and the value is stored in `assetmap.bin`, so ours moved. 29-31 stay T5's, T4's and T6's. `AssetTypes.NoiseGraphValueIs32` pins it.
 - **"Connect FBm → Remap", not `graph::describe`'s text (R57).** `describe` names a connection's source by its port, and nearly every
   noise port is called Out ("Connect Out → Remap"). The window names it by the two nodes' display names instead.
+- **Previews run on `Lane::Normal`, not R28's Background + Heavy (coordinator's decision).** A Preview clicked right after start-up
+  waited over 90 s on this host behind the editor's shader compiles. The gate admits max(1, workers - reserve) Background bodies, with
+  reserve 2 on desktop, and Heavy at most max(1, that - 2). In a 4-CPU container that is one slot, which compiles and generation share,
+  and S06 has no lane for user-initiated work. So the Generate section's Preview (capped at 513 per side, `kInteractiveResolution`),
+  `preview_noise_graph` (at most 512) and the window's thumbnails run on Normal, like the search palette's interactive job on High. A
+  newer preview cancels the older for the same document, graph or terrain: `NoiseGraphDocument.ABurstOfPreviewsRunsOnlyTheNewest`,
+  `test_noise_graph.py::test_preview`; the section runs one at a time, its controls disabled while it runs. `generate_terrain`'s
+  full-resolution dry runs, Apply and real runs stay Background + Heavy. None of this is runtime code: the Lua `sampleGridAsync` stays
+  on Background, inside a web player's pump.
 

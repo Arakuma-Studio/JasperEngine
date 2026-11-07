@@ -48,6 +48,9 @@ namespace jasperengine::editor {
         int resolution = 0;                 // 0: the terrain's
         GenerationApplyTo applyTo;
         bool dryRun = false;
+        // A preview a person or an agent waits on (the Generate section's Preview): a dry run on Lane::Normal,
+        // ahead of Background's Heavy compiles and cooks, at most kInteractiveResolution per side (Deviations)
+        bool interactive = false;
         // The terrain as the store cannot tell it; start() fills these from the component
         float terrainSize = 1000.0f;        // metres
         int layerCount = -1;                // surface layers; -1: no check
@@ -98,6 +101,9 @@ namespace jasperengine::editor {
         int width = 0, depth = 0;
         terrain::TexelRect rect;
     };
+
+    // The largest side an interactive preview evaluates, whatever the terrain's resolution
+    inline constexpr int kInteractiveResolution = 513;
 
     // Pure generation over any store (AC20 uses a fake one): no project, no scene, no job. The editor's
     // start() below is this plus a job and a command.

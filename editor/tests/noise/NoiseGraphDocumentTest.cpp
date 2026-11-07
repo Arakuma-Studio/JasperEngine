@@ -16,6 +16,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/UndoTimeline.h"
+#include "jobs/JobSystem.h"
 #include "io/AtomicFile.h"
 #include "noise/NoiseGraphDocument.h"
 #include "noise/NoiseGraphRuntime.h"
@@ -534,4 +535,38 @@ TEST(NoiseGraphDocument, CtrlZUndoesTheLastGraphEdit) {
     EXPECT_TRUE(UndoTimeline::redo(sceneId, &why)) << why;
     EXPECT_NE(f.readFile(), original);
     CommandHandle::remove(sceneId);
+}
+
+// T2 Deviations (previews on Lane::Normal): a burst of previews, as a dragged slider fires them, runs one body,
+// the newest, and leaves no backlog on Normal. With no job worker nothing runs at submit, so every older request
+// is cancelled before it could start, deterministically.
+TEST(NoiseGraphDocument, ABurstOfPreviewsRunsOnlyTheNewest) {
+    NoiseDocumentFixture f;
+    ASSERT_TRUE(f.opened) << f.document->loadError();
+    jobs::shutdown();
+    jobs::Config single;
+    single.workers = 0;
+    jobs::initialize(single);
+    {
+        NoisePreviewService service;
+        for (uint64_t revision = 1; revision <= 20; revision++) {
+            NoisePreviewRequest request;
+            request.graph = f.document->graph();
+            request.revision = revision;
+            service.request(std::move(request));
+        }
+        EXPECT_EQ(service.jobsSubmitted(), 20u);
+        service.waitForCurrent();
+        // what a frame's pump would run: the cancelled ones end without a body
+        for (int i = 0; i < 4; i++) jobs::pump(50.0);
+        EXPECT_EQ(service.bodiesStarted(), 1u) << "every older preview was dropped before it ran";
+        NoisePreviewResult result;
+        ASSERT_TRUE(service.poll(result));
+        EXPECT_EQ(result.revision, 20u);
+        const jobs::Stats stats = jobs::system().stats();
+        EXPECT_EQ(stats.lanes[static_cast<size_t>(jobs::Lane::Normal)].queued, 0u) << "no backlog on Normal";
+        EXPECT_EQ(stats.lanes[static_cast<size_t>(jobs::Lane::Normal)].running, 0u);
+    }
+    jobs::shutdown();
+    jobs::initialize(jobs::Config{});
 }
