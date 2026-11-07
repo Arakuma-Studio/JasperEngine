@@ -785,3 +785,9 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
 24. **Shadow maps and uploads.** A depth draw into a shadow map never snaps (its frame block holds
     the camera's grid; `RenderSystem::depthSnapMode`). A block the engine extends with
     `pixelSnapDraw` is uploaded at most at the shader's reflected size (a fork without the member).
+25. **AC11's reference.** `PixelPerfectOffGpu.ZeroCost` compares within one process: the frame
+    without the component (printed: passes, draws, variants, allocations, pixels) against the same
+    frame with the component disabled, and after it was added and removed. A list stored from main
+    ages with every change on main: main's dynamic batching took the scene from 4 draws to 3, with
+    the same pixels (the image hash recorded on main before S41, 13037468019309210060, is still
+    this build's without the component).

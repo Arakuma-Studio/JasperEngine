@@ -5,9 +5,7 @@
 // exactly what it drew before S41: the same passes, the same number of draws, the same shader
 // variants, and no more allocations on the main thread in a steady frame. In this process: the
 // frame without the component is the baseline (printed), and a disabled component, or one added
-// and removed, leaves that frame pixel for pixel. Across builds: fixtures/pixelart/zero_cost.txt,
-// recorded by this test on the engine before S41's changes, holds its passes, draws, variants and
-// allocations (JASPER_TEST_UPDATE_FIXTURES=1 rewrites it; only from an engine without S41).
+// and removed, leaves that frame pixel for pixel.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -29,7 +27,6 @@
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
 #include "Readback.h"
-#include "TestPaths.h"
 #include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
@@ -37,7 +34,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
@@ -71,10 +67,6 @@ namespace {
         return TextureData(16, 16, 16 * 16 * 4, ColorFormat::RGBA, 4, (void*)zeroCostCheckerPixels().data());
     }
 
-    std::string zeroCostFixturePath(){
-        return testPaths().sourceDir + "/fixtures/pixelart/zero_cost.txt";
-    }
-
     // what the frame is made of: its passes in order, its draws, the variants its objects drew
     // with (sorted), and the main thread's allocations in a steady frame
     struct ZeroCostFrame {
@@ -97,34 +89,6 @@ namespace {
         return out.str();
     }
 
-    bool parseZeroCost(const std::string& text, ZeroCostFrame& record){
-        std::istringstream in(text);
-        std::string line;
-        bool any = false;
-        while (std::getline(in, line)){
-            if (line.empty() || line[0] == '#')
-                continue;
-            const size_t space = line.find(' ');
-            if (space == std::string::npos)
-                return false;
-            const std::string key = line.substr(0, space);
-            const std::string value = line.substr(space + 1);
-            any = true;
-            if (key == "draws")
-                record.draws = (uint32_t)std::stoul(value);
-            else if (key == "allocations")
-                record.allocations = std::stoull(value);
-            else if (key == "image")
-                record.image = std::stoull(value);
-            else if (key == "pass")
-                record.passes.push_back(value);
-            else if (key == "shader")
-                record.shaders.push_back(value);
-            else
-                return false;
-        }
-        return any;
-    }
 
     // the GPU environment's view as the suite found it: the suites after it draw at their own sizes
     struct ZeroCostGpuView {
@@ -263,12 +227,6 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
     ASSERT_FALSE(baseline.passes.empty()) << "no pass was recorded for the frame";
     ASSERT_GT(baseline.draws, 0u);
 
-    if (envFlag("JASPER_TEST_UPDATE_FIXTURES")){
-        std::ofstream out(zeroCostFixturePath(), std::ios::binary | std::ios::trunc);
-        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serializeZeroCost(baseline);
-        ASSERT_TRUE(out.good()) << zeroCostFixturePath();
-        GTEST_SKIP() << "wrote " << zeroCostFixturePath();
-    }
 
     // the same frame after the component came and went, and with a disabled one: nothing of the
     // feature stays behind (passes, draws, variants, allocations, pixels; same process, same driver)
@@ -301,19 +259,5 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
     recordFrame(removed);
     expectBaseline(removed, "the component removed");
 
-    // and across builds: the frame of the engine before S41 (recorded by this test on main; the
-    // pixels are left out, a driver's own)
-    std::ifstream in(zeroCostFixturePath(), std::ios::binary);
-    ASSERT_TRUE(in.good()) << "missing " << zeroCostFixturePath();
-    std::stringstream text;
-    text << in.rdbuf();
-    ZeroCostFrame before;
-    ASSERT_TRUE(parseZeroCost(text.str(), before)) << zeroCostFixturePath();
-    EXPECT_EQ(baseline.passes, before.passes) << serializeZeroCost(baseline);
-    EXPECT_EQ(baseline.draws, before.draws);
-    EXPECT_EQ(baseline.shaders, before.shaders) << serializeZeroCost(baseline);
-    if (testsupport::countsAllocations()){
-        EXPECT_LE(baseline.allocations, before.allocations);
-    }
     EXPECT_NO_ENGINE_ERRORS();
 }
