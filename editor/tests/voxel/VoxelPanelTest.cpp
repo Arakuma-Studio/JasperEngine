@@ -233,7 +233,11 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
             }
         }
     }
-    ASSERT_TRUE(system->edit(owner, everyBlock, voxel::EditOptions{}).ok);
+    // one call of 128 ops: past a Play edit's budget, which this is not about
+    voxel::EditOptions unbudgeted;
+    unbudgeted.maxVoxels = int64_t(1) << 30;
+    const voxel::EditResult everyBlockResult = system->edit(owner, everyBlock, unbudgeted);
+    ASSERT_TRUE(everyBlockResult.ok) << static_cast<int>(everyBlockResult.error);
     ASSERT_GT(asset->store->memory().total(), int64_t(1) << 20);
     EXPECT_TRUE(has(VoxelProblemCode::OverBudget));
     project->setVoxelSettings(VoxelProjectSettings{});
