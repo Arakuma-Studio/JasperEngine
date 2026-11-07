@@ -219,6 +219,13 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-07: On plain `main` ac10792fb, four MCP tests fail. They are pre-existing, not ours:
+  `test_reflection` (`test_golden_resave`, `test_codegen_golden`,
+  `test_inspector_layout_parity`) and
+  `test_saved_output_determinism::test_fixture_scenes_save_the_same_drawn_or_not` (7 passed,
+  4 failed). Their goldens show mesh fields from other programs' work, and the Doriax lead was
+  told. S44 is approved to land after a final merge of `main` 81ffe9f3d (with the dynamic sprite
+  batching) and a sheet-sprite batching parity test.
 - 2026-11-07: `dc/sprite-batching` landed on origin/main (885cddc46, 81ffe9f3d). The batcher
   draws pixel-snapped sprites one by one, unbatched, until S41's snap is wired into its batch key.
   That wiring belongs to the narrowed S52, so S41 lands as is. The S52 worktree was recreated

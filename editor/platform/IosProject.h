@@ -5,7 +5,8 @@
 
 // A prebuilt iOS player's Xcode project (docs/specs/S30-shipping.md R14): the runtime's template
 // project, which links JasperEnginePlayer.xcframework and compiles no engine source, with the
-// game's content in Content/, its Info.plist, bundle id, team and icon. On a Mac with Xcode it is
+// game's content in Content/, its Info.plist, bundle id, team and icon (the export then adds the
+// game's Objective-C/Swift plugins, settings and privacy manifest). On a Mac with Xcode it is
 // built: an unsigned simulator .app, or an archive exported to an .ipa (development, ad-hoc or
 // app-store); with no team, the device build is compiled and stops before signing, and says so.
 // Elsewhere, or on a Mac without Xcode, the project is the result ("Open on a Mac with Xcode").
@@ -57,6 +58,11 @@ namespace jasperengine::editor::platform {
     // the template's text with the settings in its {{MARKERS}}
     std::string fillIosTemplate(std::string text, const IosProjectSettings& settings);
 
+    // The runtime's template copied into settings.projectDir with the settings and the icon; the
+    // export then adds the game's native plugins and settings to the staged project
+    bool stageIosProject(const IosProjectSettings& settings, std::string& error);
+    // The staged project built: on a Mac with Xcode an .app or .ipa, elsewhere the project itself
+    // (with the note to open it on a Mac)
     bool buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
                          std::vector<std::filesystem::path>& artifacts, std::vector<std::string>& notes,
                          std::vector<BuildWarning>& warnings, std::string& error);

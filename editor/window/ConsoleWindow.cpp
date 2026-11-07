@@ -87,6 +87,13 @@ ImVec4 logIconColor(LogType type) {
     }
 }
 
+// a compiler error or warning keeps the hammer, in the colour of its severity
+ImVec4 logRowIconColor(const LogData& log) {
+    if (log.type == LogType::Build && log.severity == ConsoleWindow::SEVERITY_ERROR_MESSAGE) return Theme::Colors::ErrorText;
+    if (log.type == LogType::Build && log.severity == ConsoleWindow::SEVERITY_WARNING) return Theme::Colors::WarningText;
+    return logIconColor(log.type);
+}
+
 const char* logTypeName(LogType type) {
     switch (type) {
         case LogType::Error:   return "Error";
@@ -204,10 +211,13 @@ void ConsoleWindow::clear() {
     autoScroll = true;
 }
 
-ConsoleWindow::Severity ConsoleWindow::severityOf(LogType type) {
+ConsoleWindow::Severity ConsoleWindow::severityOf(LogType type, LogLevel level) {
     switch (type) {
         case LogType::Warning: return SEVERITY_WARNING;
         case LogType::Error:   return SEVERITY_ERROR_MESSAGE;
+        case LogType::Build:
+            if (level >= LogLevel::Error && level != LogLevel::Off) return SEVERITY_ERROR_MESSAGE;
+            return level == LogLevel::Warn ? SEVERITY_WARNING : SEVERITY_LOG;
         default:               return SEVERITY_LOG;
     }
 }
@@ -251,7 +261,7 @@ void ConsoleWindow::enforceStoredLineLimit() {
 
         if (frontLines <= excess) {
             storedLogLineCount -= frontLines;
-            severityCounts[severityOf(logs.front().type)]--;
+            severityCounts[logs.front().severity]--;
             logs.pop_front();
             continue;
         }
@@ -267,7 +277,7 @@ void ConsoleWindow::recountSeverities() {
         severityCounts[i] = 0;
     }
     for (const LogData& log : logs) {
-        severityCounts[severityOf(log.type)]++;
+        severityCounts[log.severity]++;
     }
 }
 
@@ -283,6 +293,7 @@ void ConsoleWindow::pullLogs() {
 void ConsoleWindow::addEntry(LogEntry&& entry) {
     LogData logEntry;
     logEntry.type = entry.type;
+    logEntry.severity = severityOf(entry.type, entry.level);
     logEntry.id = entry.id;
     logEntry.detail = entry.level <= LogLevel::Debug;
     logEntry.category = std::move(entry.category);
@@ -293,10 +304,11 @@ void ConsoleWindow::addEntry(LogEntry&& entry) {
     logEntry.message = std::move(entry.message);
     logEntry.locations = findSourceLocations(logEntry.message);
     const LogType type = logEntry.type;
+    const int severity = logEntry.severity;
     if (seenCategories.insert(logEntry.category).second) needsRebuild = true;
     storedLogLineCount += countRawLines(logEntry.message);
     logs.push_back(std::move(logEntry));
-    severityCounts[severityOf(type)]++;
+    severityCounts[severity]++;
     enforceStoredLineLimit();
 
     needsRebuild = true;
@@ -479,7 +491,7 @@ void ConsoleWindow::rebuildRows() {
 
     for (size_t i = 0; i < logs.size(); i++) {
         const LogData& log = logs[i];
-        if (!severityFilters[severityOf(log.type)]) continue;
+        if (!severityFilters[log.severity]) continue;
         if (!hiddenCategories.empty() && hiddenCategories.count(log.category)) continue;
         if (!passTextFilter(log.message.c_str())) continue;
 
@@ -778,7 +790,7 @@ void ConsoleWindow::showList(float height) {
             const char* icon = logIcon(log.type);
             ImVec2 iconSize = ImGui::CalcTextSize(icon);
             dl->AddText(ImVec2(min.x + (iconColumn - iconSize.x) * 0.5f, min.y + textOffsetY),
-                        ImGui::GetColorU32(logIconColor(log.type)), icon);
+                        ImGui::GetColorU32(logRowIconColor(log)), icon);
 
             float textRight = max.x - Theme::dpi(6.0f);
             if (row.count > 1) {

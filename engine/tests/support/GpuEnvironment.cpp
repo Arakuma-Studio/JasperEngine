@@ -105,6 +105,10 @@ void GpuEnvironment::setView(int screenWidth, int screenHeight, int canvasWidth,
     Engine::systemViewChanged();
 }
 
+void GpuEnvironment::resetView(){
+    setView(defaultWidth, defaultHeight, defaultWidth, defaultHeight, Scaling::FITWIDTH);
+}
+
 namespace {
     // a mesh's detail levels still being built (Mesh LOD is on in a new Scene): a frame drawn now
     // shows its finest level, and a later one its own

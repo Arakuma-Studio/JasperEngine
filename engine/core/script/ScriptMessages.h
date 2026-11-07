@@ -39,6 +39,8 @@ namespace jasperengine {
         // ui-multitouch: the EventSystem callbacks of the component UI (a PointerEventData argument)
         PointerDown, PointerUp, PointerClick, PointerEnter, PointerExit, InitializePotentialDrag,
         BeginDrag, Drag, EndDrag, Drop, Scroll,
+        // ui-components: the selection callbacks (a BaseEventData or AxisEventData argument)
+        Select, Deselect, Move, Submit, Cancel,
         Count
     };
     static_assert(static_cast<int>(ScriptMessage::Count) < 64, "ScriptMessageMask holds 63 messages (all-ones mask shifts by Count)");

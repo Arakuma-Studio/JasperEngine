@@ -87,6 +87,11 @@ namespace jasperengine::editor {
         DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
+        // OK with other asset roots: what the change would do (the confirmation), why it did not
+        AssetRootChange m_rootsPlan;
+        bool m_rootsConfirmRequested = false;
+        bool m_rootsCloseWindow = false;
+        std::string m_rootsError;
         std::vector<fs::path> m_scriptDirs;
         int m_cxxStandardIndex = 0;
         bool m_physics2DEnabled = true;
@@ -143,8 +148,6 @@ namespace jasperengine::editor {
         bool m_iosHideStatusBar = true;
         bool m_iosHideHomeIndicator = true;
         bool m_iosSupportsHighRefreshRate = true;
-        bool m_iosAdmobEnabled = false;
-        char m_iosAdmobAppIdBuffer[128] = {0};
         char m_androidApplicationNameBuffer[256] = {0};
         char m_androidPackageNameBuffer[256] = {0};
         char m_androidVersionNameBuffer[64] = {0};
@@ -162,8 +165,6 @@ namespace jasperengine::editor {
         int m_androidInternetAccessIndex = 0;
         bool m_androidAllowBackup = true;
         bool m_androidFullscreen = true;
-        bool m_androidAdmobEnabled = false;
-        char m_androidAdmobAppIdBuffer[128] = {0};
 
         // Native Plugins being edited (Project Settings > Native Plugins); plist entries as rows
         std::vector<std::string> m_gradleDependencies;
@@ -186,6 +187,17 @@ namespace jasperengine::editor {
         // plugins/native as last scanned (open, Refresh, after Create Plugin): not every frame
         std::string m_nativeSummary;
         void refreshNativeSummary();
+
+        // Player > iOS / macOS > Privacy Manifest (shared by both platforms)
+        ApplePrivacy::Manifest m_applePrivacy;
+        std::string m_privacyPreview;
+        std::string m_privacyPreviewTitle;
+        bool m_openPrivacyPreview = false;
+        void drawApplePrivacySection(const char* platform);
+        // The edited additions as OK saves them: empty rows dropped, domains trimmed, normalized
+        ApplePrivacy::Manifest editedApplePrivacy() const;
+        // Why the edited privacy manifest blocks OK, "" when it does not
+        std::string applePrivacyError() const;
 
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)
@@ -307,6 +319,8 @@ namespace jasperengine::editor {
         std::string inheritedApplicationBuild() const;
 
         bool applySettings();
+        // the "Change Asset Directories" confirmation: Move and Apply runs the change, then the rest
+        void drawRootsConfirmation();
 
     public:
         // category: a page to show, e.g. "Player"; nullptr keeps the last one.

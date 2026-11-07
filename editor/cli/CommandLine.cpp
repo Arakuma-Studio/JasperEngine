@@ -710,11 +710,23 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     const ExportProgress progress = exporter.getProgress();
 
     if (!success) {
+        // the build's errors, then what failed
+        for (const BuildDiagnostic& error : progress.errors) std::cerr << error.text << "\n";
+        if (progress.errorCount > progress.errors.size()) {
+            std::cerr << "(and " << progress.errorCount - progress.errors.size() << " more error(s))\n";
+        }
         if (!progress.errorMessage.empty()) {
             std::cerr << commandName << " export: " << progress.errorMessage << "\n";
         }
         return 1;
     }
+
+    const ExportResult result = exporter.getResult();
+    if (!result.warnings.empty()) {
+        std::cerr << commandName << " export: completed with " << result.warnings.size() << " warning(s):\n";
+        for (const BuildWarning& warning : result.warnings) std::cerr << "  " << warning.code << ": " << warning.message << "\n";
+    }
+    for (const std::string& note : result.notes) std::cout << note << "\n";
 
     return 0;
 }
@@ -3089,6 +3101,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // water forks without @role, planar reflections on sloped meshes
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(&project);
+            run.findings.insert(run.findings.end(), water.begin(), water.end());
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());

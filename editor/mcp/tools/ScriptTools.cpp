@@ -61,6 +61,7 @@
 #include "reload/HotReloadService.h"
 #include "reload/handlers/ReloadHandlers.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "util/ScriptTemplates.h"
 
 #include "lua.hpp"
 #include "util/FileUtils.h"
@@ -75,7 +76,6 @@
 #include <fstream>
 #include <map>
 #include <mutex>
-#include <random>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -726,23 +726,17 @@ void createScriptTool(const CallPtr& call) {
         }
     }
 
-    // The editor's templates, rendered in a scratch directory and read back
+    // The editor's templates (the Project window and the Inspector write the same)
     std::string headerText, sourceText;
-    {
-        std::mt19937_64 rng(std::random_device{}());
-        const fs::path scratch = fs::temp_directory_path(ec) / ("jasper-mcp-script-" + std::to_string(rng()));
-        fs::create_directories(scratch, ec);
-        const fs::path tmpHeader = lua ? fs::path() : scratch / header.filename();
-        const fs::path tmpSource = scratch / source.filename();
-        ScriptCreateDialog::writeTemplateFiles(target.scene ? target.scene->scene : nullptr, target.entity,
-                                               tmpHeader, tmpSource, name, creation);
-        if (!lua) ProjectChecks::readFile(tmpHeader, headerText);
-        ProjectChecks::readFile(tmpSource, sourceText);
-        fs::remove_all(scratch, ec);
-    }
-    if (sourceText.empty()) {
-        call->fail("Couldn't render the script template (temporary directory not writable?).");
-        return;
+    if (lua) {
+        sourceText = ScriptTemplates::lua(name);
+    } else {
+        const std::string headerFileName = FileUtils::pathToUtf8(header.filename());
+        const ScriptTemplates::Files files = creation == ScriptCreateDialog::CreationKind::CPP_SUBCLASS
+            ? ScriptTemplates::cppSubclass(target.scene ? target.scene->scene : nullptr, target.entity, name, headerFileName)
+            : ScriptTemplates::cppScript(name, headerFileName);
+        headerText = files.header;
+        sourceText = files.source;
     }
     if (lua && args.contains("content") && args["content"].is_string()) sourceText = args["content"].get<std::string>();
     if (!lua && args.contains("header_content") && args["header_content"].is_string()) headerText = args["header_content"].get<std::string>();

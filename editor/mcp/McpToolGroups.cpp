@@ -25,7 +25,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
-        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
+        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps, details (grass, rocks) and sampling."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
@@ -36,7 +36,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
-        {"shipping", "Player runtimes, native plugins, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
+        {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
     };

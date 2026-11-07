@@ -211,11 +211,26 @@ void editor::App::registerCommands(){
              return project.isPlaySessionActive() && !playInput->isCursorReleased() &&
                     (mode == MouseMode::CAPTURED || mode == MouseMode::CONFINED);
          });
+    // the key toggles the saved setting, at once during Play, but never takes a key from the game:
+    // while the running game has the keyboard, F11 is the game's (the menu item still works)
+    bind("playmode.maximizeOnPlay", [this](const CommandArgs&) { gameWindow->toggleMaximizeOnPlay(); }, nullptr,
+         [this]() { return !(project.isAnyScenePlaying() && gameWindow->hasKeyboardFocus()); });
 
     // ---- Assets
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
+    enable("assets.duplicate", [this]() { return projectWindow->canDuplicate(); });
+    // a Lua script lives in the Lua directory (the folder Assets > Create makes things in)
+    {
+        const CommandDef* existing = catalog.find("assets.createLuaScript");
+        if (existing) {
+            CommandDef def = *existing;
+            def.enabled = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()).empty(); };
+            def.disabledReason = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()); };
+            catalog.add(std::move(def));
+        }
+    }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
@@ -370,6 +385,8 @@ void editor::App::registerCommands(){
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
     bind("project.paste", [this](const CommandArgs&) { projectWindow->pasteClipboard(); },
          [this]() { return projectWindow->canPasteClipboard(); }, projectKeys);
+    bind("project.duplicate", [this](const CommandArgs&) { projectWindow->duplicateSelection(); },
+         [this]() { return projectWindow->canDuplicate(); }, projectKeys);
     bind("project.selectAll", [this](const CommandArgs&) { projectWindow->selectAllInListing(); }, nullptr, projectKeys);
     bind("project.delete", [this](const CommandArgs&) { projectWindow->requestDeleteSelection(); },
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
@@ -450,7 +467,8 @@ void editor::App::registerPanelClaims(){
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
-                 {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")}}});
+                 {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
+                 {Verb::Duplicate, own("project.duplicate")}}});
     claims.add({"Console", [this]() { return consoleWindow->isListFocused(); }, {{Verb::Copy, own("console.copy")}}});
     claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
                 {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});

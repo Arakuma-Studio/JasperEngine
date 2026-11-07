@@ -1097,6 +1097,34 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_privacy_manifest_by_hand",
+        "kind": "bad",
+        "what_happened": "Before the privacy manifest settings an agent asked for an App Store privacy manifest wrote "
+                         "PrivacyInfo.xcprivacy into the exported Xcode project by hand, which the next export replaces.",
+        "text_at_issue": "native_plugins description 'privacy_manifest: the composed Apple PrivacyInfo.xcprivacy (engine + "
+                         "apple.privacy_* + plugin manifests)'; the apple.privacy_* settings' descriptions",
+        "source": "mobile-shipping spec (Doriax catch-up): the iOS privacy manifest; no transcript",
+        "prompt": "Our iOS game shows ads from an SDK that tracks users through ads.example.com. Set up the App Store "
+                  "privacy manifest for it.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "apple.privacy_tracking: false (bool) Privacy manifest NSPrivacyTracking: the app or its SDKs track users. "
+                "apple.privacy_tracking_domains: [] (list) NSPrivacyTrackingDomains. apple.privacy_collected_data: [] (list) "
+                "[{type, linked?, tracking?, purposes}]. apple.privacy_accessed_apis: [] (list) [{type, reasons}]. Added to the "
+                "engine's own entries; iOS and macOS. Undoable.",
+                {"settings": {"apple.privacy_tracking": False, "apple.privacy_tracking_domains": [],
+                              "apple.privacy_collected_data": [], "apple.privacy_accessed_apis": []}})},
+            {"tool": "set_project_settings", "result": ok("Set 2 project settings; saved project.yaml.",
+                                                         {"changed": ["apple.privacy_tracking", "apple.privacy_tracking_domains"]})},
+            {"tool": "native_plugins", "result": ok(
+                "iOS privacy manifest: 3 API type(s), tracking on (1 domain(s)), 0 collected data type(s), 0 plugin manifest(s).",
+                {"platform": "ios", "tracking": True, "tracking_domains": ["ads.example.com"], "warnings": []})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"apple.privacy_tracking": True}}}],
+                   "edits_must_not": [r"PrivacyInfo\.xcprivacy$"], "shell_must_not": [r"PrivacyInfo\.xcprivacy"]},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_shader_list_incomplete",
         "kind": "bad",
         "what_happened": "get_build_info hands the closed scenes it has no time for to a job and answers with the list so far "
@@ -1678,6 +1706,83 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_build_output_inside_project",
+        "kind": "guard",
+        "what_happened": "An export into a folder inside the project is refused by every front end (the editor would import "
+                         "the exported files as assets); the refusal names a folder outside, and the agent exports there "
+                         "instead of retrying inside or writing the files by hand.",
+        "text_at_issue": "Exporter::outputFolderRefusal: 'The output folder <dir> is inside the project: the editor would "
+                         "import the exported files as project assets. Choose a folder outside it, e.g. <parent>/<app>-build.'",
+        "source": "export-pipeline spec 6.3 (Doriax de8dc7340, 14670673b)",
+        "prompt": "Export the game as a C++ source project into a Builds folder in the project, like Unity does.",
+        "mocks": [
+            {"tool": "build_project", "args": {"output_dir": "re:(?i)/builds?(/|$)"}, "result": err(
+                "The output folder /work/space-dodge/Builds is inside the project: the editor would import the exported files "
+                "as project assets. Choose a folder outside it, e.g. /work/space-dodge-build.")},
+            {"tool": "build_project", "result": ok(
+                "Exported the C++ source project to /work/space-dodge-build. Build it with: cmake -S <dir> -B <dir>/build",
+                {"status": "succeeded", "result": {"output_dir": "/work/space-dodge-build", "errors": [], "warnings": []}})},
+            {"tool": "get_build_info", "result": ok(
+                "Build Settings: 1 scene in the build (Main, start). Source output folder: none chosen yet.",
+                {"scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "start": True}],
+                 "source": {"output_dir": "", "backends": ["opengl"]}, "running_job": None})},
+        ],
+        "checks": {"any_of": [{"last_call": {"tool": "build_project", "args": {"output_dir": "re:(?i)^(?!.*/builds?(/|$))"}}},
+                              {"reply_must": [r"outside|space-dodge-build|inside the project"]}],
+                   "max_calls": {"build_project": 3}, "edits_must_not": [r"(?i)builds?/"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_water_fork_role",
+        "kind": "bad",
+        "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
+                         "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to <directory>/<name>.vert/.frag'; the target enum's "
+                         "material",
+        "source": "water-reflections spec F10 (Doriax d62f09407)",
+        "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "
+                  "The boats must keep floating on it. Set up an editable copy of the shader for me.",
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, GERSTNER, REFLECTION]", {"id": 12})},
+            {"tool": "fork_shader", "args": {"source": "re:water"}, "result": ok(
+                "Forked library:water to shaders/Water (.vert/.frag, with its manifest) and pointed the material at it. "
+                "Read the files and change only the shading math; your edits are compiled before your next call (errors "
+                "in external_changes), or check them now with check_shader.",
+                {"custom_shader": "shaders/Water", "source": "library:water", "submeshes": [0],
+                 "vert_path": "shaders/Water.vert", "frag_path": "shaders/Water.frag"})},
+        ],
+        "checks": {"calls": [{"tool": "fork_shader", "args": {"source": "re:water"}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_water_planar_reflection",
+        "kind": "guard",
+        "what_happened": "A mirror-like lake is library:water's PLANAR_REFLECTION feature (one camera pass per water height), "
+                         "not a Mirror component or a forked shader.",
+        "text_at_issue": "library:water feature PLANAR_REFLECTION 'Planar reflection (with REFLECTION: the scene mirrored; a "
+                         "camera pass per water height)'",
+        "source": "water-reflections spec (Doriax 2247e891f)",
+        "prompt": "The Lake (library:water) should mirror the trees and hills around it, like a calm lake does.",
+        "mocks": [
+            {"tool": "list_shaders", "args": {"name": "re:water"}, "result": ok(
+                "library:water (mesh, Nature): Stylised water ... Features: WAVES, GERSTNER, BUILTIN_TEXTURES, REFLECTION, "
+                "PLANAR_REFLECTION (with REFLECTION: the scene mirrored; a camera pass per water height), UNDERSIDE, DEPTH_FOAM, "
+                "ABSORPTION, REFRACTION, CAUSTICS, FLOW, MESH_DEPTH",
+                {"shaders": [{"shader": "library:water", "role": "water", "features": [
+                    "WAVES", "GERSTNER", "BUILTIN_TEXTURES", "REFLECTION", "PLANAR_REFLECTION", "UNDERSIDE"]}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, REFLECTION]", {"id": 12})},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 12 \"Lake\".", {"entity": {"id": 12}})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties"}],
+                   "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
@@ -1761,6 +1866,51 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_duplicate_asset_beside",
+        "kind": "guard",
+        "what_happened": "Duplicating an asset: move_asset copy without `to` lands beside it under Unity's free name "
+                         "(hero 1.png); the agent need not list the folder to invent a free name (project-window spec 6.14).",
+        "text_at_issue": "AssetTools.cpp move_asset `to`: 'New path; omit with copy to duplicate.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 37d7cdc41)",
+        "prompt": "Duplicate assets/sprites/hero.png.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}, "result": ok(
+                "Copied assets/sprites/hero.png to assets/sprites/hero 1.png (new GUIDs).",
+                {"from": "assets/sprites/hero.png", "to": "assets/sprites/hero 1.png", "copy": True})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}}],
+                   "must_not_call": ["list_assets", "search_files", "import_files"], "max_calls": {"move_asset": 1}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_asset_root_dry_run",
+        "kind": "guard",
+        "what_happened": "Changing the assets directory moves every referenced file; asked to check first, the agent asks "
+                         "set_project_settings with dry_run, then applies (project-window spec 6.9).",
+        "text_at_issue": "ProjectTools.cpp set_project_settings dry_run: 'Only report.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 35c8e31da)",
+        "prompt": "Make the project's assets directory a folder called content. First show me what would move, then do it.",
+        "mocks": [
+            {"tool": "set_project_settings", "args": {"dry_run": True}, "result": ok(
+                "Valid: 1 setting(s); nothing was changed (dry_run). The asset roots' change would move 2 file(s).",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [], "removed_folders": []}})},
+            {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}, "result": ok(
+                "Set 1 setting(s). Moved 2 referenced file(s), rewrote 2 file(s), removed 2 emptied folder(s). project.yaml saved.",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [],
+                    "removed_folders": ["assets/sprites", "assets/sounds"]}})},
+        ],
+        "checks": {"order": [[{"tool": "set_project_settings", "args": {"dry_run": True}},
+                              {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}}]],
+                   "reply_must": [r"hero\.png"], "max_calls": {"set_project_settings": 3}},
+        "max_turns": 10,
     },
     {
         "id": "guard_typing_utf16_units",
@@ -2004,6 +2154,60 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_ui_button_gamepad_menu",
+        "kind": "guard",
+        "what_happened": "Component UI Buttons got keyboard, gamepad and TV navigation only for a selected Button "
+                         "(ui-components): a native menu needs one Button with select_on_enable, which create_ui's "
+                         "description names.",
+        "text_at_issue": "create_ui's description: 'button (text = label, select_on_enable)'",
+        "source": "spec docs/superpowers/specs/2026-11-04-ui-components-design.md decision 1; no failure on record",
+        "prompt": "The Hud scene uses the native UI (create_ui). Add a pause menu there: Resume, Options and Quit buttons "
+                  "stacked vertically in the middle of the screen. Players use a gamepad or a TV remote, so the menu must "
+                  "work without a mouse, with Resume selected when it shows.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 2 scene(s), selected: 2 \"Hud\" (UI). Edit mode.",
+                {"project": {"name": "Space Dodge"}, "playing": False, "scenes": [
+                    {"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True},
+                    {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "selected": True, "opened": True}]})},
+            {"tool": "create_ui", "result": ok(
+                "Created 7 UI element(s) under \"PauseMenu\" (one undo step).",
+                {"root": {"id": 50, "path": "PauseMenu", "type": "layout_group"}, "count": 7})},
+            {"tool": "save_scene", "result": ok("Saved scene 2 \"Hud\" (scenes/Hud.scene).", {"scene": {"id": 2}})},
+            {"tool": "get_entity", "result": ok(
+                "GameObject 51 \"Resume\": button. selectable: {navigable: true, navigation: {down: Options}}",
+                {"id": 51, "selectable": {"navigable": True, "navigation": {"up": None, "down": {"id": 53, "path": "PauseMenu/Options"}}}})},
+        ],
+        "checks": {"calls": [{"tool": "create_ui", "args": {"root": {"children": [{"select_on_enable": True}]}}}],
+                   "must_not_call": ["create_ui_document"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_ui_button_color_refusal",
+        "kind": "guard",
+        "what_happened": "An edit of a Button's ui.color reported success and was lost at its next state change; "
+                         "set_properties now refuses it and names the Button field (Doriax 88198667b, ui-components).",
+        "text_at_issue": "McpValues::appendChangeCommands: 'UIComponent.color of ... is set by its Button (transition ...): "
+                         "set button.colorNormal ...'",
+        "source": "Doriax 88198667b; spec 2026-11-04-ui-components decision 13",
+        "prompt": "Make the Play button (GameObject 12 in the open scene) red.",
+        "mocks": [
+            {"tool": "set_properties", "args": {"component": "re:^ui$|UIComponent"}, "result": err(
+                "UIComponent.color of GameObject 12 \"Play\" is set by its Button (transition color_tint_and_sprite_swap): set "
+                "button.colorNormal (and colorHovered, colorPressed, colorSelected, colorDisabled), or set button.transition "
+                "to sprite_swap or none first.")},
+            {"tool": "set_properties", "result": ok("Set button.colorNormal on GameObject 12 \"Play\" (one undo step).",
+                                                    {"entities": [{"id": 12}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Play\": recttransform, ui, image, button.",
+                                               {"id": 12, "components": ["recttransform", "ui", "image", "button"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"component": "button"}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"button": "*"}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"component": "button"}]}}]}],
+                   "max_calls": {"set_properties": 3}},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_copied_scene_ids",
         "kind": "guard",
         "what_happened": "A copied .scene used to keep its original's scene id; copies get their own now, and the result says "
@@ -2137,5 +2341,200 @@ CASES = [
         "checks": {"must_not_call": ["write_file", "eval_lua"],
                    "reply_must": [r"(each|every|all( the)?) parts?", r"(first|0) submesh|submesh 0", r"(across|part after part|counts?)"]},
         "max_turns": 10,
+    },
+
+    # -- agent-authoring: building scenes, the guide past the client cut, terrain, shaders ------------
+    {
+        "id": "bad_repeat_without_prefab",
+        "kind": "bad",
+        "what_happened": "Agents placed repeated objects (coins, enemies) as independent copies, so a later change had to be "
+                         "repeated on each; Doriax a48d1ce3a added 'build once, place instances' to its guidance.",
+        "text_at_issue": "Guide 'Building scenes': 'What repeats is one Prefab (create_prefab)'; duplicate_entities' next",
+        "source": "Doriax a48d1ce3a (editor AI authoring rules), agent-authoring spec",
+        "prompt": "Add a Coin (a small yellow sphere) to the Main scene and four more coins 3 units apart along x.",
+        "mocks": [
+            {"tool": "create_entity", "result": ok("Created Sphere \"Coin\" [30] at Coin (one undo step).",
+                                                   {"entity_id": 30, "entity": {"id": 30, "name": "Coin", "path": "Coin"},
+                                                    "undo": {"id": 4, "name": "eval: Create GameObject (Coin)"}})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 30 \"Coin\".", {"entity": {"id": 30}})},
+            {"tool": "create_prefab", "result": ok("Created prefab assets/prefabs/Coin.prefab from \"Coin\"; it is now an instance.",
+                                                   {"path": "assets/prefabs/Coin.prefab", "instance": {"id": 30, "path": "Coin"}})},
+            {"tool": "instantiate_prefab", "result": ok("Placed an instance of assets/prefabs/Coin.prefab: \"Coin (1)\" [31].",
+                                                        {"entity": {"id": 31, "path": "Coin (1)"}})},
+            {"tool": "duplicate_entities", "result": ok(
+                "Duplicated 1 GameObject(s) (one undo step); the copies are selected. The copies are independent GameObjects: for "
+                "an object placed more than once, make it a Prefab (create_prefab) and place instances (instantiate_prefab), so "
+                "one edit changes every copy.",
+                {"scene_id": 1, "created": [{"id": 31, "path": "Coin (1)"}],
+                 "next": "The copies are independent GameObjects: for an object placed more than once, make it a Prefab "
+                         "(create_prefab) and place instances (instantiate_prefab), so one edit changes every copy."})},
+            {"tool": "set_transform", "result": ok("Moved 1 GameObject.", {"entities": [{"id": 31}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": ["create_prefab"], "max_calls": {"create_entity": 2}},
+        "max_turns": 24,
+    },
+    {
+        "id": "bad_bob_in_script",
+        "kind": "bad",
+        "what_happened": "Asked for a bobbing pickup, agents wrote an onUpdate script that moves the transform every frame, "
+                         "which does not preview in the editor or show in the Animation window.",
+        "text_at_issue": "Guide 'Building scenes': 'motion is edit_animation, not per-frame code'",
+        "source": "Doriax a48d1ce3a (animate natively), agent-authoring spec",
+        "files": GAME_FILES,
+        "prompt": "Make the Crate bob up and down by half a unit, forever.",
+        "mocks": [
+            {"tool": "edit_animation", "result": ok(
+                "Created Animation \"Crate Bob\" [40] targeting Crate (1 tween, loop, autoplay; one undo step).",
+                {"animation": {"id": 40, "path": "Crate Bob"}, "undo": {"id": 5, "name": "eval: Edit Animation"}})},
+            {"tool": "preview_animation", "result": ok("Previewing \"Crate Bob\" at 0.5 s.", {"time": 0.5})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": ["edit_animation"], "must_not_call": ["create_script", "attach_script"],
+                   "edits_must_not": [r"\.lua$", r"\.cpp$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_hud_widgets_in_3d",
+        "kind": "bad",
+        "what_happened": "A score label was built with create_ui inside the 3D level, where it sits in the world and moves with "
+                         "the camera; the result now says where a HUD goes.",
+        "text_at_issue": "create_ui result next: 'In a 3D scene UI widgets sit in its world ... set_child_scene, or ... "
+                         "create_ui_document'",
+        "source": "Doriax a48d1ce3a (HUD in its own UI scene); agent-authoring spec",
+        "prompt": "Show the player's score in the top-left corner of the screen while the game runs (\"Score: 0\" for now).",
+        "mocks": [
+            {"tool": "create_ui", "args": {"scene": "re:^(1|Main|scenes/Main.scene)$"}, "result": ok(
+                "Created 1 UI element(s) under \"Score\" (one undo step). In a 3D scene UI widgets sit in its world and move "
+                "with its camera: build a HUD or menu in a UI scene attached with set_child_scene, or as an HTML UI document "
+                "(create_ui_document).",
+                {"root": {"id": 50, "name": "Score"}, "count": 1,
+                 "next": "In a 3D scene UI widgets sit in its world and move with its camera: build a HUD or menu in a UI scene "
+                         "attached with set_child_scene, or as an HTML UI document (create_ui_document)."})},
+            {"tool": "create_ui", "result": ok("Created 1 UI element(s) under \"Score\" (one undo step).",
+                                               {"root": {"id": 3, "name": "Score"}, "count": 1})},
+            {"tool": "create_scene", "result": ok("Created scene 2 \"Hud\" (UI) at scenes/Hud.scene.",
+                                                  {"scene": {"id": 2, "name": "Hud", "path": "scenes/Hud.scene"}})},
+            {"tool": "set_child_scene", "result": ok("Attached \"Hud\" as a child scene of \"Main\".",
+                                                     {"scene": {"id": 1}, "child": {"id": 2}})},
+            {"tool": "create_ui_document", "result": ok(
+                "Created UI Document \"Hud\" [51] with assets/ui/hud.html, hud.css and hud.lua.",
+                {"entity": {"id": 51, "path": "Hud"}, "files": ["assets/ui/hud.html", "assets/ui/hud.css", "assets/ui/hud.lua"]})},
+            {"tool": "save_scene", "result": ok("Saved scene.", {"scene": {"id": 1}})},
+        ],
+        "checks": {"any_of": [{"calls": ["create_ui_document"]}, {"calls": ["set_child_scene"]}]},
+        "max_turns": 24,
+    },
+    {
+        "id": "guard_rotation_not_euler",
+        "kind": "guard",
+        "what_happened": "Euler degrees sent as a quaternion ([90, 0, 0, 1]) were stored as given and scaled the object; the "
+                         "server now refuses them and names the Euler form.",
+        "text_at_issue": "McpValues::parseQuaternion: '[90, 0, 0, 1] looks like Euler degrees: use {\"euler\": [90, 0, 0]}.'",
+        "source": "Doriax 720e314e7; agent-authoring spec",
+        "prompt": "Rotate the Crate 90 degrees around the X axis.",
+        "mocks": [
+            {"tool": "set_transform", "args": {"rotation": {"euler": "*"}}, "result": ok("Set the transform of 1 GameObject.",
+                                                                                     {"entities": [{"id": 15}]})},
+            {"tool": "set_transform", "result": err(
+                "rotation: [90, 0, 0, 1] looks like Euler degrees: use {\"euler\": [90, 0, 0]}.")},
+            {"tool": "set_properties", "args": {"values": {"transform": {"rotation": {"euler": "*"}}}},
+             "result": ok("Set 1 property of GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "set_properties", "result": err(
+                "transform.rotation on GameObject 15 \"Crate\": Property rotation is quat: [90, 0, 0, 1] looks like Euler "
+                "degrees: use {\"euler\": [90, 0, 0]}.")},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_transform", "args": {"rotation": {"euler": "*"}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"transform": {"rotation": {"euler": "*"}}}}}]}],
+                   "max_errors": {"*": 1}},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_guide_past_the_cut",
+        "kind": "guard",
+        "what_happened": "Claude Code keeps the first 4096 characters of the server instructions; the physics, prefab, shader "
+                         "and HTML UI digests came after the cut. The intro now says to read the rest.",
+        "text_at_issue": "Guide intro: 'Text cut before \"## Other areas\"? read_file jasper://guide.'",
+        "source": "Claude Code 2.1.318 capMcpInstructions (4096 characters); agent-authoring spec",
+        "prompt": "Before you change anything: what does this editor's agent guide say about moving physics bodies? Quote it.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:^jasper://guide"}, "result": ok(
+                "jasper://guide lines 1-120 of 120:\n...\n## Physics\nAdd a body and its collider in one step: edit_colliders "
+                "with body_type + add (a Rigidbody without a collider does not collide). Collider sizes are local: never "
+                "pre-scale or guess them; omit them to fit the mesh. Forces go in onFixedUpdate, not times deltatime; move a "
+                "body through the body, not its transform (jasper://docs/physics).\n...",
+                {"path": "jasper://guide", "total_lines": 120, "start_line": 1, "lines": 120})},
+            {"tool": "read_file", "args": {"path": "re:^jasper://docs/physics"}, "result": ok(
+                "jasper://docs/physics lines 1-40 of 400:\n# Physics\n...\nMove a body through body.position / "
+                "body.linearVelocity, never its transform.", {"path": "jasper://docs/physics", "total_lines": 400})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "read_file", "args": {"path": "re:^jasper://guide"}}]},
+                              {"calls": [{"tool": "read_file", "args": {"path": "re:^jasper://docs/physics"}}]}],
+                   "reply_must": [r"(?i)transform"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_terrain_grass",
+        "kind": "bad",
+        "what_happened": "Asked for grass on a terrain, agents set foliageLayers through set_properties with scene-file keys "
+                         "and no density map, so nothing drew; edit_terrain_details validates and makes the map.",
+        "text_at_issue": "edit_terrain_details: 'A layer draws nothing without a density map: density_map {fill: 0-1}'",
+        "source": "Doriax b2375ea0c (set_terrain_foliage_layer); agent-authoring spec",
+        "prompt": "Cover the terrain Ground with grass using assets/models/grass.glb. It's only decoration, keep it cheap.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_details", "args": {"add": "*"}, "result": ok(
+                "Set the detail layers of Ground (one undo step): 1 layer(s).",
+                {"terrain": {"id": 11, "path": "Ground"}, "added": [0], "layers": [{"index": 0, "mesh": "assets/models/grass.glb",
+                 "density_map": "assets/terrain/terrain_1_11_density.png", "density": 2, "cast_shadows": False}]})},
+            {"tool": "edit_terrain_details", "result": ok("Ground has 0 detail layer(s).", {"terrain": {"id": 11}, "layers": []})},
+            {"tool": "sample_terrain", "result": ok("Terrain Ground: 32 x 32, max height 4; 1 detail layer (8400 drawn).",
+                                                    {"info": {"details": [{"index": 0, "drawn": 8400}]}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_details", "args": {"add": [{"density_map": "*"}]}}],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"terrain": {"foliageLayers": "*"}}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_shader_override_by_building",
+        "kind": "bad",
+        "what_happened": "Shader overrides could only change through build_project, so agents started a build to exclude one "
+                         "shader variant; edit_build_shaders edits them without building.",
+        "text_at_issue": "edit_build_shaders: 'Build Settings > Shaders without building'",
+        "source": "Doriax b2323b44b (set_export_shaders); agent-authoring spec",
+        "prompt": "Exclude the shader variant 0x0000000a00000001 from the game's builds. Don't build anything now.",
+        "mocks": [
+            {"tool": "edit_build_shaders", "result": ok(
+                "Shader overrides set (one project undo step, project.yaml saved): 0 added, 1 excluded besides the scenes' own shaders.",
+                {"added": [], "excluded": [{"key": "0x0000000a00000001", "name": "Mesh (Ult)"}]})},
+            {"tool": "get_build_info", "result": ok("Host linux. 1 scene(s) in the build, 12 shader(s).",
+                                                    {"shader_count": 12, "cpp_scripts": {"can_build": True, "missing_tools": ""}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_build_shaders", "args": {"exclude": ["0x0000000a00000001"]}}],
+                   "must_not_call": ["build_project"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_cpp_without_toolchain",
+        "kind": "bad",
+        "what_happened": "On Windows get_build_info said the desktop toolchain was there while Play refused C++ scripts (it "
+                         "checks for a compiler compatible with the editor); agents wrote C++ that never built.",
+        "text_at_issue": "get_build_info's result: cpp_scripts {can_build, missing_tools} (Play's own check); cpp-scripting.md 'Choosing Lua or C++'",
+        "source": "Doriax 3fc70298e (check_cpp_build_tools, language guidance); agent-authoring spec",
+        "prompt": "Make the Crate spin around Y with a C++ script attached to it. Check first that C++ can build on this machine.",
+        "mocks": [
+            {"tool": "get_build_info", "result": ok(
+                "Host windows. Desktop player: available; Web: no emsdk; source export: available. 1 scene(s) in the build, 9 shader(s).",
+                {"host_platform": "windows", "desktop": {"available": True, "missing_tools": ""},
+                 "cpp_scripts": {"can_build": False, "missing_tools": "- C++ toolchain compatible with this editor: not found. "
+                                 "Select an available compiler in Preferences > External Tools.\n",
+                                 "kit": {"c_compiler": "", "cxx_compiler": "", "generator": ""}}})},
+            {"tool": "compile_scripts", "result": err("C++ build tools are missing:\n- C++ toolchain compatible with this editor: "
+                                                      "not found. Select an available compiler in Preferences > External Tools.")},
+            {"tool": "create_script", "result": ok("Created scripts/Spinner.lua and attached it to Crate.",
+                                                   {"path": "scripts/Spinner.lua", "attached": {"id": 15}})},
+        ],
+        "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
+        "max_turns": 16,
     },
 ]

@@ -401,6 +401,12 @@ void getEntityTool(const CallPtr& call) {
         data["canvas_group_state"] = groupState;
         text += ". canvas_group_state: " + groupState.dump();
     }
+    // a Button: where the keyboard, the d-pad and a TV remote move from it (its navigation)
+    const Json selectable = McpValues::selectableToJson(registry, entity, false);
+    if (!selectable.is_null()) {
+        data["selectable"] = selectable;
+        text += ". selectable: " + selectable.dump();
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
@@ -644,9 +650,10 @@ void setTransformTool(const CallPtr& call) {
         }
         if (args.contains("rotation")) {
             Quaternion value = relative ? Quaternion::IDENTITY : rotation;
-            if (!McpValues::parseQuaternion(args["rotation"], value)) {
+            std::string why;
+            if (!McpValues::parseQuaternion(args["rotation"], value, &why)) {
                 delete multi;
-                call->fail("rotation must be {\"euler\":[x,y,z]} degrees, [x,y,z,w] or {\"quat\":[...]}.");
+                call->fail("rotation: " + why);
                 return;
             }
             rotation = relative ? value * rotation : value;

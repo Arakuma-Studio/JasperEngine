@@ -323,6 +323,15 @@ void getRenderStatsTool(const CallPtr& call){
         }
     }
     if (sceneProject && sceneProject->scene){
+        // the water reflection passes and the scene colour copies of the last frame (only when any ran)
+        RenderSystem* render = sceneProject->scene->getSystem<RenderSystem>().get();
+        const RenderSystem::PlanarReflectionStats planar = render->getPlanarReflectionStats();
+        if (planar.planes > 0 || planar.passes > 0)
+            data["planar_reflections"] = Json{{"planes", planar.planes}, {"passes", planar.passes}, {"fallbacks", planar.fallbacks},
+                                              {"width", planar.width}, {"height", planar.height}};
+        const RenderSystem::SceneInputDetails inputs = render->getSceneInputDetails();
+        if (inputs.colorCopies > 0)
+            data["scene_color_copies"] = Json{{"copies", inputs.colorCopies}, {"recopies", inputs.colorRecopies}};
         if (std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>()){
             if (documents->hasDocuments()){
                 Json ui = Json::object();

@@ -243,6 +243,8 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
+        // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
+        size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);

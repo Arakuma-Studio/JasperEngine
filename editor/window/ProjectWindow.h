@@ -10,11 +10,15 @@
 #include "render/preview/PrefabRender.h"
 #include "pose/PoseThumbnails.h"
 #include "organisation/SavedSearchRows.h"
+#include "asset/AssetClipboard.h"
+#include "window/AssetCreateMenu.h"
 
 #include <iostream>
 #include "io/watch/FileWatcher.h"
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -115,6 +119,9 @@ namespace jasperengine::editor {
             UiRect searchBox;
             std::vector<std::pair<std::string, UiRect>> entries;
             std::vector<std::pair<std::string, UiRect>> contextMenu;
+            // the clipboard (project-relative), and whether it holds a cut
+            std::vector<std::string> clipboard;
+            bool clipboardCut = false;
         };
 
     private:
@@ -207,8 +214,17 @@ namespace jasperengine::editor {
 
         bool isExternalDragHovering;
 
-        std::vector<std::string> clipboardFiles;
-        bool clipboardCut;
+        AssetClipboard clipboard;
+
+        // renderFileListing's loop over `files` is running: a scanDirectory asked for meanwhile
+        // (a paste, a create, a navigation from a row's menu) waits until the loop ended, since it
+        // rebuilds the vector the loop walks
+        bool listingIterating = false;
+        std::optional<fs::path> deferredScan;
+        // what has to see the rebuilt listing (a created file selected and renamed): after the loop
+        std::function<void()> afterListing;
+        // what a folder tree node's menu chose, run after the tree walk
+        std::function<void()> pendingTreeAction;
 
         char nameBuffer[256];
 
@@ -255,12 +271,17 @@ namespace jasperengine::editor {
         // why the last rename was refused (the "Rename Error" popup; empty: a filesystem error)
         std::string renameErrorText;
 
-        // The Lua script Create > Lua Script just wrote (file name in currentPath, its text):
-        // renamed while still untouched, its module takes the new name (renameNewLuaScript)
-        std::string newLuaScriptFile;
-        std::string newLuaScriptText;
-
-        bool isCreatingNewDirectory;
+        // Create > Folder / Lua Script / C++ Script / C++ Source File / C++ Header File / HTML
+        // Document: the name is asked first (it is the class or module), then the files are written
+        // with it as one undo step
+        struct PendingNewItem {
+            AssetCreateKind kind = AssetCreateKind::Folder;
+            fs::path directory;
+            std::string error;
+            bool open = false;
+            bool focus = false;
+        };
+        PendingNewItem pendingNewItem;
 
 
         // Children of each folder-tree node: renderDirectoryTree() runs every frame,
@@ -366,7 +387,6 @@ namespace jasperengine::editor {
         bool fileNotInProject(const FileEntry& fe) const;
 
         void renderHeader();
-        void renderCreateMenuItems();
         void renderPathBreadcrumb(const ImVec2& size);
         void renderBottomBar();
         void renderFileListing(bool showDirectories);
@@ -422,20 +442,42 @@ namespace jasperengine::editor {
         void addSelectionToBookmarks();
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
         void highlightDragAndDrop();
-        void handleInternalDragAndDrop(const fs::path& targetDirectory);
-        void handleNewDirectory();
+        // the dragged files (absolute) into targetDirectory, as the drag's payload names them
+        void handleInternalDragAndDrop(const fs::path& targetDirectory, const std::vector<fs::path>& sources);
+        // the absolute paths of a "resource_files" payload
+        static std::vector<fs::path> payloadPaths(const ImGuiPayload* payload);
+        // true when the dragged files may go into targetDirectory (no folder into itself, no root moved)
+        bool acceptsDrop(const fs::path& targetDirectory, const std::vector<fs::path>& sources) const;
+        void handleNewItem();
         void startRename(const std::string& fileName);
         void handleRename();
-        void renameNewLuaScript(const fs::path& file, const std::string& newStem);
         void copySelectedFiles(bool cut);
-        void pasteFiles(const fs::path& targetDirectory);
-        void importExternalPaths(const std::vector<std::string>& sourcePaths);
+        void copyPaths(std::vector<fs::path> paths, bool cut);
+        // the clipboard into targetDirectory (one undo step); false when nothing was pasted
+        bool pasteFiles(const fs::path& targetDirectory);
+        // the landed files selected when they are in the listing, the Inspector on the last
+        void selectLanded(const std::vector<fs::path>& landed, const fs::path& target);
+        // Why `path` can't be moved, renamed or deleted from this window ("" when it can): the
+        // project's assets or Lua directory, or a folder holding one (D10)
+        std::string rootRefusal(const fs::path& path) const;
+        // the folder a paste or a create of the listing goes to: the folder shown, during a
+        // search the folder it started from (else the project root)
+        fs::path listingFolder() const;
+        // the Create items for a folder (Project window spec 6.6), as menu items
+        void renderCreateItems(const fs::path& directory);
+        void renderTreeContextMenu(const fs::path& folder);
+        void startNewItem(AssetCreateKind kind, const fs::path& directory);
+        // writes the named item (Folder, scripts, HTML Document) into the directory; false + error
+        bool createNamedItem(AssetCreateKind kind, const fs::path& directory, const std::string& name, std::string& error);
+        void importExternalPaths(const std::vector<std::string>& sourcePaths, const fs::path& targetDirectory);
         static FileType classifyThumbnailFileType(const fs::path& filePath);
         static std::string thumbnailRequestKey(const fs::path& filePath);
         static unsigned char textureByteAt(TextureData& data, size_t pixel, int channel, int bytesPerChannel);
         static bool writeImageThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
         void drawPlaceholderSoundDialog();
         bool openPlaceholderSoundDialog = false;
+        // the folder its sound is made in (Create > Placeholder Sound... from a folder's menu)
+        fs::path placeholderSoundDirectory;
         // an audio file's waveform (AudioWaveform's cache)
         bool writeAudioThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
 
@@ -455,6 +497,8 @@ namespace jasperengine::editor {
         void saveMaterialFile(const fs::path& directory, const char* materialContent, size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
 
         fs::path uniqueRelativePath(const fs::path& directory, const std::string& baseName, const std::string& extension);
+        // after a create: selected, the Inspector on it (a file), renamed in place when asked
+        void selectCreated(const fs::path& directory, const std::string& fileName, bool rename);
 
         // a .cube colour LUT (S13): its summary for the tooltip (read once through the LUT
         // cache), and a double-click's assignment to the open scene's Color Grading (one undo step)
@@ -519,39 +563,42 @@ namespace jasperengine::editor {
         bool hasAssetSelection() const;
         bool hasSingleAssetSelection() const;
         void revealAsset(const fs::path& absolutePath);
-        void assetsCreateFolder();
-        void assetsCreateScript(bool lua);
-        // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
-        void assetsCreateHtmlDocument();
+        // Create > <kind> in `directory` (Project window spec 6.6): the name-first kinds open the
+        // name dialog, the others are made at once and renamed in place; every one is one undo step
+        void createAsset(AssetCreateKind kind, const fs::path& directory);
+        // the folder Assets > Create makes things in
+        fs::path createTargetDirectory() const;
+        // why a Lua script can't be created in `directory` ("" when it can): outside the Lua directory
+        std::string luaScriptRefusal(const fs::path& directory) const;
         // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
-        void assetsCreatePoseAnimation();
+        void assetsCreatePoseAnimation(const fs::path& directory);
         // Create > Animator Controller / Avatar Mask / Animation Montage (one project undo step)
-        void assetsCreateAnimatorAsset(int kind);
+        void assetsCreateAnimatorAsset(int kind, const fs::path& directory);
         // Assets > Create > Animation Clip: an empty "New Animation.anim" in the current folder,
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)
-        void assetsCreateAnimationClip();
+        void assetsCreateAnimationClip(const fs::path& directory);
         // Assets > Create > Animator Controller ("New Animator Controller.controller": a Base
         // Layer, no states) and Avatar Mask ("New Avatar Mask.mask": every part 1, default 1), in
         // the current folder as one project undo step (the App's createControllerAsset /
         // createMaskAsset hooks, set by this window)
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
-        void assetsCreateShakePreset();
+        void assetsCreateShakePreset(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
-        void assetsCreateAudioMixer();
-        void assetsCreateSoundEvent();
+        void assetsCreateAudioMixer(const fs::path& directory);
+        void assetsCreateSoundEvent(const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;
         // the sound commands (ProjectWindowSound.cpp)
         void assetsImportSoundEssentials();
-        void assetsCreatePlaceholderSound();
+        void assetsCreatePlaceholderSound(const fs::path& directory);
         void assetsReanalyzeAudio(const std::vector<fs::path>& files);
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
-        void assetsCreatePhysicsMaterial(bool preset2D);
+        void assetsCreatePhysicsMaterial(bool preset2D, const fs::path& directory);
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;
@@ -567,6 +614,9 @@ namespace jasperengine::editor {
         void copySelection(bool cut);
         bool canPasteClipboard() const;
         void pasteClipboard();
+        // Unity's Duplicate (Ctrl+D): each selected item beside itself, one undo step, the copies selected
+        bool canDuplicate() const;
+        void duplicateSelection();
         void selectAllInListing();
         // asks to delete the selection (the confirmation the listing shows)
         void requestDeleteSelection();

@@ -7,6 +7,8 @@
 // buffers, and a scene written before S18 (format 3 or 4) loads with nothing reported or changed.
 
 #include "Stream.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -149,6 +151,25 @@ TEST(SplineStream, SceneSavesByteIdenticallyWithoutChunkBuffers){
     // and the components' values came through
     EXPECT_EQ(root["entities"][1]["components"]["splineinstantiate"]["spans"][0]["weight"].as<float>(), 2.0f);
     EXPECT_EQ(root["entities"][2]["components"]["splineanimate"]["loop"].as<std::string>(), "ping_pong");
+}
+
+// SplineSystem gives the template its one submesh (the chunks' material) when it first runs: a save
+// before that, an editor's first frame, writes the same file
+TEST(SplineStream, TheTemplateSavesTheSameBeforeAndAfterSplineSystemRan){
+    DecodedScene decoded = decodeSceneFile(fixture("splines/splines.scene"));
+    ASSERT_TRUE(decoded.scene);
+    Scene* scene = decoded.scene->scene;
+    MeshComponent* mesh = nullptr;
+    for (Entity entity : decoded.scene->entities){
+        if (scene->findComponent<SplineExtrudeComponent>(entity)) mesh = scene->findComponent<MeshComponent>(entity);
+    }
+    ASSERT_NE(mesh, nullptr);
+    ASSERT_EQ(mesh->numSubmeshes, 0u);
+    const std::string before = encodeSceneText(decoded);
+
+    mesh->numSubmeshes = 1;
+    EXPECT_EQ(encodeSceneText(decoded), before);
+    EXPECT_EQ(YAML::Load(before)["entities"][0]["components"]["mesh"]["submeshes"].size(), 1u) << before;
 }
 
 TEST(SplineStream, APreSplineSceneLoadsUnchanged){

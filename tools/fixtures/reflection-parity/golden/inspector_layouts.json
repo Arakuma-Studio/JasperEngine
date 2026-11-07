@@ -19,6 +19,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -96,6 +112,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -760,7 +792,7 @@
    "kind": "Color4L",
    "label": "Color",
    "path": "color",
-   "read_only": false
+   "read_only": true
   },
   {
    "component": "ui",
@@ -768,7 +800,7 @@
    "kind": "Texture",
    "label": "Texture",
    "path": "texture",
-   "read_only": false
+   "read_only": true
   },
   {
    "component": "ui",
@@ -845,6 +877,14 @@
   {
    "component": "button",
    "group": "",
+   "kind": "Bool",
+   "label": "Interactable",
+   "path": "disabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Label",
    "path": "label",
@@ -852,74 +892,146 @@
   },
   {
    "component": "button",
-   "group": "",
-   "kind": "Bool",
-   "label": "Disabled",
-   "path": "disabled",
+   "group": "Transition",
+   "kind": "Enum",
+   "label": "Transition",
+   "path": "transition",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Normal",
-   "path": "textureNormal",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Hovered",
-   "path": "textureHovered",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Pressed",
-   "path": "texturePressed",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Disabled",
-   "path": "textureDisabled",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Normal",
+   "label": "Normal Color",
    "path": "colorNormal",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Hovered",
+   "label": "Highlighted Color",
    "path": "colorHovered",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Pressed",
+   "label": "Pressed Color",
    "path": "colorPressed",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Disabled",
+   "label": "Selected Color",
+   "path": "colorSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Color4L",
+   "label": "Disabled Color",
    "path": "colorDisabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Fade Duration",
+   "path": "fadeDuration",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Normal Texture",
+   "path": "textureNormal",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Highlighted Texture",
+   "path": "textureHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Pressed Texture",
+   "path": "texturePressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Selected Texture",
+   "path": "textureSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Disabled Texture",
+   "path": "textureDisabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Highlighted Scale",
+   "path": "scaleHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Pressed Scale",
+   "path": "scalePressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Selected Scale",
+   "path": "scaleSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Enum",
+   "label": "Navigation",
+   "path": "navigationMode",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Bool",
+   "label": "Wrap Around",
+   "path": "wrapAround",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Bool",
+   "label": "Select On Enable",
+   "path": "selectOnEnable",
    "read_only": false
   },
   {
@@ -1440,6 +1552,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -4703,6 +4831,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -5443,6 +5587,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6143,6 +6303,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6196,6 +6372,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -6299,6 +6491,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6352,6 +6560,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -7219,6 +7443,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -8006,6 +8246,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {

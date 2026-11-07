@@ -14,6 +14,7 @@ windowWidth: 1280
 windowHeight: 720
 windowResizable: true
 luaDir: .
+startSceneId: 910579834
 scenes:
   - filepath: bench.scene
     filepathGuid: 5a8340b00ae91e3756ead7ddaa1a5fcd

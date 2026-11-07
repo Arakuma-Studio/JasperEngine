@@ -382,7 +382,7 @@ Entity entityOf(const luabridge::LuaRef& value, const char* field){
     const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
     lua_pop(L, 1);
     if (!ok){
-        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        Log::error("%s takes a GameObject or nil", field);
         return NULL_ENTITY;
     }
     return entity;
@@ -1258,7 +1258,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("getHeight", &Water::getHeight)
         .addStaticFunction("getNormal", &Water::getNormal)
         .addStaticFunction("isUnderwater", &Water::isUnderwater)
-        .addStaticFunction("getTime", &Water::getTime)
+        // the scene clock the waves run on (Water.getTime(scene); the main scene's without one)
+        .addStaticFunction("getTime",
+            luabridge::overload<>(+[]() -> float { return Water::getTime(nullptr); }),
+            luabridge::overload<Scene*>(+[](Scene* scene) -> float { return Water::getTime(scene); }))
         .addStaticFunction("sample", &Water::sample)
         .addStaticFunction("sampleHeight", &Water::sampleHeight)
         .endClass();
@@ -3520,6 +3523,55 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float>(&Button::setColorDisabled),
             luabridge::overload<const float, const float, const float, const float>(&Button::setColorDisabled))
         .addProperty("disabled", &Button::getDisabled, &Button::setDisabled)
+        // ui-components: Unity's Selectable. The image's colour and texture on a Button whose
+        // transition writes them are its Normal state's
+        .addProperty("interactable", &Button::isInteractable, &Button::setInteractable)
+        .addProperty("color", [](const Button* self) -> Vector4 { return self->getColor(); },
+                              [](Button* self, Vector4 color) { self->setColor(color); })
+        .addFunction("setColor",
+            luabridge::overload<const float, const float, const float>(&Button::setColor),
+            luabridge::overload<const float, const float, const float, const float>(&Button::setColor))
+        .addFunction("setTexture",
+            luabridge::overload<const std::string&>(&Button::setTexture),
+            luabridge::overload<Button*, const std::string&, TextureData>(
+                +[](Button* self, const std::string& id, TextureData data) { self->Image::setTexture(id, data); }),
+            luabridge::overload<Button*, Framebuffer*>(+[](Button* self, Framebuffer* framebuffer) { self->Image::setTexture(framebuffer); }))
+        .addFunction("setTextureSelected", (void(Button::*)(const std::string&))&Button::setTextureSelected)
+        .addProperty("colorSelected", &Button::getColorSelected, (void(Button::*)(Vector4))&Button::setColorSelected)
+        .addFunction("setColorSelected",
+            luabridge::overload<const float, const float, const float>(&Button::setColorSelected),
+            luabridge::overload<const float, const float, const float, const float>(&Button::setColorSelected))
+        .addProperty("transition", &Button::getTransition, &Button::setTransition)
+        .addProperty("fadeDuration", &Button::getFadeDuration, &Button::setFadeDuration)
+        .addProperty("scaleHovered", &Button::getScaleHovered, &Button::setScaleHovered)
+        .addProperty("scalePressed", &Button::getScalePressed, &Button::setScalePressed)
+        .addProperty("scaleSelected", &Button::getScaleSelected, &Button::setScaleSelected)
+        .addProperty("navigationMode", &Button::getNavigationMode, &Button::setNavigationMode)
+        .addProperty("wrapAround", &Button::getWrapAround, &Button::setWrapAround)
+        // a GameObject or nil (Explicit navigation)
+        .addProperty("selectOnUp",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnUp()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnUp(entityOf(value, "Button.selectOnUp")); })
+        .addProperty("selectOnDown",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnDown()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnDown(entityOf(value, "Button.selectOnDown")); })
+        .addProperty("selectOnLeft",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnLeft()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnLeft(entityOf(value, "Button.selectOnLeft")); })
+        .addProperty("selectOnRight",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnRight()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnRight(entityOf(value, "Button.selectOnRight")); })
+        .addProperty("selectOnEnable", &Button::getSelectOnEnable, &Button::setSelectOnEnable)
+        .addProperty("selected", &Button::isSelected)
+        .addProperty("state", &Button::getState)
+        .addFunction("select", &Button::select)
+        .addFunction("findSelectableOnUp", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnUp()); })
+        .addFunction("findSelectableOnDown", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnDown()); })
+        .addFunction("findSelectableOnLeft", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnLeft()); })
+        .addFunction("findSelectableOnRight", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnRight()); })
+        // the click: released over it, or a Submit while selected (Unity's Button.onClick)
+        .addProperty("onClick", [] (Button* self, lua_State*) { return &self->getComponent<ButtonComponent>().onClick; },
+                                [] (Button* self, lua_State* L) { self->getComponent<ButtonComponent>().onClick = L; })
         .addFunction("getButtonComponent", &Button::getComponent<ButtonComponent>)
         .endClass();
 
@@ -4398,13 +4450,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a GameObject with a Camera, nil: the main camera
         .addProperty("targetCamera",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "VideoPlayer.targetCamera")); })
         .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
         .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
         // a GameObject with a Mesh, Sprite or Image, nil: this one
         .addProperty("targetMaterialRenderer",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "VideoPlayer.targetMaterialRenderer")); })
         // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
         .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
         // -1: every submesh
@@ -4417,7 +4469,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a GameObject with an AudioSource, nil: this one
         .addProperty("targetAudioSource",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "VideoPlayer.targetAudioSource")); })
         .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
         .addProperty("canSetTime", &VideoPlayer::canSetTime)
         .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
