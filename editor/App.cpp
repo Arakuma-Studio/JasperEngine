@@ -34,6 +34,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
@@ -3867,6 +3868,10 @@ void editor::App::pollExternalChanges(){
         pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
         if (imports.getProject() != &project) imports.attach(&project);
         wake = imports.update() || wake;
+        // Sprite Atlas builds (S45): packed on the Background lane, swapped in here
+        sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+        if (atlases.getProject() != &project) atlases.attach(&project);
+        wake = atlases.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();

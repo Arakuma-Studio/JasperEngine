@@ -3171,6 +3171,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
         root["savedSearches"] = searches;
     }
+    // S45 R18: Project Settings > 2D > Sprite Atlas > Mode, written only when not the default
+    if (project->getSpriteAtlasMode() != "enabled") {
+        root["spriteAtlas"]["mode"] = project->getSpriteAtlasMode();
+    }
 
     return root;
 }
@@ -3462,6 +3466,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (vcsNode["lockScenes"]) vcsSettings.lockScenes = YamlNumbers::as<bool>(vcsNode["lockScenes"]);
         }
         project->setVcsProjectSettings(vcsSettings, false);
+    }
+
+    // S45 R18: the Sprite Atlas mode (enabled when absent)
+    {
+        const std::string mode = node["spriteAtlas"] && node["spriteAtlas"].IsMap() && node["spriteAtlas"]["mode"]
+                                     ? node["spriteAtlas"]["mode"].as<std::string>("enabled") : std::string("enabled");
+        project->setSpriteAtlasMode(mode == "enabled_for_builds" || mode == "disabled" ? mode : "enabled");
     }
 
     // S25: label colours, saved searches of scope project

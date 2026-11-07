@@ -31,6 +31,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"

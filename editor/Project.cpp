@@ -143,6 +143,7 @@
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -1771,6 +1772,12 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
     this->htmlUiMsaaSamples = valid;
     // documents already drawn pick it up when their target is created again
     UIDocumentSystem::setPreferredSampleCount(valid);
+}
+
+void editor::Project::setSpriteAtlasMode(const std::string& mode){
+    if (spriteAtlasMode == mode) return;
+    spriteAtlasMode = mode;
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this) sprite::SpriteAtlasBuilder::get().modeChanged();
 }
 
 int editor::Project::getHtmlUiMsaaSamples() const{
@@ -6163,6 +6170,7 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
@@ -6237,6 +6245,9 @@ void editor::Project::resetConfigs() {
     }
     if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
         pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
+    }
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this){
+        sprite::SpriteAtlasBuilder::get().attach(nullptr);
     }
     textureSettings = {};
     modelSettings = {};

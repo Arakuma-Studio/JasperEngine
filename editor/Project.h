@@ -960,6 +960,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
+        std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
@@ -1966,6 +1968,10 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
+        // the editor draws from
+        const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }
+        void setSpriteAtlasMode(const std::string& mode);
         // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
         void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
             collectInvolvedScenes(sceneId, involvedSceneIds);
