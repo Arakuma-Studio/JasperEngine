@@ -326,13 +326,16 @@ PREFAB_KINDS = ("legacy", "nested", "variant")
 
 
 def prefab_project(kind: str, root: Path) -> Path:
-    """The project tools/prefab-fixtures.py writes from the TappyPlane fixture (a skip without it)"""
-    fixture = os.environ.get("JASPER_FIXTURE") or os.environ.get("FIXTURE")
-    if not fixture or not Path(fixture).is_dir():
-        harness.skip("the prefab projects are written from the TappyPlane fixture: set JASPER_FIXTURE")
+    """The project tools/prefab-fixtures.py writes from the TappyPlane fixture, found where the
+    harness looks for it; without one the test skips, as every test that needs the fixture does"""
+    candidates = [Path(p) for p in (os.environ.get("JASPER_FIXTURE"), os.environ.get("FIXTURE")) if p]
+    fixture = next((c for c in candidates + harness.fixture_candidates() if (c / "project.yaml").exists()), None)
+    if fixture is None:
+        raise harness.FixtureMissing("the prefab projects are written from the TappyPlane fixture, found nowhere: set "
+                                     "JASPER_FIXTURE, or put it at " + ", ".join(str(c) for c in harness.fixture_candidates()))
     out = root / f"prefab-{kind}"
     run = subprocess.run([sys.executable, str(harness.REPO / "tools" / "prefab-fixtures.py"), kind, str(out)],
-                         env=dict(os.environ, FIXTURE=fixture), capture_output=True, text=True, timeout=300)
+                         env=dict(os.environ, FIXTURE=str(fixture)), capture_output=True, text=True, timeout=300)
     check(run.returncode == 0, f"prefab-fixtures.py {kind}: {run.stderr[-2000:]}")
     return out
 
