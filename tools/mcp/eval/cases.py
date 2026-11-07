@@ -2026,6 +2026,8 @@ CASES = [
         ],
         "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
         "max_turns": 6,
+    },
+    {
         "id": "guard_model_parts_mesh",
         "kind": "guard",
         "what_happened": "A glTF with several mesh nodes keeps its geometry on child parts; an agent turned shadows off on the "
