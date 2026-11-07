@@ -1020,6 +1020,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipReport.cpp
+    ${EDITOR_DIR}/animation/ModelClipSettingsFile.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1131,6 +1132,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorModelRig.cpp
+    ${EDITOR_DIR}/window/ModelClipSettingsView.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
