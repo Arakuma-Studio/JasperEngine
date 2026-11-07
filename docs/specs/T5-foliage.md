@@ -927,10 +927,15 @@ Recorded by the implementation, each with what it does instead and why.
    noise maps into a patch and samples it with the same arithmetic, equal to the bit to whole-map sampling
    (`FoliageScatter.PatchesMatchTheWholeMap`). Holes are a shared whole-map copy, refreshed on a hole edit,
    and read through T1's `isHole`.
-2. **The smallest `edit_terrain`, `visualize_terrain`, `TerrainOverlay` and `sample_terrain` region.** T1's
-   rest had not landed when T5 needed them (T1 R58, R59). They are in `editor/mcp/tools/TerrainTools.cpp` and
-   `editor/foliage/TerrainOverlay`, with T1's names; `edit_terrain` accepts only registered ops. Whoever lands
-   second keeps T1's and registers T5's ops and overlay sources into it.
+2. **T1's `edit_terrain`, `visualize_terrain` and overlays, with T5's ops in a call of their own.** T1's
+   checkpoint landed first (R67). Its parser reads T5's registered ops; a list of them runs as a job
+   (`FoliageOpRunner`: T1's `applyOps` on a snapshot, off the main thread, so a big scatter does not stall),
+   which a list mixing them with map ops or `create` would make all-or-nothing across two engines: such a
+   call is refused with the split to make. `edit_terrain` gains `wait` and `timeout_seconds` for that job.
+   Density undo is T1's `TerrainMapDeltaCmd`; trees are a `TreeEditCmd` in the same group. `density` and
+   `tree_density` are T1 overlay sources (`editor/foliage/FoliageOverlays`); `visualize_terrain`'s
+   `foliage_quality` is gone (a tier is a project setting). A tree overlay redraws when its settings change or
+   the terrain's maps do, not after each tree edit.
 3. **Compound shapes on the main thread.** At most two cells a frame, and in the same frame on a runtime
    removal (the risk table's default): Jolt's shape build off the main thread is not on every target.
 4. **Runtime clones load the flushed file** instead of sharing the store's pointer. `shareTreeStore` and
@@ -951,8 +956,9 @@ Recorded by the implementation, each with what it does instead and why.
     its own alpha; it fades with distance through its discard.
 11. **`TreeRecord.rotation` stores the yaw; the lean's share is in the upper five flag bits.** The tilt is
     derived at a cell's build, so the undo of a sculpt restores the store's bytes (AC21).
-12. **The "Terrain Settings: Foliage" section lives in the panel.** T1 R59's Terrain Settings tool is absent;
-    when it lands the section moves there, with the same fields.
+12. **The "Terrain Settings: Foliage" section lives in the panel.** T1's Terrain Settings panel
+    (`TerrainSettingsPanel`) landed with the T1 checkpoint; moving the section into it is left for after this
+    merge, with the same fields.
 13. **R66: render-correctness landed first.** T5 takes its `TerrainFoliageLayer::minDrawDistance`, its
     `Engine` Foliage Distance API and project key (`foliageDistanceScale`, settings `quality.foliage_distance_*`),
     and adds Tree Distance and Billboard Start to what the scale multiplies. Its new-project default stays 1
@@ -962,8 +968,8 @@ Recorded by the implementation, each with what it does instead and why.
     a layer that walking never destroys and that places only entering cells; scaled Draw and Min Draw distances;
     a scale change drawing nothing twice; 0 removing foliage and the preview ignoring it), read from the view's
     instances instead of chunk components.
-14. **Details on a brush frame.** `TerrainMapUtils::refresh` takes the region a stamp wrote and publishes it as
-    `TerrainEditEvents`; a restored snapshot has no region and refills every cell.
+14. **Details on a brush frame.** T1's stroke sessions publish what each frame wrote as `TerrainEditEvents`,
+    which `FoliageSystem` hears; a restored snapshot refills every cell.
 15. **Tree obstacles do not need Physics 3D.** The collector's cylinder builder is compiled in without it,
     since a navmesh is not a physics feature.
 16. **R65: agent-authoring landed first.** `edit_terrain_details`, `sample_terrain`'s `details` and `drawn` and
