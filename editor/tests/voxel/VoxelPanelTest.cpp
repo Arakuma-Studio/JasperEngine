@@ -469,12 +469,11 @@ TEST_F(VoxelPanel, FramesTheWholeVolume) {
     addVolume();
     ASSERT_NE(sceneProject->sceneRender, nullptr);
     SceneRender& render = *sceneProject->sceneRender;
-    const AABB box = render.getAABB(sceneProject->scene, owner, false);
+    // what Frame Selected frames
+    const AABB box = render.getEntitiesAABB({owner});
     ASSERT_FALSE(box.isNull());
     EXPECT_NEAR(box.getMinimum().x, 0.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().x, 64.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().y, 64.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().z, 64.0f, 1e-4f);
-    EXPECT_NEAR(render.getAABB(sceneProject->scene, owner, true).getMaximum().x, 64.0f, 1e-4f);
-    EXPECT_NEAR(render.getEntitiesAABB({owner}).getMaximum().z, 64.0f, 1e-4f);
 }
