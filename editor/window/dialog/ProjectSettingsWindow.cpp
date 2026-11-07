@@ -5569,7 +5569,6 @@ void ProjectSettingsWindow::drawShaderGlobals() {
     if (edited) m_globalsEdit.preview();
 }
 
-} // namespace jasperengine::editor
 
 // T3 R40, R51: Graphics > Terrain: Quality per platform, what an export ships, and the cost of the open scene's terrains
 void ProjectSettingsWindow::drawTerrainQualitySettings() {
@@ -5617,3 +5616,5 @@ void ProjectSettingsWindow::drawTerrainQualitySettings() {
         }
     }
 }
+
+} // namespace jasperengine::editor
