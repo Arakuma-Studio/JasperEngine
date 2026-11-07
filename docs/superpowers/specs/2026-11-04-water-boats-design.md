@@ -883,7 +883,11 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    already at its strength, and the falloffs are polynomial in the squared distance (a crest
    `(1 - d^2)^2`, close to Doriax's `0.5 + 0.5 cos(pi d)`; foam solid to d = 0.45 as Doriax's), with
    no root or cosine per texel; the RGBA texels are packed in a loop that vectorizes.
-10. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
+10. **Cooked scenes carry the wake settings as format 1.5** (after water-reflections' 1.4): D12 holds
+    for the project format, but a prebuilt player reads scene settings from the cooked record
+    (`cook::writeSceneSettings`), so the three are appended there; a 1.4 record leaves them at
+    their defaults (`CookedScene.SceneSettingsKeepWaterWakes`). The editor's shader cache is v52.
+11. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
     running) `Step128x4` measured 140 us (budget 200) and `Step256x4` 570 us (budget 300). The
     budgets are enforced only with `JASPER_TEST_PERF_SLACK` on a quiet machine
     (`docs/testing.md`), and that run has not been made.
