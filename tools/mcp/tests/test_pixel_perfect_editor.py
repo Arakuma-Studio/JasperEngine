@@ -162,7 +162,8 @@ async def test_project_settings(ed: Editor):
 async def sheet_pixels_per_unit(ed: Editor, path: str, previous_key: str = "") -> tuple[float, str]:
     """the imported sheet's pixels per unit (its sheet.json in the import cache) and the import's key"""
     for _ in range(300):
-        info = (await ed.call("get_asset_info", path=path)).get("aseprite", {})
+        got = await ed.call("get_asset_info", path=path)
+        info = got.get("aseprite", got)
         key = info.get("import", {}).get("cache", {}).get("key", "")
         if info.get("import_state") == "imported" and key and key != previous_key:
             sheets = list(ed.project.rglob(f"{key}/sheet.json"))
