@@ -820,9 +820,8 @@ TEST_F(SpriteBatchGpu, GeometryAnotherPassUploadedIsBakedAgain){
     frame(true);
     // a same-length write of its vertices (MeshSystem, needUpdateBuffer)
     sprites[5]->setSize(2, 2);
-    // the G-buffer pass's 12 draws alone, the colour pass's run (SSR's march, its composite, and
-    // the blit of the scene it composites into: SSR runs inside the colour pass)
-    expectSameImage(8, 15);
+    // the G-buffer pass's 12 draws alone, the colour pass's run
+    expectSameImage(8, 14);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
