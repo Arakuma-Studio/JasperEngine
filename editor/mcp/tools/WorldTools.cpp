@@ -6392,10 +6392,10 @@ void registerWorldTools(McpRegistry& registry) {
         "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
         "properties, children}. Types: panel (text = "
         "title), image, text, button (text = label, select_on_enable), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick, "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls for Input actions: onscreen_stick, "
         "onscreen_button, touch_area. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
-        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. canvas_group: true | {alpha, interactable, "
+        "parent (screen for roots), position offsets; stretch + margins [l,t,r,b] fills. Colors linear. canvas_group: true | {alpha, interactable, "
         "blocks_raycasts, ignore_parent_groups, render_mode}.",
         object({
             {"scene", sceneRef()},
