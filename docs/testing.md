@@ -134,7 +134,8 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
 - `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
-- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
+  of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
 - `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
