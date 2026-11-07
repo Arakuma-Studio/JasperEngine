@@ -163,8 +163,8 @@ namespace {
             seamSteps(frame, acrossEdge, acrossTerrain, edges);
             std::printf("[gpu] %s: colour step across the hole's edge %.2f, across a strip of terrain %.2f, %d edges\n", name.c_str(), acrossEdge, acrossTerrain, edges);
             ASSERT_GT(edges, 8);
-            // within 3 % of full scale of what the terrain itself steps by over the same distance
-            EXPECT_LE(acrossEdge, acrossTerrain + 0.03f * 255.0f);
+            // within 3 % of what the terrain itself steps by over the same distance
+            EXPECT_LE(acrossEdge, acrossTerrain * 1.03f);
         }
     };
 

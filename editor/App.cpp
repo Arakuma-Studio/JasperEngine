@@ -5688,7 +5688,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      gbuffer.frag, output.glsl and surface_depth_fs.glsl; a terrain with holes drops u_occlusionTexture.
     // v53: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
     //      (GBUFFER bit 'Vox'), includes/voxel_vs.glsl and voxel_fs.glsl.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: a voxel colour layer (not PBR) stays raw, as the terrain's do (voxel_fs.glsl's voxelLayerColor).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

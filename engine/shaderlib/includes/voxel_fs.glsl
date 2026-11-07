@@ -85,6 +85,12 @@ vec3 voxelDetailNormal(vec4 sampled, vec3 geometric, float strength){
         total += weight; \
     }
 
+// A colour layer (not PBR) stays raw and untinted, as the terrain keeps its historical layers
+// (terrain_fs.glsl), so a slot following a Terrain Layer looks as that layer does; a PBR one is sRGB, tinted
+vec4 voxelLayerColor(vec4 texel, vec4 factor){
+    return factor.a > 0.5 ? vec4(sRGBToLinear(texel.rgb) * factor.rgb, 1.0) : vec4(texel.rgb, 1.0);
+}
+
 VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughness, float baseMetallic){
     vec3 p = v_voxelPositionEye.xyz;
     vec3 pdx = dFdx(p);
@@ -187,7 +193,7 @@ VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughnes
                 height = packed_.a;
             }
         #endif
-        VOXEL_ACCUMULATE(layerWeight.x, sRGBToLinear(vec4(color.rgb, 1.0)) * vec4(factor.rgb, 1.0), detail, roughness, metallic, occlusion, height)
+        VOXEL_ACCUMULATE(layerWeight.x, voxelLayerColor(color, factor), detail, roughness, metallic, occlusion, height)
     }
 
     // ---- the second layer
@@ -221,7 +227,7 @@ VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughnes
                 height = packed_.a;
             }
         #endif
-        VOXEL_ACCUMULATE(layerWeight.y, sRGBToLinear(vec4(color.rgb, 1.0)) * vec4(factor.rgb, 1.0), detail, roughness, metallic, occlusion, height)
+        VOXEL_ACCUMULATE(layerWeight.y, voxelLayerColor(color, factor), detail, roughness, metallic, occlusion, height)
     }
 
     // ---- the third layer: Medium reads all its maps, High only colour
@@ -254,7 +260,7 @@ VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughnes
                 height = packed_.a;
             }
         #endif
-        VOXEL_ACCUMULATE(layerWeight.z, sRGBToLinear(vec4(color.rgb, 1.0)) * vec4(factor.rgb, 1.0), detail, roughness, metallic, occlusion, height)
+        VOXEL_ACCUMULATE(layerWeight.z, voxelLayerColor(color, factor), detail, roughness, metallic, occlusion, height)
     }
     #endif
 
@@ -268,7 +274,7 @@ VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughnes
         vec4 color;
         VOXEL_PROJECT(color, slices.x, layer)
         VOXEL_FAR(color, slices.x, layer)
-        VOXEL_ACCUMULATE(layerWeight.w, sRGBToLinear(vec4(color.rgb, 1.0)) * vec4(factor.rgb, 1.0), vec2(0.0), surface.x, surface.y, 1.0, color.a)
+        VOXEL_ACCUMULATE(layerWeight.w, voxelLayerColor(color, factor), vec2(0.0), surface.x, surface.y, 1.0, color.a)
     }
     #endif
 
