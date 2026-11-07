@@ -48,6 +48,9 @@ VK_EXT_memory_budget, D3D11, Metal, GL NVX/ATI meminfo), null where it reports n
 ## Caveats
 
 - One frame is one sample: compare medians and percentiles, not single frames.
+- `pipelines_applied` is Unity's SetPass calls. A draw with its pass's last pipeline applies
+  none, and one with the last bindings binds nothing. Far below `draw_calls`: materials and meshes
+  are shared. Close to it in a 3D view: too many distinct materials, shaders or meshes.
 - Recording costs time: `overhead_note` estimates it (the measured cost of a scope pair times the
   events). The first frame after arming is partial and is not in a capture.
 - GPU time semantics differ per backend:

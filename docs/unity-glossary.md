@@ -275,6 +275,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Game view Stats: SetPass calls (`UnityStats.setPassCalls`) | the Game view's Stats overlay and the debug overlay's "SetPass calls", `Profiler.frameStats().setPassCalls`, `DebugOverlay.getStats().setPassCalls`, `pipelines_applied` of `get_render_stats` |
 
 See [mcp/guide/debugging.md](mcp/guide/debugging.md).
 

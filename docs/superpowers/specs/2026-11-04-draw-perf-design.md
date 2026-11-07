@@ -603,4 +603,47 @@ backend and a web-gate run.
 
 ## Deviations
 
-None yet (the implementer records any here).
+Recorded during implementation (2026-11-06), after mesh-memory, S54 (LOD cross-fade), S55 (automatic
+GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and changed the draw path.
+
+- **The tracker builds on S55's.** S55 had put a pipeline-only skip in `SokolPipelineCache`
+  (`lastApplied`, `appliedEpoch`), on only while GPU Instancing is on. Its state moved to
+  `SokolSystem` (`applyPipeline`, `applyBindings`, `isBindingsApplied`, `draw`,
+  `forgetAppliedState`, `forgetAppliedBindings`, `appliedEpoch`, `appliedPipeline`) and is on in
+  every mode; S55's uniform-block cache keys on `SokolSystem::appliedEpoch()`. S55's R10 ("GPU
+  Instancing off restores the previous submission") now covers its batches and uniform skips only:
+  a repeated pipeline or binding is skipped either way. `jasperengine_sg_next_draw_valid` already
+  existed (S55); `SokolSystem::draw` checks it after every draw, `applyBindings` after the bind.
+  Uploads and resource destroys forget only the bindings (`forgetAppliedBindings`), so the uniform
+  cache survives them; passes, errors, a pipeline destroyed and context changes forget everything.
+- **Cull before sort is S55's visible list.** `buildVisibleQueue` (jobs, per-submesh bounds,
+  `preCulled`) now runs for every 3D colour pass and probe face whatever GPU Instancing is, before
+  the sort (`sortByState`), and S55's batch grouping runs over that order. The state key reuses
+  S55's batch key ingredients (pipeline id, `materialKey`, `meshKey` of the entry's first submesh)
+  instead of a key read from `SokolObject`'s bindings. No `passQueueCulled` member and no
+  `getOpaqueQueueSize`: S55's `passPreCulled` is the flag, and the tests read the visible list's
+  `Engine::FrameStats::culled`. Transparent mesh entries are culled with `isBatchVisible` before
+  they are queued, and drawn with `passPreCulled`.
+- **LOD polling** was already gated on the scene's LOD on `main` (S54): nothing to change.
+- **Bone bounds (F3):** mesh-memory's palette holds only the entries a skin gives, so a rigid mesh
+  no longer scans 128 matrices. The `hasSkinning` gate still fixes the inflated bounds of a rigid
+  mesh that holds palette entries (a script's write, a posed palette in a file); its regression
+  test writes one.
+- **`Dlo` is MESH bit 42** (36-41 went to S57's `Til`/`Cap`/`Cts`/`Oit`, S54's `Lfd`, S55's `Aui`).
+  It is not combined with Light Mode Tiled (the tiles list the scene's lights as they come). The
+  object lights of a `Dlo` variant leave non-directional lights out in `orderObjectLights`; the
+  cached light bits keep their `uint32_t` and take `Dlo` as bit 1 (UV1's, never in the mask)
+  instead of widening. The editor's prediction reuses S57's `FACT_LOCAL_LIGHTS`. The twin rule runs
+  in `ShaderVariantCollector::collectScene` and `Project::finishBuildShaderKeys` (the list every
+  build reads). The shader cache moved to `v49` (lead rule: a branch changing shaders bumps it).
+- **Tests.** The math guards are one file (`engine/tests/core/math/AffineMathTest.cpp`), the bench a
+  gtest suite in `engine/tests/core/math/DrawPerfBenchTest.cpp` (`engine/tests/core/bench` holds
+  separate executables). `DrawPerfGpu` uses only engine API older than this branch, so all of it is
+  a red control. The dedicated tracker guards (buffer update between draws, a binding not ready, a
+  destroyed resource, a new pass, Vulkan descriptor bytes) are not separate tests: every GPU golden
+  suite (RenderGpu, InstancingGoldenGpu, LightingGpu, SkinPaletteGpu, SpriteFramesGpu, ParticlesGpu,
+  TextureRebindGpu, the HTML UI suites) draws through the tracker and would show a stale binding.
+  The MCP test covers what agents and scripts read (`directional_only`, `setPassCalls`); the
+  SetPass and binding counts are `DrawPerfGpu.RepeatedDrawsApplyStateOnce`.
+- **`scene:getRenderStats()`** keeps its fields (it has no SetPass count; `Profiler.frameStats()`
+  and `DebugOverlay.getStats()` do).
