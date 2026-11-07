@@ -25,7 +25,8 @@ namespace {
     }
 
     void applyDropShadow(EffectContext& ctx, const TargetRef& input, TargetRef& output, const ParamValues& p) {
-        fx::Scratch blurred = fx::blur(ctx, input, (float)std::max(0.0, p.number("size")) * ctx.pxScale);
+        // fx_dropShadow reads the blur's alpha only
+        fx::Scratch blurred = fx::blurAlpha(ctx, input, (float)std::max(0.0, p.number("size")) * ctx.pxScale);
         if (!blurred) return;
         TitlePass pass = fx::makePass(ctx, TitleProgram::DropShadow, "drop_shadow", output);
         pass.textures[0].target = &input;
@@ -60,6 +61,7 @@ namespace {
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"dropShadow", "shadow", "ドロップシャドウ", "影"};
         d.apply = applyDropShadow;
+        d.alphaFromAlpha = true;
         return withGlobalLight(std::move(d), "angle", LightRelation::Away);
     }
 

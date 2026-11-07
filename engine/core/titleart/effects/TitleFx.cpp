@@ -7,6 +7,8 @@
 
 #include "TitleFx.h"
 
+#include "titleart/TitleArtHash.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -36,6 +38,42 @@ Scratch& Scratch::operator=(Scratch&& other) noexcept {
 
 Scratch::~Scratch() {
     if (owner && ref) owner->release(ref);
+}
+
+Scratch Scratch::kept(const TargetRef* target) {
+    Scratch s;
+    // passes only sample a kept result (TitleSource holds const targets): nothing writes it
+    s.ref = const_cast<TargetRef*>(target);
+    return s;
+}
+
+namespace {
+
+    // the key a result computed from the alpha of `src` alone is kept under: 0 unless src is the
+    // context's keyed input (its alpha known by EffectContext::inputAlphaKey)
+    uint64_t alphaResultKey(const EffectContext& ctx, const TargetRef& src, const char* what, float a, float b) {
+        if (!ctx.inputAlphaKey || ctx.alphaKeyed != &src) return 0;
+        uint64_t key = hashCombine(ctx.inputAlphaKey, fnv1a64(what));
+        const float values[2] = {a, b};
+        key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(values), sizeof(values))));
+        const TargetKey& t = src.key();
+        const int size[3] = {ctx.width, ctx.height, (int)t.format};
+        return hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(size), sizeof(size))));
+    }
+
+    Scratch floodDistance(EffectContext& ctx, const TargetRef& src, float threshold, float reachPx);
+    Scratch reduceBounds(EffectContext& ctx, const TargetRef& src);
+
+    // `made` kept under `key` (0: not kept), returned as the kept result when the runner took it
+    Scratch keepResult(EffectContext& ctx, uint64_t key, Scratch made) {
+        if (!key || !made) return made;
+        TargetRef* target = made.get();
+        if (!ctx.runner.keep(key, target)) return made;
+        // the runner owns the target now: `made` must not hand it back
+        made.forget();
+        return Scratch::kept(ctx.runner.recall(key));
+    }
+
 }
 
 // ---- conversions ----
@@ -328,52 +366,76 @@ int fx::floodPasses(float reachPx, int width, int height) {
 }
 
 Scratch fx::distanceField(EffectContext& ctx, const TargetRef& src, float threshold, float reachPx) {
-    Scratch ping = scratchOf(ctx.runner, TitleBuffer::Seeds, ctx.width, ctx.height);
-    Scratch pong = scratchOf(ctx.runner, TitleBuffer::Seeds, ctx.width, ctx.height);
-    Scratch out = scratchOf(ctx.runner, TitleBuffer::Distance, ctx.width, ctx.height);
-    if (!ping || !pong || !out) return {};
-    TitlePass seed = makePass(ctx, TitleProgram::Seed, "distance seeds", *ping);
-    seed.textures[0].target = &src;
-    seed.set(2, threshold);
-    if (!ctx.runner.run(seed)) return {};
-    // steps 2^(k-1) .. 1, then one more step of 1 (JFA+1 cleans up the residual errors)
-    const int passes = floodPasses(reachPx, ctx.width, ctx.height);
-    TargetRef* a = ping.get();
-    TargetRef* b = pong.get();
-    for (int i = 0; i < passes; i++) {
-        const int stepPx = i < passes - 1 ? 1 << (passes - 2 - i) : 1;
-        TitlePass flood = makePass(ctx, TitleProgram::Jfa, "distance flood", *b);
-        flood.raw[0].target = a;
-        flood.set(2, (float)stepPx);
-        if (!ctx.runner.run(flood)) return {};
-        std::swap(a, b);
-    }
-    TitlePass resolve = makePass(ctx, TitleProgram::Distance, "distance resolve", *out);
-    resolve.raw[0].target = a;
-    resolve.textures[0].target = &src;
-    resolve.set(2, threshold);
-    if (!ctx.runner.run(resolve)) return {};
-    return out;
+    const uint64_t key = alphaResultKey(ctx, src, "distance field", threshold, reachPx);
+    if (const TargetRef* kept = key ? ctx.runner.recall(key) : nullptr) return Scratch::kept(kept);
+    return keepResult(ctx, key, floodDistance(ctx, src, threshold, reachPx));
 }
 
 Scratch fx::layerBounds(EffectContext& ctx, const TargetRef& src) {
-    int w = ctx.width, h = ctx.height;
-    Scratch cur;
-    bool first = true;
-    do {
-        w = ceilDiv(w, 4);
-        h = ceilDiv(h, 4);
-        Scratch next = scratchOf(ctx.runner, TitleBuffer::Seeds, w * 2, h);
-        if (!next) return {};
-        TitlePass pass = makePass(ctx, TitleProgram::Bounds, "layer box", *next);
-        if (first) pass.textures[0].target = &src;
-        else pass.raw[0].target = cur.get();
-        pass.set(2, first ? 1.0f : 0.0f);
-        if (!ctx.runner.run(pass)) return {};
-        cur = std::move(next);
-        first = false;
-    } while (w > 1 || h > 1);
-    return cur;
+    const uint64_t key = alphaResultKey(ctx, src, "layer box", 0.0f, 0.0f);
+    if (const TargetRef* kept = key ? ctx.runner.recall(key) : nullptr) return Scratch::kept(kept);
+    return keepResult(ctx, key, reduceBounds(ctx, src));
+}
+
+Scratch fx::blurAlpha(EffectContext& ctx, const TargetRef& src, float radiusPx) {
+    const uint64_t key = alphaResultKey(ctx, src, "blur alpha", radiusPx, 0.0f);
+    if (const TargetRef* kept = key ? ctx.runner.recall(key) : nullptr) return Scratch::kept(kept);
+    return keepResult(ctx, key, blur(ctx, src, radiusPx));
+}
+
+namespace {
+
+    // the jump-flood field (distanceField's computation)
+    Scratch floodDistance(EffectContext& ctx, const TargetRef& src, float threshold, float reachPx) {
+        Scratch ping = scratchOf(ctx.runner, TitleBuffer::Seeds, ctx.width, ctx.height);
+        Scratch pong = scratchOf(ctx.runner, TitleBuffer::Seeds, ctx.width, ctx.height);
+        Scratch out = scratchOf(ctx.runner, TitleBuffer::Distance, ctx.width, ctx.height);
+        if (!ping || !pong || !out) return {};
+        TitlePass seed = makePass(ctx, TitleProgram::Seed, "distance seeds", *ping);
+        seed.textures[0].target = &src;
+        seed.set(2, threshold);
+        if (!ctx.runner.run(seed)) return {};
+        // steps 2^(k-1) .. 1, then one more step of 1 (JFA+1 cleans up the residual errors)
+        const int passes = floodPasses(reachPx, ctx.width, ctx.height);
+        TargetRef* a = ping.get();
+        TargetRef* b = pong.get();
+        for (int i = 0; i < passes; i++) {
+            const int stepPx = i < passes - 1 ? 1 << (passes - 2 - i) : 1;
+            TitlePass flood = makePass(ctx, TitleProgram::Jfa, "distance flood", *b);
+            flood.raw[0].target = a;
+            flood.set(2, (float)stepPx);
+            if (!ctx.runner.run(flood)) return {};
+            std::swap(a, b);
+        }
+        TitlePass resolve = makePass(ctx, TitleProgram::Distance, "distance resolve", *out);
+        resolve.raw[0].target = a;
+        resolve.textures[0].target = &src;
+        resolve.set(2, threshold);
+        if (!ctx.runner.run(resolve)) return {};
+        return out;
+    }
+
+    // the box reduction (layerBounds' computation)
+    Scratch reduceBounds(EffectContext& ctx, const TargetRef& src) {
+        int w = ctx.width, h = ctx.height;
+        Scratch cur;
+        bool first = true;
+        do {
+            w = ceilDiv(w, 4);
+            h = ceilDiv(h, 4);
+            Scratch next = scratchOf(ctx.runner, TitleBuffer::Seeds, w * 2, h);
+            if (!next) return {};
+            TitlePass pass = makePass(ctx, TitleProgram::Bounds, "layer box", *next);
+            if (first) pass.textures[0].target = &src;
+            else pass.raw[0].target = cur.get();
+            pass.set(2, first ? 1.0f : 0.0f);
+            if (!ctx.runner.run(pass)) return {};
+            cur = std::move(next);
+            first = false;
+        } while (w > 1 || h > 1);
+        return cur;
+    }
+
 }
 
 int fx::patternKindId(std::string_view kind) {

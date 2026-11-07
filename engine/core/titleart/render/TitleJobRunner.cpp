@@ -46,6 +46,30 @@ void TitleJobRunner::release(TargetRef* target) {
     }
 }
 
+const TargetRef* TitleJobRunner::recall(uint64_t key) {
+    std::shared_ptr<TitleCacheEntry> entry = services.cache.find(key);
+    if (!entry || !entry->target) return nullptr;
+    recalled.push_back(entry);
+    return &entry->target;
+}
+
+bool TitleJobRunner::keep(uint64_t key, TargetRef* target) {
+    // a result drawn while a program was missing (the step runs again) or after a failure is
+    // not the result
+    if (!pending.empty() || !failure.empty()) return false;
+    for (auto it = lent.begin(); it != lent.end(); ++it) {
+        if (it->get() != target) continue;
+        auto entry = std::make_shared<TitleCacheEntry>();
+        entry->key = key;
+        entry->target = std::move(**it);
+        services.cache.insert(entry);
+        recalled.push_back(entry);
+        lent.erase(it);
+        return true;
+    }
+    return false;
+}
+
 const TitleLut* TitleJobRunner::lut(const TitleLutData& data) {
     uint64_t key = hashCombine(fnv1a64("effect lut"), (uint64_t)data.format);
     key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(data.bytes.data()), data.bytes.size())));

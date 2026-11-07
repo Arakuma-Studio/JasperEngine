@@ -138,6 +138,13 @@ namespace jasperengine::titleart {
         // the first failure since the last clearError(), else empty
         virtual const std::string& error() const = 0;
         virtual void clearError() = 0;
+        // results kept across renders by a content key (the renderer's cache, R14): recall()
+        // returns the kept target of `key` (read only; alive until the runner ends) or null;
+        // keep() hands an acquired target over to be kept under `key` once it is complete (a
+        // runner whose passes failed or waited for a program keeps nothing: the target stays
+        // the caller's). The default runner keeps nothing
+        virtual const TargetRef* recall(uint64_t key) { (void)key; return nullptr; }
+        virtual bool keep(uint64_t key, TargetRef* target) { (void)key; (void)target; return false; }
     };
 
 }

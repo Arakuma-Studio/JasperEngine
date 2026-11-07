@@ -151,8 +151,10 @@ namespace jasperengine::titleart {
             TitlePx px;
             TitlePx ink;
         };
+        // inputAlpha: what `input`'s alpha is a function of (0: not known), the key the effects'
+        // alpha-only results are kept under (EffectContext::inputAlphaKey)
         Effects applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput, TitlePx inputInk,
-                             bool wantInk, const Json* layer);
+                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0);
         bool holdsLight(const DrawNode& node);
         bool contentLight(const DrawNode& node);
 

@@ -11,6 +11,7 @@
 #include "TitlePlanner.h"
 
 #include "titleart/TitleArtIO.h"
+#include "titleart/TitleArtSchema.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,6 +47,35 @@ namespace {
         auto it = o.find(key);
         return it != o.end() && it->is_number() ? it->get<double>() : fallback;
     }
+    // `o` (an object of the schema kind `kind`) without its Color members: what a field computed
+    // from it may depend on, so a colour change keeps the field (R42)
+    std::string withoutColours(const Json& o, std::string_view kind) {
+        Json copy = o;
+        const TitleArtSchema& schema = TitleArtSchema::get();
+        if (const SchemaKind* k = schema.kind(kind)) {
+            for (const SchemaMember* m : schema.membersOf(*k)) {
+                if (m->type == ValueType::Color) copy.erase(m->key);
+            }
+        }
+        return writeTitleArtJson(copy);
+    }
+
+    // an asset reference ({path, guid}) anywhere in a value: its pixels come from the asset's
+    // revision, which only the layer's stack hash follows
+    bool readsAsset(const Json& v) {
+        if (v.is_object()) {
+            if (v.contains("guid") && v.contains("path")) return true;
+            for (const Json& member : v) {
+                if (readsAsset(member)) return true;
+            }
+        } else if (v.is_array()) {
+            for (const Json& item : v) {
+                if (readsAsset(item)) return true;
+            }
+        }
+        return false;
+    }
+
     bool on(const Json& o, const char* key = "enabled", bool fallback = false) {
         if (!o.is_object()) return fallback;
         auto it = o.find(key);
@@ -557,14 +587,60 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
     stackKey = hashCombine(stackKey, fnv1a64(writeTitleArtJson(light)));
     stackKey = hashCombine(stackKey, (uint64_t)docSeed);
     int stackSlot = -1;
+    // the rims stack under the faces: a face-only edit (its colour, R42) shades the faces over a
+    // kept copy of the rims instead of shading every element again. Keyed by what shades a rim:
+    // its material, its shape, the frame, the light, the turn and the seeds (rims reading an
+    // asset's pixels are not kept: their revision is the stack hash's alone)
+    size_t facesEnd = 0;
+    while (facesEnd < elements.size() && elements[facesEnd].kind == geometry::ElementKind::Face) facesEnd++;
+    uint64_t rimsKey = 0;
+    if (facesEnd > 0 && facesEnd < elements.size() && !plan.elements.fromAlpha) {
+        rimsKey = hashCombine(plan.key, fnv1a64("stack rims"));
+        for (const std::string& part : parts) rimsKey = hashCombine(rimsKey, fnv1a64(part));
+        rimsKey = hashDouble(rimsKey, plan.place.rotation);
+        rimsKey = hashCombine(rimsKey, plan.place.flipX ? 1 : 2);
+        rimsKey = hashCombine(rimsKey, fnv1a64(writeTitleArtJson(light)));
+        rimsKey = hashCombine(rimsKey, (uint64_t)docSeed);
+        for (size_t ri = facesEnd; ri < elements.size(); ri++) {
+            const geometry::TitleElement& e = elements[ri];
+            if (e.material && readsAsset(*e.material)) {
+                rimsKey = 0;
+                break;
+            }
+            rimsKey = hashCombine(rimsKey, shapeKeys[ri]);
+            rimsKey = hashCombine(rimsKey, (uint64_t)(e.rimIndex + 1));
+            rimsKey = hashCombine(rimsKey, fnv1a64(partDrawn(parts, e) && e.material ? writeTitleArtJson(*e.material) : std::string("-")));
+        }
+    }
     if (auto hit = svc.cache.find(stackKey)) {
         stackSlot = entrySlot(hit);
     } else {
         const bool floatStack = svc.caps.format(TitleBuffer::Accumulator).format == ColorFormat::RGBA16F;
         const bool blends = !floatStack || svc.caps.floatBlend;
         TitlePx stack{newSlot(TitleBuffer::Accumulator, W, H), {0, 0, W, H}};
+        // with a rims key the rims draw into a target of their own, which the stack then starts
+        // as a copy of: a fresh render and one from the kept rims run the same passes on the
+        // same pixels, so both give the same bytes
+        std::shared_ptr<TitleCacheEntry> keptRims = rimsKey ? svc.cache.find(rimsKey) : nullptr;
+        const int stackOwn = stack.slot;
+        auto startFromRims = [&](int rimsS) {
+            pass("stack rims", id, stackOwn, {0, 0, W, H}, TitleRenderProgram::Copy, [rimsS, W, H](TitleJobState& s, TitleGpuPass& p, std::string&) {
+                setupResample(p, s.texture(rimsS), W, H);
+                return true;
+            });
+            stack.slot = stackOwn;
+        };
         const float zero[4] = {0, 0, 0, 0};
-        clearSlot("stack", id, stack.slot, zero);
+        if (keptRims) {
+            const int rimsS = entrySlot(keptRims);
+            startFromRims(rimsS);
+            release(rimsS);
+        } else if (rimsKey) {
+            stack.slot = newSlot(TitleBuffer::Accumulator, W, H);
+            clearSlot("rims", id, stack.slot, zero);
+        } else {
+            clearSlot("stack", id, stack.slot, zero);
+        }
         std::vector<int> fieldSlots;
         // draws one element's ELEMENT pass into the stack: blended in fixed function, or (RGBA16F
         // without float blending) into a scratch target composed by the BLEND program
@@ -595,6 +671,16 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
             release(scratch);
         };
         for (size_t ri = elements.size(); ri-- > 0;) {
+            if (keptRims && ri >= facesEnd) continue;
+            if (rimsKey && !keptRims && ri == facesEnd - 1) {
+                // the rims are drawn: kept for the next face-only edit, and the faces go on a copy
+                const int rimsS = stack.slot;
+                auto entry = std::make_shared<TitleCacheEntry>();
+                entry->key = rimsKey;
+                store(entry, rimsS);
+                startFromRims(rimsS);
+                release(rimsS);
+            }
             const geometry::TitleElement& e = elements[ri];
             const bool face = e.kind == geometry::ElementKind::Face;
             const bool drawn = partDrawn(parts, e) && e.material;
@@ -665,7 +751,7 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
             int heightSlot = -1;
             if (bevelOn && sdfSlot >= 0) {
                 uint64_t key = hashCombine(sdfKey, fnv1a64("height"));
-                key = hashCombine(key, fnv1a64(writeTitleArtJson(bevel)));
+                key = hashCombine(key, fnv1a64(withoutColours(bevel, "bevel")));
                 key = hashDouble(key, unit);
                 key = hashDouble(key, bandPx);
                 if (auto hit = svc.cache.find(key)) {
