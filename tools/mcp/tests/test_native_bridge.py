@@ -163,7 +163,9 @@ async def test_privacy_manifest_tool(ed: Editor):
     """mobile-shipping: native_plugins privacy_manifest returns the Apple manifest the next build
     ships, where each entry comes from, and what is missing."""
     import shutil
-    await ed.call("set_project_settings", values={"apple.privacy_tracking": True})
+    # without NSUserTrackingUsageDescription (test_native_settings_keys sets one; test_source_export reads it)
+    kept = (await ed.call("get_project_settings", keys=["ios.plist_entries", "ios.plist_xml"]))["settings"]
+    await ed.call("set_project_settings", values={"apple.privacy_tracking": True, "ios.plist_entries": {}, "ios.plist_xml": ""})
     manifest = ed.project / "plugins" / "native" / "apple" / "Sdk" / "PrivacyInfo.xcprivacy"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>NSPrivacyTrackingDomains</key>'
@@ -185,7 +187,8 @@ async def test_privacy_manifest_tool(ed: Editor):
         listed = await ed.call("native_plugins", action="list")
         ed.check_eq(listed["settings"].get("apple.privacy_tracking"), True, "the privacy keys are native settings")
     finally:
-        await ed.call("set_project_settings", values={"apple.privacy_tracking": False})
+        await ed.call("set_project_settings", values={"apple.privacy_tracking": False, "ios.plist_entries": kept["ios.plist_entries"],
+                                                      "ios.plist_xml": kept["ios.plist_xml"]})
         shutil.rmtree(ed.project / "plugins", ignore_errors=True)
 
 
@@ -281,6 +284,7 @@ def digest(paths: list[Path]) -> dict[str, str]:
 
 
 async def test_source_export(ed: Editor):
+    await ed.call("save_project", untitled_scene_dir="scenes")
     native = ed.project / "plugins" / "native"
     import shutil
     for folder in ("android", "apple", "ios", "macos", "web"):
