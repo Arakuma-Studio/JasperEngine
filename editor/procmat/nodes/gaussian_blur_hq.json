@@ -310,9 +310,7 @@
   {
    "default": false,
    "description": "Use 32-bit buffers when storing input/outputs. Reduces banding artifacts but could result in higher video memory usage.",
-   "first": 4,
    "label": "32 Bits",
-   "last": 13,
    "links": [
     {
      "node": "buffer_4",
@@ -329,7 +327,7 @@
    ],
    "name": "param3",
    "short_description": "32 Bits",
-   "type": "size"
+   "type": "boolean"
   }
  ],
  "short_description": "Gaussian Blur HQ",

@@ -52,6 +52,7 @@
 #include "vat/VatBakeSession.h"
 #include "animation/VertexAnimation.h"
 #include "util/ProjectUtils.h"
+#include "util/ScriptAttach.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
@@ -59,6 +60,7 @@
 #include "reload/HotReloadService.h"
 #include "reload/handlers/ReloadHandlers.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "util/ScriptTemplates.h"
 
 #include "graph/GraphRegistry.h"
 #include "lua.hpp"
@@ -74,7 +76,6 @@
 #include <fstream>
 #include <map>
 #include <mutex>
-#include <random>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -635,110 +636,21 @@ std::string luaRootRelative(Project* project) {
     return rel.empty() ? "." : rel;
 }
 
-// A ScriptEntry for a script file (absolute path of a .lua, .h/.hpp or .cpp)
+// A ScriptEntry for a script file (absolute path of a .lua, .h/.hpp or .cpp): ScriptAttach's, as
+// the Inspector makes it
 bool makeEntry(Project* project, const fs::path& file, const std::string& classNameArg, ScriptEntry& entry, Json& warnings,
                std::string& error) {
-    const std::string ext = extensionOf(file);
-    std::error_code ec;
-    entry = ScriptEntry();
-    entry.enabled = true;
-    if (ext == ".lua") {
-        if (!Util::isInsidePath(file, project->getLuaPath())) {
-            error = "Lua scripts must be inside the project's Lua directory \"" + luaRootRelative(project) +
-                    "\" (Project Settings > Directories); move the file there first (move_asset).";
-            return false;
-        }
-        entry.type = ScriptType::LUA;
-        entry.path = project->normalizeToLuaRelative(file).generic_string();
-        entry.className = file.stem().string();
-        if (!classNameArg.empty() && classNameArg != entry.className) {
-            warnings.push_back("A Lua script's name is its file name: using \"" + entry.className + "\".");
-        }
-        return true;
-    }
-    fs::path header, source;
-    if (Util::isHeaderFile(file.string())) {
-        header = file;
-        for (const char* candidate : {".cpp", ".cc", ".cxx"}) {
-            fs::path s = file;
-            s.replace_extension(candidate);
-            if (fs::is_regular_file(s, ec)) {
-                source = s;
-                break;
-            }
-        }
-        if (source.empty()) {
-            error = "No source file next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
-            return false;
-        }
-    } else if (Util::isSourceFile(file.string())) {
-        source = file;
-        for (const char* candidate : {".h", ".hpp", ".hh", ".hxx"}) {
-            fs::path h = file;
-            h.replace_extension(candidate);
-            if (fs::is_regular_file(h, ec)) {
-                header = h;
-                break;
-            }
-        }
-        if (header.empty()) {
-            error = "No header next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
-            return false;
-        }
-    } else {
-        error = "path must be a .lua script or a C++ script (.h/.hpp header or .cpp source).";
-        return false;
-    }
-    entry.type = ScriptType::CPP;
-    // Stored as the editor stores them (projectRelative is the agent's UTF-8)
-    entry.headerPath = ProjectChecks::projectRelative(project->getProjectPath(), header);
-    entry.path = ProjectChecks::projectRelative(project->getProjectPath(), source);
-    std::string className = classNameArg;
-    if (className.empty()) {
-        if (auto found = ScriptParser::findScriptClassName(header)) className = *found;
-    }
-    if (className.empty()) {
-        error = "Couldn't tell the script class in " + entry.headerPath + " (several or none); pass class_name.";
-        return false;
-    }
-    if (!ScriptParser::inheritsScriptBase(header, className).has_value()) {
-        warnings.push_back("Class " + className + " was not found in " + entry.headerPath + "; the build will fail until it exists.");
-    }
-    entry.className = className;
-    return true;
+    std::vector<std::string> notes;
+    const bool ok = ScriptAttach::makeEntry(project, file, classNameArg, entry, notes, error);
+    for (const std::string& note : notes) warnings.push_back(note);
+    return ok;
 }
 
 // Attaches `entry` (AddComponent if needed) as one undo step. index < 0 appends.
 bool attachEntry(const CallPtr& call, SceneProject* sceneProject, Entity entity, ScriptEntry entry, long long position,
                  size_t& outIndex, std::string& error) {
-    Project* project = call->ctx().project();
-    ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-    std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const bool samePath = entryPath(project, scripts[i]) == entryPath(project, entry);
-        if (samePath && scripts[i].type == entry.type) {
-            error = "The GameObject already has " + entry.className + " (script " + std::to_string(i) +
-                    "); change it with update_script_entry or set_script_properties.";
-            return false;
-        }
-    }
-    size_t index = scripts.size();
-    if (position >= 0 && static_cast<size_t>(position) < scripts.size()) index = static_cast<size_t>(position);
-    scripts.insert(scripts.begin() + static_cast<std::ptrdiff_t>(index), entry);
-    project->updateScriptProperties(sceneProject, entity, scripts);
-
-    auto* multi = new MultiPropertyCmd();
-    if (!component) {
-        multi->addCommand(std::make_unique<AddComponentCmd>(project, sceneProject->id, entity, ComponentType::ScriptComponent));
-    }
-    multi->addCommand(std::make_unique<PropertyCmd<std::vector<ScriptEntry>>>(
-        project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", scripts));
-    if (!addSceneCommand(sceneProject->id, multi)) {
-        error = "The editor refused the change (is the GameObject part of a prefab instance that can't take it?).";
-        return false;
-    }
-    outIndex = index;
-    return true;
+    std::vector<Entity> skipped;
+    return ScriptAttach::attach(call->ctx().project(), sceneProject, {entity}, entry, position, skipped, error, &outIndex);
 }
 
 Json lintFile(Project* project, const fs::path& file) {
@@ -812,23 +724,17 @@ void createScriptTool(const CallPtr& call) {
         }
     }
 
-    // The editor's templates, rendered in a scratch directory and read back
+    // The editor's templates (the Project window and the Inspector write the same)
     std::string headerText, sourceText;
-    {
-        std::mt19937_64 rng(std::random_device{}());
-        const fs::path scratch = fs::temp_directory_path(ec) / ("jasper-mcp-script-" + std::to_string(rng()));
-        fs::create_directories(scratch, ec);
-        const fs::path tmpHeader = lua ? fs::path() : scratch / header.filename();
-        const fs::path tmpSource = scratch / source.filename();
-        ScriptCreateDialog::writeTemplateFiles(target.scene ? target.scene->scene : nullptr, target.entity,
-                                               tmpHeader, tmpSource, name, creation);
-        if (!lua) ProjectChecks::readFile(tmpHeader, headerText);
-        ProjectChecks::readFile(tmpSource, sourceText);
-        fs::remove_all(scratch, ec);
-    }
-    if (sourceText.empty()) {
-        call->fail("Couldn't render the script template (temporary directory not writable?).");
-        return;
+    if (lua) {
+        sourceText = ScriptTemplates::lua(name);
+    } else {
+        const std::string headerFileName = FileUtils::pathToUtf8(header.filename());
+        const ScriptTemplates::Files files = creation == ScriptCreateDialog::CreationKind::CPP_SUBCLASS
+            ? ScriptTemplates::cppSubclass(target.scene ? target.scene->scene : nullptr, target.entity, name, headerFileName)
+            : ScriptTemplates::cppScript(name, headerFileName);
+        headerText = files.header;
+        sourceText = files.source;
     }
     if (lua && args.contains("content") && args["content"].is_string()) sourceText = args["content"].get<std::string>();
     if (!lua && args.contains("header_content") && args["header_content"].is_string()) headerText = args["header_content"].get<std::string>();
@@ -1550,6 +1456,23 @@ void compileScriptsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ code_editor
 
+// a buffer's changes against its baseline: 1-based inclusive line ranges ([] when empty); a
+// deletion's lines are the line it is marked at
+Json codeEditorChangesJson(const CodeEditor::BufferState& state) {
+    Json changes = Json::array();
+    for (const LineChange& change : state.changes) {
+        auto range = [](int start, int end) { return end > start ? Json::array({start + 1, end}) : Json::array(); };
+        Json lines = range(change.modifiedStart, change.modifiedEnd);
+        if (change.kind() == LineChange::Kind::Deleted) {
+            const int marked = std::min(change.modifiedStart, std::max(0, state.lineCount - 1)) + 1;
+            lines = Json::array({marked, marked});
+        }
+        changes.push_back({{"kind", lineChangeKindName(change.kind())}, {"lines", lines},
+                           {"base_lines", range(change.originalStart, change.originalEnd)}});
+    }
+    return Json{{"state", state.baselineState}, {"revision", state.baselineRevision}, {"changes", changes}};
+}
+
 void codeEditorTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -1562,7 +1485,10 @@ void codeEditorTool(const CallPtr& call) {
     auto status = [&]() {
         Json buffers = Json::array();
         for (const CodeEditor::BufferState& state : editor->getBufferStates()) {
-            buffers.push_back({{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
+            Json buffer = {{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}};
+            // version control: the changes against the baseline, as the gutter marks them
+            if (state.baselineState != "none") buffer["vcs"] = codeEditorChangesJson(state);
+            buffers.push_back(std::move(buffer));
         }
         return buffers;
     };
@@ -1610,6 +1536,22 @@ void codeEditorTool(const CallPtr& call) {
         call->fail(rel + " is not open in the code editor.", Json{{"buffers", status()}});
         return;
     }
+    if (action == "revert_change") {
+        if (!args.contains("line")) {
+            call->fail("revert_change needs line: a line of the change (1-based), or the line a deletion is marked at.");
+            return;
+        }
+        std::string error;
+        if (!editor->revertChangeAt(file.string(), args.value("line", 0), error)) {
+            call->fail("Couldn't revert a change of " + rel + " at line " + std::to_string(args.value("line", 0)) + ": " + error + ".",
+                       Json{{"buffers", status()}});
+            return;
+        }
+        call->ok("Reverted the change at line " + std::to_string(args.value("line", 0)) + " of " + rel +
+                 " in the buffer (unsaved: save writes it, undo brings it back).",
+                 Json{{"buffers", status()}});
+        return;
+    }
     bool done = false;
     if (action == "save") done = editor->saveFile(file.string());
     else if (action == "reload") done = editor->reloadFile(file.string());
@@ -1621,7 +1563,7 @@ void codeEditorTool(const CallPtr& call) {
         editor->closeFile(file.string());
         done = true;
     } else {
-        call->fail("action must be status, open, save, reload or close.");
+        call->fail("action must be status, open, save, reload, close or revert_change.");
         return;
     }
     if (!done) {
@@ -1824,12 +1766,12 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "code_editor";
         tool.title = "Code Editor";
         tool.description =
-            "The editor's code editor (for the human): open at line/column, status, save, reload (drop buffer "
-            "edits), close. An unsaved buffer means the human is editing it: don't overwrite that file.";
+            "The human's code editor: open at line/column, status, save, reload (drops unsaved edits), close, "
+            "revert_change (the VCS change at line). An unsaved buffer is the human's work: don't overwrite its file.";
         tool.inputSchema = object({
-            {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close"}), "status")},
+            {"action", withDefault(stringEnum("", {"status", "open", "save", "reload", "close", "revert_change"}), "status")},
             {"path", assetPath("All actions but status.")},
-            {"line", integer("open: 1-based.")},
+            {"line", integer("open, revert_change: 1-based.")},
             {"column", integer("open: 1-based.")},
             {"target", withDefault(stringEnum("open: preferred = the External Script Editor of the preferences.", {"builtin", "preferred"}), "builtin")},
             {"discard_unsaved", withDefault(boolean("close: drop unsaved edits."), false)}

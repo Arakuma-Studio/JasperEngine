@@ -28,6 +28,7 @@
 #include "particles/ParticleValues.h"
 
 #include <optional>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -513,6 +514,9 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("normalized", &Vector2::normalized)
         .addFunction("normalizeL", &Vector2::normalizeL)
         .addFunction("midPoint", &Vector2::midPoint)
+        .addFunction("moveTowards", &Vector2::moveTowards)
+        .addFunction("lerp", &Vector2::lerp)
+        .addFunction("lerpUnclamped", &Vector2::lerpUnclamped)
         .addFunction("makeFloor", &Vector2::makeFloor)
         .addFunction("makeCeil", &Vector2::makeCeil)
         .addFunction("perpendicular", &Vector2::perpendicular)
@@ -565,6 +569,9 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("normalizeL", &Vector3::normalizeL)
         .addFunction("crossProduct", &Vector3::crossProduct)
         .addFunction("midPoint", &Vector3::midPoint)
+        .addFunction("moveTowards", &Vector3::moveTowards)
+        .addFunction("lerp", &Vector3::lerp)
+        .addFunction("lerpUnclamped", &Vector3::lerpUnclamped)
         .addFunction("makeFloor", &Vector3::makeFloor)
         .addFunction("makeCeil", &Vector3::makeCeil)
         .addFunction("perpendicular", &Vector3::perpendicular)
@@ -607,6 +614,9 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("swap", &Vector4::swap)
         .addFunction("divideByW", &Vector4::divideByW)
         .addFunction("dotProduct", &Vector4::dotProduct)
+        .addFunction("moveTowards", &Vector4::moveTowards)
+        .addFunction("lerp", &Vector4::lerp)
+        .addFunction("lerpUnclamped", &Vector4::lerpUnclamped)
         .addFunction("isNaN", &Vector4::isNaN)
         .endClass();
 
@@ -874,7 +884,17 @@ void LuaBinding::registerMathClasses(lua_State *L){
             luabridge::overload<const Vector3&, const Vector3&>(&AABB::setExtents),
             luabridge::overload<float, float, float, float, float, float>(&AABB::setExtents))
         .addFunction("getCorner", &AABB::getCorner)
-        .addFunction("getCorners", &AABB::getCorners)
+        // copies in CornerEnum order (the pointer form gave Lua one corner of the box's cache);
+        // a null or infinite box has none
+        .addFunction("getCorners", [] (const AABB& self) -> std::vector<Vector3> {
+            std::vector<Vector3> corners;
+            if (!self.isFinite())
+                return corners;
+            corners.reserve(8);
+            for (int i = 0; i < 8; i++)
+                corners.push_back(self.getCorner(static_cast<AABB::CornerEnum>(i)));
+            return corners;
+        })
         .addFunction("merge", 
             luabridge::overload<const AABB&>(&AABB::merge),
             luabridge::overload<const Vector3&>(&AABB::merge))
@@ -958,7 +978,15 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addFunction("toAABB", &OBB::toAABB)
         .addFunction("toMatrix", &OBB::toMatrix)
         .addFunction("getCorner", &OBB::getCorner)
-        .addFunction("getCorners", &OBB::getCorners)
+        .addFunction("getCorners", [] (const OBB& self) -> std::vector<Vector3> {
+            std::vector<Vector3> corners;
+            if (self.isNull() || self.isInfinite())
+                return corners;
+            corners.reserve(8);
+            for (int i = 0; i < 8; i++)
+                corners.push_back(self.getCorner(static_cast<OBB::CornerEnum>(i)));
+            return corners;
+        })
         .addFunction("enclose", 
             luabridge::overload<const Vector3&>(&OBB::enclose),
             luabridge::overload<const OBB&>(&OBB::enclose))

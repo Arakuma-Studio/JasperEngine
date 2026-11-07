@@ -737,3 +737,67 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
   `Project.cpp:7500-7590`): the save hold relies on `SAVING` being set for every person's save and cleared on every
   outcome; the test hook sits in `saveSceneToPathAsync`.
 - **code-editor-git**: none in code; guide budget only.
+
+## Deviations (implementation, 2026-11-04)
+
+1. **The guide plan follows the lean MCP rules (`fe3e90b97`), not section 6.1.** `main` halved the guide (6,241
+   bytes, limit 8,192 with 1,500 headroom: at most 6,692) and made every new guide or tool text need an eval case.
+   The client cut is **not** handled by that change: measured on `main`'s guide (Python, the gate's own functions,
+   `dc-work/aa-evidence/red-client-cut.txt`), Claude Code's 4,096 characters end inside "Lua scripts", so a Claude Code
+   agent never saw C++, Physics, Prefabs, Shaders, HTML/CSS UI, Other areas or the Tool groups line (the line that
+   tells it to call `tool_groups`; the eval itself runs Claude Code, so it measured the cut guide). What changed:
+   - `McpInstructions.cpp` is two literals around the generated groups line: head = intro (with the pointer
+     `Text cut before "## Other areas"? read_file jasper://guide.`), Addressing,
+     The loop, Building scenes, then **Tool groups**; tail = Code, Undo, Lua, Unity names, C++, Physics, Prefabs,
+     Shaders, HTML/CSS UI, Other areas. Unity names moved after the cut (the pointer leads there).
+   - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
+     repeats a Prefab, animation through `edit_animation`); the HUD rule is not repeated there (the HTML/CSS UI digest
+     and `create_ui`'s result carry it). The Prefabs digest loses its runtime signature (in `prefabs.md` and the Lua
+     digest). Measured after merging `main` on 2026-11-06: about 6,680 bytes (the first gate run measured 6,682 before the last trim), just under the line; the cut keeps intro, Addressing, The loop, Building scenes,
+     Tool groups, Code and Undo.
+   - Rules agents need at the moment they act went into results (`next`, the lean rules' preferred place):
+     `create_ui` in a 3D scene says where a HUD goes; `duplicate_entities` of a plain GameObject suggests a Prefab.
+   - `budget.json` `guide.client_cut` lists `(intro)`, Addressing, The loop, Building scenes and Tool groups; the gate
+     also checks the pointer. Eval cases added (`tools/mcp/eval/cases.py`): `bad_repeat_without_prefab`,
+     `bad_bob_in_script`, `bad_hud_widgets_in_3d`, `guard_rotation_not_euler`, `guard_guide_past_the_cut`,
+     `bad_terrain_grass`, `bad_shader_override_by_building`, `bad_cpp_without_toolchain`.
+2. **Shader overrides: a tool in the `shipping` group (`edit_build_shaders`), not settings rows.** The settings
+   registry's rows are Project Settings / Preferences rows: the palette and the settings search would send a person to
+   a Project Settings page that does not draw them (the overrides live in Build Settings). `edit_build_shaders
+   {add, exclude, remove, clear}` (no arguments: lists) is one project undo step (`ShaderOverridesCmd`), and
+   `build_project shaders` goes through the same code. The Build Settings window applies each edit through the command
+   and shows the project's lists every frame (it no longer writes a working copy back).
+3. **`left_preview` has no MCP test**: no tool turns the Inspector's camera preview on, so the branch is covered by
+   reading only (inferred).
+4. **`editor_status` no longer reports `playing: true` during a person's save** (same class as 4.7): it reports
+   `saving: true`.
+5. **The Terrain window reloads by generation, not only on a project switch.** `Project::setTerrainEditorSettings`
+   bumps a generation (workspace load, project close); the window reads the settings when the generation changed and
+   writes back only over the generation it read, so a frame drawn before the workspace loads cannot overwrite it.
+6. **The generated `AGENTS.md` gets no authoring text.** Its cap is 5,000 bytes (`test_generators.py`), and after the
+   2026-11-06 merge `main`'s own text measures about 5,150 bytes (estimated from the literals; the first gate run
+   measured 5,160 with one authoring paragraph). The guide, `jasper://docs/authoring` and the results' `next` hints
+   carry the rules instead.
+7. **`get_build_info`'s description does not name `cpp_scripts`.** The core listing is capped at 99,000 characters
+   and measured 99,053 with it after the 2026-11-06 merge; the field is in every result (AGENTS.md "MCP text":
+   descriptions hold no result field lists), and `read_file`'s description names only `jasper://guide`.
+8. **The Terrain window's regression test drives the bug through MCP.** In a headless test editor the window opened
+   from Window > Terrain need not draw (a docked tab), so the red build passed that test. The test now makes a
+   `sculpt_terrain` stroke on a terrain with no height map before the window ever opens: the missing map is created
+   at the window's resolution, the saved 64 pixels, where the old code used the constructor's 512.
+9. **`Camera::upFor` is the free function `cameraUpFor`** in `engine/core/component/CameraComponent.h`: the
+   render system and the editor call it with no Camera object. After review it catches only truly parallel
+   vectors (sine below 1e-6), so an orbit clamped 1 degree from vertical keeps its up, and its fallback is
+   perpendicular to the view (looking along Y: the Top/Bottom views' Z; otherwise world Y).
+10. **The near-unit quaternion rule is documented in `docs/mcp/DESIGN.md` (Values)** and the `read_file`
+    route in `editor-integration.md` ("Reading the API"); reads return the stored rotation normalized, so a
+    read-modify-write of a rotation stored off unit length succeeds.
+11. **Detail meshes are every model the import pipeline loads** (`Util::isModelFile`: .obj, .gltf, .glb, .fbx,
+    an FBX through its import as in the Terrain window); `edit_terrain_details` writes its density maps
+    inside its undoable step (undo removes them) only after every item was checked, and `set_properties`
+    checks only the detail layers it changes. A layer clamped on load is a load-report issue naming the
+    layer, at the terrain's line of the scene file.
+12. **After the 2026-11-07 merge** (`main` 8e21b1dd2: ssr-probes' and the sound layer's index entries) the guide
+    measured 6,744 bytes, 52 into the headroom. The intro's "Build scenes with tools, write code with your own
+    file tools, verify by playing..." sentence went (The loop and Building scenes say it), and Building scenes
+    and the pointer were shortened: 6,613 bytes, 79 under the line.

@@ -515,6 +515,63 @@ INPUT_DEFAULT_FIXES = {("normal2height/normal2height_base", "h"): "0.5"}
 # node, used inside graphs, and blend2 has the function. The value is the last, so no index moves.
 ENUM_VALUE_REMOVALS = {("blend", "blend_type"): {"linear_light"}}
 
+# Formulas whose result is not defined, so each device draws its own (S90 R20, the per-node image test):
+# each gets a rule that is the same on every tier. One (old, new[, count]) per change, and each old text must be
+# there exactly once (or count times), so a new Material Maker version that rewrites the node fails here instead of
+# silently keeping the old fix. The spec's Deviations list them.
+# a dilation keeps the largest neighbour, and two neighbours equal up to rounding (any gradient has them)
+# were picked by each device's rounding: the next one has to be larger by more than 8-bit output can show
+_MORPHOLOGY_PICK = ("\t\tif (c > v) {", "\t\tif (c > v + 0.0009765625) {", 2)
+_MORPHOLOGY_LOOP = [
+    # a float counter stepped by 1/s against a float bound: whether the last step runs depends on rounding
+    ("\tfloat {a} = floor($d/e)*e;", "\tint n = int(floor($d/e));"),
+    ("\tfor (float {v} = 0.0; {v} < {a}; {v} += e) {{", "\tfor (int i = 0; i < n; i++) {{\n\t\tfloat {v} = float(i)*e;"),
+]
+TEXT_FIXES = {
+    # sign() of width - height, zero up to rounding on square bricks (Running Bond 2): ties are 0.5
+    "bricks": [("0.5*(sign($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y)+1.0)",
+                "(abs($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y) < 1e-4 ? 0.5 : "
+                "step(0.0, $(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y))")],
+    # atan(0, 0) on a flat input: no slope is angle 0
+    "height_to_angle": [("\treturn atan(dh.y, dh.x)/3.141592;", "\treturn dot(dh, dh) < 1e-12 ? 0.0 : atan(dh.y, dh.x)/3.141592;")],
+    "morphology3/shape_2": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP] + [_MORPHOLOGY_PICK],
+    "morphology3/shape_3": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP] +
+                           [("if (v < input_dist.x && ", "if (v + 0.0009765625 < input_dist.x && ", 4)],
+    "morphology3/shape_4": [(o.format(a="dy", v="y"), n.format(a="dy", v="y")) for o, n in _MORPHOLOGY_LOOP] + [_MORPHOLOGY_PICK],
+    # an iteration count kept in a half-float channel as 0.01 steps: its rounding made a size that is no power
+    # of two, so texel edges fell where each device rounds its own way. The count is whole, so it is rounded
+    "auto_tones/14423": [("\tsize = size / pow(2.0, (iter * 100.0) );", "\tsize = size / exp2(floor(iter * 100.0 + 0.5));")],
+}
+# The same for the shared functions a node's `global` declares
+GLOBAL_TEXT_FIXES = {
+    # the low half of a packed value lands in an RGBA16F Buffer, and each device rounds a float to a half its
+    # own way: it is quantized to 1/2048 first, which a half holds exactly
+    "pack_1x32_to_2x16": [("vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size))*pack_size);",
+                           "floor(vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size))*pack_size*2048.0+0.5)/2048.0);")],
+}
+
+
+def global_text_of(owner: str, model: dict) -> str:
+    """A node's `global` declarations, with their fixes: they are read for the node and for its includers."""
+    text = text_of(model.get("global"))
+    for old, new in GLOBAL_TEXT_FIXES.get(owner, []):
+        if text.count(old) != 1:
+            raise ImportFailure(f"{owner}: a formula fix expects its text once, found it {text.count(old)} times: {old!r}")
+        text = text.replace(old, new)
+    return text
+
+
+def apply_text_fixes(owner: str, instance: str, code: str, outputs: list[dict]) -> tuple[str, str]:
+    for fix in TEXT_FIXES.get(owner, []):
+        old, new, expected = fix if len(fix) == 3 else (*fix, 1)
+        found = instance.count(old) + code.count(old) + sum(output["expr"].count(old) for output in outputs)
+        if found != expected:
+            raise ImportFailure(f"{owner}: a formula fix expects its text {expected} time(s), found it {found} times: {old!r}")
+        instance, code = instance.replace(old, new), code.replace(old, new)
+        for output in outputs:
+            output["expr"] = output["expr"].replace(old, new)
+    return instance, code
+
 
 
 def typed_default(default: str, port_type: str) -> str:
@@ -594,7 +651,7 @@ class Body:
             raise ImportFailure(f"{owner}: unknown shader model field {sorted(unknown)[0]!r}")
         self.owner = owner
         self.includes = [i for i in model.get("includes") or [] if i]
-        self.global_text = text_of(model.get("global"))
+        self.global_text = global_text_of(owner, model)
         instance = text_of(model.get("instance"))
         code = text_of(model.get("code"))
         self.outputs = []
@@ -605,6 +662,7 @@ class Body:
             self.outputs.append({"type": types[0], "expr": text_of(output[types[0]]),
                                  "label": output.get("shortdesc", ""), "description": output.get("longdesc", ""),
                                  "group_size": output.get("group_size", 0)})
+        instance, code = apply_text_fixes(owner, instance, code, self.outputs)
         self.parameters = [dict(p) for p in model.get("parameters", [])]
         for parameter in self.parameters:
             refused = ENUM_VALUE_REMOVALS.get((owner, parameter["name"]))
@@ -903,7 +961,7 @@ class Importer:
             for nested in model.get("includes") or []:
                 if nested:
                     add_include(nested)
-            for decl in self._declarations(text_of(model.get("global")), node_id):
+            for decl in self._declarations(global_text_of(node_id, model), node_id):
                 scope.setdefault(decl.name, {})[decl.signature] = decl
 
         for include in body.includes:
@@ -1214,7 +1272,8 @@ class Importer:
             return {}
         kind = target.get("type")
         if kind == "buffer":
-            return {"type": "size", "first": 4, "last": 13}
+            # a Buffer's size, or one of its flags ("32 Bits"): a flag is no size
+            return {"type": "size", "first": 4, "last": 13} if links[0]["param"] == "size" else {"type": "boolean"}
         if kind == "iterate_buffer":
             if links[0]["param"] == "size":
                 return {"type": "size", "first": 4, "last": 13}

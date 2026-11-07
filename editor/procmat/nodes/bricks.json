@@ -87,7 +87,7 @@
   },
   {
    "description": "The direction of each brick (white: horizontal, black: vertical)",
-   "expr": "0.5*(sign($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y)+1.0)",
+   "expr": "(abs($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y) < 1e-4 ? 0.5 : step(0.0, $(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y))",
    "label": "Direction",
    "type": "f"
   }

@@ -247,7 +247,7 @@ struct WaterWaveParams{
     float getHorizontalReach() const; // the most a point moves sideways: 0, or s / 4 * sum 1 / k_i
 };
 // WaterWaveSample gains: Vector3 normal; Vector3 velocity; (sines: (0, heightRate, 0))
-// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 4 steps,
+// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 6 steps: Deviations 12,
 // the 2x2 Jacobian from dPdx/dPdz, a plain fixed-point step if its determinant is under 1e-4, stop under
 // (1e-5 L)^2); height, slope (from the normal), normal and velocity of the point found.
 WaterWaveSample waterSurfaceAt(const WaterWaveParams& params, Vector2 xz, float time);
@@ -571,7 +571,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderRefractingWaterStaysVisible` **red** | an alpha-blended red quad 0.5 under a refracting water over a grey floor: the quad's pixel has red above the floor-only reference by > 40/255 (today: equal) |
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderWaterNearerThanItsCentre` **red** | the red quad under a 40 m lake, nearer the camera than the lake's transform: its pixel is tinted by the water (blue channel raised vs. the quad drawn alone over the floor; today the quad is drawn over the water untinted) |
 | core gtest (GPU) | `WaterLayeringGpu.OverlappingRefractingWatersSeeEachOther` **red** | a refracting pool 2 m above a refracting lake, camera above: a pixel inside the pool shows the lake's colour (differs from the pool over the bed alone by > 20/255); `colorRecopies == 1` |
-| core gtest | `WaterLayeringTest.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
+| core gtest | `WaterLayering.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
 | core gtest (GPU) | `WaterShadingGpu.ShadowEdgeFollowsSmoothSurface` **red** | per-pixel water (`normalStrength` 2, light normal bias 2) under a box's straight shadow edge, pinned time: the shadowed-pixel mask (ratio to the same scene with `receiveShadows` off < 0.8) differs from the `normalStrength` 0 mask in < 0.5% of the band's pixels (today: more) |
 | core gtest (GPU) | `WaterShadingGpu.CausticsDarkInSurfaceShadow` **red** | CAUSTICS with REFRACTION, a box shadowing part of the surface: bed brightness inside the surface shadow with CAUSTICS on / off within 2% (today: > 5% brighter) |
 | core gtest (GPU) | `WaterFeaturesGpu.FeaturesOffMatchesTheShaderBeforeThem` (existing) | still exact on glcore (no regression for default materials) |
@@ -582,7 +582,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest | `WaterWavesTest.GerstnerInversion` | `waterSurfaceAt` finds rest points with `|rest + offset.xz - xz| < 1e-4 L` for steepness 0..0.9, random points |
 | core gtest | `WaterWavesTest.GlslTwinPinned` (extended) | both GLSL functions' SHA-256 |
 | core gtest (GPU) | `WaterWavesGpuTest.GerstnerMatchesCpu` | GPU displaced positions of a 32x32 rest grid; CPU `waterSurfaceAt` at each displaced XZ gives the GPU height within 1e-3 A + 1e-4 |
-| core gtest | `SceneTimeTest.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
+| core gtest | `SceneTime.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
 | core gtest | `ShaderManifestTest.RoleDirective` | `@role water|underwater` parsed; unknown and duplicate are errors |
 | core gtest | `WaterTest.ForkWithRoleIsWater` | a fork manifest (in-memory fork reader) with `@role water` makes `getSurfaces`, `readWaves` and `updateUnderwater` treat it as water, with its own defaults |
 | editor gtest | `StreamSceneSettingsTest.PlanarReflections` | round trip of the six keys; defaults omitted; a scene without them loads with defaults |
@@ -671,4 +671,61 @@ Docs: `docs/mcp/guide/shaders.md`, `physics.md`, `lua-api.md`, `scene-view.md`, 
 
 ## 14. Deviations
 
-None yet (recorded here during implementation).
+Recorded during implementation (branch `dc/water-reflections`):
+
+1. **Primary-view reflection passes have no camera entity.** The spec planned system camera entities as
+   `createMirrorCamera` makes. They are `WaterReflectionPass` objects of the `RenderView` (as `MirrorView` is for the
+   editor's views) for every view, drawn from `drawCameras` right before the scene camera's pass, with the next free
+   terrain view; `update()` sets `hasMultipleCameras` while any can draw, so the shared MVPs are rewritten per pass as
+   for other cameras. Reason: no scene entities to create, serialize-proof and reuse across views; the same code serves
+   games and the editor.
+2. **fork_shader `material` has no `path` (.material file) form.** A `.material` write is a project-scope undo step,
+   which cannot join the scene's fork command in one step. Fork on a GameObject's submesh (its linked `.material`
+   follows the editor's usual linking rules) instead.
+3. **A water's PLANAR_REFLECTION draws inside REFLECTION** (as CAUSTICS inside REFRACTION): a water without REFLECTION
+   registers no reflection pass, and the Inspector row says to turn Reflection on.
+4. **`get_render_stats` keys:** `planar_reflections` {planes, passes, fallbacks, width, height} and
+   `scene_color_copies` {copies, recopies} (the spec named `scene_inputs.color_recopies`; the tool had no
+   `scene_inputs` object).
+5. **`planar_reflection_layers` in MCP** is `"everything"`, `"nothing"`, a list of layer names (or indices), or the
+   mask's number, as a camera's culling mask reads.
+6. **The scene colour is still copied after the opaque queue** (before the hierarchy loop's UI, points, lines and
+   screen fluids, as before), and the queue's first reader copies it again when the queue drew before it (what is
+   under a water); re-copies (that one and the overlapping waters') happen only while nothing but the queue drew
+   since the copy, so the HUD and the other overlays never refract. Counts toward the four copies.
+7. **Agent guide:** no line added. The lead's decision keeps guidance in `docs/mcp/guide/shaders.md` (Water, Planar
+   reflections, Layering, Forks); two eval cases (`bad_water_fork_role`, `guard_water_planar_reflection`) cover the
+   new tool text. The live eval needs Orquester accounts and was not run; `test_grade.py` passes.
+8. **Sorting with pixel-art S52, and only around the waters:** S52 orders the transparent queue by (Sorting Layer
+   rank, Order in Layer, `sortPriority`, distance, order). The water order goes right after `sortPriority`, so
+   S52's merge only puts its two keys in front (the comparator says so in a comment). It is (sort distance, rank,
+   distance): a draw the waters layer, and each water, sorts at the farthest distance of its group of waters (waters
+   whose areas overlap, `waterGroupDistances`), by rank inside it; every other draw at its own distance, so smoke
+   over a far lake no longer sorts against a near window. Only flat waters (bounds at most 1% of their size plus
+   5 cm tall, `isFlatWater`, as the `planar-reflection-not-flat` check) take part; a sloped river sorts by distance.
+9. **Animate water** is written to the workspace only when off (default on), so workspace files of untouched scenes
+   do not change.
+10. **`Matrix4::obliqueNearClip` handles orthographic projections.** It took the clip-space corner with the
+    perspective shortcut (w = -z), which puts an orthographic reflection camera's near plane in the wrong place (the
+    orthographic water reflected nothing). It now takes the corner from the inverse projection and the projection's
+    own w row (Lengyel's general form); perspective results are unchanged. Mirrors share the helper, so orthographic
+    mirrors are fixed too.
+11. **`fork_shader`'s text is shorter** so the core listing stays within its 99000 characters (`tools/mcp/budget.json`,
+    pinned by `test_tool_budget.py`): the description names the library `source` and no longer explains `material`
+    (a mesh source defaults to it; the result lists the submeshes), and some of the existing targets' wording is
+    tighter. `source` and `submesh` carry no description.
+12. **Newton's method stops at 6 steps, not 4** (`waterSurfaceAt`): it returns as soon as the residual is under
+    (1e-5 L)^2, so 6 is only the cap; near-singular Jacobians at steep crests (steepness up to 0.95) take the
+    slower fixed-point step, which the larger cap leaves room for. Not measured against 4. The C++ Gerstner twin
+    matches the GPU within tolerance (`WaterWavesGpu.GerstnerMatchesCpu`: worst 4.19e-05 on glcore).
+13. **Cooked scenes, format 1.4:** the six planar reflection settings are appended to the cooked scene settings
+    after code-editor-git's 1.3 default shader values (`SceneSettingsCodec.cpp`, `FORMAT_MINOR` 4), so prebuilt
+    exports keep them; a 1.3 record leaves them at their defaults.
+14. **Forks made before the scene clock keep the frame clock:** library `water.vert` and `water_depth.vert` define
+    `WATER_SCENE_CLOCK`, and `water_vs.glsl` runs the waves on the scene clock only with it; an older fork's copied
+    `.vert` (without it) runs them on `frame.time`, as its copied `.frag` does.
+15. **Each primary-view reflection pass has its own terrain cut** (the next free slots after the render-to-texture
+    cameras', else the viewer's), so no cut's node buffer is updated twice in a frame. The passes are sized from the
+    viewer's pass (fixed resolution, or the render scale with dynamic resolution), and the scene keeps its
+    render-to-texture pipelines whatever the resolution, so turning it Off and on reloads nothing; the shared MVPs are
+    rewritten per camera only while the camera sees a planar water from above.

@@ -951,7 +951,7 @@ void editor::InspectorWindow::drawParticleCollisionPlanes(ComponentType cpType, 
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             const EntityPayload* entityPayload = reinterpret_cast<const EntityPayload*>(payload->Data);
-            const bool sameScene = entityPayload->entitySceneId == 0 || entityPayload->entitySceneId == sceneProject->id;
+            const bool sameScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id).empty();
             if (sameScene && std::find(next.begin(), next.end(), entityPayload->entity) == next.end() &&
                 std::find(entities.begin(), entities.end(), entityPayload->entity) == entities.end()) {
                 next.push_back(entityPayload->entity);

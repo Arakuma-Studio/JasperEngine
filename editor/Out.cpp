@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Out.h"
+#include "util/BuildDiagnostics.h"
 #include "util/SafeWrite.h"
 #include "EditorHost.h"
 #include "EditorVersion.h"
@@ -70,10 +71,6 @@ void logBuildLine(const std::string& message) {
     // compiler output in bursts is the point of a build: never rate limited
     Logger::write(Out::buildLineLevel(message), logCategoryBuild(), message, nullptr,
                   LogFlagNoRateLimit | LogFlagNoBacktrace);
-}
-
-bool outContains(const std::string& text, const char* needle) {
-    return text.find(needle) != std::string::npos;
 }
 
 }
@@ -206,16 +203,8 @@ LogType Out::typeOf(LogLevel level, uint32_t flags, const LogCategory& category)
 }
 
 LogLevel Out::buildLineLevel(const std::string& line) {
-    // the problem lines of GCC/Clang, MSVC, CMake and the linkers (as BuildTools parses them)
-    if (outContains(line, ": error") || outContains(line, ": fatal error") || outContains(line, " error C") ||
-        outContains(line, " error LNK") || outContains(line, "CMake Error") || outContains(line, "undefined reference") ||
-        outContains(line, "collect2: error") || outContains(line, "LINK : fatal error")) {
-        return LogLevel::Error;
-    }
-    if (outContains(line, ": warning") || outContains(line, " warning C") || outContains(line, "CMake Warning")) {
-        return LogLevel::Warn;
-    }
-    return LogLevel::Info;
+    // one matcher for the Console, the exporter and MCP's build tools
+    return BuildDiagnostics::lineLevel(line);
 }
 
 std::vector<LogEntry> Out::getLogsSince(uint64_t afterId, size_t max, bool onlyProblems) {
