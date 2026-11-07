@@ -247,7 +247,7 @@ struct WaterWaveParams{
     float getHorizontalReach() const; // the most a point moves sideways: 0, or s / 4 * sum 1 / k_i
 };
 // WaterWaveSample gains: Vector3 normal; Vector3 velocity; (sines: (0, heightRate, 0))
-// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 4 steps,
+// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 6 steps: Deviations 12,
 // the 2x2 Jacobian from dPdx/dPdz, a plain fixed-point step if its determinant is under 1e-4, stop under
 // (1e-5 L)^2); height, slope (from the normal), normal and velocity of the point found.
 WaterWaveSample waterSurfaceAt(const WaterWaveParams& params, Vector2 xz, float time);
@@ -689,15 +689,20 @@ Recorded during implementation (branch `dc/water-reflections`):
    `scene_inputs` object).
 5. **`planar_reflection_layers` in MCP** is `"everything"`, `"nothing"`, a list of layer names (or indices), or the
    mask's number, as a camera's culling mask reads.
-6. **The first queued reader copies again** when the hierarchy loop already took the copy for an in-place reader (a
-   points or UI reader drawn before the queue) and the queue drew since: the copy then holds the queue's earlier
-   draws too. Counts toward the four copies.
+6. **The scene colour is still copied after the opaque queue** (before the hierarchy loop's UI, points, lines and
+   screen fluids, as before), and the queue's first reader copies it again when the queue drew before it (what is
+   under a water); re-copies (that one and the overlapping waters') happen only while nothing but the queue drew
+   since the copy, so the HUD and the other overlays never refract. Counts toward the four copies.
 7. **Agent guide:** no line added. The lead's decision keeps guidance in `docs/mcp/guide/shaders.md` (Water, Planar
    reflections, Layering, Forks); two eval cases (`bad_water_fork_role`, `guard_water_planar_reflection`) cover the
    new tool text. The live eval needs Orquester accounts and was not run; `test_grade.py` passes.
-8. **Sorting with pixel-art S52:** S52 orders the transparent queue by (Sorting Layer rank, Order in Layer,
-   `sortPriority`, distance, order). The water rank goes right after `sortPriority` and before distance, so
-   S52's merge only puts its two keys in front (the comparator says so in a comment).
+8. **Sorting with pixel-art S52, and only around the waters:** S52 orders the transparent queue by (Sorting Layer
+   rank, Order in Layer, `sortPriority`, distance, order). The water order goes right after `sortPriority`, so
+   S52's merge only puts its two keys in front (the comparator says so in a comment). It is (sort distance, rank,
+   distance): a draw the waters layer, and each water, sorts at the farthest distance of its group of waters (waters
+   whose areas overlap, `waterGroupDistances`), by rank inside it; every other draw at its own distance, so smoke
+   over a far lake no longer sorts against a near window. Only flat waters (bounds at most 1% of their size plus
+   5 cm tall, `isFlatWater`, as the `planar-reflection-not-flat` check) take part; a sloped river sorts by distance.
 9. **Animate water** is written to the workspace only when off (default on), so workspace files of untouched scenes
    do not change.
 10. **`Matrix4::obliqueNearClip` handles orthographic projections.** It took the clip-space corner with the
@@ -709,3 +714,18 @@ Recorded during implementation (branch `dc/water-reflections`):
     pinned by `test_tool_budget.py`): the description names the library `source` and no longer explains `material`
     (a mesh source defaults to it; the result lists the submeshes), and some of the existing targets' wording is
     tighter. `source` and `submesh` carry no description.
+12. **Newton's method stops at 6 steps, not 4** (`waterSurfaceAt`): it returns as soon as the residual is under
+    (1e-5 L)^2, so 6 is only the cap; near-singular Jacobians at steep crests (steepness up to 0.95) take the
+    slower fixed-point step, which the larger cap leaves room for. Not measured against 4. The C++ Gerstner twin
+    matches the GPU within tolerance (`WaterWavesGpu.GerstnerMatchesCpu`: worst 4.19e-05 on glcore).
+13. **Cooked scenes, format 1.4:** the six planar reflection settings are appended to the cooked scene settings
+    after code-editor-git's 1.3 default shader values (`SceneSettingsCodec.cpp`, `FORMAT_MINOR` 4), so prebuilt
+    exports keep them; a 1.3 record leaves them at their defaults.
+14. **Forks made before the scene clock keep the frame clock:** library `water.vert` and `water_depth.vert` define
+    `WATER_SCENE_CLOCK`, and `water_vs.glsl` runs the waves on the scene clock only with it; an older fork's copied
+    `.vert` (without it) runs them on `frame.time`, as its copied `.frag` does.
+15. **Each primary-view reflection pass has its own terrain cut** (the next free slots after the render-to-texture
+    cameras', else the viewer's), so no cut's node buffer is updated twice in a frame. The passes are sized from the
+    viewer's pass (fixed resolution, or the render scale with dynamic resolution), and the scene keeps its
+    render-to-texture pipelines whatever the resolution, so turning it Off and on reloads nothing; the shared MVPs are
+    rewritten per camera only while the camera sees a planar water from above.

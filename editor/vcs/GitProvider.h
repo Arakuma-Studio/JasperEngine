@@ -16,6 +16,9 @@
 #include "vcs/IVcsProvider.h"
 #include "vcs/ProcessExec.h"
 
+#include <mutex>
+#include <optional>
+
 namespace jasperengine::editor::vcs {
 
     class GitProvider : public IVcsProvider {
@@ -36,8 +39,10 @@ namespace jasperengine::editor::vcs {
 
         VcsResult status(VcsSnapshot& out, uint32_t depth, const jobs::CancelToken* cancel = nullptr) override;
         VcsResult branchInfo(VcsBranchInfo& out) override;
-        VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out) override;
+        VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out, size_t maxBytes = SIZE_MAX) override;
         VcsResult textDiff(const RepoPath& path, std::string_view rev, std::string& out) override;
+        // `git describe --tags --exact-match HEAD`
+        VcsResult headTag(std::string& out) override;
 
         VcsResult stage(std::span<const RepoPath> paths) override;
         VcsResult unstage(std::span<const RepoPath> paths) override;
@@ -82,10 +87,16 @@ namespace jasperengine::editor::vcs {
         VcsResult readLocks(VcsSnapshot& out);
         VcsResult readLockable(VcsSnapshot& out);
         VcsResult readRemote(VcsSnapshot& out);
+        // the operation left unfinished (MERGE_HEAD, rebase-merge/, ...): files only, no process
+        void readOperation(VcsBranchInfo& branch) const;
+        // `git rev-parse --absolute-git-dir`, asked once (a linked worktree answers its own)
+        fs::path gitDir() const;
 
         ProviderConfig cfg;
         RepoPath projectKey;
         std::vector<std::pair<std::string, std::string>> env;
+        mutable std::mutex gitDirMutex;
+        mutable std::optional<fs::path> gitDirPath;
     };
 
 }

@@ -300,6 +300,7 @@ namespace jasperengine{
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
+        int slotVSGBufferFade = -1;
         int slotFSGBufferMaterial = -1;
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
         int slotVSGBufferSkinning = -1;
@@ -350,6 +351,9 @@ namespace jasperengine{
         bool hasTexCoord2 = false;
         bool hasNormal = false;
         bool hasIBL = false;
+        // what its colour pass adds as environment specular (RenderSystem's SSR composite swaps
+        // it; render/SSRProbeSlots.h SSRSource)
+        uint8_t ssrSource = 0;
         bool hasNormalMap = false;
         bool hasTangent = false;
         bool hasVertexColor3 = false;
@@ -364,6 +368,9 @@ namespace jasperengine{
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;
+        // runtime (RenderSystem): a render target image made again, seen first by a Before pass:
+        // the colour draw binds the same textures again (not an edit: no variant check)
+        bool needRebindTexture = false;
         // runtime (RenderSystem): TexturePool::getReadyEpoch when the material was bound with a
         // stand-in for an image it names (0: every image bound is its own). When it moves on, the
         // material binds again.

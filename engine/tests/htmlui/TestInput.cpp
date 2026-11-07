@@ -375,7 +375,13 @@ TEST_F(InputTest, LoneHighSurrogateFlushesEverywhere){
     EXPECT_EQ(field.getText(), "");
     Engine::systemDraw();
     EXPECT_EQ(field.getText(), "\xEF\xBF\xBD");
-    EXPECT_EQ(chars, (std::vector<uint32_t>{0xFFFD}));
+    // the field typed in keeps its characters from the game (ui-components' typing guard)
+    EXPECT_TRUE(chars.empty());
+    Engine::setIgnoreEventsHandledByUI(false);
+    Engine::systemCharInput((wchar_t)0xD83D);
+    Engine::systemDraw();
+    Engine::setIgnoreEventsHandledByUI(true);
+    EXPECT_EQ(chars, (std::vector<uint32_t>{0xFFFD})) << "with ignoreEventsHandledByUI off the game gets it too";
 }
 
 // ---- pointer consume rules ----

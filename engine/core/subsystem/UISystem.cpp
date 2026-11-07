@@ -36,6 +36,7 @@
 #include "util/Color.h"
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
+#include "htmlui/HtmlUIClock.h"
 
 using namespace jasperengine;
 
@@ -507,9 +508,12 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
 
         Log::warn("Text is bigger than maxTextSize: %i. Increasing it to: %i", text.maxTextSize, newSize);
         text.maxTextSize = newSize;
-        if (ui.loaded){
-            ui.needReload = true;
-        }
+    }
+
+    // the GPU buffers keep the size they were made with: a larger maxTextSize (the Inspector,
+    // MCP, or the growth above) needs new ones before a longer text arrives
+    if (ui.loaded && (size_t)text.maxTextSize * 4 * ui.buffer.getStride() > ui.gpuBufferBytes){
+        ui.needReload = true;
     }
 
     ui.minBufferCount = text.maxTextSize * 4;
@@ -778,32 +782,218 @@ void UISystem::createInputFieldObjects(Entity entity, InputFieldComponent& input
     }
 }
 
-void UISystem::applyButtonVisual(ButtonComponent& button, UIComponent& ui){
-    Texture targetTexture;
-    Vector4 targetColor;
+namespace {
 
-    // the own flag or a non-interactable Canvas Group (Unity Selectable.IsInteractable)
-    if (button.disabled || !ui.groupInteractable){
-        targetTexture = button.textureDisabled;
-        targetColor = button.colorDisabled;
-    }else if (button.pressed){
-        targetTexture = button.texturePressed;
-        targetColor = button.colorPressed;
-    }else if (button.hovered){
-        bool hasHoveredTexture = !button.textureHovered.empty() &&
-            (!button.textureHovered.getId().empty() || button.textureHovered.isFramebuffer());
-        targetTexture = hasHoveredTexture ? button.textureHovered : button.textureNormal;
-        targetColor = button.colorHovered;
-    }else{
-        targetTexture = button.textureNormal;
-        targetColor = button.colorNormal;
+    // a state texture set on the Button (an asset or a render target)
+    bool hasButtonTexture(const Texture& texture){
+        return !texture.empty() && (!texture.getId().empty() || texture.isFramebuffer());
     }
 
-    if (ui.texture != targetTexture){
-        ui.texture = targetTexture;
-        ui.needUpdateTexture = true;
+    // set and ready to draw: one still loading (Async Loading) or failed shows the Normal texture
+    bool buttonTextureReady(Texture& texture){
+        if (!hasButtonTexture(texture))
+            return false;
+        return texture.isFramebuffer() || texture.load().state == ResourceLoadState::Finished;
     }
-    ui.color = targetColor;
+
+}
+
+bool UISystem::transitionWritesColor(ButtonTransition transition){
+    return transition == ButtonTransition::COLOR_TINT || transition == ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+}
+
+bool UISystem::transitionWritesTexture(ButtonTransition transition){
+    return transition == ButtonTransition::SPRITE_SWAP || transition == ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+}
+
+bool UISystem::buttonOwnsUIColor(const ButtonComponent& button){
+    return transitionWritesColor(button.transition);
+}
+
+bool UISystem::buttonOwnsUITexture(const ButtonComponent& button){
+    return transitionWritesTexture(button.transition);
+}
+
+// Unity's Selectable.currentSelectionState: the own flag or a non-interactable Canvas Group
+// (Selectable.IsInteractable), then pressed, then selected, then hovered
+SelectionState UISystem::buttonState(const ButtonComponent& button, const UIComponent& ui) const{
+    if (button.disabled || !ui.groupInteractable)
+        return SelectionState::DISABLED;
+    if (button.pressed)
+        return SelectionState::PRESSED;
+    if (button.selected)
+        return SelectionState::SELECTED;
+    if (button.hovered)
+        return SelectionState::HIGHLIGHTED;
+    return SelectionState::NORMAL;
+}
+
+namespace {
+
+    Vector4 buttonStateColor(const ButtonComponent& button, SelectionState state){
+        switch (state){
+            case SelectionState::DISABLED: return button.colorDisabled;
+            case SelectionState::PRESSED: return button.colorPressed;
+            case SelectionState::SELECTED: return button.colorSelected;
+            case SelectionState::HIGHLIGHTED: return button.colorHovered;
+            default: return button.colorNormal;
+        }
+    }
+
+    Texture* buttonStateTexture(ButtonComponent& button, SelectionState state){
+        switch (state){
+            case SelectionState::DISABLED: return &button.textureDisabled;
+            case SelectionState::PRESSED: return &button.texturePressed;
+            case SelectionState::SELECTED: return &button.textureSelected;
+            case SelectionState::HIGHLIGHTED: return &button.textureHovered;
+            default: return nullptr;
+        }
+    }
+
+    float clampButtonScale(float scale){
+        return std::isfinite(scale) ? std::max(0.01f, std::min(10.0f, scale)) : 1.0f;
+    }
+
+    // the scale factor of a state (Normal and Disabled: none)
+    float buttonStateScale(const ButtonComponent& button, SelectionState state){
+        switch (state){
+            case SelectionState::PRESSED: return clampButtonScale(button.scalePressed);
+            case SelectionState::SELECTED: return clampButtonScale(button.scaleSelected);
+            case SelectionState::HIGHLIGHTED: return clampButtonScale(button.scaleHovered);
+            default: return 1.0f;
+        }
+    }
+
+}
+
+void UISystem::applyButtonVisual(Entity entity, ButtonComponent& button, UIComponent& ui, bool animate){
+    const SelectionState state = buttonState(button, ui);
+    button.state = state;
+
+    // a transition that stopped writing a property gives it back at its Normal value, once, when
+    // it still shows a state's (a value set since, an MCP or Inspector edit, stays)
+    if (button.appliedTransition != button.transition){
+        const ButtonTransition old = button.appliedTransition;
+        button.appliedTransition = button.transition;
+        if (transitionWritesColor(old) && !buttonOwnsUIColor(button) &&
+            (ui.color == button.colorHovered || ui.color == button.colorPressed || ui.color == button.colorSelected ||
+             ui.color == button.colorDisabled))
+            ui.color = button.colorNormal;
+        if (transitionWritesTexture(old) && !buttonOwnsUITexture(button) && ui.texture != button.textureNormal &&
+            (ui.texture == button.textureHovered || ui.texture == button.texturePressed || ui.texture == button.textureSelected ||
+             ui.texture == button.textureDisabled)){
+            ui.texture = button.textureNormal;
+            ui.needUpdateTexture = true;
+        }
+    }
+
+    if (buttonOwnsUITexture(button)){
+        // a state without its own texture (or one still loading) keeps the normal one
+        Texture* stateTexture = buttonStateTexture(button, state);
+        const Texture& target = (stateTexture && buttonTextureReady(*stateTexture)) ? *stateTexture : button.textureNormal;
+        if (ui.texture != target){
+            ui.texture = target;
+            ui.needUpdateTexture = true;
+        }
+    }
+
+    const Vector4 targetColor = buttonStateColor(button, state);
+    const float targetScale = editMode ? 1.0f : buttonStateScale(button, state);
+    const bool ownsColor = buttonOwnsUIColor(button);
+    const bool colorChanges = ownsColor && ui.color != targetColor;
+    const bool scaleChanges = targetScale != button.appliedScale;
+
+    if (animate && !editMode && button.fadeDuration > 0.0f && (colorChanges || scaleChanges)){
+        // eased by updateButtonTransitions from what shows now (a fade restarted mid-way too)
+        button.fadeFromColor = ui.color;
+        button.fadeFromScale = button.appliedScale;
+        button.fadeStart = HtmlUIClock::now();
+        if (!button.fading){
+            button.fading = true;
+            transitioningButtons.push_back(entity);
+        }
+        return;
+    }
+
+    if (button.fading){
+        button.fading = false;
+        transitioningButtons.erase(std::remove(transitioningButtons.begin(), transitioningButtons.end(), entity), transitioningButtons.end());
+    }
+    if (ownsColor)
+        ui.color = targetColor;
+    if (scaleChanges){
+        // the Transform is written by the update only (this may run inside a draw or a raycast)
+        if (std::find(transitioningButtons.begin(), transitioningButtons.end(), entity) == transitioningButtons.end())
+            transitioningButtons.push_back(entity);
+    }
+}
+
+void UISystem::applyButtonScale(Entity entity, ButtonComponent& button, float factor){
+    factor = clampButtonScale(factor);
+    if (factor == button.appliedScale)
+        return;
+    if (Transform* transform = scene->findComponent<Transform>(entity)){
+        // relative to the factor applied before: a scale the game set meanwhile is kept
+        transform->scale = transform->scale * (factor / button.appliedScale);
+        transform->needUpdate = true;
+    }
+    button.appliedScale = factor;
+}
+
+void UISystem::updateButtonTransitions(){
+    if (transitioningButtons.empty())
+        return;
+
+    const double now = HtmlUIClock::now();
+    // by index on a copy: nothing here calls back, but an entity may have gone since
+    std::vector<Entity> entities = transitioningButtons;
+    transitioningButtons.clear();
+    for (Entity entity : entities){
+        if (!isLiveUIEntity(entity))
+            continue;
+        ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (!button || !ui){
+            continue;
+        }
+        const SelectionState state = buttonState(*button, *ui);
+        const Vector4 targetColor = buttonStateColor(*button, state);
+        const float targetScale = editMode ? 1.0f : buttonStateScale(*button, state);
+
+        float t = 1.0f;
+        if (button->fading && button->fadeDuration > 0.0f){
+            t = (float)((now - button->fadeStart) / button->fadeDuration);
+            t = std::max(0.0f, std::min(1.0f, t));
+        }
+        if (buttonOwnsUIColor(*button)){
+            ui->color = (t < 1.0f) ? button->fadeFromColor + (targetColor - button->fadeFromColor) * t : targetColor;
+        }
+        const float scale = (t < 1.0f) ? button->fadeFromScale + (targetScale - button->fadeFromScale) * t : targetScale;
+        applyButtonScale(entity, *button, scale);
+
+        if (t < 1.0f){
+            transitioningButtons.push_back(entity);
+        }else{
+            button->fading = false;
+        }
+    }
+}
+
+void UISystem::endButtonTransitions(){
+    std::vector<Entity> entities = transitioningButtons;
+    transitioningButtons.clear();
+    auto buttons = scene->getComponentArray<ButtonComponent>();
+    for (int i = 0; i < buttons->size(); i++){
+        ButtonComponent& button = buttons->getComponentFromIndex(i);
+        const Entity entity = buttons->getEntity(i);
+        button.fading = false;
+        if (button.appliedScale != 1.0f)
+            applyButtonScale(entity, button, 1.0f);
+        if (UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+            if (buttonOwnsUIColor(button))
+                ui->color = buttonStateColor(button, buttonState(button, *ui));
+        }
+    }
 }
 
 void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
@@ -813,8 +1003,13 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
         button.textureHovered.setAlphaBorderAuto(true);
         button.texturePressed.setAlphaBorderAuto(true);
         button.textureDisabled.setAlphaBorderAuto(true);
+        button.textureSelected.setAlphaBorderAuto(true);
+        // what was loaded writes as its transition says: no give-back of a value it never wrote
+        button.appliedTransition = button.transition;
 
-        if (!button.textureNormal.load()){
+        // the image's texture seeds Normal when none is set or it cannot load; one still loading
+        // (Async Loading) keeps its path
+        if (button.textureNormal.empty() || button.textureNormal.load().state == ResourceLoadState::Failed){
             button.textureNormal = ui.texture;
         }
         Vector4 oldColorNormal = button.colorNormal;
@@ -824,14 +1019,19 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
         if (button.colorHovered == oldColorNormal){
             button.colorHovered = button.colorNormal;
         }
+        // an unset Selected colour follows Highlighted, so a coloured button stays coloured
+        if (button.colorSelected == Vector4(1.0, 1.0, 1.0, 1.0)){
+            button.colorSelected = button.colorHovered;
+        }
         button.textureNormal.load();
         button.textureHovered.load();
         button.texturePressed.load();
         button.textureDisabled.load();
+        button.textureSelected.load();
     }
 
     if (button.label == NULL_ENTITY || !scene->findComponent<TextComponent>(button.label)){
-        applyButtonVisual(button, ui);
+        applyButtonVisual(entity, button, ui, false);
         return;
     }
 
@@ -842,7 +1042,7 @@ void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageCompone
     labeltext.needUpdateText = true;
     createOrUpdateText(labeltext, labelui, labellayout);
 
-    applyButtonVisual(button, ui);
+    applyButtonVisual(entity, button, ui, false);
 }
 
 void UISystem::updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
@@ -1511,11 +1711,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
         ui.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = ui.buffer.getAttribute(AttributeType::POSITION);
 
@@ -1553,8 +1754,12 @@ void UISystem::createUIPolygon(PolygonComponent& polygon, UIComponent& ui, RectT
 bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout){
     if (polygon.needUpdatePolygon){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         createUIPolygon(polygon, ui, layout);
@@ -1568,8 +1773,12 @@ bool UISystem::createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui,
 bool UISystem::createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
     if (img.needUpdatePatches){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (createImagePatches(img, ui, layout)){
@@ -1625,8 +1834,12 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
 
     if (text.needUpdateText){
         if (ui.automaticFlipY){
-            CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(ui, camera);
+            // no camera yet (a scene drawn before it was loaded): built once it has one
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(ui, *camera);
         }
 
         if (!text.loaded){
@@ -1771,7 +1984,7 @@ Rect UISystem::getAnchorReferenceRect(const RectTransformComponent& layout, cons
     Rect boxRect = Rect(0, 0, parentlayout->width, parentlayout->height);
 
     LayoutGroupComponent* parentcontainer = scene->findComponent<LayoutGroupComponent>(layoutParent);
-    if (parentcontainer){
+    if (parentcontainer && layout.containerBoxIndex >= 0 && layout.containerBoxIndex < (int)parentcontainer->numBoxes){
         boxRect = parentcontainer->boxes[layout.containerBoxIndex].rect;
     }
 
@@ -2429,6 +2642,7 @@ void UISystem::destroyButton(ButtonComponent& button){
     button.textureHovered.destroy();
     button.texturePressed.destroy();
     button.textureDisabled.destroy();
+    button.textureSelected.destroy();
 
     button.needUpdateButton = true;
 }
@@ -2647,13 +2861,18 @@ Rect UISystem::fitOnPanel(Rect uiRect, Entity parentPanel){
 }
 
 void UISystem::calculateUIAABB(UIComponent& ui){
-    ui.aabb = AABB::ZERO;
+    // seeded empty: AABB::ZERO is a finite box at the origin that every merge would keep
+    ui.aabb.setNull();
     Attribute* vertexAttr = ui.buffer.getAttribute(AttributeType::POSITION);
-    for (int i = 0; i < ui.buffer.getCount(); i++){
-        Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
+    if (vertexAttr){
+        for (int i = 0; i < ui.buffer.getCount(); i++){
+            Vector3 vertice = ui.buffer.getVector3(vertexAttr, i);
 
-        ui.aabb.merge(vertice);
+            ui.aabb.merge(vertice);
+        }
     }
+    if (ui.aabb.isNull())
+        ui.aabb = AABB::ZERO;
 
     ui.needUpdateAABB = true;
 }
@@ -2674,10 +2893,31 @@ void UISystem::update(double dt){
     // need to be ordered by Transform
     auto layouts = scene->getComponentArray<RectTransformComponent>();
 
+    // a Select On Enable Button that came on this update (the first in Hierarchy order)
+    Entity pickedOnEnable = NULL_ENTITY;
+
     for (int i = 0; i < layouts->size(); i++){
         RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
+
+        // a child that gets no box this update (hidden, inactive) must not keep an index from an
+        // earlier one: that box may be a sibling's now
+        layout.containerBoxIndex = -1;
+
+        // a Button that comes on: its look of now (it may have gone off selected or scaled), and
+        // Select On Enable; no callback here, the selection changes after the loop
+        if (signature.test(buttonId) && !editMode){
+            ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
+            const bool live = isSelectable(entity);
+            if (live && !button.wasLive){
+                if (signature.test(uiId))
+                    applyButtonVisual(entity, button, scene->getComponent<UIComponent>(entity), false);
+                if (button.selectOnEnable && pickedOnEnable == NULL_ENTITY)
+                    pickedOnEnable = entity;
+            }
+            button.wasLive = live;
+        }
 
         // a deactivated or disabled element cannot keep the keyboard focus
         if (signature.test(scene->getComponentId<UIComponent>())){
@@ -3260,6 +3500,9 @@ void UISystem::update(double dt){
     updateControls();
     // after the layout: the glyphs of this frame are built
     updateTextEffects(dt);
+    // Select On Enable and a lost selection, then the state fades (UI clock)
+    updateSelection(pickedOnEnable);
+    updateButtonTransitions();
 }
 
 bool UISystem::hasPendingImages() const{
@@ -3420,6 +3663,21 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             lastUIFromClick = NULL_ENTITY;
             lastClickTime = -1.0;
         }
+    }
+    if (componentId == buttonId ||
+        componentId == uiId ||
+        componentId == transformId) {
+        // a destroyed Button: no callbacks now; the selection asks its history at the next use
+        if (entity == selected) {
+            selected = NULL_ENTITY;
+            selectionDestroyed = true;
+        }
+        if (entity == submitButton) {
+            submitButton = NULL_ENTITY;
+            submitSource = 0;
+        }
+        selectionHistory.erase(std::remove(selectionHistory.begin(), selectionHistory.end(), entity), selectionHistory.end());
+        transitioningButtons.erase(std::remove(transitioningButtons.begin(), transitioningButtons.end(), entity), transitioningButtons.end());
     }
 
     // an on-screen control goes: what it holds and the input it wrote go with it
@@ -3601,7 +3859,7 @@ void UISystem::applyCanvasGroupEntry(Entity entity, Signature signature, const C
             ui.groupInteractable = entry.interactable;
             // the visual changes now; the widgets drop what they hold in the next update
             if (signature.test(scene->getComponentId<ButtonComponent>())){
-                applyButtonVisual(scene->getComponent<ButtonComponent>(entity), ui);
+                applyButtonVisual(entity, scene->getComponent<ButtonComponent>(entity), ui, true);
             }
             if (signature.test(scene->getComponentId<InputFieldComponent>())){
                 scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;

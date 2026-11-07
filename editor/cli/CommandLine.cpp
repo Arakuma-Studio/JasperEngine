@@ -708,11 +708,23 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     const ExportProgress progress = exporter.getProgress();
 
     if (!success) {
+        // the build's errors, then what failed
+        for (const BuildDiagnostic& error : progress.errors) std::cerr << error.text << "\n";
+        if (progress.errorCount > progress.errors.size()) {
+            std::cerr << "(and " << progress.errorCount - progress.errors.size() << " more error(s))\n";
+        }
         if (!progress.errorMessage.empty()) {
             std::cerr << commandName << " export: " << progress.errorMessage << "\n";
         }
         return 1;
     }
+
+    const ExportResult result = exporter.getResult();
+    if (!result.warnings.empty()) {
+        std::cerr << commandName << " export: completed with " << result.warnings.size() << " warning(s):\n";
+        for (const BuildWarning& warning : result.warnings) std::cerr << "  " << warning.code << ": " << warning.message << "\n";
+    }
+    for (const std::string& note : result.notes) std::cout << note << "\n";
 
     return 0;
 }

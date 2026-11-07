@@ -80,6 +80,7 @@ json PlayerConfig::toJson() const {
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
@@ -97,6 +98,7 @@ json PlayerConfig::toJson() const {
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
+    out["dynamicBatching"] = dynamicBatching;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
@@ -112,6 +114,7 @@ json PlayerConfig::toJson() const {
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
+    if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
     return out;
 }
 
@@ -185,6 +188,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
         }
+        if (const auto foliage = in.find("foliageDistanceScale"); foliage != in.end() && foliage->is_array()) {
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++){
+                if ((*foliage)[i].is_number()) config.foliageDistanceScale[i] = (*foliage)[i].get<float>();
+            }
+        }
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
@@ -230,6 +238,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
+        config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
         // absent (a config written before it) or unknown: Automatic
         const std::string lightMode = in.value("lightMode", "automatic");
         if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;
@@ -273,6 +282,12 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
+        }
+        // absent: no native plugin of the project is for other platforms only
+        if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
+            for (const auto& [plugin, message] : native->items()) {
+                if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
+            }
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;

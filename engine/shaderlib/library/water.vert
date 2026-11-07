@@ -2,6 +2,9 @@
 
 // library:water: the shared vertex path, moved by the waves with WAVES (library/water_vs.glsl);
 // water.frag bends the normal to match (with GERSTNER at the rest position passed in v_waveRest).
+// the waves on the scene clock (library/water_vs.glsl)
+#define WATER_SCENE_CLOCK
+
 #ifdef WAVES
     #define SURFACE_DISPLACE
     #ifdef GERSTNER

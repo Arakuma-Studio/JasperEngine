@@ -22,21 +22,17 @@ namespace jasperengine::editor::mcp {
 
 namespace {
 
-const char* baseInstructions() {
+// The text before the tool groups section: what an agent needs before its first call. Clients may
+// cut the instructions (Claude Code keeps 4096 characters), so this part, the generated groups line
+// and the pointer to the whole guide come first; tool_budget.py --check gates it ("client_cut").
+const char* headInstructions() {
     return
 R"JE(# JasperEngine editor (MCP)
 
 You drive a running JasperEngine editor (Unity-style: Hierarchy, Inspector, Console, Scene and Game
-views; Lua or C++ scripts). Each tool edit is one undoable command, live to a human watching. Build
-scenes with tools, write code with your own file tools, verify by playing, screenshots and the
-Console. Area references: jasper://docs/<area> (the list: jasper://docs).
-
-## Unity names -> engine names
-GameObject = entity (script class GameObject); Create Empty = type empty. Prefab = .prefab asset.
-Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
-Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an
-entry of the body's colliders list, not a component. Legacy Animation = AnimationPlayerComponent.
-Others: Unity's name + "Component". Build Settings = export; Scenes in Build = project.yaml's list.
+views; Lua or C++ scripts). Each tool edit is one undoable command, live to a human watching.
+Area references: jasper://docs/<area> (the list: jasper://docs).
+Text cut before "## Other areas"? read_file jasper://guide.
 
 ## Addressing
 - scene: id, name or project-relative .scene path; omitted = the selected scene (while playing,
@@ -59,10 +55,17 @@ Others: Unity's name + "Component". Build Settings = export; Scenes in Build = p
 A long call past timeout_seconds returns a job id: get_job. An error says what was wrong and lists
 the valid choices: fix the arguments, don't repeat the call.
 
-## Undo
-Edit results carry `undo` {id, name}. undo/redo scope "timeline" = the human's Ctrl+Z; expect_top_id
-undoes only your own last step. Play-time edits roll back at Stop (get_play_changes).
+## Building scenes
+Place what a scene uses in the editor; scripts reach it through script properties and spawn
+only what can't be placed ahead, from Prefabs. What repeats is one Prefab (create_prefab);
+motion is edit_animation, not per-frame code (jasper://docs/authoring).
+)JE";
+}
 
+// The rest: the area digests and the index of the other areas, which the pointer leads to
+const char* tailInstructions() {
+    return
+R"JE(
 ## Code
 The project is a normal folder (`editor_status`: project.path): read, edit, grep and git its scripts,
 shaders and .material files with your own tools (write_file / read_file are for clients without file
@@ -73,6 +76,10 @@ compile_scripts (C++). .jasperengine/ and the root CMakeLists.txt are generated:
 (build settings: ProjectBuild.cmake). A .scene is in the project once project.yaml lists it
 (edit_build_scenes).
 
+## Undo
+Edit results carry `undo` {id, name}. undo/redo scope "timeline" = the human's Ctrl+Z; expect_top_id
+undoes only your own last step. Play-time edits roll back at Stop (get_play_changes).
+
 ## Lua scripts
 Read jasper://docs/lua-scripting before your first script. A script returns a module table
 (`---@class Name : ScriptInstance`, Name = the file name); properties = { {name, displayName, type,
@@ -81,6 +88,13 @@ default} } are read as self.<name>. self.entity is a numeric id, NOT an object: 
 Getters are properties (go.position is a copy: assign it back; Engine.deltatime). Log.print takes one
 string. No on_start, getComponent or setProperty. Static functions use a dot (GameObject.instantiate),
 methods a colon (go:setScale(2)). Never carry over Unity, Godot or Unreal API names: confirm them.
+
+## Unity names -> engine names
+GameObject = entity (script class GameObject); Create Empty = type empty. Prefab = .prefab asset.
+Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
+Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an
+entry of the body's colliders list, not a component. Legacy Animation = AnimationPlayerComponent.
+Others: Unity's name + "Component". Build Settings = export; Scenes in Build = project.yaml's list.
 
 ## C++ scripts
 Read jasper://docs/cpp-scripting first: a ScriptBase subclass with a (jasperengine::Scene*,
@@ -95,8 +109,7 @@ transform (jasper://docs/physics).
 
 ## Prefabs
 An edit on an instance overrides that instance only: apply it to the asset or edit in prefab_mode.
-Runtime: GameObject.instantiate(prefab, ...) / GameObject.destroy(go); a prefab only loaded by path
-must be standalone (set_standalone_prefab).
+A prefab only loaded by path must be standalone (set_standalone_prefab).
 
 ## Shaders and materials
 Library first: list_shaders, then a submesh material's shader (create_material / update_material,
@@ -111,10 +124,11 @@ layouts. Read jasper://docs/html-ui first.
 ## Other areas
 2D (points, y up; Box2D 64 points per meter), cameras (useTarget ignores rotation), animation
 (edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
-apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), profiling
-(get_frame_times), sound (analyze_audio), shipping (build_project), data safety (save after each
-step; allow_data_loss), meshes (inspect_models, check_render_budgets), device tiers
-(set_device_simulation, then play): jasper://docs/<area>.
+apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), reflections
+(SSR replaces probe reflections; check with ssr_debug_mode 7), profiling (get_frame_times), sound
+(analyze_audio), shipping (build_project), data safety (save after each step; allow_data_loss),
+meshes (inspect_models, check_render_budgets), device tiers (set_device_simulation, then play):
+jasper://docs/<area>.
 )JE";
 }
 
@@ -140,7 +154,8 @@ std::string toolGroupsSection(const McpRegistry& registry) {
 
 const char* mcpServerInstructions() {
     // Built once the server registered its tools (the first initialize or jasper://guide read)
-    static const std::string text = std::string(baseInstructions()) + toolGroupsSection(McpServer::get().registry());
+    static const std::string text = std::string(headInstructions()) + toolGroupsSection(McpServer::get().registry()) +
+                                    tailInstructions();
     return text.c_str();
 }
 

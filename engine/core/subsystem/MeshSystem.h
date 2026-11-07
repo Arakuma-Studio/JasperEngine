@@ -73,6 +73,10 @@ namespace jasperengine{
             std::string loadedMeshPath;
             bool loadFailed = false;
             float chunkSize = 0; //the size the slot coordinates are in
+            // the scaled distances the slots were filled for: a slot past the span keeps its
+            // instances and fade, so a new distance (the quality scale too) refills every slot
+            float appliedDrawDistance = -1.0f;
+            float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
         };
@@ -229,6 +233,8 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
+        // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
+        size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
@@ -376,6 +382,11 @@ namespace jasperengine{
         static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
         // Normalized [0,1] height at a terrain-local position; 0 without pixels
         static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
+
+        // The part entities of a model whose geometry is on child entities (one per glTF mesh
+        // node, ModelComponent::meshNodesMapping) that exist and have a mesh, in node-index
+        // order; empty for any other entity (a model on its own mesh too)
+        std::vector<Entity> getModelParts(Entity model) const;
 
         bool hasPendingAsyncModelLoads() const;
         // Test hook: each asynchronous parse of a model file waits this long first, so a load is still

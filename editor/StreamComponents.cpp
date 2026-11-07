@@ -40,8 +40,10 @@
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
+#include "LoadReport.h"
 #include "particles/ParticleEffectCodec.h"
 #include "stream/CurveCodec.h"
 #include "animation/AnimationClipIO.h"
@@ -628,12 +630,14 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     node["minHeight"] = layer.minHeight;
     node["maxHeight"] = layer.maxHeight;
     node["drawDistance"] = layer.drawDistance;
+    if (layer.minDrawDistance != 0.0f)
+        node["minDrawDistance"] = layer.minDrawDistance;
     node["seed"] = layer.seed;
     node["castShadows"] = layer.castShadows;
     return node;
 }
 
-TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node) {
+TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp, int index) {
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
@@ -649,6 +653,31 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minHeight = decodeFinite(node["minHeight"], layer.minHeight);
     layer.maxHeight = decodeFinite(node["maxHeight"], layer.maxHeight);
     layer.drawDistance = decodeFinite(node["drawDistance"], layer.drawDistance);
+    layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
+    // a hand-edited or older file: values the renderer cannot use are clamped, and said so
+    if (!clamp) return layer;
+    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    if (!clamped.empty()) {
+        std::string what;
+        for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
+        // the load report names the file and line, so the terrain; the console line the layer too
+        LoadIssue issue;
+        issue.kind = LoadIssueKind::InvalidValue;
+        issue.fate = LoadIssueFate::Info;
+        issue.component = "Terrain";
+        issue.field = index >= 0 ? "foliageLayers[" + std::to_string(index) + "]" : "foliageLayers";
+        issue.message = "detail layer out of range, clamped: " + what;
+        const YAML::Mark mark = node.Mark();
+        if (mark.line >= 0) {
+            issue.line = mark.line + 1;
+            issue.column = mark.column + 1;
+        }
+        if (ScopedLoadReport::current()) {
+            recordLoadIssue(std::move(issue));
+        } else {
+            Out::warning("Terrain %s: detail layer out of range, clamped: %s.", issue.field.c_str(), what.c_str());
+        }
+    }
     return layer;
 }
 
@@ -783,7 +812,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             if (!node["foliageLayers"][i] || node["foliageLayers"][i].IsNull()) {
                 continue;
             }
-            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i]));
+            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i], true, static_cast<int>(i)));
         }
     }
 
@@ -2205,6 +2234,11 @@ YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshCompo
     node["cullDistance"] = instmesh.cullDistance;
     node["fadeStart"] = instmesh.fadeStart;
     node["fadeEnd"] = instmesh.fadeEnd;
+    // written only when set, so files without a near fade stay as they were
+    if (instmesh.nearFadeStart != 0.0f || instmesh.nearFadeEnd != 0.0f) {
+        node["nearFadeStart"] = instmesh.nearFadeStart;
+        node["nearFadeEnd"] = instmesh.nearFadeEnd;
+    }
     node["instancedBillboard"] = instmesh.instancedBillboard;
     node["instancedCylindricalBillboard"] = instmesh.instancedCylindricalBillboard;
 
@@ -2234,6 +2268,8 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     instmesh.cullDistance = std::max(0.0f, decodeFinite(node["cullDistance"], instmesh.cullDistance));
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);
+    instmesh.nearFadeStart = std::max(0.0f, decodeFinite(node["nearFadeStart"], instmesh.nearFadeStart));
+    instmesh.nearFadeEnd = std::max(0.0f, decodeFinite(node["nearFadeEnd"], instmesh.nearFadeEnd));
     if (node["instancedBillboard"]) instmesh.instancedBillboard = YamlNumbers::as<bool>(node["instancedBillboard"]);
     if (node["instancedCylindricalBillboard"]) instmesh.instancedCylindricalBillboard = YamlNumbers::as<bool>(node["instancedCylindricalBillboard"]);
 

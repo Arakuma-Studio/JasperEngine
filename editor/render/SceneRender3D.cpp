@@ -1127,7 +1127,7 @@ void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transfo
     so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
-void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera) {
+void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fullFrustum, bool isMainCamera) {
     CameraObjects& co = cameraObjects[entity];
 
     co.lines->setPosition(transform.worldPosition);
@@ -1137,7 +1137,7 @@ void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& 
     rotation.fromRotationMatrix(cameraComponent.viewMatrix.inverse());
     co.lines->setRotation(rotation);
 
-    updateCameraFrustum(co, cameraComponent, isMainCamera, fixedSizeFrustum);
+    updateCameraFrustum(co, cameraComponent, isMainCamera, fullFrustum);
 }
 
 
@@ -1453,6 +1453,34 @@ void editor::SceneRender3D::hideAllGizmos(){
     }
 }
 
+void editor::SceneRender3D::hideEntityGizmos(Entity entity){
+    SceneRender::hideEntityGizmos(entity);
+
+    auto hide = [entity](std::map<Entity, LineRenderer*>& lines) {
+        auto it = lines.find(entity);
+        if (it != lines.end()) it->second->setVisible(false);
+    };
+    if (auto light = lightObjects.find(entity); light != lightObjects.end()) {
+        light->second.icon->setVisible(false);
+        light->second.lines->setVisible(false);
+    }
+    if (auto cameraObject = cameraObjects.find(entity); cameraObject != cameraObjects.end()) {
+        cameraObject->second.icon->setVisible(false);
+        cameraObject->second.lines->setVisible(false);
+    }
+    if (auto sound = soundObjects.find(entity); sound != soundObjects.end()) {
+        sound->second.icon->setVisible(false);
+    }
+    if (auto body = bodyObjects.find(entity); body != bodyObjects.end()) {
+        body->second.lines->setVisible(false);
+    }
+    for (auto* lines : {&jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines, &reflectionProbeLines,
+                        &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines,
+                        &capsuleShadowLines}) {
+        hide(*lines);
+    }
+}
+
 void editor::SceneRender3D::activate(){
     SceneRender::activate();
 
@@ -1601,6 +1629,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     for (Entity& entity: entities){
         Signature signature = scene->getSignature(entity);
 
+        // what an inactive GameObject has stays made (no churn when it toggles), hidden below
+        const bool active = gizmoActive(entity);
+
         if (signature.test(scene->getComponentId<LightComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             LightComponent& light = scene->getComponent<LightComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -1633,7 +1664,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
                 currentIconCameras.insert(entity);
                 bool newCamera = instanciateCameraObject(entity);
                 createOrUpdateCameraIcon(entity, transform, newCamera);
-                createCameraFrustum(entity, transform, cameraComp, true, mainCamera == entity);
+                // a selected camera shows its whole frustum, near to far (Unity)
+                const bool cameraSelected = selectedEntities.find(entity) != selectedEntities.end();
+                createCameraFrustum(entity, transform, cameraComp, cameraSelected, mainCamera == entity);
 
                 if (displaySettings.hideCameraView) {
                     cameraObjects[entity].icon->setVisible(false);
@@ -1823,6 +1856,10 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
                 createOrUpdateBoneLines(entity, model, isVisible, isSelected);
             }
+        }
+
+        if (!active) {
+            hideEntityGizmos(entity);
         }
     }
 

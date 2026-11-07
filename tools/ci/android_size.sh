@@ -113,15 +113,15 @@ fi
 
 if [[ $COMPILED == 1 ]]; then
     # a Compile build of Android is the exported source project built by Gradle (the editor's
-    # build command makes the prebuilt one): release, arm64-v8a, the gles3 shaders (the export
-    # does not keep gradlew's executable bit: run through bash)
+    # build command makes the prebuilt one): release, arm64-v8a, the gles3 shaders (./gradlew: the
+    # export makes it executable)
     step "compiled arm64-v8a: export, then Gradle assembleRelease"
     project compiled-arm64 arm64-v8a
     tools/build.sh exec android bash -c "dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export         --project $OUT/compiled-arm64 --out $OUT/compiled-arm64-export --backend opengles" > "$OUT/compiled-arm64.log" 2>&1
     code=$?
     tail -n 4 "$OUT/compiled-arm64.log"
     if [[ $code == 0 ]]; then
-        tools/build.sh exec android bash -c "cd $OUT/compiled-arm64-export/workspaces/androidstudio &&             env JASPERENGINE_ANDROID_ABIS=arm64-v8a CMAKE_CXX_COMPILER_LAUNCHER=ccache bash ./gradlew --no-daemon -q assembleRelease"             >> "$OUT/compiled-arm64.log" 2>&1
+        tools/build.sh exec android bash -c "cd $OUT/compiled-arm64-export/workspaces/androidstudio &&             env JASPERENGINE_ANDROID_ABIS=arm64-v8a CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon -q assembleRelease"             >> "$OUT/compiled-arm64.log" 2>&1
         code=$?
     fi
     COMPILED_APK="$(find "$OUT/compiled-arm64-export/workspaces/androidstudio/app/build/outputs/apk/release" -name '*.apk' 2>/dev/null | head -n 1)"

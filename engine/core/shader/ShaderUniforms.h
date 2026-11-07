@@ -25,6 +25,26 @@ namespace jasperengine{
     // (ShaderGlobals): member -> global name, in a stable order
     typedef std::vector<std::pair<std::string, std::string>> ShaderGlobalBindings;
 
+    // Where the value a custom-block member is written with came from
+    enum class UniformSource : uint8_t{
+        Global,         // the shader global the member is bound to
+        Own,            // the material's or the component's own value
+        Fallback,       // a mesh's shaderUniforms under its material's
+        SceneDefault,   // the scene's values for its default shader (Scene::getInheritedShaderUniforms)
+        ShaderDefault,  // the manifest's @property default
+        Zero
+    };
+    JASPERENGINE_API const char* uniformSourceName(UniformSource source); // "global", "own", "fallback", "scene_default", "shader_default", "zero"
+
+    // The layers a member's value is looked up in, first to last (null: the layer is absent)
+    struct UniformChain{
+        const ShaderUniformValues* values = nullptr;
+        const ShaderUniformValues* fallback = nullptr;
+        const ShaderUniformValues* sceneDefault = nullptr;
+        const ShaderManifest* manifest = nullptr;
+        const ShaderGlobalBindings* bindings = nullptr;
+    };
+
     class JASPERENGINE_API ShaderUniforms{
     public:
         // "time", "resolution" and "sceneTime" (Scene::getSceneTime), written by the engine every frame,
@@ -38,6 +58,11 @@ namespace jasperengine{
         static Vector4 get(const ShaderUniformValues& values, const std::string& name);
         static bool has(const ShaderUniformValues& values, const std::string& name);
         static bool remove(ShaderUniformValues& values, const std::string& name);
+
+        // The value a member is written with: its global binding, the own value, the fallback,
+        // the scene default, the manifest default, zero; source says which (the only place the
+        // order lives: the render system, the Inspector and MCP all ask here)
+        static Vector4 resolve(const UniformChain& chain, const std::string& name, UniformSource* source = nullptr);
     };
 
     // a user-declared uniform block (u_vs_customParams, u_fs_customParams,
@@ -64,6 +89,8 @@ namespace jasperengine{
         // fallbackValues (when given), the manifest's @property default (when given), zero
         void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
                          const ShaderGlobalBindings* bindings = nullptr);
+        // every member from ShaderUniforms::resolve of the chain, reserved ones skipped
+        void writeValues(const UniformChain& chain);
         void writeTime(float seconds);
         // the scene clock (Scene::getSceneTime) of the scene drawing it
         void writeSceneTime(float seconds);

@@ -155,6 +155,9 @@ namespace jasperengine{
         float minHeight = 0; //normalized against the terrain maxHeight
         float maxHeight = 1;
         float drawDistance = 50;
+        // nearer instances fade out (grow in over [0.75, 1] of it): with a nearer copy of the layer
+        // whose drawDistance equals it, the two cross-fade (a far detail level with a cheaper mesh)
+        float minDrawDistance = 0;
         unsigned int seed = 0;
         bool castShadows = true; // off spares grass-scale scatter the shadow cascades
     };

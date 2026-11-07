@@ -145,6 +145,8 @@ public:
     static ScriptPropertyValue luaValueToScriptPropertyValue(lua_State* L, int idx, ScriptPropertyType type);
     // The properties of a Lua script (its file, or its code being edited: errors ignored), read
     // in an isolated state (readLuaScriptProperties): any thread
+    // A saved file that returns a table without `properties` has none (entry.properties
+    // cleared); code being edited keeps them until it is saved (the table may be mid-cut-and-paste).
     static void loadLuaScriptProperties(ScriptEntry& entry, const std::string& luaPath);
     static void loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName);
     // What reading a Lua script's properties did: the script failed to load (syntax) or to
@@ -153,6 +155,10 @@ public:
     struct LuaPropertiesResult {
         enum Status { Ok, LoadError, RunError, PropertyError } status = Ok;
         std::string message;
+        // Ok: the chunk returned a table, without a `properties` field (entry.properties cleared)
+        bool returnedTable = false;
+        bool noPropertiesField = false;
+        bool propertiesTable = false;   // `properties` is a table (another value declares nothing: kept)
     };
     // Reads a Lua script's properties as the editor does: runs its top level in L (this
     // executes the file) and reads the `properties` of the table it returns, all in protected

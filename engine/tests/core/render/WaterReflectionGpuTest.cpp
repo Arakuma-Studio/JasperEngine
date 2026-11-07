@@ -102,6 +102,8 @@ namespace {
         Camera camera{&scene};
 
         void SetUp() override{
+            // the view the goldens and pixel positions were made at
+            GpuEnvironment::resetView();
             Engine::setPinnedShaderTime(REFLECTION_PINNED_TIME);
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
@@ -159,13 +161,22 @@ TEST_F(WaterReflectionGpu, PlanarReflectionMirrorsTheScene){
     const CompareResult golden = compareTargetWithGolden("water_planar_reflection", hardwareTolerance({24, 0.01, 2.0}));
     EXPECT_TRUE(golden.passed) << golden.message;
 
-    // Off: no pass, the environment (without a sky, the reflection colour alone): grey, not red
+    // Off: no pass, the environment (without a sky, the reflection colour alone): the pixels
+    // REFLECTION alone draws
     scene.setPlanarReflectionResolution(PlanarReflectionResolution::OFF);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     const ReflectionPixel off = reflectionPixelAt(scene, Vector3(0.0f, -1.0f, 0.0f));
     printReflectionPixel("Off", off);
     EXPECT_EQ(stats().passes, 0u);
-    EXPECT_LT(std::abs(off.r - off.g), 8) << "the reflection pass still draws with the resolution Off";
+    Material reflectionAlone = mirrorWater();
+    reflectionAlone.shaderFeatures = {"REFLECTION"};
+    water.setMaterial(reflectionAlone);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const ReflectionPixel alone = reflectionPixelAt(scene, Vector3(0.0f, -1.0f, 0.0f));
+    printReflectionPixel("REFLECTION alone", alone);
+    EXPECT_LE(std::abs(off.r - alone.r), 2) << "Off does not draw what REFLECTION alone draws";
+    EXPECT_LE(std::abs(off.g - alone.g), 2);
+    EXPECT_LE(std::abs(off.b - alone.b), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -204,6 +215,14 @@ TEST_F(WaterReflectionGpu, FallbackWhenOffOrCapped){
     EXPECT_EQ(stats().planes, 3u);
     EXPECT_EQ(stats().passes, 2u);
     EXPECT_EQ(stats().fallbacks, 1u);
+    // the farthest height shows the environment (grey, the reflection colour alone); a reflected
+    // one the empty, black scene
+    const ReflectionPixel fallback = reflectionPixelAt(scene, Vector3(0.0f, -2.0f, -4.0f));
+    const ReflectionPixel reflected = reflectionPixelAt(scene, Vector3(0.0f, -1.0f, 4.0f));
+    printReflectionPixel("the capped height", fallback);
+    printReflectionPixel("a reflected height", reflected);
+    EXPECT_GT(fallback.r, reflected.r + 20) << "the capped height does not show the environment";
+    EXPECT_LT(std::abs(fallback.r - fallback.b), 8);
 
     // seen from below a surface: no pass for it
     camera.setPosition(0.0f, -1.5f, 10.0f);

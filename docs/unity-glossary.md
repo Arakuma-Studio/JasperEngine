@@ -15,6 +15,9 @@ Projects made before the rename are migrated once with
 | Hierarchy window | Structure window |
 | Inspector window | Properties window |
 | Project window | Resources window |
+| Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
+| The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
+| Maximize On Play (the Game view toolbar; F11, Edit > Maximize On Play) | the toolbar toggle only |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
@@ -96,6 +99,11 @@ Projects made before the rename are migrated once with
 | `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`) | unchanged |
 | `MonoBehaviour.enabled` -> `self.enabled` (Lua, rw: fires `onEnable`/`onDisable`), `isEnabled()` / `setEnabled(bool)` (C++); `isActiveAndEnabled` -> `self.isActiveAndEnabled` / `isActiveAndEnabled()`; `gameObject` -> `self.gameObject` | none (new) |
 | `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
+| `transform.parent`, `SetParent(p, worldPositionStays)`, `childCount`, `GetChild(i)`, `Find("a/b")` -> `go.parent`, `go:setParent(p [, worldPositionStays])`, `go.childCount`, `go:getChild(i)` (0-based), `go:findChild("a/b")`, plus `go:getChildren()`; C++ `getParent()`, `setParent`, `getChildCount()`, `getChild`, `getChildren`, `findChild` | `addChild`, `removeParent` only (no way to read the parent or the children) |
+| `Vector3.Lerp` (t clamped), `Vector3.LerpUnclamped`, `Vector3.MoveTowards` (also Vector2, Vector4) -> `a:lerp(b, t)` / `Vector3.lerp(a, b, t)`, `lerpUnclamped`, `moveTowards`; C++ the same | `Vector3::lerp` unclamped, C++ only |
+| `Bounds` corners (`GetCorners` of a hand-written helper) -> `AABB:getCorners()` / `OBB:getCorners()` (8 `Vector3`) | one corner |
+| `Rigidbody2D.AddForce` (always wakes the body) -> `applyForce(f, p [, wake = true])` and the other force/impulse methods | `wake` read as false when left out |
+| Add Component > Scripts > a script, dragging a script onto a GameObject (Inspector or Hierarchy) -> the same: Add Component and the Script component's Add Script list the project's scripts; drops attach | Add Script added an empty C++ entry |
 | `GameObject.Find`, `GameObject.FindWithTag`, `FindGameObjectsWithTag`, `Object.FindObjectOfType<T>()`, `FindObjectsOfType<T>(includeInactive)` -> `GameObject.find`, `findWithTag`, `findGameObjectsWithTag`, `findObjectOfType("T")`, `findObjectsOfType("T", includeInactive)` (every running scene) | `scene:findEntity`, `scene:findByTag` (one scene) |
 | `Object.DontDestroyOnLoad(gameObject)` -> `DontDestroyOnLoad(self)` (global) or `GameObject.dontDestroyOnLoad(obj)`; C++ `ScriptBase::dontDestroyOnLoad()`; root GameObjects only, the whole hierarchy moves with its running state ([lua-api.md](mcp/guide/lua-api.md) 2.8.1) | none (new) |
 | The "DontDestroyOnLoad" scene (Hierarchy in Play) -> the persistent scene `SceneManager.persistentScene`, a scene layer above the loaded scenes (Hierarchy row "DontDestroyOnLoad" in Play; MCP running scene with `persistent: true`) | none (new) |
@@ -113,6 +121,7 @@ Projects made before the rename are migrated once with
 | Legacy `Animation` component (`Play`, `CrossFade`, `Blend`, `PlayQueued`, `AnimationState`, Animation Events) | none (new): `AnimationPlayer` / `AnimationPlayerComponent` (Add Component > Animation > Animation Player; `gameObject:getAnimationPlayer()`, nil without one): `play`, `crossFade`, `blend`, `queue`, `getState` (an `AnimationState`), `onEvent` (one `AnimationEvent`), `onFinish` |
 | `Animator` (`SetFloat`, `SetInteger`, `SetBool`, `SetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`, `GetCurrentAnimatorStateInfo`, `IsInTransition`, `SetLayerWeight`, `SetIKPosition`, `GetBoneTransform`, `applyRootMotion`, `deltaPosition`, `OnAnimatorMove`, StateMachineBehaviour enter / exit) | none (new): `Animator` / `AnimatorComponent` (Add Component > Animation > Animator; `gameObject:getAnimator()`): `setFloat`, `setInteger`, `setBool`, `setTrigger`, `play`, `crossFade`, `crossFadeInFixedTime`, `getCurrentState` (an `AnimatorStateInfo`), `isInTransition`, `setLayerWeight`, `setIKTarget`, `getBonePosition` / `getBoneRotation`, `applyRootMotion`, `getDeltaPosition`, `onAnimatorMove`, `onStateEnter` / `onStateExit`; montages: `playMontage`, `onMontageEnded` |
 | none: the old JasperEngine name, kept | `Animation` / `AnimationComponent` (Add Component > Animation > Animation) is not Unity's Animation component: it is JasperEngine's entity sequence of actions (keyframe tracks targeting scene GameObjects, tweens, sprite animations, particles, nested animations). Unity's legacy Animation component is the Animation Player |
+| An Animator state's Cycle Offset (normalized), DOTween's `Goto(t)` before a tween plays | none (new): an action's Start Offset (`startOffset`, seconds of its own time) and Random Start (`randomStart`, a random point of one cycle, the same every playthrough) for each new run in Play (Inspector Action rows; MCP edit_animation `random_start`, set_properties `action.startOffset`) |
 | none: Unity has no live pose-to-pose player (the closest is an Animator with a humanoid Avatar, its `Animator.speed` and layer weight) | none (new): `PoseAnimator` / `PoseAnimatorComponent` (Add Component > Animation > Pose Animator; `model:getPoseAnimator()`) plays a `.poseanim` pose animation live on a humanoid Model |
 | none: Unity has no built-in vertex animation player | none (new): `VertexAnimator` / `VertexAnimatorComponent` (Add Component > Animation > Vertex Animator; `gameObject:getVertexAnimator()`, nil without one) plays a `.vat` on the GameObject and on each instance of its Instanced Mesh: `play`, `crossFade`, `blend`, `queue`, `playInstance`, `crossFadeInstance`, `playAll`, `getSocketPose`, `onEvent`, `onFinish`, `onInstanceEvent` |
 | `Input.GetAxis`, `GetAxisRaw`, `GetButton`, `GetButtonDown`, `GetButtonUp` (Input Manager axes) | none (new): `Input.getAxis`, `getAxisRaw`, `getButton`, `getButtonDown`, `getButtonUp`, plus `Input.getVector` (Godot's `get_vector`) and `Engine.onButtonDown` / `onButtonUp` |
@@ -133,6 +142,7 @@ Projects made before the rename are migrated once with
 | `Physics.IgnoreCollision(a, b, ignore)` / `Physics2D.IgnoreCollision` (colliders) -> `Physics.ignoreCollision(a, b [, ignore])` / `Physics2D.ignoreCollision` on bodies (GameObjects or Rigidbodies): every collider of the pair | none (new) |
 | `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
 | A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
+| none: Unity has no per-scene shader property defaults (closest: `Shader.SetGlobal*`, applied when the material leaves the property undefined) | none (new): Scene > Default Shaders > <Shader> Properties, the values every object drawn with the scene's default shader inherits (Revert to Scene Default on an override); Lua `scene:setDefaultShaderUniform(ShaderType.MESH, name, value)`; `set_shader_uniform` `shader_type` |
 | `Shader.EnableKeyword` (global keywords) | not supported: shader features are per material (`setShaderFeature`) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
@@ -169,6 +179,8 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
 | `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
 | `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
+| `QualitySettings.terrainDetailDistanceFactor` | `Engine.foliageDistanceScale` (starts from Quality > Foliage Distance; [instancing.md](rendering/instancing.md)) |
+| `BillboardRenderer` facing (camera-facing, upright) | Instanced Mesh **Billboard**, **Cylindrical Billboard** |
 | `Screen.orientation`, `Screen.autorotateToPortrait` / `PortraitUpsideDown` / `LandscapeLeft` / `LandscapeRight` | `Screen.orientation`, `Screen.autorotateTo*` (`ScreenOrientation.*`) |
 | `Screen.sleepTimeout`, `SleepTimeout.NeverSleep` / `SystemSetting` | `Screen.sleepTimeout`, `SleepTimeout.*` |
 | `Screen.dpi`, `Screen.currentResolution.refreshRateRatio` | `Screen.dpi`, `Screen.refreshRate` |
@@ -177,6 +189,7 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `OnApplicationFocus(bool)` | the `onApplicationFocus(focused)` script method, or `RegisterEngineEvent(self, "onFocus")` |
 | `OnApplicationPause(true / false)` | the `onApplicationPause(paused)` script method, or `onPause` / `onResume` engine events |
 | `Application.isFocused` | `Engine.isFocused` |
+| `Application.runInBackground` | always on for desktops: an unfocused game keeps running, a minimized or hidden one updates without drawing (`Engine.isVisible`, `Engine.onVisibilityChanged`) |
 | `Application.lowMemory` | `Engine.onLowMemory` |
 | `Application.version`, `Application.identifier`, `Application.productName` | `System.getAppVersion()`, `getAppIdentifier()`, `getAppName()` |
 | Android `versionCode`, iOS `CFBundleVersion` | `System.getAppBuild()` (an integer) |
@@ -279,6 +292,9 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Dynamic Batching (Player Settings), SpriteRenderer batching | Dynamic Batching (Project Settings > Graphics, on by default; `Engine.dynamicBatching`): Sprites, small meshes and UI elements, [rendering/batching.md](rendering/batching.md) |
+| Game view Stats: Batches, Saved by batching | the same lines in the Game view's Stats; MCP `get_render_stats` `batching` |
+| Frame Debugger: "Why this draw call can't be batched with the previous one" | the Frame Debugger's Dynamic Batch rows (hover: the reason); MCP `get_render_stats batch_breaks` |
 
 See [mcp/guide/debugging.md](mcp/guide/debugging.md).
 
@@ -297,6 +313,27 @@ Details: jasper://docs/native-bridge.
 | External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
 | `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
 | `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
+| `PrivacyInfo.xcprivacy` in `Assets/Plugins/iOS` (Unity copies plugin privacy manifests into the Xcode project) | `PrivacyInfo.xcprivacy` in `plugins/native/ios` (or `apple`, `macos`), merged into the app's; the game's own entries: Project Settings > Player > iOS > Privacy Manifest (`apple.privacy_*`) |
+| Google Mobile Ads Unity plugin, Unity IAP | a native plugin (`plugins/native`): docs/mcp/guide/native-bridge.md section 10 has an interstitial ads example |
+
+## UI (Selectable, Button)
+
+Details: [mcp/guide/ui.md](mcp/guide/ui.md) (Buttons, Keyboard, gamepad and TV navigation).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Button.onClick` | `button.onClick` (Lua), `REGISTER_BUTTON_EVENT(onClick, method)` (C++): released over it, or a Submit while selected |
+| `Selectable.interactable` | `Button.interactable` (the stored field is `disabled`; Inspector "Interactable") |
+| `Selectable.transition` (`None`, `ColorTint`, `SpriteSwap`; `Animation` not built) | `Button.transition` (`NONE`, `COLOR_TINT`, `SPRITE_SWAP`, and `COLOR_TINT_AND_SPRITE_SWAP`, the default) |
+| `ColorBlock.normalColor`, `highlightedColor`, `pressedColor`, `selectedColor`, `disabledColor`, `fadeDuration` | `colorNormal`, `colorHovered` (Inspector "Highlighted Color"), `colorPressed`, `colorSelected`, `colorDisabled`, `fadeDuration` (the colours replace the image colour; Unity multiplies) |
+| `SpriteState.highlightedSprite`, `pressedSprite`, `selectedSprite`, `disabledSprite` | `textureHovered`, `texturePressed`, `textureSelected`, `textureDisabled` (`textureNormal` is the image's sprite) |
+| `Navigation.mode` (`None`, `Horizontal`, `Vertical`, `Automatic`, `Explicit`), `wrapAround`, `selectOnUp/Down/Left/Right`, Visualize | `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right`, the Inspector's Visualize |
+| `EventSystem.firstSelectedGameObject` | the Button's **Select On Enable** (`selectOnEnable`; also a menu shown later) |
+| `EventSystem.current.currentSelectedGameObject`, `SetSelectedGameObject(go)`, `Selectable.Select()` | `UI.getSelected(scene)`, `UI.setSelected(scene, go)`, `button:select()` |
+| `Selectable.FindSelectableOnUp()` ... | `button:findSelectableOnUp()` ... |
+| `ISelectHandler.OnSelect`, `IDeselectHandler`, `IMoveHandler` (`AxisEventData.moveDir`), `ISubmitHandler`, `ICancelHandler` | script methods `onSelect(e)`, `onDeselect(e)`, `onMove(e)` (`e.moveDir`), `onSubmit(e)`, `onCancel(e)` |
+| StandaloneInputModule: Submit (Enter, keypad Enter, Space, joystick button 0), Cancel (Escape, joystick button 1), Horizontal/Vertical | the same keys and gamepad A, B, d-pad and left stick, plus Tab / Shift+Tab and Android TV's remote |
+| A pointer click selects a Selectable | only while its scene has a selection (a clicked HUD button never takes Space or the arrows from the game) |
 
 ## UI (Canvas Group)
 
@@ -373,6 +410,18 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
+
+## Terrain
+
+Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
+
+| Unity term | JasperEngine name |
+|---|---|
+| Terrain | the Terrain component (`TerrainComponent`), Window > Terrain |
+| Terrain Layer (Paint Texture) | an entry of `surfaceLayers` (up to 9); MCP `set_terrain_maps layers` |
+| Splat map / control texture (`TerrainData.alphamapTextures`) | `blendMaps` (up to 3; slot i weights layers 3i..3i+2); MCP `set_terrain_maps blendmap {index}` |
+| Details (Paint Details), Detail Mesh (`TerrainData.detailPrototypes`) | detail layers: `foliageLayers`, the Terrain window's "Detail layer"; MCP `edit_terrain_details` |
+| detail density (`SetDetailLayer`) | a detail layer's density map, painted with Paint Density (`sculpt_terrain paint_density`) |
 
 ## Layers and physics
 

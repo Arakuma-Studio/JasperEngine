@@ -12,7 +12,9 @@
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
 #include "McpTools.h"
+#include "util/BuildDiagnostics.h"
 #include "util/SourceLocation.h"
+#include "util/ProjectChecks.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -32,6 +34,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "command/type/ShaderOverridesCmd.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
@@ -160,26 +163,16 @@ const char* hostPlatformName() {
 #endif
 }
 
-// Graphics APIs a Desktop player of this host can use (ExportWindow desktopGraphicBackends)
-std::vector<ShaderBackend> desktopBackends() {
-#if defined(_WIN32)
-    return {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
-#elif defined(__APPLE__)
-    return {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
-#else
-    return {ShaderBackend::GLCore, ShaderBackend::Vulkan};
-#endif
+// Graphics APIs a Desktop player of this host can use (the Build Settings window's)
+const std::vector<ShaderBackend>& desktopBackends() {
+    return hostDesktopBackends();
 }
 
-// Source Code presets per target platform (ExportWindow::platformBackends)
+// Source Code presets per target platform (the Build Settings window's)
 bool platformBackends(const std::string& platform, std::set<ShaderBackend>& out) {
-    if (platform == "windows") out = {ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11};
-    else if (platform == "macos") out = {ShaderBackend::MetalMacOS, ShaderBackend::GLCore};
-    else if (platform == "linux") out = {ShaderBackend::GLCore, ShaderBackend::Vulkan};
-    else if (platform == "android") out = {ShaderBackend::GLES3, ShaderBackend::Vulkan};
-    else if (platform == "ios") out = {ShaderBackend::MetalIOS};
-    else if (platform == "web") out = {ShaderBackend::GLES3};
-    else return false;
+    BuildPlatform target;
+    if (!parseBuildPlatform(platform, target)) return false;
+    out = sourceExportBackends(target);
     return true;
 }
 
@@ -280,6 +273,60 @@ std::string shaderName(ShaderKey key) {
                                           ShaderPool::getCustomIdFromKey(key));
 }
 
+// Build Settings > Shaders edits: clear (or reset), remove (from both lists), add, exclude, in that
+// order onto `next`; a key ends in at most one list
+bool editShaderOverrides(const Json& shaders, ShaderOverrides& next, std::string& error) {
+    if ((shaders.contains("clear") && shaders["clear"].is_boolean() && shaders["clear"].get<bool>()) ||
+        (shaders.contains("reset") && shaders["reset"].is_boolean() && shaders["reset"].get<bool>())) {
+        next.additions.clear();
+        next.exclusions.clear();
+    }
+    for (const char* field : {"remove", "add", "exclude"}) {
+        if (!shaders.contains(field)) continue;
+        if (!shaders[field].is_array()) {
+            error = std::string("shaders.") + field + " must be a list of shader keys (from get_build_info include_shaders).";
+            return false;
+        }
+        for (const Json& item : shaders[field]) {
+            std::vector<ShaderKey> parsed;
+            if (!parseShaderKeys(item, parsed)) {
+                error = "Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
+                        "(\"uieffect/<name>[:Flt]\").";
+                return false;
+            }
+            for (ShaderKey key : parsed) {
+                key = ShaderPool::normalizeKey(key);
+                next.additions.erase(key);
+                next.exclusions.erase(key);
+                if (std::string(field) == "add") next.additions.insert(key);
+                else if (std::string(field) == "exclude") next.exclusions.insert(key);
+            }
+        }
+    }
+    return true;
+}
+
+// One project undo step (ShaderOverridesCmd) when the overrides change; saves project.yaml
+bool commitShaderOverrides(Project* project, const ShaderOverrides& next, std::string& error) {
+    const ShaderOverrides& current = project->getShaderOverrides();
+    if (next.additions == current.additions && next.exclusions == current.exclusions) return true;
+    auto* command = new ShaderOverridesCmd(project, current, next);
+    command->setNoMerge();
+    if (!project->getProjectCommandHistory()->addCommand(command)) {
+        error = "The shader overrides could not be changed (see the console).";
+        return false;
+    }
+    return true;
+}
+
+Json shaderOverridesJson(const ShaderOverrides& overrides) {
+    Json additions = Json::array();
+    Json exclusions = Json::array();
+    for (ShaderKey key : overrides.additions) additions.push_back({{"key", shaderKeyText(key)}, {"name", shaderName(key)}});
+    for (ShaderKey key : overrides.exclusions) exclusions.push_back({{"key", shaderKeyText(key)}, {"name", shaderName(key)}});
+    return Json{{"added", additions}, {"excluded", exclusions}};
+}
+
 std::string appName(Project* project) {
     return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
 }
@@ -291,18 +338,6 @@ std::string executableName(Project* project) {
 #else
     return appName(project);
 #endif
-}
-
-bool isInside(const fs::path& path, const fs::path& root) {
-    std::error_code ec;
-    const fs::path a = fs::weakly_canonical(path, ec);
-    const fs::path b = fs::weakly_canonical(root, ec);
-    auto ai = a.begin();
-    for (auto bi = b.begin(); bi != b.end(); ++bi, ++ai) {
-        if (bi->empty()) continue;
-        if (ai == a.end() || *ai != *bi) return false;
-    }
-    return true;
 }
 
 // A player build's remembered output dir: this computer's platform keeps the Desktop one, the web
@@ -376,109 +411,16 @@ std::string outputDirRefusal(Project* project, const fs::path& outputDir, Export
 }
 
 std::string stripAnsi(const std::string& line) {
-    std::string out;
-    out.reserve(line.size());
-    for (size_t i = 0; i < line.size(); i++) {
-        if (line[i] == '\x1b' && i + 1 < line.size() && line[i + 1] == '[') {
-            i += 2;
-            while (i < line.size() && !(line[i] >= '@' && line[i] <= '~')) i++;
-            continue;
-        }
-        out += line[i];
-    }
-    return out;
+    return BuildDiagnostics::stripAnsi(line);
 }
 
 // ------------------------------------------------------------------ compiler diagnostics
 
-struct Diagnostic {
-    std::string file;
-    int line = 0;
-    int column = 0;
-    std::string severity;   // error, warning
-    std::string code;
-    std::string message;
-};
+// the editor's one parser of build output lines (util/BuildDiagnostics.h)
+using Diagnostic = BuildDiagnostic;
 
-// file:line:col: error: message (GCC/Clang), file(line,col): error C1234: message (MSVC),
-// CMake Error at file:line, linker errors. The location is SourceLocation's (the one parser
-// of file locations, the Console's too); this reads the severity and message around it.
-bool parseDiagnostic(const std::string& rawLine, Diagnostic& out) {
-    const std::string line = stripAnsi(rawLine);
-    if (line.find("error") == std::string::npos && line.find("warning") == std::string::npos &&
-        line.find("Error") == std::string::npos && line.find("Warning") == std::string::npos &&
-        line.find("undefined reference") == std::string::npos) {
-        return false;
-    }
-    size_t first = line.find_first_not_of(" \t");
-    if (first == std::string::npos) return false;
-    const std::vector<SourceLocation> locations = findSourceLocations(line);
-
-    // CMake Error at file:line (command)
-    static const std::string cmakeError = "CMake Error", cmakeWarning = "CMake Warning";
-    if (line.compare(first, cmakeError.size(), cmakeError) == 0 || line.compare(first, cmakeWarning.size(), cmakeWarning) == 0) {
-        const size_t at = line.find(" at ", first);
-        if (at == std::string::npos || locations.empty() || locations[0].begin != at + 4) return false;
-        const bool warning = line.compare(first, cmakeWarning.size(), cmakeWarning) == 0;
-        out.file = locations[0].path;
-        out.line = locations[0].line;
-        out.severity = warning ? "warning" : "error";
-        out.code = "cmake";
-        out.message = std::string(warning ? "CMake Warning" : "CMake Error") + line.substr(locations[0].end);
-        return true;
-    }
-
-    // a compiler line starts with its location, then ": error: ..." or ": error C1234: ..."
-    if (!locations.empty() && locations[0].begin == first) {
-        const SourceLocation& location = locations[0];
-        size_t at = location.end;
-        while (at < line.size() && (line[at] == ' ' || line[at] == ':')) at++;
-        std::string severity;
-        for (const char* word : {"fatal error", "error", "warning"}) {
-            if (line.compare(at, std::strlen(word), word) == 0) {
-                severity = word;
-                at += std::strlen(word);
-                break;
-            }
-        }
-        if (severity.empty()) return false;
-        // MSVC's code: error C2065: ...
-        std::string code;
-        size_t codeEnd = at;
-        while (codeEnd < line.size() && line[codeEnd] == ' ') codeEnd++;
-        size_t letters = codeEnd;
-        while (letters < line.size() && std::isalpha(static_cast<unsigned char>(line[letters]))) letters++;
-        size_t digits = letters;
-        while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits]))) digits++;
-        if (letters > codeEnd && digits > letters) {
-            size_t colon = digits;
-            while (colon < line.size() && line[colon] == ' ') colon++;
-            if (colon < line.size() && line[colon] == ':') {
-                code = line.substr(codeEnd, digits - codeEnd);
-                at = colon;
-            }
-        }
-        if (at >= line.size() || line[at] != ':') return false;
-        at++;
-        while (at < line.size() && line[at] == ' ') at++;
-        out.file = location.path;
-        out.line = location.line;
-        out.column = location.column;
-        out.severity = severity == "warning" ? "warning" : "error";
-        out.code = code;
-        out.message = line.substr(at);
-        return true;
-    }
-
-    static const std::regex linker(R"((undefined reference to .*|multiple definition of .*|ld(?:\.\w+)?: (?:error|fatal error): .*|collect2: error: .*|LINK : fatal error .*))");
-    std::smatch m;
-    if (std::regex_search(line, m, linker)) {
-        out.severity = "error";
-        out.code = "link";
-        out.message = line;
-        return true;
-    }
-    return false;
+bool parseDiagnostic(const std::string& line, Diagnostic& out) {
+    return BuildDiagnostics::parse(line, out);
 }
 
 // ------------------------------------------------------------------ build runs
@@ -628,6 +570,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         result["platform"] = buildPlatformName(r.config.platform);
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
+        result["carried"] = report.carried;
         result["player_id"] = report.playerId;
         // S34: the engine modules the build ships, and the first reason of each
         result["modules"] = report.modules;
@@ -638,10 +581,11 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                     break;
                 }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
-        if (!report.notes.empty()) result["notes"] = report.notes;
     }
-    // every mode: a source export ships the same clips and the same notices
+    // every mode's warnings (W-..., next to the compiler's: a source export ships the same clips and
+    // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
+    if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
@@ -678,9 +622,6 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             }
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
-        } else if (r.mode == ExportMode::Web) {
-            result["index_html"] = FileUtils::pathToGenericUtf8(outputDir / "index.html");
-            message = "Built the Web player in " + FileUtils::pathToGenericUtf8(outputDir) + " (serve it over HTTP; file:// does not load WebAssembly).";
         } else {
             message = "Exported the C++ source project to " + FileUtils::pathToGenericUtf8(outputDir) +
                       ". Build it with: cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build "
@@ -689,13 +630,15 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                                      "\" -DCMAKE_BUILD_TYPE=Release && cmake --build \"" + FileUtils::pathToGenericUtf8(outputDir / "build") + "\"";
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
+        if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
     } else {
         std::string message = progress.errorMessage.empty() ? "Build failed." : progress.errorMessage;
         if (!message.empty() && message.back() != '.') message += ".";
-        if (r.errorCount) {
+        // the exporter's message names its first error already (Exporter::failBuild)
+        if (r.errorCount && progress.errors.empty()) {
             message += " " + std::to_string(r.errorCount) + " compiler error(s), first: ";
             for (const Diagnostic& d : r.diagnostics) {
                 if (d.severity != "error") continue;
@@ -919,11 +862,9 @@ void buildProjectTool(const CallPtr& call) {
         call->fail(refusal);
         return;
     }
-    if ((isInside(outputDir, project->getProjectPath()) || isInside(outputDir, project->getAssetsPath())) &&
-        !isInside(outputDir, project->getProjectInternalPath())) {
-        call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is inside the project (its assets and scenes are scanned "
-                   "from there, so the exported copies would show up as project files). Use a directory outside the "
-                   "project, e.g. " + FileUtils::pathToGenericUtf8(project->getProjectPath().parent_path() / (appName(project) + "-build")) + ".");
+    // the rule every front end shares (Build Settings, the CLI)
+    if (const std::string refusal = Exporter::outputFolderRefusal(project, outputDir); !refusal.empty()) {
+        call->fail(refusal);
         return;
     }
     const bool overwrite = args.value("overwrite", false);
@@ -1095,48 +1036,16 @@ void buildProjectTool(const CallPtr& call) {
         }
     }
 
-    // ---- shaders (persisted like the Build Settings window does)
-    ShaderOverrides& overrides = project->getShaderOverrides();
+    // ---- shaders: Build Settings > Shaders, one project undo step (ShaderOverridesCmd, saves project.yaml)
     if (args.contains("shaders") && args["shaders"].is_object()) {
-        const Json& shaders = args["shaders"];
-        std::set<ShaderKey> additions = overrides.additions;
-        std::set<ShaderKey> exclusions = overrides.exclusions;
-        for (const char* field : {"add", "exclude", "reset"}) {
-            if (!shaders.contains(field)) continue;
-            if (std::string(field) == "reset") {
-                if (shaders["reset"].is_boolean() && shaders["reset"].get<bool>()) {
-                    additions.clear();
-                    exclusions.clear();
-                }
-                continue;
-            }
-            if (!shaders[field].is_array()) {
-                call->fail(std::string("shaders.") + field + " must be a list of shader keys (from get_build_info shaders).");
-                return;
-            }
-            for (const Json& item : shaders[field]) {
-                std::vector<ShaderKey> parsed;
-                if (!parseShaderKeys(item, parsed)) {
-                    call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
-                               "(\"uieffect/<name>[:Flt]\").");
-                    return;
-                }
-                for (ShaderKey key : parsed) {
-                    key = ShaderPool::normalizeKey(key);
-                    if (std::string(field) == "add") {
-                        exclusions.erase(key);
-                        additions.insert(key);
-                    } else {
-                        additions.erase(key);
-                        exclusions.insert(key);
-                    }
-                }
-            }
+        ShaderOverrides next = project->getShaderOverrides();
+        std::string shaderError;
+        if (!editShaderOverrides(args["shaders"], next, shaderError) || !commitShaderOverrides(project, next, shaderError)) {
+            call->fail(shaderError);
+            return;
         }
-        projectDirty = projectDirty || additions != overrides.additions || exclusions != overrides.exclusions;
-        overrides.additions = additions;
-        overrides.exclusions = exclusions;
     }
+    const ShaderOverrides& overrides = project->getShaderOverrides();
     config.shaderAdditions = overrides.additions;
     config.shaderExclusions = overrides.exclusions;
 
@@ -1399,6 +1308,14 @@ void getBuildInfoTool(const CallPtr& call) {
                  {"build_jobs", kit.buildJobs}, {"automatic_jobs", Generator::getAutomaticParallelBuildJobs()}}},
         {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Desktop))}
     };
+    // Play's own check (on Windows a kit compatible with this editor), not the export's
+    {
+        CMakeKit scriptKit;
+        const std::string scriptMissing = ProjectChecks::checkCppToolchain(kit, scriptKit);
+        data["cpp_scripts"] = {{"can_build", scriptMissing.empty()}, {"missing_tools", scriptMissing},
+                               {"kit", {{"c_compiler", scriptKit.cCompiler}, {"cxx_compiler", scriptKit.cxxCompiler},
+                                        {"generator", scriptKit.generator}}}};
+    }
     const EmsdkInfo emsdk = Exporter::detectEmsdk(AppSettings::getEmsdkPath());
     data["web"] = {
         {"available", emsdk.found},
@@ -1454,6 +1371,7 @@ void getBuildInfoTool(const CallPtr& call) {
         const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, config, runtime ? &*runtime : nullptr);
         platforms[buildPlatformName(target)] = {{"method", buildMethodName(choice.method)},
                                                 {"compile_reasons", choice.reasons},
+                                                {"carried", choice.method == BuildMethod::Prebuilt ? choice.carried : std::vector<std::string>{}},
                                                 {"tools_missing", missingTools},
                                                 {"output_dir", FileUtils::pathToGenericUtf8(defaultPlayerDir(project, target))}};
     }
@@ -1523,6 +1441,32 @@ void getBuildInfoTool(const CallPtr& call) {
                 data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
     }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
+    call->ok(text, data);
+}
+
+// ------------------------------------------------------------------ edit_build_shaders
+
+void editBuildShadersTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    ShaderOverrides next = project->getShaderOverrides();
+    std::string error;
+    const bool editing = args.contains("add") || args.contains("exclude") || args.contains("remove") || args.contains("clear");
+    if (editing && !editShaderOverrides(args, next, error)) {
+        call->fail(error);
+        return;
+    }
+    const ShaderOverrides& current = project->getShaderOverrides();
+    const bool changed = editing && (next.additions != current.additions || next.exclusions != current.exclusions);
+    if (changed && !commitShaderOverrides(project, next, error)) {
+        call->fail(error);
+        return;
+    }
+    Json data = shaderOverridesJson(project->getShaderOverrides());
+    const std::string text = std::string(changed ? "Shader overrides set (one project undo step, project.yaml saved): "
+                                         : editing ? "Shader overrides unchanged (no undo step): " : "Shader overrides: ") +
+                             std::to_string(data["added"].size()) + " added, " + std::to_string(data["excluded"].size()) +
+                             " excluded besides the scenes' own shaders.";
     call->ok(text, data);
 }
 
@@ -2397,8 +2341,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Get Build Info";
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
-            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for build_project "
-            "shaders), running job, last result. Call before build_project.";
+            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
+            "running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)}
         });
@@ -2446,6 +2390,26 @@ void registerBuildTools(McpRegistry& registry) {
         tool.annotations.openWorld = true;
         tool.allowedWhilePlaying = false;
         tool.handler = buildProjectTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_build_shaders";
+        tool.title = "Edit Build Shaders";
+        tool.description =
+            "Build Settings > Shaders without building: add or exclude shader keys besides the ones the scenes need "
+            "(keys from get_build_info include_shaders), remove a key's override, clear all. One project undo step; "
+            "no arguments lists them. build_project uses them.";
+        tool.inputSchema = object({
+            {"add", array(stringItem, "")},
+            {"exclude", array(stringItem, "")},
+            {"remove", array(stringItem, "")},
+            {"clear", boolean("")}
+        });
+        tool.group = "shipping";
+        tool.allowedWhilePlaying = false;
+        tool.handler = editBuildShadersTool;
         registry.addTool(std::move(tool));
     }
 

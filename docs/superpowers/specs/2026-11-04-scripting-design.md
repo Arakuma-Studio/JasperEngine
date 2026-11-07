@@ -639,3 +639,46 @@ Tests: the files of section 10. Docs: the files of 6.9.
   today; their forward-slash rule applies unchanged.
 - No dependency on: `export-pipeline`, `build-toolchain`, `mobile-shipping`, `draw-perf`, `ssr-probes`,
   `water-reflections`, `water-boats`, `platform-lifecycle`.
+
+## Deviations
+
+Recorded while implementing on `dc/scripting` (2026-11-04).
+
+1. **`LuaPropertiesResult` gains flags, not statuses.** `returnedTable` and `noPropertiesField` instead of
+   `NoPropertiesTable` / `NotATable` status values (6.3): `ProjectChecks::checkLuaScript` (and so MCP
+   `check_script`) reports every non-`Ok` status as an error, and a script without properties is not one.
+2. **One isolated Lua state per file, not per pass** (6.3): each distinct file still runs once per pass, but in a
+   state of its own, so one script's top-level globals never leak into the next one's read.
+3. **Editor test files.** The project-backed tests of 10 share one headless project in
+   `editor/tests/project/ScriptingEditorTest.cpp` (`ScriptingEditor.*`: the property refresh, `ScriptAttach`,
+   and ModelLoadCmd's part settings) instead of `ScriptPropertiesRefreshTest.cpp`, `ScriptAttachTest.cpp` and
+   `ModelLoadPartSettingsTest.cpp`; the two-part glTF writer is shared in `editor/tests/support/TwoPartGltf.h`.
+4. **The bool-default guard covers single bindings only** (6.4.3): an overload set picks its overload by the
+   argument count, so its full-arity form always gets every argument (Lattice `addFollower` is such a set).
+   On `main` the guard finds exactly `ActionSystem.actionStart(newRun)` and `MeshSystem.loadGLTF(changeRootTransform)`.
+5. **Stubs mark trailing `std::optional` parameters optional** (`parser.py` `to_lua_sig`): the wrappers of 6.4
+   show `newRun?`, `wake?`, `worldPositionStays?` with their documented defaults, instead of `boolean|nil`.
+6. **MCP text and its eval cases.** `search_engine_api`'s description is unchanged; its results carry
+   `cpp_callable: false` and `cpp_note`, and `set_properties` warns on a model made of parts (both in
+   `structuredContent`). Each of those and the new `lua-api.md` sections (hierarchy, wake default, model
+   parts) has a case in `tools/mcp/eval/cases.py` (`guard_model_parts_mesh`, `guard_cpp_lua_only_static`,
+   `guard_lua_api_hierarchy_and_defaults`, `guard_lua_api_model_parts`); `test_grade.py` passes, the live
+   eval was not run (it needs Orquester-managed accounts). Lines without a case were cut: the Add Script
+   line of `lua-scripting.md` and the hierarchy and completion lines of `cpp-scripting.md`.
+7. **Add Component's script rows** come through `ComponentAddDialog::setScripts(scripts, onScript)` after
+   `open()` rather than two more `open()` parameters (its other callers stay as they are).
+8. **Drops and picks report through `ScriptAttach::attachFile`** (Console warnings: outside the Lua directory,
+   no header beside a `.cpp`, already attached), shared by the Inspector and the Hierarchy.
+9. **The root Mesh section of a parts model** draws the note and Select Parts, then the usual fields disabled
+   (`drawMeshComponentFields` inside `BeginDisabled`).
+10. **The Module row is not UI-tested.** `test_inspector_add_script.py` clicks Add Script, picks a Lua script and
+    drops one on the Hierarchy; the edit popup's read-only Module row (5.2) did not open under xdotool in the
+    harness (the pen button's click registered no popup), so that row is verified by reading only.
+11. **Main's mesh LOD and GPU-instancing settings** (merged after the spec) follow the 5.8 rule: they write
+    every part of a model made of parts and survive a ModelLoadCmd rebuild with the other part settings.
+12. **`editor-integration.md` is unchanged.** Its line naming "the Add Script dialog" stays true: the New Script
+    dialog is now reached from Add Script > New Script..., and it still writes the class line.
+13. **Winding order is not carried across a rebuild** (6.6 listed it): the loader derives it from the node's
+    transform, which a re-exported file may mirror; carrying the old one would draw the mirrored node inside out.
+14. **The refused-call log flag lives on `ModelComponent`** (`refusedPartsCallLogged`, runtime only, not saved):
+    once per model, and gone with the model or its scene, instead of a process-wide set.

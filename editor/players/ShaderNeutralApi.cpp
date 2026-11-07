@@ -133,13 +133,14 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "setLayerCollisionMask"
         }},
         // scene layers and loading, the canvas and input routing, time, threads, events (not the
-        // texture or atmosphere quality setters, nor rendering into a framebuffer)
+        // texture or atmosphere quality setters, nor rendering into a framebuffer; the foliage distance only
+        // moves the chunks' fades, drawn with the variants their scene cooked)
         {"Engine", {
             "setScene", "getScene", "addSceneLayer", "executeSceneOnce", "removeScene",
             "removeAllSceneLayers", "removeAllScenes", "isSceneRunning", "hasScenesToExecuteOnce",
             "getMainScene", "getLastScene", "pauseGameEvents", "setCanvasSize", "getTextureQuality",
             "getTextureMemoryBudget", "getTextureMemoryUsage", "isTextureFormatSupported",
-            "isTextureLowMemoryFallback", "getAtmosphereQuality", "setCallTouchInMouseEvent",
+            "isTextureLowMemoryFallback", "getAtmosphereQuality", "foliageDistanceScale", "resetFoliageDistanceScale", "setCallTouchInMouseEvent",
             "isUIEventReceived", "wantsGamepadNavigation", "setUpdateTimeMS", "setMousePosition",
             "isHeadless", "quit", "startAsyncThread", "commitThreadQueue", "endAsyncThread", "isAsyncThread",
             "isViewLoaded", "setMaxResourceLoadingThreads", "getQueuedResourceCount",

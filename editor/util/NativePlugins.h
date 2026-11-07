@@ -92,6 +92,14 @@ namespace jasperengine::editor::NativePlugins {
     // ("line 2: mismatched element ...")
     std::string xmlFragmentError(const std::string& xml);
 
+    // ---- Apple SDK bundles of the plugin folders
+    // The binary is a static archive ("!<arch>\n"): linked, not embedded
+    bool isStaticArchive(const fs::path& binary);
+    // The binary of a .framework (X.framework/X, or Versions/Current/X on macOS); empty if none
+    fs::path frameworkBinary(const fs::path& framework);
+    // The binary of an .xcframework's first library (its Info.plist AvailableLibraries[0])
+    fs::path xcframeworkBinary(const fs::path& xcframework);
+
     // ---- scaffolding (Create Plugin dialog, native_plugins create)
 
     struct MethodSpec {

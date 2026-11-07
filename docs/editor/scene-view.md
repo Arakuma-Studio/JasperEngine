@@ -10,6 +10,11 @@ window of a mesh or the walls of a room around the camera (their faces point awa
 reach what is behind. Icons (lights, cameras, audio sources, probes) are drawn over everything and
 are picked first.
 
+A camera shows a compact frustum gizmo: 2 units deep in perspective, as deep as half its view's
+larger side in orthographic. Select it and the gizmo becomes its whole frustum, near to far, as in
+Unity. A perspective camera always renders with 0 < Near < Far: a Near of 0 or less draws with
+0.001 (the component keeps what was typed).
+
 - The first click on a prefab instance or a model selects its root (the outermost one for nested
   prefabs). A GameObject below a collapsed Hierarchy row selects that row. In Prefab Mode the
   prefab being edited is never the root.
@@ -82,6 +87,22 @@ A model or prefab dropped on the view lands on the surface under the pointer (a 
 terrain or a UI rect on a pickable layer; else the ground plane; else 10 units ahead), its bottom
 on the surface. With Align to Surface (or Alt held) its up axis turns onto the surface normal. A
 drop onto a mesh still preparing its picking data is refused ("Preparing surface...").
+
+## While the game plays
+
+The Scene view keeps drawing from the editor camera, with its tools and picking, while the Game
+view shows the game.
+
+- When the game loads another scene (`SceneManager.loadScene`), the Scene view shows that scene
+  from the editor camera; clicks select its GameObjects. The played scene's Hierarchy row says
+  "Not running: the game loaded ...".
+- A game that captures the cursor (mouse-look) gives it back on **Escape** in the Game view, as in
+  Unity: the game still receives the Escape key, and the status bar says how to give the cursor
+  back (click the Game view). The cursor is also the editor's whenever the Game view does not have
+  the focus. **Release Game Cursor** (Search All, or a key you bind in Edit > Shortcuts...) does
+  the same as Escape.
+- A stopped scene shown beside the game can show its child scenes' contents (Hierarchy > Show
+  Contents) while the game runs.
 
 ## Where it is kept
 

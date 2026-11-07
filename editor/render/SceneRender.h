@@ -15,6 +15,7 @@
 #include "command/Command.h"
 #include "command/CommandHistory.h"
 
+#include <array>
 #include <memory>
 #include "io/watch/FileIdentity.h"
 
@@ -36,12 +37,19 @@ namespace jasperengine::editor{
     constexpr float MIN_EDITOR_WALK_SPEED = 0.5f;
     constexpr float MAX_EDITOR_WALK_SPEED = 1010.0f;
 
+    // The camera gizmo's corners in the camera's space (near top-left, top-right, bottom-left,
+    // bottom-right, then the far ones): near to far with fullFrustum, else compact (2 units deep in
+    // perspective, half the view's larger side in orthographic, never past the far plane)
+    std::array<Vector3, 8> cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum);
+
     struct CameraObjects{
         Sprite* icon = nullptr;
         LineRenderer* lines = nullptr;
 
         CameraType type = CameraType::CAMERA_UI;
         bool isMainCamera = false;
+        // drawn near to far (a selected camera), else compact
+        bool fullFrustum = false;
         float yfov = 0;
         float aspect = 0;
         float nearClip = 0;
@@ -327,8 +335,9 @@ namespace jasperengine::editor{
         // selection outline of boxes: their near face (2D views), or all twelve edges
         static void fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes);
 
-        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
-        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
+        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo
+        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
+        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
         void setupCameraIcon(CameraObjects& co);
         void setupSoundIcon(SoundObjects& so);
         void setupLight2DIcon(Light2DObjects& lo);
@@ -342,6 +351,12 @@ namespace jasperengine::editor{
         void updateParticleShapeLines(Entity entity, bool selected, std::set<Entity>& current);
         void dropParticleShapeLines(const std::set<Entity>& current);
         std::map<Entity, LineRenderer*> particleShapeLines;
+
+        // Hides the icons and lines of one GameObject inactive in hierarchy (Unity draws no
+        // gizmos for those; the icon picker refuses them too); called after its update
+        virtual void hideEntityGizmos(Entity entity);
+        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones)
+        bool gizmoActive(Entity entity) const;
 
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
@@ -458,7 +473,10 @@ namespace jasperengine::editor{
         // editor gizmos and overlays. For the running scene, after the game's frame,
         // layers are the game's layer scenes framed like the game frames its canvas;
         // for a stopped scene beside it, they are its inline child scenes.
-        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
+        // replacingBase: during Play, the scene a game load put in place of this one, drawn as the
+        // base through replacingCamera (the editor camera's mirror in it) instead of this scene
+        void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers,
+            Scene* replacingBase = nullptr, Entity replacingCamera = NULL_ENTITY);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
         float getOverlayScale() const { return overlayScale; }

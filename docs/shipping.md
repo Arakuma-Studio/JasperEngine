@@ -16,7 +16,8 @@ macOS, Android, iOS or the web. It picks one of two methods:
   the game, as before. It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
-  - Google Mobile Ads (AdMob),
+  - native plugins the prebuilt player cannot carry (Java/Kotlin, Gradle dependencies, C++ plugins:
+    see "Native plugins in prebuilt builds" below),
   - or when Build Settings > Build Method says Compile.
 
   Content size is never a reason: meshes, sprites and tilemaps hold as many submeshes, bones,
@@ -36,6 +37,65 @@ treat them alike.
 A build replaces its output folder only once it is complete: it is made in
 `<folder>.staging-<pid>` and swapped in at the end, so a failed or cancelled build leaves the
 previous one as it was.
+
+## What a build checks
+
+A build either ships what the project holds or fails and says why; it never reports success with
+something missing.
+
+- **Every copy and write is checked.** A file that can't be copied or written (the disk is full, a
+  folder sits where the file goes) fails the build, naming the file and the reason. A folder that
+  can't be read is left out with the warning `W-UNREADABLE-FOLDER`.
+- **The output folder is never inside the project** (or its assets or Lua folder): the editor would
+  import the exported files as project assets. Build Settings marks such a folder in red and
+  disables Build; the command line and MCP refuse it with the same text. Below a hidden folder
+  (`.jasperengine/builds`, MCP's default) or the project's top-level `build/` is fine. A path with a `;` is refused too (CMake reads it as a list separator): rename the folder.
+- **An earlier export left inside the project is left out** of the next one (`W-EXPORT-FOLDER-SKIPPED`
+  names it): a folder with `jasperengine.py`, `content-manifest.json`, the web player, the game's
+  executable or its Android package. Its textures and models are not cooked either. Move it out of the project.
+- **The engine workspaces' IDE output never ships** (`.gradle`, `.idea`, `local.properties`,
+  `build/`, `xcuserdata`, `DerivedData`, `*.iml`), and a re-export leaves the IDE state of an
+  exported workspace alone: Android Studio keeps its `local.properties` and caches.
+- **Shader variants**: a scene's saved variants of a fork whose files were deleted go at its next
+  save (the build saves every scene); one that only Build Settings or the warm-up list still names is
+  left out with `W-SHADER-FORK-MISSING`. Stop saves the variants of what scripts made during Play
+  (also in scenes a load replaced), so the build ships them.
+- **A scene never saved** ships as the editor holds it (`W-SCENE-NOT-SAVED`; Build Settings lists it
+  with a **Save...** button). One that is not open either fails the build.
+- **Build errors**: a failed compile names its first error in the message ("Compiling failed with 2
+  error(s). First: scripts/Player.cpp:12: ..."), lists up to 20 in the Build dialog (each opens the
+  file at the line; **Copy Errors** copies them) and repeats them at the end of the log. The Console
+  counts compiler errors and warnings with its Error and Warning counters.
+- **Warnings** of every build are listed when it completes ("Build completed with 2 warning(s)"),
+  by the command line, and in MCP's `warnings[]`.
+
+**D3D11 shaders** ship as bytecode when the build runs on Windows (the game skips compiling them);
+a Windows build made on Linux or macOS ships their HLSL source, which the game compiles when first
+used (the result's note says so).
+
+## Building an exported source project
+
+Export source (Build Settings, `jasperengine-editor export --project <dir> --out <dir>`, MCP
+`build_project mode: source`) writes a CMake project with the engine, the game and two ways in:
+
+- `cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build` for this
+  computer's platform.
+- `./jasperengine.py --platform <linux|windows|macos|web|macos-xcode|ios-xcode>` (Python 3), which
+  configures and builds; `--dry-run` prints the commands and runs nothing. For `web` it runs CMake
+  with Emscripten's toolchain file (`EMSDK` set by `emsdk_env`, or `emcc` on `PATH`; Emscripten
+  6's Windows launchers work). On Windows a web build needs Ninja or mingw32-make: Ninja on
+  `PATH`, else the one Visual Studio's C++ CMake tools install (found through vswhere), else
+  mingw32-make; `--generator` picks one yourself.
+- Android: `cd workspaces/androidstudio && ./gradlew assembleRelease` (or open the folder in
+  Android Studio). Android builds have OpenGL ES 3 only, so its Build Settings preset compiles
+  the GLES3 shaders alone.
+
+The export keeps `jasperengine.py` and `gradlew` executable. A folder copied through Windows
+(NTFS has no execute bit) or an archive that drops modes needs `chmod +x jasperengine.py
+workspaces/androidstudio/gradlew`, or `python3 jasperengine.py` and `bash ./gradlew`.
+
+Project Settings > Player > Window Title can hold any text: it reaches the game's compile as
+escaped bytes, so `;`, `#`, quotes and every language build.
 
 ## Player runtimes
 
@@ -170,11 +230,72 @@ startup and every export use the same list.
   let the worker isolate the page, it runs the single-thread player. Project Settings > Player >
   Threading > Web: Multithreaded decides whether the pthreads player ships at all. Serve the
   folder over HTTP (`python3 tools/web/serve.py --root <folder>`): `file://` does not load
-  WebAssembly.
+  WebAssembly. The page is always `index.html` (what web hosts such as itch.io open; a compiled
+  build used to name it `<app>.html`, and a re-export removes that one). Its icon is Web >
+  Favicon, else the Player icon (a PNG), else the JasperEngine logo. A source export built with
+  `jasperengine.py --platform web` writes `index.html` next to `<app>.export.html` and names it at
+  the end.
 - **Windows**: the editor and `jasperengine-editor` (CLI exports included) need Windows 10
   version 1903 or later, which runs them in the UTF-8 code page so file names in any language
   work; on older Windows (Server 2019 too) they stop with a message. Windows games run on older
   Windows as well. See [editor/text-and-languages.md](editor/text-and-languages.md).
+
+## Native plugins in prebuilt builds
+
+A prebuilt build never drops `plugins/native` or a native setting silently. For the platform it
+builds, each one is either **carried** into the build (Build Settings > Native Plugins lists them,
+`get_build_info` and `build_project` say `carried`) or makes the build **compile from source**,
+with a reason that names the files:
+
+| Platform | Carried by a prebuilt build | Compiles from source |
+|---|---|---|
+| Linux, Windows | (nothing native applies) | C++ plugins (`plugins/native/cpp`) |
+| macOS | `macos.plist_entries`, the privacy manifest | C++ plugins, Objective-C/Swift plugins and SDKs of `apple/` and `macos/`, `macos.frameworks` |
+| iOS | Objective-C/Swift plugins and SDKs of `apple/` and `ios/`, `ios.swift_packages`, `ios.frameworks`, `ios.plist_entries`, `ios.plist_xml`, `ios.entitlements_xml`, `ios.deployment_target`, the privacy manifest | C++ plugins, `ios.cocoapods` (they need `pod install`), an iOS player runtime too old to take plugins |
+| Android | `android.extra_permissions`, `android.manifest_xml`, `android.manifest_application_xml` | C++ plugins, Java/Kotlin, `libs/` AARs and JARs, `res/`, the plugin `AndroidManifest.xml`, `proguard-rules.pro`, `android.gradle_*`, manifest XML with `tools:` merge rules |
+| Web | `plugins/native/web/*.js`, `web.script_urls` | C++ plugins |
+
+The prebuilt iOS build is an Xcode project, so the game's Objective-C and Swift plugins are added
+to it as the source export adds them. Android and macOS players are finished packages: their
+native code needs Gradle or a compiler, so an Android or iOS build that must compile says to
+export the source project (File > Build Settings > Export source, then Android Studio or Xcode;
+Xcode on a Mac for macOS plugins).
+
+A Lua mock (`native_mocks/<Plugin>.lua`) answers where a plugin has no code. When a build would
+ship one in place of real code (an Android-only ads plugin in a Windows build), the build warns
+`W-NATIVE-MOCK`, and the game logs once, the first time the mock answers. A macOS build without
+Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so.
+
+## Privacy manifest (iOS and macOS)
+
+Every iOS and macOS build ships a privacy manifest, `PrivacyInfo.xcprivacy` (the app's root on
+iOS, `Contents/Resources` on macOS). App Store Connect refuses an app that calls a required-reason
+API without declaring it. The manifest is made at each build from three parts:
+
+1. **The engine's entries**, always there: UserDefaults `CA92.1` (UserSettings: only the game
+   reads what it saves), file timestamps `C617.1` (the game's own files), system boot time
+   `35F9.1` (frame and physics timers). The engine tracks nobody and collects no data.
+   `tools/check_apple_privacy.py` (run by `tools/check-changed`) fails when engine code starts to
+   use a category the manifest does not declare.
+2. **The project's additions**, in Project Settings > Player > iOS (or macOS) > Privacy Manifest,
+   shared by both platforms: Tracking, Tracking Domains, Collected Data (type, linked, tracking,
+   purposes) and Required Reason APIs your own native code adds. OK makes them one undoable step.
+   Agents: `set_project_settings` `apple.privacy_tracking`, `apple.privacy_tracking_domains`,
+   `apple.privacy_collected_data`, `apple.privacy_accessed_apis`.
+3. **The plugins' manifests**: every `PrivacyInfo.xcprivacy` in `plugins/native/apple` and
+   `plugins/native/ios` (or `macos`), the one inside a static `.framework` or `.xcframework`, and
+   the one inside an SDK's resource `.bundle` (the bundle is copied into the app). A dynamic
+   framework is embedded with its own manifest and is left alone.
+
+Lists are joined: tracking is on when any part tracks, and domains, data types, purposes and
+reasons are merged. Preview shows the result; `native_plugins {action: "privacy_manifest"}` gives
+it to agents with where each entry came from. The build warns `W-PRIVACY-DOMAINS` when tracking is
+on without a domain, and `W-PRIVACY-ATT` when iOS tracks without `NSUserTrackingUsageDescription`
+in Project Settings > Native Plugins > iOS > Info.plist Entries or Info.plist XML. Apple names iOS, iPadOS, tvOS,
+visionOS and watchOS for the required-reason rule; macOS builds ship the manifest too.
+
+Ads and in-app purchases go through the native bridge: docs/mcp/guide/native-bridge.md, section
+10, has a complete ads example.
 
 ## Running a player from scripts and CI
 
@@ -183,7 +304,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | Option | Effect |
 |---|---|
 | `--headless` | no window (Linux still needs an X server: Xvfb in CI) |
-| `--quit-after N` | quit after N frames |
+| `--quit-after N` | quit after N drawn frames (a minimized or hidden window updates without drawing: use `--headless` in automation) |
 | `--after-ready` | count the frames from "Engine ready:" (every scene loaded, no shader being made, no texture loading) |
 | `--fixed-fps F` | a fixed time step of 1/F seconds |
 | `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default); a frame drawn with shaders still being made or textures still loading waits for them (the game held), up to 120 s, then exits 4 naming them |

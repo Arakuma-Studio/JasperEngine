@@ -53,7 +53,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write; Points' auto: depth written only when opaque).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
@@ -308,6 +308,29 @@ uniform u_fs_customParams {
   `read_engine_source`): its parameters then get labels and defaults, and it takes
   `shaderTextures` and `shaderFeatures` like a library shader.
 
+## Scene default values
+
+A scene's default shader of a type (`default_mesh_shader`, `default_ui_shader`, `default_sky_shader`,
+`default_points_shader`, `default_lines_shader`) draws every object of that type without a shader of
+its own (a mesh: every submesh whose material names none). Its property values can be set once for
+the scene, and those objects inherit them:
+
+- `set_shader_uniform` with `shader_type` (`mesh`, `ui`, `sky`, `points`, `lines`) and no
+  `entity` sets one; `remove: true` drops it. `get_shader_uniforms` with `shader_type` lists the
+  values, `used_by` (how many objects draw with it), the members, `unused_values` (kept from
+  another shader). The whole map is also the scene setting `default_<type>_shader_uniforms`
+  (`{member: value | null}` merges, `null` clears). Each edit is one undo step; the values are
+  saved in the scene and reach exported games.
+- What a member renders with, first to last: the global it is bound to, the object's own value
+  (a mesh's material, then the mesh), the scene default value, the shader's `@property` default,
+  zero. `get_shader_uniforms` on an object gives each member (and each library parameter) its
+  `effective` value and `source` (`global`, `own`, `fallback`, `scene_default`,
+  `shader_default`, `zero`): use it to check which layer wins.
+- A value the whole scene shares (a palette, a stylised rim colour) goes here once, not on each
+  object. A value that changes every frame or is shared by every scene is a Shader Global (below).
+- Lua: `scene:setDefaultShaderUniform(ShaderType.MESH, "rimColor", Vector4(1, 0.2, 0, 1))`,
+  `getDefaultShaderUniform`, `hasDefaultShaderUniform`, `removeDefaultShaderUniform`.
+
 ## Global values
 
 Values set once and read by every shader that declares them: Unity's `Shader.SetGlobalColor`
@@ -546,10 +569,11 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   (its `transparent` then decides the queue, whatever the blend), `transparent = true`; the
   inspector's error row has a button for the one that applies, `get_entity`'s `fix` is it.
   Points have no queue: they always draw after the copy.
-- **The copy holds what was drawn before the first reader.** Every camera pass copies right
-  before the first draw reading the colour: a 3D pass after its opaque queue, the sky and the
-  transparent draws the queue puts first (those a water's surface covers, see Water below), a 2D
-  pass (or `transparentSort` off) everything drawn before it in hierarchy order. Two glass panes
+- **The copy holds what was drawn before the first reader.** A 3D pass copies after its opaque
+  queue and the sky, and again before its first queued reader when the queue drew before it
+  (those a water's surface covers, see Water below) and nothing else drew since; a 2D pass (or
+  `transparentSort` off) copies right before the first reader, with everything drawn before it in
+  hierarchy order. Two glass panes
   at the same depth layer do not see each other (as Unity URP's opaque texture); a reader over
   one of a higher water rank (a refracting pool over a refracting lake) gets the copy again, at
   most four copies a pass (`get_render_stats` `scene_color_copies`). UI, lines and gizmos are
@@ -643,7 +667,9 @@ on a sloped mesh.
 **Layering.** In a 3D pass, transparent draws are ranked around the visible waters: under a
 surface the camera looks down through (or above one it looks up through) draws before the water,
 on the camera's side after it, whatever the distances of their transforms (a fish under a large
-lake no longer draws over it). The rank comes after `sortPriority`, which still wins.
+lake no longer draws over it). Draws over a water's area sort with that water, where it is; the
+rest by their own distance. Only flat waters layer (a sloped river sorts by distance). The rank
+comes after `sortPriority`, which still wins.
 
 **Seen from below.** `UNDERSIDE` draws the surface from under it; the water between the camera
 and everything it sees is the post-process pass `library:underwater` (each colour fading at

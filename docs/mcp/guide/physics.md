@@ -72,15 +72,15 @@ any field.
 
 | | Rigidbody (3D) | Rigidbody2D |
 |---|---|---|
-| force at center | `applyForce(force)` | `applyForceToCenter(force, wake)` |
-| force at point | `applyForce(force, point)` | `applyForce(force, point, wake)` (no 1-argument form) |
-| torque | `applyTorque(torque)` | `applyTorque(torque, wake)` |
-| impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse, wake)` |
+| force at center | `applyForce(force)` | `applyForceToCenter(force [, wake])` |
+| force at point | `applyForce(force, point)` | `applyForce(force, point [, wake])` (no 1-argument form) |
+| torque | `applyTorque(torque)` | `applyTorque(torque [, wake])` |
+| impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse [, wake])` |
 | velocity | `linearVelocity` (Lua property) / `setLinearVelocity` (C++) | `linearVelocity` (Lua, points/s) |
 | teleport | `body.position`, `body.rotation` (Lua) / `setPosition`, `setRotation` (C++) | `body.position`, `body.angle` (Lua) / `setPosition`, `setAngle` (C++) |
 
-There is NO `applyForceToCenter` on the 3D `Rigidbody`. In Lua pass every argument (no C++
-default arguments): a missing `wake` reads as false.
+There is NO `applyForceToCenter` on the 3D `Rigidbody`. `wake` defaults to true (a sleeping body
+wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
 
 - Never move a body by writing its GameObject's transform from `onFixedUpdate`
   (`object.position = ...`, `setPosition`): the body is synced from the transform before the

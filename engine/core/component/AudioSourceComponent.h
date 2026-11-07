@@ -133,6 +133,9 @@ namespace jasperengine{
         FunctionSubscribe<void()> onPause;
         FunctionSubscribe<void()> onStop;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onStart); f(onPause); f(onStop); }
+
         double volume = 1;
         float speed = 1;
         float pan = 0; // -1 is left, 0 is middle and 1 is right

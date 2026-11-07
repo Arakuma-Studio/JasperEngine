@@ -9,6 +9,7 @@
 #include "Factory.h"
 #include "Stream.h"
 #include "component/ButtonComponent.h"
+#include "component/UISelectable.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -71,17 +72,78 @@ namespace {
 
     // ---------------------------------------------------------------- Button
 
+    // what a Button shows by its transition and navigation mode (Unity's Inspector)
+    bool buttonTints(const void* button) {
+        const ButtonTransition t = static_cast<const ButtonComponent*>(button)->transition;
+        return t == ButtonTransition::COLOR_TINT || t == ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+    }
+    bool buttonSwaps(const void* button) {
+        const ButtonTransition t = static_cast<const ButtonComponent*>(button)->transition;
+        return t == ButtonTransition::SPRITE_SWAP || t == ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+    }
+    bool buttonNavigationExplicit(const void* button) {
+        return static_cast<const ButtonComponent*>(button)->navigationMode == NavigationMode::EXPLICIT;
+    }
+    bool buttonNavigationWraps(const void* button) {
+        const NavigationMode mode = static_cast<const ButtonComponent*>(button)->navigationMode;
+        return mode != NavigationMode::NONE && mode != NavigationMode::EXPLICIT;
+    }
+
+    // every Button field redraws the button, from any edit path (Inspector, MCP, undo)
+    constexpr uint64_t kButton = UpdateFlags_Button;
+
     constexpr FieldDesc kButtonFields[] = {
-        JE_FIELD(ButtonComponent, label, .ops = &ops::Entity),
-        JE_FIELD(ButtonComponent, textureNormal, .uiOrder = 2),
-        JE_FIELD(ButtonComponent, textureHovered, .uiOrder = 3),
-        JE_FIELD(ButtonComponent, texturePressed, .uiOrder = 4),
-        JE_FIELD(ButtonComponent, textureDisabled, .uiOrder = 5),
-        JE_FIELD(ButtonComponent, colorNormal, .flags = ColorLinear, .uiOrder = 6),
-        JE_FIELD(ButtonComponent, colorHovered, .flags = ColorLinear, .uiOrder = 7),
-        JE_FIELD(ButtonComponent, colorPressed, .flags = ColorLinear, .uiOrder = 8),
-        JE_FIELD(ButtonComponent, colorDisabled, .flags = ColorLinear, .uiOrder = 9),
-        JE_FIELD(ButtonComponent, disabled, .uiOrder = 1),
+        JE_FIELD(ButtonComponent, label, .ops = &ops::Entity, .updateFlags = kButton, .uiOrder = 30),
+        JE_FIELD(ButtonComponent, textureNormal, .updateFlags = kButton, .label = "Normal Texture", .group = "Transition",
+                 .visibleIf = &buttonSwaps, .uiOrder = 10),
+        JE_FIELD(ButtonComponent, textureHovered, .updateFlags = kButton, .label = "Highlighted Texture", .group = "Transition",
+                 .visibleIf = &buttonSwaps, .uiOrder = 11),
+        JE_FIELD(ButtonComponent, texturePressed, .updateFlags = kButton, .label = "Pressed Texture", .group = "Transition",
+                 .visibleIf = &buttonSwaps, .uiOrder = 12),
+        JE_FIELD(ButtonComponent, textureDisabled, .updateFlags = kButton, .label = "Disabled Texture", .group = "Transition",
+                 .visibleIf = &buttonSwaps, .uiOrder = 14),
+        JE_FIELD(ButtonComponent, colorNormal, .flags = ColorLinear, .updateFlags = kButton, .label = "Normal Color", .group = "Transition",
+                 .visibleIf = &buttonTints, .uiOrder = 3),
+        JE_FIELD(ButtonComponent, colorHovered, .flags = ColorLinear, .updateFlags = kButton, .label = "Highlighted Color", .group = "Transition",
+                 .visibleIf = &buttonTints, .uiOrder = 4),
+        JE_FIELD(ButtonComponent, colorPressed, .flags = ColorLinear, .updateFlags = kButton, .label = "Pressed Color", .group = "Transition",
+                 .visibleIf = &buttonTints, .uiOrder = 5),
+        JE_FIELD(ButtonComponent, colorDisabled, .flags = ColorLinear, .updateFlags = kButton, .label = "Disabled Color", .group = "Transition",
+                 .visibleIf = &buttonTints, .uiOrder = 7),
+        // the Inspector draws it inverted, as Unity's Interactable (InspectorButton.cpp)
+        JE_FIELD(ButtonComponent, disabled, .flags = Hidden, .updateFlags = kButton, .uiOrder = 1),
+        // ui-components: Unity's Selectable (appended: the YAML keys above keep their order)
+        JE_FIELD(ButtonComponent, textureSelected, .updateFlags = kButton, .label = "Selected Texture", .group = "Transition",
+                 .visibleIf = &buttonSwaps, .uiOrder = 13),
+        JE_FIELD(ButtonComponent, colorSelected, .flags = ColorLinear, .updateFlags = kButton, .label = "Selected Color", .group = "Transition",
+                 .visibleIf = &buttonTints, .uiOrder = 6),
+        JE_FIELD(ButtonComponent, transition, .enumDesc = &enums::kButtonTransition, .updateFlags = kButton,
+                 .tooltip = "What the button changes by its state: the color, the texture, both or nothing (then animate the image yourself)",
+                 .group = "Transition", .uiOrder = 2),
+        JE_FIELD(ButtonComponent, fadeDuration, .flags = Clamped, .updateFlags = kButton, .unit = Unit::Seconds, .min = 0.0f, .max = 10.0f,
+                 .step = 0.01f, .tooltip = "Seconds the color and scale take to change (UI time: also while the game is paused)",
+                 .group = "Transition", .uiOrder = 8),
+        JE_FIELD(ButtonComponent, scaleHovered, .flags = Clamped, .updateFlags = kButton, .min = 0.01f, .max = 10.0f, .step = 0.01f,
+                 .label = "Highlighted Scale", .group = "Transition", .uiOrder = 15),
+        JE_FIELD(ButtonComponent, scalePressed, .flags = Clamped, .updateFlags = kButton, .min = 0.01f, .max = 10.0f, .step = 0.01f,
+                 .label = "Pressed Scale", .group = "Transition", .uiOrder = 16),
+        JE_FIELD(ButtonComponent, scaleSelected, .flags = Clamped, .updateFlags = kButton, .min = 0.01f, .max = 10.0f, .step = 0.01f,
+                 .label = "Selected Scale", .group = "Transition", .uiOrder = 17),
+        JE_FIELD(ButtonComponent, navigationMode, .enumDesc = &enums::kNavigationMode, .updateFlags = kButton, .label = "Navigation",
+                 .tooltip = "How the arrow keys, the d-pad and a TV remote move the selection from this button",
+                 .group = "Navigation", .uiOrder = 20),
+        JE_FIELD(ButtonComponent, wrapAround, .updateFlags = kButton, .group = "Navigation", .visibleIf = &buttonNavigationWraps, .uiOrder = 21),
+        JE_FIELD(ButtonComponent, selectOnUp, .ops = &ops::Entity, .updateFlags = kButton, .group = "Navigation",
+                 .visibleIf = &buttonNavigationExplicit, .uiOrder = 22),
+        JE_FIELD(ButtonComponent, selectOnDown, .ops = &ops::Entity, .updateFlags = kButton, .group = "Navigation",
+                 .visibleIf = &buttonNavigationExplicit, .uiOrder = 23),
+        JE_FIELD(ButtonComponent, selectOnLeft, .ops = &ops::Entity, .updateFlags = kButton, .group = "Navigation",
+                 .visibleIf = &buttonNavigationExplicit, .uiOrder = 24),
+        JE_FIELD(ButtonComponent, selectOnRight, .ops = &ops::Entity, .updateFlags = kButton, .group = "Navigation",
+                 .visibleIf = &buttonNavigationExplicit, .uiOrder = 25),
+        JE_FIELD(ButtonComponent, selectOnEnable, .updateFlags = kButton,
+                 .tooltip = "Becomes the scene's selection when it comes on: keyboards, gamepads and TV remotes then drive the menu (Unity's First Selected)",
+                 .group = "Navigation", .uiOrder = 26),
     };
 
     // ---------------------------------------------------------------- Scrollbar, Progress Bar

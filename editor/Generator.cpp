@@ -10,6 +10,7 @@
 #include "EditorVersion.h"
 #include "editor/Out.h"
 #include "AppSettings.h"
+#include "util/CMakeText.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
@@ -39,6 +40,7 @@
 #include <cstring>
 #include <cerrno>
 #include <map>
+#include <sstream>
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
@@ -397,7 +399,12 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         Out::error("%s", msvcError.c_str());
         return false;
     }
-    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
+    // its errors (CMake Error at ...) repeated at the end of a failed Play build, as the compile's are
+    buildErrors.clear();
+    bool result = commandRunner.run(cmakeArgv, projectPath, [this](const std::string& line) {
+        Out::build("%s", line.c_str());
+        buildErrors.add(line);
+    }, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -443,8 +450,10 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     MsBuildProgress msbuild(buildPath, configType);
     const std::string row = statusRow;
     float lastFraction = -1.0f;
+    buildErrors.clear();
     return commandRunner.run(buildArgv, buildPath, [&](const std::string& line) {
         Out::build(line);
+        buildErrors.add(line);
         float fraction = -1.0f;
         if (msbuild.consumeLine(line, fraction) || parseBuildProgress(line, fraction)) {
             if (fraction - lastFraction >= 0.01f || fraction >= 1.0f) {
@@ -459,11 +468,13 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     }, msvcEnv.empty() ? nullptr : &msvcEnv);
 }
 
-// The Jolt configuration the editor's engine library was built with, as compile definitions.
-// It changes Jolt's class layouts (the engine's PhysicsSystem holds a JPH::PhysicsSystem by
-// value), so scripts linking that library compile Jolt's headers the same way: the object
-// layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own NDEBUG.
-static std::string joltCompileDefinitions() {
+// The Jolt and Box2D configuration the editor's engine library was built with, as compile
+// definitions. Jolt's changes its class layouts (the engine's PhysicsSystem holds a
+// JPH::PhysicsSystem by value), so scripts linking that library compile Jolt's headers the same
+// way: the object layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own
+// NDEBUG. JPH_SHARED_LIBRARY and BOX2D_DLL import both libraries from the engine library, which
+// carries all of them (engine/CMakeLists.txt; MSVC links Jolt's data only through dllimport).
+std::string editor::Generator::physicsCompileDefinitions() {
     std::string definitions = "JPH_OBJECT_LAYER_BITS=" + std::to_string(JPH_OBJECT_LAYER_BITS);
 #ifdef JPH_DEBUG
     // empty, as Jolt defines it, so its own definition is no redefinition
@@ -486,6 +497,9 @@ static std::string joltCompileDefinitions() {
 #ifdef JPH_SHARED_LIBRARY
     definitions += " JPH_SHARED_LIBRARY";
 #endif
+#ifdef BOX2D_DLL
+    definitions += " BOX2D_DLL";
+#endif
     return definitions;
 }
 
@@ -504,19 +518,9 @@ static std::string toProjectRootCMakePath(const fs::path& projectPath, const fs:
 }
 
 std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& projectPath, const fs::path& assetsPath, const fs::path& luaPath) {
-    // The title crosses two quoting layers: the generated CMake string and the
-    // C string literal passed to the platform backend. Escape both, matching the
-    // exported-project configuration produced by Exporter.
-    std::string title;
-    for (char c : windowSettings.title) {
-        if (c == '\\' || c == '"') title += '\\';
-        title += c;
-    }
-    std::string cmakeTitle;
-    for (char c : title) {
-        if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
-        cmakeTitle += c;
-    }
+    // The title becomes the C string literal passed to the platform backend: carried as
+    // escaped bytes (util/CMakeText.h), as in the exported project's configuration.
+    const std::string cmakeTitle = cmaketext::cStringDefinitionValue(windowSettings.title);
 
     std::string content;
     content += "if (NOT JASPERENGINE_EDITOR_PLUGIN)\n";
@@ -652,6 +656,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
@@ -1266,19 +1271,19 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
 
     // Both modes link the editor's engine library, which always has both physics backends.
     // Jolt's configuration changes its class layouts, so it has to match the engine's.
-    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + joltCompileDefinitions() + ")\n\n";
+    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + physicsCompileDefinitions() + ")\n\n";
+    cmakeContent += "# libjasperengine is always an editor engine build, whatever JASPERENGINE_LIB_DIR names: the\n";
+    cmakeContent += "# project matches its linkage and data layouts in both modes, so they stay ABI-compatible:\n";
+    cmakeContent += "#  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
+    cmakeContent += "#    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
+    cmakeContent += "#  - JASPERENGINE_EDITOR keeps the editor-only layouts\n";
+    cmakeContent += "#    ABI-compatible across the DLL boundary.\n";
+    cmakeContent += "add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n\n";
 
     cmakeContent += getToolchainFloorCheck();
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(JASPERENGINE_EDITOR_PLUGIN)\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_EDITOR_PLUGIN)\n";
-    cmakeContent += "    # The editor links its own engine build, which is compiled as a shared\n";
-    cmakeContent += "    # library with editor-specific data layouts. The plugin must match both:\n";
-    cmakeContent += "    #  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
-    cmakeContent += "    #    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
-    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps the editor-only layouts\n";
-    cmakeContent += "    #    ABI-compatible across the DLL boundary.\n";
-    cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
 
     // Match the engine DLL shipped beside this editor, which JASPERENGINE_LIB_DIR defaults
@@ -1337,10 +1342,6 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "include(${INTERNAL_DIR}/LocalPaths.cmake OPTIONAL)\n";
     cmakeContent += "if(NOT DEFINED JASPERENGINE_LIB_DIR OR JASPERENGINE_LIB_DIR STREQUAL \"\")\n";
     cmakeContent += "    set(JASPERENGINE_LIB_DIR \"${JASPERENGINE_DEFAULT_LIB_DIR}\")\n";
-    cmakeContent += "    # Default target is the editor's own engine build (shared, editor layouts).\n";
-    cmakeContent += "    # Match its macros so symbols link (JASPERENGINE_SHARED -> dllimport on MSVC) and\n";
-    cmakeContent += "    # data layouts stay ABI-compatible (JASPERENGINE_EDITOR), avoiding ODR/ABI mismatch.\n";
-    cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
 
     cmakeContent += "# Find jasperengine library in specified location. find_library() caches its\n";
@@ -1351,6 +1352,13 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "find_library(JASPERENGINE_LIB NAMES jasperengine PATHS \"${JASPERENGINE_LIB_DIR}\" NO_DEFAULT_PATH)\n";
     cmakeContent += "if(NOT JASPERENGINE_LIB)\n";
     cmakeContent += "    message(FATAL_ERROR \"JasperEngine library not found in ${JASPERENGINE_LIB_DIR}\")\n";
+    cmakeContent += "endif()\n";
+    cmakeContent += "# The macros above are the editor engine's: a static engine build has other layouts\n";
+    cmakeContent += "# (MinGW's import library is libjasperengine.dll.a)\n";
+    cmakeContent += "if((JASPERENGINE_LIB MATCHES \"\\\\.a$\" AND NOT JASPERENGINE_LIB MATCHES \"\\\\.dll\\\\.a$\") OR\n";
+    cmakeContent += "   (WIN32 AND NOT EXISTS \"${JASPERENGINE_LIB_DIR}/jasperengine.dll\" AND NOT EXISTS \"${JASPERENGINE_LIB_DIR}/libjasperengine.dll\"))\n";
+    cmakeContent += "    message(FATAL_ERROR \"${JASPERENGINE_LIB} is not an editor engine library (a shared one): \"\n";
+    cmakeContent += "        \"JASPERENGINE_LIB_DIR must name the folder of a JasperEngine Editor and its engine library.\")\n";
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
     // macOS: the Objective-C native plugins run in the Play library and desktop builds too
@@ -2043,6 +2051,9 @@ void writeCompileDatabase(const fs::path& projectPath, const fs::path& projectIn
         "-DJASPERENGINE_EDITOR_PLUGIN", "-DJASPERENGINE_SHARED", "-DJASPERENGINE_EDITOR",
         "-I" + project.generic_string(),
     };
+    // the macros the scripts compile with: Jolt's class layouts follow them
+    std::istringstream physics(editor::Generator::physicsCompileDefinitions());
+    for (std::string definition; physics >> definition;) flags.push_back("-D" + definition);
     std::vector<fs::path> roots = {project};
     for (const fs::path& dir : scriptDirs) {
         const fs::path absolute = (dir.is_absolute() ? dir : project / dir).lexically_normal();
@@ -2554,6 +2565,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
+    // Foliage Distance per platform group, written only when the project changed it
+    if (foliageDistanceScale != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
+        mainContent += "    Engine::setFoliageDistanceScaleDefaults(" + Factory::formatFloat(foliageDistanceScale[0]) + ", " +
+                       Factory::formatFloat(foliageDistanceScale[1]) + ", " + Factory::formatFloat(foliageDistanceScale[2]) + ");\n";
+    }
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
@@ -2630,6 +2646,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
             mainContent += "#else\n" + desktop;
             mainContent += "#endif\n";
+            // a shipped game: a Lua mock standing in for one of them says so once
+            mainContent += "    NativeBridge::setMockWarnings(true);\n";
         }
     }
 
@@ -2642,6 +2660,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         snprintf(mask, sizeof(mask), "0x%02X", (unsigned int)playerSettings.allowedOrientations);
         mainContent += "    Engine::setVSyncCount(" + std::string(vsyncEnabled ? "1" : "0") + ");\n";
         mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
+        // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
+        if (!playerSettings.dynamicBatching)
+            mainContent += "    Engine::setDynamicBatchingDefault(false);\n";
         mainContent += "    Screen::initialize(ScreenOrientation::" + std::string(orientationNames[orientation]) + ", " + mask + ", " +
             (playerSettings.keepScreenOn ? "true" : "false") + ");\n";
         auto appInfo = [](const ApplicationInfo& info) {
@@ -3357,6 +3378,10 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build configuration cancelled.");
             } else {
+                if (!buildErrors.errors().empty()) {
+                    Out::info("CMake configuration failed with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("CMake configuration failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);
@@ -3367,6 +3392,12 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build cancelled.");
             } else {
+                // the errors again at the end of the output, where a long build leaves the reader
+                if (!buildErrors.errors().empty()) {
+                    // not errors again: the compiler's lines count once each in the Console
+                    Out::info("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("Build failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);

@@ -1543,8 +1543,13 @@ void editor::ProjectUtils::loadLuaScriptProperties(ScriptEntry& entry, const std
 }
 
 void editor::ProjectUtils::loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName) {
-    // errors are ignored: the code may be mid-edit
-    readLuaScriptProperties(entry, scriptContent, chunkName);
+    // errors are ignored: the code may be mid-edit. A table without `properties` keeps the
+    // fields until the file is saved: this refresh has no undo, and the table may be mid-cut
+    const std::vector<ScriptProperty> previous = entry.properties;
+    const LuaPropertiesResult result = readLuaScriptProperties(entry, scriptContent, chunkName);
+    if (result.noPropertiesField) {
+        entry.properties = previous;
+    }
 }
 
 // Never the engine's state (LuaBinding::getLuaState): Lua states are not thread-safe, and Play
@@ -1581,8 +1586,18 @@ editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::runLuaScriptProp
         lua_settop(L, top);
         return result;
     }
-    if (lua_istable(L, -1) && !parseLuaPropertiesTableProtected(L, entry, &result.message)) {
-        result.status = LuaPropertiesResult::PropertyError;
+    if (lua_istable(L, -1)) {
+        result.returnedTable = true;
+        lua_getfield(L, -1, "properties");
+        result.noPropertiesField = lua_isnil(L, -1);
+        result.propertiesTable = lua_istable(L, -1);
+        lua_pop(L, 1);
+        if (result.noPropertiesField) {
+            // the script declares no properties (any it had are gone)
+            entry.properties.clear();
+        } else if (!parseLuaPropertiesTableProtected(L, entry, &result.message)) {
+            result.status = LuaPropertiesResult::PropertyError;
+        }
     }
     lua_settop(L, top);
     return result;
