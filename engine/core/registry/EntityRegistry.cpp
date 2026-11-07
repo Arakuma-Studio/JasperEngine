@@ -6,6 +6,7 @@
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -210,6 +211,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
     // S40 R18: after the last one, so no ComponentType moves
     registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
+    // S81 R58: after the last one, so no ComponentType moves
+    registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

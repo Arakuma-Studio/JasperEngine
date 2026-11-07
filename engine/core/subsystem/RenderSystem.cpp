@@ -55,6 +55,7 @@
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "particles/ParticleRender.h"
 #include "subsystem/ParticleSystemState.h"
 #include "subsystem/TrailSystem.h"
@@ -6506,7 +6507,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
         // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
-        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+        if (i == 0 && lentTexture(entity))
             submeshLoads[i].shaderInputs.baseColorTexture = true;
         // the geometry the variant draws: no skin nor morph targets under a Vertex Animation
         // (or for a .vat.glb at rest), so the passes bind none
@@ -10086,9 +10087,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 render.shareBindings(mesh.submeshes[i].render);
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
             // base colour, lent for the draw (the material keeps its own texture)
-            if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
-                if (TextureRender* fluidTexture = frameFluids->getMaterialTexture(entity))
-                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
+            if (i == 0 && hasLentTextures()){
+                if (TextureRender* lent = lentTexture(entity))
+                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, lent);
             }
 
             // its fade variant, when it fades now and the variant is ready (else its dominant
@@ -12567,7 +12568,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     render.beginLoad(ui.primitiveType);
 
     // (an Image showing a FluidSimulation's output samples it even without a texture of its own)
-    bool hasUITexture = !ui.texture.empty() || (!isText && frameFluids && frameFluids->getMaterialTexture(entity));
+    bool hasUITexture = !ui.texture.empty() || (!isText && lentTexture(entity));
 
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
@@ -12686,13 +12687,27 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 }
 
 bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) const{
-    if (!frameFluids || !frameFluids->hasMaterialFluids())
+    if (!hasLentTextures())
         return false;
     // (a material or shader that chose its blending keeps it)
     if (submesh.manifest || submesh.material.alphaMode != MaterialAlphaMode::AUTO || submesh.material.blendMode != MaterialBlendMode::AUTO)
         return false;
     bool transparent = false;
-    return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
+    return lentTexture(entity, &transparent) && transparent;
+}
+
+bool RenderSystem::hasLentTextures() const{
+    return (frameFluids && frameFluids->hasMaterialFluids()) || (frameTitles && frameTitles->hasDisplayTextures());
+}
+
+TextureRender* RenderSystem::lentTexture(Entity entity, bool* transparent) const{
+    if (frameFluids && frameFluids->hasMaterialFluids()){
+        if (TextureRender* fluid = frameFluids->getMaterialTexture(entity, transparent))
+            return fluid;
+    }
+    if (frameTitles && frameTitles->hasDisplayTextures())
+        return frameTitles->getDisplayTexture(entity, transparent);
+    return nullptr;
 }
 
 bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
@@ -14746,7 +14761,7 @@ void RenderSystem::needReloadMeshVariants() {
 SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
                                                           const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const{
     SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, mesh.submeshes[index], terrain, instmesh, hasMirror, sceneMeshShader);
-    if (index == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+    if (index == 0 && lentTexture(entity))
         inputs.baseColorTexture = true;
     return inputs;
 }
@@ -16040,6 +16055,9 @@ void RenderSystem::update(double dt){
 #endif
     // shadow maps drawn before this update hold another scene
     shadowEpoch++;
+    // the titles lend their images to this update's loads too (an untextured Image loads with
+    // a texture binding while a title lends it one)
+    frameTitles = scene->findSystem<TitleArtSystem>().get();
 
     if (paused) {
         return;
@@ -17034,6 +17052,11 @@ void RenderSystem::drawFramePasses(){
     frameFluids = scene->findSystem<FluidSystem>().get();
     if (frameFluids)
         frameFluids->renderFluids();
+    // the Title Art Renderers' Realtime and Glyph Atlas renders of the frame (S81 R13), before
+    // any camera draws their Images and Sprites
+    frameTitles = scene->findSystem<TitleArtSystem>().get();
+    if (frameTitles)
+        frameTitles->renderTitles();
     // the Video Players' frames of this update into their textures, before anything samples them
     if (std::shared_ptr<VideoPlayerSystem> videos = scene->findSystem<VideoPlayerSystem>())
         videos->processConversions();
@@ -18186,8 +18209,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
                     !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
-                drawUI(ui, transform, colorPip,
-                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
+                drawUI(ui, transform, colorPip, hasLentTextures() ? lentTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -18747,8 +18769,7 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
 
             if (!clippedAway && !skipping){
                 if (UIComponent* ui = drawsInLayer(entity, signature, transform)){
-                    drawUI(*ui, transform, layerPip,
-                           (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr, true);
+                    drawUI(*ui, transform, layerPip, hasLentTextures() ? lentTexture(entity) : nullptr, true);
                 }
             }
 

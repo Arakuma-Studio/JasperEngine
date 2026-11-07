@@ -55,6 +55,8 @@ namespace jasperengine::titleart {
         TextureRender& texture();
         TextureRender* colorTexture() const override;
         FramebufferRender& framebuffer();
+        // the engine framebuffer itself: a Texture shows it (S81's display images, Texture::setFramebuffer)
+        Framebuffer& framebufferObject() { return target; }
 
     private:
         TargetKey targetKey;

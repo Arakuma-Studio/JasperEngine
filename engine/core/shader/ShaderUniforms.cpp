@@ -121,10 +121,27 @@ void CustomUniformBlock::clear(){
     mixedTypes = false;
 }
 
+namespace {
+
+    // an array member's elements from the values "name[0]", "name[1]"... (S81's title_fx
+    // anchors); unset elements read zero
+    void writeArrayValues(std::vector<uint8_t>& data, const ShaderUniform& member, const ShaderUniformValues& values){
+        std::vector<Vector4> elements((size_t)member.arrayCount, Vector4::ZERO);
+        for (size_t e = 0; e < elements.size(); e++)
+            elements[e] = ShaderUniforms::get(values, member.name + "[" + std::to_string(e) + "]");
+        CustomUniformBlock::writeUniformArray(data, member, elements.data(), elements.size());
+    }
+
+}
+
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
     for (size_t m = 0; m < members.size(); m++){
         if ((int)m == timeMember || (int)m == resolutionMember)
             continue;
+        if (members[m].arrayCount > 1){
+            writeArrayValues(data, members[m], values);
+            continue;
+        }
         // unset (or removed) members read zero
         writeUniform(data, members[m], ShaderUniforms::get(values, members[m].name));
     }
@@ -136,6 +153,10 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const Sh
         if ((int)m == timeMember || (int)m == resolutionMember)
             continue;
         const std::string& name = members[m].name;
+        if (members[m].arrayCount > 1){
+            writeArrayValues(data, members[m], values);
+            continue;
+        }
         Vector4 value = Vector4::ZERO;
         const std::string global = bindings ? ShaderGlobals::getBinding(*bindings, name) : std::string();
         if (!global.empty()){

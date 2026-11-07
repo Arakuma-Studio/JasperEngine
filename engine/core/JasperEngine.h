@@ -142,6 +142,8 @@
 #include "component/SafeAreaComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "object/TitleArt.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 

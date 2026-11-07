@@ -4473,6 +4473,22 @@
 		4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */; };
 		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
+		4A534E470122FDA3AFCCE749 /* TitleArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702995AEE8D59ED7E /* TitleArt.cpp */; };
+		4A534E47534801F407B3AFAF /* TitleArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702995AEE8D59ED7E /* TitleArt.cpp */; };
+		4A534E47392551724CBF35C1 /* TitleArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */; };
+		4A534E473B1354A6B1A57AC5 /* TitleArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */; };
+		4A534E47A79EC9908B19997E /* TitleArtSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */; };
+		4A534E4779C78A4200A1B073 /* TitleArtSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */; };
+		4A534E470F1904CE2CE790F0 /* TitleArtBakeInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */; };
+		4A534E472B8D239A62736C46 /* TitleArtBakeInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */; };
+		4A534E47807A6AEE3DE6966D /* TitleArtRuntimeNone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */; };
+		4A534E47AEC4ECD5932F82A7 /* TitleArtRuntimeNone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */; };
+		4A534E472DB3C859A1274C16 /* TitleArtRendererComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4785C9FA5C7514E006 /* TitleArtRendererComponent.h */; };
+		4A534E47A75BDA4E70FF50FA /* TitleArt.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472022025B062B2A51 /* TitleArt.h */; };
+		4A534E477D13A50F5BFED65F /* TitleArtInstance.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472EB85FD8C4865F18 /* TitleArtInstance.h */; };
+		4A534E47380043FD4553AB21 /* TitleArtRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A77406FFD8360C8A /* TitleArtRuntime.h */; };
+		4A534E477032F5AB02551CFD /* TitleArtSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B89B0DECD2F4147D /* TitleArtSystem.h */; };
+		4A534E47A10EAAB8AC1E7F56 /* TitleArtBakeInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8746,6 +8762,17 @@
 		4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SSRProbeSlots.cpp; sourceTree = "<group>"; };
 		4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SSRProbeSlots.h; sourceTree = "<group>"; };
 		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
+		4A534E4702995AEE8D59ED7E /* TitleArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArt.cpp; sourceTree = "<group>"; };
+		4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtSystem.cpp; sourceTree = "<group>"; };
+		4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtBakeInfo.cpp; sourceTree = "<group>"; };
+		4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtRuntimeNone.cpp; sourceTree = "<group>"; };
+		4A534E4785C9FA5C7514E006 /* TitleArtRendererComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtRendererComponent.h; sourceTree = "<group>"; };
+		4A534E472022025B062B2A51 /* TitleArt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArt.h; sourceTree = "<group>"; };
+		4A534E472EB85FD8C4865F18 /* TitleArtInstance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtInstance.h; sourceTree = "<group>"; };
+		4A534E47A77406FFD8360C8A /* TitleArtRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtRuntime.h; sourceTree = "<group>"; };
+		4A534E47B89B0DECD2F4147D /* TitleArtSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtSystem.h; sourceTree = "<group>"; };
+		4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtBakeInfo.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9307,6 +9334,7 @@
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
+				4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10755,6 +10783,8 @@
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
+				4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */,
+				4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10948,6 +10978,7 @@
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
+				4A534E4785C9FA5C7514E006 /* TitleArtRendererComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11058,6 +11089,8 @@
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
 				4A534E47566C2DC1D064EB2A /* CapsuleShadowCaster.cpp */,
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
+				4A534E4702995AEE8D59ED7E /* TitleArt.cpp */,
+				4A534E472022025B062B2A51 /* TitleArt.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11225,6 +11258,11 @@
 				4A534E479D83C26E146CE8A0 /* GltfNormalize.h */,
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
+				4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */,
+				4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */,
+				4A534E472EB85FD8C4865F18 /* TitleArtInstance.h */,
+				4A534E47A77406FFD8360C8A /* TitleArtRuntime.h */,
+				4A534E47B89B0DECD2F4147D /* TitleArtSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15553,6 +15591,12 @@
 				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
 				4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */,
 				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
+				4A534E472DB3C859A1274C16 /* TitleArtRendererComponent.h in Headers */,
+				4A534E47A75BDA4E70FF50FA /* TitleArt.h in Headers */,
+				4A534E477D13A50F5BFED65F /* TitleArtInstance.h in Headers */,
+				4A534E47380043FD4553AB21 /* TitleArtRuntime.h in Headers */,
+				4A534E477032F5AB02551CFD /* TitleArtSystem.h in Headers */,
+				4A534E47A10EAAB8AC1E7F56 /* TitleArtBakeInfo.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18078,6 +18122,11 @@
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
 				4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */,
+				4A534E470122FDA3AFCCE749 /* TitleArt.cpp in Sources */,
+				4A534E47392551724CBF35C1 /* TitleArtClassesLua.cpp in Sources */,
+				4A534E47A79EC9908B19997E /* TitleArtSystem.cpp in Sources */,
+				4A534E470F1904CE2CE790F0 /* TitleArtBakeInfo.cpp in Sources */,
+				4A534E47807A6AEE3DE6966D /* TitleArtRuntimeNone.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18897,6 +18946,11 @@
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
 				4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47534801F407B3AFAF /* TitleArt.cpp in Sources */,
+				4A534E473B1354A6B1A57AC5 /* TitleArtClassesLua.cpp in Sources */,
+				4A534E4779C78A4200A1B073 /* TitleArtSystem.cpp in Sources */,
+				4A534E472B8D239A62736C46 /* TitleArtBakeInfo.cpp in Sources */,
+				4A534E47AEC4ECD5932F82A7 /* TitleArtRuntimeNone.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

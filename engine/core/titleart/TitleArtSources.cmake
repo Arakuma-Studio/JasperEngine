@@ -8,4 +8,13 @@
 file(GLOB_RECURSE JASPERENGINE_TITLE_ART_SRCS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
 list(FILTER JASPERENGINE_TITLE_ART_SRCS EXCLUDE REGEX "/titleart/three_d/")
+# S81 R51: three_d/ under JASPERENGINE_TITLE_ART_3D; the mesher's files (three_d/mesher/ and S86's
+# earcut users) under JASPERENGINE_TITLE_ART_MESHER as well
+if(JASPERENGINE_TITLE_ART_3D)
+    file(GLOB_RECURSE jasperengineTitleArt3DSrcs CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/three_d/*.cpp)
+    if(NOT JASPERENGINE_TITLE_ART_MESHER)
+        list(FILTER jasperengineTitleArt3DSrcs EXCLUDE REGEX "/three_d/mesher/")
+    endif()
+    list(APPEND JASPERENGINE_TITLE_ART_SRCS ${jasperengineTitleArt3DSrcs})
+endif()
 list(SORT JASPERENGINE_TITLE_ART_SRCS)
