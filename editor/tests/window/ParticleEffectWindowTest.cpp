@@ -241,6 +241,7 @@ TEST(ParticleEffectWindow, APausedEditHoldsTheTimeAndTheSeed) {
     const double time = window.getTime();
     ASSERT_GT(time, 0.5);
     ASSERT_GT(window.stageStats().live, 0u);
+    const uint64_t beforeEdit = window.stageStats().stateHash;
 
     ASSERT_TRUE(window.editSelected([](ParticleEffectDocument& d) {
         d.main.startSpeed = MinMaxCurve(9.0f);
@@ -250,13 +251,12 @@ TEST(ParticleEffectWindow, APausedEditHoldsTheTimeAndTheSeed) {
     ParticleEffectDocument edited;
     ASSERT_TRUE(window.readSelected(edited));
     EXPECT_EQ(edited.main.startSpeed, MinMaxCurve(9.0f));
-    window.update(1.0 / 60.0);
-    EXPECT_TRUE(window.isResimulating());
     settle(window);
     EXPECT_FALSE(window.isPlaying());
     EXPECT_DOUBLE_EQ(window.getTime(), time);
     EXPECT_EQ(window.getSeed(), 77u);
     const uint64_t afterEdit = window.stageStats().stateHash;
+    EXPECT_NE(afterEdit, beforeEdit) << "the stage plays the edited effect";
 
     // the same frame as a stage made from the edited file and taken to that time with that seed
     ParticleEffectWindow fresh(project());
