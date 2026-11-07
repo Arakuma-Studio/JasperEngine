@@ -81,10 +81,10 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
@@ -93,7 +93,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
@@ -197,3 +197,16 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
   render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
   water-reflections takes 1.4.
+- 2026-11-07 01:xx: **runtime-core, platform-lifecycle and scene-integrity merged as one batch** (`f0fc338d9`), each
+  after an independent review and its fixes. They share Engine.cpp, App.cpp, Project.cpp and InspectorWindow.cpp,
+  so one landing check covered the three on main: WERROR editor, unit filters of all three plus render-correctness
+  and code-editor-git suites (343), MCP files of all three plus budget/docs/protocol (57 and 75), Android compile,
+  lints. Integration fixes made at landing: onVisibilityChanged cleared with the other lifecycle events
+  (runtime-core's event-clear lint meets platform-lifecycle's new event); set_child_scene description trimmed to keep
+  core at 99000; RuntimeFields.gen.inc regenerated (runtime-core's action fields and render-correctness' foliage and
+  instanced fade fields were not in cooked scenes, so prebuilt exports dropped them).
+- Lesson for every landing check: a branch that adds component fields runs `RuntimeFields.*:CookedScene.*`.
+- Open, not ours: a many-material OBJ drops submeshes on main since mesh-memory (S55's per-submesh culling assumed
+  contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
+  diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
+  program). An FBX foliage layer draws no instances in the headless editor (unverified).
