@@ -226,6 +226,22 @@ async def test_create_dialog_preset_is_generate_terrain(ed: Editor):
     sid = made["scene"] if "scene" in made else made["scene_id"]
     meta = json.loads((REPO / "editor" / "resources" / "noisegraphs" / "mountains.noisegraph").read_text())["metadata"]["preset"]
     dunes = await create_through_dialog(ed, ui, sid, {"name": "Dunes", "noise_graph": "Mountains", "heightmap_resolution": 65, "seed": 7})
+    shaped = await ed.call("sample_terrain", scene=sid, entity=dunes, grid=16)
+    # one click, one step: one undo takes the terrain away whole, and one redo brings it back shaped
+    # selection changes are steps of their own (the dialog selects what it made): undone first
+    for _ in range(10):
+        top = (await ed.call("get_undo_history", scene=sid, scope="scene", limit=1, include_selection=True, include_redo=False))["entries"][0]
+        if "Selection" not in top["type"]:
+            break
+        await ed.call("undo", scene=sid)
+    ed.check_eq(top["name"], "Create Terrain (Mountains)", f"the step's name: {top}")
+    await ed.call("undo", scene=sid)
+    ed.check_eq((await ed.call("find_entities", scene=sid, name="Dunes"))["entities"], [], "one undo removes the preset's terrain")
+    await ed.call("redo", scene=sid)
+    back = (await ed.call("find_entities", scene=sid, name="Dunes"))["entities"]
+    ed.check(back, "one redo brings it back")
+    dunes = back[0]["id"]
+    ed.check_eq((await ed.call("sample_terrain", scene=sid, entity=dunes, grid=16))["grid"], shaped["grid"], "with its generated heights")
     terrain = (await ed.call("get_entity", scene=sid, entity=dunes, components=["terrain"]))["components"]["terrain"]
     ed.check_eq((terrain["terrainSize"], terrain["maxHeight"]), (meta["terrain_size"], meta["max_height"]), "the preset's recommended sizes")
     # the same sizes without a preset, then generate_terrain
@@ -242,16 +258,6 @@ async def test_create_dialog_preset_is_generate_terrain(ed: Editor):
         await ui.frames(2)
     ed.check(want["grid"] != flat["grid"], "generate_terrain shaped the plain terrain")
     ed.check_eq(got["grid"], want["grid"], "the dialog's preset gives generate_terrain's heights")
-    # one click, one step: past Plain's two steps, one undo takes Dunes away whole and one redo brings it back shaped
-    await ed.call("undo", scene=sid)
-    await ed.call("undo", scene=sid)
-    await ed.call("undo", scene=sid)
-    ed.check_eq((await ed.call("find_entities", scene=sid, name="Dunes"))["entities"], [], "one undo removes the preset's terrain")
-    await ed.call("redo", scene=sid)
-    back = (await ed.call("find_entities", scene=sid, name="Dunes"))["entities"]
-    ed.check(back, "one redo brings it back")
-    redone = await ed.call("sample_terrain", scene=sid, entity=back[0]["id"], grid=16)
-    ed.check_eq(redone["grid"], want["grid"], "with the generated heights")
 
 
 async def test_stream_keys_lint(ed: Editor):
