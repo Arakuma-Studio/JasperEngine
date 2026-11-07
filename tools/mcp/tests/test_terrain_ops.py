@@ -3,6 +3,8 @@
 One terrain per test, made with edit_terrain's smallest preset so each call stays a few milliseconds.
 """
 
+import asyncio
+
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Terrain Ops"}
@@ -199,11 +201,13 @@ async def big_terrain(ed: Editor, name: str):
 
 
 async def wait_job(ed: Editor, job_id: str) -> dict:
+    # polled from outside with no frame asked for: the result must reach an idle editor (a hand-back
+    # through jobs::postToMain waits for a frame that draws a scene, which an idle editor never has)
     for _ in range(600):
         job = await ed.call("get_job", job_id=job_id)
         if job["status"] != "running":
             return job
-        await ed.call("wait", frames=5)
+        await asyncio.sleep(0.1)
     raise AssertionError(f"job {job_id} never finished")
 
 

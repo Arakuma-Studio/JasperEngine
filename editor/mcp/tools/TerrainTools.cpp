@@ -20,6 +20,7 @@
 #include "mcp/McpValues.h"
 
 #include "Catalog.h"
+#include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -307,7 +308,9 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
         terrain::OpOptions inPlace = options;
         inPlace.inPlace = true;
         auto result = std::make_shared<terrain::TerrainOpResult>(terrain::applyOps(*snapshot->overlay, *opList, inPlace));
-        jobs::postToMain([snapshot, opList, result, job, project, sceneId, entity, space, importedCopy, name]() {
+        // the editor's own queue: it runs every frame and wakes an idle editor (jobs::postToMain drains
+        // only in frames that draw a scene)
+        editor::getEditorHost().enqueueMainThreadTask([snapshot, opList, result, job, project, sceneId, entity, space, importedCopy, name]() {
             runningTerrainJobs().erase({sceneId, entity});
             if (job->cancelRequested()) {
                 job->markCancelled("Cancelled: nothing was applied.");
