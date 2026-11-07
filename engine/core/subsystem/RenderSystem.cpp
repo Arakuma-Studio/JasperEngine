@@ -955,6 +955,7 @@ void RenderSystem::load(){
     lastMeshLodEnabled = false;
     objectLightsCleared = false;
     directionalLightsOnlyKnown = false;
+    nonDirectionalLightSeen = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -1397,16 +1398,16 @@ int RenderSystem::checkLightsAndShadow(){
         hasLights = true;
     }
     
-    directionalLightsOnly = hasLights;
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
         if (light.shadows){
             hasShadows = true;
         }
         if (light.type != LightType::DIRECTIONAL){
-            directionalLightsOnly = false;
+            nonDirectionalLightSeen = true;
         }
     }
+    directionalLightsOnly = hasLights && !nonDirectionalLightSeen;
 
     // 2D lights are gated only by their own component count, NOT by
     // scene->getLightState(): the editor forces LightState::OFF in 2D scenes
@@ -1958,6 +1959,17 @@ void RenderSystem::updateSceneLights(){
     }
 }
 
+namespace {
+    // a submesh of the mesh draws the directional-only Lit ('Dlo')
+    bool drawsDirectionalOnly(const MeshComponent& mesh){
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (mesh.submeshes[s].shaderProperties & ShaderPool::getDirectionalOnlyProperty())
+                return true;
+        }
+        return false;
+    }
+}
+
 void RenderSystem::updateObjectLights(){
     // a directional light that only changed direction (a turning sun)
     auto onlyTurned = [this](int index){
@@ -2015,7 +2027,9 @@ void RenderSystem::updateObjectLights(){
         }
 
         const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
-        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB;
+        // (a mesh that left the 'Dlo' variant picks again: its point and spot lights were in the SH)
+        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB ||
+                      picked.directionalOnly != drawsDirectionalOnly(mesh);
 
         if (!repick && !changedLights.empty()){
             // a light that reached it changed, or a changed light reaches it now
@@ -2061,6 +2075,10 @@ void RenderSystem::updateObjectLights(){
 // center, so a light never just vanishes.
 void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform){
     MeshLights& picked = mesh.lights;
+    // a mesh still on the 'Dlo' variant when a point or spot light arrives (its general variant
+    // builds meanwhile) takes that light in its SH: drawn, never shaded as a sun nor dropped
+    const bool directionalOnly = drawsDirectionalOnly(mesh);
+    picked.directionalOnly = directionalOnly;
     const LightBounds bounds(mesh.worldAABB, transform.worldPosition);
     const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
     const int cap = std::min(lightListCap, MAX_LIGHTS_PER_OBJECT);
@@ -2122,6 +2140,10 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
         // so turning it towards the mesh picks again)
         if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
             continue;
+        if (directionalOnly && !candidate.directional){
+            fold(i);
+            continue;
+        }
 
         // ranked without the spot cone: a spot may light part of the mesh away from its center
         Vector3 towardsLight;
@@ -2172,8 +2194,8 @@ void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t propert
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const bool pixel = (properties & (1u << 3)) != 0;
     const bool vertex = (properties & (1u << 28)) != 0;
-    // a 'Dlo' variant shades every light as directional: one that is not (a point light added
-    // since, while the general variant builds) is left out rather than drawn as a sun
+    // a 'Dlo' variant shades every light as directional: one that is not is in its SH
+    // (selectMeshLights), never in the list it would draw as a sun
     const bool directionalOnly = (properties & ShaderPool::getDirectionalOnlyProperty()) != 0;
     const MeshLights& picked = mesh.lights;
 

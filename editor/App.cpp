@@ -5652,9 +5652,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
     //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
     //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
-    // v51: draw-perf's directional-only Lit: MESH 'Dlo' (DIRECTIONAL_LIGHTS_ONLY in includes/lights.glsl
-    //      and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
+    // v52: draw-perf's directional-only Lit: MESH 'Dlo' (DIRECTIONAL_LIGHTS_ONLY in includes/lights.glsl
+    //      and punctual.glsl); v51 is water-reflections'
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v52";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -1,7 +1,7 @@
 """Cheaper frames (docs/superpowers/specs/2026-11-04-draw-perf-design.md), as agents and scripts see them:
 get_material_variant reports the directional-only Lit variant ('Dlo') of a scene whose lights are all
-directional, and the general one once a point light is in it; Lua reads the frame's SetPass calls
-(pipelines applied, Unity's name) from Profiler.frameStats() and DebugOverlay.getStats()."""
+directional, and the general one once a point light was in it (until the scene loads again); Lua reads the running game's SetPass
+calls (pipelines applied, Unity's name) from Profiler.frameStats() and DebugOverlay.getStats()."""
 
 from __future__ import annotations
 
@@ -37,16 +37,22 @@ async def test_directional_only_variant(ed: Editor):
     v = await variant_when_ready(ed, box, False)
     ed.check(v.get("directional_only") is False, f"a point light: the general Lit: {v}")
 
+    # the general variant stays until the scene loads again: lights coming and going reload nothing
     await ed.call("delete_entities", entities=[lamp])
-    v = await variant_when_ready(ed, box, True)
-    ed.check(v.get("directional_only") is True, f"the point light gone: 'Dlo' again: {v}")
+    await ed.call("wait", frames=10)
+    v = await ed.call("get_material_variant", entity=box)
+    ed.check(v.get("directional_only") is False, f"the point light gone: still the general Lit: {v}")
 
 
 async def test_setpass_calls_in_lua(ed: Editor):
-    ed.require_tools("eval_lua", "wait")
-    await ed.call("wait", frames=5)
-    stats = (await ed.call("eval_lua", code="return Profiler.frameStats()", allow_edit_mode=True))["values"][0]
-    ed.check("setPassCalls" in stats, f"Profiler.frameStats() has setPassCalls: {stats}")
-    ed.check(0 < stats.get("setPassCalls", 0) <= stats["drawCalls"], f"SetPass calls within the draws: {stats}")
-    overlay = (await ed.call("eval_lua", code="return DebugOverlay.getStats()", allow_edit_mode=True))["values"][0]
-    ed.check("setPassCalls" in overlay, f"DebugOverlay.getStats() has setPassCalls: {overlay}")
+    ed.require_tools("eval_lua", "play", "wait")
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", frames=5)
+        stats = (await ed.call("eval_lua", code="return Profiler.frameStats()"))["values"][0]
+        ed.check("setPassCalls" in stats, f"Profiler.frameStats() has setPassCalls: {stats}")
+        ed.check(0 < stats.get("setPassCalls", 0) <= stats["drawCalls"], f"SetPass calls within the draws: {stats}")
+        overlay = (await ed.call("eval_lua", code="return DebugOverlay.getStats()"))["values"][0]
+        ed.check("setPassCalls" in overlay, f"DebugOverlay.getStats() has setPassCalls: {overlay}")
+    finally:
+        await ed.call("play", action="stop")

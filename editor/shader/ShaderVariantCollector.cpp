@@ -1226,12 +1226,21 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
 
 void editor::ShaderVariantCollector::addDirectionalOnlyTwins(std::set<ShaderKey>& keys){
     const uint64_t bit = ShaderPool::getDirectionalOnlyProperty();
+    const uint64_t tiled = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    // a point or spot light arriving under Light Mode Tiled or Automatic draws the pixel lights
+    // from tiles (RenderSystem::updateLightingFeatures): the twin with 'Til' too, where a variant
+    // takes it (pixel lights, not a painted terrain surface: getSubmeshShaderVariant)
+    const bool tiles = LightingTiers::getLightMode() != LightMode::PER_OBJECT;
     std::vector<ShaderKey> twins;
     for (const ShaderKey& key : keys){
         if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & bit)){
             ShaderKey twin = key;
             twin.properties &= ~bit;
             twins.push_back(twin);
+            if (tiles && (twin.properties & shaderPropertyBit(3)) && !(twin.properties & shaderPropertyBit(27))){
+                twin.properties |= tiled;
+                twins.push_back(twin);
+            }
         }
     }
     keys.insert(twins.begin(), twins.end());

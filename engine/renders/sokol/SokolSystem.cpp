@@ -6,6 +6,7 @@
 #include "SokolAsyncCreate.h"
 
 #include <algorithm>
+#include <cassert>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -805,6 +806,7 @@ namespace {
         uint32_t epoch = 1;
         bool bindingsApplied = false;
         sg_bindings bindings = {};
+        bool skipping = true;
     };
 
     AppliedDrawState& appliedDrawState(){
@@ -814,8 +816,9 @@ namespace {
 }
 
 bool SokolSystem::applyPipeline(uint32_t pipelineId){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
     AppliedDrawState& state = appliedDrawState();
-    if (pipelineId == state.pipeline)
+    if (pipelineId == state.pipeline && state.skipping)
         return false;
     // recorded before the call: an error inside it forgets them again (sokol_log)
     state.pipeline = pipelineId;
@@ -827,12 +830,18 @@ bool SokolSystem::applyPipeline(uint32_t pipelineId){
     return true;
 }
 
+void SokolSystem::setRepeatedStateSkipped(bool skipped){
+    appliedDrawState().skipping = skipped;
+    forgetAppliedState();
+}
+
 bool SokolSystem::isBindingsApplied(const sg_bindings& bindings){
     const AppliedDrawState& state = appliedDrawState();
-    return state.bindingsApplied && std::memcmp(&state.bindings, &bindings, sizeof(sg_bindings)) == 0;
+    return state.skipping && state.bindingsApplied && std::memcmp(&state.bindings, &bindings, sizeof(sg_bindings)) == 0;
 }
 
 void SokolSystem::applyBindings(const sg_bindings& bindings){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
     AppliedDrawState& state = appliedDrawState();
     state.bindings = bindings;
     state.bindingsApplied = true;
@@ -850,6 +859,9 @@ void SokolSystem::draw(int baseElement, int numElements, int numInstances){
 }
 
 void SokolSystem::forgetAppliedState(){
+    // (the render thread's state: a loading thread neither draws nor holds it)
+    if (Engine::isAsyncThread())
+        return;
     AppliedDrawState& state = appliedDrawState();
     state.pipeline = SG_INVALID_ID;
     state.epoch++;
@@ -857,6 +869,8 @@ void SokolSystem::forgetAppliedState(){
 }
 
 void SokolSystem::forgetAppliedBindings(){
+    if (Engine::isAsyncThread())
+        return;
     appliedDrawState().bindingsApplied = false;
 }
 

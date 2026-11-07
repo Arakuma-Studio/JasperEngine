@@ -81,6 +81,8 @@ namespace jasperengine{
         // resource destroyed, a sokol error, a draw sokol marked invalid (a binding not ready).
         // applyPipeline is true when sg_apply_pipeline ran (counted as a SetPass call)
         static bool applyPipeline(uint32_t pipelineId);
+        // off: every draw applies its pipeline and bindings (SystemRender::setRepeatedStateSkipped)
+        static void setRepeatedStateSkipped(bool skipped);
         static bool isBindingsApplied(const sg_bindings& bindings);
         static void applyBindings(const sg_bindings& bindings);
         // sg_draw of the draw set up, then forgets the applied state if sokol turned its later

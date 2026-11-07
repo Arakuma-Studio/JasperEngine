@@ -661,6 +661,8 @@ namespace jasperengine{
 			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
 		};
 
+	public:
+		// (public: their order is tested, RenderQueueOrderTest)
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -734,6 +736,7 @@ namespace jasperengine{
 			}
 		};
 
+	private:
 		// the queues of the camera pass being drawn (renderCameraPass, the reflection probe
 		// face), kept between passes so a pass allocates nothing once they have grown
 		std::vector<OpaqueRenderData> opaqueQueue;
@@ -1705,6 +1708,9 @@ namespace jasperengine{
 		bool directionalLightsOnly = false;
 		bool loadedDirectionalLightsOnly = false;
 		bool directionalLightsOnlyKnown = false;
+		// a point or spot Light was in the scene since load(): the general Lit stays until the
+		// next load, so lights that come and go never reload every mesh again
+		bool nonDirectionalLightSeen = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;

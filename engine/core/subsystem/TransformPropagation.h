@@ -8,6 +8,8 @@
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
 
+#include <cassert>
+
 namespace jasperengine {
 
     // The transform pass of RenderSystem::update: one linear walk of the Transform array,
@@ -71,6 +73,7 @@ namespace jasperengine {
 
         const Transform* transformParent = transform.parent != NULL_ENTITY ? registry.findComponent<Transform>(transform.parent) : nullptr;
         if (transformParent){
+            assert(transformParent->modelMatrix.isAffine() && "a Transform's matrices are made affine here");
             transform.modelMatrix = transformParent->modelMatrix.affineMultiply(transform.localMatrix);
             transform.worldPosition = transformParent->modelMatrix.transformAffine(origin);
             transform.worldScale = transformParent->worldScale * transform.scale;

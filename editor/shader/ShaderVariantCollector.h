@@ -86,7 +86,8 @@ namespace jasperengine::editor {
         // to a scene's saved shaderKeys): the FLATTEN Canvas Group composite (the HTML UI
         // passthrough, a few KB), since a script can add a group or switch one to FLATTEN in any scene
         static void addBuildRequiredKeys(std::set<ShaderKey>& keys);
-        // Each directional-only Lit variant ('Dlo') with its general twin: a script may add a
+        // Each directional-only Lit variant ('Dlo') with its general twin, and the twin's Light
+        // Mode Tiled form ('Til') unless the project's mode is Per Object: a script may add a
         // point or spot light, and the scene then draws the general variant (a build missing the
         // 'Dlo' one falls back to it, ShaderPool::getFallbackProperties; the reverse cannot)
         static void addDirectionalOnlyTwins(std::set<ShaderKey>& keys);

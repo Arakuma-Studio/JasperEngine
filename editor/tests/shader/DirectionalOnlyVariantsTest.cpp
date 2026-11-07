@@ -15,6 +15,7 @@
 #include "object/Light.h"
 #include "object/Primitive.h"
 #include "pool/ShaderPool.h"
+#include "render/LightingTiers.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "subsystem/RenderSystem.h"
 
@@ -144,4 +145,39 @@ TEST_F(DirectionalOnlyVariantKeys, AForkNeverGetsIt){
     box.setCustomShader("shaders/myMesh");
     const Keys keys = collect(scene);
     EXPECT_EQ(keys.directional, 0u) << "a fork of the Lit got 'Dlo':" << keys.names;
+}
+
+TEST_F(DirectionalOnlyVariantKeys, TwinsCoverLightModeTiled){
+    // a point light arriving under Automatic or Tiled draws the general variant's tiled form
+    // ('Til'): each 'Dlo' variant ships it too; Per Object only the plain twin
+    const uint64_t tiledBit = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    for (LightMode mode : {LightMode::AUTOMATIC, LightMode::TILED, LightMode::PER_OBJECT}){
+        LightingTiers::setLightMode(mode);
+        Scene scene;
+        Light sun(&scene);
+        sun.setType(LightType::DIRECTIONAL);
+        Primitive box(&scene);
+        box.createBox(1.0f, 1.0f, 1.0f);
+        ShaderVariantContent content;
+        content.registry = &scene;
+        content.entities = scene.getEntityList();
+        std::set<ShaderKey> keys;
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys);
+        size_t directional = 0, withoutTiledTwin = 0;
+        for (ShaderKey key : keys){
+            if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH || !(key.properties & DIRECTIONAL_ONLY_BIT))
+                continue;
+            directional++;
+            ShaderKey twin = key;
+            twin.properties = (twin.properties & ~DIRECTIONAL_ONLY_BIT) | tiledBit;
+            if (!keys.count(twin))
+                withoutTiledTwin++;
+        }
+        EXPECT_GT(directional, 0u) << LightingTiers::getModeName(mode);
+        if (mode == LightMode::PER_OBJECT)
+            EXPECT_EQ(withoutTiledTwin, directional) << "Per Object ships no tiled twin";
+        else
+            EXPECT_EQ(withoutTiledTwin, 0u) << LightingTiers::getModeName(mode) << ": a 'Dlo' variant without its tiled twin";
+    }
+    LightingTiers::setLightMode(LightMode::AUTOMATIC);
 }

@@ -19,6 +19,7 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "render/LightingTiers.h"
 #include "pool/ShaderPool.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
@@ -29,6 +30,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -73,6 +75,8 @@ namespace {
             lights.clear();
             Engine::removeScene(&scene);
             Engine::setGpuInstancingEnabled(true);
+            Engine::setDynamicBatching(true);
+            LightingTiers::setLightMode(LightMode::AUTOMATIC);
         }
 
         Light& sun(bool shadows){
@@ -101,6 +105,24 @@ namespace {
                 return current->getSystem<RenderSystem>()->isAllLoaded();
             })) << "the scene never finished loading";
             GpuEnvironment::drawFrames(2);
+        }
+
+        // the mean luminance of the target's centre (a 20 x 20 square)
+        float centreLuminance(){
+            const std::vector<uint8_t> rgba = readTarget();
+            Framebuffer& target = GpuEnvironment::target();
+            const int width = (int)target.getWidth();
+            const int height = (int)target.getHeight();
+            double sum = 0.0;
+            int count = 0;
+            for (int y = height / 2 - 10; y < height / 2 + 10; y++){
+                for (int x = width / 2 - 10; x < width / 2 + 10; x++){
+                    const uint8_t* p = rgba.data() + ((size_t)y * width + x) * 4;
+                    sum += 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+                    count++;
+                }
+            }
+            return count ? (float)(sum / count) : 0.0f;
         }
 
         // the last frame's pipelines and bindings applied and draws, every pass
@@ -213,7 +235,7 @@ TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     EXPECT_NE(submesh.shaderProperties & DIRECTIONAL_ONLY_BIT, 0u) << "a sun-only scene's Lit is not 'Dlo'";
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 42), "Dlo");
 
-    // a point light, even switched off, keeps the general variant
+    // a point light, even switched off, takes the general variant
     lights.push_back(std::make_unique<Light>(&scene));
     lights.back()->setType(LightType::POINT);
     lights.back()->setEnabled(false);
@@ -221,35 +243,120 @@ TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u)
         << "a point light in the scene, and the Lit is still 'Dlo'";
 
+    // and keeps it until the scene loads again: lights that come and go reload nothing
     lights.pop_back();
     settle();
-    EXPECT_NE(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+    EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u)
+        << "the point light gone, and the Lit is 'Dlo' again (every mesh reloaded)";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
 TEST_F(DrawPerfGpu, DirectionalOnlyDrawsTheSameImage){
     JASPER_REQUIRE_GPU();
+    // the object lists, not Tiled (a point light under Automatic would draw the general variant's
+    // tiled form)
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
     sun(true);
     for (int i = 0; i < 6; i++)
         box(-3.0f + 1.2f * (float)i, -0.5f + 0.2f * (float)i, 26.0f - 0.5f * (float)i, true).setScale(1.5f);
+    settle();
+    ASSERT_NE(boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+    const std::vector<uint8_t> directional = readTarget();
     // the general variant: a point light that gives no light
     lights.push_back(std::make_unique<Light>(&scene));
     lights.back()->setType(LightType::POINT);
     lights.back()->setEnabled(false);
     settle();
-    ASSERT_EQ(boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
-    const std::vector<uint8_t> general = readTarget();
-    lights.pop_back();
-    settle();
-    ASSERT_NE(boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
-    const std::vector<uint8_t> directional = readTarget();
-    ASSERT_EQ(general.size(), directional.size());
+    const uint64_t general = boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties;
+    ASSERT_EQ(general & DIRECTIONAL_ONLY_BIT, 0u);
+    ASSERT_EQ(general & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
+    const std::vector<uint8_t> generalImage = readTarget();
+    ASSERT_EQ(generalImage.size(), directional.size());
     size_t differing = 0;
-    for (size_t i = 0; i < general.size(); i++){
-        const int d = (int)general[i] - (int)directional[i];
+    for (size_t i = 0; i < generalImage.size(); i++){
+        const int d = (int)generalImage[i] - (int)directional[i];
         if (d > 1 || d < -1)
             differing++;
     }
     EXPECT_EQ(differing, 0u) << "the 'Dlo' variant draws another image";
+    LightingTiers::setLightMode(LightMode::AUTOMATIC);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(DrawPerfGpu, ArrivingPointLightIsDrawnByDirectionalOnlyMeshes){
+    JASPER_REQUIRE_GPU();
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
+    sun(false).setIntensity(0.2f);
+    Primitive& lit = box(0.0f, 0.0f, 24.0f, true);
+    lit.setScale(3.0f);
+    settle();
+    ASSERT_NE(lit.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+    const float before = centreLuminance();
+    // a bright point light in front of the box: the very next frame shows it, whether the box
+    // still draws 'Dlo' (the light in its ambient) or already the general variant
+    lights.push_back(std::make_unique<Light>(&scene));
+    Light& bulb = *lights.back();
+    bulb.setType(LightType::POINT);
+    bulb.setPosition(0.0f, 0.0f, 27.0f);
+    bulb.setRange(20.0f);
+    bulb.setIntensity(30.0f);
+    GpuEnvironment::drawFrames(1);
+    const float arriving = centreLuminance();
+    settle();
+    const float settled = centreLuminance();
+    std::printf("[draw-perf] a point light arriving: luminance %.1f before, %.1f its first frame, %.1f settled\n", before, arriving, settled);
+    EXPECT_GT(arriving, before + 10.0f) << "the arriving point light was not drawn";
+    EXPECT_GT(settled, before + 10.0f);
+    LightingTiers::setLightMode(LightMode::AUTOMATIC);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(DrawPerfGpu, LightsComingAndGoingReloadNothing){
+    JASPER_REQUIRE_GPU();
+    // the object lists: under Automatic on Medium and above a point light switches the scene to
+    // Light Mode Tiled and back (S57's own variant change), which is not what this checks
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
+    sun(false);
+    for (int i = 0; i < 20; i++)
+        box(-4.75f + 0.5f * (float)i, 0.0f, 0.0f, true);
+    lights.push_back(std::make_unique<Light>(&scene));
+    lights.back()->setType(LightType::POINT);
+    settle();
+    // what each box draws with once a point light was seen: the general variant's pipelines
+    std::vector<uint64_t> properties;
+    std::vector<uint32_t> pipelines;
+    for (const auto& made : boxes){
+        const Submesh& submesh = made->getComponent<MeshComponent>().submeshes[0];
+        properties.push_back(submesh.shaderProperties);
+        pipelines.push_back(submesh.render.getPipelineId(PIP_RTT));
+        EXPECT_EQ(submesh.shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+    }
+    for (int round = 0; round < 3; round++){
+        lights.pop_back();
+        settle();
+        lights.push_back(std::make_unique<Light>(&scene));
+        lights.back()->setType(round % 2 ? LightType::SPOT : LightType::POINT);
+        settle();
+    }
+    for (size_t i = 0; i < boxes.size(); i++){
+        const Submesh& submesh = boxes[i]->getComponent<MeshComponent>().submeshes[0];
+        EXPECT_EQ(submesh.shaderProperties, properties[i]) << "box " << i << " changed variant";
+        EXPECT_EQ(submesh.render.getPipelineId(PIP_RTT), pipelines[i]) << "box " << i << " reloaded";
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(DrawPerfGpu, StaticSceneUpdateCost){
+    JASPER_REQUIRE_GPU();
+    // 2,000 static meshes, no light, no mesh LOD, no terrain: what a frame costs with those off
+    // (printed only: docs/perf/draw-perf.md)
+    for (int i = 0; i < 2000; i++)
+        box(-10.0f + 0.5f * (float)(i % 40), -6.0f + 0.5f * (float)(i / 40 % 25), -(float)(i / 1000) * 2.0f, false);
+    settle();
+    constexpr int FRAMES = 20;
+    const auto start = std::chrono::steady_clock::now();
+    GpuEnvironment::drawFrames(FRAMES);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / FRAMES;
+    std::printf("[bench] 2,000 static unlit meshes, lights, LOD and terrain off: %.2f ms a frame (update and draw)\n", ms);
     EXPECT_NO_ENGINE_ERRORS();
 }

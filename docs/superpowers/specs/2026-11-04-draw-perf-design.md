@@ -391,12 +391,16 @@ builds are kept compiling by reading (no new includes beyond `<cstring>`, `<cmat
   are depth-tested, so only exact depth ties can show it); `opaqueSortPriority` stays the tool for a fixed order.
 - A culled mesh is not in the opaque or transparent queue; its Trail Renderer is unaffected (trails are culled
   on their own bounds). Editor billboard overrides and per-view instance bounds cull as `isBatchVisible` does.
-- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). Adding,
-  removing, retyping or (un)disabling lights only switches when the set of types changes. Several scene layers
-  decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get it; unlit submeshes,
-  forks and library shaders never do.
+- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). The first
+  point or spot Light the scene has (enabled or not) switches it to the general variant until the scene loads
+  again: removing, retyping or adding lights afterwards reloads nothing. A mesh still drawing `Dlo` while its
+  general variant builds takes the new light in its SH ambient: drawn, never shaded as a sun nor dropped.
+  Several scene layers decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get
+  it; unlit submeshes, forks, library shaders and Light Mode Tiled variants never do.
 - `Dlo` key missing from a build: the general variant draws (warned once, existing fallback). General key
-  missing while a `Dlo` scene gains a point light: impossible after the twin rule.
+  missing while a `Dlo` scene gains a point light: impossible after the twin rule, which ships the general
+  twin and, unless Light Mode is Per Object, its tiled (`Til`) form (a point light under Automatic or Tiled
+  draws the pixel lights from tiles).
 - Bone bounds: a skinned mesh keeps today's behaviour; a Vertex Animator's `animatedBounds` is unchanged.
 - Zero or negative scales: `composeTRS` and `affineMultiply` give today's values; `affineInverse` falls back to
   `inverse()` on a zero determinant; `isMirroredDraw` gives today's answer.
@@ -647,3 +651,18 @@ GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and
   SetPass and binding counts are `DrawPerfGpu.RepeatedDrawsApplyStateOnce`.
 - **`scene:getRenderStats()`** keeps its fields (it has no SetPass count; `Profiler.frameStats()`
   and `DebugOverlay.getStats()` do).
+- **Review round (2026-11-07).** The first point or spot light keeps the general Lit until the scene
+  loads again (`nonDirectionalLightSeen`), so lights coming and going never reload every mesh; a mesh
+  still on `Dlo` takes such a light in its SH (`selectMeshLights`, `MeshLights::directionalOnly`
+  re-picks when it leaves `Dlo`) instead of dropping it. The first update takes the scene's state
+  without a reload. The twin rule adds the tiled (`Til`) form unless Light Mode is Per Object. Dropping
+  `Til` is not added to `ShaderPool::getFallbackProperties`: the tiled and the object lights blocks
+  differ, and the draw uploads by the key it asked for, so a build lacking the tiled twin cannot fall
+  back that way; the collector ships it instead. `SystemRender::setRepeatedStateSkipped` (diagnostics,
+  tests) turns the skipping off: `DrawPerfMixedGpu` compares the two with batched sprites, S55
+  batches, lone meshes and shared-buffer Models in one pass. Every resource and pipeline destroy in
+  `renders/sokol` forgets the state (loading threads excepted: they hold none); the tracker asserts
+  the render thread and `computeWorldTransform` the parent's affine matrix in debug builds.
+  `TransformPropagation.WorldValuesMatchTheGeneralProducts` lives in `engine/tests/core/ecs` (beside
+  its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
+  v52 (v51 is water-reflections').
