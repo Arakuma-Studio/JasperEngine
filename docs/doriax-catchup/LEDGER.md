@@ -92,7 +92,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | merged |
-| 16 | `water-boats` | exclusion volumes and wakes | specced |
+| 16 | `water-boats` | exclusion volumes and wakes | merged |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
@@ -260,3 +260,11 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   the whole process, so runtime-core's new particle test shifted LegacyParticlePresets (now per scene). The
   ReflectParity Action goldens already passed after ui-components. Every landing check now also runs the suites
   that pin shared data (AGENT-BRIEF.md).
+- 2026-11-07 08:xx: **water-boats merged** (`c75c5c3e0`) after an independent review (blocker fixed: opaque water kept
+  auto-instancing in scenes without excluders or wakes; wakes pause with the editor and clear at Stop; foam survives
+  a look-around; off-screen wakes cost no upload; ShaderZeroCost sees 64-bit keys; excluders in a per-frame data
+  texture so the worst lit water variant fits GLES3's 224 fragment vectors). MESH bits 42 'Wex' / 43 'Wwk', shader
+  cache v52, cooked format 1.5 (wake settings). Landing check on box D: WERROR editor, docs and budget (core 98,994),
+  unit 77 + 107 incl. ShaderNeutralApi/ReflectParity/RuntimeFields/CookedScene/particles, MCP 48 + the determinism
+  file 5/5 after a test race fix (the project copy skips .je-tmp files). Open: the 256-texel wake bench (600 us vs
+  300 us on a shared box; 128 is within budget).
