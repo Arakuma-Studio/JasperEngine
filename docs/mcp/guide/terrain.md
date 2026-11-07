@@ -30,7 +30,7 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Splat / control maps | `blendMaps` (up to 3) | `set_terrain_maps blendmap`, `sculpt_terrain paint_layer` |
 | Details (Paint Details: grass, rocks, flowers) | `foliageLayers` | `edit_terrain_details`, `sculpt_terrain paint_density`, `edit_terrain scatter_by_rules` |
 | Trees (Paint Trees) | `treePrototypes`, the `.jetrees` file in `treeData` | `set_properties`, `edit_terrain` |
-| Terrain Settings: Detail Distance, Detail Density, Tree Distance, Billboard Start, Fade Length, Max Mesh Trees, Wind | `detailDistance`, `detailDensity`, `treeDistance`, `billboardStart`, `fadeLength`, `maxMeshTrees`, `windDirection`, `windSpeed`, `windSize`, `windBending` | `set_properties` |
+| Terrain Settings (detail and tree distances, billboards, wind) | `detailDistance`, `detailDensity`, `treeDistance`, `billboardStart`, `fadeLength`, `maxMeshTrees`, `wind*` | `set_properties` |
 
 Maps are images under the assets folder; generated ones go to the project's terrain maps folder.
 `sample_terrain` reads everything back: size, maps, layers, details (with the instances drawn
@@ -112,10 +112,9 @@ instances per square unit, `cast_shadows: false` for grass, a short `draw_distan
 
 ## Trees
 
-**Trees** are stored one by one in the Terrain's tree data, with LODs, impostors, capsules and a stable id.
-Add a prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). Project settings:
-`quality.foliage_quality_desktop|mobile|web` (scales and caps) and `quality.foliage_distance_desktop|mobile|web`
-(the one distance multiplier).
+**Trees** are stored one by one in the tree data, with LODs, impostors, capsules and a stable id. Add a
+prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). Project settings:
+`quality.foliage_quality_*` and `quality.foliage_distance_*` (`desktop`, `mobile`, `web`).
 
 ## The Terrain window
 
@@ -172,24 +171,18 @@ Act on `next`.
 
 ## Foliage ops of edit_terrain
 
-Foliage ops run in a call of their own, without `create`, as a job: `wait` (default true),
-`timeout_seconds`, `get_job`. An op's own keys are flat in its object. `shape` is `{type: "all"}` (default), `circle {center, radius}`,
-`rect {min, max}` or `polyline {points, radius}`, in the call's `space`. Results give `instances_added`,
-`instances_removed`, `rejected` by rule (slope, height, layer, noise, hole, spline, spacing),
-`changed_rects`, and `hash`, the same for the same input on every platform.
+Foliage ops run in a call of their own, without `create`, as a job (`wait`, `timeout_seconds`, `get_job`).
+Their keys are flat in the op; each op's result adds `instances_added`, `instances_removed`, `rejected` by
+rule and `hash` (the same on every platform), and the call adds `trees`.
 
 ```json
-{"tool": "edit_terrain", "dry_run": true, "ops": [{"op": "scatter_by_rules",
+{"tool": "edit_terrain", "dry_run": true, "ops": [{"op": "scatter_by_rules", "seed": 42,
   "shape": {"type": "rect", "min": [-200, -200], "max": [200, 200]},
-  "seed": 42,
   "target": {"trees": [{"prototype": "Pine", "weight": 3}, {"prototype": "Birch", "weight": 1}]},
   "density": 0.02, "mode": "replace",
-  "rules": {"slope": [0, 30], "height": [10, 140],
-            "layer": [{"index": 1, "min": 0.5, "max": 1}],
-            "density_map": {"layer": 2},
-            "exclude": {"holes": true, "splines": ["Road"], "spline_margin": 4},
-            "min_spacing": 3},
-  "jitter": {"scale": [0.8, 1.3], "height_ratio": [0.9, 1.2], "yaw": 1, "align_to_normal": 0}}]}
+  "rules": {"slope": [0, 30], "height": [10, 140], "layer": [{"index": 1, "min": 0.5, "max": 1}],
+            "exclude": {"holes": true, "splines": ["Road"], "spline_margin": 4}, "min_spacing": 3},
+  "jitter": {"scale": [0.8, 1.3], "yaw": 1}}]}
 ```
 
 - `scatter_by_rules`: `target` is `{trees: [...]}`, or `{detail_layer: i}`, which fills that layer's density
@@ -200,11 +193,10 @@ Foliage ops run in a call of their own, without `create`, as a job: `wait` (defa
 - `remove_trees {ids?, prototype?}` over the op's `shape`.
 - `clear_foliage {target, spline?, margin?}`: `target` is `trees`, `details`, `all`, `{trees: [...]}` or `{detail_layer: i}`.
 - `convert_placed_to_trees {host}`: an instanced child of the Terrain becomes trees.
-- `bake_impostors {prototypes?, views?, resolution?}`: alone in its call. A job over frames: `wait`,
-  `timeout_seconds`, `get_job`. Each prototype gets atlases, bounds and a source hash. Refused in Play.
+- `bake_impostors {prototypes?, views?, resolution?}`: alone in its call, refused in Play. Each prototype
+  gets atlases, bounds and a source hash.
 
-`noise_mask` needs Noise Graphs, and is refused with the reason until a build has them; `density_map` is
-the mask that always works.
+`rules.noise_mask` is refused until Noise Graphs land; `rules.density_map {layer}` masks by a density map.
 
 ## Import and export
 
@@ -223,11 +215,9 @@ changes exactly when the map's bytes do.
 
 ## Reading foliage
 
-`sample_terrain {foliage: true, region?: {min: [x, z], max: [x, z]}}` returns `foliage`: `details` per layer
-(`instances`, exact up to 4,096 cells, else `estimated: true`; `mean_density`; `drawn`), `trees` per
-prototype (`count`, `impostor_state`: `none`, `baked`, `out_of_date`) and `totals` (resident, visible, cells,
-draws, stream and buffer bytes, CPU and GPU bytes, `main_thread_ms`, `pending_cells`, `budget_exceeded`,
-placement `hash`). It works in Play, so runtime removals show.
+`sample_terrain {foliage: true, region?}` returns `foliage`: `details` per layer (`instances`, `estimated` past
+4,096 cells, `mean_density`, `drawn`), `trees` per prototype (`count`, `impostor_state`) and `totals` (counts,
+draws, bytes, `main_thread_ms`, `budget_exceeded`, `hash`). It works in Play.
 
 ## Look
 
@@ -237,8 +227,7 @@ red; `slope_range` shows one range only), `contours` (`contour_interval`, auto b
 `layer_weights` (a colour per layer; `layer` shows one). `framing`: `fit` (the default, the current
 direction), `top`, `orbit` (`yaw`, `pitch`) or `keep`; `region` frames part of the terrain. The overlay
 stays on until `overlay: "none"`; it is never in the game or a camera's image. Foliage: `density` (`layer`: a
-detail layer's instances per square unit) and `tree_density` (trees per square unit), blue to red over the
-largest value. To check an impostor: set `billboardStart` near the camera with `set_properties`, frame, and capture.
+detail layer) and `tree_density`, per square unit. To see impostors, set `billboardStart` near the camera.
 
 ## Worked flow
 
