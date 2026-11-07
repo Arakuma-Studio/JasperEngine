@@ -93,9 +93,9 @@ namespace jasperengine::editor{
         // structural step, from what it found (T1 R28, R32)
         bool rebound = false;
         TerrainMapSnapshot rebindSnapshot;
-        // the mouse's pacing, until the stroke resampler takes it over (T1 R33)
-        bool hasLastStamp = false;
-        std::chrono::steady_clock::time_point lastStampTime;
+        // the samples' clock (T1 R33, R35: only holding still deposits by time)
+        bool started = false;
+        std::chrono::steady_clock::time_point startTime;
         // Placement strokes write entities instead of a map, so none of the map state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable

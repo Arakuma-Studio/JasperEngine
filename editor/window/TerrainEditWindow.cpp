@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "component/TerrainComponent.h"
+#include "component/MeshComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -932,9 +934,8 @@ bool editor::TerrainEditWindow::findTerrainHit(Scene* scene, const Ray& ray, Ent
     return true;
 }
 
-// Time budget granted to a single click (one stamp), so a tap gives a small,
-// predictable nudge instead of a full-strength jump.
-static constexpr float BRUSH_CLICK_SECONDS = 1.0f / 60.0f;
+// T1 R38: stamping on the main thread per event, so a large brush keeps the editor responsive
+static constexpr double STROKE_FRAME_BUDGET_SECONDS = 0.006;
 // Longest interval a single event may deposit, so hitches don't cause spikes.
 static constexpr float BRUSH_MAX_STAMP_SECONDS = 0.05f;
 // Objects any closer than this would stack on top of each other
@@ -1278,24 +1279,22 @@ bool editor::TerrainEditWindow::strokeTerrainIsThere(SceneProject* sceneProject)
     return true;
 }
 
-// The mouse's pacing: deposit scales with elapsed time rather than the event rate, clamped so a
-// hitch does not spike
+// T1 R33-R35, R38: the pointer's samples become spaced stamps, so neither the event rate nor the
+// pointer's speed changes the stroke, and at most a frame's budget of them runs per event; the rest
+// wait for the next frame, or for the stroke's end
 bool editor::TerrainEditWindow::paintMapStroke(SceneProject* sceneProject, const Vector3& localPoint){
     if (!strokeTerrainIsThere(sceneProject)){
         return false;
     }
     const auto now = std::chrono::steady_clock::now();
-    float seconds = BRUSH_CLICK_SECONDS;
-    if (stroke.hasLastStamp){
-        seconds = std::clamp(std::chrono::duration<float>(now - stroke.lastStampTime).count(), 0.0f, BRUSH_MAX_STAMP_SECONDS);
+    if (!stroke.started){
+        stroke.started = true;
+        stroke.startTime = now;
     }
-    const bool applied = stroke.session->moveTo(localPoint.x, localPoint.z, seconds);
-    stroke.hasLastStamp = true;
-    stroke.lastStampTime = now;
-    if (applied){
-        stroke.session->flush();
-    }
-    return applied;
+    const float time = std::chrono::duration<float>(now - stroke.startTime).count();
+    stroke.session->addSample(time, localPoint.x, localPoint.z, 1.0f);
+    stroke.session->run(STROKE_FRAME_BUDGET_SECONDS);
+    return stroke.session->flush();
 }
 
 bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int width, int height){
@@ -2231,6 +2230,15 @@ static editor::TerrainToolCategory toolCategoryFor(editor::TerrainBrushMode mode
 }
 
 void editor::TerrainEditWindow::show(){
+    // T1 R38: stamps a held, still pointer left waiting run in this frame's budget
+    if (stroke.active && stroke.session && stroke.session->hasQueued()){
+        if (SceneProject* sceneProject = project->getScene(stroke.sceneId)){
+            if (strokeTerrainIsThere(sceneProject)){
+                stroke.session->run(STROKE_FRAME_BUDGET_SECONDS);
+                stroke.session->flush();
+            }
+        }
+    }
     if (windowOpen){
         updateTargetFromSelection();
     }
@@ -2850,7 +2858,6 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
     if (!findTerrainHit(scene, ray, entity, localPoint, worldPoint, localHeight, &stroke)){
         // The ray left the terrain: drop the path anchor so re-entering doesn't
         // interpolate a streak across the gap.
-        stroke.hasLastStamp = false;
         if (stroke.session){
             stroke.session->liftAnchor();
         }
@@ -2883,6 +2890,8 @@ void editor::TerrainEditWindow::endStroke(){
 
     SceneProject* sceneProject = project->getScene(stroke.sceneId);
     if (stroke.session && sceneProject && sceneProject->scene->isEntityCreated(stroke.entity) && strokeTerrainIsThere(sceneProject)){
+        // what the frame budget left waiting lands before the step is cut
+        stroke.session->run(0.0);
         stroke.session->flush();
         CommandHistory* history = CommandHandle::get(stroke.sceneId);
         if (stroke.rebound){

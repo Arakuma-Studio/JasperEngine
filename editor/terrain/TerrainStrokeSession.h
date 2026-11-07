@@ -6,8 +6,11 @@
 #include "TerrainBrush.h"
 #include "terrain/OverlayMapStore.h"
 #include "terrain/TerrainOps.h"
+#include "terrain/TerrainStroke.h"
 
 #include <cstdint>
+#include <deque>
+#include <optional>
 
 namespace jasperengine::editor{
 
@@ -32,7 +35,16 @@ namespace jasperengine::editor{
         // one stamp. False when no stamp landed (wholly off the terrain).
         bool moveTo(float x, float z, float seconds);
         // The next move starts afresh instead of drawing a streak from the last point
-        void liftAnchor() { hasLastPoint = false; }
+        void liftAnchor() { hasLastPoint = false; resampler.reset(); }
+
+        // A person's drag (R33-R35, R38): a sample of the pointer at `time` seconds into the stroke.
+        // StrokeResampler turns the samples into stamps, a click into one, each depositing what one
+        // 1/60 s click does (R34); they wait in a queue for run(). A ramp re-applies at once (R36).
+        void addSample(float time, float x, float z, float pressure);
+        // Runs queued stamps, in order, until budgetSeconds of wall time have passed (0: all of
+        // them). The stroke's bytes do not depend on the budget. True when none wait.
+        bool run(double budgetSeconds);
+        bool hasQueued() const { return !queue.empty(); }
 
         // The base shows the stroke so far; the floats stay (R17)
         bool flush();
@@ -66,6 +78,11 @@ namespace jasperengine::editor{
 
         // Kept between stamps: a mask's pixels are not copied again for each one
         terrain::Op op;
+
+        // R33: the drag's resampler, made by its first sample and again after a lift
+        std::optional<terrain::StrokeResampler> resampler;
+        std::deque<terrain::StrokeStamp> queue;
+        std::vector<terrain::StrokeStamp> sampled;
 
         bool hasLastPoint = false;
         float lastX = 0.0f, lastZ = 0.0f;

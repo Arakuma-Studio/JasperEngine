@@ -4,6 +4,7 @@
 #include "TerrainStrokeSession.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -223,6 +224,49 @@ bool editor::TerrainStrokeSession::moveTo(float x, float z, float seconds){
     lastZ = z;
     hasLastPoint = true;
     return applied;
+}
+
+void editor::TerrainStrokeSession::addSample(float time, float x, float z, float pressure){
+    // a pen reading 0..1; anything else is a mouse, which presses fully
+    const float pressed = pressure >= 0.0f && pressure <= 1.0f ? pressure : 1.0f;
+    if (brush.mode == TerrainBrushMode::Ramp && !brush.accumulateRamp){
+        queue.clear();
+        moveTo(x, z, 0.0f);
+        return;
+    }
+    if (!resampler){
+        const float texel = format.bounds.w > 0 ? terrainSize / static_cast<float>(format.bounds.w) : 0.0f;
+        resampler.emplace(StrokeResampler::defaultSpacing(radius, texel));
+    }
+    sampled.clear();
+    resampler->add(StrokeSample{time, x, z, pressed}, sampled);
+    queue.insert(queue.end(), sampled.begin(), sampled.end());
+}
+
+bool editor::TerrainStrokeSession::run(double budgetSeconds){
+    const auto start = std::chrono::steady_clock::now();
+    const float baseRadius = radius;
+    while (!queue.empty()){
+        const StrokeStamp stamp = queue.front();
+        queue.pop_front();
+        if (brush.pressureSize){
+            radius = std::max(baseRadius * stamp.pressure, MIN_RADIUS_TEXELS * (format.bounds.w > 0 ? terrainSize / static_cast<float>(format.bounds.w) : 0.0f));
+            op.shape.radius = op.shape.type == ShapeType::Circle || op.shape.type == ShapeType::Polyline ? radius : op.shape.radius;
+            if (op.shape.type == ShapeType::Mask) op.shape.size = Vector2(radius * 2.0f, radius * 2.0f);
+        }
+        const float strengthScale = brush.pressureStrength ? stamp.pressure : 1.0f;
+        const float saved = brush.strength;
+        brush.strength = saved * strengthScale;
+        applyStamp(stamp.x, stamp.z, StrokeResampler::SECONDS_PER_STAMP);
+        brush.strength = saved;
+        radius = baseRadius;
+        if (op.shape.type == ShapeType::Circle || op.shape.type == ShapeType::Polyline) op.shape.radius = radius;
+        if (op.shape.type == ShapeType::Mask) op.shape.size = Vector2(radius * 2.0f, radius * 2.0f);
+        if (budgetSeconds > 0.0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= budgetSeconds){
+            break;
+        }
+    }
+    return queue.empty();
 }
 
 bool editor::TerrainStrokeSession::flush(){
