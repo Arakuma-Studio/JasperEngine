@@ -812,7 +812,9 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    so its bones stay at the identity and a skinned mesh already drew at rest. `MeshSystem::loadGLTF` now loads a
    copy a system places (`bakeSceneRoot` with `skipEntities`: foliage and spline chunks) without its skinning
    attributes: the same image, two fewer inputs, no bone palette. Blend shapes keep their default weights.
-   `test_terrain_details.py::test_fbx_layer` checks that the layer draws again.
+   `test_terrain_details.py::test_fbx_layer` checks that the layer draws again. Its draw checks (and
+   `test_add_update_remove`'s) wait for the state with a hang guard instead of 100 frames: on a box's first run,
+   with 8 editors and cold shader variants, the OBJ layer of the older test drew 0 within that budget too.
 2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
    is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
    always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version
