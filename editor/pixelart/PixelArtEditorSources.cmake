@@ -37,6 +37,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/SpriteAtlasInspector.cpp
     ${EDITOR_DIR}/window/InspectorSpriteSheet.cpp
     ${EDITOR_DIR}/window/TextureSpriteMode.cpp
+    ${EDITOR_DIR}/window/dialog/SpriteConversionDialog.cpp
 )
 jasperengine_skip_unity_build(
     REASON "S45's sprite modules: file-local helpers (problemJson, readText, invalid) shared in name with the Aseprite importer's"
