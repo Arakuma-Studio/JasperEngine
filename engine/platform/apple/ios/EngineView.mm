@@ -204,7 +204,7 @@ static UITouch* touches[MAX_TOUCHES];
 
 // A key the keyboard turned into an edit. A hardware key reported its own down and
 // up (pressesBegan), so then only the character is left, for the component UI.
-- (void)sendEditingKey:(int)key character:(wchar_t)character{
+- (void)sendEditingKey:(int)key character:(char32_t)character{
     const bool hardware = _keysDown[key] || (key == D_KEY_ENTER && _keysDown[D_KEY_KP_ENTER]);
     if (!hardware)
         jasperengine::Engine::systemKeyDown(key, false, 0);

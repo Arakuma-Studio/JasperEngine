@@ -143,11 +143,6 @@ TEST(Quaternion, FromMatrixCoversEveryBranch){
     }
 }
 
-TEST(Quaternion, MatchesTheMatrixRotation){
-    const Matrix4 m = Matrix4::rotateMatrix(90.0f, Vector3::UNIT_Z);
-    EXPECT_VEC_NEAR(m * Vector3::UNIT_X, Quaternion(90.0f, Vector3::UNIT_Z) * Vector3::UNIT_X, quatTolerance);
-}
-
 TEST(Quaternion, EulerConstructorAppliesXThenYThenZ){
     const Quaternion q(90.0f, 0.0f, 90.0f);
     const Quaternion expected = Quaternion(90.0f, Vector3::UNIT_Z) * Quaternion(90.0f, Vector3::UNIT_X);

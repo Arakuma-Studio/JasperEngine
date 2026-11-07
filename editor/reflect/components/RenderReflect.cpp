@@ -135,6 +135,7 @@ namespace {
         JE_FIELD(TerrainFoliageLayer, minHeight, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, maxHeight, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, drawDistance, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainFoliageLayer, minDrawDistance, .flags = OmitIfDefault, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(TerrainFoliageLayer, seed, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, castShadows, .updateFlags = kFoliage),
     };
@@ -189,6 +190,12 @@ namespace {
         JE_FIELD(MeshComponent, staticShadowCaster),
         JE_FIELD(MeshComponent, lodEnabled, .updateFlags = kMeshReload, .label = "LOD"),
         JE_FIELD(MeshComponent, lodBias, .min = 0.0f, .label = "LOD Bias"),
+        JE_FIELD(MeshComponent, allowGpuInstancing, .updateFlags = kMeshReload, .label = "Allow GPU Instancing"),
+        // a mesh that may fade loads its fade shaders with the mesh (spec S54 R10)
+        JE_FIELD(MeshComponent, lodFadeMode, .enumDesc = &enums::kLodFadeMode, .updateFlags = kMeshReload, .label = "Fade Mode"),
+        JE_FIELD(MeshComponent, lodAnimateCrossFading, .label = "Animate Cross-fading"),
+        JE_FIELD(MeshComponent, lodFadeTransitionWidth, .min = 0.0f, .max = 1.0f, .label = "Fade Transition Width"),
+        JE_FIELD(MeshComponent, lodCullBelow, .min = 0.0f, .max = 1.0f, .label = "Cull Below Screen Height"),
         JE_FIELD(MeshComponent, renderInReflectionProbes, .updateFlags = UpdateFlags_Reflection_Probe_Recapture_All),
         JE_FIELD(MeshComponent, transparent, .updateFlags = kMeshReload),
         JE_FIELD(MeshComponent, autoTransparency, .updateFlags = kMeshReload),
@@ -197,7 +204,7 @@ namespace {
         JE_FIELD(MeshComponent, customDepthShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(MeshComponent, numSubmeshes),
-        JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll),
+        JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
         // one by one (the Inspector's Blend Shapes rows, animation clips T3c); read every frame
         JE_FIELD(MeshComponent, morphWeights, .flags = ListElements | ListTemplate | NoCodegen),
@@ -209,8 +216,10 @@ namespace {
         const MeshComponent& mesh = *static_cast<const MeshComponent*>(comp);
         if (!ctx.registry) return Stream::encodeMeshComponent(mesh);
         const bool isModel = Stream::isModelBackedMesh(ctx.entity, ctx.registry, ctx.signature);
-        const bool isGenerated = isModel || Stream::isGeneratedMesh(ctx.registry, ctx.signature);
-        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
+        const bool generatesGeometry = Stream::isGeneratedMesh(ctx.registry, ctx.signature);
+        const bool isGenerated = isModel || generatesGeometry;
+        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated, Stream::savedSubmeshCount(mesh, ctx.registry, ctx.signature),
+                                           !generatesGeometry);
     }
 
     void decodeMesh(const YAML::Node& node, void* comp, const DecodeContext& ctx) {
@@ -323,6 +332,8 @@ namespace {
         JE_FIELD(InstancedMeshComponent, fadeStart, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, cullDistance, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, fadeEnd, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(InstancedMeshComponent, nearFadeStart, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(InstancedMeshComponent, nearFadeEnd, .flags = OmitIfDefault, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(InstancedMeshComponent, instancedBillboard, .updateFlags = kMeshReload, .label = "Billboard"),
         JE_FIELD(InstancedMeshComponent, instancedCylindricalBillboard, .updateFlags = kMeshReload, .label = "Cylindrical Billboard"),
         JE_FIELD(InstancedMeshComponent, instances, .flags = ListWhole, .updateFlags = kInstances),
@@ -332,9 +343,14 @@ namespace {
 
     constexpr uint64_t kTerrain = UpdateFlags_Terrain;
 
+    // the node tree and the physics heightfield are built from the map
+    void terrainHeightMapMoved(void* owner) {
+        static_cast<TerrainComponent*>(owner)->heightMapLoaded = false;
+    }
+
     constexpr FieldDesc kTerrainFields[] = {
         JE_FIELD(TerrainComponent, enabled),
-        JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage),
+        JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage, .assetMoved = &terrainHeightMapMoved),
         // cut and filled by operations, never picked by hand (S53 R12)
         JE_FIELD(TerrainComponent, holeMap, .flags = Hidden, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
@@ -406,7 +422,8 @@ namespace {
 
     constexpr FieldDesc kScriptFields[] = {
         // an enabled change runs onEnable / onDisable in Play (Catalog::updateEntity: UpdateFlags_Script_Enabled, as upstream's Catalog)
-        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled),
+        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled,
+                 .assetForm = AssetForm::ScriptEntries),
     };
 
     // A script property's value and its default (the script's declared one)
@@ -474,7 +491,7 @@ namespace {
 
     constexpr FieldDesc kPrefabFields[] = {
         JE_FIELD(PrefabComponent, name, .drawer = "label"),
-        JE_FIELD(PrefabComponent, path, .asset = AssetKind::Prefab, .drawer = "label"),
+        JE_FIELD(PrefabComponent, path, .asset = AssetKind::Prefab, .drawer = "label", .assetForm = AssetForm::PrefabRoot),
         JE_FIELD(PrefabComponent, guid, .label = "GUID", .drawer = "label"),
     };
 
@@ -500,7 +517,7 @@ namespace {
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
-    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
+    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode", "lodFadeTransitionWidth", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
 }
 
@@ -586,7 +603,7 @@ const ComponentDesc kLineRendererDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kInstancedMeshKnownKeys[] = {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"};
+    constexpr const char* kInstancedMeshKnownKeys[] = {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances", "nearFadeEnd", "nearFadeStart"};
 
 }
 
@@ -603,6 +620,9 @@ const ComponentDesc kInstancedMeshDesc{
 namespace {
 
     // the keys its codec reads
+    // terrains saved before blend maps and surface layers
+    constexpr const char* kTerrainLegacyTextureKeys[] = {"blendMap", "textureLayers[]", "textureDetailRed", "textureDetailGreen", "textureDetailBlue"};
+
     constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "holeMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
 
 }
@@ -614,6 +634,7 @@ const ComponentDesc kTerrainDesc{
     .codec = &kTerrainCodec,
     .codegen = JE_FACTORY_CODEGEN_PATH(createTerrainComponent),
     .extraKeys = kTerrainKnownKeys,
+    .legacyTextureKeys = kTerrainLegacyTextureKeys,
 };
 
 namespace {

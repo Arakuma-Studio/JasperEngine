@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "ShippingTypes.h"
+#include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"
 #include "shader/ShaderBuilder.h"
@@ -12,6 +13,7 @@
 #include "util/CommandRunner.h"
 
 #include <filesystem>
+#include <map>
 #include <set>
 #include <vector>
 #include <string>
@@ -124,6 +126,10 @@ namespace jasperengine::editor {
         std::vector<std::string> modules;
         std::vector<ModuleEvidence> moduleEvidence;
         std::vector<std::string> modulesLeftOut;
+        // S53 R21: build-report.json next to the export, and its numbers
+        fs::path buildReport;
+        uint64_t buildBytes = 0;
+        std::map<std::string, uint64_t> buildCategories;
     };
 
     struct ExportProgress {
@@ -186,6 +192,12 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S53: the same for models (and the .bin files only they read)
+        std::set<std::string> cookedModelSources;
+        // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
+        // path -> its source asset and that source's bytes
+        std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
+        BuildReport buildReport;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
@@ -215,8 +227,13 @@ namespace jasperengine::editor {
         bool holdFinish = false;
         bool keepBuildSymbols(const fs::path& executable);
 
-        // Lua sources copyLua() shipped, so copyAssets() can skip them
+        // Lua sources copyLua() shipped (where they are on disk: the assets walk may reach them
+        // through a link), so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
+        // Linked folders walkTree() left out (where each link is on disk), so each is warned about
+        // once per export: the shader copy walks the project root and reaches the assets' links again
+        std::set<fs::path> leftOutLinks;
+        size_t treeLinksEntered = 0;
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
         // Android's merged assets root free of paths both trees would ship
         std::set<fs::path> luaExportedPaths;
@@ -288,6 +305,8 @@ namespace jasperengine::editor {
         bool checkTargetDir();
         bool prepareCacheTarget();
         bool configureBuild();
+        // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
+        unsigned int effectiveBuildJobs() const;
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
@@ -309,10 +328,35 @@ namespace jasperengine::editor {
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
+        // S37 R24: an event whose clip is missing is a build warning naming both
+        void checkSoundEventClips();
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         bool cookTextures();
+        // S53: every model source cooked for the families of the export, into
+        // assets/je-cooked/models; a cook error fails the export, naming the file
+        bool cookModels();
+        // False, with the error set, when an asset sits where the engine loads an FBX's import
+        // from (<relPath>.glb, relative to the assets)
+        bool checkFbxImportPathFree(const fs::path& relPath);
+        // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
+        // its engine files, and the report written next to the export
+        void measureBuildContent(const fs::path& contentRoot);
+        void measureBuildEngine(const fs::path& root);
+        bool writeBuildReport(const fs::path& outputDir, const std::string& method);
+        // What walkTree() does after visiting an entry: enter it (a folder; a file goes on to the
+        // next entry), skip what it holds, or stop the walk
+        enum class TreeStep { Enter, Skip, Stop };
+        using TreeVisitor = std::function<TreeStep(const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real)>;
+        // A tree as the editor reaches it (S68 R1, R2): each folder listed, a link of any kind entered
+        // as a folder under its own name, so relPath (never canonicalized) is the path a scene or
+        // script reads the file by; real is where the entry is on disk. A link to a folder that holds
+        // it (it would hold itself) is left out with a warning. ec: the root could not be listed.
+        void walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec);
+        // False, with the error set, when a trusted root of the project leads elsewhere than when it
+        // was pinned: the game would ship whatever is there now
+        bool checkRootsPinned();
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
@@ -355,6 +399,10 @@ namespace jasperengine::editor {
         // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
+        // licenses/THIRD-PARTY-AUDIO.txt (with its build warnings) when a shipped clip has a provenance
+        bool writeAudioCredits();
+        // assets/je-audio-imports.json when any shipped clip has import settings
+        bool writeAudioImports();
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();
@@ -370,12 +418,6 @@ namespace jasperengine::editor {
         // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
         // Android exports then need no INTERNET for videos)
         std::string videoUrlScene() const;
-        // Aggregates SceneMaxValues across all project scenes into the capacities that
-        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
-        std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
-        static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
-        // add_definitions() block applying them to the export.
-        std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
         fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
         // Script roots inside the exported project, as copyCppScripts() lays them out.
@@ -384,9 +426,15 @@ namespace jasperengine::editor {
         std::string buildScriptDirIncludes() const;
 
         static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // dst mirrors src: changed files copied, files src no longer has removed, unchanged files
+        // left untouched (their mtime, for incremental builds) but given src's permissions
+        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
+        // Adds the execute bits (owner, group, others) to each file, as a terminal needs them for
+        // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
+        // no-op on Windows. False with error naming the file when one can't be changed.
+        static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
         // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
@@ -443,9 +491,11 @@ namespace jasperengine::editor {
                                                             const CommandRunner::Environment& env, std::string& error);
         // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
         // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
-        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is, else Ninja
+        // with CMAKE_MAKE_PROGRAM when visualStudioNinja (CommandRunner::findVisualStudioNinja)
+        // is given; else error.
         static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                       std::string& error);
+                                                                       std::string& error, const fs::path& visualStudioNinja = {});
         // Windows Web builds: the first file or folder below `roots` (what the build copies or
         // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
         // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is

@@ -10,6 +10,10 @@
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
 #include "camera/ShakerRuntime.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
@@ -36,7 +40,15 @@
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "Platform.h"
+#include <filesystem>
+#include <memory>
+#include "audio/AudioAnalysis.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
+#include "audio/MusicPlayer.h"
+#include "audio/AudioSessionReader.h"
+#include "jobs/JobSystem.h"
+#include "audio/LoudnessMonitor.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
@@ -631,6 +643,17 @@ Json playAudioJson() {
     Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
     if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
     if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    // the music system (S39 R20)
+    const MusicPlayer::Status music = MusicPlayer::status();
+    if (music.playing) {
+        out["music"] = {{"track", music.track}, {"section", music.section}, {"time_s", std::round(music.timeSeconds * 1000.0) / 1000.0},
+                        {"bar", music.bar}, {"beat", music.beat}, {"bpm", music.bpm}};
+    }
+    // from the first read until Stop: a first read's value is null, the next ones measure
+    LoudnessMonitor::get().requestByAgent();
+    const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();
+    out["loudness"] = {{"momentary_lufs", reading.momentary ? Json(std::round(*reading.momentary * 100.0) / 100.0) : Json(nullptr)},
+                       {"true_peak_dbtp", std::round(reading.truePeakDb * 100.0) / 100.0}};
     return out;
 }
 
@@ -1490,6 +1513,9 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     if (!data.is_object()) data = Json::object();
     data["job_id"] = job.id();
     std::string text;
+    if (const Project* project = ctx.project(); project && !project->getAudioCaptureError().empty()) {
+        data["audio_capture_error"] = project->getAudioCaptureError();
+    }
     const Json problems = data.value("problems", Json::array());
     Json scriptErrors = Json::array();
     for (const Json& entry : problems) {
@@ -1510,6 +1536,11 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     }
     if (job.status() == JobStatus::Succeeded) {
         text = job.message() + " Started in " + std::to_string(data.value("startup_seconds", 0.0)).substr(0, 5) + " s.";
+        if (data.contains("audio_capture_error")) text += " Audio capture failed: " + data["audio_capture_error"].get<std::string>() + ".";
+        if (AudioCapture::isActive()) {
+            data["audio_capture"] = {{"session", AudioCapture::sessionId()}, {"next", "play stop gives the numbers; audio_session report (group audio) reads them"}};
+            text += " Capturing audio: play stop gives its numbers, audio_session report (group audio) reads them.";
+        }
         if (!problems.empty()) {
             text += " Console problems since start:\n" + w3::formatConsoleText(problems, 4000);
         } else {
@@ -1619,6 +1650,35 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         if (!kept.is_null()) data["kept_changes"] = kept;
         std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);
+        // the capture's numbers, read off the main thread (R20)
+        const std::string session = c.project()->takeAudioCaptureSession();
+        if (!session.empty()) {
+            const std::filesystem::path root = AudioAnalysis::captureRoot(c.project()->getProjectPath());
+            auto summary = std::make_shared<Json>();
+            JobPtr job = c.jobs().create("play_audio_summary", "Measure the audio capture");
+            jobs::submit([root, session, summary, job]() {
+                AudioAnalysis::Capture capture;
+                AudioSessionData audio;
+                std::string error;
+                if (AudioAnalysis::findCapture(root, session, std::string(), capture, error) && AudioSessionReader::load(capture, 0.0, -1.0, audio, error)) {
+                    *summary = AudioSessionReader::stopSummary(audio);
+                    job->succeed("Measured.", *summary);
+                } else {
+                    job->fail(error);
+                }
+            }, {jobs::Lane::Background, jobs::GateClass::Default, "play-audio-summary"});
+            replyWhenJobDone(call, job, true, 120.0, [data, text, summary](const McpJob&) mutable {
+                if (summary->is_object()) {
+                    const Json& audio = *summary;
+                    data["audio"] = audio;
+                    const auto number = [&audio](const char* key) { return audio[key].is_number() ? std::to_string(audio[key].get<double>()).substr(0, 6) : std::string("none"); };
+                    text += "\nAudio capture " + audio.value("session", "") + ": " + number("duration_s") + " s, " + number("integrated_lufs") + " LUFS, momentary max " +
+                            number("momentary_max") + ", true peak " + number("true_peak_dbtp") + " dBTP, " + std::to_string(audio.value("voices_started", 0)) + " voices. Next: audio_session report.";
+                }
+                return ToolResult::success(text, data);
+            });
+            return;
+        }
         call->ok(text, data);
     });
 }
@@ -2916,8 +2976,31 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             error = "text event needs text";
             return false;
         }
-        // the whole string at once: documents get it as one text input, the game and the
-        // component UI each code point (surrogate pairs where wchar_t is 16 bits)
+        if (event.contains("per_unit") && !event["per_unit"].is_boolean()) {
+            error = "per_unit must be true or false";
+            return false;
+        }
+        if (event.value("per_unit", false)) {
+            // one character event per UTF-16 unit, as Windows WM_CHAR and Android's keys deliver
+            // typing: a character beyond U+FFFF arrives as two halves the engine must combine
+            std::vector<char32_t> units;
+            for (uint32_t cp : decodeUtf8(text)) {
+                if (cp > 0xFFFF) {
+                    const uint32_t value = cp - 0x10000;
+                    units.push_back(static_cast<char32_t>(0xD800 + (value >> 10)));
+                    units.push_back(static_cast<char32_t>(0xDC00 + (value & 0x3FF)));
+                } else {
+                    units.push_back(static_cast<char32_t>(cp));
+                }
+            }
+            add([units]() {
+                for (char32_t unit : units) Engine::systemCharInput(unit);
+                return std::string();
+            }, gapFrames, 0, "text per unit");
+            return true;
+        }
+        // the whole string at once (a paste, an IME commit): documents get it as one text input,
+        // the game and the component UI each code point
         add([text]() {
             Engine::systemTextInput(text);
             return std::string();
@@ -4355,7 +4438,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
-            "[shift,ctrl,alt,super]\ntext: text; ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "

@@ -29,6 +29,8 @@ namespace jasperengine::editor{
         YAML::Node oldValue;            // null: the key was absent
         bool fileExisted = false;
         bool captured = false;
+        // the undo step's verb when the key alone does not say what was done
+        std::string action;
 
         std::filesystem::path metaPath() const;
         bool write(const YAML::Node& value, bool removeFileIfEmpty);
@@ -42,17 +44,21 @@ namespace jasperengine::editor{
         // The key's value in an asset's sidecar (null when absent)
         static YAML::Node read(const std::filesystem::path& absoluteAsset, const std::string& key);
 
-        // Told after every write, undo included (the texture cook queue requeues what an
-        // import-settings edit changed): the project, the project-relative asset and the key
+        // Told after every write, undo included (the texture and model cook queues requeue what
+        // an import-settings edit changed): the project, the project-relative asset and the key.
+        // Any number of listeners, each under its owner's key (S53 R14): adding one under a key
+        // that has one replaces it, and removing a key leaves the others alone.
         using WriteListener = std::function<void(Project* project, const std::filesystem::path& asset, const std::string& key)>;
-        static void setWriteListener(WriteListener listener);
+        static void addWriteListener(const void* owner, WriteListener listener);
+        static void removeWriteListener(const void* owner);
 
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
 
-        // "Set Import Compression (a.png)"
+        // "Set Import Compression (a.png)", or "<action> (a.png)" once setAction gave one
         std::string describe() const override;
+        void setAction(std::string name) { action = std::move(name); }
         // the project-relative asset whose sidecar it writes (lock-on-edit, S29 R12)
         const std::filesystem::path& getAsset() const { return asset; }
         const char* typeName() const override { return "SetAssetMetaCmd"; }

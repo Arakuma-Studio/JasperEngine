@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "component/Joint3DComponent.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"
@@ -40,12 +41,14 @@ using namespace jasperengine;
 
 namespace {
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     // Transform::worldScale is the entity's accumulated scale, resolved by
     // RenderSystem::updateTransform. Identity when there is no Transform, matching an
     // unscaled body.
     Vector3 entityWorldScale(Scene* scene, Entity entity){
         return JoltShapeBuilder::entityWorldScale(scene, entity);
     }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
     Vector2 entityWorldScale2D(Scene* scene, Entity entity){
@@ -4027,7 +4030,7 @@ void PhysicsSystem::fixedUpdate(double dt){
         return;
     }
 
-    const float fixedStep = (float)dt;
+    [[maybe_unused]] const float fixedStep = (float)dt;
 
     // scripts defining contact messages appeared or went since the last step
     if (listenerMasksDirty){

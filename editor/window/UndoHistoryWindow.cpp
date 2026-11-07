@@ -8,6 +8,7 @@
 #include "external/IconsFontAwesome6.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -237,16 +238,17 @@ void UndoHistoryWindow::drawFooter(uint32_t sceneId) {
         ImGui::OpenPopup("Clear Undo History");
     }
     ImGui::EndDisabled();
-    if (ImGui::BeginPopupModal("Clear Undo History", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Clear Undo History", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("Clear the undo history of this scene and of the project's assets? This can't be undone.");
         ImGui::TextUnformatted("Clear the undo history of this scene and of the project's assets?\nThis can't be undone.");
-        if (ImGui::Button("Clear")) {
+        if (EditorModal::button("Clear", "yes")) {
             if (CommandHistory* history = UndoTimeline::sceneHistory(sceneId)) history->clear();
             if (CommandHistory* history = UndoTimeline::getProjectHistory()) history->clear();
             status.clear();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (EditorModal::button("Cancel", "cancel")) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

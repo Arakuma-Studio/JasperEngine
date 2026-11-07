@@ -1,0 +1,34 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 498575f88a39c268
+--- 0
+endColor: [1e-45, -20.571428, 19.714285]
+startColor: [0, 0, 0.012577709]
+useSRGB: false
+--- 1
+endColor: [1e-45, -0, -82]
+startColor: [1e-45, 0.057713743, -0]
+useSRGB: true
+--- 2
+endColor: [3e+38, -0, 545.52026]
+startColor: [-57, 63, 54]
+useSRGB: true
+--- 3
+endColor: [0.053840723, 8683.998, 8088.8604]
+startColor: [7996.9844, 4887.259, 0]
+useSRGB: false
+--- 4
+endColor: [0.3461775, 0, 253.39235]
+startColor: [7479.769, 2249.4834, 0.36508077]
+useSRGB: true
+--- 5
+endColor: [0.8681779, -71, 3627.3542]
+startColor: [124.14286, 1e-45, 0]
+useSRGB: true
+--- 6
+endColor: [0, 3e+38, 8308.2]
+startColor: [2546.609, -57, 4100.06]
+useSRGB: false
+--- 7
+endColor: [0, 1e-45, -33.857143]
+startColor: [3e+38, 1e-45, 0]
+useSRGB: true

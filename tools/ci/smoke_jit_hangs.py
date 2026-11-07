@@ -31,7 +31,9 @@ def stack_of(report: str) -> str:
 
 def is_software_jit(report: str) -> bool:
     stack = stack_of(report)
-    return "libLLVM" in stack and "libgallium" in stack and "SokolObject::draw" in stack
+    # Mesa before 24 links its gallium drivers into swrast_dri.so (the Ubuntu 22.04 build image)
+    gallium = "libgallium" in stack or "swrast_dri" in stack
+    return "libLLVM" in stack and gallium and "SokolObject::draw" in stack
 
 
 def only_software_jit(logs: list[Path]) -> bool:

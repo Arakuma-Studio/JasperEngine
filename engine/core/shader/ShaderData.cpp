@@ -147,6 +147,12 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "a_tangentOut";
     }else if (type == AttributeType::LINEPARAMS){
         attrstr = "a_lineParams";
+    }else if (type >= AttributeType::OBJECTMODEL0 && type <= AttributeType::OBJECTEXTRA){
+        static const char* const objectNames[] = {
+            "i_objectModel0", "i_objectModel1", "i_objectModel2",
+            "i_objectNormal0", "i_objectNormal1", "i_objectNormal2",
+            "i_objectMvp0", "i_objectMvp1", "i_objectMvp2", "i_objectMvp3", "i_objectExtra"};
+        attrstr = objectNames[(int)type - (int)AttributeType::OBJECTMODEL0];
     }
 
     if (attrstr.empty()){
