@@ -94,7 +94,8 @@ async def content_hash(ed: Editor, entity: int) -> str:
 
 
 async def history_size(ed: Editor, scene: int) -> int:
-    return len((await ed.call("get_undo_history", scene=scene, limit=500))["entries"])
+    """The steps done: an undone step waits in the redo tail and does not count."""
+    return len((await ed.call("get_undo_history", scene=scene, limit=500, include_redo=False))["entries"])
 
 
 async def test_group_hidden_until_enabled(ed: Editor):
@@ -107,7 +108,9 @@ async def test_group_hidden_until_enabled(ed: Editor):
     await ed.call("tool_groups", enable=["voxels"])
     listed = {t.name for t in await ed.tools(groups=None)}
     ed.check(set(TOOLS) <= listed, f"listed once enabled: {sorted(set(TOOLS) - listed)}")
-    tools = {t.name: t for t in await ed.tools(groups=["voxels"])}
+    # a group's listing carries the core tools too
+    core = {t.name for t in await ed.tools(groups=[])}
+    tools = {t.name: t for t in await ed.tools(groups=["voxels"]) if t.name not in core}
     ed.check_eq(set(tools), set(TOOLS), "four tools and only four (R82)")
     sizes = {name: tool_budget.measure(tools[name])["total"] for name in TOOLS}
     print(f"     [budget] voxels tools: {sizes}, {sum(sizes.values())} chars")
@@ -340,7 +343,8 @@ async def test_visualize(ed: Editor):
     ed.check(0.2 < data["solid_fraction"] < 0.6 and data["iso_line_length"] > 10, f"{data}")
     other = await ed.call_raw("visualize_voxels", {"entity": entity, "mode": "slice", "axis": "y", "position": 10, "max_width": 256})
     ed.check(hashlib.sha256(other.images[0][0]).digest() != hashlib.sha256(one.images[0][0]).digest(), "another plane differs")
-    ed.check_eq(other.value["solid_fraction"], 1.0, f"under the ground: {other.value}")
+    # under the ground all is solid but a Closed volume's outer layer of air (R8): 62 of 64 voxels each way
+    ed.check(abs(other.value["solid_fraction"] - (62 / 64) ** 2) < 1e-6, f"under the ground: {other.value}")
 
     for mode in ("wireframe", "lod", "materials", "blocks", "collision", "holes"):
         shot = await ed.call_raw("visualize_voxels", {"entity": entity, "mode": mode, "frame": True, "max_width": 256})
@@ -570,8 +574,13 @@ async def test_navigation_dirty_after_edit(ed: Editor):
     clean = (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]
     ed.check_eq(clean["dirty_tiles"], 0, f"{clean}")
     await ed.call("edit_voxels", entity=entity, ops=[{"op": "dig", "shape": {"type": "sphere", "center": [32, 16, 32], "radius": 6}}])
-    await ed.call("wait", frames=2)
-    dirty = (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]
+    # the editor counts dirty tiles at most once a second
+    deadline = time.monotonic() + 30
+    while True:
+        dirty = (await ed.call("get_navigation_info", scene=scene))["surfaces"][0]
+        if dirty["dirty_tiles"] > 0 or time.monotonic() > deadline:
+            break
+        await asyncio.sleep(0.25)
     ed.check(dirty["dirty_tiles"] > 0, f"the dig dirties tiles: {dirty}")
     await ed.call("select_scene", scene=s["scene"])
 
@@ -588,6 +597,9 @@ async def test_budgets_cave_world(ed: Editor):
     await ed.call("set_terrain_maps", entity=terrain["entity_id"], heightmap={"generate": "fractal_noise", "resolution": 257, "seed": 3, "amplitude": 0.25})
     created = await ed.call("edit_voxels", create={"name": "World", "size": [256, 128, 256], "position": [-128, 0, -128], "terrain": terrain["entity_id"]})
     entity = created["entity"]["id"]
+    # its From Terrain base is a job of its own
+    ed.check("job_id" in created, f"a terrain base is generated: {created}")
+    ed.check_eq((await finished(ed, created))["status"], "succeeded", f"{created}")
     done = await finished(ed, await ed.call("generate_voxels", entity=entity, source="preset", preset="cave_entrance", seed=1,
                                             terrain=terrain["entity_id"], keep_edits=False))
     ed.check_eq(done["status"], "succeeded", f"{done}")
