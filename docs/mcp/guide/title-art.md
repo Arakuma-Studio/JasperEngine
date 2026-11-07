@@ -105,6 +105,59 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
 - Headless: `jasperengine-editor check --titles` (no GPU) reports `title-*` problems with the
   fix command; `jasperengine-editor call export_title --project <p> path=<doc>` bakes.
 
+### Runtime
+
+A title goes into a game as a **Title Art Renderer** (`add_component {component: "titleart"}`, key
+`titleart`) on an Image (UI) or a Sprite (world); with neither, the scene's kind is added in the
+same step. It lends the companion its image; the companion's saved texture never changes. Fields
+with `set_properties {component: "titleart"}`: `title`, `renderMode` (`baked`, `realtime`,
+`glyph_atlas`), one property per exposed parameter (`overrides.text`, `overrides.glow_amount`; a
+prefab variant may override one alone), the Live Effects (`sweepEnabled`, `sweepPosition`,
+`glowPulse`, `tintAmount`, `glintsEnabled`... and `liveTime`, their clock).
+
+- **Baked** (default): the bake, at an Image's cost, no engine code. Overrides do not apply.
+- **Realtime**: re-renders when its text or a parameter changes, spread over frames within the
+  frame budget (2 ms mobile and web, 4 ms desktop, 8 ms in Edit mode; per S56 platform group);
+  the old image stays until the new one is ready. Builds add the `titleart` module.
+- **Glyph Atlas**: for text that changes every frame (counters). Effects that read neighbours
+  (warp, distort, hull plates, masks) do not apply per glyph: `check_title {checks:
+  ["glyph_atlas"]}` lists them with fix ops; 3D text falls back to Realtime.
+- Live Effects (any mode, one draw, no extra pass): Sweep (a band at `sweepPosition` 0..1, 0 and
+  1 off the frame; key it in a clip), Glow Pulse (needs a glow output), Tint, Glints (stars at the
+  bake's highlight anchors). Nothing reads engine time: `--fixed-fps` runs are identical.
+
+The Play loop: `play` → `eval_lua` (change) → `get_title {entity, wait_ready: true}` →
+`screenshot {view: "game"}`. `get_title {entity}` returns `ready`, `pending` (queued, hidden,
+shaders, rendering n/m, failed), `overrides`, `effective`, `live`, and `particles` (four
+`create_particles` calls: Sparkle, Embers, Confetti, Coin Shower). `render_title {entity}` renders
+the instance's state (`options.overrides` tries values, nothing saved); `options.rerender` renders
+the live instance again.
+
+Clip events (no script needed): `titleArtSetText(text)`, `titleArtSetParameter(name, value)`,
+`titleArtSetColorScheme(id)`, `titleArtPlay(name)`; a first `path` argument addresses a child as
+clip tracks do. Keyable rows: `titleart.sweepPosition`, `glowPulse`, `liveTime`, the colours and
+numeric `overrides.<name>`.
+
+```lua
+local t = self.gameObject:getTitleArt()
+if t ~= nil and t.renderMode ~= TitleArtRenderMode.BAKED then
+    t.text = "JACKPOT"
+    t:setParameter("glow_amount", 0.8)
+    t.onReady:add("hud", function() Log.print("title ready") end)
+end
+```
+
+Lua takes Exposed names only (never document paths) and raises sentences that say the fix: `text`
+on a Baked title, an unknown name (with "did you mean"), a wrong type. `title` and `renderMode`
+are read-only.
+
+**Characters**: a build ships only the glyphs a Realtime or Glyph Atlas title can show (its
+document's Characters set: presets Digits, Latin, Latin Extended, Kana, Joyo Kanji, Custom, a
+Custom File, the document's own text; plus the component's Additional Characters and literal text
+of shipped `titleArtSetText` events). Fonts are subset; a font that forbids embedding (OS/2
+fsType) stops the export unless its import acknowledges a licence. In Play, characters outside
+the set draw as nothing and `onMissingCharacters` fires, as in the build.
+
 ### Common mistakes
 
 - Pixel sizes in `%` members (a rim `width` of 40 is 40 % of the text size, very thick).
