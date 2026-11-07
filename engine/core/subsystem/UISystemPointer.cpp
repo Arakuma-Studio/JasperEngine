@@ -332,7 +332,7 @@ void UISystem::setLegacyHover(UIPointerState& state, Entity entity){
         if (ButtonComponent* button = scene->findComponent<ButtonComponent>(old)){
             button->hovered = false;
             if (UIComponent* ui = scene->findComponent<UIComponent>(old))
-                applyButtonVisual(*button, *ui);
+                applyButtonVisual(old, *button, *ui, true);
         }
         callLegacy(&UIComponent::onPointerLeave, old, snapshot);
     }
@@ -340,7 +340,7 @@ void UISystem::setLegacyHover(UIPointerState& state, Entity entity){
         if (ButtonComponent* button = scene->findComponent<ButtonComponent>(entity)){
             button->hovered = true;
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
-                applyButtonVisual(*button, *ui);
+                applyButtonVisual(entity, *button, *ui, true);
         }
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()) AudioMarkers::ui(scene, "ui_hover", entity, snapshot.position.x, snapshot.position.y);
@@ -356,7 +356,8 @@ void UISystem::refreshButtonPressed(Entity entity){
     UIComponent* ui = scene->findComponent<UIComponent>(entity);
     if (!button || !ui)
         return;
-    bool held = false;
+    // a pointer or a Submit (Enter, Space, gamepad A) holds it
+    bool held = button->submitPressed;
     for (const auto& pair : pointers){
         if (pair.second.buttonPressed == entity)
             held = true;
@@ -366,7 +367,7 @@ void UISystem::refreshButtonPressed(Entity entity){
     if (held == button->pressed)
         return;
     button->pressed = held;
-    applyButtonVisual(*button, *ui);
+    applyButtonVisual(entity, *button, *ui, true);
     if (held){
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()){
@@ -791,6 +792,11 @@ void UISystem::legacyPointerUp(UIPointerState& state, bool released, bool overWi
             if (AudioMarkers::isEnabled()) AudioMarkers::ui(scene, "ui_click", entity, current->position.x, current->position.y);
 #endif
             callLegacy(&UIComponent::onClick, entity, *current);
+            // Unity's Button.onClick, after the legacy event (its subscribers keep their order)
+            if (isLiveUIEntity(entity)){
+                if (ButtonComponent* button = scene->findComponent<ButtonComponent>(entity))
+                    button->onClick.call();
+            }
             current = findPointer(pointerId);
             if (current && isLiveUIEntity(entity)){
                 double clickTime = Engine::getSystemTime();
@@ -931,6 +937,8 @@ bool UISystem::eventOnPointerDown(int pointerId, int button, float x, float y, b
             if (InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity))
                 inputfield->needUpdateInputField = true;
         }
+        // with a selection (a keyboard or gamepad menu), the press moves it or lets it go
+        pointerSelects(hit);
     }
 
     // a finger has no hover: it enters first (D5); the mouse's left button entered on its moves
@@ -1333,6 +1341,8 @@ void UISystem::cancelAllPointers(){
         ids.push_back(pair.first);
     for (int pointerId : ids)
         eventOnPointerCancel(pointerId);
+    // a Submit's hold ends too (its key or pad button released nowhere)
+    cancelSubmit();
 }
 
 bool UISystem::isPointerOverUI(int pointerId) const{
@@ -1364,10 +1374,14 @@ void UISystem::resetButtonStates() {
     }
     pointers.clear();
 
+    // a Submit holding a Button ends too (no callbacks into a scene being removed); the
+    // selection stays for when the scene comes back
+    submitButton = NULL_ENTITY;
     auto buttons = scene->getComponentArray<ButtonComponent>();
     for (int i = 0; i < buttons->size(); i++) {
         ButtonComponent& button = buttons->getComponentFromIndex(i);
         button.hovered = false;
+        button.submitPressed = false;
         if (!button.pressed) continue;
 
         Entity entity = buttons->getEntity(i);
@@ -1375,9 +1389,11 @@ void UISystem::resetButtonStates() {
         button.pressed = false;
         if (signature.test(scene->getComponentId<UIComponent>())) {
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
-            applyButtonVisual(button, ui);
+            applyButtonVisual(entity, button, ui, false);
         }
     }
+    // transitions end at their state and the scales come back (a scene leaving the layers, Play stop)
+    endButtonTransitions();
     auto panels = scene->getComponentArray<PanelComponent>();
     for (int i = 0; i < panels->size(); i++){
         panels->getComponentFromIndex(i).headerPointerDown = false;

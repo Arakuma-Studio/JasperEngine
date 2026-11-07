@@ -55,6 +55,18 @@ namespace jasperengine::editor {
         // The text references into a file or directory that moving or deleting it breaks
         static std::vector<TextReference> textReferencesInto(Project& project, const std::filesystem::path& path);
 
+        // Why `from` can't go to `to` ("" when it can), before anything changes: a folder into itself
+        // or below itself (as named and once links are resolved); for a copy also a folder holding a
+        // project.yaml (another project inside this one). move() and copy() refuse with it; the
+        // Project window, CopyFileCmd and move_asset ask first to say it in their words
+        static std::string moveRefusal(const std::filesystem::path& from, const std::filesystem::path& to);
+        static std::string copyRefusal(const std::filesystem::path& from, const std::filesystem::path& to);
+
+        // The entries a file takes along when it moves or is copied, itself first: its .meta and a
+        // model's .humanoid bone mapping (a directory carries what is inside it)
+        static std::vector<std::pair<std::filesystem::path, std::filesystem::path>> withCompanions(const std::filesystem::path& from,
+                                                                                                  const std::filesystem::path& to);
+
         static Result move(Project& project, const std::filesystem::path& from, const std::filesystem::path& to);
         // copyGuids and copyScenes (by relative path) keep a redo's copies at the GUIDs, scene ids
         // and scene names of the first copy. Every copied .scene gets its own scene id and a unique

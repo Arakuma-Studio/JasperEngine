@@ -38,7 +38,7 @@ void create_scene_Main_Scene_1(Scene* scene){
         scene->addComponent<Transform>(1001, transform);
     }
 
-    // Default Camera 9
+    // Default Camera 10
     Entity cameraEntity = scene->createSystemEntity();
 
     // Entity components initialization

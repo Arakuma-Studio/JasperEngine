@@ -746,6 +746,19 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         button.colorPressed = Vector4(0.844444f, 0.955556f, 0.033333f, 1.000000f);
         button.colorDisabled = Vector4(0.277778f, 0.966667f, 0.377778f, 1.000000f);
         button.disabled = true;
+        button.colorSelected = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
+        button.transition = ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+        button.fadeDuration = 0.000000f;
+        button.scaleHovered = 1.000000f;
+        button.scalePressed = 1.000000f;
+        button.scaleSelected = 1.000000f;
+        button.navigationMode = NavigationMode::AUTOMATIC;
+        button.wrapAround = false;
+        button.selectOnUp = NULL_ENTITY;
+        button.selectOnDown = NULL_ENTITY;
+        button.selectOnLeft = NULL_ENTITY;
+        button.selectOnRight = NULL_ENTITY;
+        button.selectOnEnable = false;
         scene->addComponent<ButtonComponent>(1021, button);
 
         Transform transform;

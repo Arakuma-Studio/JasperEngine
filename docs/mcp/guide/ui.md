@@ -2,8 +2,9 @@
 
 The component UI (Image, Text, Button, Panel, Scrollbar, Progressbar, InputField, Layout Group:
 Unity's uGUI) built with `create_ui` or GameObject > UI. Layout rules: the `create_ui` and
-`set_rect_layout` tool descriptions. Here: Canvas Group, UI scaling (Canvas Scaler), text outline and
-shadow, text effects, particles in the UI. The HTML/CSS UI is a separate system (`jasper://docs/html-ui`)
+`set_rect_layout` tool descriptions. Here: Canvas Group, Buttons (states, transitions, keyboard,
+gamepad and TV navigation), UI scaling (Canvas Scaler), text outline and shadow, text effects,
+particles in the UI. The HTML/CSS UI is a separate system (`jasper://docs/html-ui`)
 that shares the Canvas Scaler and has `text-effect` and `<particle-system>`.
 
 ## Canvas Group
@@ -86,6 +87,86 @@ is pressed when it becomes disabled is released (`onRelease`, no click) instead 
 new Buttons' `colorDisabled` defaults to Unity's grey (sRGB 200, 200, 200, 128): saved scenes keep
 the colour they stored, buttons made from Lua or MCP get the grey (set `colorDisabled` for another
 look).
+
+## Buttons: states and transitions
+
+A Button is Unity's Selectable. Its state, in Unity's priority: **Disabled** (`disabled`, or a
+non-interactable Canvas Group), **Pressed** (a pointer, or a Submit while held), **Selected** (the
+scene's keyboard/gamepad selection), **Highlighted** (hovered), **Normal**.
+
+| Field (Inspector name) | Effect |
+|---|---|
+| `transition` (Transition) | what the Button writes: `color_tint_and_sprite_swap` (default) the UI colour and texture, `color_tint` the colour, `sprite_swap` the texture, `none` nothing (animate the image yourself) |
+| `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled` | the state colours (linear). They replace `ui.color` (Unity multiplies). An unset Selected colour takes Highlighted's |
+| `textureNormal`, `textureHovered`, `texturePressed`, `textureSelected`, `textureDisabled` | the state textures; a state without one (or one still loading) shows Normal's |
+| `fadeDuration` (Fade Duration) | seconds colour and scale take to change, on the UI clock: pause menus at time scale 0 fade too. 0 (default): at once; Unity's is 0.1 |
+| `scaleHovered`, `scalePressed`, `scaleSelected` | the Transform's scale times this in that state (1: none); a scale the game sets meanwhile is kept |
+
+What the transition writes belongs to the Button: the Canvas Renderer's Color and Texture rows are
+read-only there, `set_properties`/`set_runtime_property` on `ui.color`/`ui.texture` are refused with
+the field to edit, and Lua's `button.color` / `button:setTexture(path)` write Normal. Raw
+`UIComponent.color` from a script is overwritten at the next state change.
+
+The click is `onClick` (Lua `button.onClick`, C++ `REGISTER_BUTTON_EVENT(onClick, ...)`): released
+over the button, or a Submit while selected. `onPress`/`onRelease` follow the hold; `onRelease`
+fires off the button too.
+
+**A 9-patch Button's label** is clipped by the Button's ancestors (a Panel), never by the Button's
+own patch margins.
+
+**Behaviour changes for existing projects** (intended): a pressed, disabled or non-interactable
+Button without its own state texture keeps its Normal texture (it drew a flat rectangle); a 9-patch
+Button's label is no longer cut to the band between its margins; keys typed into an InputField no
+longer reach the game's `onKeyDown`/`onCharInput` (Escape and F1-F25 excepted); `Engine.setCanvasSize`
+and `Engine.scalingMode` at runtime update the cameras at once and fire `onCanvasChanged`; Lua's
+`button.color` / `button:setTexture` set Normal; a stick held while a menu closes reaches the game;
+Android TV's remote centre key arrives as `KEY_ENTER`. Navigation is opt-in: nothing changes until
+a Button is selected.
+
+## Keyboard, gamepad and TV navigation
+
+Each scene has at most one **selected** Button (Unity's EventSystem selection). Nothing is selected
+until the game asks: tick **Select On Enable** on a menu's first Button (`select_on_enable` in
+`create_ui`; Unity's First Selected, HTML `autofocus`), or call `UI.setSelected(self.scene, obj)` /
+`button:select()`. While nothing is selected the game keeps every key and the whole gamepad,
+whatever Buttons are visible (a clicked HUD button takes nothing).
+
+| Input | With a selection |
+|---|---|
+| arrows, d-pad, left stick, TV remote arrows | move it (held directions repeat after 0.4 s, every 0.1 s) |
+| Tab / Shift+Tab | the next / previous navigable Button in Hierarchy order (wraps) |
+| Enter, keypad Enter, Space, gamepad A, TV remote centre | Submit: `onClick` on the press, Pressed while held |
+| Escape, gamepad B, Android Back | Cancel: `onCancel` to the selection and up its parents; the game gets it when no script handles it |
+
+- These are consumed while a Button is selected (also at a menu's edge); Ctrl, Alt or Super held,
+  the key is the game's. `Engine.wantsKeyboardNavigation()` / `wantsGamepadNavigation()` tell a
+  game that polls `Input`; Input actions that ignore UI input skip those keys meanwhile.
+- **Navigation** (per Button): `automatic` (default: the nearest that way, Unity's scoring),
+  `horizontal`, `vertical`, `explicit` (`selectOnUp/Down/Left/Right`), `none` (never a target).
+  **Wrap Around** goes from the last to the first of the row or column. Disabled, hidden, inactive,
+  off-canvas and on-screen Buttons are never targets.
+- A pointer press selects a Button only where a selection exists (a press elsewhere deselects; an
+  InputField keeps it).
+- A lost selection (deactivated, destroyed, hidden) returns to the latest earlier one still
+  navigable: a closed submenu gives it back to its opener. A selection that became non-interactable
+  stays (Disabled look, Submit does nothing).
+- A field being typed in, in any scene, keeps its keys: navigation waits, and the game's
+  `onKeyDown`/`onCharInput` do not see the typing (Escape and F1-F25 excepted).
+- A held left stick goes back to the game the frame after no menu wants the pad.
+- The HTML UI gets keys and the pad first; a document that does not consume a key leaves it here.
+
+Scripts get Unity's messages: `onSelect(e)`, `onDeselect(e)`, `onMove(e)` (`e.moveDir`
+`MoveDirection.UP`..., `e:use()` skips the navigation), `onSubmit(e)` (`e:use()` skips the click),
+`onCancel(e)`; C++ `ScriptBase::onSelect(BaseEventData&)`... (lua-api 1.7).
+
+**Editor:** the Button's Navigation **Visualize** draws the arrows in the Scene view; in Play the
+Inspector shows the state. **MCP:** `create_ui` button keys `select_on_enable`, `navigation` (a
+mode, or `{mode, wrap_around, up, down, left, right}` with node names of the same call),
+`transition`, `textures`, `colors.selected`, `scale`, `fade_duration`; `get_entity` of a Button
+returns `selectable.navigation` (where each way and Tab lead, without playing);
+`get_runtime_entity` adds `state` and `selected`; `get_play_state.input.ui_selected` lists the
+selections. Drive it with `send_input` keys (`down`, `tab`, `enter`, `escape`) or gamepad
+(`dpad_down`, `a`, `b`).
 
 ## UI scaling (Canvas Scaler)
 

@@ -50,7 +50,7 @@ Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& na
 }
 
 bool ShaderUniforms::isReserved(const std::string& name){
-    return name == "time" || name == "resolution";
+    return name == "time" || name == "resolution" || name == "sceneTime";
 }
 
 bool ShaderUniforms::isEditable(const ShaderUniform& uniform){
@@ -136,6 +136,8 @@ bool CustomUniformBlock::resolve(ShaderData& shaderData, const std::string& bloc
             timeMember = (int)members.size();
         }else if (uniform.name == "resolution"){
             resolutionMember = (int)members.size();
+        }else if (uniform.name == "sceneTime"){
+            sceneTimeMember = (int)members.size();
         }
         if (uniform.type >= ShaderUniformType::INT && uniform.type <= ShaderUniformType::INT4){
             hasInt = true;
@@ -155,12 +157,13 @@ void CustomUniformBlock::clear(){
     data.clear();
     timeMember = -1;
     resolutionMember = -1;
+    sceneTimeMember = -1;
     mixedTypes = false;
 }
 
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == resolutionMember || (int)m == sceneTimeMember)
             continue;
         // unset (or removed) members read zero
         writeUniform(data, members[m], ShaderUniforms::get(values, members[m].name));
@@ -179,7 +182,7 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const Sh
 
 void CustomUniformBlock::writeValues(const UniformChain& chain){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == resolutionMember || (int)m == sceneTimeMember)
             continue;
         writeUniform(data, members[m], ShaderUniforms::resolve(chain, members[m].name));
     }
@@ -188,6 +191,11 @@ void CustomUniformBlock::writeValues(const UniformChain& chain){
 void CustomUniformBlock::writeTime(float seconds){
     if (timeMember != -1)
         writeUniform(data, members[timeMember], Vector4(seconds, seconds, seconds, seconds));
+}
+
+void CustomUniformBlock::writeSceneTime(float seconds){
+    if (sceneTimeMember != -1)
+        writeUniform(data, members[sceneTimeMember], Vector4(seconds, seconds, seconds, seconds));
 }
 
 void CustomUniformBlock::writeResolution(float width, float height){

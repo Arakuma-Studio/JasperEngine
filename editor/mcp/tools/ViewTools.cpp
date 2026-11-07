@@ -982,6 +982,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"animate_water", &SceneDisplaySettings::animateWater},
         {"show_stats", &SceneDisplaySettings::showStats},
     };
     return flags;
@@ -1929,6 +1930,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
         {"maximize_on_play", settings.maximizeOnPlay},
+        {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},

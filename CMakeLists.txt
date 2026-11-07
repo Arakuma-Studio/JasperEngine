@@ -941,6 +941,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetClipboard.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
     ${EDITOR_DIR}/asset/AssetIndex.cpp
     ${EDITOR_DIR}/asset/AssetOps.cpp
@@ -988,6 +989,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/SourceLocation.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
+    ${EDITOR_DIR}/util/ScriptTemplates.cpp
+    ${EDITOR_DIR}/util/TextureLabels.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
@@ -1154,6 +1157,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
+    ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
@@ -1185,6 +1189,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/HierarchyVcs.cpp
+    ${EDITOR_DIR}/window/AssetCreateMenu.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
     ${EDITOR_DIR}/window/ProjectWindowVcs.cpp

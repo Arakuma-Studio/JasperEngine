@@ -35,8 +35,8 @@ namespace jasperengine {
         constexpr char PREFAB_MAGIC[4] = {'J', 'P', 'F', 'B'};
         constexpr uint16_t FORMAT_MAJOR = 1;
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
-        // property values
-        constexpr uint16_t FORMAT_MINOR = 3;
+        // property values; 4: the planar reflections (water-reflections)
+        constexpr uint16_t FORMAT_MINOR = 4;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

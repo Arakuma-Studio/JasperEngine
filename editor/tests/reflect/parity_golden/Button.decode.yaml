@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 0238c396489e8b2a
+digest 9ca39318e8b934c3
 --- 0
 label: 395
 textureNormal:
@@ -35,6 +35,20 @@ colorHovered: [2280.339, 15.142858, 3053.934, -107.14286]
 colorPressed: [-126.85714, 9991.563, 9738.813, -57.857143]
 colorDisabled: [-0.69657826, -56.857143, 2248.7012, 5806.9263]
 disabled: true
+textureSelected: ~
+colorSelected: [0.6584377, 4, 3e+38, 0]
+transition: sprite_swap
+fadeDuration: 2045.6733
+scaleHovered: -21
+scalePressed: 4117.096
+scaleSelected: .inf
+navigationMode: vertical
+wrapAround: true
+selectOnUp: 0
+selectOnDown: 313
+selectOnLeft: 392
+selectOnRight: 22
+selectOnEnable: false
 --- 1
 label: 184
 textureNormal: ~
@@ -70,6 +84,28 @@ colorHovered: [-36, -94.42857, -73, 1e-45]
 colorPressed: [3e+38, -119.14286, 0.20105733, 3596.172]
 colorDisabled: [-73, -0.5981298, -14.857142, -138.42857]
 disabled: true
+textureSelected:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+colorSelected: [0, 0.0923612, 0, 0]
+transition: color_tint
+fadeDuration: -0
+scaleHovered: -0.8109937
+scalePressed: -0
+scaleSelected: -28
+navigationMode: automatic
+wrapAround: true
+selectOnUp: 255
+selectOnDown: 316
+selectOnLeft: 160
+selectOnRight: 135
+selectOnEnable: true
 --- 2
 label: 36
 textureNormal: ~
@@ -89,6 +125,20 @@ colorHovered: [-0, 3e+38, 3e+38, 4597.507]
 colorPressed: [-13, -42.142857, 60, 0]
 colorDisabled: [87, 32.285713, 3079.562, 110.85714]
 disabled: true
+textureSelected: ~
+colorSelected: [9984.469, 0, 0.54286766, 5989.2046]
+transition: color_tint
+fadeDuration: 6328.5312
+scaleHovered: 343.51785
+scalePressed: .nan
+scaleSelected: 9440.275
+navigationMode: none
+wrapAround: false
+selectOnUp: 87
+selectOnDown: 0
+selectOnLeft: 400
+selectOnRight: 377
+selectOnEnable: true
 --- 3
 label: 144
 textureNormal: ~
@@ -108,6 +158,20 @@ colorHovered: [-0.27611527, -18, 0, -0.3511972]
 colorPressed: [-0.31718504, 0, -46, 0.82313883]
 colorDisabled: [1e-45, -62, 0, 0.6492962]
 disabled: false
+textureSelected: ~
+colorSelected: [0, 0.5080431, 3511.9197, 51]
+transition: color_tint_and_sprite_swap
+fadeDuration: -.inf
+scaleHovered: .nan
+scalePressed: -31
+scaleSelected: 129.42857
+navigationMode: none
+wrapAround: true
+selectOnUp: 352
+selectOnDown: 0
+selectOnLeft: 311
+selectOnRight: 254
+selectOnEnable: true
 --- 4
 label: 194
 textureNormal:
@@ -143,6 +207,28 @@ colorHovered: [-0.7833481, 20.285715, 28, 8679.789]
 colorPressed: [-46.857143, -0, 3e+38, 925.2524]
 colorDisabled: [-0, 47, 0, 1e-45]
 disabled: true
+textureSelected:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: nearest
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+colorSelected: [-0, 5485.8994, 0.4628084, 5.142857]
+transition: sprite_swap
+fadeDuration: 9930.931
+scaleHovered: -0.52297324
+scalePressed: 9840.719
+scaleSelected: -0.65545416
+navigationMode: explicit
+wrapAround: false
+selectOnUp: 197
+selectOnDown: 0
+selectOnLeft: 0
+selectOnRight: 58
+selectOnEnable: false
 --- 5
 label: 247
 textureNormal:
@@ -178,6 +264,20 @@ colorHovered: [-138.71428, 0.54442036, -0.5954036, 2160.03]
 colorPressed: [7830.748, 3e+38, 3143.2798, -98.42857]
 colorDisabled: [-0, -0, 3, -0.7102225]
 disabled: false
+textureSelected: ~
+colorSelected: [0.81987476, 0, -38.714287, 0]
+transition: sprite_swap
+fadeDuration: .nan
+scaleHovered: -84.28571
+scalePressed: 31
+scaleSelected: 3017.439
+navigationMode: horizontal
+wrapAround: true
+selectOnUp: 185
+selectOnDown: 376
+selectOnLeft: 356
+selectOnRight: 0
+selectOnEnable: false
 --- 6
 label: 149
 textureNormal:
@@ -205,6 +305,28 @@ colorHovered: [3e+38, 0, -88.28571, 3938.0476]
 colorPressed: [3e+38, 4525.8594, 0, -0.0094101]
 colorDisabled: [827.4382, 0, -68, 3e+38]
 disabled: true
+textureSelected:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+colorSelected: [0.65712696, -26, 115, 7636.34]
+transition: sprite_swap
+fadeDuration: 0.015030768
+scaleHovered: 3e+38
+scalePressed: .inf
+scaleSelected: -0.07557331
+navigationMode: explicit
+wrapAround: true
+selectOnUp: 14
+selectOnDown: 114
+selectOnLeft: 256
+selectOnRight: 176
+selectOnEnable: true
 --- 7
 label: 0
 textureNormal:
@@ -248,3 +370,17 @@ colorHovered: [0, 31, 0.23882332, 17]
 colorPressed: [0, 23.428572, -100.57143, 3e+38]
 colorDisabled: [7285.893, 0, 13, 11]
 disabled: true
+textureSelected: ~
+colorSelected: [-0.60425806, -0.13194916, 4178.476, 0]
+transition: color_tint_and_sprite_swap
+fadeDuration: 0.8123013
+scaleHovered: -66
+scalePressed: -.inf
+scaleSelected: 9503.733
+navigationMode: automatic
+wrapAround: true
+selectOnUp: 0
+selectOnDown: 0
+selectOnLeft: 0
+selectOnRight: 140
+selectOnEnable: false
