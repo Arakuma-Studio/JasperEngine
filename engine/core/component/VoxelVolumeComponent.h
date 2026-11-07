@@ -84,6 +84,8 @@ namespace jasperengine{
         FunctionSubscribe<void(VoxelEditEvent)> onEdited;
         FunctionSubscribe<void(AABB)> onCollisionUpdated;
         FunctionSubscribe<void(GameObject)> onBodyRescued;
+        // what Stop clears (ComponentEvents.h)
+        template<typename F> void forEachEvent(F&& f) { f(onEdited); f(onCollisionUpdated); f(onBodyRescued); }
     };
 
 }

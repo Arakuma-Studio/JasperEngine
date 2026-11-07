@@ -29,6 +29,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include <cstddef>
 
@@ -58,7 +59,8 @@ namespace jasperengine {
         UIComponent,
         UIDocumentComponent,
         VertexAnimatorComponent,
-        VideoPlayerComponent>;
+        VideoPlayerComponent,
+        VoxelVolumeComponent>;
 
     namespace detail {
         template<typename Component, typename F>
