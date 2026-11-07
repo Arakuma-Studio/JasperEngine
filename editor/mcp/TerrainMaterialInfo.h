@@ -23,8 +23,11 @@ namespace jasperengine::editor::mcp {
     Json terrainMaterialJson(Scene* scene, Entity entity);
     // info.holes: null without a map
     Json terrainHolesJson(TerrainComponent& terrain);
-    // a point's hole, collision_gap, nav_excluded, layers_painted, layers_drawn and fetches
-    void addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, Json& sample);
+    // a point's hole, and with full its collision_gap, nav_excluded, layers_painted, layers_drawn and fetches
+    void addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, bool full, Json& sample);
+    // the most points a sample_terrain call reads the full material of: a dense grid of heights stays
+    // under the result's size cap and its time
+    constexpr size_t MAX_MATERIAL_POINTS = 64;
     // stats.coverage of a local rectangle: its hole fraction and layer-count histogram
     Json terrainCoverageJson(TerrainComponent& terrain, float minX, float minZ, float maxX, float maxZ);
 

@@ -1235,6 +1235,11 @@ void sampleTerrainTool(const CallPtr& call) {
             return;
         }
         Json samples = Json::array();
+        const bool fullMaterial = args["points"].size() <= MAX_MATERIAL_POINTS;
+        if (!fullMaterial) {
+            data["note"] = "Over " + std::to_string(MAX_MATERIAL_POINTS) + " points each says only hole: ask for collision_gap, "
+                           "nav_excluded, layers_painted, layers_drawn and fetches at fewer points.";
+        }
         for (const Json& p : args["points"]) {
             Vector3 local;
             if (!terrainPoint(p, world, inverseModel, transform.worldPosition.y, local)) {
@@ -1242,7 +1247,7 @@ void sampleTerrainTool(const CallPtr& call) {
                 return;
             }
             Json sample = terrainSample(scene, target.entity, local);
-            addTerrainPointMaterial(scene, target.entity, local.x, local.z, sample);
+            addTerrainPointMaterial(scene, target.entity, local.x, local.z, fullMaterial, sample);
             samples.push_back(std::move(sample));
         }
         data["samples"] = samples;

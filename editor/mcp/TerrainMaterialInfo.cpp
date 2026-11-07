@@ -166,10 +166,11 @@ Json jasperengine::editor::mcp::terrainHolesJson(TerrainComponent& component) {
                 {"collision_cell", samples > 1 ? component.terrainSize / static_cast<float>(samples - 1) : component.terrainSize}};
 }
 
-void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, Json& sample) {
+void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, bool full, Json& sample) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
     const terrain::SurfaceSample surface = querySurface(component, localX, localZ);
     sample["hole"] = surface.hole;
+    if (!full) return;
 
     bool gap = false;
     bool excluded = false;

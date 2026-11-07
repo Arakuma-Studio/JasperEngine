@@ -2156,6 +2156,7 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
     # -- T3: holes and tiers (docs/mcp/guide/terrain.md) ---------------------------------------------
     {
         "id": "terrain_cut_hole_check",
@@ -2198,6 +2199,21 @@ CASES = [
         ],
         "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 8,
+    },
+    {
+        "id": "terrain_point_material_cap",
+        "kind": "guard",
+        "what_happened": "A dense sample_terrain grid says only hole per point; the agent asks again at the few points it cares about.",
+        "text_at_issue": "sample_terrain's result note: over 64 points each says only hole",
+        "source": "T3 R43",
+        "prompt": "Sample the terrain on a 16 x 16 grid of local points over its whole area, then tell me which layers draw at local (0, 0).",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False}] * 256,
+                "note": "Over 64 points each says only hole: ask for collision_gap, nav_excluded, layers_painted, layers_drawn and fetches at fewer points."})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False, "layers_drawn": [{"layer": 0, "weight": 1.0}], "fetches": 3}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
+        "max_turns": 10,
     },
     # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
     {

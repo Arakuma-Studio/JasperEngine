@@ -204,7 +204,7 @@ Queries (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) work o
 
 `sample_terrain` gives `info.material`: the effective `quality` and what decided it (`quality_source`),
 `blend_maps_read`, `fetches` (`flat`, `slope`, `worst`, for the tier and `by_tier`), `texture_slots` and
-`detail_array`. A point gives `layers_painted`, `layers_drawn` (after the cap) and `fetches`.
+`detail_array`. A point gives `layers_painted`, `layers_drawn` (after the cap) and `fetches`; a call of over 64 points gives each only `hole`.
 
 Set a tier with `set_project_settings graphics.terrainQuality.<platform>` (`high`, `medium`, `low`; absent means
 high), or per terrain with `set_properties` on `terrain.quality`. What an export ships is
