@@ -96,8 +96,24 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
 
+# S90: the Procedural Material evaluator is the editor's, but its GPU suites need the headless device
+# only this tree has (procmat/*GpuTest.cpp). It uses the engine's render layer and nothing of the editor.
+set(CORE_TEST_PROCMAT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/NodeLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatExpander.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralMaterialKind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/PassPlanner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralGpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp)
+jasperengine_skip_unity_build(
+    REASON "the editor's own sources: its unity units do not hold them"
+    SOURCES ${CORE_TEST_PROCMAT_SOURCES})
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp PROPERTIES
+    INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/shadercompiler/libs/glslang)
+
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_PROCMAT_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures

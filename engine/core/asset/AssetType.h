@@ -38,7 +38,8 @@ namespace jasperengine {
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
-        SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
+        ProceduralMaterial = 29     // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -68,15 +69,17 @@ namespace jasperengine {
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::SoundEvent: return "sound_event";
+            case AssetType::ProceduralMaterial: return "procedural_material";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::SoundEvent); value++) {
+        // (a value with no name yet, 24-27 on a build without them, reads as "unknown" and must not answer to that name)
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::ProceduralMaterial); value++) {
             const AssetType type = static_cast<AssetType>(value);
-            if (name == assetTypeName(type)) {
+            if (name != "unknown" && name == assetTypeName(type)) {
                 return type;
             }
         }

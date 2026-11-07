@@ -121,6 +121,20 @@ class ImportTest(unittest.TestCase):
 
     # -- AC11: attribution comments --
 
+    def test_a_formula_fix_applies_once_or_fails(self):
+        outputs = [{"expr": "0.5*(sign(a-b)+1.0)"}]
+        saved = dict(importer.TEXT_FIXES)
+        try:
+            importer.TEXT_FIXES["n"] = [("sign(a-b)", "step(0.0, a-b)")]
+            importer.apply_text_fixes("n", "", "", outputs)
+            self.assertEqual(outputs[0]["expr"], "0.5*(step(0.0, a-b)+1.0)")
+            # a node rewritten upstream: the fix no longer finds its text
+            with self.assertRaises(importer.ImportFailure):
+                importer.apply_text_fixes("n", "", "", [{"expr": "0.5*(sign(b-a)+1.0)"}])
+        finally:
+            importer.TEXT_FIXES.clear()
+            importer.TEXT_FIXES.update(saved)
+
     def test_unrecognised_attribution_comment_fails(self):
         self.source.add("plain", shader(global_code="// Based on https://www.shadertoy.com/view/abcd\nfloat f(float x) { return x; }\n"))
         self.assertRefuses(r"plain: unrecognised attribution comment: .*shadertoy")
@@ -441,6 +455,15 @@ class CommittedOutputTest(unittest.TestCase):
             self.assertEqual(expander.main(["--nodes", str(nodes), "--out", str(Path(scratch) / "out")]), 1)
             (nodes / "broken.json").unlink()
             self.assertEqual(expander.main(["--nodes", str(nodes), "--out", str(Path(scratch) / "out")]), 0)
+
+    def test_the_cpp_expanders_reference_is_current(self):
+        # ProcMatExpanderTest holds the C++ expander to this file: stale, it would hold it to an old library
+        expander_spec = importlib.util.spec_from_file_location("expand_nodes", Path(__file__).with_name("expand_nodes.py"))
+        expander = importlib.util.module_from_spec(expander_spec)
+        sys.modules["expand_nodes"] = expander
+        expander_spec.loader.exec_module(expander)
+        reference = REPO / "editor/tests/procmat/ExpanderReference.txt"
+        self.assertEqual(expander.main(["--nodes", str(NODES), "--check-reference", str(reference)]), 0)
 
     def test_pentagram_is_not_test_data(self):
         for path in Path(__file__).parent.rglob("*"):

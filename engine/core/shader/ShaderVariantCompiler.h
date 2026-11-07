@@ -97,6 +97,15 @@ namespace jasperengine {
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
 
+        // Compiles a vertex and a fragment source that belong to no variant and include nothing
+        // (the passes a Procedural Material generates, S90) for a backend. Fails like compile().
+        static bool compileSources(const std::string& vertexSource, const std::string& fragmentSource, ShaderBackend backend,
+                                   ShaderData& out, std::string* error = nullptr, std::string* log = nullptr);
+        // The SPIR-V words of a fragment source: what the editor's SPIR-V interpreter runs, from
+        // the same source a GPU compiles (S90 R11). Works with no graphics device.
+        static bool compileFragmentToSpirv(const std::string& fragmentSource, std::vector<uint32_t>& spirv,
+                                           std::string* error = nullptr, std::string* log = nullptr);
+
         // The preprocessed GLSL of one variant's two stages, as compile() would parse them for
         // the backend (includes expanded, the variant's #defines applied). A stage the variant
         // does not have is left empty. False (and an error) when it cannot be preprocessed.
