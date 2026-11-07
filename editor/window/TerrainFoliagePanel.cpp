@@ -466,6 +466,11 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
         ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(-FLT_MIN, 0.0f));
     }
     if (!massStatus.empty()) ImGui::TextWrapped("%s", massStatus.c_str());
+    // the job goes on without the dialog: its end lands in the panel's update
+    if (ImGui::Button("Close##mass")) {
+        massOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
     ImGui::EndPopup();
 }
 

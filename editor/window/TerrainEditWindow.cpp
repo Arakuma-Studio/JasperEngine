@@ -3287,6 +3287,11 @@ void editor::TerrainEditWindow::show(){
                 toolCategory = tool.category;
                 brushActive = false;
             }
+            // T5 R46: Paint Trees with Place As Tree is its brush, as Unity's: choosing it arms it
+            if (clicked && tool.category == TerrainToolCategory::Trees && foliagePanel->placesTrees()){
+                brushMode = TerrainBrushMode::PlaceObject;
+                brushActive = true;
+            }
         }
         ImGui::Spacing();
         const TerrainTool* currentTool = &terrainTools[0];
@@ -3520,7 +3525,9 @@ void editor::TerrainEditWindow::show(){
 
     const bool placementBrush = isPlacementBrush();
     Texture* brushTexture = placementBrush ? nullptr : TerrainMapUtils::findTexture(terrain, getBrushMapRef());
-    const bool brushTargetAvailable = placementBrush ? isPlacementReady() : (brushTexture && !brushTexture->empty());
+    // the tree brush needs a prototype, not the GameObject brush's asset (T5 R46)
+    const bool treeBrushReady = foliagePanel->placesTrees() && (brushMode == TerrainBrushMode::EraseObject || foliagePanel->isReady(terrain));
+    const bool brushTargetAvailable = placementBrush ? (foliagePanel->placesTrees() ? treeBrushReady : isPlacementReady()) : (brushTexture && !brushTexture->empty());
     if (brushActive && !brushTargetAvailable){
         brushActive = false;
         endStroke();

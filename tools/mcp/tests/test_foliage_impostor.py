@@ -28,8 +28,10 @@ async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
 
 
 async def bake(ed: Editor, sid: int, terrain: int, **extra) -> dict:
-    done = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 8, "resolution": 128, **extra}],
-                         wait=True, timeout_seconds=120)
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "bake_impostors", "views": 8, "resolution": 128, **extra}],
+                            wait=False)
+    # a loaded host's software renderer bakes slowly: the job's own state, not a wall-clock guess
+    done = await wait_job(ed, started["job_id"], 900)
     ed.check_eq(done.get("status"), "succeeded", f"the bake: {done}")
     return done
 

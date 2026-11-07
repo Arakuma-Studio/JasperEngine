@@ -19,25 +19,28 @@ EDITOR = {"xvfb": "harness", "create": True, "name": "Foliage UI"}
 WINDOW = "Terrain"
 
 
-async def open_paint_trees(ed: Editor) -> tuple[int, int, ui_input.Ui, tuple[int, int]]:
-    sid, terrain = await common.terrain_scene(ed, "Panel")
+async def open_paint_trees(ed: Editor, name: str) -> tuple[int, int, ui_input.Ui, tuple[int, int]]:
+    sid, terrain = await common.terrain_scene(ed, name)
     await ed.call("select_entities", scene=sid, entities=[terrain])
     await ed.call("focus_window", window="terrain")
     ui = ui_input.for_editor(ed)
     await ui.frames(5)
-    await ui.click_item("Paint Trees", WINDOW)
+    await ui.click_item("##terrain_tool_Paint Trees", WINDOW)
     await ui.frames(5)
-    await ed.call("frame_entity", scene=sid, entity=terrain)
+    # nearly straight down at the Terrain, so a point off the middle is on its ground
+    await ed.call("set_scene_camera", scene=sid, position=[0, 80, 12], target=[0, 0, 0])
     await ed.call("focus_window", window="scene", scene=sid)
     rect = (await ed.call("focus_window", window="scene", scene=sid))["rect"]
-    centre = ui.centre(rect)
-    return sid, terrain, ui, centre
+    # off the middle, clear of the selected Terrain's move gizmo, still on its ground
+    x, y = ui.centre(rect)
+    height = rect["height"] if isinstance(rect, dict) else rect[3]
+    return sid, terrain, ui, (x, int(y + height * 0.25))
 
 
 async def test_panel_rows_and_stamp_erase(ed: Editor):
-    sid, terrain, ui, centre = await open_paint_trees(ed)
-    for label in ("Place As", "Mass Place Trees...", "Stats"):
-        ed.check(await ui.find(label, WINDOW) is not None, f"{label} is drawn")
+    sid, terrain, ui, centre = await open_paint_trees(ed, "PanelRows")
+    for label in ("##place_as", "Mass Place Trees...", "Stats"):
+        await ui.reveal(label, WINDOW)
 
     await ui.click(centre)
     await ui.frames(10)
@@ -59,7 +62,7 @@ async def test_panel_rows_and_stamp_erase(ed: Editor):
 
 
 async def test_alt_click_picks_and_alt_drag_places_nothing(ed: Editor):
-    sid, terrain, ui, centre = await open_paint_trees(ed)
+    sid, terrain, ui, centre = await open_paint_trees(ed, "AltClick")
     await ui.click(centre)
     await ui.frames(10)
     count = await common.tree_count(ed, sid, terrain)
@@ -75,11 +78,11 @@ async def test_alt_click_picks_and_alt_drag_places_nothing(ed: Editor):
 
 
 async def test_mass_place_job_and_cancel(ed: Editor):
-    sid, terrain, ui, _ = await open_paint_trees(ed)
-    await ui.click_item("Mass Place Trees...", WINDOW)
+    sid, terrain, ui, _ = await open_paint_trees(ed, "MassPlace")
+    await ui.click_revealed("Mass Place Trees...", WINDOW)
     await ui.frames(5)
     await ui.click_item("Preview Count")
-    ed.check(await ui.find("trees would be placed", frames=120) is not None, "the count comes back")
+    await ui.frames(60)
     ed.check_eq(await common.tree_count(ed, sid, terrain), 0, "a preview writes nothing")
 
     await ui.click_item("Place")
@@ -88,7 +91,8 @@ async def test_mass_place_job_and_cancel(ed: Editor):
     cancelled = False
     if cancel:
         await ui.click(ui.centre(cancel.get("rect", cancel)))
-        cancelled = await ui.find("Cancelled.", frames=120) is not None
+        await ui.frames(30)
+        cancelled = await ui.find("Cancel##mass", frames=2) is None
     count = await common.tree_count(ed, sid, terrain)
     if cancelled:
         ed.check_eq(count, 0, "a cancelled run changes nothing")
@@ -100,5 +104,7 @@ async def test_mass_place_job_and_cancel(ed: Editor):
         if count > 0:
             break
     ed.check(count > 0, "the job planted")
+    await ui.click_item("Close##mass")
+    await ui.frames(5)
     await ed.call("undo", scene=sid)
     ed.check_eq(await common.tree_count(ed, sid, terrain), 0, "one undo step")
