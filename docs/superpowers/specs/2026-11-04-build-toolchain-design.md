@@ -105,9 +105,10 @@ code, not from a run.
   whose documented default drops exec bits: the installed editor's engine tree (`editor-install/bin/engine`) has
   them off (inferred from CMake docs; Jasper's CI confirms the effect: tools/ci/android_size.sh:116-117 "the export
   does not keep gradlew's executable bit: run through bash", :124 `bash ./gradlew`).
-- The export copies with `fs::copy_file` (editor/Exporter.cpp:3437 for `jasperengine.py`; `copyTreeIfChanged`
-  :3326-3375 for `workspaces/`), which keeps the source's mode and adds nothing. `copyTreeIfChanged` skips a file
-  whose bytes are equal (:3354-3358), so a re-export never repairs the mode of an older export.
+- The export copies with `fs::copy_file` (editor/Exporter.cpp:3437 for `jasperengine.py`; the tree copy of
+  `workspaces/`, then `copyTreeIfChanged` :3326-3375, now `exportfiles::mirrorTree` in editor/export/ExportFiles.cpp),
+  which keeps the source's mode and adds nothing. The tree copy skipped a file whose bytes are equal (:3354-3358), so a
+  re-export never repaired the mode of an older export.
 
 ### 4.4 Lines added to `.gitignore` / `.gitattributes` are lost (Doriax `33347cdd5`; confirmed)
 
@@ -193,7 +194,7 @@ code, not from a run.
    readable for plain titles.
 3. **Exec bits are fixed at both places they are lost.** The install keeps source permissions; the export makes
    `jasperengine.py` and `gradlew` executable (owner, group, others: `+x` added, never removed) and
-   `copyTreeIfChanged` copies a file's permissions when only they differ. Reason: an export from an older install,
+   the tree copy (`exportfiles::mirrorTree`) copies a file's permissions when only they differ. Reason: an export from an older install,
    or over an older export, must still be right; the CI workaround is removed so CI checks it.
 4. **The generated version-control files get a managed block.** The editor owns the lines from the first-line
    marker down to an end marker; everything after the end marker is the user's, kept byte for byte. A file in the
@@ -279,7 +280,8 @@ namespace jasperengine::editor::cmaketext {
   `owner_exec | group_exec | others_exec` (`fs::perm_options::add`). A failure fails the export with "Could not make
   <file> executable: <reason>" (an export a terminal cannot build is a failed export; consistent with
   `export-pipeline`'s "failed copies fail the export").
-- `copyTreeIfChanged` (:3354-3358): when sizes and bytes are equal but
+- `exportfiles::mirrorTree` (editor/export/ExportFiles.cpp; `copyTreeIfChanged` :3354-3358 when this was written):
+  when sizes and bytes are equal but
   `fs::status(entry).permissions() != fs::status(target).permissions()`, set the target's permissions
   (`fs::perm_options::replace`) instead of copying; no mtime change (the build stays incremental). Windows: the
   comparison is skipped (`#ifndef _WIN32`), NTFS modes are synthetic.
@@ -546,7 +548,7 @@ gtest `jasperengine-editor-tests`:
    and `git check-attr linguist-documentation docs/a.md` is `set`. **Red**.
    `ExistingProjectKeepsBinariesOutOfLfs` (:61) additionally asserts the old `*.png binary` line is gone.
 9. `ExportCopy.PermissionsFollowTheSource` (new editor/tests/export/ExportCopyTest.cpp, non-Windows):
-   `copyTreeIfChanged` over a destination with equal bytes but mode 0644 where the source is 0755: the destination
+   `exportfiles::mirrorTree` over a destination with equal bytes but mode 0644 where the source is 0755: the destination
    becomes 0755 and keeps its mtime. **Red**. `ensureExecutable` adds `+x` to a 0600 file (0700) and reports a missing file.
 10. `EmscriptenSdk.WindowsGeneratorFallsBackToVisualStudioNinja` (editor/tests/EmscriptenSdkTest.cpp:154 style):
     PATH without ninja/mingw32-make and a fake `vsNinja` gives `{-G, Ninja, -DCMAKE_MAKE_PROGRAM=<path>}`; PATH's
@@ -640,7 +642,8 @@ web --no-build` configures (Linux, Emscripten 6.0.10 image); `tools/build.sh lin
 - editor/Project.cpp (saveProjectToPath :6765, loadProject :6902, createProjectInDirectory :6350,
   writeVersionControlMetadata :6542-6660 moved out), editor/Project.h (none expected)
 - editor/util/CMakeText.{h,cpp} (new), editor/util/VersionControlFiles.{h,cpp} (new)
-- editor/Exporter.{h,cpp} (title :3551-3576, copyEngine :3417-3445, copyTreeIfChanged :3326-3375, configure
+- editor/Exporter.{h,cpp} (title :3551-3576, copyEngine :3417-3445, the tree copy :3326-3375, now
+  editor/export/ExportFiles.cpp `mirrorTree`, configure
   :1557-1586, runBuild :1630-1643, emscriptenWindowsGeneratorArgs :6286-6309, emscriptenCMakeArgs :6311-6330,
   isEmscriptenDir :6128)
 - editor/Generator.cpp (title :503-525, physics definitions :452-485 and :1266, ABI block :1268-1350)
@@ -674,7 +677,7 @@ engine/CMakeLists.txt, editor/window/dialog/ExportWindow.cpp, build.gradle, edit
   the helper changes. The non-goal on path quoting in generated CMake (section 2) is offered to it.
 - **export-pipeline**: owns failed copies failing the export and build errors in the Build dialog; 6.3's
   `ensureExecutable` failure follows the same rule and should use its error-reporting helper if it lands first.
-  Both edit `copyEngine`/`copyTreeIfChanged` and `runBuild`: expect a textual merge in Exporter.cpp.
+  Both edit `copyEngine`, the tree copy and `runBuild`: expect a textual merge in Exporter.cpp.
 - **mobile-shipping**: retires AdMob from build.gradle, ExportWindow and Exporter (and Android paths I touch:
   build.gradle `jasperBackend`, ExportWindow presets). Merge after it or resolve the ExportWindow table sites by
   taking its deletions and my table calls.
@@ -712,7 +715,8 @@ engine/CMakeLists.txt, editor/window/dialog/ExportWindow.cpp, build.gradle, edit
    lacked (its dynamic symbols against `libjoltphysics.a`'s), with `b2ShapeCast`/`b2MakeProxy`,
    `JPH::ConvexHullBuilder2D`, `JPH::StateRecorderImpl` and `JPH::Allocate`. On Linux every public Box2D function
    was already exported (the engine pulls all of Box2D's objects): Box2D's red control is Windows only, unrun.
-5. **`Exporter::copyTreeIfChanged` and `ensureExecutable` are public statics** so the unit test reaches them.
+5. **`Exporter::ensureExecutable` is a public static** so the unit test reaches it; the tree copy it tests is
+   `exportfiles::mirrorTree` (export-pipeline moved `copyTreeIfChanged` into editor/export/ExportFiles).
 6. **No eval case.** No tool text or agent-guide text changed; the additions are in area guides
    (`docs/mcp/guide/vcs.md`, `cpp-scripting.md`), which the eval surface does not carry.
 7. **Gate.** Per the lead's later rule the branch gate is `WERROR=1 tools/check-changed --base main` plus this
@@ -732,3 +736,23 @@ engine/CMakeLists.txt, editor/window/dialog/ExportWindow.cpp, build.gradle, edit
     vswhere for Visual Studio's Ninja only when PATH has no generator, and reads its output as UTF-8;
     `/WHOLEARCHIVE` is passed as is to MSVC-style drivers and through `LINKER:` for a GNU-style clang++ targeting
     MSVC.
+
+## Follow-ups (2026-11-07)
+
+Workstream platform-build (branch `fu/platform-build`).
+
+1. **Visual Studio builds run at most the job count of compilers** (deviation 9). Under a Visual Studio
+   generator the build step now passes `--parallel 1` (`Generator::buildStepParallelJobs`, from the
+   tree's `CMAKE_GENERATOR`; the editor's Play build, the export's build and `jasperengine.py`), and
+   each project's `cl` keeps `/MP<jobs>` from the configure's `JASPERENGINE_PARALLEL_BUILD_JOBS`
+   (`jasperengine.py` passes it now too). MSBuild's `/m:<jobs>` over projects that each ran
+   `/MP<jobs>` started up to jobs x jobs compilers while the engine's libraries built side by side.
+   Rejected: splitting the budget (`/m:a` x `/MP:b`): the engine library, the longest project, builds
+   alone after its dependencies and would compile at a fraction of the cores; MSBuild's MultiToolTask
+   scheduler (`UseMultiToolTask`, `EnforceProcessCountAcrossBuilds`) is still opt-in, reported to fail
+   with precompiled headers, and cannot be checked without Windows. Cost: small libraries and link
+   steps no longer overlap. Ninja and the other generators keep `--parallel <jobs>`. Builds started
+   from the Visual Studio IDE follow its "maximum number of parallel project builds" setting, which
+   the editor does not control. Not run here: a Visual Studio build.
+2. The spec named `copyTreeIfChanged`, which export-pipeline replaced by `exportfiles::mirrorTree`
+   (editor/export/ExportFiles.cpp): the references say so now.

@@ -387,6 +387,12 @@ namespace jasperengine::editor {
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;
         static unsigned int getAutomaticParallelBuildJobs();
         static unsigned int getMaxParallelBuildJobs();
+        // cmake --build's --parallel for the tree configured at buildPath: `jobs`, but 1 under a
+        // Visual Studio generator. There each project's cl already compiles `jobs` files at once
+        // (/MP<jobs> from the configure's JASPERENGINE_PARALLEL_BUILD_JOBS), and --parallel is
+        // MSBuild's /m, how many projects build at once: both at `jobs` run up to jobs x jobs
+        // compilers while the engine's libraries build side by side.
+        static unsigned int buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs);
         // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab).
         // baked: each prefab's instance as the editor makes it (Project::bakePrefabsForExport),
         // what its build_prefab_* source is generated from

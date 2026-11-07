@@ -1708,8 +1708,8 @@ bool editor::Exporter::configureBuild() {
         if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
         if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
         if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
-        // the same cap as the build step's --parallel: cl's /MP under Visual Studio generators
-        // (jasperengine_msvc_parallel_compile)
+        // cl's /MP under Visual Studio generators (jasperengine_msvc_parallel_compile), which then
+        // build one project at a time (Generator::buildStepParallelJobs)
         argv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(effectiveBuildJobs()));
     }
     argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
@@ -1784,7 +1784,7 @@ bool editor::Exporter::runBuild() {
     const std::string cmakeCmd = Generator::cmakeProgram();
 
     std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
-                                      "--parallel", std::to_string(jobs) };
+                                      "--parallel", std::to_string(Generator::buildStepParallelJobs(buildDir, jobs)) };
     // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
     CommandRunner::Environment toolEnv;
     std::string msvcError;

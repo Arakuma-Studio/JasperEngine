@@ -433,9 +433,20 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
     ));
 }
 
+unsigned int editor::Generator::buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs) {
+    // the generator the tree was configured with (an empty choice is CMake's default, Visual
+    // Studio on Windows)
+    std::ifstream cache(buildPath / "CMakeCache.txt");
+    const std::string key = "CMAKE_GENERATOR:INTERNAL=";
+    for (std::string line; std::getline(cache, line);) {
+        if (line.rfind(key, 0) == 0) return line.compare(key.size(), 14, "Visual Studio ") == 0 ? 1u : jobs;
+    }
+    return jobs;
+}
+
 bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
     std::vector<std::string> buildArgv = { cmakeProgram(), "--build", buildPath.string(),
-                                           "--config", configType, "--parallel", std::to_string(parallelJobs) };
+                                           "--config", configType, "--parallel", std::to_string(buildStepParallelJobs(buildPath, parallelJobs)) };
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
     // MSVC environment as configure (see CommandRunner::msvcEnvironment). Launched as argv (no
@@ -3367,7 +3378,8 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
         }
 
         // Resolve automatic mode and the per-machine safety cap once. The
-        // exact same value must drive both MSVC /MP and cmake --parallel.
+        // exact same value drives MSVC's /MP and cmake --parallel (one project
+        // at a time under Visual Studio: buildStepParallelJobs).
         const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
             ? getAutomaticParallelBuildJobs()
             : parallelJobs;
