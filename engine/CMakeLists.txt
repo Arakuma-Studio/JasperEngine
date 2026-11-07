@@ -1173,6 +1173,8 @@ add_subdirectory(libs/basisu)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     add_subdirectory(libs/bc7enc_rdo)
     add_subdirectory(libs/astcenc)
+    # the export's font subsetter of Title Art (S81 R50), editor only like the encoders
+    add_subdirectory(libs/harfbuzz/subset)
 endif()
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
@@ -1330,7 +1332,8 @@ jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
     lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
-    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
+    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc harfbuzz-subset)
+    target_compile_options(harfbuzz-subset PRIVATE ${EXTERNAL_WARNING_FLAG})
 endif()
 if(JASPERENGINE_RUNTIME_SHADERS)
     # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
