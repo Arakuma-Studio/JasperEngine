@@ -70,20 +70,20 @@ async def test_build_project_shaders_is_undoable(ed: Editor):
 
 
 async def test_build_info_reports_plays_toolchain_check(ed: Editor):
-    """cpp_scripts is the check compile_scripts and Play run: with no compiler or CMake on the PATH both
-    say what is missing, in the same words (on Windows get_build_info used to skip the editor-compatible
-    kit check that Play makes)"""
-    info = await ed.call("get_build_info")
-    cpp = info["cpp_scripts"]
+    """cpp_scripts is the check compile_scripts and Play run: where it says C++ can build, the engine's
+    script template compiles and links; where it says not, compile_scripts refuses with the same missing
+    tools (on Windows get_build_info used to skip the editor-compatible kit check that Play makes)"""
+    cpp = (await ed.call("get_build_info"))["cpp_scripts"]
     ed.check(isinstance(cpp["can_build"], bool) and "missing_tools" in cpp and "kit" in cpp, f"{cpp}")
-    async with Editor(create=True, name="No Toolchain", env={"PATH": "/nonexistent"}) as bare:
-        sid = (await bare.call("create_scene", name="Main", type="3d"))["scene"]["id"]
-        box = (await bare.call("create_entity", scene=sid, name="Box", type="box"))["entity_id"]
-        await bare.call("create_script", kind="cpp_script", name="Mover", entity=box)
-        await bare.call("save_project", untitled_scene_dir="scenes")
-        missing = (await bare.call("get_build_info"))["cpp_scripts"]
-        bare.check(missing["can_build"] is False and missing["missing_tools"], f"no toolchain on the PATH: {missing}")
-        built = await bare.call_raw("compile_scripts", {"timeout_seconds": 120})
-        bare.check(built.is_error, f"compile_scripts refuses too: {built.text[:300]}")
-        first = missing["missing_tools"].strip().splitlines()[0]
-        bare.check_in(first, built.text, "compile_scripts reports the same missing tools")
+    ed.check_eq(cpp["can_build"], cpp["missing_tools"] == "", "can_build means nothing is missing")
+    sid = (await ed.call("create_scene", name="Scripted", type="3d"))["scene"]["id"]
+    box = (await ed.call("create_entity", scene=sid, name="Probe", type="box"))["entity_id"]
+    await ed.call("create_script", kind="cpp_script", name="ToolchainProbe", entity=box)
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    built = await ed.call_raw("compile_scripts", {"timeout_seconds": 600}, timeout=700)
+    if cpp["can_build"]:
+        ed.check(not built.is_error and built.value.get("success") is True,
+                 f"get_build_info says C++ builds here, and the template compiles: {built.text[:500]}")
+    else:
+        ed.check(built.is_error, f"get_build_info says C++ can't build here, and compile_scripts refuses: {built.text[:300]}")
+        ed.check_in(cpp["missing_tools"].strip().splitlines()[0], built.text, "the same missing tools")

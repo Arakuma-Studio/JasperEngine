@@ -1701,7 +1701,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Agents placed repeated objects (coins, enemies) as independent copies, so a later change had to be "
                          "repeated on each; Doriax a48d1ce3a added 'build once, place instances' to its guidance.",
-        "text_at_issue": "Guide 'Building scenes': 'Make what repeats a Prefab (create_prefab)'; duplicate_entities' next",
+        "text_at_issue": "Guide 'Building scenes': 'What repeats is one Prefab (create_prefab)'; duplicate_entities' next",
         "source": "Doriax a48d1ce3a (editor AI authoring rules), agent-authoring spec",
         "prompt": "Add a Coin (a small yellow sphere) to the Main scene and four more coins 3 units apart along x.",
         "mocks": [
@@ -1731,7 +1731,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Asked for a bobbing pickup, agents wrote an onUpdate script that moves the transform every frame, "
                          "which does not preview in the editor or show in the Animation window.",
-        "text_at_issue": "Guide 'Building scenes': 'authored motion is edit_animation, not per-frame code'",
+        "text_at_issue": "Guide 'Building scenes': 'motion is edit_animation, not per-frame code'",
         "source": "Doriax a48d1ce3a (animate natively), agent-authoring spec",
         "files": GAME_FILES,
         "prompt": "Make the Crate bob up and down by half a unit, forever.",
@@ -1806,7 +1806,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Claude Code keeps the first 4096 characters of the server instructions; the physics, prefab, shader "
                          "and HTML UI digests came after the cut. The intro now says to read the rest.",
-        "text_at_issue": "Guide intro: 'No \"## Other areas\" below? Then read it all: read_file jasper://guide.'",
+        "text_at_issue": "Guide intro: 'Text cut before \"## Other areas\"? read_file jasper://guide.'",
         "source": "Claude Code 2.1.318 capMcpInstructions (4096 characters); agent-authoring spec",
         "prompt": "Before you change anything: what does this editor's agent guide say about moving physics bodies? Quote it.",
         "mocks": [

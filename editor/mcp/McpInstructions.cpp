@@ -30,10 +30,9 @@ const char* headInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You drive a running JasperEngine editor (Unity-style: Hierarchy, Inspector, Console, Scene and Game
-views; Lua or C++ scripts). Each tool edit is one undoable command, live to a human watching. Build
-scenes with tools, write code with your own file tools, verify by playing, screenshots and the
-Console. Area references: jasper://docs/<area> (the list: jasper://docs). No "## Other areas"
-below? Then read it all: read_file jasper://guide.
+views; Lua or C++ scripts). Each tool edit is one undoable command, live to a human watching.
+Area references: jasper://docs/<area> (the list: jasper://docs).
+Text cut before "## Other areas"? read_file jasper://guide.
 
 ## Addressing
 - scene: id, name or project-relative .scene path; omitted = the selected scene (while playing,
@@ -57,8 +56,8 @@ A long call past timeout_seconds returns a job id: get_job. An error says what w
 the valid choices: fix the arguments, don't repeat the call.
 
 ## Building scenes
-Place what a scene uses in the editor; scripts reach it through script properties and spawn only
-what can't be placed ahead, from a Prefab. Make what repeats a Prefab (create_prefab); authored
+Place what a scene uses in the editor; scripts reach it through script properties and spawn
+only what can't be placed ahead, from Prefabs. What repeats is one Prefab (create_prefab);
 motion is edit_animation, not per-frame code (jasper://docs/authoring).
 )JE";
 }

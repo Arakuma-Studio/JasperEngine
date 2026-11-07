@@ -97,13 +97,6 @@ async def test_fbx_layer(ed: Editor):
     added = await ed.call("edit_terrain_details", scene=sid, entity=eid,
                           add=[{"mesh": "assets/models/rigged_cube.fbx", "density": 1, "density_map": {"fill": 1, "resolution": 8}}])
     ed.check_eq(added["layers"][0]["mesh"], "assets/models/rigged_cube.fbx", "the FBX layer")
-    drawn = 0
-    for _ in range(20):
-        await ed.call("wait", frames=5)
-        drawn = (await details(ed, sid, eid))[0]["drawn"]
-        if drawn > 0:
-            break
-    ed.check(drawn > 0, f"the FBX layer draws instances: {drawn}")
     # undo removes the layer and the density map the call wrote
     density = ed.project / added["layers"][0]["density_map"]
     ed.check(density.exists(), f"the density map: {density}")

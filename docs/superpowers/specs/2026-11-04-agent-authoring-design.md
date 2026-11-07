@@ -747,7 +747,7 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    agent never saw C++, Physics, Prefabs, Shaders, HTML/CSS UI, Other areas or the Tool groups line (the line that
    tells it to call `tool_groups`; the eval itself runs Claude Code, so it measured the cut guide). What changed:
    - `McpInstructions.cpp` is two literals around the generated groups line: head = intro (with the pointer
-     `No "## Other areas" below? Then read it all: read_file jasper://guide.`), Addressing,
+     `Text cut before "## Other areas"? read_file jasper://guide.`), Addressing,
      The loop, Building scenes, then **Tool groups**; tail = Code, Undo, Lua, Unity names, C++, Physics, Prefabs,
      Shaders, HTML/CSS UI, Other areas. Unity names moved after the cut (the pointer leads there).
    - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
@@ -797,3 +797,7 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
     inside its undoable step (undo removes them) only after every item was checked, and `set_properties`
     checks only the detail layers it changes. A layer clamped on load is a load-report issue naming the
     layer, at the terrain's line of the scene file.
+12. **After the 2026-11-07 merge** (`main` 8e21b1dd2: ssr-probes' and the sound layer's index entries) the guide
+    measured 6,744 bytes, 52 into the headroom. The intro's "Build scenes with tools, write code with your own
+    file tools, verify by playing..." sentence went (The loop and Building scenes say it), and Building scenes
+    and the pointer were shortened: 6,613 bytes, 79 under the line.
