@@ -5643,6 +5643,7 @@ void editor::Project::resetConfigs() {
     setLightMode(defaultLightMode);
     setThreadingSettings(ThreadingProjectSettings());
     setParticleWorldBudget(0);
+    setParticleQaSettings(ParticleQaSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;

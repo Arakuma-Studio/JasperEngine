@@ -99,6 +99,7 @@ namespace jasperengine::editor {
         std::string m_inputStatus;
         Physics3DWorldSettings m_physics3DWorld;
         int m_particleWorldBudget = 0;
+        ParticleQaSettings m_particleQa;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         int m_lightModeIndex = 0;

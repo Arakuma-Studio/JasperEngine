@@ -11,24 +11,35 @@
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 #include "mcp/tools/ParticleShared.h"
 #include "mcp/tools/PlayViewCommon.h"
+#include "mcp/tools/W4Shared.h"
 
+#include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandHistory.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ParticleEffectAssetCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ParticleSystemComponent.h"
+#include "io/watch/FileWatchService.h"
+#include "particles/ParticleEffectPreview.h"
+#include "particles/ParticlePreviewSource.h"
+#include "particles/ParticleSheetBake.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "util/AssetDatabase.h"
+#include "util/Base64.h"
+#include "util/FileUtils.h"
+#include "util/QaChecks.h"
+#include "util/SafeWrite.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/ParticleMigrationReport.h"
 #include "util/Util.h"
@@ -178,6 +189,111 @@ Json moduleKeys(const ParticleEffectDocument& document) {
     return out;
 }
 
+const char* fieldTypeName(particles::FieldType type) {
+    switch (type) {
+        case particles::FieldType::Bool: return "bool";
+        case particles::FieldType::Int: return "int";
+        case particles::FieldType::UInt: return "uint";
+        case particles::FieldType::Float: return "float";
+        case particles::FieldType::Enum: return "enum";
+        case particles::FieldType::Mask: return "mask";
+        case particles::FieldType::Vector2: return "vec2";
+        case particles::FieldType::Vector3: return "vec3";
+        case particles::FieldType::Vector4: return "vec4";
+        case particles::FieldType::Color: return "color";
+        case particles::FieldType::String: return "string";
+        case particles::FieldType::MinMaxCurve: return "min_max_curve";
+        case particles::FieldType::MinMaxGradient: return "min_max_gradient";
+        case particles::FieldType::Curve: return "curve";
+        case particles::FieldType::Gradient: return "gradient";
+        case particles::FieldType::Struct: return "struct";
+        case particles::FieldType::Array: return "array";
+        case particles::FieldType::IntArray: return "int_array";
+        case particles::FieldType::StringArray: return "string_array";
+    }
+    return "unknown";
+}
+
+// a field's default as the effect JSON writes it (null for the structured kinds)
+Json fieldDefault(const particles::FieldDesc& f, const void* defaults) {
+    if (!defaults) return nullptr;
+    const void* v = f.field(defaults);
+    switch (f.type) {
+        case particles::FieldType::Bool: return *static_cast<const bool*>(v);
+        case particles::FieldType::Int: return *static_cast<const int*>(v);
+        case particles::FieldType::UInt:
+        case particles::FieldType::Mask: return *static_cast<const uint32_t*>(v);
+        case particles::FieldType::Float: return ParticleEffectCodec::jsonFloat(*static_cast<const float*>(v));
+        case particles::FieldType::Enum: {
+            const particles::EnumOption* option = f.findOption(*static_cast<const uint8_t*>(v));
+            return option ? Json(option->json) : Json(nullptr);
+        }
+        case particles::FieldType::Vector2: {
+            const Vector2& x = *static_cast<const Vector2*>(v);
+            return Json::array({ParticleEffectCodec::jsonFloat(x.x), ParticleEffectCodec::jsonFloat(x.y)});
+        }
+        case particles::FieldType::Vector3: {
+            const Vector3& x = *static_cast<const Vector3*>(v);
+            return Json::array({ParticleEffectCodec::jsonFloat(x.x), ParticleEffectCodec::jsonFloat(x.y), ParticleEffectCodec::jsonFloat(x.z)});
+        }
+        case particles::FieldType::Vector4:
+        case particles::FieldType::Color: {
+            const Vector4& x = *static_cast<const Vector4*>(v);
+            return Json::array({ParticleEffectCodec::jsonFloat(x.x), ParticleEffectCodec::jsonFloat(x.y), ParticleEffectCodec::jsonFloat(x.z),
+                                ParticleEffectCodec::jsonFloat(x.w)});
+        }
+        case particles::FieldType::String: return *static_cast<const std::string*>(v);
+        case particles::FieldType::MinMaxCurve: return toMcp(ParticleEffectCodec::minMaxCurveToJson(*static_cast<const particles::MinMaxCurve*>(v)));
+        case particles::FieldType::MinMaxGradient: return toMcp(ParticleEffectCodec::minMaxGradientToJson(*static_cast<const particles::MinMaxGradient*>(v)));
+        default: return nullptr;
+    }
+}
+
+Json structFieldsJson(const particles::StructDesc& desc) {
+    Json fields = Json::array();
+    for (const particles::FieldDesc& f : desc.fields) {
+        if (f.flags & particles::FieldFlag_Hidden) continue;
+        Json item = {{"key", f.key}, {"label", f.label}, {"type", fieldTypeName(f.type)}, {"default", fieldDefault(f, desc.defaults)}};
+        if (f.minValue > -1.0e38f) item["min"] = ParticleEffectCodec::jsonFloat(f.minValue);
+        if (f.maxValue < 1.0e38f) item["max"] = ParticleEffectCodec::jsonFloat(f.maxValue);
+        if (f.options) {
+            Json options = Json::array();
+            for (uint8_t o = 0; o < f.optionCount; o++) options.push_back(f.options[o].json);
+            item["options"] = options;
+        }
+        if (f.element) item["fields"] = structFieldsJson(*f.element);
+        if (f.tooltip) item["tooltip"] = f.tooltip;
+        fields.push_back(item);
+    }
+    return fields;
+}
+
+// get_particle_effect's module_fields (S91 R30): each named module's fields, defaults and ranges
+// from the table the Inspector and the codec use ("effect": the document's own fields)
+bool moduleFieldsJson(const Json& keys, Json& out, std::string& error) {
+    if (!keys.is_array() || keys.empty()) {
+        error = "module_fields is a list of module keys (e.g. [\"emission\", \"shape\"]), or [\"effect\"] for the effect's own fields.";
+        return false;
+    }
+    out = Json::object();
+    for (const Json& key : keys) {
+        const std::string name = key.is_string() ? key.get<std::string>() : std::string();
+        if (name == "effect") {
+            out[name] = {{"label", "Effect"}, {"fields", structFieldsJson(particles::ParticleModules::documentFields())}};
+            continue;
+        }
+        const particles::ModuleDesc* module = ParticleModules::find(name);
+        if (!module) {
+            std::string all = "effect";
+            for (const particles::ModuleDesc& m : ParticleModules::all()) all += ", " + std::string(m.key);
+            error = "module_fields: no module \"" + name + "\". Modules: " + all + ".";
+            return false;
+        }
+        out[name] = {{"label", module->label}, {"fields", structFieldsJson(module->fields)}};
+    }
+    return true;
+}
+
 // Applies `patch` to the target's effect as one undo step (the scene's for a GameObject, the
 // project's for an asset); the diagnostics of a refused patch come back in `diagnostics`
 bool editTarget(const CallPtr& call, const EffectTarget& target, const Ordered& patch, const std::string& undoName,
@@ -282,6 +398,18 @@ void createEffectTool(const CallPtr& call) {
 }
 
 void getEffectTool(const CallPtr& call) {
+    const Json& args = call->args();
+    if (args.contains("module_fields") && !args.contains("path") && !args.contains("entity")) {
+        // the fields alone, without an effect
+        Json fields;
+        std::string error;
+        if (!moduleFieldsJson(args["module_fields"], fields, error)) {
+            call->fail(error);
+            return;
+        }
+        call->ok(std::to_string(fields.size()) + " module(s): their fields, defaults and ranges (the Inspector's table).", Json{{"module_fields", fields}});
+        return;
+    }
     EffectTarget target;
     if (!resolveEffectTarget(call, target, false)) return;
     ParticleEffectDocument document;
@@ -294,6 +422,15 @@ void getEffectTool(const CallPtr& call) {
     data["effect"] = toMcp(ParticleEffectCodec::toKeyedJson(document));
     data["modules"] = moduleKeys(document);
     data["diagnostics"] = diagnosticsJson(diagnostics);
+    if (call->args().contains("module_fields")) {
+        Json fields;
+        std::string error;
+        if (!moduleFieldsJson(call->args()["module_fields"], fields, error)) {
+            call->fail(error);
+            return;
+        }
+        data["module_fields"] = fields;
+    }
     std::string text = std::string(target.inlineEffect ? "Inline effect" : "Effect " + target.asset) + ": " +
                        std::to_string(data["modules"].size()) + " modules, " + std::to_string(diagnostics.size()) + " diagnostics. "
                        "The effect is the keyed form edit_particle_effect patches (modules keyed by type, defaults left out).";
@@ -308,7 +445,33 @@ void editEffectTool(const CallPtr& call) {
         return;
     }
     EffectTarget target;
-    if (!resolveEffectTarget(call, target, true)) return;
+    if (!resolveEffectTarget(call, target, !args.value("dry_run", false))) return;
+    if (args.value("dry_run", false)) {
+        // the patch on a copy: what it would do, nothing changed and no undo step
+        ParticleEffectDocument document;
+        std::vector<Diagnostic> diagnostics;
+        if (!readTarget(target, document, diagnostics)) {
+            call->fail("The effect asset " + target.asset + " cannot be read (" + firstError(diagnostics) + ").", Json{{"diagnostics", diagnosticsJson(diagnostics)}});
+            return;
+        }
+        ParticleEffectDocument patched = document;
+        diagnostics.clear();
+        if (!ParticleEffectCodec::applyMergePatch(patched, toOrdered(args["patch"]), diagnostics)) {
+            call->fail("The patch would be refused (" + firstError(diagnostics) + "); nothing changed.", Json{{"diagnostics", diagnosticsJson(diagnostics)}});
+            return;
+        }
+        const bool changes = ParticleEffectCodec::write(patched) != ParticleEffectCodec::write(document);
+        Json data = targetJson(target);
+        data["dry_run"] = true;
+        data["changed"] = false;
+        data["would_change"] = changes;
+        data["effect"] = toMcp(ParticleEffectCodec::toKeyedJson(patched));
+        data["modules"] = moduleKeys(patched);
+        data["diagnostics"] = diagnosticsJson(diagnostics);
+        call->ok(std::string(changes ? "The patch would apply" : "The patch would change nothing") + " (dry run: nothing changed). " +
+                 std::to_string(diagnostics.size()) + " diagnostic(s)" + (diagnostics.empty() ? "." : ", first: " + firstError(diagnostics)), data);
+        return;
+    }
     std::vector<Diagnostic> diagnostics;
     bool changed = false;
     if (!editTarget(call, target, toOrdered(args["patch"]), "Edit Particle Effect", diagnostics, changed)) return;
@@ -399,13 +562,71 @@ Json statsJson(ParticleSubsystem& particles, Entity entity) {
             {"rays_last_tick", s.raysLastTick}, {"bytes_per_particle", s.bytesPerParticle}};
 }
 
-void replyControl(const CallPtr& call, const EffectTarget& target, ParticleSubsystem& particles, const std::string& action, bool editMode) {
+void replyControl(const CallPtr& call, const EffectTarget& target, ParticleSubsystem& particles, const std::string& action, bool editMode,
+                  const std::vector<Entity>& systems) {
     Json data = targetJson(target);
     data["action"] = action;
     data["edit_mode"] = editMode;
-    data["stats"] = statsJson(particles, target.entity);
-    call->ok(action + ": " + std::to_string(data["stats"].value("particle_count", 0)) + " particles at " +
-             std::to_string(data["stats"].value("time", 0.0)) + " s" + (editMode ? " (Edit mode: the Scene view's preview runs it)." : "."), data);
+    if (target.entity != NULL_ENTITY && target.scene->scene->findComponent<ParticleSystemComponent>(target.entity)) {
+        data["stats"] = statsJson(particles, target.entity);
+    }
+    int total = 0;
+    if (systems.size() > 1 || !data.contains("stats")) {
+        Json list = Json::array();
+        for (Entity entity : systems) {
+            Json item = statsJson(particles, entity);
+            item["entity"] = McpRefs::entityJson(target.scene, entity);
+            total += item.value("particle_count", 0);
+            list.push_back(item);
+        }
+        data["systems"] = list;
+    } else {
+        total = data["stats"].value("particle_count", 0);
+    }
+    const double time = systems.empty() ? 0.0 : particles.getTime(systems.front());
+    call->ok(action + ": " + std::to_string(total) + " particles" + (systems.size() > 1 ? " in " + std::to_string(systems.size()) + " systems" : std::string()) +
+             " at " + std::to_string(time) + " s" + (editMode ? " (Edit mode: the Scene view's preview runs it)." : "."), data);
+}
+
+// the Particle Systems a control or capture acts on: the GameObject's own, or with_children every
+// one of its subtree (S91 R31: a multi-system effect plays, seeks and captures as a whole)
+bool controlTargets(const CallPtr& call, EffectTarget& target, std::vector<Entity>& systems) {
+    const Json& args = call->args();
+    if (!args.contains("entity")) {
+        call->fail("entity is required.");
+        return false;
+    }
+    if (!args.value("with_children", false)) {
+        if (!resolveEffectTarget(call, target, false)) return false;
+        systems = {target.entity};
+        return true;
+    }
+    std::string error;
+    target.project = call->ctx().project();
+    target.scene = McpRefs::resolveScene(target.project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!target.scene) {
+        call->fail(error);
+        return false;
+    }
+    if (!target.scene->scene) {
+        call->fail(McpRefs::notOpenError(target.project, *target.scene));
+        return false;
+    }
+    target.entity = McpRefs::resolveEntity(target.scene, args["entity"], error);
+    if (target.entity == NULL_ENTITY) {
+        call->fail(error);
+        return false;
+    }
+    systems = ParticlePreviewSource::subtreeSystems(target.scene->scene, target.entity);
+    if (systems.empty()) {
+        call->fail("\"" + target.scene->scene->getEntityName(target.entity) + "\" has no Particle System in its subtree (create_particles adds one).");
+        return false;
+    }
+    if (ParticleSystemComponent* own = target.scene->scene->findComponent<ParticleSystemComponent>(target.entity)) {
+        target.inlineEffect = own->effect.empty();
+        if (!target.inlineEffect) target.asset = own->effect.path;
+    }
+    return true;
 }
 
 ParticleEffectOverlay* overlayOf(const CallPtr& call) {
@@ -416,31 +637,29 @@ ParticleEffectOverlay* overlayOf(const CallPtr& call) {
 void controlTool(const CallPtr& call) {
     const Json& args = call->args();
     EffectTarget target;
-    if (!args.contains("entity")) {
-        call->fail("entity is required.");
-        return;
-    }
-    if (!resolveEffectTarget(call, target, false)) return;
+    std::vector<Entity> systems;
+    if (!controlTargets(call, target, systems)) return;
     const std::string action = args.value("action", std::string());
     Scene* scene = target.scene->scene;
     std::shared_ptr<ParticleSubsystem> particles = scene->getSystem<ParticleSubsystem>();
-    const Entity entity = target.entity;
-    // Edit mode: the Scene view's preview runs the system (it steps no systems itself)
+    // Edit mode: the Scene view's preview runs the systems (it steps no systems itself)
     const bool editMode = target.scene->playState == ScenePlayState::STOPPED;
     ParticleEffectOverlay* overlay = editMode ? overlayOf(call) : nullptr;
-    if (overlay) overlay->addTarget(target.scene->id, entity);
+    if (overlay) {
+        for (Entity entity : systems) overlay->addTarget(target.scene->id, entity);
+    }
 
     if (action == "play") {
-        particles->play(entity);
+        for (Entity entity : systems) particles->play(entity);
         if (overlay) overlay->play(target.scene->id);
     } else if (action == "pause") {
-        particles->pause(entity);
+        for (Entity entity : systems) particles->pause(entity);
         if (overlay) overlay->pause(target.scene->id);
     } else if (action == "stop" || action == "clear") {
-        particles->stop(entity, action == "clear" || args.value("clear", false));
+        for (Entity entity : systems) particles->stop(entity, action == "clear" || args.value("clear", false));
         if (overlay && action == "clear") overlay->pause(target.scene->id);
     } else if (action == "restart") {
-        particles->restart(entity);
+        for (Entity entity : systems) particles->restart(entity);
         if (overlay) overlay->play(target.scene->id);
     } else if (action == "emit") {
         const int count = args.value("count", 1);
@@ -448,7 +667,7 @@ void controlTool(const CallPtr& call) {
             call->fail("count is 1 to 100000.");
             return;
         }
-        particles->emit(entity, (uint32_t)count);
+        for (Entity entity : systems) particles->emit(entity, (uint32_t)count);
     } else if (action == "seek") {
         if (!args.contains("time") || !args["time"].is_number() || args["time"].get<double>() < 0.0) {
             call->fail("time (seconds, >= 0) is required for seek.");
@@ -456,33 +675,34 @@ void controlTool(const CallPtr& call) {
         }
         const double time = args["time"].get<double>();
         if (overlay) {
-            // the preview's scrub: from the nearest checkpoint, over frames, then held there
+            // the preview's scrub (every system it previews in the scene): from the nearest
+            // checkpoint, over frames, then held there
             overlay->seek(target.project, target.scene, time);
             const uint32_t sceneId = target.scene->id;
-            call->waitUntil([overlay, sceneId]() { return !overlay->isSeeking(sceneId); }, 60000, [call, target, particles, action](bool timedOut) {
+            call->waitUntil([overlay, sceneId]() { return !overlay->isSeeking(sceneId); }, 60000, [call, target, particles, action, systems](bool timedOut) {
                 if (timedOut) {
                     call->fail("The seek did not finish within 60 s.");
                     return;
                 }
-                replyControl(call, target, *particles, action, true);
+                replyControl(call, target, *particles, action, true, systems);
             });
             return;
         }
-        particles->seek(entity, time);
+        for (Entity entity : systems) particles->seek(entity, time);
     } else if (action == "step") {
         const int ticks = args.value("ticks", 1);
         if (ticks < 1 || ticks > 100000) {
             call->fail("ticks is 1 to 100000.");
             return;
         }
-        particles->step(entity, (uint32_t)ticks);
+        for (Entity entity : systems) particles->step(entity, (uint32_t)ticks);
         if (overlay) overlay->pause(target.scene->id);
     } else {
         call->fail("action must be play, pause, stop, clear, restart, emit, seek or step.");
         return;
     }
     target.scene->needUpdateRender = true;
-    replyControl(call, target, *particles, action, editMode);
+    replyControl(call, target, *particles, action, editMode, systems);
 }
 
 void statsTool(const CallPtr& call) {
@@ -532,11 +752,8 @@ void statsTool(const CallPtr& call) {
 void captureTool(const CallPtr& call) {
     const Json& args = call->args();
     EffectTarget target;
-    if (!args.contains("entity")) {
-        call->fail("entity is required.");
-        return;
-    }
-    if (!resolveEffectTarget(call, target, false)) return;
+    std::vector<Entity> systems;
+    if (!controlTargets(call, target, systems)) return;
     const double time = args.value("time", 0.0);
     if (time < 0.0) {
         call->fail("time is seconds >= 0.");
@@ -549,14 +766,14 @@ void captureTool(const CallPtr& call) {
     }
     std::shared_ptr<ParticleSubsystem> particles = target.scene->scene->getSystem<ParticleSubsystem>();
     // the state at `time`, held (the Edit-mode preview pauses on it)
-    particles->seek(target.entity, time);
+    for (Entity entity : systems) particles->seek(entity, time);
     if (target.scene->playState == ScenePlayState::STOPPED) {
         if (ParticleEffectOverlay* overlay = overlayOf(call)) {
-            overlay->addTarget(target.scene->id, target.entity);
+            for (Entity entity : systems) overlay->addTarget(target.scene->id, entity);
             overlay->pause(target.scene->id);
         }
     } else {
-        particles->pause(target.entity);
+        for (Entity entity : systems) particles->pause(entity);
     }
     target.scene->needUpdateRender = true;
 
@@ -565,7 +782,20 @@ void captureTool(const CallPtr& call) {
     request.scene = target.scene->id;
     request.maxWidth = std::clamp(args.value("max_width", 768), 0, 4096);
     request.savePath = args.value("save_path", std::string());
-    const Json stats = statsJson(*particles, target.entity);
+    Json stats = statsJson(*particles, systems.front());
+    if (systems.size() > 1) {
+        // the subtree's whole: its particles, and each system's seed and state
+        int total = 0;
+        Json list = Json::array();
+        for (Entity entity : systems) {
+            Json item = statsJson(*particles, entity);
+            item["entity"] = McpRefs::entityJson(target.scene, entity);
+            total += item.value("particle_count", 0);
+            list.push_back(item);
+        }
+        stats["particle_count"] = total;
+        stats["systems"] = list;
+    }
     w3::captureView(call, request, [call, time, stats](w3::CaptureResult result) {
         if (!result.ok) {
             call->fail(result.error);
@@ -593,6 +823,299 @@ void migrationReportTool(const CallPtr& call) {
                              : std::to_string(entries.size()) + " old particle system(s) converted in " + std::to_string(list.size()) +
                                    " document(s); saving writes them in the new format.",
              Json{{"count", entries.size()}, {"documents", list}});
+}
+
+// ------------------------------------------------------------------ preview and bake (S91)
+
+// consecutive FAILs of each check per effect (an asset, or a scene's GameObject) this session
+qa::FailRounds& previewRounds() {
+    static qa::FailRounds rounds;
+    return rounds;
+}
+
+// the runs in flight: kept alive until they end (a run is never destroyed inside its own callback)
+std::vector<std::shared_ptr<ParticleEffectPreview>>& activePreviews() {
+    static std::vector<std::shared_ptr<ParticleEffectPreview>> runs;
+    return runs;
+}
+
+std::string projectRelative(Project* project, const fs::path& absolute) {
+    return absolute.lexically_relative(project->getProjectPath()).generic_string();
+}
+
+// The systems of path or entity (a whole subtree) and the request's common arguments; `scope`
+// names the effect for the fix rounds
+bool previewRequest(const CallPtr& call, const Json& args, ParticlePreviewRequest& request, std::string& scope) {
+    Project* project = call->ctx().project();
+    std::string error;
+    if (args.contains("path") && !args["path"].is_null()) {
+        std::string asset;
+        if (!resolveEffectPath(project, args.value("path", std::string()), true, asset, error) ||
+            !ParticlePreviewSource::fromAsset(asset, request.systems, error)) {
+            call->fail(error);
+            return false;
+        }
+        scope = asset;
+    } else if (args.contains("entity")) {
+        SceneProject* sceneProject = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!sceneProject) {
+            call->fail(error);
+            return false;
+        }
+        if (!sceneProject->scene) {
+            call->fail(McpRefs::notOpenError(project, *sceneProject));
+            return false;
+        }
+        const Entity entity = McpRefs::resolveEntity(sceneProject, args["entity"], error);
+        if (entity == NULL_ENTITY) {
+            call->fail(error);
+            return false;
+        }
+        if (!ParticlePreviewSource::fromSubtree(sceneProject->scene, entity, request.systems, error)) {
+            call->fail(error);
+            return false;
+        }
+        scope = "scene " + std::to_string(sceneProject->id) + ": " + McpRefs::entityPath(sceneProject, entity);
+    } else {
+        call->fail("Give path (a .particles asset) or entity (a GameObject: its Particle Systems and every one beneath it).");
+        return false;
+    }
+    if (!ParticlePreviewSource::applyArgs(args, request, error)) {
+        call->fail(error);
+        return false;
+    }
+    if (args.contains("reference")) {
+        fs::path file;
+        if (!McpRefs::resolveProjectPath(project, args.value("reference", std::string()), file, error, true) ||
+            !PoseImage::readPng(FileUtils::pathToUtf8(file), request.reference)) {
+            if (error.empty()) error = "reference is not an image the editor reads (PNG, JPG).";
+            error = "reference: " + error;
+        }
+    }
+    if (error.empty()) error = ParticleEffectPreview::validate(request);
+    if (!error.empty()) {
+        call->fail(error);
+        return false;
+    }
+    request.qa = project->getParticleQaSettings();
+    request.rounds = previewRounds().previous(scope);
+    return true;
+}
+
+// a save_path: a project-relative .png
+bool imageTarget(const CallPtr& call, const char* key, fs::path& target) {
+    const Json& args = call->args();
+    if (!args.contains(key)) return true;
+    const std::string value = args[key].is_string() ? args[key].get<std::string>() : std::string();
+    std::string error;
+    if (FileUtils::pathFromUtf8(value).extension() != ".png") {
+        call->fail(std::string(key) + " must be a project-relative .png path.");
+        return false;
+    }
+    if (!McpRefs::resolveProjectWritePath(call->ctx().project(), value, target, error, false)) {
+        call->fail(std::string(key) + ": " + error);
+        return false;
+    }
+    return true;
+}
+
+bool writeImage(Project* project, const fs::path& target, const std::vector<uint8_t>& png, std::string& error) {
+    std::error_code ec;
+    // the call's own write and the folders it makes: not outside changes for the watcher
+    fs::path created = target;
+    while (created.has_parent_path() && created.parent_path() != created && !fs::exists(created.parent_path(), ec)) created = created.parent_path();
+    ScopedExpectedWrite expected(created, created != target);
+    if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, target), target, std::string(png.begin(), png.end()), error)) return false;
+    for (fs::path dir = target.parent_path(); created != target; dir = dir.parent_path()) {
+        expected.reported(dir);
+        if (dir == created || !dir.has_parent_path() || dir.parent_path() == dir) break;
+    }
+    expected.reported(target);
+    return true;
+}
+
+// The run as a job: `done` builds the reply from the finished run on the main thread
+void runPreviewJob(const CallPtr& call, ParticlePreviewRequest request, const std::string& kind, const std::string& title,
+                   std::function<ToolResult(ParticleEffectPreview& run)> done) {
+    McpContext& ctx = call->ctx();
+    const Json& args = call->args();
+    const bool wait = args.value("wait", true);
+    const double timeout = args.value("timeout_seconds", 120.0);
+    auto run = std::make_shared<ParticleEffectPreview>(std::move(request));
+    activePreviews().push_back(run);
+    JobPtr job = ctx.jobs().create(kind, title);
+    auto reply = std::make_shared<ToolResult>();
+    std::weak_ptr<ParticleEffectPreview> weak = run;
+    job->setCancelHandler([weak]() {
+        if (auto r = weak.lock()) r->cancel();
+    });
+    job->setProgress(0.0, "simulating");
+    run->setOnFinished([weak, job, reply, done]() {
+        auto r = weak.lock();
+        if (!r) return;
+        if (r->isFailed()) {
+            if (job->cancelRequested()) job->markCancelled("Cancelled; nothing was written.");
+            else job->fail(r->getError());
+        } else {
+            *reply = done(*r);
+            Json result = reply->structured.is_object() ? reply->structured : Json::object();
+            if (reply->isError) job->fail(reply->text, result);
+            else job->succeed(reply->text, result);
+        }
+        // released after this frame: never inside its own callback
+        getEditorHost().enqueueMainThreadTask([weak]() {
+            auto& runs = activePreviews();
+            runs.erase(std::remove_if(runs.begin(), runs.end(), [&](const std::shared_ptr<ParticleEffectPreview>& p) { return p == weak.lock(); }),
+                       runs.end());
+        });
+    });
+    run->start();
+    call->detach();
+    replyWhenJobDone(call, job, wait, timeout, [reply](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) {
+            ToolResult failure = ToolResult::error(reply->text.empty() ? finished.message() : reply->text, result);
+            failure.images = reply->images;
+            return failure;
+        }
+        ToolResult out = *reply;
+        out.structured = result;
+        return out;
+    });
+}
+
+std::string previewText(const std::string& scope, const Json& report) {
+    const Json& count = report["metrics"]["count"];
+    char head[256];
+    std::snprintf(head, sizeof(head), "%s: %llu ticks of %.4g s (%.3g s), peak %u particles at %.3g s, emitted %llu. Verdict %s.", scope.c_str(),
+                  (unsigned long long)report.value("ticks", (uint64_t)0), report.value("tick_seconds", 0.0), report.value("seconds", 0.0),
+                  count.value("peak", 0u), count.value("peak_at", 0.0), (unsigned long long)count.value("emitted", (uint64_t)0),
+                  report.value("verdict", "").c_str());
+    std::string text = head;
+    text += " Seeds:";
+    for (const Json& s : report["seeds"]) text += " " + s.value("system", "") + "=" + std::to_string(s.value("seed", 0u));
+    text += ", state_hash " + report.value("state_hash", "") + ".";
+    for (const Json& check : report["checks"]) text += "\n" + qa::rowLine(check);
+    const Json& cost = report["metrics"]["cost"];
+    text += "\nCost on " + cost.value("platform", "") + ": " + Json(cost["sim_ms"]).dump() + " ms simulation + " + Json(cost["prep_ms"]).dump() +
+            " ms render prep a frame (estimate, not measured on a device).";
+    text += "\nNot simulated: colliders, force fields, the world budget, triggers.";
+    if (!report["thresholds"]["changed"].empty()) text += "\nThresholds changed from their defaults: " + report["thresholds"]["changed"].dump() + ".";
+    text += "\n" + report.value("guidance", "");
+    return text;
+}
+
+void previewEffectTool(const CallPtr& call) {
+    ParticlePreviewRequest request;
+    std::string scope;
+    if (!previewRequest(call, call->args(), request, scope)) return;
+    fs::path saveTarget;
+    if (!imageTarget(call, "save_path", saveTarget)) return;
+    const std::string failOn = call->args().value("fail_on", std::string());
+    if (!failOn.empty() && failOn != "fail" && failOn != "warn") {
+        call->fail("fail_on is fail or warn.");
+        return;
+    }
+    Project* project = call->ctx().project();
+    runPreviewJob(call, std::move(request), "preview_particle_effect", "Preview Particle Effect " + scope,
+                  [scope, saveTarget, failOn, project](ParticleEffectPreview& run) {
+        Json data = run.getReport();
+        previewRounds().record(scope, data["checks"]);
+        std::string text = previewText(scope, data);
+        data["next"] = data.value("guidance", "");
+        ToolResult reply;
+        std::vector<uint8_t> png;
+        if (!run.getImage().isEmpty() && run.getImage().encodePng(png)) {
+            data["image"] = {{"width", run.getImage().getWidth()}, {"height", run.getImage().getHeight()},
+                             {"cells", "left to right at the cells' times; labels: t=<seconds> <live particles>"}};
+            if (!saveTarget.empty()) {
+                std::string error;
+                if (!writeImage(project, saveTarget, png, error)) return ToolResult::error("Could not write the filmstrip to " + projectRelative(project, saveTarget) + ": " + error);
+                data["saved_to"] = projectRelative(project, saveTarget);
+                text += "\nSaved to " + projectRelative(project, saveTarget) + ".";
+            }
+            reply.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+        } else if (!saveTarget.empty()) {
+            text += "\nframes 0: no filmstrip, nothing saved.";
+        }
+        reply.text = text;
+        reply.structured = data;
+        reply.isError = qa::reaches(data.value("verdict", ""), failOn);
+        return reply;
+    });
+}
+
+void bakeSheetTool(const CallPtr& call) {
+    const Json& args = call->args();
+    ParticlePreviewRequest base;
+    std::string scope;
+    const int columns = args.value("columns", 4), rows = args.value("rows", 4), cellSize = args.value("cell_size", 128);
+    std::string error = ParticleSheetBake::validate(columns, rows, cellSize);
+    if (!error.empty()) {
+        call->fail(error);
+        return;
+    }
+    // the preview's own checks of path, entity, seed, seconds and view (a sheet faces the camera: front)
+    Json previewArgs = args;
+    if (!previewArgs.contains("view")) previewArgs["view"] = "front";
+    previewArgs["frames"] = columns * rows;
+    if (!previewRequest(call, previewArgs, base, scope)) return;
+    std::string output;
+    const bool write = args.contains("output");
+    if (write) {
+        output = args.value("output", std::string());
+        if (output.size() > 4 && (output.substr(output.size() - 4) == ".png")) output.resize(output.size() - 4);
+        if (output.size() > 10 && (output.substr(output.size() - 10) == ".particles")) output.resize(output.size() - 10);
+    }
+    const bool overwrite = args.value("overwrite", false);
+    ParticlePreviewRequest request = ParticleSheetBake::sheetRequest(base, columns, rows, cellSize);
+    bool additive = true;
+    bool looping = false;
+    for (const ParticlePreviewSystem& s : request.systems) {
+        additive = additive && s.document.renderer.blend == particles::ParticleBlend::Additive;
+        looping = looping || s.document.looping;
+    }
+    Project* project = call->ctx().project();
+    McpContext* ctx = &call->ctx();
+    runPreviewJob(call, std::move(request), "bake_particle_sheet", (write ? "Bake Sprite Sheet " : "Preview Sprite Sheet ") + scope,
+                  [=](ParticleEffectPreview& run) {
+        const PoseImage sheet = ParticleSheetBake::composeSheet(run.getCells(), columns, rows);
+        const Json& report = run.getReport();
+        const double seconds = report.value("seconds", 0.0);
+        Json data = {{"columns", columns}, {"rows", rows}, {"cell_size", cellSize}, {"seconds", seconds}, {"frame", report["frame"]},
+                     {"seeds", report["seeds"]}, {"state_hash", report["state_hash"]}, {"verdict", report["verdict"]}, {"checks", report["checks"]},
+                     {"alpha", "straight; additive light without coverage keeps its brightest channel as alpha"}};
+        std::string text = scope + ": " + std::to_string(columns) + "x" + std::to_string(rows) + " frames of " + std::to_string(cellSize) + " px over " +
+                           report["seconds"].dump() + " s, straight alpha.";
+        ToolResult reply;
+        std::vector<uint8_t> png;
+        sheet.encodePng(png);
+        if (write) {
+            const particles::ParticleEffectDocument effect =
+                ParticleSheetBake::sheetEffect(std::string(), columns, rows, seconds, run.getFrameWorldSize(), looping, additive);
+            std::vector<WriteFilesCmd::Item> items;
+            std::vector<std::string> written;
+            std::string why;
+            if (!ParticleSheetBake::sheetFiles(project, output, sheet, effect, overwrite, items, written, why) ||
+                !w4::writeFilesUndoable(*ctx, std::move(items), why, {}, "Bake Sprite Sheet")) {
+                return ToolResult::error("Nothing was written: " + why);
+            }
+            data["written"] = written;
+            data["undo"] = {{"scope", "project"}};
+            data["next"] = "set_particle_effect plays " + written[1] + " on a Particle System.";
+            text += " Wrote " + written[0] + " and " + written[1] + " (Texture Sheet Animation " + std::to_string(columns) + "x" +
+                    std::to_string(rows) + ") as one undo step \"Bake Sprite Sheet\".";
+        } else {
+            data["next"] = "The same arguments plus output write the sheet and an effect playing it (one undo step).";
+            text += " Nothing written (no output).";
+        }
+        reply.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+        reply.text = text;
+        reply.structured = data;
+        return reply;
+    });
 }
 
 } // namespace
@@ -628,13 +1151,15 @@ void registerParticleTools(McpRegistry& registry) {
     add("get_particle_effect", "Get Particle Effect",
         "An effect as JSON (keyed: {duration, looping, ..., modules: {main, emission, shape, ...}}, defaults left out), the "
         "modules present and its validation diagnostics [{severity, path, message}].",
-        object(withTarget(Json::object()), std::vector<std::string>{}), getEffectTool, true);
+        object(withTarget({{"module_fields", array(string(""), "Modules (or \"effect\") whose fields, defaults and ranges to list.")}}),
+               std::vector<std::string>{}), getEffectTool, true);
     add("edit_particle_effect", "Edit Particle Effect",
         "Apply a JSON merge patch (RFC 7386) to an effect's keyed form as one undo step: {\"modules\": {\"emission\": "
         "{\"rateOverTime\": 20}}}; null removes a key (a module: removes it). A value is a number, or {mode: twoConstants, "
         "constant, constantMax}, {mode: curve, curve: [[t, v], ...], multiplier}; colours [r, g, b, a] sRGB. An asset's edit "
         "changes every system using it. A patch that leaves the effect invalid is refused with its diagnostics.",
-        object(withTarget({{"patch", anyObject("The merge patch.")}}), std::vector<std::string>{"patch"}), editEffectTool, false);
+        object(withTarget({{"patch", anyObject("The merge patch.")}, {"dry_run", withDefault(boolean("Validate only: no change, no undo step."), false)}}),
+               std::vector<std::string>{"patch"}), editEffectTool, false);
     add("add_particle_module", "Add Particle Module",
         "Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, "
         "limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, "
@@ -655,7 +1180,8 @@ void registerParticleTools(McpRegistry& registry) {
         "step ticks. In Edit mode the Scene view's Particle Effect preview runs the system. Returns its statistics.",
         object({{"entity", entityRef()}, {"scene", sceneRef()},
                 {"action", stringEnum("", {"play", "pause", "stop", "clear", "restart", "emit", "seek", "step"})},
-                {"count", integer("", 1, 100000)}, {"time", number("Seconds.")}, {"ticks", integer("", 1, 100000)}},
+                {"count", integer("", 1, 100000)}, {"time", number("Seconds.")}, {"ticks", integer("", 1, 100000)},
+                {"with_children", withDefault(boolean("Every Particle System of the subtree."), false)}},
                {"entity", "action"}),
         controlTool, false);
     add("get_particle_stats", "Particle Statistics",
@@ -667,13 +1193,74 @@ void registerParticleTools(McpRegistry& registry) {
         "paused there.",
         object({{"entity", entityRef()}, {"scene", sceneRef()}, {"time", number("Seconds.")},
                 {"camera", withDefault(stringEnum("", {"scene", "game"}), "scene")},
-                {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here.")}},
+                {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here.")},
+                {"with_children", withDefault(boolean("Seek the subtree's systems too."), false)}},
                {"entity", "time"}),
         captureTool, false);
     add("get_particle_migration_report", "Particle Migration Report",
         "The old particle systems the documents read since the project opened were converted from (S20): per document, one "
         "line per system (where its effect went, what was approximated).",
         object({}), migrationReportTool, true);
+
+    // S91: the deterministic preview with its checks, and the sprite-sheet bake on the same run
+    const Json run = {{"path", assetPath("A .particles asset.")}, {"entity", entityRef("A GameObject: every Particle System of its subtree.")},
+                      {"scene", sceneRef()}, {"seed", integer("Default: each system's own, else 1.", 0, 2147483647)},
+                      {"seconds", number("Default: one play.", 0, 60)}};
+    auto withRun = [&](Json extra) {
+        Json properties = run;
+        for (auto it = extra.begin(); it != extra.end(); ++it) properties[it.key()] = it.value();
+        return properties;
+    };
+    {
+        ToolDef tool;
+        tool.name = "preview_particle_effect";
+        tool.title = "Preview Particle Effect";
+        tool.description =
+            "Run an effect (path, or entity: its whole subtree) deterministically in a private scene, changing nothing: a filmstrip "
+            "(frames, default 6; 0: none) framed once from the run's bounds, metrics and checks with fix hints. Same request, same "
+            "bytes. Cost is an estimate, never a device measurement. capture_particles shows it in its scene instead.";
+        tool.inputSchema = object(withRun({
+            {"times", array(number(""), "Cell times (s) instead of frames.")},
+            {"frames", withDefault(integer("", 0, 24), 6)},
+            {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top"}), "three_quarter")},
+            {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
+            {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
+            {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},
+            {"fail_on", stringEnum("Error result at this verdict.", {"fail", "warn"})},
+            {"reference", string("An image shown as the last cell.")},
+            {"save_path", string("Also write the PNG (project-relative).")},
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_seconds", withDefault(number("", 1, 3600), 120)}}), std::vector<std::string>{});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.writesFiles = [](const Json& args) { return args.contains("save_path"); };
+        tool.handler = previewEffectTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "bake_particle_sheet";
+        tool.title = "Bake Sprite Sheet";
+        tool.description =
+            "Bake an effect's run into a sprite sheet (columns x rows frames, straight alpha) and a .particles playing it with "
+            "Texture Sheet Animation. Without output nothing is written: the sheet image. With output both files, one undo step. "
+            "Check the effect with preview_particle_effect first.";
+        tool.inputSchema = object(withRun({
+            {"columns", withDefault(integer("", 1, 16), 4)},
+            {"rows", withDefault(integer("", 1, 16), 4)},
+            {"cell_size", withDefault(integer("Pixels.", 16, 1024), 128)},
+            {"view", withDefault(stringEnum("", {"front", "three_quarter", "side", "top"}), "front")},
+            {"output", string("Project-relative, no extension: writes .png and .particles.")},
+            {"overwrite", withDefault(boolean(""), false)},
+            {"wait", withDefault(boolean(""), true)},
+            {"timeout_seconds", withDefault(number("", 1, 3600), 120)}}), std::vector<std::string>{});
+        tool.writesFiles = [](const Json& args) { return args.contains("output"); };
+        tool.allowedWhilePlaying = false;
+        tool.activity = ToolActivity::Edit;
+        tool.attributesUndo = true;
+        tool.handler = bakeSheetTool;
+        registry.addTool(std::move(tool));
+    }
 }
 
 }

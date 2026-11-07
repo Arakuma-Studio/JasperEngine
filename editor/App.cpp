@@ -136,6 +136,7 @@
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
+#include "particles/ParticleEffectPreview.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -2415,6 +2416,7 @@ void editor::App::setup() {
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
+    ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
 
     // Initialize application settings
     initializeSettings();
@@ -3880,8 +3882,8 @@ void editor::App::engineRender(){
     // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
     // from here on, main-thread tasks included, until the end of this function
     struct PoseFrameScope {
-        PoseFrameScope() { PoseRender::setInEditorFrame(true); }
-        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); }
+        PoseFrameScope() { PoseRender::setInEditorFrame(true); ParticleEffectPreview::setInEditorFrame(true); }
+        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); ParticleEffectPreview::setInEditorFrame(false); }
     } poseFrameScope;
 
     processMainThreadTasks();
@@ -4177,6 +4179,9 @@ void editor::App::engineRender(){
     }
     // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
     VatPreviewView::processFrame();
+    // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
+    // private scenes step and draw here, whether a view shows or not
+    ParticleEffectPreview::processFrame();
 
     if (benchmarkEnabled)
         tickBenchmark();
@@ -4970,6 +4975,7 @@ void editor::App::shutdownBackgroundWork() {
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
+    ParticleEffectPreview::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -4982,6 +4988,7 @@ void editor::App::engineViewDestroyed(){
     // session's stop fires too)
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
+    ParticleEffectPreview::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();

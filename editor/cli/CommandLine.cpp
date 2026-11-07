@@ -52,6 +52,9 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "util/QaChecks.h"
+#include "particles/ParticleEffectPreview.h"
+#include "particles/ParticlePreviewSource.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
 #include "texture/TextureCli.h"
@@ -2116,6 +2119,8 @@ struct CheckOptions {
     bool vat = false;
     bool normals = false;
     bool videos = false;
+    bool particles = false;
+    std::string failOn = "fail";
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2155,7 +2160,13 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "      --particles          Particle effects (.particles): preview_particle_effect's checks at each\n"
+        << "                           effect's default seed, metrics only (capacity_hit, overdraw_budget,\n"
+        << "                           invisible, pop, never_ends, platform_budget; cost is an estimate).\n"
+        << "                           A FAIL is an error, a WARN a warning.\n"
+        << "      --fail-on <verdict>  fail (default) or warn: --particles reports WARN rows as errors too.\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos\n"
+        << "                           and particle effects.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
@@ -2204,6 +2215,14 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.normals = true;
         } else if (arg == "--videos") {
             options.videos = true;
+        } else if (arg == "--particles") {
+            options.particles = true;
+        } else if (arg == "--fail-on") {
+            if (!requireValue(argc, argv, i, options.failOn, error)) return false;
+            if (options.failOn != "fail" && options.failOn != "warn") {
+                error = "--fail-on must be fail or warn";
+                return false;
+            }
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2975,7 +2994,8 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
                    const std::vector<std::string>& textureFiles, bool texturesWanted,
-                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
+                   const std::vector<fs::path>& vatFiles, bool vatWanted,
+                   const std::vector<fs::path>& particleFiles, bool particlesWanted, const std::string& failOn) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -3026,7 +3046,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (shadersWanted || cppWanted || texturesWanted || vatWanted || particlesWanted) {
         // checks only read the project: no lock, an open editor is fine, and no file is written
         // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
         // prefabs or clips)
@@ -3049,6 +3069,41 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // the .vat files (all of them, or the given ones): format, staleness, device limits
         run.vat = vat::checkVatAssets(&project, vatFiles);
         run.vatRan = true;
+    }
+
+    if (particlesWanted) {
+        // S91 R33: each effect's checks at its default seed, metrics only (no graphics view)
+        const std::vector<fs::path> files = particleFiles.empty() ? ProjectChecks::findProjectFiles(root, {".particles"}) : particleFiles;
+        for (const fs::path& file : files) {
+            const std::string rel = ProjectChecks::projectRelative(root, file);
+            const std::string asset = project.normalizeToAssetsRelative(file).generic_string();
+            ParticlePreviewRequest request;
+            std::string error;
+            qa::Json report;
+            if (!ParticlePreviewSource::fromAsset(asset, request.systems, error)) {
+                run.findings.push_back({"particles", rel, 0, 0, "error", error});
+                continue;
+            }
+            request.qa = project.getParticleQaSettings();
+            if (!ParticleEffectPreview::runCpu(request, report, error)) {
+                run.findings.push_back({"particles", rel, 0, 0, "error", error});
+                continue;
+            }
+            for (const qa::Json& check : report["checks"]) {
+                const std::string status = check.value("status", "");
+                if (status != "FAIL" && status != "WARN") continue;
+                ProjectChecks::Finding finding;
+                finding.tool = "particles";
+                finding.path = rel;
+                finding.severity = qa::reaches(status, failOn) ? "error" : "warning";
+                finding.code = check.value("id", "");
+                finding.message = check.value("id", "") + " " + status + ": " +
+                                  (check["limited_by"].is_string() ? check["limited_by"].get<std::string>() : std::string("measured ") + check["measured"].dump());
+                if (check["fix_hint"].is_string()) finding.suggestion = check["fix_hint"].get<std::string>();
+                run.findings.push_back(finding);
+            }
+        }
+        run.checked.push_back({"particles", files.size()});
     }
 
     // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
@@ -3157,8 +3212,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
+    const bool particles = options.particles || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.all) {
+        !options.videos && !options.particles && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
@@ -3193,6 +3249,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
+    std::vector<fs::path> particleFiles;
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3228,6 +3285,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 if (anims) clipFiles.push_back(path);
             } else if (isCookableTexture(name)) {
                 if (textures) textureFiles.push_back(name);
+            } else if (Util::isParticleEffectFile(name)) {
+                if (particles) particleFiles.push_back(path);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
@@ -3251,6 +3310,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
+    const bool particlesWanted = fileMode ? !particleFiles.empty() : particles;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -3259,10 +3319,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted || particlesWanted) {
         QuietOutput quiet;
         run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
-                        vatFiles, vatWanted);
+                        vatFiles, vatWanted, particleFiles, particlesWanted, options.failOn);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";

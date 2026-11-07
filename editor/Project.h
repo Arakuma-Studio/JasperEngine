@@ -32,6 +32,7 @@
 #include "util/CxxStandards.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "particles/ParticleQaSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
@@ -954,6 +955,7 @@ namespace jasperengine::editor{
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
         uint32_t particleWorldBudget = 0;
+        ParticleQaSettings particleQa;
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
@@ -1934,6 +1936,9 @@ namespace jasperengine::editor{
         static constexpr unsigned int maxParticleWorldBudget = 1u << 24;
         uint32_t getParticleWorldBudget() const;
         void setParticleWorldBudget(uint32_t budget);
+        // Project Settings > Graphics > Particle Checks (S91 R28)
+        const ParticleQaSettings& getParticleQaSettings() const { return particleQa; }
+        void setParticleQaSettings(const ParticleQaSettings& settings) { particleQa = settings; }
 
         const ThreadingProjectSettings& getThreadingSettings() const;
         // Stores them and applies what applies live (the reserve, the web pump budget) to
