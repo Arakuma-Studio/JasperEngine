@@ -1223,6 +1223,14 @@ void RenderSystem::refreshUITexture(UIComponent& ui){
 void RenderSystem::uploadUIBuffers(UIComponent& ui){
     if (!ui.needUpdateBuffer)
         return;
+    if (ui.buffer.getSize() > ui.gpuBufferBytes || (ui.indices.getCount() > 0 && ui.indices.getSize() > ui.gpuIndicesBytes)){
+        // the CPU geometry outgrew the GPU buffers made at load (sokol does not clamp an update):
+        // no upload past their end, a reload makes bigger ones; this frame keeps the previous geometry
+        if (!ui.needReload)
+            Log::warn("A UI element's geometry outgrew its GPU buffer (%zu > %zu bytes): reloading it", ui.buffer.getSize(), ui.gpuBufferBytes);
+        ui.needReload = true;
+        return;
+    }
     // (a batch record baked before sees it, also when a Canvas Group layer uploads it: noteWrite)
     ui.buffer.noteWrite();
     ui.indices.noteWrite();

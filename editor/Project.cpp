@@ -6320,6 +6320,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
     // and Text Effects unless the Inspector previews them
     scene->getSystem<UISystem>()->setTextEffectsHeld(pause);
+    // and no Button gets selected or scaled by its state (Select On Enable waits for Play)
+    scene->getSystem<UISystem>()->setEditMode(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
@@ -11261,6 +11263,12 @@ void editor::Project::stop(uint32_t sceneId) {
                     mainSceneProject->playState = ScenePlayState::STOPPED;
                     CommandHandle::get(mainSceneProject->id)->endPlaySession(false);
                 }
+            }
+
+            // the played scene's Buttons are the edited ones again: no selection or hold, no state
+            // scale, the authored look (their runtime fields survive the snapshot's restore)
+            if (mainSceneProject && mainSceneProject->scene) {
+                mainSceneProject->scene->getSystem<UISystem>()->resetSelection();
             }
 
             // matrix changes made by scripts last only for the Play, never reaching project.yaml

@@ -44,6 +44,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
@@ -173,7 +174,12 @@ static std::string droppedAssetPath(editor::Project* project, const std::string&
 }
 
 // Redraws the component a dropped texture belongs to, used when a preview is undone.
-static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType componentType) {
+static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType componentType, const std::string& property) {
+    // the row's own update flags redraw any component (a Button's state textures included)
+    const editor::PropertyData prop = editor::Catalog::findProperty(scene, entity, componentType, property);
+    if (prop.ref && prop.updateFlags) {
+        editor::Catalog::updateEntity(scene, entity, prop.updateFlags & ~(uint64_t)editor::UpdateFlags_SceneWide);
+    }
     if (componentType == editor::ComponentType::MeshComponent) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
@@ -1526,15 +1532,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                             originalTex[id][entity] = Texture(*valueRef);
                             if (*valueRef != Texture(droppedRelativePath)){
                                 *valueRef = Texture(droppedRelativePath);
-                                if (cpType == ComponentType::MeshComponent){
-                                    unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                                    for (unsigned int i = 0; i < numSubmeshes; i++){
-                                        sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                                    }
-                                }
-                                if (cpType == ComponentType::UIComponent){
-                                    sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                                }
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                             }
                         }
                     }
@@ -1544,7 +1542,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[id][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
@@ -1583,15 +1581,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[id][entity]){
                     *valueRef = originalTex[id][entity];
-                    if (cpType == ComponentType::MeshComponent){
-                        unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                        for (unsigned int i = 0; i < numSubmeshes; i++){
-                            sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                        }
-                    }
-                    if (cpType == ComponentType::UIComponent){
-                        sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                    }
+                    markTextureUpdate(sceneProject->scene, entity, cpType, id);
                 }
             }
 
@@ -1632,7 +1622,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                             }
                             if (*valueRef != updated){
                                 *valueRef = updated;
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                             }
                         }
                     }
@@ -1642,7 +1632,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[dragId][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
 
@@ -1677,7 +1667,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[dragId][entity]){
                     *valueRef = originalTex[dragId][entity];
-                    markTextureUpdate(sceneProject->scene, entity, cpType);
+                    markTextureUpdate(sceneProject->scene, entity, cpType, id);
                 }
             }
 
@@ -8528,10 +8518,33 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 }
 
 void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // a Button writes the colour and/or the texture from its state (its transition): those rows
+    // are read-only, the Button's Normal values are what to edit
+    bool colorByButton = !entities.empty();
+    bool textureByButton = !entities.empty();
+    for (Entity entity : entities){
+        const ButtonComponent* button = sceneProject->scene->findComponent<ButtonComponent>(entity);
+        colorByButton = colorByButton && button && UISystem::buttonOwnsUIColor(*button);
+        textureByButton = textureByButton && button && UISystem::buttonOwnsUITexture(*button);
+    }
+
     beginTable(cpType, getLabelSize("Texture"));
+    ImGui::BeginDisabled(colorByButton);
     propertyRow(RowPropertyType::Color4L, cpType, "color", "Color", sceneProject, entities);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(textureByButton);
     propertyRow(RowPropertyType::Texture, cpType, "texture", "Texture", sceneProject, entities);
+    ImGui::EndDisabled();
     endTable();
+    if (colorByButton || textureByButton){
+        const char* note = (colorByButton && textureByButton) ? "Color and Texture are set by the Button's transition: edit its Normal Color and Normal Texture"
+                         : colorByButton ? "Color is set by the Button's transition: edit its Normal Color"
+                                         : "Texture is set by the Button's transition: edit its Normal Texture";
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("%s", note);
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("A Button whose Normal is unset takes these values when it loads; set the Button's Transition to None to edit them yourself");
+    }
 
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
 

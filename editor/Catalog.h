@@ -109,6 +109,9 @@ namespace jasperengine::editor{
         // a Text Effect's selection or layers changed: its glyphs again from their base (upstream
         // ui-scaling-text: bit 53 there; oe-port's bits took 50-54)
         UpdateFlags_TextEffect          = (uint64_t)1 << 55,
+        // a Button field (ui-components): it redraws (needUpdateButton) from any edit path, the
+        // Inspector, MCP or undo
+        UpdateFlags_Button              = (uint64_t)1 << 56,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };

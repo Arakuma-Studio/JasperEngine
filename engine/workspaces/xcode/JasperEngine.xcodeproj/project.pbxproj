@@ -4481,6 +4481,10 @@
 		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
 		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
 		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
+		4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
+		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8757,6 +8761,9 @@
 		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
 		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
 		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
+		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
+		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
+		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10960,6 +10967,7 @@
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
+				4A534E47B4E493A883DC863A /* UISelectable.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11239,6 +11247,7 @@
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
+				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12372,6 +12381,7 @@
 				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
+				4A534E47F8386218660CC63D /* UIEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -15566,6 +15576,8 @@
 				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
 				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
+				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
+				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18097,6 +18109,7 @@
 				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
+				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18919,6 +18932,7 @@
 				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
+				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

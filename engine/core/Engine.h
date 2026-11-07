@@ -308,6 +308,9 @@ namespace jasperengine {
         };
 
     private:
+        // TEST-ONLY seam: a view loaded without a GPU (canvas refresh tests)
+        friend struct EngineTestAccess;
+
         //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
         static std::unordered_set<Scene*> oneTimeScenes;
@@ -450,7 +453,10 @@ namespace jasperengine {
         static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
-        static void calculateCanvas();
+        // the canvas and view rect for the current screen, then what follows them: every scene's
+        // and the debug overlay's camera (Canvas Scaler), Screen.safeArea; with notify, the events
+        // of a view change when the canvas or the view rect changed (a nested call does not notify)
+        static void refreshCanvas(bool notify);
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
@@ -987,9 +993,13 @@ namespace jasperengine {
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
-        // an element of a document has focus, so the d-pad, the left stick and A go to the UI
-        // (a game that polls Input can check it)
+        // an element of a document has focus, or a component UI Button is selected, so the d-pad,
+        // the left stick and A go to the UI (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a component UI Button is selected: the arrows, Tab, Enter, keypad Enter and Space are the UI's
+        static bool wantsKeyboardNavigation();
+        // both at once, from one look at the scenes (Input::beginFrame)
+        static void getUINavigationWants(bool& gamepad, bool& keyboard);
         // a text field has keyboard focus (a native InputField or a document text control): the
         // keyboard does not drive input actions then (Input::beginFrame)
         static bool isTextInputFocused();

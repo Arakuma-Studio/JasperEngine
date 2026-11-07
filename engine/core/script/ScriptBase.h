@@ -12,6 +12,7 @@
 #include <functional>
 #include "component/ScriptComponent.h"
 #include "PointerEventData.h"
+#include "UIEventData.h"
 #include "object/EntityHandle.h"
 
 #include <map>
@@ -191,6 +192,17 @@ namespace jasperengine {
         virtual void onEndDrag(PointerEventData& e);
         virtual void onDrop(PointerEventData& e);
         virtual void onScroll(PointerEventData& e);
+
+        // The component UI's selection callbacks (ui-components, Unity's ISelectHandler,
+        // IDeselectHandler, IMoveHandler, ISubmitHandler, ICancelHandler): onSelect, onDeselect,
+        // onMove and onSubmit go to the selected GameObject, onCancel up its hierarchy to the
+        // first that handles it. use() in onMove and onSubmit skips the Button's own navigation
+        // and click.
+        virtual void onSelect(BaseEventData& e);
+        virtual void onDeselect(BaseEventData& e);
+        virtual void onMove(AxisEventData& e);
+        virtual void onSubmit(BaseEventData& e);
+        virtual void onCancel(BaseEventData& e);
 
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers
