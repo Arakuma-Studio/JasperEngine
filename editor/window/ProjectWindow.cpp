@@ -5,6 +5,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
+#include "graph/GraphEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
@@ -4984,6 +4985,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
+    } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
+        // a graph kind's file: the window of its kind (S90 R26)
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);

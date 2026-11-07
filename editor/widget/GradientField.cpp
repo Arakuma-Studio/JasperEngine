@@ -280,19 +280,19 @@ void GradientWindow::drawKeys(ImVec2 barMin, ImVec2 barMax) {
                 drag = alphaRow ? Drag::Alpha : Drag::Color;
                 dragIndex = hit;
                 dragOffset = (alphaRow ? gradient.alphaKeys[(size_t)hit].time : gradient.colorKeys[(size_t)hit].time) - t;
-            } else if (alphaRow ? gradient.alphaKeys.size() < Gradient::kMaxKeys : gradient.colorKeys.size() < Gradient::kMaxKeys) {
+            } else if (alphaRow ? gradient.alphaKeys.size() < options.maxKeys : gradient.colorKeys.size() < options.maxKeys) {
                 // a click on the strip adds a key with the gradient's value there
                 beginGesture();
                 if (alphaRow) {
-                    selectedAlpha = gradientops::addAlphaKey(gradient, t);
+                    selectedAlpha = gradientops::addAlphaKey(gradient, t, options.maxKeys);
                     selectedColor = -1;
                 } else {
-                    selectedColor = gradientops::addColorKey(gradient, t);
+                    selectedColor = gradientops::addColorKey(gradient, t, options.maxKeys);
                     selectedAlpha = -1;
                 }
                 deliver(true);
             } else {
-                warning = "A gradient has at most 8 colour and 8 alpha keys.";
+                warning = "A gradient has at most " + std::to_string(options.maxKeys) + " colour and " + std::to_string(options.maxKeys) + " alpha keys.";
             }
         }
         // the markers: alpha keys point down at the bar, colour keys up
@@ -522,8 +522,8 @@ void GradientWindow::show() {
         ImGui::Separator();
         drawPresets();
         ImGui::NewLine();
-        ImGui::TextDisabled("%zu / %zu colour keys, %zu / %zu alpha keys", gradient.colorKeys.size(), Gradient::kMaxKeys,
-                            gradient.alphaKeys.size(), Gradient::kMaxKeys);
+        ImGui::TextDisabled("%zu / %zu colour keys, %zu / %zu alpha keys", gradient.colorKeys.size(), options.maxKeys,
+                            gradient.alphaKeys.size(), options.maxKeys);
         if (!warning.empty()) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", warning.c_str());
     }
     ImGui::End();

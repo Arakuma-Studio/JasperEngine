@@ -271,7 +271,7 @@ Json jasperengine::graph::toJson(const Node& node){
     Json out = Json::object();
     out["id"] = node.id;
     out["type"] = node.type;
-    out["position"] = vec2Json(node.position);
+    if (node.placed) out["position"] = vec2Json(node.position);
     if (node.size) out["size"] = vec2Json(*node.size);
     out["params"] = node.params.is_object() ? node.params : Json::object();
     if (node.dynamicPorts) {
@@ -288,7 +288,8 @@ Node jasperengine::graph::nodeFromJson(const Json& json){
     if (!json.is_object()) return node;
     node.id = stringOf(json, "id");
     node.type = stringOf(json, "type");
-    if (auto it = json.find("position"); it != json.end()) node.position = vec2From(*it);
+    if (auto it = json.find("position"); it != json.end() && !it->is_null()) node.position = vec2From(*it);
+    else node.placed = false;
     if (auto it = json.find("size"); it != json.end() && !it->is_null()) node.size = vec2From(*it);
     if (auto it = json.find("params"); it != json.end() && it->is_object()) node.params = *it;
     if (auto it = json.find("ports"); it != json.end() && it->is_array()) {
@@ -733,6 +734,111 @@ Json jasperengine::graph::toJson(const GraphOp& op){
     return out;
 }
 
+namespace {
+
+    // moves (nullopt: no position); returns what they were, as moveNodes' positions
+    Json placeNodes(const std::vector<std::pair<Node*, std::optional<Vec2>>>& moves){
+        Json old = Json::object();
+        for (const auto& [node, position] : moves) {
+            old[node->id] = node->placed ? vec2Json(node->position) : Json();
+            node->placed = position.has_value();
+            node->position = position.value_or(Vec2());
+        }
+        return old;
+    }
+
+}
+
+std::vector<std::string> jasperengine::graph::unplacedNodes(const Graph& graph){
+    std::vector<std::string> ids;
+    for (const Node& node : graph.nodes) {
+        if (!node.placed) ids.push_back(node.id);
+    }
+    return ids;
+}
+
+std::vector<std::pair<std::string, Vec2>> jasperengine::graph::layoutPositions(const Graph& graph, const std::vector<std::string>& ids){
+    std::vector<std::string> order = ids;
+    std::sort(order.begin(), order.end(), [](const std::string& a, const std::string& b) { return idLess(a, b); });
+    order.erase(std::unique(order.begin(), order.end()), order.end());
+    std::map<std::string, size_t> index;
+    for (size_t i = 0; i < order.size(); i++) index[order[i]] = i;
+
+    // a column per step of the longest path from a source among them (Kahn's order; what a cycle
+    // leaves behind stays in the column it reached)
+    std::vector<std::vector<size_t>> feeds(order.size());
+    std::vector<size_t> incoming(order.size(), 0);
+    for (const Edge& edge : graph.edges) {
+        auto from = index.find(edge.from.node);
+        auto to = index.find(edge.to.node);
+        if (from == index.end() || to == index.end() || from->second == to->second) continue;
+        feeds[from->second].push_back(to->second);
+        incoming[to->second]++;
+    }
+    std::vector<size_t> column(order.size(), 0);
+    std::vector<size_t> ready;
+    for (size_t i = 0; i < order.size(); i++) {
+        if (incoming[i] == 0) ready.push_back(i);
+    }
+    for (size_t next = 0; next < ready.size(); next++) {
+        const size_t node = ready[next];
+        for (size_t target : feeds[node]) {
+            column[target] = std::max(column[target], column[node] + 1);
+            if (--incoming[target] == 0) ready.push_back(target);
+        }
+    }
+
+    // beside the placed nodes that stay, to their right
+    Vec2 origin;
+    bool anyFixed = false;
+    double right = 0.0, top = 0.0;
+    for (const Node& node : graph.nodes) {
+        if (!node.placed || index.count(node.id)) continue;
+        const double width = node.size ? node.size->x : 0.0;
+        right = anyFixed ? std::max(right, node.position.x + width) : node.position.x + width;
+        top = anyFixed ? std::min(top, node.position.y) : node.position.y;
+        anyFixed = true;
+    }
+    if (anyFixed) origin = {right + LAYOUT_COLUMN, top};
+
+    // each column in the order of the rows feeding it (their mean), then file order
+    size_t columns = 0;
+    for (size_t c : column) columns = std::max(columns, c + 1);
+    std::vector<double> row(order.size(), 0.0);
+    std::vector<std::vector<size_t>> feeders(order.size());
+    for (size_t from = 0; from < order.size(); from++) {
+        for (size_t to : feeds[from]) feeders[to].push_back(from);
+    }
+    std::vector<std::pair<std::string, Vec2>> out;
+    for (size_t c = 0; c < columns; c++) {
+        std::vector<std::pair<double, size_t>> members;
+        for (size_t i = 0; i < order.size(); i++) {
+            if (column[i] != c) continue;
+            double sum = 0.0;
+            size_t count = 0;
+            for (size_t from : feeders[i]) {
+                if (column[from] >= c) continue;
+                sum += row[from];
+                count++;
+            }
+            members.push_back({count ? sum / (double)count : (double)members.size(), i});
+        }
+        std::stable_sort(members.begin(), members.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        double y = origin.y;
+        for (size_t r = 0; r < members.size(); r++) {
+            row[members[r].second] = (double)r;
+            const Node* node = graph.findNode(order[members[r].second]);
+            size_t inputs = 0, outputs = 0;
+            if (node) {
+                for (const Port& port : portsOf(graph, *node)) (port.direction == PortDirection::In ? inputs : outputs)++;
+            }
+            out.push_back({order[members[r].second], {origin.x + LAYOUT_COLUMN * (double)c, y}});
+            y += LAYOUT_ROW + LAYOUT_PORT_ROW * (double)std::max(inputs, outputs);
+        }
+    }
+    return out;
+}
+
 GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
     const uint64_t nextIdBefore = graph.nextId;
 
@@ -807,12 +913,13 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
     }
 
     if (op.op == "moveNodes") {
-        std::vector<std::pair<Node*, Vec2>> moves;
+        // (a null position takes the node's away: the inverse of placing one that had none)
+        std::vector<std::pair<Node*, std::optional<Vec2>>> moves;
         if (auto positions = op.args.find("positions"); positions != op.args.end() && positions->is_object()) {
             for (auto it = positions->begin(); it != positions->end(); ++it) {
                 Node* node = graph.findNode(it.key());
                 if (!node) throw GraphOpError("moveNodes: no node '" + it.key() + "'");
-                moves.push_back({node, vec2From(it.value())});
+                moves.push_back({node, it.value().is_null() ? std::nullopt : std::optional<Vec2>(vec2From(it.value()))});
             }
         } else {
             const Json& ids = requireArg(op, "ids");
@@ -821,15 +928,26 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
             for (const Json& id : ids) {
                 Node* node = id.is_string() ? graph.findNode(id.get<std::string>()) : nullptr;
                 if (!node) throw GraphOpError("moveNodes: no node " + id.dump());
-                moves.push_back({node, {node->position.x + delta.x, node->position.y + delta.y}});
+                moves.push_back({node, Vec2{node->position.x + delta.x, node->position.y + delta.y}});
             }
         }
-        Json old = Json::object();
-        for (auto& [node, position] : moves) {
-            old[node->id] = vec2Json(node->position);
-            node->position = position;
+        return {"moveNodes", {{"positions", placeNodes(moves)}}};
+    }
+
+    if (op.op == "layout") {
+        std::vector<std::string> ids;
+        if (auto given = op.args.find("ids"); given != op.args.end()) {
+            if (!given->is_array()) throw GraphOpError("layout: 'ids' is a list of node ids");
+            for (const Json& id : *given) {
+                if (!id.is_string() || !graph.findNode(id.get<std::string>())) throw GraphOpError("layout: no node " + id.dump());
+                ids.push_back(id.get<std::string>());
+            }
+        } else {
+            ids = unplacedNodes(graph);
         }
-        return {"moveNodes", {{"positions", std::move(old)}}};
+        std::vector<std::pair<Node*, std::optional<Vec2>>> moves;
+        for (const auto& [id, position] : layoutPositions(graph, ids)) moves.push_back({graph.findNode(id), position});
+        return {"moveNodes", {{"positions", placeNodes(moves)}}};
     }
 
     if (op.op == "setParam") {
@@ -987,7 +1105,7 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         return inverse;
     }
 
-    throw GraphOpError("unknown op '" + op.op + "' (addNode, removeNode, moveNodes, setParam, connect, disconnect, addVariable, "
+    throw GraphOpError("unknown op '" + op.op + "' (addNode, removeNode, moveNodes, layout, setParam, connect, disconnect, addVariable, "
                        "removeVariable, renameVariable, setVariable, group, ungroup)");
 }
 
@@ -1005,6 +1123,7 @@ std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op)
         size_t count = op.args.contains("positions") ? op.args["positions"].size() : op.args.value("ids", Json::array()).size();
         return count == 1 ? "Move Node" : "Move " + std::to_string(count) + " Nodes";
     }
+    if (op.op == "layout") return "Arrange Nodes";
     if (op.op == "setParam") return "Set " + op.args.value("name", std::string("Parameter"));
     if (op.op == "connect") {
         PortRef from, to;

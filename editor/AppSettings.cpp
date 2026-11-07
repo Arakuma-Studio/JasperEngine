@@ -488,6 +488,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
                 if (panelsNode["particleEffect"]) panelVisibility.particleEffect = panelsNode["particleEffect"].as<bool>();
                 if (panelsNode["soundBrowser"]) panelVisibility.soundBrowser = panelsNode["soundBrowser"].as<bool>();
+                if (panelsNode["graphEditor"]) panelVisibility.graphEditor = panelsNode["graphEditor"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
@@ -806,6 +807,7 @@ bool AppSettings::saveSettings() {
         panelsNode["audioMixer"] = panelVisibility.audioMixer;
         panelsNode["particleEffect"] = panelVisibility.particleEffect;
         panelsNode["soundBrowser"] = panelVisibility.soundBrowser;
+        panelsNode["graphEditor"] = panelVisibility.graphEditor;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
