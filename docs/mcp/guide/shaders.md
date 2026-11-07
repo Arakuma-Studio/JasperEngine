@@ -53,7 +53,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write; Points' auto: depth written only when opaque).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`

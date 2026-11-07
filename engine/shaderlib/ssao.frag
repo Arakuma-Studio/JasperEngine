@@ -41,7 +41,7 @@ vec3 reconstructViewPos(vec2 uv, float depth01){
 }
 
 void main(){
-    float depth01 = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), v_texcoord));
+    float depth01 = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), v_texcoord, 0.0));
 
     // background (cleared to white => depth ~1.0): no occlusion
     if (depth01 >= 1.0){
@@ -62,10 +62,10 @@ void main(){
         // shows up as dark AO halos along edges. Instead tap the 4 neighbours and build
         // the gradient from whichever side is closer in depth, never crossing an edge.
         vec2 texel = ssao.noiseScale.zw;
-        float dl = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), v_texcoord - vec2(texel.x, 0.0)));
-        float dr = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), v_texcoord + vec2(texel.x, 0.0)));
-        float dd = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), v_texcoord - vec2(0.0, texel.y)));
-        float du = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), v_texcoord + vec2(0.0, texel.y)));
+        float dl = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), v_texcoord - vec2(texel.x, 0.0), 0.0));
+        float dr = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), v_texcoord + vec2(texel.x, 0.0), 0.0));
+        float dd = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), v_texcoord - vec2(0.0, texel.y), 0.0));
+        float du = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), v_texcoord + vec2(0.0, texel.y), 0.0));
         vec3 Pl = reconstructViewPos(v_texcoord - vec2(texel.x, 0.0), dl);
         vec3 Pr = reconstructViewPos(v_texcoord + vec2(texel.x, 0.0), dr);
         vec3 Pd = reconstructViewPos(v_texcoord - vec2(0.0, texel.y), dd);
@@ -97,7 +97,7 @@ void main(){
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
             continue;
 
-        float sd01 = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), sampleUV));
+        float sd01 = decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), sampleUV, 0.0));
         vec3 storedPos = reconstructViewPos(sampleUV, sd01);
 
         // occluded when stored geometry is closer to the camera than the sample

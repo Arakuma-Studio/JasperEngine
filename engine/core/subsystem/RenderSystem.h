@@ -822,6 +822,8 @@ namespace jasperengine{
 		// the RenderSystems drawing with the static textures above (their bindings hold the
 		// handles), and whether this one is one of them: the last to go destroys them
 		static int emptyTextureUsers;
+		// the variant checks a texture edit ran (getTextureVariantChecks)
+		static uint64_t textureVariantChecks;
 		bool usesEmptyTextures = false;
 		
 		// what LatticeRender::prepare keeps between frames
@@ -2297,8 +2299,6 @@ namespace jasperengine{
 		static bool materialRendersOutdated(const Submesh& submesh);
 		static bool shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures);
 		uint32_t rebindEpochSeen = 0;
-		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
-		bool pbrVariantMatches(const Submesh& submesh) const;
 		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,
 		// colour temperature, the scene's EV100), where they changed
 		void resolveLights();
@@ -3019,6 +3019,13 @@ namespace jasperengine{
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
 		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// near and far as rendered: a perspective camera keeps 0 < near < far (0.001 apart at least),
+		// whatever its component says; orthographic and UI ones as they are
+		static Vector2 getCameraNearFar(const CameraComponent& camera);
+		// A Points component's: Depth Write Auto (with a manifest's zwrite= Auto too) follows the
+		// queue, written when opaque and not when transparent (Unity's transparent ZWrite Off).
+		// depthFollowsQueue: whether it did, so a change of transparency needs new pipelines
+		static RenderState resolvePointsRenderState(const PointsComponent& points, bool& depthFollowsQueue);
 		// The variants a particle effect draws with (without the post-processing colour bit): its
 		// quads, meshes and trails, the shader reference (its features and blend define)
 		struct ParticleVariantSet{
@@ -3104,6 +3111,15 @@ namespace jasperengine{
 		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
+		// the inputs a load of the submesh would resolve now, from its attributes of the last load
+		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
+		                                            const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const;
+		// whether the loaded submesh draws that variant in every pass it builds (colour with its
+		// Lit defines and extension maps, depth, G-buffer, the material's extra pass)
+		static bool loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass);
+		// how many times a submesh's texture edit resolved its variant again (tests: a rebind of
+		// the same images runs none)
+		static uint64_t getTextureVariantChecks();
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)

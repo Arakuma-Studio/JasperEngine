@@ -264,6 +264,7 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         DrawSubmissionSettings drawSubmission;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
@@ -409,6 +410,7 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
         void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()

@@ -255,7 +255,7 @@ Jasper paths are at `main` `b4f7816ea`; Doriax commits are references (`analysis
    the glossary). Mobile default stays 1.0: changing it would change shipped games' look on upgrade; the docs
    recommend 0.5-0.7 for phones.
 8. **Instance distance fade applies in every pass**: the SSR G-buffer variant gets the fade ('Ifd', GBUFFER bit
-   16), and the CPU cut no longer turns off under SSR. Reason: a faded instance must not appear in reflections
+   18), and the CPU cut no longer turns off under SSR. Reason: a faded instance must not appear in reflections
    or SSR depth; and SSR scenes regain the cut.
 9. **Cylindrical Billboard works**: the instances turn about the mesh's local up axis only, facing the
    camera's view direction projected on the local XZ plane (the instanced billboard is view-aligned, one
@@ -268,8 +268,9 @@ Jasper paths are at `main` `b4f7816ea`; Doriax commits are references (`analysis
 11. **The Scene view draws a selected camera's full frustum** (near to far, Unity), and every other camera a
     compact one: depth 2 for perspective, `max(width, height) / 2` for orthographic, each capped at
     `far - near`. No new display setting (Doriax's "Show full camera frustum"): selection already says which
-    camera the user is looking at. A perspective camera renders with `near = max(near, 0.001)` and
-    `far = max(far, near + 0.001)` (the probe capture's rule).
+    camera the user is looking at. A perspective camera renders with a near of 0 or less as 0.001
+    (a smaller positive near is kept) and `far = max(far, near + 0.001)`; what linearises its depth (the
+    volumetric fog and clouds, the screen-tile lights, the shadow cascades) reads the same near and far.
 12. **Vulkan robust buffer access: editor only, guarded**: on when the device supports it and
     `robustUniformBufferDescriptorSize == uniformBufferDescriptorSize` and
     `robustStorageBufferDescriptorSize == storageBufferDescriptorSize`; logged once at startup with the reason;
@@ -399,7 +400,7 @@ float lastCullSlack = 0;
   `mix(origin, pos, factor)`. `mesh.vert`, `depth.vert`, `gbuffer.vert`, `includes/surface_vs.glsl` and
   `includes/surface_depth_vs.glsl` include it under `USE_INSTANCE_FADE` and drop their copies.
 - `applyInstanceFadeUniform` (`RenderSystem.cpp:394`) writes `nearFadeStart, nearFadeEnd` into `fade[2], fade[3]`.
-- G-buffer: `ShaderPool::getGBufferMeshProperties` gains `instanceFade` (bit 16, short name 'Ifd', long
+- G-buffer: `ShaderPool::getGBufferMeshProperties` gains `instanceFade` (bit 18, short name 'Ifd', long
   "Instance Fade" in `getShaderPropertyName`); `getSubmeshShaderVariant` passes `p_instanceFade`; `loadMesh` reads
   `slotVSGBufferFade` (new `Submesh` field, -1 by default, reset where `slotVSFade` is at `:10815`) and
   `drawMeshGBuffer` applies the fade block like the depth pass (`:9092`). `gbuffer.vert` declares the instance
@@ -722,7 +723,7 @@ Merge hotspots: `RenderSystem.cpp` (update loop, loadMesh, updateInstancedMesh),
   scans for features that are off" may change how `updateTerrainFoliage` is called; the ring logic of 6.6 is
   independent of how often it runs.
 - `ssr-probes`: works on the SSR composite and G-buffer use; this feature adds the G-buffer 'Ifd' bit and the
-  variant re-resolve on texture edits. Coordinate the GBUFFER property bit numbers (this takes bit 16) and the
+  variant re-resolve on texture edits. Coordinate the GBUFFER property bit numbers (this takes bit 18; ssr-probes has 16 and 17) and the
   shader cache version.
 - `water-reflections` / `water-boats`: Water level comes from the mesh bounds (`Water.cpp:144`); after 6.1 an
   offset water mesh's level is its real surface. They also bump the shader cache. Tell them; no API change.
@@ -741,6 +742,91 @@ Merge hotspots: `RenderSystem.cpp` (update loop, loadMesh, updateInstancedMesh),
 
 ## 14. Deviations
 
-Filled in during implementation (what changed from this spec, and why). Expected entry: the llvmpipe
-`GL_UNIFORM_SIZE` measurement of T10 and, if llvmpipe does not trim the array, the absence of a red control for
-T10/T11 on the CI renderers.
+Recorded during implementation (branch `dc/render-correctness`).
+
+1. **Polygon extents (added).** `UISystem::createUIPolygon` and `MeshSystem::createMeshPolygon` measured a
+   polygon's extent from `numeric_limits<float>::min()` (the smallest positive float) as the start of the
+   maximum, so a polygon left of or below its origin got texture coordinates and a width measured to 0. Same
+   class as 6.1 (bounds seeded at the origin); fixed with `lowest()`, tested by
+   `MeshBounds.PolygonLeftOfItsOriginMeasuresItsOwnExtent`.
+2. **Morph inputs (6.2).** Not gated: glTF requires a morph target's attributes to exist on the base primitive,
+   and the unlit path already builds `HAS_MORPHNORMAL` without `HAS_NORMALS` with `bindUnfedMorphInputs`. T3 has
+   no normal-less morph case and no IBL-only case (an IBL-only scene needs a baked environment the test
+   fixtures do not have); the lit pixel, vertex, mixed and 2D light cases, with and without tangents, cover the
+   variant code paths that changed.
+3. **Points (6.3).** The Inspector's Depth Write Auto label resolves the Points rule too (`Auto (Off)` on
+   transparent Points), in `InspectorShaderLibrary.cpp`'s `resolveComponentAuto`; `PointsComponent` keeps a
+   runtime `depthFollowsQueue` beside `loadedTransparent`. T7's first case (Depth Write On) is a guard, not a
+   red control.
+4. **Variant re-resolve (6.4).** `getCurrentSubmeshInputs` is the extracted helper (the spec's
+   `getCurrentSubmeshVariant` would have had no caller beside it). Presence of a pass the variant no longer
+   builds is not a mismatch (`loadMesh` keeps the G-buffer handle when SSR goes off; comparing presence would
+   reload on every later texture edit). `pbrVariantMatches` had no other caller and is removed. T8 asserts the
+   G-buffer variant bits ('Bct', 'Mrt') instead of a G-buffer readback: the bits decide which slots
+   `loadGBufferTextures` binds, and the SSR suites already check what a bound map draws.
+5. **GL uniform count (6.5).** The test hook is `sgj_query_gl_uniform_count` (the spec's name was
+   `sgj_gl_uniform_count`). The measured `GL_UNIFORM_SIZE` of llvmpipe and the red control status are in the
+   final report of the branch.
+6. **Foliage (6.6, 6.8).** The Foliage Distance rows are `DragFloat` 0-10 (typed and dragged, clamped); the
+   value is written to `project.yaml` only away from its default and carried by the prebuilt player's
+   `game.json` (`PlayerConfig::foliageDistanceScale`, `PlayerMain`), which the spec did not list.
+   `Engine.foliageDistanceScale` and `resetFoliageDistanceScale` are shader-neutral for the prebuilt export's
+   module scan (`ShaderNeutralApi`). The foliage tests are core GPU suites (`TerrainFoliageGpu`), not editor
+   tests: the ring needs loaded terrains and chunk entities.
+7. **Near fade test (T18).** A pixel-coverage check (`InstancedFadeGpu.TheNearBandShrinksTheInstance`: an
+   instance half way through the band covers between a tenth and a half of its full area) replaces the golden:
+   it holds on every renderer, so it runs on glcore and Vulkan without per-renderer images.
+8. **Camera gizmo (6.10).** `cameraGizmoCorners` is a free function in `editor/render/SceneRender.h`; the tests
+   are `editor/tests/sceneview/CameraGizmoTest.cpp`. The shadow light cameras already clamped near and far
+   (`RenderSystemShadows.cpp:665-666`), so only `updateCamera` takes `getCameraNearFar`. Main's gizmo has no
+   pure function to test against, so `OrthoCameraGizmoHasDepth` has no red run; main's `far = near + 2` is
+   read at `SceneRender.cpp:3903-3905`.
+9. **Vulkan (6.11).** The decision is `engine/core/render/VulkanRobustness.h` (`decideVulkanRobustBufferAccess`,
+   plain integers, unit-tested without a device) instead of `engine/platform/common/VulkanFeatures.h`: the editor
+   reaches `engine/core/render` headers already. It is logged to stderr with the editor's other Vulkan device
+   messages. `get_render_stats` returns `gpu.robust_buffer_access`; the tool's description is unchanged (the lean
+   MCP rules: no result field lists in descriptions).
+10. **Docs (6.12).** Under the lean MCP rules (new guide text needs an eval case) the new material is in user
+    docs: `docs/rendering/instancing.md` (fades, billboards, foliage Draw range, Foliage Distance),
+    `docs/editor/scene-view.md` (camera gizmo, near clamp), `docs/rendering/shadows.md` (`lightShadowD`, 2D PCF);
+    `docs/mcp/guide/shaders.md` gets only the corrected Points sentence; no terrain guide page is created
+    (agent-authoring owns the foliage guide). `docs/camera.md` is about shake and follow, so the near clamp is in
+    the Scene view doc.
+11. **MCP test (T22).** No Points depth-write hint test: the Auto label is Inspector text with no MCP surface;
+    `PointsDepthWriteGpu` covers the behaviour.
+12. **Merge with S54, S55, S57 (main, 2026-11-05).** S57's capsule and contact shadows wrapped
+    `lightShadow` in `LIGHT_OCCLUSION`; the merged `includes/lights.glsl` has `lightShadowMapD` (the shadow
+    map's term with given derivatives), `lightShadowD` (times the light's occlusion under `LIGHT_OCCLUSION`) and
+    `lightShadow` (derivatives taken, then `lightShadowD`), so the hoisted derivatives of `mesh.frag` keep the
+    occlusion. S54/S55's instance matrices carry the LOD fade in the first column's w; the instance fade reads
+    only `i_matrix_col4`, so they compose. The shader cache is v50 (ssr-probes, merged first, took v49 and
+    GBUFFER bits 16 'Occ' and 17 'Uv2'); 'Ifd' is GBUFFER bit 18 (lead decision).
+13. **Texture-edit swap (6.4, T9).** The swap reloads the mesh as every variant change does: the reload's
+    load lands a frame or more later (its queued `changeLoaded`, its textures), so T9's "no frame without the
+    mesh" is not asserted; the tests assert the settled variants. A terrain keeps main's checks (its base material's UV
+    sets and normal map, beside its layers' surface and hex tiling): their reload is what builds its layer image
+    array again after `invalidateTerrainDetailArray` (`TextureRebindGpu.ATerrainsLayerImageBindsANewImage` failed
+    without it, and passes on main).
+14. **Zero-cost list.** `zero_cost_mesh_variants.txt` is rewritten: the normal-less setup's variants lose
+    'Nor' (6.2) and their fragment stages turn the derived normal toward the eye (deviation 16), the 'Ifd'
+    vertex stages include the near fade, the 'Shw' fragment stages take the shadow derivatives before the light
+    loop; no other variant's preprocessed source changed.
+15. **Points tests (T6, T7).** The tests turn transparency on with the Transparent flag. Auto Transparency did
+    not find the alpha of the tests' 4x4 PNG images (`isTransparent()` stayed false with or without the fix,
+    after the image loaded); the derivation in `drawPoints` is kept, but no test covers a texture swap.
+16. **Review round (2026-11-06).** Flat normals (6.2): `cross(dFdx, dFdy)` takes its sign from the framebuffer's
+    y, which differs between backends, so `pbr.glsl` turns the derived normal toward the eye and does not flip
+    it for back faces (the projected decal's rule); `MeshInputsGpu` runs without ambient light and checks a
+    light in front, a light behind and a double-sided back face. Foliage (6.8): a slot past the span kept its
+    old chunk, instances and fade when the scaled distances changed (doubled foliage); the layer keeps the
+    distances it filled for and refills every slot on a change, from a script or Project Settings
+    (`TerrainFoliageGpu.ChangingTheScaleRefillsEverySlot`). Cylindrical billboards (6.7) take their yaw with
+    the entity's scale applied (`atan2(sx * bx, sz * bz)`: the face's normal turns by the inverse scale).
+    Near clip (6.10): clamped only at 0 or below. Texture edits (6.4, 8): a render target's image made again,
+    seen by a Before pass, is a rebind (`Submesh::needRebindTexture`), not an edit; so is a stand-in or a
+    rebuilt image found by the update; neither runs the variant check (`RenderSystem::getTextureVariantChecks`,
+    asserted by `TextureRebuiltGpu`). The lint (6.9) also covers `textureOffset`/`textureProj`, macros, loops
+    without braces and `if` branches on a varying, gl_FragCoord, gl_FrontFacing, gl_PointCoord or a sample
+    inside loops (a `break` or `return` under one is an exit); a local computed from them is not seen.
+    `SokolGlUniformArray` asserts the uploaded count only: a driver that clamps silently raises no GL error, so
+    a `glGetError` check could not fail.

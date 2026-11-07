@@ -954,6 +954,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    for (int i = 0; i < 3; i++)
+        m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
     m_modelSettings = project->getModelSettings();
     m_playerLogging = project->getPlayerLogging();
@@ -2036,6 +2038,22 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // the scale of every terrain foliage layer's draw distances (Unity's
+        // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
+        static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
+        static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
+        static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+        static const char* const foliageTooltip =
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(foliageKeys[i])) continue;
+            if (projectBeginSettingsRow(foliageRows[i], m_foliageDistanceScale[i] != Project::defaultFoliageDistanceScale[i]))
+                m_foliageDistanceScale[i] = Project::defaultFoliageDistanceScale[i];
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragFloat(foliageIds[i], &m_foliageDistanceScale[i], 0.01f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            endSettingsRow(foliageTooltip);
+        }
         // the render budgets check_render_budgets holds a scene to (S53 R25): 0 is no limit
         for (size_t f = 0; f < kModelFamilyCount; f++) {
             RenderBudget& budget = m_modelSettings.renderBudgets[f];
@@ -4903,6 +4921,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setPlayerCrash(m_playerCrash);

@@ -431,8 +431,29 @@ namespace {
         return transform.worldPosition;
     }
 
+    // An instanced billboard's rotation for the batch, in the entity's space: the camera's (the
+    // view-aligned billboard), or with cylindrical only its turn about the mesh's up axis toward
+    // the camera's view; a camera looking straight along that axis keeps lastYaw (radians)
+    Quaternion instanceBillboardRotation(bool cylindrical, const Matrix4& cameraView, const Quaternion& entityWorldRotation, const Vector3& entityWorldScale, float& lastYaw){
+        Quaternion cameraRotation;
+        cameraRotation.fromRotationMatrix(cameraView.inverse());
+        const Quaternion local = entityWorldRotation.inverse() * cameraRotation;
+        if (!cylindrical)
+            return local;
+        // the camera's back (+Z of its frame: from the scene toward the camera) on the XZ plane
+        const Vector3 back = local * Vector3(0.0f, 0.0f, 1.0f);
+        // the entity's scale turns the face's normal by its inverse, so the yaw is taken with it
+        // applied: the scaled face then faces the camera's side
+        const float x = back.x * entityWorldScale.x;
+        const float z = back.z * entityWorldScale.z;
+        if (x * x + z * z > 1e-8f)
+            lastYaw = std::atan2(x, z);
+        return Quaternion(Angle::radToDefault(lastYaw), Vector3(0.0f, 1.0f, 0.0f));
+    }
+
+    // the u_vs_fade block (includes/instance_fade.glsl): the far range, the near range, the eye
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh, const Vector3& fadeEyeLocal){
-        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
+        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, instmesh.nearFadeStart, instmesh.nearFadeEnd,
             fadeEyeLocal.x, fadeEyeLocal.y, fadeEyeLocal.z, 0.0f};
         render.applyUniformBlock(slot, sizeof(fade), &fade);
     }
@@ -798,6 +819,7 @@ std::mutex RenderSystem::zeroVertexBuffersMutex;
 
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
+uint64_t RenderSystem::textureVariantChecks = 0;
 
 namespace {
     // Who uses the static textures below, and their making. Never waits for another thread: a
@@ -3362,16 +3384,26 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
     return MaterialPbr::getPbrVariant(submesh.material, lighting, false, tier, shadows2d ? 1 : 0);
 }
 
-bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
-    const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
-    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
-                                     MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
-    if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
+uint64_t RenderSystem::getTextureVariantChecks(){
+    return textureVariantChecks;
+}
+
+bool RenderSystem::loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass){
+    if (variant.properties != submesh.shaderProperties)
+        return false;
+    if (MaterialPbr::getDefineBits(variant.litDefines) != submesh.litDefineBits)
         return false;
     for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
-        if ((k < (int)expected.maps.size() ? expected.maps[k] : PbrMap::COUNT) != submesh.pbrMaps[k])
+        if ((k < (int)variant.pbr.maps.size() ? variant.pbr.maps[k] : PbrMap::COUNT) != submesh.pbrMaps[k])
             return false;
     }
+    // (a pass the variant no longer builds keeps its handle until the next load: not a mismatch)
+    if (variant.depth && (!submesh.depthShader || variant.depthProperties != submesh.depthShaderProperties))
+        return false;
+    if (variant.gbuffer && (!submesh.gbufferShader || variant.gbufferProperties != submesh.gbufferShaderProperties))
+        return false;
+    if (extraPass && submesh.extraPass && submesh.extraPass->shaderProperties != extraPass->properties)
+        return false;
     return true;
 }
 
@@ -3431,6 +3463,18 @@ RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMod
     const MaterialDepthWrite write = resolveState(depthWrite, manifestState.depthWrite);
     if (write == MaterialDepthWrite::AUTO)
         state.depthWrite = true;
+    return state;
+}
+
+RenderState RenderSystem::resolvePointsRenderState(const PointsComponent& points, bool& depthFollowsQueue){
+    RenderState state = resolveComponentRenderState(points.blendMode, points.depthWrite, points.stencil, points.colorWrite,
+                                                    points.shaderManifest.get(), points.shaderFeatures, false);
+    MaterialDepthWrite manifestDepthWrite = MaterialDepthWrite::AUTO;
+    if (points.shaderManifest)
+        manifestDepthWrite = points.shaderManifest->resolveState(points.shaderManifest->resolveFeatures(points.shaderFeatures)).depthWrite;
+    depthFollowsQueue = points.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO;
+    if (depthFollowsQueue)
+        state.depthWrite = !points.isTransparent();
     return state;
 }
 
@@ -3864,8 +3908,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
 
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // a mesh without normals shades with flat ones (includes/pbr.glsl getNormalInfo, glTF's
+        // rule): declaring a_normal would leave it unfed. Tangents only with normals
+        p_hasNormal = inputs.normal;
+        if (p_hasNormal && inputs.tangent){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
@@ -3889,8 +3935,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
     if (useLight2D){
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // the 2D light path reads the normal when the mesh has one (+Z otherwise) and the
+        // tangents only for a normal map (includes/lighting2d.glsl getNormal2DAt)
+        p_hasNormal = p_hasNormal || inputs.normal;
+        if (p_hasNormal && inputs.tangent && inputs.normalTexture){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
@@ -4099,7 +4147,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
-            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2);
+            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2, p_instanceFade);
     }
 
     return variant;
@@ -7170,6 +7218,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
+            // the instance distance fade, as the colour and depth passes shrink it ('Ifd')
+            mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(18)) ?
+                gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
             gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
 
@@ -9967,12 +10018,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (order == MaterialPassOrder::BEFORE){
                     // checked once for both draws: rebinding a redrawn render target texture takes
                     // its new version, so the pass rebinding first would hide the change from the
-                    // main draw; the main draw is told through its own flag
+                    // main draw; the main draw is told through its own flag, a rebind and not an
+                    // edit (the textures are the same: no variant check every redraw)
                     const bool outdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
                     if (mesh.submeshes[i].needUpdateTexture || outdated)
                         extra->needUpdateTexture = true;
                     if (outdated)
-                        mesh.submeshes[i].needUpdateTexture = true;
+                        mesh.submeshes[i].needRebindTexture = true;
                 }
                 drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
@@ -9987,6 +10039,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             // gaining indices always reloads the mesh, which reloads the textures.
             if (mesh.submeshes[i].vertexCount == 0){
                 mesh.submeshes[i].needUpdateTexture = false;
+                mesh.submeshes[i].needRebindTexture = false;
                 continue;
             }
             if (!inQueue(i))
@@ -10007,7 +10060,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             // checked once for this draw and its After pass, which then rebinds (see above)
-            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
+            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material) || mesh.submeshes[i].needRebindTexture;
             SubmeshExtraPass* extraPass = mesh.submeshes[i].extraPass.get();
             if (extraPass && extraPass->loaded && extraPass->order == MaterialPassOrder::AFTER &&
                     (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)){
@@ -10025,6 +10078,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, mesh.submeshes[i].render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
+                    mesh.submeshes[i].needRebindTexture = false;
                     noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
@@ -11361,6 +11415,9 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
         }
 
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferParams, sizeof(vs_gbuffer_t), &vsGBufferParams);
+        if (mesh.submeshes[i].slotVSGBufferFade != -1 && instmesh){
+            applyInstanceFadeUniform(gbufferRender, mesh.submeshes[i].slotVSGBufferFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
+        }
 
         // what the composite swaps on these pixels (includes/ssr_source.glsl)
         uint8_t code = SSRCode::SKIP;
@@ -12447,6 +12504,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthSprite = -1;
 
         submesh.slotVSGBufferParams = -1;
+        submesh.slotVSGBufferFade = -1;
         submesh.slotFSGBufferMaterial = -1;
         submesh.sizeFSGBufferMaterial = 0;
         submesh.slotVSGBufferSkinning = -1;
@@ -12855,8 +12913,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needUpdateTexture = false;
 
-    const RenderState pointsState = resolveComponentRenderState(points.blendMode, points.depthWrite, points.stencil, points.colorWrite,
-                                                                points.shaderManifest.get(), points.shaderFeatures, false);
+    const RenderState pointsState = resolvePointsRenderState(points, points.depthFollowsQueue);
+    points.loadedTransparent = points.isTransparent();
     points.libraryBindings.postColorBlend = postColorBlendOf(pointsState, points.shaderManifest != nullptr);
     if (!render.endLoad(pipelines, pointsState, msaaPipelineSamples)){
         return false;
@@ -13567,6 +13625,9 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
                 if (textureRender->isCreated()){
                     points.render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);
                     points.needUpdateTexture = false;
+                    // its alpha decides the queue (and, with Depth Write Auto, the depth write: the
+                    // update reloads the pipelines on the next frame)
+                    points.derivedTransparent = points.autoTransparency && points.texture.isTransparent();
                 }
             }
         }
@@ -14116,6 +14177,16 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
     }
 }
 
+Vector2 RenderSystem::getCameraNearFar(const CameraComponent& camera){
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE)
+        return Vector2(camera.nearClip, camera.farClip);
+    // a perspective projection needs 0 < near < far: a near of 0 or less takes the reflection
+    // probe capture's 0.001, a smaller positive one is kept
+    const float nearClip = (std::isfinite(camera.nearClip) && camera.nearClip > 0.0f) ? camera.nearClip : 0.001f;
+    const float farClip = std::isfinite(camera.farClip) ? std::max(camera.farClip, nearClip + 0.001f) : nearClip + 0.001f;
+    return Vector2(nearClip, farClip);
+}
+
 void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     //Update ProjectionMatrix
     if (camera.type == CameraType::CAMERA_UI){
@@ -14123,7 +14194,8 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     }else if (camera.type == CameraType::CAMERA_ORTHO) {
         camera.projectionMatrix = Matrix4::orthoMatrix(camera.leftClip, camera.rightClip, camera.bottomClip, camera.topClip, camera.nearClip, camera.farClip);
     }else if (camera.type == CameraType::CAMERA_PERSPECTIVE){
-        camera.projectionMatrix = Matrix4::perspectiveMatrix(camera.yfov, camera.aspect, camera.nearClip, camera.farClip);
+        const Vector2 nearFar = getCameraNearFar(camera);
+        camera.projectionMatrix = Matrix4::perspectiveMatrix(camera.yfov, camera.aspect, nearFar.x, nearFar.y);
     }
 
     if (camera.useTarget){
@@ -14687,6 +14759,14 @@ void RenderSystem::needReloadMeshVariants() {
     }
 }
 
+SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
+                                                          const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const{
+    SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, mesh.submeshes[index], terrain, instmesh, hasMirror, sceneMeshShader);
+    if (index == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+        inputs.baseColorTexture = true;
+    return inputs;
+}
+
 // Whether every shader a reload of the mesh would take now is built (or failed: the load
 // falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
 // variants as loadMesh resolves them, from the submeshes' attributes of their last load
@@ -14710,9 +14790,7 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, MeshComponent& mesh, c
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
         Submesh& submesh = mesh.submeshes[i];
-        SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
-        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
-            inputs.baseColorTexture = true;
+        const SubmeshShaderInputs inputs = getCurrentSubmeshInputs(entity, mesh, i, terrain, instmesh, hasMirror, sceneMeshShader);
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
                          ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines)), &submesh.render) && allReady;
@@ -14964,17 +15042,24 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    // the lists are cut past margins where the fade has shrunk instances to nothing, so the eye
+    // can move that far before they are cut again (RenderSystem::update)
+    const float slackFar = instanceFadeSlackFar(instmesh, cullEnd);
+    const float slackNear = instanceFadeSlackNear(cullNear);
     instmesh.lastFadeCullEnd = cullEnd;
+    instmesh.lastFadeCullNear = cullNear;
     instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
+    instmesh.lastCullSlack = (cullEnd >= 0.0f && cullNear > 0.0f) ? std::min(slackFar, slackNear) : (cullNear > 0.0f ? slackNear : slackFar);
     // small margin for CPU/GPU float differences at the edge
-    const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
+    const float cullRadius = cullEnd + slackFar + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNearRadius = std::max(0.0f, cullNear - slackNear);
+    const float cullNearSquared = cullNearRadius * cullNearRadius;
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Matrix4 m1 = camera.viewMatrix.inverse();
-        bRotation.fromRotationMatrix(m1);
-        bRotation = transform.worldRotation.inverse() * bRotation;
+        bRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, instmesh.lastBillboardYaw);
     }
 
     // a version 2 Particle System's instances, aligned for the main camera
@@ -14997,6 +15082,9 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             const float dx = instmesh.instances[i].position.x - instmesh.fadeEyeLocal.x;
             const float dz = instmesh.instances[i].position.z - instmesh.fadeEyeLocal.z;
             if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
+                continue;
+            }
+            if (dx * dx + dz * dz < cullNearSquared){
                 continue;
             }
             Matrix4 instanceMatrix;
@@ -15977,6 +16065,9 @@ void RenderSystem::update(double dt){
     const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
     const bool rendersMayBeOutdated = rebindEpoch != rebindEpochSeen;
     rebindEpochSeen = rebindEpoch;
+    // the shader environment a texture edit's variant is resolved against, taken at the first edit
+    MeshShaderEnvironment variantEnvironment;
+    bool variantEnvironmentReady = false;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
@@ -16371,9 +16462,13 @@ void RenderSystem::update(double dt){
                 const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
-                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
-                    (cullEnd >= 0.0f && (instmesh->fadeEyeLocal.x != instmesh->lastFadeCullEye.x ||
-                                        instmesh->fadeEyeLocal.z != instmesh->lastFadeCullEye.z));
+                const float cullNear = instanceFadeCullNear(*instmesh, mesh, *scene);
+                // cut again once the eye moves past the margin the lists were cut with
+                const float eyeDx = instmesh->fadeEyeLocal.x - instmesh->lastFadeCullEye.x;
+                const float eyeDz = instmesh->fadeEyeLocal.z - instmesh->lastFadeCullEye.z;
+                const bool eyeMoved = eyeDx * eyeDx + eyeDz * eyeDz > instmesh->lastCullSlack * instmesh->lastCullSlack;
+                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd || cullNear != instmesh->lastFadeCullNear ||
+                    ((cullEnd >= 0.0f || cullNear > 0.0f) && eyeMoved);
                 bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
                     batchSortChanged || fadeSelectionChanged;
 
@@ -16381,8 +16476,9 @@ void RenderSystem::update(double dt){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                 }
 
-                const bool particleCamera = instmesh->particle.cameraDependent();
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || particleCamera))){
+                // billboards face the camera and camera-aligned particles follow it: like a
+                // transparent sort, they are rebuilt on every camera move, opaque or not
+                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || cameraBound))){
                     // The instance buffer is shared by every camera and sokol allows one
                     // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
                     // fixes the batch order and every other camera reuses it.
@@ -16495,12 +16591,15 @@ void RenderSystem::update(double dt){
 
                 // An image the material names that had no GPU texture when it was bound (it drew a
                 // stand-in) may be made now, and one it drew has new pixels or a new view: an image
-                // ready, or assigned, after the binding (BF15)
+                // ready, or assigned, after the binding (BF15). The same images: bound again
+                // without the variant check below
+                bool rebindOnly = false;
                 if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
                     const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
                     if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
                             (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
                         mesh.submeshes[s].needUpdateTexture = true;
+                        rebindOnly = true;
                     }
                 }
 
@@ -16514,44 +16613,50 @@ void RenderSystem::update(double dt){
                     if (mesh.submeshes[s].gbufferShader){
                         mesh.submeshes[s].needUpdateGBufferTexture = true;
                     }
-                    // a shader with a manifest takes its UV sets from @require, not the textures
                     if (mesh.submeshes[s].manifest){
-                        // its custom textures are bound again by drawMesh
-                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL)){
-                        if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
-                            mesh.needReload = true;
-                        }
-                    }else if (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT){
-                        // (a lobe's map the variant binds asked for its UVs: when it goes or
-                        // another comes, pbrVariantMatches below builds the variant it takes)
-                        if ((mesh.submeshes[s].shaderProperties & (1 << 1)) || (mesh.submeshes[s].shaderProperties & (1 << 2))){ // 'Uv1' or 'Uv2'
-                            mesh.needReload = true;
-                        }
-                    }
-                    // the built-in Lit's lobes, maps and hex tiling: a variant of their own, built
-                    // while the loaded one draws (the variant as asked for, see loadMesh)
-                    if (!mesh.submeshes[s].manifest && !terrain && mesh.loaded && !mesh.needReload &&
-                            !pbrVariantMatches(mesh.submeshes[s])){
-                        mesh.needVariantReload = true;
-                    }
-                    if (mesh.submeshes[s].manifest){
-                        // a normal map variant only with @require normalmap (its 2D lights): one
-                        // gained or lost since the load picks it again
+                        // a shader with a manifest takes its UV sets from @require, not the
+                        // textures (its custom textures are bound again by drawMesh); a normal
+                        // map variant only with @require normalmap (its 2D lights): one gained or
+                        // lost since the load picks it again
                         if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
                             if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                                 mesh.needReload = true;
                             }
                         }
-                    }else if (!mesh.submeshes[s].material.normalTexture.empty()){
-                        if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
+                    }else if (terrain){
+                        // a terrain keeps its own checks (its layers' above): a reload, which also
+                        // builds its layer image array again (invalidateTerrainDetailArray)
+                        const bool shaderUVs = (mesh.submeshes[s].shaderProperties & ((1 << 1) | (1 << 2))) != 0; // 'Uv1', 'Uv2'
+                        if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL) ? !shaderUVs :
+                                (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT && shaderUVs)){
                             mesh.needReload = true;
                         }
-                    }else{
-                        if (mesh.submeshes[s].shaderProperties & (1 << 7)){ // 'Nmp'
+                        const bool shaderNormalMap = (mesh.submeshes[s].shaderProperties & (1 << 7)) != 0; // 'Nmp'
+                        if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                             mesh.needReload = true;
+                        }
+                    }else if (mesh.loaded && !mesh.needReload && !rebindOnly){
+                        textureVariantChecks++;
+                        // the whole variant the material asks for now, in every pass (colour with
+                        // its UV sets, maps, lobes and Stochastic Tiling; the depth pass's alpha
+                        // clip; the SSR G-buffer's base colour and metallic-roughness), built while
+                        // the loaded one draws (Doriax 17ce79969 fixed the G-buffer's alone)
+                        if (!variantEnvironmentReady){
+                            variantEnvironment = getMeshShaderEnvironment();
+                            variantEnvironmentReady = true;
+                        }
+                        const bool hasMirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+                        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+                        const SubmeshShaderInputs inputs = getCurrentSubmeshInputs(entity, mesh, (unsigned int)s, terrain, instmesh, hasMirror, sceneMeshShader);
+                        const SubmeshShaderVariant variant = getSubmeshShaderVariant(variantEnvironment, inputs);
+                        SubmeshShaderVariant passVariant;
+                        const bool extraPass = hasExtraPass(mesh.submeshes[s], terrain != nullptr);
+                        if (extraPass)
+                            passVariant = getSubmeshShaderVariant(variantEnvironment, getExtraPassShaderInputs(inputs, mesh.submeshes[s].material.extraPass));
+                        if (!loadedVariantMatches(mesh.submeshes[s], variant, extraPass ? &passVariant : nullptr)){
+                            mesh.needVariantReload = true;
                         }
                     }
-
                 }
             }
 
@@ -16709,6 +16814,12 @@ void RenderSystem::update(double dt){
                         points.needReload = true;
                     }
                 }
+            }
+
+            // Depth Write Auto follows the queue (resolvePointsRenderState): a change of the
+            // Transparent flag or of the texture's alpha needs new pipelines
+            if (points.loaded && points.depthFollowsQueue && points.isTransparent() != points.loadedTransparent){
+                points.needReload = true;
             }
 
             if (points.loaded && points.needReload){
@@ -19262,11 +19373,13 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullNearSquared = cullNear * cullNear;
 
     Quaternion billboardRotation;
     if (instmesh.instancedBillboard){
-        billboardRotation.fromRotationMatrix(camera.viewMatrix.inverse());
-        billboardRotation = transform.worldRotation.inverse() * billboardRotation;
+        float yaw = instmesh.lastBillboardYaw;
+        billboardRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, yaw);
     }
 
     // a version 2 Particle System's instances, aligned for this camera
@@ -19296,6 +19409,8 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         const float dx = instance.position.x - fadeEyeLocal.x;
         const float dz = instance.position.z - fadeEyeLocal.z;
         if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
+            continue;
+        if (dx * dx + dz * dz < cullNearSquared)
             continue;
 
         Matrix4 instanceMatrix;
@@ -19405,7 +19520,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f ||
+                     instanceFadeCullNear(instmesh, *mesh, *scene) > 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();

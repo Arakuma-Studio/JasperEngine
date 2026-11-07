@@ -2504,6 +2504,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
+    // Project Settings > Quality > Foliage Distance, omitted at its defaults
+    if (project->getFoliageDistanceScale() != Project::defaultFoliageDistanceScale) {
+        YAML::Node scale;
+        scale["desktop"] = project->getFoliageDistanceScale()[0];
+        scale["mobile"] = project->getFoliageDistanceScale()[1];
+        scale["web"] = project->getFoliageDistanceScale()[2];
+        root["foliageDistanceScale"] = scale;
+    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -3138,6 +3146,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        std::array<float, 3> scale = Project::defaultFoliageDistanceScale;
+        const YAML::Node scaleNode = node["foliageDistanceScale"];
+        if (scaleNode.IsDefined() && scaleNode.IsMap()) {
+            const char* keys[3] = {"desktop", "mobile", "web"};
+            for (int i = 0; i < 3; i++)
+                scale[i] = decodeFinite(scaleNode[keys[i]], scale[i]);
+        }
+        project->setFoliageDistanceScale(scale);
     }
 
     {
