@@ -1363,7 +1363,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
     // macOS: the Objective-C native plugins run in the Play library and desktop builds too
     cmakeContent += NativePlugins::macosCMake(NativePlugins::scan(projectPath), libName, "${CMAKE_CURRENT_SOURCE_DIR}/plugins/native",
-                                              macOSFrameworks, engineApiPathStr + "/platform/apple");
+                                              macOSFrameworks, engineApiPathStr + "/platform/apple", false);
     cmakeContent += "\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
     cmakeContent += "# A C++ reload during Play links a new library while the old one (and, under a debugger, its\n";

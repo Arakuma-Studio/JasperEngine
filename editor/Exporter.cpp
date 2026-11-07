@@ -1884,6 +1884,15 @@ bool editor::Exporter::collectDesktopArtifacts() {
         std::lock_guard<std::mutex> lock(progressMutex);
         producedExecutable = producedPath;
     }
+    // macOS: the plugins' dynamic frameworks and resource bundles, where the executable's rpath
+    // and NSBundle.mainBundle look (the exported CMake links them; NativePlugins::macosCMake)
+    if (hostBuildPlatform() == BuildPlatform::MacOS) {
+        std::string sdkError;
+        if (!copyMacosNativeSdks(projectRoot, config.destinationDir, sdkError)) {
+            setError("Failed to copy the native plugin SDKs: " + sdkError);
+            return false;
+        }
+    }
     if (!copyLicenses()) {
         return false;
     }
@@ -3613,8 +3622,10 @@ namespace {
 
     // Mirrors the folder `src` (below `root`) into `dst` without following links: a link that
     // stays inside `root` (a framework's Versions/Current) is copied as that link (its target
-    // when links cannot be made), any other link is left out with a warning; unchanged files keep
-    // their time; what `src` no longer has goes
+    // when links cannot be made), any other link is left out with a warning; the editor's .meta
+    // sidecars are left out (a .meta in an Android res/ folder fails the resource compile, one
+    // in a framework breaks its signature's seal); unchanged files keep their time; what `src`
+    // no longer has goes
     bool mirrorNoFollow(const fs::path& root, const fs::path& src, const fs::path& dst, std::string& error) {
         std::error_code ec;
         const fs::file_status dstStatus = fs::symlink_status(dst, ec);
@@ -3628,8 +3639,9 @@ namespace {
         for (fs::directory_iterator it(src, ec), end; !ec && it != end; it.increment(ec)) {
             const fs::path from = it->path();
             const fs::path to = dst / from.filename();
-            names.insert(from.filename());
             const fs::file_status status = it->symlink_status(ec);
+            if (!fs::is_directory(status) && editor::NativePlugins::isEditorSidecar(from)) continue;
+            names.insert(from.filename());
             if (fs::is_symlink(status)) {
                 const fs::path target = fs::read_symlink(from, ec);
                 const fs::path resolved = (target.is_absolute() ? target : from.parent_path() / target).lexically_normal();
@@ -3711,6 +3723,44 @@ bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, cons
             removeAllNoFollow(to, ec);
         }
     }
+    return true;
+}
+
+bool editor::Exporter::copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error) {
+    error.clear();
+    const NativePlugins::Scan scan = NativePlugins::scan(projectRoot);
+    const fs::path frameworks = destination / "Frameworks";
+    std::set<fs::path> embedded;
+    std::error_code ec;
+    for (const NativePlugins::MacosSdk& sdk : NativePlugins::macosSdks(scan)) {
+        if (!sdk.embedded && !sdk.resource) continue;
+        const fs::path from = scan.root / FileUtils::pathFromUtf8(sdk.library);
+        const fs::path to = (sdk.embedded ? frameworks : destination) / from.filename();
+        if (sdk.embedded) embedded.insert(from.filename());
+        if (fs::is_directory(from, ec)) {
+            if (!mirrorNoFollow(scan.root, from, to, error)) return false;
+            continue;
+        }
+        // an .xcframework's dynamic library that is a file
+        fs::create_directories(to.parent_path(), ec);
+        if (fs::is_symlink(fs::symlink_status(to, ec)) || fs::is_directory(fs::symlink_status(to, ec))) removeAllNoFollow(to, ec);
+        ec.clear();
+        fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            error = "cannot copy " + genericUtf8Path(from) + ": " + ec.message();
+            return false;
+        }
+    }
+    // what an earlier build embedded and the project no longer has
+    std::vector<fs::path> stale;
+    for (fs::directory_iterator it(frameworks, ec), end; !ec && it != end; it.increment(ec)) {
+        std::string ext = it->path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if ((ext == ".framework" || ext == ".dylib") && !embedded.count(it->path().filename())) stale.push_back(it->path());
+    }
+    for (const fs::path& path : stale) removeAllNoFollow(path, ec);
+    ec.clear();
+    if (embedded.empty() && fs::is_directory(fs::symlink_status(frameworks, ec)) && fs::is_empty(frameworks, ec)) fs::remove(frameworks, ec);
     return true;
 }
 

@@ -853,3 +853,32 @@ Recorded during implementation (branch `dc/mobile-shipping`).
     (MCP sets the `apple.privacy_*` keys). An Android plugin folder forces a compile only for
     what the export's Gradle module reads (`.java`, `.kt`, `.aar`, `.jar`, `res/`,
     `AndroidManifest.xml`, `proguard-rules.pro`), so notes and READMEs ride along.
+
+## Follow-ups (2026-11-07)
+
+Workstream platform-build (branch `fu/platform-build`).
+
+1. **macOS CMake builds take the plugin SDKs as the Xcode project does** (deviation 13 left them out).
+   The editor's CMake compile path on macOS builds an unbundled executable, not a `.app` (only the
+   Xcode generator makes a bundle, and Executable Player builds refuse it), so its SDKs go beside the
+   executable. `NativePlugins::macosSdks` lists the `.framework`, `.xcframework` (its macOS
+   library from `Info.plist`, no simulator or Mac Catalyst one; an iOS-only one is skipped), `.a` and
+   `.bundle` entries of `apple/` and `macos/`, with the Xcode target's rules: frameworks, xcframeworks
+   and `.a` files link (`-F` search paths, an xcframework library's `Headers` on the include path),
+   dynamic ones embed, resource bundles are copied. `macosCMake` emits them; an executable target gets
+   an rpath and a post-build step (`ditto`, which keeps a framework's `Versions/Current` links and so
+   its signature): `Frameworks/` and the bundles beside an unbundled executable (the layout its
+   `NSBundle.mainBundle` reads, rpath `@executable_path/Frameworks`), `Contents/Frameworks` and
+   `Contents/Resources` when the target is a `.app` (`jasperengine.py --platform macos-xcode`, rpath
+   `@executable_path/../Frameworks`), chosen from the target's `MACOSX_BUNDLE`. The editor's Play library links them
+   and finds the dynamic ones where they are (an rpath per folder, no copies). The editor's Desktop
+   build copies the same set into its output folder (`Exporter::copyMacosNativeSdks`, run when the
+   host is a Mac) and removes frameworks an earlier build embedded. Not compiled or run here: linking
+   against a real SDK and launching the game need a Mac.
+2. **Editor sidecars are no plugin files.** `NativePlugins::scan` skips the editor's `.meta` files
+   (`NativePlugins::isEditorSidecar`, the asset database's rule; hidden atomic-write temporaries were
+   already skipped), so carried lists, compile reasons (a `.meta` left in `macos/` or `android/res/`
+   made a build compile), the Native Plugins summary and `native_plugins` no longer show them. The
+   plugin-folder mirror of the exports leaves them out too: one in an Android `res/` folder fails the
+   resource compile, one inside a framework breaks its signature's seal.
+   Tests: `BuildMethod.EditorSidecarsAreNeitherCarriedNorAReason`, `MacNativeSdk.*`.

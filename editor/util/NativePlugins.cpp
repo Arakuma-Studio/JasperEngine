@@ -3,6 +3,8 @@
 
 #include "NativePlugins.h"
 
+#include "asset/AssetTypes.h"
+#include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "Out.h"
 
@@ -32,6 +34,17 @@ namespace {
         const size_t dot = path.find_last_of('.');
         if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return std::string();
         return lower(path.substr(dot));
+    }
+
+    // "macos/Ads.framework" -> "macos"
+    std::string nativeParentOf(const std::string& path){
+        const size_t slash = path.find_last_of('/');
+        return slash == std::string::npos ? std::string() : path.substr(0, slash);
+    }
+
+    std::string nativeNameOf(const std::string& path){
+        const size_t slash = path.find_last_of('/');
+        return slash == std::string::npos ? path : path.substr(slash + 1);
     }
 
     std::string stemOf(const std::string& path){
@@ -97,6 +110,36 @@ namespace {
             if (dot == std::string::npos) return true;
             start = dot + 1;
         }
+    }
+
+    // one entry of an .xcframework's Info.plist AvailableLibraries
+    struct NativeXcframeworkLibrary {
+        std::string identifier, library, binary, headers, platform, variant;
+    };
+
+    std::vector<NativeXcframeworkLibrary> nativeXcframeworkLibraries(const fs::path& xcframework){
+        std::vector<NativeXcframeworkLibrary> out;
+        tinyxml2::XMLDocument doc;
+        const auto plistPath = (xcframework / "Info.plist").generic_u8string();
+        if (doc.LoadFile(std::string(plistPath.begin(), plistPath.end()).c_str()) != tinyxml2::XML_SUCCESS) return out;
+        const tinyxml2::XMLElement* dict = doc.FirstChildElement("plist") ? doc.FirstChildElement("plist")->FirstChildElement("dict") : nullptr;
+        auto valueOf = [](const tinyxml2::XMLElement* d, const char* key) -> const tinyxml2::XMLElement* {
+            for (const tinyxml2::XMLElement* e = d ? d->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")){
+                if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
+            }
+            return nullptr;
+        };
+        const tinyxml2::XMLElement* libraries = valueOf(dict, "AvailableLibraries");
+        for (const tinyxml2::XMLElement* entry = libraries ? libraries->FirstChildElement("dict") : nullptr; entry; entry = entry->NextSiblingElement("dict")){
+            auto text = [&](const char* key){
+                const tinyxml2::XMLElement* e = valueOf(entry, key);
+                return e && e->GetText() ? std::string(e->GetText()) : std::string();
+            };
+            NativeXcframeworkLibrary library{text("LibraryIdentifier"), text("LibraryPath"), text("BinaryPath"), text("HeadersPath"),
+                                       text("SupportedPlatform"), text("SupportedPlatformVariant")};
+            if (!library.identifier.empty() && !library.library.empty()) out.push_back(library);
+        }
+        return out;
     }
 
     const std::set<std::string>& javaKeywords(){
@@ -175,7 +218,8 @@ NativePlugins::Scan NativePlugins::scan(const fs::path& projectPath){
                 }
                 continue;
             }
-            if (it->is_regular_file(ec)) list.push_back(relative);
+            // the editor's .meta of a plugin source is no plugin file: no build reads it
+            if (it->is_regular_file(ec) && !isEditorSidecar(it->path())) list.push_back(relative);
         }
         std::sort(list.begin(), list.end());
     }
@@ -341,8 +385,64 @@ std::string NativePlugins::platformOf(const fs::path& projectPath, const fs::pat
     return std::find(names.begin(), names.end(), top) != names.end() ? top : std::string();
 }
 
+bool NativePlugins::isEditorSidecar(const fs::path& path){
+    return AssetTypes::isMetaFile(path);
+}
+
+std::vector<NativePlugins::MacosSdk> NativePlugins::macosSdks(const Scan& scan){
+    std::vector<MacosSdk> sdks;
+    for (const char* folder : {"apple", "macos"}){
+        auto files = scan.files.find(folder);
+        if (files == scan.files.end()) continue;
+        for (const std::string& file : files->second){
+            const std::string ext = extensionOf(file);
+            MacosSdk sdk;
+            sdk.path = std::string(folder) + "/" + file;
+            sdk.library = sdk.path;
+            const fs::path absolute = scan.root / FileUtils::pathFromUtf8(sdk.path);
+            if (ext == ".bundle"){
+                sdk.resource = true;
+            } else if (ext == ".a"){
+                // linked only
+            } else if (ext == ".framework"){
+                const fs::path binary = frameworkBinary(absolute);
+                sdk.embedded = !binary.empty() && !isStaticArchive(binary);
+            } else if (ext == ".xcframework"){
+                // an iOS-only SDK in apple/ has nothing for macOS
+                fs::path headers;
+                const fs::path library = xcframeworkLibrary(absolute, "macos", &headers);
+                if (library.empty()) continue;
+                sdk.library = sdk.path + "/" + FileUtils::pathToGenericUtf8(library);
+                if (!headers.empty()) sdk.headers = sdk.path + "/" + FileUtils::pathToGenericUtf8(headers);
+                const fs::path libraryPath = absolute / library;
+                const fs::path binary = library.extension() == ".framework" ? frameworkBinary(libraryPath) : libraryPath;
+                sdk.embedded = !binary.empty() && fs::is_regular_file(binary) && !isStaticArchive(binary);
+            } else {
+                continue;
+            }
+            sdks.push_back(sdk);
+        }
+    }
+    return sdks;
+}
+
+namespace {
+
+    // the folders of the frameworks (their -F search paths), one each, in order
+    std::vector<std::string> nativeFrameworkDirs(const std::vector<NativePlugins::MacosSdk>& sdks, const std::string& rootExpression){
+        std::vector<std::string> dirs;
+        for (const NativePlugins::MacosSdk& sdk : sdks){
+            if (extensionOf(sdk.library) != ".framework") continue;
+            const std::string dir = rootExpression + "/" + nativeParentOf(sdk.library);
+            if (std::find(dirs.begin(), dirs.end(), dir) == dirs.end()) dirs.push_back(dir);
+        }
+        return dirs;
+    }
+
+}
+
 std::string NativePlugins::macosCMake(const Scan& scan, const std::string& target, const std::string& rootExpression,
-                                      const std::vector<std::string>& frameworks, const std::string& includeDir){
+                                      const std::vector<std::string>& frameworks, const std::string& includeDir, bool executable){
     std::vector<std::string> sources;
     for (const char* folder : {"apple", "macos"}){
         for (const std::string& file : scan.filesWith(folder, {".m", ".mm", ".c", ".cpp", ".cc", ".cxx"})){
@@ -356,27 +456,87 @@ std::string NativePlugins::macosCMake(const Scan& scan, const std::string& targe
     s += "if(APPLE AND NOT IOS)\n";
     // main.cpp's "unavailable" list of a CMake build (no Swift here)
     s += "    target_compile_definitions(" + target + " PRIVATE JASPERENGINE_MACOS_CMAKE)\n";
-    if (sources.empty()){
-        s += "endif()\n";
-        return s;
+    if (!sources.empty()){
+        s += "    enable_language(OBJC OBJCXX)\n";
+        s += "    set(JASPERENGINE_NATIVE_PLUGIN_SOURCES\n";
+        for (const std::string& source : sources) s += "        \"" + source + "\"\n";
+        s += "    )\n";
+        s += "    target_sources(" + target + " PRIVATE ${JASPERENGINE_NATIVE_PLUGIN_SOURCES})\n";
+        s += "    set_source_files_properties(${JASPERENGINE_NATIVE_PLUGIN_SOURCES} PROPERTIES COMPILE_FLAGS \"-fobjc-arc\")\n";
+        s += "    target_include_directories(" + target + " PRIVATE \"" + includeDir + "\")\n";
+        s += "    target_link_libraries(" + target + " PRIVATE \"-framework Foundation\" \"-framework AppKit\"";
+        for (std::string framework : frameworks){
+            framework.erase(0, framework.find_first_not_of(" \t"));
+            framework.erase(framework.find_last_not_of(" \t") + 1);
+            const bool weak = !framework.empty() && framework.back() == '?';
+            if (weak) framework.pop_back();
+            if (framework.empty() || framework.find_first_of("\"\\ /;$") != std::string::npos) continue;
+            s += weak ? " \"-weak_framework " + framework + "\"" : " \"-framework " + framework + "\"";
+        }
+        s += ")\n";
     }
-    s += "    enable_language(OBJC OBJCXX)\n";
-    s += "    set(JASPERENGINE_NATIVE_PLUGIN_SOURCES\n";
-    for (const std::string& source : sources) s += "        \"" + source + "\"\n";
-    s += "    )\n";
-    s += "    target_sources(" + target + " PRIVATE ${JASPERENGINE_NATIVE_PLUGIN_SOURCES})\n";
-    s += "    set_source_files_properties(${JASPERENGINE_NATIVE_PLUGIN_SOURCES} PROPERTIES COMPILE_FLAGS \"-fobjc-arc\")\n";
-    s += "    target_include_directories(" + target + " PRIVATE \"" + includeDir + "\")\n";
-    s += "    target_link_libraries(" + target + " PRIVATE \"-framework Foundation\" \"-framework AppKit\"";
-    for (std::string framework : frameworks){
-        framework.erase(0, framework.find_first_not_of(" \t"));
-        framework.erase(framework.find_last_not_of(" \t") + 1);
-        const bool weak = !framework.empty() && framework.back() == '?';
-        if (weak) framework.pop_back();
-        if (framework.empty() || framework.find_first_of("\"\\ /;$") != std::string::npos) continue;
-        s += weak ? " \"-weak_framework " + framework + "\"" : " \"-framework " + framework + "\"";
+
+    // the SDKs, as the Xcode target links, embeds and copies them; a name CMake would split or
+    // expand is left out
+    std::vector<MacosSdk> sdks;
+    for (const MacosSdk& sdk : macosSdks(scan)){
+        if (sdk.library.find_first_of("\"\\;$") == std::string::npos) sdks.push_back(sdk);
     }
-    s += ")\n";
+    if (!sdks.empty()){
+        s += "    # their SDKs (plugins/native/apple and macos), as the Xcode project takes them\n";
+        const std::vector<std::string> frameworkDirs = nativeFrameworkDirs(sdks, rootExpression);
+        for (const std::string& dir : frameworkDirs){
+            s += "    target_compile_options(" + target + " PRIVATE \"-F" + dir + "\")\n";
+            s += "    target_link_options(" + target + " PRIVATE \"-F" + dir + "\")\n";
+        }
+        std::string links;
+        for (const MacosSdk& sdk : sdks){
+            if (sdk.resource) continue;
+            const std::string ext = extensionOf(sdk.library);
+            if (!sdk.headers.empty()) s += "    target_include_directories(" + target + " PRIVATE \"" + rootExpression + "/" + sdk.headers + "\")\n";
+            if (ext == ".framework") links += " \"-framework " + stemOf(sdk.library) + "\"";
+            else links += " \"" + rootExpression + "/" + sdk.library + "\"";
+        }
+        if (!links.empty()) s += "    target_link_libraries(" + target + " PRIVATE" + links + ")\n";
+        const bool anyEmbedded = std::any_of(sdks.begin(), sdks.end(), [](const MacosSdk& sdk) { return sdk.embedded; });
+        if (!executable){
+            // a library (the editor's Play): the dynamic ones load from where they are
+            std::vector<std::string> runpaths;
+            for (const MacosSdk& sdk : sdks){
+                const std::string dir = rootExpression + "/" + nativeParentOf(sdk.library);
+                if (sdk.embedded && std::find(runpaths.begin(), runpaths.end(), dir) == runpaths.end()) runpaths.push_back(dir);
+            }
+            for (const std::string& runpath : runpaths){
+                s += "    target_link_options(" + target + " PRIVATE \"-Wl,-rpath," + runpath + "\")\n";
+            }
+        } else if (anyEmbedded || std::any_of(sdks.begin(), sdks.end(), [](const MacosSdk& sdk) { return sdk.resource; })){
+            s += "    get_target_property(JASPERENGINE_NATIVE_APP " + target + " MACOSX_BUNDLE)\n";
+            s += "    if(JASPERENGINE_NATIVE_APP)\n";
+            s += "        # a .app (the Xcode generator): Contents/Frameworks and Contents/Resources, as Xcode's phases put them\n";
+            s += "        set(JASPERENGINE_NATIVE_FRAMEWORKS_DIR \"$<TARGET_BUNDLE_CONTENT_DIR:" + target + ">/Frameworks\")\n";
+            s += "        set(JASPERENGINE_NATIVE_RESOURCES_DIR \"$<TARGET_BUNDLE_CONTENT_DIR:" + target + ">/Resources\")\n";
+            s += "        set(JASPERENGINE_NATIVE_RPATH \"@executable_path/../Frameworks\")\n";
+            s += "    else()\n";
+            s += "        # an unbundled executable: Frameworks/ beside it and the resource bundles beside it, where\n";
+            s += "        # NSBundle.mainBundle looks\n";
+            s += "        set(JASPERENGINE_NATIVE_FRAMEWORKS_DIR \"$<TARGET_FILE_DIR:" + target + ">/Frameworks\")\n";
+            s += "        set(JASPERENGINE_NATIVE_RESOURCES_DIR \"$<TARGET_FILE_DIR:" + target + ">\")\n";
+            s += "        set(JASPERENGINE_NATIVE_RPATH \"@executable_path/Frameworks\")\n";
+            s += "    endif()\n";
+            // a linker flag: every generator passes it (Xcode keeps its own LD_RUNPATH_SEARCH_PATHS)
+            if (anyEmbedded) s += "    target_link_options(" + target + " PRIVATE \"-Wl,-rpath,${JASPERENGINE_NATIVE_RPATH}\")\n";
+            s += "    add_custom_command(TARGET " + target + " POST_BUILD\n";
+            for (const MacosSdk& sdk : sdks){
+                if (!sdk.embedded && !sdk.resource) continue;
+                // ditto keeps a framework's Versions/Current links (and so its signature)
+                const std::string to = std::string(sdk.embedded ? "${JASPERENGINE_NATIVE_FRAMEWORKS_DIR}/" : "${JASPERENGINE_NATIVE_RESOURCES_DIR}/") +
+                                       nativeNameOf(sdk.library);
+                s += "        COMMAND \"${CMAKE_COMMAND}\" -E rm -rf \"" + to + "\"\n";
+                s += "        COMMAND ditto \"" + rootExpression + "/" + sdk.library + "\" \"" + to + "\"\n";
+            }
+            s += "        VERBATIM)\n";
+        }
+    }
     s += "endif()\n";
     return s;
 }
@@ -398,31 +558,23 @@ fs::path NativePlugins::frameworkBinary(const fs::path& framework){
 }
 
 fs::path NativePlugins::xcframeworkBinary(const fs::path& xcframework){
-    tinyxml2::XMLDocument doc;
-    const auto plistPath = (xcframework / "Info.plist").generic_u8string();
-    if (doc.LoadFile(std::string(plistPath.begin(), plistPath.end()).c_str()) != tinyxml2::XML_SUCCESS) return {};
-    const tinyxml2::XMLElement* dict = doc.FirstChildElement("plist") ? doc.FirstChildElement("plist")->FirstChildElement("dict") : nullptr;
-    auto valueOf = [](const tinyxml2::XMLElement* d, const char* key) -> const tinyxml2::XMLElement* {
-        for (const tinyxml2::XMLElement* e = d ? d->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")) {
-            if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
-        }
-        return nullptr;
-    };
-    const tinyxml2::XMLElement* libraries = valueOf(dict, "AvailableLibraries");
-    const tinyxml2::XMLElement* first = libraries ? libraries->FirstChildElement("dict") : nullptr;
-    if (!first) return {};
-    auto text = [&](const char* key) {
-        const tinyxml2::XMLElement* e = valueOf(first, key);
-        return e && e->GetText() ? std::string(e->GetText()) : std::string();
-    };
-    const std::string identifier = text("LibraryIdentifier");
-    const std::string library = text("LibraryPath");
-    const std::string binary = text("BinaryPath");
-    if (identifier.empty() || library.empty()) return {};
-    const fs::path base = xcframework / identifier;
-    if (!binary.empty()) return base / binary;
-    if (fs::path(library).extension() == ".framework") return frameworkBinary(base / library);
-    return base / library;
+    const std::vector<NativeXcframeworkLibrary> libraries = nativeXcframeworkLibraries(xcframework);
+    if (libraries.empty()) return {};
+    const NativeXcframeworkLibrary& first = libraries.front();
+    const fs::path base = xcframework / first.identifier;
+    if (!first.binary.empty()) return base / first.binary;
+    if (fs::path(first.library).extension() == ".framework") return frameworkBinary(base / first.library);
+    return base / first.library;
+}
+
+fs::path NativePlugins::xcframeworkLibrary(const fs::path& xcframework, const std::string& platform, fs::path* headers){
+    for (const NativeXcframeworkLibrary& library : nativeXcframeworkLibraries(xcframework)){
+        if (library.platform != platform || !library.variant.empty()) continue;
+        if (headers) *headers = library.headers.empty() ? fs::path() : fs::path(library.identifier) / library.headers;
+        return fs::path(library.identifier) / library.library;
+    }
+    if (headers) headers->clear();
+    return {};
 }
 
 std::string NativePlugins::xmlFragmentError(const std::string& xml){

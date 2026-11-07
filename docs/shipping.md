@@ -264,7 +264,12 @@ Xcode on a Mac for macOS plugins).
 A Lua mock (`native_mocks/<Plugin>.lua`) answers where a plugin has no code. When a build would
 ship one in place of real code (an Android-only ads plugin in a Windows build), the build warns
 `W-NATIVE-MOCK`, and the game logs once, the first time the mock answers. A macOS build without
-Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so.
+Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so. It links the SDKs of `apple/` and `macos/` as
+the Xcode project does (frameworks, the macOS library of an `.xcframework`, `.a` files) and puts the
+dynamic frameworks in `Frameworks/` beside the executable and the resource `.bundle`s beside it
+(`Contents/Frameworks` and `Contents/Resources` of a `.app` built with `jasperengine.py --platform macos-xcode`).
+
+The editor's `.meta` files in `plugins/native` are neither listed, carried nor copied into a build.
 
 ## Privacy manifest (iOS and macOS)
 
