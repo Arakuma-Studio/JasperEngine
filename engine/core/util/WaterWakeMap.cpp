@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 
 using namespace jasperengine;
 
@@ -22,8 +24,9 @@ namespace{
         return t * t * (3.0f - 2.0f * t);
     }
 
+    // rounded by adding a half: std::lround is a library call per channel, this vectorizes
     uint8_t wakeUnorm8(float value){
-        return (uint8_t)std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f);
+        return (uint8_t)(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
     }
 
 }
@@ -173,13 +176,6 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
     foamStrength = std::clamp(foamStrength, 0.0f, 2.0f);
     fade = std::max(fade, 0.1f);
 
-    struct Crest{
-        float offset;       // from the track
-        float strength;
-        float width;
-        float wavelength;   // of the transverse waves
-        float phase;        // of the transverse waves, 1 on a crest
-    };
     auto getCrest = [&](const WaterWakeSample& sample){
         const float age = track.time - sample.time;
         const float life = std::max(1.0f - age / fade, 0.0f);
@@ -195,28 +191,66 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
         return crest;
     };
 
-    // without the crests, only the last 0.6 s of the history (its breaking bow waves)
-    size_t first = 1;
-    if (!withCrests){
-        first = track.history.size();
-        while (first > 1 && track.time - track.history[first - 1].time < 0.6f)
-            first--;
-    }
-    for (size_t s = first; s < track.history.size(); s++){
+    // two samples may join: the same body (a wake stays on the water it was made on, Doriax
+    // db794e641), no jump between them
+    const size_t count = track.history.size();
+    auto joined = [&](size_t s){
         const WaterWakeSample& a = track.history[s - 1];
         const WaterWakeSample& b = track.history[s];
-        // a wake stays on the water it was made on (Doriax db794e641)
-        if (a.body == 0 || a.body != b.body || (b.position - a.position).length() > std::max(3.0f, halfLength))
-            continue;
+        return a.body != 0 && a.body == b.body && (b.position - a.position).length() <= std::max(3.0f, halfLength);
+    };
 
-        const Crest crestA = getCrest(a);
-        const Crest crestB = getCrest(b);
-        if (crestA.strength <= 0.0f && crestB.strength <= 0.0f)
-            continue;
+    // The crests along segments of samples: a segment grows while the crests of the samples inside
+    // it stay within half a texel of the straight line between its ends (in place, strength and
+    // width), at most 16 samples. A stamp's capsule is far wider than a sample's step: one stamp per
+    // straight run instead of one per pair visits a fraction of the texels.
+    if (withCrests){
+        crestScratch.resize(count);
+        for (size_t s = 0; s < count; s++)
+            crestScratch[s] = getCrest(track.history[s]);
+        auto crestPoint = [&](size_t s, float offset){
+            const WaterWakeSample& sample = track.history[s];
+            return sample.position + Vector2(-sample.direction.y, sample.direction.x) * offset;
+        };
+        auto straight = [&](size_t i, size_t k){
+            const Crest& from = crestScratch[i];
+            const Crest& to = crestScratch[k];
+            for (float side : {-1.0f, 1.0f}){
+                const Vector2 a = crestPoint(i, side * from.offset);
+                const Vector2 ab = crestPoint(k, side * to.offset) - a;
+                const float lengthSquared = ab.squaredLength();
+                for (size_t m = i + 1; m < k; m++){
+                    const Crest& inside = crestScratch[m];
+                    const Vector2 am = crestPoint(m, side * inside.offset) - a;
+                    const float t = (lengthSquared > 0.0f) ? std::clamp(am.dotProduct(ab) / lengthSquared, 0.0f, 1.0f) : 0.0f;
+                    if ((am - ab * t).length() > 0.5f * texel ||
+                        std::abs(inside.strength - (from.strength + (to.strength - from.strength) * t)) > 0.03f ||
+                        std::abs(inside.width - (from.width + (to.width - from.width) * t)) > 0.5f * texel)
+                        return false;
+                }
+            }
+            return true;
+        };
 
-        const Vector2 acrossB(-b.direction.y, b.direction.x);
-        if (withCrests){
+        size_t i = 0;
+        while (i + 1 < count){
+            size_t j = i;
+            while (j + 1 < count && j - i < 16 && joined(j + 1) && straight(i, j + 1))
+                j++;
+            if (j == i){
+                i++;
+                continue;
+            }
+            const WaterWakeSample& a = track.history[i];
+            const WaterWakeSample& b = track.history[j];
+            const Crest& crestA = crestScratch[i];
+            const Crest& crestB = crestScratch[j];
+            i = j;
+            if (crestA.strength <= 0.0f && crestB.strength <= 0.0f)
+                continue;
+
             const Vector2 acrossA(-a.direction.y, a.direction.x);
+            const Vector2 acrossB(-b.direction.y, b.direction.x);
             const float width = 0.5f * (crestA.width + crestB.width);
             const float innerA = crestA.offset - 1.6f * crestA.width;
             const float innerB = crestB.offset - 1.6f * crestB.width;
@@ -228,23 +262,47 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
                           width, 0.5f * crestA.strength, 0.5f * crestB.strength, true, b.body);
                 }
             }
-
-            // the transverse waves of every fourth sample: a quarter of their wavelength wide, the
-            // samples between overlap them whole
-            if (crestB.phase > 0.0f && s % 4 == 0){
-                const float strength = 0.45f * crestB.strength * crestB.phase * crestB.phase;
-                stamp(crests, b.position - acrossB * crestB.offset, b.position + acrossB * crestB.offset,
-                      std::max(0.25f * crestB.wavelength, texel), strength, strength, true, b.body);
-            }
         }
 
-        // the bow waves of a fast hull break as they form
-        if (track.time - b.time < 0.6f){
-            const float breaking = foamStrength * 0.8f * wakeSmoothstep(0.8f, 1.4f, b.speed / hullSpeed);
-            for (float side : {-1.0f, 1.0f}){
-                const Vector2 point = b.position + acrossB * (side * crestB.offset);
-                stamp(foam, point, point, 0.6f * crestB.width, breaking, breaking, false, b.body);
-            }
+        // the transverse waves: one stamp a quarter of their wavelength wide on each crest, where the
+        // samples' phase peaks (a parabola through three samples places it between them)
+        for (size_t s = 1; s + 1 < count; s++){
+            if (!joined(s) || !joined(s + 1))
+                continue;
+            const Crest& before = crestScratch[s - 1];
+            const Crest& here = crestScratch[s];
+            const Crest& after = crestScratch[s + 1];
+            if (here.phase <= 0.0f || here.phase < before.phase || here.phase <= after.phase)
+                continue;
+            const float curve = before.phase - 2.0f * here.phase + after.phase;
+            const float shift = (curve < 0.0f) ? std::clamp(0.5f * (before.phase - after.phase) / curve, -0.5f, 0.5f) : 0.0f;
+            const WaterWakeSample& near = track.history[(shift < 0.0f) ? s - 1 : s + 1];
+            const Crest& nearCrest = (shift < 0.0f) ? before : after;
+            const float t = std::abs(shift);
+            const WaterWakeSample& sample = track.history[s];
+            const Vector2 position = sample.position + (near.position - sample.position) * t;
+            const Vector2 direction = sample.direction + (near.direction - sample.direction) * t;
+            const Vector2 across(-direction.y, direction.x);
+            const float offset = here.offset + (nearCrest.offset - here.offset) * t;
+            const float strength = 0.45f * (here.strength + (nearCrest.strength - here.strength) * t);
+            stamp(crests, position - across * offset, position + across * offset, std::max(0.25f * here.wavelength, texel),
+                  strength, strength, true, sample.body);
+        }
+    }
+
+    // the bow waves of a fast hull break as they form: the samples of the last 0.6 s
+    for (size_t s = count; s > 1 && track.time - track.history[s - 1].time < 0.6f; s--){
+        if (!joined(s - 1))
+            continue;
+        const WaterWakeSample& b = track.history[s - 1];
+        const float breaking = foamStrength * 0.8f * wakeSmoothstep(0.8f, 1.4f, b.speed / hullSpeed);
+        const Crest crestB = getCrest(b);
+        if (breaking <= 0.0f || crestB.strength <= 0.0f)
+            continue;
+        const Vector2 acrossB(-b.direction.y, b.direction.x);
+        for (float side : {-1.0f, 1.0f}){
+            const Vector2 point = b.position + acrossB * (side * crestB.offset);
+            stamp(foam, point, point, 0.6f * crestB.width, breaking, breaking, false, b.body);
         }
     }
 
@@ -273,16 +331,18 @@ void WaterWakeMap::stampTrack(WaterWakeTrack& track, const WaterWakeFootprint& f
 }
 
 void WaterWakeMap::encode(float& strongest){
-    strongest = 0.0f;
+    // a texel packed into one 32-bit store (RGBA in memory order on every target, all little
+    // endian) and the strongest found in bytes: the loop vectorizes, a float max would not
     const size_t count = foam.size();
+    uint8_t largest = 0;
     for (size_t t = 0; t < count; t++){
-        strongest = std::max(strongest, std::max(foam[t], crests[t]));
-        uint8_t* texel = &rgba[t * 4];
-        texel[0] = wakeUnorm8(foam[t]);
-        texel[1] = wakeUnorm8(crests[t]);
-        texel[2] = tags[t];
-        texel[3] = 255;
+        const uint8_t foamByte = wakeUnorm8(foam[t]);
+        const uint8_t crestByte = wakeUnorm8(crests[t]);
+        largest = std::max(largest, std::max(foamByte, crestByte));
+        const uint32_t texel = (uint32_t)foamByte | ((uint32_t)crestByte << 8) | ((uint32_t)tags[t] << 16) | 0xff000000u;
+        std::memcpy(&rgba[t * 4], &texel, sizeof(texel));
     }
+    strongest = (float)largest / 255.0f;
 }
 
 bool WaterWakeMap::sample(float x, float z, uint8_t body, float& foamOut, float& crestOut) const{

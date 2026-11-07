@@ -73,6 +73,16 @@ namespace jasperengine{
         std::vector<uint8_t> tags;
         std::vector<uint8_t> rgba;
 
+        // a sample's diverging crest now (stampTrack)
+        struct Crest{
+            float offset = 0.0f;        // from the track
+            float strength = 0.0f;
+            float width = 0.0f;
+            float wavelength = 0.0f;    // of the transverse waves
+            float phase = 0.0f;         // of the transverse waves, 1 on a crest
+        };
+        std::vector<Crest> crestScratch;  // a track's samples' crests, kept to reuse its memory
+
         // keeps the larger value along a capsule from a to b (its strength lerped along it); a crest
         // falls off as a cosine, foam keeps a solid core; a raised texel takes the tag
         void stamp(std::vector<float>& values, Vector2 a, Vector2 b, float radius, float strengthA, float strengthB, bool crest, uint8_t tag);
@@ -87,9 +97,9 @@ namespace jasperengine{
         // foam times factor (under 0.002: none); with clearCrests every crest cleared, to be stamped again
         void fade(float factor, bool clearCrests = true);
 
-        // The wake one emitter makes on the map this step: from each pair of its history samples on
-        // the same body, diverging crests at the wake angle of their speed (an inner one at half
-        // strength), transverse waves between and breaking bow waves past hull speed; while it
+        // The wake one emitter makes on the map this step: along its history samples on the same
+        // body, diverging crests at the wake angle of their speed (an inner one at half strength),
+        // transverse waves on their crests and breaking bow waves past hull speed; while it
         // crosses a water (track.body), churn behind the stern and spray along the hull.
         // waves and foam scale the strengths (0..2), fade is the scene's wake fade (seconds).
         // withCrests false stamps the foam only (the crests kept from the last step that stamped them).

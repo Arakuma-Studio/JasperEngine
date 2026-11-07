@@ -876,9 +876,11 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    52 ms a step at 256 texels with four hulls. The history keeps a bow sample every 0.5 m (or a fifth
    of the hull's length; Doriax every 0.25 m or a tenth), the crests are stamped again 20 times a
    second at most (once they may have moved half a texel: 16 times at 256 texels over 64 m, 8 at
-   128; the foam every step), the transverse waves of every fourth sample, a stamp skips texels
+   128; the foam every step), the crests along straight runs of samples (one stamp while the samples
+   between stay within half a texel of its line, at most 16), one transverse wave stamp on each of
+   their crests (where the samples' phase peaks; Doriax stamps every sample's), a stamp skips texels
    already at its strength, and the falloffs are polynomial in the squared distance (a crest
    `(1 - d^2)^2`, close to Doriax's `0.5 + 0.5 cos(pi d)`; foam solid to d = 0.45 as Doriax's), with
-   no root or cosine per texel.
+   no root or cosine per texel; the RGBA texels are packed in a loop that vectorizes.
 10. **Opaque water's 'Aui' key is gone from exports** (deviation 4): the `shader-library-export/Blend`
     reflection golden loses the auto-instanced key of its `BLEND_NONE` water.
