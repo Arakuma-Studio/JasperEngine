@@ -5,7 +5,7 @@
 
 // The gradient editor's key edits (docs/specs/S27-editor-tools.md R9), without ImGui: hit
 // testing of the markers along the bar, adding a key with the gradient's value there (at most
-// Gradient::kMaxKeys), moving one (the list resorted, the key followed), removing one (a list
+// Gradient::kMaxKeys, or the caller's limit: a graph's ramp holds 32), moving one (the list resorted, the key followed), removing one (a list
 // keeps its last key). GradientField.cpp turns the bar's input into these calls. Taken over
 // from origin/main's GradientFieldLogic (S27, Upstream absorption).
 
@@ -27,9 +27,9 @@ namespace jasperengine::editor::gradientops {
     std::vector<float> alphaTimes(const Gradient& gradient);
 
     // a key at `time` (clamped to 0..1) with the gradient's value there, after the keys at that
-    // time; its index, -1 when the list has kMaxKeys already
-    int addColorKey(Gradient& gradient, float time);
-    int addAlphaKey(Gradient& gradient, float time);
+    // time; its index, -1 when the list has `maxKeys` already
+    int addColorKey(Gradient& gradient, float time, size_t maxKeys = Gradient::kMaxKeys);
+    int addAlphaKey(Gradient& gradient, float time, size_t maxKeys = Gradient::kMaxKeys);
 
     // key `index` moved to `time` (clamped), the list resorted (after the keys at that time):
     // its new index, -1 for no such key
