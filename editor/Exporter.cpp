@@ -3115,6 +3115,15 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
             const fs::path real = link ? safewrite::resolvedPath(dir / name) : branch.back() / name;
             std::error_code typeError;
             const bool isDirectory = entry.is_directory(typeError);
+            // the export's own folder, or a link into it, first: isEarlierExport would call it an
+            // earlier export
+            if (isDirectory && !real.empty() && !realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
+                if (leftOutLinks.insert(branch.back() / name).second) {
+                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
+                                 FileUtils::pathToGenericUtf8(relPath).c_str());
+                }
+                continue;
+            }
             // an earlier export left in the project ships nothing (W-EXPORT-FOLDER-SKIPPED)
             if (isDirectory && isEarlierExport(entry)) continue;
             const TreeStep step = visit(entry, relPath, isDirectory, real);
@@ -3123,13 +3132,6 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
                 return;
             }
             if (step != TreeStep::Enter || !isDirectory || real.empty()) continue;
-            if (!realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
-                if (leftOutLinks.insert(branch.back() / name).second) {
-                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
-                                 FileUtils::pathToGenericUtf8(relPath).c_str());
-                }
-                continue;
-            }
             if (link) {
                 const bool holdsItself = std::any_of(branch.begin(), branch.end(), [&](const fs::path& folder) { return safewrite::isAtOrBelow(folder, real); });
                 if (holdsItself) {
